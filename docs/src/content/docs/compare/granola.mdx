@@ -1,0 +1,55 @@
+---
+title: "Free Granola Alternative for Mac"
+description: "Compare Loofah with Granola for meeting notes. See local transcription, Markdown storage, free features, MCP access, and hosted collaboration tradeoffs."
+sidebar:
+  label: "Loofah vs Granola"
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+**Choose Loofah if your priority is free on-device transcription and a vault of files you control.** Granola combines meeting notes with hosted AI and collaboration. Both let you take notes while capturing the conversation; the main differences are where processing happens and how you use the results.
+
+*Vendor information checked 8 September 2026. Written by the Loofah maintainer from documentation, not comparative performance testing.*
+
+## Compare the essentials
+
+| Question | Loofah | Granola |
+| --- | --- | --- |
+| Desktop download | Apple Silicon, macOS 15+ | macOS and Windows; also has an iPhone app [1] |
+| Transcription | On-device after a model download | Uses transcription providers [2] |
+| Notes storage | Notes and summaries are Markdown in your local vault | Notes are stored in a US-hosted AWS environment [2] |
+| Free access | No premium tier or monthly transcription allowance | Basic includes AI notes and limited meeting history [3] |
+| AI setup | Choose a local summary server or hosted API key | Hosted AI; no local summary server to configure [2] |
+| Agent access | Free read-only MCP and CLI read/write commands | Business lists MCP integration and API access [3] |
+| Collaboration | File export and your own sync setup | Shared folders; Business adds integrations and user management [3] |
+
+Granola advertises Business at US$14 per user per month. Recheck its current plan and billing terms before purchasing. [3]
+
+## When Loofah fits
+
+You want to [transcribe offline](/offline), keep a local recording under your chosen retention policy, and use the same notes outside a hosted workspace. Loofah saves transcripts as JSON; [export a session](/notes#export-a-session) when you want a Markdown document containing the transcript too.
+
+You also take responsibility for local setup and backups. Download a speech model, select your languages, and choose a separate AI provider if you want summaries. Hosted providers and connected agents can receive the content you send them; read the [privacy boundary](/data-and-privacy).
+
+## When Granola fits
+
+Granola may suit you better if shared folders, built-in cross-meeting AI chat, mobile access, or hosted team integrations matter more than running transcription locally. Check its current plans for the collaboration and administrative features your team needs. [1][3]
+
+MCP access is available in both products. The useful question is whether you want your agent to retrieve a local vault or work with a hosted service.
+
+## Bring a recording, not an account
+
+Loofah has no dedicated Granola account migration. Granola says it does not retain meeting audio after transcription, so do not assume you can retrieve an old recording from it. [2] If you already have a separate audio file or a compatible SRT/VTT transcript, [import it into Loofah](/import-recordings). Sharing permissions and folders do not transfer through that import.
+
+<CardGrid>
+  <LinkCard title="Record your first meeting with Loofah" href="/quickstart" description="Try the free Mac app with a short test conversation." />
+  <LinkCard title="Connect an agent to your local notes" href="/agents/connect-clients" description="Retrieve a decision through read-only MCP access." />
+</CardGrid>
+
+## Sources
+
+[1] [Granola: how transcription works](https://docs.granola.ai/help-center/taking-notes/transcription)
+
+[2] [Granola security and data processing](https://www.granola.ai/security)
+
+[3] [Granola plans and pricing](https://www.granola.ai/pricing)

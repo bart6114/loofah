@@ -1,0 +1,55 @@
+---
+title: "Free Otter Alternative: Local Transcription for Mac"
+description: "Compare Loofah with Otter for meeting transcription. Understand free allowances, local processing, audio imports, notes, and agent access."
+sidebar:
+  label: "Loofah vs Otter"
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+**Choose Loofah if you want your Mac to transcribe meetings without a monthly service allowance.** Otter is a hosted meeting service with free and paid plans. Its integrated AI workflows may be useful if you prefer hosted processing and broader device access.
+
+*Vendor information checked 8 September 2026. Written by the Loofah maintainer from documentation, not comparative performance testing.*
+
+## Compare the workflow
+
+| Question | Loofah | Otter |
+| --- | --- | --- |
+| Desktop download | Apple Silicon, macOS 15+ | Mac and Windows; also lists iOS and Android apps [1] |
+| Free transcription | No monthly allowance; uses your Mac's compute and storage | Basic lists 300 monthly transcription minutes [1] |
+| Existing recordings | Local single-file or batch audio imports | Basic lists three lifetime file imports [1] |
+| Internet during transcription | Not needed after downloading models | Live transcription requires internet [2] |
+| Imported file processing | On your Mac | Uploaded files are processed on Otter's servers [3] |
+| AI summaries | Optional local server or hosted API key | Hosted AI workflows [1][3] |
+| Agent access | Read-only MCP plus CLI write commands | Lists an MCP server [1] |
+
+Otter's allowances depend on the current plan and recording workflow. Consult its pricing page for the full limits rather than treating this table as the complete plan contract. [1]
+
+## When Loofah fits
+
+You regularly transcribe on an Apple Silicon Mac, want to [work offline](/offline), or have a backlog of recordings you prefer to process locally. Loofah has no service allowance to exhaust; processing time, model support, disk space, and your Mac's resources still matter.
+
+Notes and summaries remain Markdown files in your vault. You can [export sessions](/notes#export-a-session), search them locally, and give your agent [MCP access](/agents/connect-clients). Summaries need a separate Intelligence provider, and local summaries require running Ollama or LM Studio.
+
+## When Otter fits
+
+Otter may suit you better if you need its mobile apps, integrated AI workflows, or hosted processing for imports. Check its supported languages and current plan allowances against your actual meetings. [1][3]
+
+An internet interruption can stop Otter's live transcript while recording continues; its documentation describes completing transcription after reconnection and upload. [2] Loofah's downloaded speech model processes locally, but live text is limited to supported English meetings. Other supported languages are transcribed after recording.
+
+## Try one of your recordings
+
+If you have a recording you are authorized to use, [import the audio into Loofah](/import-recordings) and review the result. Loofah also accepts SRT and VTT transcripts. It does not connect to your Otter account or migrate its folders, comments, or permissions.
+
+<CardGrid>
+  <LinkCard title="Try local transcription" href="/quickstart" description="Install Loofah for free and set up a speech model." />
+  <LinkCard title="Import audio files on your Mac" href="/import-recordings" description="See supported formats and batch import instructions." />
+</CardGrid>
+
+## Sources
+
+[1] [Otter pricing and plan allowances](https://otter.ai/pricing)
+
+[2] [Otter: troubleshoot audio recording and network problems](https://help.otter.ai/hc/en-us/articles/4403627500951-Troubleshoot-audio-recording-problems)
+
+[3] [Otter: import an audio or video file](https://help.otter.ai/hc/en-us/articles/360047733574-Import-an-audio-or-video-file)

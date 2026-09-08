@@ -1,0 +1,469 @@
+---
+const { downloadUrl } = Astro.props;
+
+const features = [
+  {
+    number: "01",
+    title: "Record without a meeting bot",
+    description:
+      "Capture your microphone and the audio playing on your Mac. Loofah stays out of the participant list. Get permission to record, then start when you are ready.",
+    href: "/meetings",
+    link: "How recording works",
+  },
+  {
+    number: "02",
+    title: "Transcribe on your Mac",
+    description:
+      "Download a speech model once and use it offline. Follow supported English meetings live, or transcribe after recording with a model that supports your languages.",
+    href: "/offline",
+    link: "Set up offline transcription",
+  },
+  {
+    number: "03",
+    title: "Choose how to summarize",
+    description:
+      "Run summaries locally with Ollama or LM Studio, or bring an API key for a hosted provider. Recording and transcription work without either.",
+    href: "/ai-setup",
+    link: "Choose your AI setup",
+  },
+];
+
+const questions = [
+  {
+    question: "Is Loofah really free?",
+    answer:
+      "Yes. Recording, on-device transcription, notes, speaker detection after recording, exports, and agent access are included. There is no account, subscription, premium tier, or monthly transcription allowance. A hosted AI provider may charge for summaries if you choose to use one.",
+  },
+  {
+    question: "Does it work offline?",
+    answer:
+      "Yes, once you have downloaded the transcription model. Local summaries also need a downloaded language model and a running Ollama or LM Studio server. A hosted summary provider needs an internet connection.",
+  },
+  {
+    question: "Does my meeting data leave my Mac?",
+    answer:
+      "Recording and transcription run locally. If you choose a remote summary provider, the required meeting context goes to that provider. Connected agents can receive the notes you ask them to read, and a sync service can copy files if you configure one. Loofah has no cloud backend or telemetry.",
+  },
+  {
+    question: "Which Macs are supported?",
+    answer:
+      "The signed and notarized desktop download supports Apple Silicon Macs running macOS 15 or later. Download your models during setup and make a short test recording before your first meeting.",
+  },
+  {
+    question: "Can I transcribe an existing recording?",
+    answer:
+      "Yes. Import WAV, MP3, OGG, MP4, M4A, FLAC, WebM, or AAC files, individually or in a batch. You can also import SRT or VTT transcripts. Audio is transcribed with your selected on-device model.",
+  },
+];
+---
+
+<div class="home-details">
+  <section class="home-section" id="features" aria-labelledby="features-title">
+    <p class="section-eyebrow">From conversation to something useful</p>
+    <h2 id="features-title">
+      Be there for the meeting.<br />Keep what matters after.
+    </h2>
+    <div class="feature-grid">
+      {
+        features.map((feature) => (
+          <article>
+            <span class="feature-number" aria-hidden="true">{
+              feature.number
+            }</span>
+            <h3>{feature.title}</h3>
+            <p>{feature.description}</p>
+            <a href={feature.href}>{feature.link}
+              <span aria-hidden="true">↗</span></a>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+
+  <section
+    class="home-section workflow-section"
+    aria-labelledby="workflow-title"
+  >
+    <div class="section-heading">
+      <div>
+        <p class="section-eyebrow">A place for your working knowledge</p>
+        <h2 id="workflow-title">The call ends.<br />Your notes stay useful.</h2>
+      </div>
+      <p>
+        Keep your own notes beside the transcript and optional AI summaries.
+        Bring in recordings, research, and source material as your vault grows.
+      </p>
+    </div>
+    <figure class="app-screenshot">
+      <img
+        src="/screenshots/loofah-primary.png"
+        alt="The Loofah desktop app with recent sessions and a meeting brief open in its local knowledge vault"
+        width="2800"
+        height="1720"
+        loading="lazy"
+        decoding="async"
+      />
+      <figcaption>
+        The Loofah desktop app. Your selected Intelligence provider generates
+        summaries.
+      </figcaption>
+    </figure>
+    <ol class="workflow-steps">
+      <li>
+        <strong>Create a note and record.</strong>
+        <span>Download a model during setup, allow audio access, and start a
+          short test meeting.</span>
+      </li>
+      <li>
+        <strong>Review the conversation.</strong>
+        <span>Check the transcript, name detected speakers after recording, and
+          add your own notes.</span>
+      </li>
+      <li>
+        <strong>Use it again.</strong>
+        <span>Search past sessions, export a document, or ask your connected
+          agent to find a decision.</span>
+      </li>
+    </ol>
+    <a href="/quickstart" class="section-link">Record your first meeting <span
+        aria-hidden="true"
+      >→</span></a>
+  </section>
+
+  <section
+    class="home-section ownership-section"
+    aria-labelledby="ownership-title"
+  >
+    <div>
+      <p class="section-eyebrow">Your files, beyond this app</p>
+      <h2 id="ownership-title">
+        A knowledge vault<br />you can take with you.
+      </h2>
+      <p>
+        Your notes and summaries are Markdown files. Transcripts, recordings,
+        and attachments live alongside them in your local vault. Keep a backup,
+        use a supported sync folder, or export a session for another tool.
+      </p>
+      <a href="/notes">Explore Markdown notes <span aria-hidden="true"
+        >↗</span></a>
+    </div>
+    <div class="agent-card">
+      <p class="section-eyebrow">Give your agents the context</p>
+      <h3>“What did we decide about the launch?”</h3>
+      <p>
+        Connect an MCP client to search and read your meeting notes. Use the CLI
+        when you want an agent to save research or add to a note. You choose
+        which work to keep.
+      </p>
+      <p class="agent-boundary">
+        MCP reads your vault. The CLI handles writes. Your agent's provider may
+        receive the content it reads.
+      </p>
+      <a href="/agents/connect-clients">Connect your agents <span
+          aria-hidden="true"
+        >↗</span></a>
+    </div>
+  </section>
+
+  <section class="home-section compare-section" aria-labelledby="compare-title">
+    <p class="section-eyebrow">Find the right fit</p>
+    <h2 id="compare-title">Considering another meeting tool?</h2>
+    <p>
+      Compare what is included, where processing happens, and what each workflow
+      asks of you.
+    </p>
+    <div class="comparison-links">
+      <a href="/compare/meetily"><span>Loofah vs Meetily</span><span
+          aria-hidden="true"
+        >↗</span></a>
+      <a href="/compare/granola"><span>Loofah vs Granola</span><span
+          aria-hidden="true"
+        >↗</span></a>
+      <a href="/compare/otter"><span>Loofah vs Otter</span><span
+          aria-hidden="true"
+        >↗</span></a>
+    </div>
+    <a href="/compare" class="section-link">See the comparison guide <span
+        aria-hidden="true"
+      >→</span></a>
+  </section>
+
+  <section class="home-section faq-section" aria-labelledby="faq-title">
+    <div>
+      <p class="section-eyebrow">Before your first meeting</p>
+      <h2 id="faq-title">A few useful answers.</h2>
+      <a href="/help">More questions and setup help <span aria-hidden="true"
+        >↗</span></a>
+    </div>
+    <div>
+      {
+        questions.map(({ question, answer }) => (
+          <details>
+            <summary>{question}</summary>
+            <p>{answer}</p>
+          </details>
+        ))
+      }
+      <p class="faq-links">
+        <a href="/is-it-free">Why Loofah is free</a> ·
+        <a href="/data-and-privacy">Data and privacy</a> · <a href="/languages"
+        >Supported languages</a> · <a href="/import-recordings"
+        >Import recordings</a>
+      </p>
+    </div>
+  </section>
+
+  <section class="home-section final-cta" aria-labelledby="download-title">
+    <p class="section-eyebrow">Free and open source · MIT licensed</p>
+    <h2 id="download-title">Make room for the conversation.</h2>
+    <p>
+      Install Loofah, download a speech model, and try your first recording.
+    </p>
+    <a class="home-hero__download" href={downloadUrl}>
+      <span><strong>Download free for macOS</strong><small>Apple Silicon · macOS
+          15+ · Signed &amp; notarized</small></span>
+      <span aria-hidden="true">↓</span>
+    </a>
+    <a
+      class="section-link"
+      href="https://github.com/bart6114/loofah/releases"
+    >Read the release history <span aria-hidden="true">↗</span></a>
+  </section>
+
+  <footer class="home-footer">
+    <span>Loofah · Built on <a href="https://github.com/fastrepl/anarlog"
+      >Anarlog</a></span>
+    <nav aria-label="Footer navigation">
+      <a href="/background">Our story</a>
+      <a href="/data-and-privacy">Privacy</a>
+      <a href="/changelog">What's new</a>
+      <a href="https://github.com/bart6114/loofah">GitHub</a>
+    </nav>
+  </footer>
+</div>
+
+<style>
+.home-details {
+  color: #243a2d;
+  background: #f6f7f0;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.home-section, .home-footer {
+  width: min(80rem, 100%);
+  margin: 0 auto;
+  padding: 5rem clamp(1.5rem, 5vw, 5rem);
+}
+
+.home-section + .home-section {
+  border-top: 1px solid #dce3d7;
+}
+.home-details a {
+  color: #2c6542;
+  text-underline-offset: 0.25em;
+}
+.home-details a:hover {
+  color: #152e1e;
+}
+.home-details a:focus-visible, summary:focus-visible {
+  outline: 2px solid #2c6542;
+  outline-offset: 5px;
+}
+.home-details p {
+  margin: 1rem 0;
+}
+.home-details .section-eyebrow {
+  margin: 0 0 1rem;
+  color: #5c715c;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+h2 {
+  margin: 0;
+  color: #243a2d;
+  font-family: "Fraunces Variable", Georgia, serif;
+  font-size: clamp(2rem, 3.7vw, 3.25rem);
+  font-weight: 550;
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+h3 {
+  margin: 1rem 0 0;
+  color: #243a2d;
+  font-size: 1.2rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2.5rem;
+  margin-top: 3rem;
+}
+.feature-grid article {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.feature-grid article a {
+  margin-top: auto;
+  font-size: 0.9rem;
+}
+.feature-number {
+  color: #66835d;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.section-heading, .ownership-section, .faq-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3rem;
+  align-items: start;
+}
+.section-heading > p {
+  align-self: end;
+}
+.app-screenshot {
+  margin: 2.5rem 0 0;
+}
+.app-screenshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #d1dccd;
+  border-radius: 1rem;
+  box-shadow: 0 1rem 3rem rgb(28 54 35 / 9%);
+}
+figcaption {
+  padding-top: 0.75rem;
+  color: #5c715c;
+  font-size: 0.8rem;
+}
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2.5rem;
+  margin: 2.5rem 0 1.5rem;
+  padding-left: 1.4rem;
+}
+.workflow-steps li {
+  padding-left: 0.25rem;
+}
+.workflow-steps li::marker {
+  color: #66835d;
+}
+.workflow-steps span {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.92rem;
+}
+.section-link {
+  display: inline-block;
+  margin-top: 1rem;
+  font-size: 0.92rem;
+}
+.agent-card {
+  border: 1px solid #d1dccd;
+  border-radius: 1rem;
+  padding: 2rem;
+  background: #eaf0e3;
+}
+.agent-card h3 {
+  font-family: "Fraunces Variable", Georgia, serif;
+  font-size: 1.8rem;
+  font-weight: 550;
+}
+.agent-card .agent-boundary {
+  color: #4f6455;
+  font-size: 0.85rem;
+}
+.comparison-links {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.comparison-links a {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid #c8d5c1;
+  border-radius: 0.7rem;
+  padding: 1.25rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.comparison-links a:hover {
+  background: #eaf0e3;
+}
+details {
+  border-bottom: 1px solid #d1dccd;
+  padding: 1.1rem 0;
+}
+details:first-child {
+  padding-top: 0;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.5;
+}
+details p {
+  font-size: 0.95rem;
+}
+.faq-links {
+  font-size: 0.85rem;
+}
+.final-cta {
+  text-align: center;
+}
+.final-cta .home-hero__download {
+  max-width: 25rem;
+  margin: 2rem auto 0;
+  text-align: left;
+  text-decoration: none;
+}
+.home-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border-top: 1px solid #dce3d7;
+  padding-top: 1.75rem;
+  padding-bottom: 1.75rem;
+  font-size: 0.8rem;
+}
+.home-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+@media (max-width: 50rem) {
+  .home-section {
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+  }
+  .feature-grid,
+  .section-heading,
+  .ownership-section,
+  .faq-section,
+  .workflow-steps,
+  .comparison-links {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  .comparison-links {
+    gap: 0.75rem;
+  }
+  .home-footer {
+    flex-direction: column;
+  }
+  .agent-card {
+    padding: 1.5rem;
+  }
+}
+</style>

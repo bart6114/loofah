@@ -1,6 +1,7 @@
 ---
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import squircleIcon from "../../../apps/desktop/src-tauri/icons/src/loofah-squircle-1024.png";
+import HomeSections from "../components/HomeSections.astro";
 
 const githubUrl = "https://github.com/bart6114/loofah";
 const downloadUrl =
@@ -9,9 +10,44 @@ const downloadUrl =
 
 <StarlightPage
   frontmatter={{
-    title: "A knowledge vault that is actually yours",
+    title: "Free Meeting Transcription for Mac",
     description:
-      "Record and transcribe meetings, take notes, and let agents save research and source artifacts in a local knowledge vault. No account, subscription, or telemetry.",
+      "Free, open-source meeting transcription for Mac. Record without a bot, transcribe locally, and keep notes as Markdown. No account or subscription.",
+    head: [
+      { tag: "meta", attrs: { property: "og:type", content: "website" } },
+      {
+        tag: "script",
+        attrs: { type: "application/ld+json" },
+        content: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "WebSite",
+              "@id": "https://loofah.io/#website",
+              name: "Loofah",
+              url: "https://loofah.io/",
+              inLanguage: "en",
+            },
+            {
+              "@type": "SoftwareApplication",
+              "@id": "https://loofah.io/#app",
+              name: "Loofah",
+              url: "https://loofah.io/",
+              description:
+                "Free meeting transcription for Mac with local processing, Markdown notes, and CLI and MCP access.",
+              applicationCategory: "ProductivityApplication",
+              operatingSystem: "macOS 15 or later (Apple Silicon)",
+              isAccessibleForFree: true,
+              license: "https://github.com/bart6114/loofah/blob/main/LICENSE",
+              downloadUrl,
+              screenshot: "https://loofah.io/screenshots/loofah-primary.png",
+              sameAs: githubUrl,
+              offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
+            },
+          ],
+        }),
+      },
+    ],
     template: "splash",
     editUrl: false,
     lastUpdated: false,
@@ -20,282 +56,342 @@ const downloadUrl =
   }}
 >
   <div class="home-page not-content">
-    <div class="home-hero__backdrop" aria-hidden="true">
-      <img src="/images/forest-leaves.jpg" alt="" fetchpriority="high" />
-      <video
-        id="forest-video"
-        muted
-        loop
-        playsinline
-        preload="none"
-        poster="/images/forest-leaves.jpg"
-        data-src="/videos/forest-leaves.mp4"
-      ></video>
-    </div>
-    <main class="home-hero">
-      <div class="home-hero__copy">
-        <a class="home-hero__brand" href={githubUrl}>
-          <img src={squircleIcon.src} alt="" width="40" height="40" />
-          <span>Loofah</span>
-          <span class="home-hero__license">MIT</span>
-        </a>
-
-        <p class="home-hero__eyebrow">
-          <span>Free and open source</span>
-          <span aria-hidden="true">·</span>
-          <span>Built in public</span>
-        </p>
-        <h1>A knowledge vault that is <span>actually yours.</span></h1>
-        <p class="home-hero__lead">
-          Record and transcribe meetings, take notes, and let agents save
-          research and source artifacts. Everything lives in ordinary files
-          you control, with no account, subscription, or telemetry.
-        </p>
-
-        <div class="home-hero__actions">
-          <a class="home-hero__download" href={downloadUrl}>
-            <span>
-              <strong>Download free for macOS</strong>
-              <small>Apple Silicon · Signed &amp; notarized</small>
-            </span>
-            <span aria-hidden="true">↓</span>
-          </a>
-          <a class="home-hero__start" href="/quickstart">
-            <span>
-              <strong>Get started</strong>
-              <small>Install and record your first meeting</small>
-            </span>
-            <span aria-hidden="true">→</span>
-          </a>
-        </div>
-
-        <a class="home-hero__source" href={githubUrl}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.38.97.1-.75.4-1.27.74-1.56-2.57-.3-5.27-1.29-5.27-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.16 1.18A11 11 0 0 1 12 6.1a11 11 0 0 1 2.88.39c2.19-1.49 3.15-1.18 3.15-1.18.64 1.59.24 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.06.79 2.14v3.27c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"
-            ></path>
-          </svg>
-          View source on GitHub <span aria-hidden="true">↗</span>
-        </a>
-
-        <ul class="home-hero__proof" aria-label="Loofah promises">
-          <li><strong>FOSS</strong><span>Free As In Beer</span></li>
-          <li><strong>MIT</strong><span>Permissive license</span></li>
-          <li><strong>Local</strong><span>On-device transcription</span></li>
-          <li><strong>Yours</strong><span>Plain Markdown files</span></li>
-        </ul>
-      </div>
-
-      <figure class="home-hero__product">
-        <div class="home-hero__product-bar">
-          <div class="home-hero__traffic-lights" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-          <span>Loofah</span>
-          <span class="home-hero__local-status">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M4.5 7V5.5a3.5 3.5 0 0 1 7 0V7m-8 0h9v6.5h-9V7Z"
-              ></path>
-            </svg>
-            Saved locally
-          </span>
-        </div>
-        <div
-          class="product-demo"
-          role="img"
-          aria-label="A Loofah session showing a product launch meeting brief, tasks, and a recording saved locally"
+    <div class="home-intro">
+      <div class="home-hero__backdrop" aria-hidden="true">
+        <img src="/images/forest-leaves.jpg" alt="" fetchpriority="high" />
+        <video
+          id="forest-video"
+          muted
+          loop
+          playsinline
+          preload="none"
+          poster="/images/forest-leaves.jpg"
+          data-src="/videos/forest-leaves.mp4"
         >
-          <aside class="product-demo__sidebar">
-            <div class="product-demo__sidebar-tools" aria-hidden="true">
-              <span>◧</span><span>⚙</span><span>⌁</span>
-            </div>
-            <div class="product-demo__sidebar-heading">
-              <span><b aria-hidden="true">＋</b> New note</span>
-              <kbd>⌘N</kbd>
-            </div>
-            <div class="product-demo__search">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle cx="7" cy="7" r="4.25"></circle>
-                <path d="m10.25 10.25 3 3"></path>
-              </svg>
-              <span>Search notes…</span>
-            </div>
-            <div class="product-demo__browse">
-              <span class="is-active">By date</span>
-              <span>By tag</span>
-            </div>
-            <div class="product-demo__day">Today</div>
-            <div class="product-demo__session is-active">
-              <span class="product-demo__session-mark"></span>
-              <span>
-                <strong>Plan the September product launch</strong>
-                <small>7:56 PM · 42 min</small>
-              </span>
-            </div>
-            <div class="product-demo__session">
-              <span class="product-demo__session-mark"></span>
-              <span>
-                <strong>Local-first research</strong>
-                <small>3:20 PM · Notes</small>
-              </span>
-            </div>
-            <div class="product-demo__day">Yesterday</div>
-            <div class="product-demo__session">
-              <span class="product-demo__session-mark"></span>
-              <span>
-                <strong>Weekly technology brief</strong>
-                <small>36 min</small>
-              </span>
-            </div>
-            <div class="product-demo__vault">
-              <svg viewBox="0 0 18 18" aria-hidden="true">
-                <path d="M2.5 5.5h5l1.5 2h6.5v7h-13v-9Z"></path>
-              </svg>
-              <span>
-                <strong>My Loofah Vault</strong>
-                <small>Markdown · On this Mac</small>
-              </span>
-              <span class="product-demo__vault-check">✓</span>
-            </div>
-          </aside>
+        </video>
+      </div>
+      <section class="home-hero" aria-labelledby="_top">
+        <div class="home-masthead">
+          <a class="home-hero__brand" href="/" aria-label="Loofah home">
+            <img src={squircleIcon.src} alt="" width="40" height="40" />
+            <span>Loofah</span>
+            <span class="home-hero__license">MIT</span>
+          </a>
+          <nav aria-label="Main navigation">
+            <a href="#features">Features</a>
+            <a href="/compare">Compare</a>
+            <a href="/quickstart">Docs</a>
+            <a href="/agents/connect-clients">For agents</a>
+          </nav>
+        </div>
+        <div class="home-hero__copy">
+          <p class="home-hero__eyebrow">
+            <span>Free and open source</span>
+            <span aria-hidden="true">·</span>
+            <span>Built in public</span>
+          </p>
+          <h1 id="_top">
+            Free meeting transcription. <span>Notes you own.</span>
+          </h1>
+          <p class="home-hero__lead">
+            Record meetings without a bot and transcribe audio on your Mac. Keep
+            notes as Markdown files, generate summaries with your choice of AI,
+            and connect your agents. No account or subscription.
+          </p>
 
-          <section class="product-demo__document">
-            <div class="product-demo__tabs">
-              <span class="is-active">Launch brief</span>
-              <span>Note</span>
-              <span>Transcript</span>
-              <span class="product-demo__resume"><i></i> Resume</span>
+          <div class="home-hero__actions">
+            <a class="home-hero__download" href={downloadUrl}>
+              <span>
+                <strong>Download free for macOS</strong>
+                <small>Apple Silicon · macOS 15+</small>
+              </span>
+              <span aria-hidden="true">↓</span>
+            </a>
+            <a class="home-hero__start" href="/quickstart">
+              <span>
+                <strong>Get started</strong>
+                <small>Install and record your first meeting</small>
+              </span>
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+
+          <a class="home-hero__source" href={githubUrl}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.38.97.1-.75.4-1.27.74-1.56-2.57-.3-5.27-1.29-5.27-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.16 1.18A11 11 0 0 1 12 6.1a11 11 0 0 1 2.88.39c2.19-1.49 3.15-1.18 3.15-1.18.64 1.59.24 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.06.79 2.14v3.27c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"
+              >
+              </path>
+            </svg>
+            View source on GitHub <span aria-hidden="true">↗</span>
+          </a>
+
+          <ul class="home-hero__proof" aria-label="Loofah promises">
+            <li>
+              <strong>Free</strong>
+              <span>No premium tier</span>
+            </li>
+            <li>
+              <strong>MIT</strong>
+              <span>Permissive license</span>
+            </li>
+            <li>
+              <strong>Local</strong>
+              <span>On-device transcription</span>
+            </li>
+            <li>
+              <strong>Yours</strong>
+              <span>Markdown notes</span>
+            </li>
+          </ul>
+        </div>
+
+        <figure class="home-hero__product" data-pagefind-ignore>
+          <div class="home-hero__product-bar">
+            <div class="home-hero__traffic-lights" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
-            <div class="product-demo__document-body">
-              <div class="product-demo__meta">
-                <span>Aug 26</span>
-                <span>7:56 PM</span>
-                <span class="product-demo__recording">
-                  <i></i>
-                  Recording saved
+            <span>Loofah</span>
+            <span class="home-hero__local-status">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4.5 7V5.5a3.5 3.5 0 0 1 7 0V7m-8 0h9v6.5h-9V7Z">
+                </path>
+              </svg>
+              Saved locally
+            </span>
+          </div>
+          <div
+            class="product-demo"
+            role="img"
+            aria-label="A Loofah session showing a product launch meeting brief, tasks, and a recording saved locally"
+          >
+            <aside class="product-demo__sidebar">
+              <div class="product-demo__sidebar-tools" aria-hidden="true">
+                <span>◧</span>
+                <span>⚙</span>
+                <span>⌁</span>
+              </div>
+              <div class="product-demo__sidebar-heading">
+                <span><b aria-hidden="true">＋</b> New note</span>
+                <kbd>⌘N</kbd>
+              </div>
+              <div class="product-demo__search">
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <circle cx="7" cy="7" r="4.25"></circle>
+                  <path d="m10.25 10.25 3 3"></path>
+                </svg>
+                <span>Search notes…</span>
+              </div>
+              <div class="product-demo__browse">
+                <span class="is-active">By date</span>
+                <span>By tag</span>
+              </div>
+              <div class="product-demo__day">Today</div>
+              <div class="product-demo__session is-active">
+                <span class="product-demo__session-mark"></span>
+                <span>
+                  <strong>Plan the September product launch</strong>
+                  <small>7:56 PM · 42 min</small>
                 </span>
               </div>
-              <h2>Plan the September product launch</h2>
-              <div class="product-demo__people">
-                <span>Product lead</span>
-                <span>Engineering lead</span>
-                <span>Marketing lead</span>
+              <div class="product-demo__session">
+                <span class="product-demo__session-mark"></span>
+                <span>
+                  <strong>Local-first research</strong>
+                  <small>3:20 PM · Notes</small>
+                </span>
               </div>
+              <div class="product-demo__day">Yesterday</div>
+              <div class="product-demo__session">
+                <span class="product-demo__session-mark"></span>
+                <span>
+                  <strong>Weekly technology brief</strong>
+                  <small>36 min</small>
+                </span>
+              </div>
+              <div class="product-demo__vault">
+                <svg viewBox="0 0 18 18" aria-hidden="true">
+                  <path d="M2.5 5.5h5l1.5 2h6.5v7h-13v-9Z"></path>
+                </svg>
+                <span>
+                  <strong>My Loofah Vault</strong>
+                  <small>Markdown · On this Mac</small>
+                </span>
+                <span class="product-demo__vault-check">✓</span>
+              </div>
+            </aside>
 
-              <div class="product-demo__summary">
-                <div>
-                  <span class="product-demo__label">Meeting brief</span>
-                  <span class="product-demo__sparkle" aria-hidden="true">✦</span>
+            <section class="product-demo__document">
+              <div class="product-demo__tabs">
+                <span class="is-active">Launch brief</span>
+                <span>Note</span>
+                <span>Transcript</span>
+                <span class="product-demo__resume"><i></i> Resume</span>
+              </div>
+              <div class="product-demo__document-body">
+                <div class="product-demo__meta">
+                  <span>Aug 26</span>
+                  <span>7:56 PM</span>
+                  <span class="product-demo__recording">
+                    <i></i>
+                    Recording saved
+                  </span>
                 </div>
-                <p>
-                  The team is targeting <strong>September 17</strong> with a
-                  one-week feature freeze and a staged beta rollout.
-                </p>
-              </div>
+                <h2>Plan the September product launch</h2>
+                <div class="product-demo__people">
+                  <span>Product lead</span>
+                  <span>Engineering lead</span>
+                  <span>Marketing lead</span>
+                </div>
 
-              <div class="product-demo__details">
-                <div class="product-demo__decisions">
-                  <span class="product-demo__label">Decisions</span>
+                <div class="product-demo__summary">
                   <div>
-                    <span class="product-demo__check">✓</span>
-                    <p><strong>Ship in stages</strong><small>Beta first, then general release</small></p>
+                    <span class="product-demo__label">Meeting brief</span>
+                    <span class="product-demo__sparkle" aria-hidden="true"
+                    >✦</span>
                   </div>
-                  <div>
-                    <span class="product-demo__check">✓</span>
-                    <p><strong>Freeze one week early</strong><small>September 10 deadline</small></p>
-                  </div>
+                  <p>
+                    The team is targeting <strong>September 17</strong> with a
+                    one-week feature freeze and a staged beta rollout.
+                  </p>
                 </div>
-                <div class="product-demo__next">
-                  <span class="product-demo__label">Next up</span>
-                  <strong>Beta exit review</strong>
-                  <span>Sep 8 · 2:00 PM</span>
-                  <div class="product-demo__avatars" aria-hidden="true">
-                    <i>AM</i><i>SK</i><i>JL</i>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <div class="product-demo__audio">
-              <span class="product-demo__play" aria-hidden="true">▶</span>
-              <span>18:24</span>
-              <div class="product-demo__wave" aria-hidden="true">
-                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
-                ><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i
-                ><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <div class="product-demo__details">
+                  <div class="product-demo__decisions">
+                    <span class="product-demo__label">Decisions</span>
+                    <div>
+                      <span class="product-demo__check">✓</span>
+                      <p>
+                        <strong>Ship in stages</strong>
+                        <small>Beta first, then general release</small>
+                      </p>
+                    </div>
+                    <div>
+                      <span class="product-demo__check">✓</span>
+                      <p>
+                        <strong>Freeze one week early</strong>
+                        <small>September 10 deadline</small>
+                      </p>
+                    </div>
+                  </div>
+                  <div class="product-demo__next">
+                    <span class="product-demo__label">Next up</span>
+                    <strong>Beta exit review</strong>
+                    <span>Sep 8 · 2:00 PM</span>
+                    <div class="product-demo__avatars" aria-hidden="true">
+                      <i>AM</i>
+                      <i>SK</i>
+                      <i>JL</i>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <span>42:06</span>
-              <span class="product-demo__transcribed">Transcribed on-device</span>
-            </div>
-          </section>
+
+              <div class="product-demo__audio">
+                <span class="product-demo__play" aria-hidden="true">▶</span>
+                <span>18:24</span>
+                <div class="product-demo__wave" aria-hidden="true">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </div>
+                <span>42:06</span>
+                <span class="product-demo__transcribed"
+                >Transcribed on-device</span>
+              </div>
+            </section>
+          </div>
+          <figcaption>
+            An illustrative meeting brief. Summaries use the AI provider you
+            choose.
+          </figcaption>
+        </figure>
+        <div class="home-hero__ambient-controls">
+          <a
+            href="https://www.pexels.com/video/serene-sunlight-through-lush-forest-leaves-31883946/"
+          >
+            Forest film by Joshua Woroniecki / Pexels
+          </a>
+          <button type="button" aria-controls="forest-video" hidden>
+            Play background video
+          </button>
         </div>
-        <figcaption>
-          Capture the conversation. Keep the useful parts. Own every file.
-        </figcaption>
-      </figure>
-      <div class="home-hero__ambient-controls">
-        <a href="https://www.pexels.com/video/serene-sunlight-through-lush-forest-leaves-31883946/">
-          Forest film by Joshua Woroniecki / Pexels
-        </a>
-        <button type="button" aria-controls="forest-video" hidden>
-          Play background video
-        </button>
-      </div>
-    </main>
+      </section>
+    </div>
+    <HomeSections downloadUrl={downloadUrl} />
   </div>
 </StarlightPage>
 
 <script>
-  const video = document.querySelector<HTMLVideoElement>("#forest-video");
-  const toggle = document.querySelector<HTMLButtonElement>(
-    ".home-hero__ambient-controls button",
-  );
+const video = document.querySelector<HTMLVideoElement>("#forest-video");
+const toggle = document.querySelector<HTMLButtonElement>(
+  ".home-hero__ambient-controls button",
+);
 
-  if (video && toggle) {
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let wantsPlayback = !reducedMotion.matches;
+if (video && toggle) {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let wantsPlayback = false;
 
-    const syncToggle = () => {
-      toggle.textContent = video.paused
-        ? "Play background video"
-        : "Pause background video";
-    };
+  const syncToggle = () => {
+    toggle.textContent = video.paused
+      ? "Play background video"
+      : "Pause background video";
+  };
 
-    const play = async () => {
-      if (!video.src) video.src = video.dataset.src!;
-      try {
-        await video.play();
-      } catch {
-        syncToggle();
-      }
-    };
+  const play = async () => {
+    if (!video.src) video.src = video.dataset.src!;
+    try {
+      await video.play();
+    } catch {
+      syncToggle();
+    }
+  };
 
-    toggle.hidden = false;
-    video.addEventListener("play", syncToggle);
-    video.addEventListener("pause", syncToggle);
-    video.addEventListener("error", () => {
-      video.hidden = true;
-      toggle.hidden = true;
-    });
-    toggle.addEventListener("click", () => {
-      wantsPlayback = video.paused;
-      if (wantsPlayback) void play();
-      else video.pause();
-    });
-    reducedMotion.addEventListener("change", () => {
-      wantsPlayback = !reducedMotion.matches;
-      if (wantsPlayback && !document.hidden) void play();
-      else video.pause();
-    });
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) video.pause();
-      else if (wantsPlayback) void play();
-    });
-
-    if (wantsPlayback && !document.hidden) void play();
-  }
+  toggle.hidden = false;
+  video.addEventListener("play", syncToggle);
+  video.addEventListener("pause", syncToggle);
+  video.addEventListener("error", () => {
+    video.hidden = true;
+    toggle.hidden = true;
+  });
+  toggle.addEventListener("click", () => {
+    wantsPlayback = video.paused;
+    if (wantsPlayback) void play();
+    else video.pause();
+  });
+  reducedMotion.addEventListener("change", () => {
+    if (reducedMotion.matches) {
+      wantsPlayback = false;
+      video.pause();
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) video.pause();
+    else if (wantsPlayback) void play();
+  });
+}
 </script>

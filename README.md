@@ -8,6 +8,8 @@
   <a href="https://github.com/bart6114/loofah/releases/download/updater/Loofah_latest_aarch64.dmg"><img src="https://img.shields.io/badge/Download_for_macOS-Apple_Silicon-1b2a6b?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS (Apple Silicon)" /></a>
 </p>
 
+**[Loofah](https://loofah.io) is a free, open-source meeting transcription app for Apple Silicon Macs running macOS 15 or later.** Record without a bot, transcribe on-device, and keep your notes as Markdown files.
+
 I wanted a meeting notetaker that did a few things well: transcribe locally,
 keep my notes as ordinary Markdown files, and stay out of the way. I couldn't
 find one without accounts, subscriptions, or a cloud service in the middle, so
@@ -39,8 +41,9 @@ transcribes on your Mac, then saves the notes as Markdown in your vault.
 
 ## What matters here
 
-- **The files are yours.** Each meeting is stored as Markdown that you can read,
-  search, edit, back up, or sync with whatever you already use.
+- **The files are yours.** Notes and summaries are Markdown files you can read,
+  search, edit, back up, or sync. Transcripts are stored as structured JSON;
+  export a session when you want the transcript in Markdown too.
 - **Transcription stays local.** Your meeting audio does not need to be sent to
   a transcription service.
 - **AI is optional and bring-your-own.** Use a hosted provider or run a local
@@ -48,7 +51,12 @@ transcribes on your Mac, then saves the notes as Markdown in your vault.
 - **No account or tracking.** Install the app and use it. There is nothing to
   sign up for.
 - **CLI and MCP support.** The included `loof` CLI and MCP server can give your
-  scripts and coding agents read-only access to meeting notes.
+  scripts and coding agents read-only access to meeting notes through MCP.
+  The CLI also creates notes, imports recordings, and saves agent work.
+
+Read the [first-meeting guide](https://loofah.io/quickstart/), prepare an
+[offline workflow](https://loofah.io/offline/), or
+[compare meeting tools](https://loofah.io/compare/).
 
 ## Development
 

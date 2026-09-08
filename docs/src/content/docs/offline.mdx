@@ -1,9 +1,11 @@
 ---
-title: "Use the app offline"
-description: "Prepare local models before you disconnect."
+title: "Offline meeting transcription for Mac"
+description: "Transcribe meetings offline on your Mac. Download local speech models, prepare speaker detection, and use Ollama or LM Studio for local summaries."
 ---
 
-You can record meetings and work with notes without an internet connection. Transcription also works offline once its model has been downloaded.
+Loofah records and transcribes meetings on your Mac without an internet connection once you have downloaded a speech model. Recording and transcription are free, with no account or monthly allowance. For a complete offline workflow, use a local language model for optional summaries too.
+
+New to Loofah? Start with [installation and your first recording](/quickstart).
 
 ## What works offline
 
@@ -33,3 +35,11 @@ The speaker-detection model downloads automatically in the background the first 
 Set up [LM Studio](https://lmstudio.ai/download) or [Ollama](https://ollama.com/download), download a language model, and select it in **Settings → Intelligence**. The local server needs to be running, but it does not need an internet connection once the model is available.
 
 If you want a meeting to remain fully local, check that the active Intelligence model belongs to LM Studio or Ollama. Transcription is already local.
+
+## Live text and speaker detection
+
+Live transcription is available for supported English meetings. Other supported languages use transcription after recording. Speaker detection runs on imported and after-recording transcripts; live transcription does not separate speakers. Check the [supported language list](/languages) before choosing a model.
+
+## Bring existing recordings
+
+[Import audio files](/import-recordings) to transcribe recordings from another tool on-device. Your notes, summaries, and transcripts remain accessible in the [local vault](/notes). If you later enable a hosted summary provider or connect an agent, review [what can leave your Mac](/data-and-privacy).

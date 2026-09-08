@@ -158,7 +158,7 @@ body:has(.home-page) main > .content-panel:last-of-type > .sl-container {
   max-width: none;
 }
 
-body:has(.home-page) main footer {
+body:has(.home-page) main footer:not(.home-footer) {
   display: none;
 }
 
@@ -167,6 +167,38 @@ body:has(.home-page) main footer {
   isolation: isolate;
   color: #f8faf0;
   background: #142519;
+}
+
+.home-intro {
+  position: relative;
+  isolation: isolate;
+}
+
+.home-masthead {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.home-masthead nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  font-size: 0.85rem;
+}
+
+.home-masthead nav a {
+  color: #e0e7db;
+  text-decoration: none;
+}
+
+.home-masthead nav a:hover {
+  color: #d7edaa;
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
 }
 
 .home-hero__backdrop {
@@ -246,7 +278,7 @@ body:has(.home-page) main footer {
   row-gap: 3rem;
   width: min(90rem, 100%);
   margin: 0 auto;
-  padding: clamp(3.5rem, 7vw, 7.5rem) clamp(1.5rem, 5vw, 5rem) 1.5rem;
+  padding: 2rem clamp(1.5rem, 5vw, 5rem) 1.5rem;
 }
 
 .home-hero__copy {
@@ -285,7 +317,7 @@ body:has(.home-page) main footer {
 .home-hero__eyebrow {
   display: flex;
   gap: 0.55rem;
-  margin: 3.5rem 0 1rem;
+  margin: 0 0 1rem;
   color: #d7edaa;
   font-size: 0.75rem;
   font-weight: 700;
@@ -294,10 +326,10 @@ body:has(.home-page) main footer {
 }
 
 .home-hero h1 {
-  max-width: 11ch;
+  max-width: 15ch;
   margin: 0;
   font-family: "Fraunces Variable", Georgia, serif;
-  font-size: clamp(3.35rem, 5.8vw, 5.75rem);
+  font-size: clamp(2.6rem, 5vw, 5rem);
   font-variation-settings: "opsz" 72, "SOFT" 65, "WONK" 1;
   font-weight: 650;
   hyphens: none;
@@ -1206,7 +1238,7 @@ body:has(.home-page) main footer {
   }
 
   .home-hero h1 {
-    font-size: clamp(3rem, 14vw, 4.2rem);
+    font-size: clamp(2.4rem, 11.5vw, 4rem);
   }
 
   .home-hero__actions {

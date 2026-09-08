@@ -1,0 +1,34 @@
+---
+title: "Compare free and local meeting transcription tools"
+description: "Compare Loofah with Meetily, Granola, and Otter. Choose a meeting workflow based on local processing, free features, file ownership, and team needs."
+sidebar:
+  label: "Comparison guide"
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+Choose a meeting tool around what you need to do after the call. Loofah is a free, open-source Mac app for recording, on-device transcription, and notes you keep as files. It suits people who want their own local archive and are comfortable choosing a model for optional AI summaries.
+
+<CardGrid>
+  <LinkCard title="Loofah vs Meetily" href="/compare/meetily" description="Two local meeting tools: compare free features, platform support, and model setup." />
+  <LinkCard title="Loofah vs Granola" href="/compare/granola" description="Compare a local Markdown vault with a hosted meeting notepad and shared workflows." />
+  <LinkCard title="Loofah vs Otter" href="/compare/otter" description="Compare local transcription with a hosted service, including free allowances and imports." />
+</CardGrid>
+
+## Four questions to ask
+
+1. **Where should transcription happen?** Loofah transcribes on your Mac after you download a speech model. Recording on a device does not, by itself, mean a tool transcribes there.
+2. **What does free include?** Loofah has no paid tier or monthly transcription allowance. Your Mac supplies the processing and storage. Hosted AI summaries may incur charges from a provider you choose.
+3. **What should you keep?** Loofah stores notes and summaries as Markdown, transcripts as JSON, and retained recordings as audio files. Export a session if you want the transcript in a Markdown document.
+4. **Who needs access?** Loofah has local search, a read-only MCP server, and CLI write commands. Shared workspaces, organization administration, and hosted collaboration may call for another product.
+
+## Try your own workflow
+
+Start with a short recording that uses your usual microphone and languages. Check the transcript for names, dates, and decisions. If you use summaries, compare the result against the conversation and account for the time needed to configure a local model.
+
+These comparisons are written by the Loofah maintainer using Loofah's documented behavior and linked vendor documentation. They are not independent reviews or head-to-head accuracy benchmarks. Each page records its verification date; recheck vendor plans before deciding.
+
+<CardGrid>
+  <LinkCard title="Try Loofah for free" href="/quickstart" description="Install the signed Apple Silicon app on macOS 15 or later and make your first recording." />
+  <LinkCard title="Understand the privacy boundary" href="/data-and-privacy" description="See how local storage, optional hosted summaries, and retention work." />
+</CardGrid>

@@ -1,7 +1,9 @@
 ---
-title: "Notes and knowledge"
-description: "Keep standalone notes, meeting context, and agent-created research in the same local vault."
+title: "Markdown meeting notes and your local vault"
+description: "Keep meeting notes and summaries as Markdown in your local vault. Search sessions, export documents, and save research through the Loofah CLI."
 ---
+
+Your notes and AI summary documents are stored as Markdown files in your local vault. Transcripts use structured JSON, and the recording and attachments are stored alongside the session. Export a complete session when you want its transcript included in a Markdown document.
 
 The vault is not limited to recorded meetings. Every entry is a **session**, and a session can be a standalone note or a meeting with a recording and transcript. Use sessions for research, project context, decisions, reference material, or anything else you want to keep locally and find again.
 
@@ -49,3 +51,9 @@ See [Customize meeting summaries](/customize-summaries) for templates, the Auto 
 4. Choose whether to include the memo, summary, transcript, or any combination of them.
 
 The app writes the file to Downloads and reveals it in Finder.
+
+## Keep your files useful elsewhere
+
+You can read Markdown notes with another editor and back up the vault with your own tools. To use the same vault across Macs, choose a [supported local sync folder](/syncing). Syncing is provided by the service you configure, so consider its data policy.
+
+For agents, use [read-only MCP access](/agents/connect-clients) to retrieve context and the [CLI](/agents/cli) to save work. Agents should use these interfaces instead of modifying the vault’s internal files.

@@ -14,7 +14,34 @@ export default defineConfig({
     starlight({
       title: "Loofah",
       description:
-        "A local-first knowledge vault for notes, meetings, transcripts, and agent-created research.",
+        "Free meeting transcription for Mac. Record without a bot, keep notes as Markdown, and connect agents to your local knowledge vault.",
+      components: {
+        PageTitle: "./src/components/PageTitle.astro",
+      },
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://loofah.io/screenshots/loofah-primary.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:alt",
+            content:
+              "Loofah showing meeting notes, a transcript, and sessions saved in a local vault",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://loofah.io/screenshots/loofah-primary.png",
+          },
+        },
+      ],
       logo: {
         src: "../apps/desktop/src-tauri/icons/src/loofah-mark-1024.png",
       },
@@ -39,7 +66,7 @@ export default defineConfig({
       sidebar: [
         {
           label: "Getting started",
-          items: ["loofah", "background", "quickstart"],
+          items: ["loofah", "is-it-free", "background", "quickstart"],
         },
         {
           label: "Using Loofah",
@@ -56,6 +83,15 @@ export default defineConfig({
         {
           label: "AI and privacy",
           items: ["ai-setup", "offline", "data-and-privacy"],
+        },
+        {
+          label: "Compare meeting tools",
+          items: [
+            "compare",
+            "compare/meetily",
+            "compare/granola",
+            "compare/otter",
+          ],
         },
         {
           label: "CLI and agents",

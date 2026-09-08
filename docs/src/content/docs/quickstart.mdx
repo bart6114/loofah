@@ -1,11 +1,11 @@
 ---
-title: "Your first meeting"
-description: "Set up Loofah and test it before your next call."
+title: "Set up Loofah and transcribe your first meeting"
+description: "Install Loofah on an Apple Silicon Mac, download a speech model, allow audio access, and record your first meeting with local transcription."
 ---
 
 import { Steps } from "@astrojs/starlight/components";
 
-The easiest way to learn the app is to make a short test recording.
+You need an Apple Silicon Mac running macOS 15 or later. The download is signed and notarized. Allow time and disk space for a speech model during setup, then make a short test recording before your next call.
 
 <Steps>
 
@@ -40,3 +40,11 @@ The easiest way to learn the app is to make a short test recording.
 Create a note, click **Record**, and leave the app running while the meeting is in progress. Loofah captures your microphone and system audio without joining the call.
 
 If either side of the conversation is missing, start with [audio troubleshooting](/troubleshooting#audio-is-missing).
+
+## Try a decision you can find later
+
+Name your test note **Launch planning test** and record a few sentences, such as: “We agreed to run the pilot on Thursday. Maya will write the checklist. We will review the results on Friday.” This is sample input for your own test, not a promised transcript or summary.
+
+After transcription finishes, check that the dates and owner are correct and add a correction to your note if needed. If you configured Intelligence, compare its summary with the transcript.
+
+Next, [connect your agent](/agents/connect-clients#retrieve-a-meeting-decision) and ask it to find the pilot decision. This gives you a complete path from a conversation to reusable context without needing a real meeting for the first test.

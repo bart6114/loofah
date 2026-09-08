@@ -1,7 +1,9 @@
 ---
-title: "Transcription and summaries"
-description: "Set up local transcription and, if you want it, AI-generated summaries."
+title: "Local meeting transcription and AI summaries"
+description: "Set up on-device meeting transcription and optional AI summaries with Ollama, LM Studio, or your own hosted provider API key."
 ---
+
+Loofah transcribes meetings on your Mac. For AI meeting summaries, choose a local model through Ollama or LM Studio, or supply an API key for a hosted provider. Loofah does not charge for either workflow; hosted providers may charge for their API usage.
 
 Loofah has two separate model settings:
 
@@ -53,6 +55,15 @@ You can also run summaries locally with LM Studio or Ollama.
 
 3. Open **Settings → Intelligence → Configure Providers → Ollama**.
 4. Select the Ollama model under **Model being used**.
+
+## Check your first local summary
+
+1. Keep your local server running and confirm its model is selected under **Settings → Intelligence**.
+2. [Record a short meeting](/quickstart) or [import a recording](/import-recordings) with enough conversation to summarize.
+3. Review the generated summary against the transcript. Model quality, response time, and memory use depend on your Mac and the model you choose.
+4. [Choose a summary template](/customize-summaries) and regenerate if you want a different structure.
+
+Downloading the speech model does not install a summary model. If you see a transcript but no summary, check Intelligence separately. For use without internet, follow the [offline preparation guide](/offline).
 
 ## What leaves your Mac
 

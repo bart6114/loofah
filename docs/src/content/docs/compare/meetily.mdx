@@ -1,0 +1,51 @@
+---
+title: "Free Meetily Alternative for Mac"
+description: "Compare Loofah and Meetily for local meeting transcription. See free features, speaker detection, summary setup, file ownership, and platform support."
+sidebar:
+  label: "Loofah vs Meetily"
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+**Choose Loofah if you want a free Mac meeting recorder with a local file vault and no premium tier.** Meetily is also a local transcription tool, with a free Community edition and paid Pro features. Local processing alone is not a reason to switch.
+
+*Vendor information checked 8 September 2026. Written by the Loofah maintainer from documentation, not comparative performance testing.*
+
+## What changes in your workflow
+
+| Question | Loofah | Meetily |
+| --- | --- | --- |
+| Desktop download | Apple Silicon, macOS 15+ | macOS and Windows [1] |
+| Free transcription | On-device, without a monthly allowance | Community includes local transcription [2] |
+| Speaker detection | Included after recording and on imported audio; not during live transcription | Speaker identification requires Pro [2] |
+| AI summaries | Optional local server or your own hosted API key | Community includes summaries; custom AI connectors are a Pro feature [2] |
+| Paid tier | None; optional hosted providers bill separately | Pro is advertised at US$120 per user per year [2] |
+| Notes and exports | Markdown notes and summaries in the vault; desktop exports include Markdown, text, PDF, and Org | Pro lists advanced PDF, DOCX, and Markdown exports [2] |
+| Support | Public source and issue tracker | Community support; Pro includes priority support [2] |
+
+For Loofah's details, see [AI setup](/ai-setup), [exports](/notes#export-a-session), and [installation](/quickstart).
+
+## When Loofah fits
+
+You use an Apple Silicon Mac and want notes to stay useful as ordinary files. Speaker detection after recording, custom summary templates, imports, and exports are included. You can also give an agent [read-only MCP access](/agents/connect-clients) or ask it to save work through the CLI.
+
+Set aside time to download a speech model. Summaries need a separate Intelligence provider: a local Ollama or LM Studio server, or a hosted API key. A speech model alone does not generate summaries. [Prepare an offline workflow](/offline) if you want both steps to stay local.
+
+## When Meetily fits
+
+Meetily is worth considering if you need a Windows download, prefer its interface, or want its paid support. It also has an established [open-source community](https://github.com/Zackriya-Solutions/meetily). Check the Community and Pro boundaries against the specific features you use.
+
+## Try a recording before switching
+
+Loofah does not have a dedicated Meetily account or project importer. If you have a supported audio file or an SRT/VTT transcript, [import it](/import-recordings) and inspect the resulting session. This does not migrate another app's folders, settings, or sharing state.
+
+<CardGrid>
+  <LinkCard title="Try Loofah on your Mac" href="/quickstart" description="Install for free, download a model, and check a short recording." />
+  <LinkCard title="Compare other meeting tools" href="/compare" description="Read the Granola and Otter comparisons." />
+</CardGrid>
+
+## Sources
+
+[1] [Meetily free edition and platforms](https://meetily.ai/free)
+
+[2] [Meetily pricing and edition features](https://meetily.ai/pricing)

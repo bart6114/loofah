@@ -1,9 +1,11 @@
 ---
-title: "Import audio or a transcript"
-description: "Create a note from an audio recording, SRT file, or VTT file."
+title: "Transcribe audio files locally on Mac"
+description: "Transcribe MP3, M4A, WAV, and other audio files on your Mac. Import recordings in batches or bring existing SRT and VTT transcripts into Loofah."
 ---
 
-You do not have to record a conversation in Loofah. You can bring in audio recorded elsewhere or start with an existing subtitle file.
+Turn an existing audio recording into a searchable session with a local transcript. Loofah uses your Mac for transcription; you do not need to upload audio to a transcription service. Bring one recording, queue a batch, or start with an existing subtitle file.
+
+Install the app and download a speech model with the [first-meeting guide](/quickstart). [Check supported languages](/languages) before starting a large import.
 
 ## Import one audio file
 
@@ -46,3 +48,9 @@ The timed text becomes the note's transcript. No audio file is created. If an In
 Check the file extension and make sure a downloaded Transcription model is selected for audio imports. For summaries through LM Studio or Ollama, make sure the local server is running.
 
 See [Transcription and AI](/ai-setup) for model setup or [Troubleshooting](/troubleshooting) for common problems.
+
+## Use the result
+
+Each imported recording becomes a session with its own transcript. Add your notes, review detected speakers, and generate a summary if you configured Intelligence. A hosted Intelligence provider receives the context needed for that summary; use a local provider for an [offline workflow](/offline).
+
+[Export the session](/notes#export-a-session) as Markdown, text, PDF, or Org from the desktop app. Importing a transcript file creates timed text, not a copy of the source app’s folders, comments, or sharing permissions.

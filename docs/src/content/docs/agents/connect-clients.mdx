@@ -1,17 +1,17 @@
 ---
-title: "Connect Loofah to Claude, Codex, or Hermes"
+title: "Connect meeting notes to your agents with MCP"
 description: "Use Loofah's read-only MCP server with Claude Desktop, Claude Code, Codex, or Hermes."
 ---
 
 Loofah's MCP server lets an agent search and read your local meeting notes. It cannot create sessions, edit notes, or change the vault.
 
-Install the [`loofah` CLI](/installation) first, then check that it can find your vault:
+Install the [`loof` CLI](/installation) first, then check that it can find your vault:
 
 ```bash
-loofah doctor
+loof doctor
 ```
 
-Every client starts the same local command: `loofah mcp`.
+Every client starts the same local command: `loof mcp`.
 
 ## Claude Desktop on macOS
 
@@ -23,7 +23,7 @@ Add Loofah to the existing `mcpServers` object:
 {
   "mcpServers": {
     "loofah": {
-      "command": "/Users/you/.local/bin/loofah",
+      "command": "/Users/you/.local/bin/loof",
       "args": ["mcp"]
     }
   }
@@ -37,7 +37,7 @@ Replace `/Users/you` with your home directory. Use the full path because desktop
 Claude Code accepts local stdio servers through `claude mcp add`. The `--` separates Claude's options from the command it should run.[1]
 
 ```bash
-claude mcp add --transport stdio loofah -- loofah mcp
+claude mcp add --transport stdio loofah -- loof mcp
 claude mcp list
 ```
 
@@ -48,7 +48,7 @@ Use `--scope user` before `loofah` if you want the connection in every project r
 Codex CLI and the Codex IDE extension share MCP configuration. Add Loofah once from a terminal:[2]
 
 ```bash
-codex mcp add loofah -- loofah mcp
+codex mcp add loofah -- loof mcp
 codex mcp list
 ```
 
@@ -59,7 +59,7 @@ Inside the Codex terminal interface, `/mcp` shows the active servers.[2]
 Hermes stores stdio MCP servers through its `mcp` command. Add Loofah, then test the connection:[3]
 
 ```bash
-hermes mcp add loofah --command loofah --args mcp
+hermes mcp add loofah --command loof --args mcp
 hermes mcp test loofah
 ```
 
@@ -70,23 +70,33 @@ Start a fresh Hermes session after adding the server. In an existing session, ru
 If your vault is not in Loofah's configured default location, put `--vault-path` before `mcp`. For example:
 
 ```bash
-loofah --vault-path /path/to/vault mcp
+loof --vault-path /path/to/vault mcp
 ```
 
 Apply the same argument order in a client command. In Claude Code, that becomes:
 
 ```bash
-claude mcp add --transport stdio loofah -- loofah --vault-path /path/to/vault mcp
+claude mcp add --transport stdio loofah -- loof --vault-path /path/to/vault mcp
 ```
 
 For JSON configuration, use:
 
 ```json
 {
-  "command": "/absolute/path/to/loofah",
+  "command": "/absolute/path/to/loof",
   "args": ["--vault-path", "/path/to/vault", "mcp"]
 }
 ```
+
+## Retrieve a meeting decision
+
+Start with a session you recognize, such as the [launch-planning test](/quickstart#try-a-decision-you-can-find-later). After connecting your client, ask:
+
+> Find my “Launch planning test” session. Read the note and summary, then tell me the pilot date and who owns the checklist. Include the session title and ID so I can check your answer. If the information is missing, say so.
+
+If the answer needs wording from the conversation, explicitly ask for the transcript. MCP transcript tools return the **complete transcript**, which can produce a large response. Check important dates and decisions against the source.
+
+MCP access is read-only. If you want an agent to save a follow-up or create a research note, ask it to use the [CLI write commands](/agents/cli#store-agent-work). A local MCP server does not make a hosted agent private: the agent’s provider may receive the returned content.
 
 ## Check the connection
 
