@@ -75,8 +75,8 @@ export function SessionTags({
         <span
           key={tag}
           className={cn([
-            "group/tag flex items-center gap-1",
-            "bg-accent/60 text-muted-foreground rounded-full py-0.5 pr-1.5 pl-2 text-xs font-medium",
+            "group/tag flex items-center",
+            "bg-accent/60 text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium",
           ])}
         >
           #{tag}
@@ -85,8 +85,11 @@ export function SessionTags({
             aria-label={t`Remove tag ${tag}`}
             onClick={() => commit(tags.filter((other) => other !== tag))}
             className={cn([
-              "rounded-full opacity-0 transition-opacity",
-              "group-hover/tag:opacity-60 hover:!opacity-100 focus-visible:opacity-100",
+              "ml-0 w-0 shrink-0 overflow-hidden rounded-full opacity-0",
+              "transition-[width,margin-left,opacity] duration-150 motion-reduce:transition-none",
+              "group-hover/tag:ml-1 group-hover/tag:w-3 group-hover/tag:opacity-60",
+              "group-focus-within/tag:ml-1 group-focus-within/tag:w-3 group-focus-within/tag:opacity-60",
+              "hover:!opacity-100 focus-visible:opacity-100",
             ])}
           >
             <XIcon size={12} />
