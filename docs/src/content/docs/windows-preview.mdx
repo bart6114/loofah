@@ -25,7 +25,7 @@ Download speech models in **Settings → Intelligence** before going offline:
 
 - The streaming Parakeet model provides live English transcription.
 - The batch Parakeet model transcribes recordings and imports in the supported [25 European languages](/languages).
-- The optional speaker-detection download adds speaker labels after transcription. Live speaker detection is unavailable.
+- Speaker detection downloads automatically alongside speech models and adds labels after transcription. Batch transcription still works if that download is missing or fails; its status and retry control are shown in Settings. Live speaker detection is unavailable.
 
 Windows runs these models locally on the CPU. Model files are checked against pinned checksums. Existing macOS model selections resolve to the corresponding Windows model when opening a shared vault; the app does not rewrite those selections merely because the platform changed.
 
