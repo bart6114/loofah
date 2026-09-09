@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   open: vi.fn(),
   settings: vi.fn(),
+  preferences: vi.fn(),
   listener: null as null | ((event: { payload: OverlaySnapshot }) => void),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
@@ -25,7 +26,10 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 vi.mock("@hypr/plugin-windows", () => ({
-  commands: { overlaySnapshot: mocks.snapshot },
+  commands: {
+    overlaySnapshot: mocks.snapshot,
+    overlaySetSettingsOpen: mocks.preferences,
+  },
   events: {
     floatingBarStop: { emit: mocks.stop },
     floatingBarOpenMain: { emit: mocks.open },
@@ -80,6 +84,33 @@ it("routes stop and caption actions through the existing session host", async ()
   expect(mocks.stop).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Stop recording" }));
   await waitFor(() => expect(mocks.stop).toHaveBeenCalledOnce());
+});
+
+it("persists caption layout choices from the Windows display panel", async () => {
+  mocks.snapshot.mockResolvedValue({
+    revision: 1,
+    state: { type: "settings", state: recording },
+  });
+  mount();
+  fireEvent.change(
+    await screen.findByRole("slider", { name: "Caption width" }),
+    {
+      target: { value: "700" },
+    },
+  );
+  await waitFor(() =>
+    expect(mocks.settings).toHaveBeenCalledWith(
+      expect.objectContaining({ liveCaptionWidth: 700 }),
+    ),
+  );
+  fireEvent.change(screen.getByLabelText("Caption position"), {
+    target: { value: "bottomRight" },
+  });
+  await waitFor(() =>
+    expect(mocks.settings).toHaveBeenCalledWith(
+      expect.objectContaining({ liveCaptionPosition: "bottomRight" }),
+    ),
+  );
 });
 
 it("keeps newer streamed state when an initial snapshot arrives late", async () => {

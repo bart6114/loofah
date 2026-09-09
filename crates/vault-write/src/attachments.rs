@@ -63,7 +63,68 @@ fn sanitize_filename(filename: &str) -> Result<String, StoreError> {
         ));
     }
 
+    #[cfg(target_os = "windows")]
+    return Ok(windows_basename(clean_name));
+    #[cfg(not(target_os = "windows"))]
     Ok(clean_name.to_string())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_basename(name: &str) -> String {
+    let replaced: String = name
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                )
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let mut name = replaced.trim_end_matches(['.', ' ']).to_string();
+    let device = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    if name.is_empty()
+        || name.starts_with('.')
+        || matches!(
+            device.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$"
+        )
+        || ["COM", "LPT"].iter().any(|prefix| {
+            device.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(
+                    suffix,
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        })
+    {
+        name.insert(0, '_');
+    }
+    if name.len() > 180 {
+        let extension = Path::new(&name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .filter(|value| value.len() <= 24)
+            .map(|value| format!(".{value}"))
+            .unwrap_or_default();
+        let mut boundary = 180 - extension.len();
+        while !name.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        name.truncate(boundary);
+        name.push_str(&extension);
+    }
+    name
 }
 
 /// First try the sanitized name verbatim, then `{stem} {counter}.{ext}` — `create_new`
@@ -128,6 +189,41 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
 mod tests {
     use super::super::SessionMeta;
     use super::*;
+
+    #[test]
+    fn windows_attachment_names_cannot_address_devices_or_alternate_data_streams() {
+        for (name, expected) in [
+            ("CON.txt", "_CON.txt"),
+            ("aux", "_aux"),
+            ("COM¹.pdf", "_COM¹.pdf"),
+            ("CONOUT$", "_CONOUT$"),
+            ("notes.txt:stream", "notes.txt_stream"),
+            ("Agenda. ", "Agenda"),
+            (".hidden", "_.hidden"),
+        ] {
+            assert_eq!(windows_basename(name), expected);
+        }
+        assert_eq!(windows_basename("Réunion notes.pdf"), "Réunion notes.pdf");
+        let long = windows_basename(&format!("{}.pdf", "会議".repeat(100)));
+        assert!(long.len() <= 180);
+        assert!(long.ends_with(".pdf"));
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "windows")]
+    async fn windows_attachment_rename_is_returned_to_the_note_editor() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Meeting")).await.unwrap();
+        let saved = store
+            .save_attachment("s1", "NUL.txt", b"ordinary attachment".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(saved.attachment_id, "_NUL.txt");
+        assert_eq!(
+            std::fs::read(vault.path().join(saved.relative_path)).unwrap(),
+            b"ordinary attachment"
+        );
+    }
 
     fn meta(id: &str, title: &str) -> SessionMeta {
         SessionMeta {

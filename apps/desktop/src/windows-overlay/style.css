@@ -55,6 +55,35 @@ button:disabled {
   align-items: center;
   padding: 10px;
 }
+.display-settings header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+}
+.display-settings form {
+  display: grid;
+  gap: 15px;
+  padding: 0 16px 16px;
+}
+.display-settings label {
+  display: grid;
+  gap: 5px;
+}
+.display-settings output {
+  float: right;
+  color: #999;
+}
+.display-settings input, .display-settings select {
+  width: 100%;
+  accent-color: #60a5fa;
+}
+.display-settings select {
+  font: inherit;
+  color: inherit;
+  background: rgb(var(--surface));
+  padding: 5px;
+}
 .grip {
   cursor: grab;
   font-size: 22px;
@@ -71,6 +100,9 @@ button:disabled {
 .stop {
   color: #fb7185;
   white-space: nowrap;
+}
+.bar[data-status="error"] .level span {
+  background: #fb7185;
 }
 .level {
   width: 5px;

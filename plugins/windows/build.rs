@@ -13,6 +13,7 @@ const COMMANDS: &[&str] = &[
     "window_restore_width",
     "set_show_app_in_dock",
     "overlay_snapshot",
+    "overlay_set_settings_open",
     "floating_bar_show",
     "floating_bar_hide",
     "floating_bar_update",

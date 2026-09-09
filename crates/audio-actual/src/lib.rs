@@ -84,11 +84,10 @@ pub struct AudioInput {
 impl AudioInput {
     pub fn get_default_device_name() -> String {
         let host = cpal::default_host();
-        let device = host.default_input_device().unwrap();
-        device
-            .description()
-            .map(|d| d.name().to_string())
-            .unwrap_or("Unknown Microphone".to_string())
+        host.default_input_device()
+            .and_then(|device| device.description().ok())
+            .map(|description| description.name().to_string())
+            .unwrap_or_else(|| "No microphone connected".to_string())
     }
 
     pub fn sample_rate(&self) -> u32 {

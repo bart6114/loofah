@@ -7,6 +7,7 @@ use super::{floating_bar::FloatingBarState, live_caption::LiveCaptionState};
 pub enum OverlayState {
     FloatingBar(FloatingBarState),
     Transcript(FloatingBarState),
+    Settings(FloatingBarState),
     LiveCaption(LiveCaptionState),
     Devtools,
 }
@@ -68,6 +69,7 @@ mod platform {
             .skip_taskbar(true)
             .resizable(false)
             .focused(false)
+            .focusable(label == "windows-devtools" || label == "recording-settings")
             .visible(false)
             .build()
             .map_err(failure)
@@ -85,25 +87,36 @@ mod platform {
         }
         if label == "recording-bar" {
             hide("recording-captions")?;
+            hide("recording-settings")?;
         }
         Ok(())
     }
 
     pub fn update(label: &str, state: OverlayState) -> Result<(), Error> {
-        let snapshot = {
+        fn caption_position(state: &Option<OverlayState>) -> Option<LiveCaptionPosition> {
+            match state {
+                Some(OverlayState::Transcript(state)) => Some(state.live_caption_position),
+                Some(OverlayState::LiveCaption(state)) => Some(state.position),
+                _ => None,
+            }
+        }
+        let (snapshot, reposition) = {
             let mut states = STATES.lock().unwrap_or_else(|e| e.into_inner());
             let snapshot = states.entry(label.into()).or_default();
+            let reposition =
+                caption_position(&snapshot.state) != caption_position(&Some(state.clone()));
             snapshot.revision = snapshot.revision.wrapping_add(1);
             snapshot.state = Some(state.clone());
-            snapshot.clone()
+            (snapshot.clone(), reposition)
         };
         if let Some(window) = app()?.get_webview_window(label) {
-            layout(&window, &snapshot.state, false)?;
+            layout(&window, &snapshot.state, reposition)?;
             window
                 .emit("loofah-overlay-state", snapshot)
                 .map_err(failure)?;
         }
         if let OverlayState::FloatingBar(state) = state {
+            update("recording-settings", OverlayState::Settings(state.clone()))?;
             let visible = app()?
                 .get_webview_window("recording-bar")
                 .is_some_and(|w| w.is_visible().unwrap_or(false));
@@ -122,14 +135,38 @@ mod platform {
         Ok(())
     }
 
+    pub fn set_settings_open(open: bool) -> Result<(), Error> {
+        if !open {
+            return hide("recording-settings");
+        }
+        let Some(OverlayState::FloatingBar(state)) = snapshot("recording-bar").state else {
+            return Ok(());
+        };
+        update("recording-settings", OverlayState::Settings(state))?;
+        show("recording-settings")?;
+        window("recording-settings")?.set_focus().map_err(failure)
+    }
+
     fn layout(
         window: &WebviewWindow,
         state: &Option<OverlayState>,
         force: bool,
     ) -> Result<(), Error> {
-        let monitor = window
-            .current_monitor()
-            .map_err(failure)?
+        let initial_monitor = if force {
+            app()?
+                .get_webview_window(
+                    if matches!(window.label(), "recording-captions" | "recording-settings") {
+                        "recording-bar"
+                    } else {
+                        "main"
+                    },
+                )
+                .and_then(|window| window.current_monitor().ok().flatten())
+        } else {
+            None
+        };
+        let monitor = initial_monitor
+            .or(window.current_monitor().map_err(failure)?)
             .or_else(|| {
                 app()
                     .ok()?
@@ -160,6 +197,7 @@ mod platform {
                 s.position,
             ),
             Some(OverlayState::Devtools) => (350.0, 360.0, LiveCaptionPosition::TopRight),
+            Some(OverlayState::Settings(_)) => (360.0, 395.0, LiveCaptionPosition::BottomRight),
             _ => (520.0, 76.0, LiveCaptionPosition::BottomCenter),
         };
         let width = width
@@ -178,7 +216,7 @@ mod platform {
         if current_size != size {
             window.set_size(size).map_err(failure)?;
         }
-        if force || current_size != size || outside || window.label() == "recording-captions" {
+        if force || current_size != size || outside {
             let x = match position {
                 LiveCaptionPosition::TopLeft | LiveCaptionPosition::BottomLeft => 12.0,
                 LiveCaptionPosition::TopRight | LiveCaptionPosition::BottomRight => {

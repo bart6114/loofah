@@ -7,6 +7,7 @@ import "./styles/cursor.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { platform } from "@tauri-apps/plugin-os";
 import { StrictMode, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 import { createManager } from "tinytick";
@@ -104,6 +105,7 @@ function AppRoot() {
 }
 
 initWindowsPlugin();
+document.documentElement.dataset.platform = platform();
 
 const isMainWindow = getCurrentWebviewWindowLabel() === "main";
 

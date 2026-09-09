@@ -105,6 +105,7 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::window_restore_width,
             commands::set_show_app_in_dock,
             commands::overlay_snapshot,
+            commands::overlay_set_settings_open,
             commands::floating_bar_show,
             commands::floating_bar_hide,
             commands::floating_bar_update,

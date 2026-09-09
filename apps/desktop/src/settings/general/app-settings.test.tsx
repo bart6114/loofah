@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppSettingsView } from "./app-settings";
 
+const { platform } = vi.hoisted(() => ({ platform: vi.fn(() => "macos") }));
+vi.mock("@tauri-apps/plugin-os", () => ({ platform }));
+
 function setting(value = true) {
   return {
     value,
@@ -29,6 +32,7 @@ function renderAppSettings({ floatingBar = true } = {}) {
 describe("AppSettingsView", () => {
   afterEach(() => {
     cleanup();
+    platform.mockReturnValue("macos");
   });
 
   it("does not expose a separate live transcript overlay setting", () => {
@@ -47,5 +51,15 @@ describe("AppSettingsView", () => {
     renderAppSettings();
 
     expect(screen.queryByText("Share usage data")).toBeNull();
+  });
+
+  it("uses Windows taskbar and notification-area labels", () => {
+    platform.mockReturnValue("windows");
+    renderAppSettings();
+    expect(screen.getByText("Show app in taskbar")).toBeTruthy();
+    expect(
+      screen.getByText("Keep Loofah available from the notification area."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Show app in Dock")).toBeNull();
   });
 });

@@ -122,7 +122,11 @@ pub async fn window_set_frame_animated(
 
         let frame = crate::SavedFrame {
             x,
-            y,
+            y: if cfg!(target_os = "windows") {
+                screen.y + screen.h - (y - screen.y) - height
+            } else {
+                y
+            },
             w: width,
             h: height,
         };
@@ -205,11 +209,30 @@ pub async fn window_expand_width(
         let monitor = window.current_monitor().map_err(|e| e.to_string())?;
 
         if let Some(monitor) = monitor {
-            let window_right = i64::from(outer_position.x) + i64::from(outer_size.width);
-            let monitor_right = i64::from(monitor.position().x) + i64::from(monitor.size().width);
+            #[cfg(target_os = "windows")]
+            {
+                let area = monitor.work_area();
+                let required = (f64::from(expansion_px) * monitor.scale_factor()).round() as i64;
+                let available = if expand_left {
+                    i64::from(outer_position.x) - i64::from(area.position.x)
+                } else {
+                    i64::from(area.position.x) + i64::from(area.size.width)
+                        - i64::from(outer_position.x)
+                        - i64::from(outer_size.width)
+                };
+                if available < required {
+                    return Ok(());
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let window_right = i64::from(outer_position.x) + i64::from(outer_size.width);
+                let monitor_right =
+                    i64::from(monitor.position().x) + i64::from(monitor.size().width);
 
-            if monitor_right - window_right < i64::from(expansion_px) {
-                return Ok(());
+                if monitor_right - window_right < i64::from(expansion_px) {
+                    return Ok(());
+                }
             }
         }
     }
@@ -268,18 +291,31 @@ pub async fn window_expand_width(
 
     #[cfg(not(target_os = "macos"))]
     {
-        let outer_size = window.outer_size().map_err(|e| e.to_string())?;
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        let size = window
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(scale);
 
-        if max_current_width.is_some_and(|max| outer_size.width >= max) {
+        if max_current_width.is_some_and(|max| size.width >= f64::from(max)) {
             return Ok(());
         }
 
-        let new_width = outer_size.width + expansion_px;
+        let new_width = size.width + f64::from(expansion_px);
+        if expand_left {
+            let position = window.outer_position().map_err(|e| e.to_string())?;
+            window
+                .set_position(tauri::PhysicalPosition::new(
+                    position.x - (f64::from(expansion_px) * scale).round() as i32,
+                    position.y,
+                ))
+                .map_err(|e| e.to_string())?;
+        }
         window
-            .set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            .set_size(tauri::LogicalSize {
                 width: new_width,
-                height: outer_size.height,
-            }))
+                height: size.height,
+            })
             .map_err(|e| e.to_string())?;
 
         if restore_on_close {
@@ -289,11 +325,7 @@ pub async fn window_expand_width(
                 .unwrap()
                 .entry(window.label().to_string())
                 .or_default()
-                .push((
-                    f64::from(outer_size.width),
-                    f64::from(new_width),
-                    expand_left,
-                ));
+                .push((size.width, new_width, expand_left));
         }
     }
 
@@ -356,13 +388,26 @@ pub async fn window_restore_width(
 
     #[cfg(not(target_os = "macos"))]
     {
-        let outer_size = window.outer_size().map_err(|e| e.to_string())?;
-        if (f64::from(outer_size.width) - expanded_w).abs() < 1.0 {
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        let size = window
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(scale);
+        if (size.width - expanded_w).abs() < 1.0 {
+            if expand_left {
+                let position = window.outer_position().map_err(|e| e.to_string())?;
+                window
+                    .set_position(tauri::PhysicalPosition::new(
+                        position.x + ((expanded_w - previous_w) * scale).round() as i32,
+                        position.y,
+                    ))
+                    .map_err(|e| e.to_string())?;
+            }
             window
-                .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                    width: previous_w as u32,
-                    height: outer_size.height,
-                }))
+                .set_size(tauri::LogicalSize {
+                    width: previous_w,
+                    height: size.height,
+                })
                 .map_err(|e| e.to_string())?;
         }
     }
@@ -459,4 +504,16 @@ pub async fn overlay_snapshot(
     window: tauri::WebviewWindow,
 ) -> crate::window::overlay::OverlaySnapshot {
     crate::window::overlay::snapshot(window.label())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn overlay_set_settings_open(open: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    return crate::window::overlay::set_settings_open(open).map_err(|error| error.to_string());
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = open;
+        Ok(())
+    }
 }

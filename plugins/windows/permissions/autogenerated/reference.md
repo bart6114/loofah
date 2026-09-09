@@ -18,6 +18,7 @@ Default permissions for the plugin
 - `allow-window-restore-width`
 - `allow-set-show-app-in-dock`
 - `allow-overlay-snapshot`
+- `allow-overlay-set-settings-open`
 - `allow-floating-bar-show`
 - `allow-floating-bar-hide`
 - `allow-floating-bar-update`
@@ -240,6 +241,32 @@ Enables the live_caption_update command without any pre-configured scope.
 <td>
 
 Denies the live_caption_update command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:allow-overlay-set-settings-open`
+
+</td>
+<td>
+
+Enables the overlay_set_settings_open command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:deny-overlay-set-settings-open`
+
+</td>
+<td>
+
+Denies the overlay_set_settings_open command without any pre-configured scope.
 
 </td>
 </tr>
