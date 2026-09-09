@@ -53,7 +53,19 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod platform {
+    use crate::{Error, window::overlay};
+    pub fn show() -> Result<(), Error> {
+        overlay::update("windows-devtools", overlay::OverlayState::Devtools)?;
+        overlay::show("windows-devtools")
+    }
+    pub fn hide() -> Result<(), Error> {
+        overlay::hide("windows-devtools")
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
     use crate::Error;
 

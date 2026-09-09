@@ -65,6 +65,7 @@ fn reset_inner(model: SoniqoModel) -> Result<()> {
         Model::Streaming => {
             LIVE.lock().unwrap_or_else(|e| e.into_inner()).take();
         }
+        Model::Diarizer => return Err(Error::UnsupportedModel(model.id().into())),
         Model::Batch => {
             BATCH.lock().unwrap_or_else(|e| e.into_inner()).take();
         }

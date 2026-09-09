@@ -17,6 +17,7 @@ Default permissions for the plugin
 - `allow-window-expand-width`
 - `allow-window-restore-width`
 - `allow-set-show-app-in-dock`
+- `allow-overlay-snapshot`
 - `allow-floating-bar-show`
 - `allow-floating-bar-hide`
 - `allow-floating-bar-update`
@@ -239,6 +240,32 @@ Enables the live_caption_update command without any pre-configured scope.
 <td>
 
 Denies the live_caption_update command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:allow-overlay-snapshot`
+
+</td>
+<td>
+
+Enables the overlay_snapshot command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`windows:deny-overlay-snapshot`
+
+</td>
+<td>
+
+Denies the overlay_snapshot command without any pre-configured scope.
 
 </td>
 </tr>

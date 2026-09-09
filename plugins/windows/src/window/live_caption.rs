@@ -66,7 +66,24 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod platform {
+    use crate::{Error, window::overlay};
+    pub fn show() -> Result<(), Error> {
+        overlay::show("recording-captions")
+    }
+    pub fn hide() -> Result<(), Error> {
+        overlay::hide("recording-captions")
+    }
+    pub fn update(state: super::LiveCaptionState) -> Result<(), Error> {
+        overlay::update(
+            "recording-captions",
+            overlay::OverlayState::LiveCaption(state),
+        )
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
     use super::LiveCaptionState;
     use crate::Error;

@@ -104,6 +104,7 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::window_expand_width,
             commands::window_restore_width,
             commands::set_show_app_in_dock,
+            commands::overlay_snapshot,
             commands::floating_bar_show,
             commands::floating_bar_hide,
             commands::floating_bar_update,
@@ -123,6 +124,8 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app, _api| {
             specta_builder.mount_events(app);
+            #[cfg(target_os = "windows")]
+            crate::window::overlay::set_app_handle(app.clone());
 
             #[cfg(target_os = "macos")]
             {

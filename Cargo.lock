@@ -8080,6 +8080,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "kodama"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f868feceed4703c842925c14232667c5f29c8059d0354154b2d06ec3bf9daf82"
+
+[[package]]
 name = "kqueue"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9367,6 +9373,10 @@ dependencies = [
  "notification-macos",
  "serde",
  "tracing",
+ "uuid",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
+ "windows-registry 0.6.1",
 ]
 
 [[package]]
@@ -14889,6 +14899,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -16678,8 +16689,11 @@ dependencies = [
  "anyhow",
  "dirs 6.0.0",
  "hound",
+ "kodama",
+ "onnx",
  "parakeet-rs",
  "reqwest 0.13.2",
+ "rustfft",
  "serde",
  "serde_json",
  "sha2 0.11.0",

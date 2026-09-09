@@ -7,8 +7,11 @@ edition = "2024"
 anyhow = { workspace = true }
 dirs = { workspace = true }
 hound = { workspace = true }
+hypr-onnx = { workspace = true }
+kodama = "=0.3.0"
 parakeet-rs = "=0.3.7"
 reqwest = { workspace = true }
+rustfft = "6.4"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

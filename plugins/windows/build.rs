@@ -12,6 +12,7 @@ const COMMANDS: &[&str] = &[
     "window_expand_width",
     "window_restore_width",
     "set_show_app_in_dock",
+    "overlay_snapshot",
     "floating_bar_show",
     "floating_bar_hide",
     "floating_bar_update",
@@ -25,9 +26,11 @@ const COMMANDS: &[&str] = &[
 fn main() {
     #[cfg(target_os = "macos")]
     {
-        swift_rs::SwiftLinker::new("14.2")
-            .with_package("windows-swift", "./swift-lib/")
-            .link();
+        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+            swift_rs::SwiftLinker::new("14.2")
+                .with_package("windows-swift", "./swift-lib/")
+                .link();
+        }
     }
 
     #[cfg(not(target_os = "macos"))]

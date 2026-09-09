@@ -1,0 +1,131 @@
+:root {
+  font: 14px "Segoe UI", sans-serif;
+  color: #f4f4f5;
+  color-scheme: dark;
+  background: transparent;
+}
+* {
+  box-sizing: border-box;
+}
+html, body, #root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+section {
+  --surface: 28 28 31;
+  --text: #f4f4f5;
+  color: var(--text);
+  margin: 5px;
+  height: calc(100% - 10px);
+  border: 1px solid #80808066;
+  border-radius: 12px;
+  box-shadow: 0 2px 5px #0005;
+  background: rgb(var(--surface) / 0.95);
+}
+[data-theme="light"] {
+  --surface: 250 250 250;
+  --text: #202024;
+  color-scheme: light;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid #80808066;
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+button:hover {
+  background: #80808033;
+}
+button:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
+}
+button:disabled {
+  opacity: 0.5;
+}
+.bar {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 10px;
+}
+.grip {
+  cursor: grab;
+  font-size: 22px;
+  color: #999;
+}
+.title {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 0;
+}
+.stop {
+  color: #fb7185;
+  white-space: nowrap;
+}
+.level {
+  width: 5px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+}
+.level span {
+  width: 5px;
+  height: 28px;
+  border-radius: 4px;
+  background: #fb7185;
+  transition: transform 100ms;
+}
+.captions {
+  display: flex;
+  flex-direction: column;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 12px;
+  cursor: grab;
+  flex-shrink: 0;
+}
+header button {
+  padding: 0 8px;
+}
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 12px;
+  font-size: 20px;
+  line-height: 1.45;
+  scrollbar-width: thin;
+}
+.transcript p {
+  margin: 0 0 9px;
+}
+.transcript strong {
+  font-size: 13px;
+  color: #a1a1aa;
+}
+.transcript [data-final="false"], .muted {
+  opacity: 0.8;
+}
+.devtools {
+  overflow-y: auto;
+  padding: 8px;
+}
+.devtools button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 4px 0;
+}

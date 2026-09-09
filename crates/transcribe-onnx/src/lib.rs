@@ -6,6 +6,7 @@ use parakeet_rs::{
     Transcriber,
 };
 
+pub mod diarize;
 pub mod models;
 
 const SAMPLE_RATE: usize = 16000;
@@ -46,9 +47,7 @@ impl BatchSession {
             "Speech input must be 16 kHz mono WAV"
         );
         drop(reader);
-        let result = self
-            .0
-            .transcribe_file(path, Some(TimestampMode::Sentences))?;
+        let result = self.0.transcribe_file(path, Some(TimestampMode::Words))?;
         let segments = result
             .tokens
             .into_iter()

@@ -452,3 +452,11 @@ pub async fn window_is_occluded(
         .map_err(|e| e.to_string())?;
     Ok(occluded)
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn overlay_snapshot(
+    window: tauri::WebviewWindow,
+) -> crate::window::overlay::OverlaySnapshot {
+    crate::window::overlay::snapshot(window.label())
+}

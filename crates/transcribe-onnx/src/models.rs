@@ -17,12 +17,14 @@ use sha2::{Digest, Sha256};
 pub enum Model {
     Streaming,
     Batch,
+    Diarizer,
 }
 
 struct Asset {
     name: &'static str,
     bytes: u64,
     sha256: &'static str,
+    url: Option<&'static str>,
 }
 
 impl Model {
@@ -30,6 +32,7 @@ impl Model {
         match self {
             Self::Streaming => "onnx-parakeet-streaming",
             Self::Batch => "onnx-parakeet-batch",
+            Self::Diarizer => "onnx-reverb-titanet",
         }
     }
 
@@ -37,6 +40,9 @@ impl Model {
         match self {
             Self::Streaming => {
                 "https://huggingface.co/altunenes/parakeet-rs/resolve/a61d2818df4659c956b9661a9447f46e98c15126/realtime_eou_120m-v1-onnx"
+            }
+            Self::Diarizer => {
+                "https://huggingface.co/csukuangfj/sherpa-onnx-reverb-diarization-v1/resolve/d6a516efb21b1d22cb1c7baae704acacaa3ff71a"
             }
             Self::Batch => {
                 "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce"
@@ -48,33 +54,55 @@ impl Model {
         match self {
             Self::Streaming => &[
                 Asset {
+                    url: None,
                     name: "encoder.onnx",
                     bytes: 459341289,
                     sha256: "d472887cc38a784a5bfc21c2dbe247639edc3b3f9992388d8ceceaec07256b5b",
                 },
                 Asset {
+                    url: None,
                     name: "decoder_joint.onnx",
                     bytes: 21347639,
                     sha256: "9d2553ac043c2fc5f69e970769b0fb8ab9103fbfdeb7d26a1ea9729d4bd2dddd",
                 },
                 Asset {
+                    url: None,
                     name: "tokenizer.json",
                     bytes: 20053,
                     sha256: "f6b0ad8690559351fa478116fe0985a203b76f7c040f3a9381f485c99c0325f8",
                 },
             ],
+            Self::Diarizer => &[
+                Asset {
+                    name: "model.onnx",
+                    bytes: 9512223,
+                    sha256: "8249e2e323f8fb0566a387d94b40a73d0b75d54ee60d02dcd729a56a5ba8ecea",
+                    url: None,
+                },
+                Asset {
+                    name: "nemo_en_titanet_small.onnx",
+                    bytes: 40257283,
+                    sha256: "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e",
+                    url: Some(
+                        "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx",
+                    ),
+                },
+            ],
             Self::Batch => &[
                 Asset {
+                    url: None,
                     name: "encoder-model.int8.onnx",
                     bytes: 652183999,
                     sha256: "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09",
                 },
                 Asset {
+                    url: None,
                     name: "decoder_joint-model.int8.onnx",
                     bytes: 18202004,
                     sha256: "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70",
                 },
                 Asset {
+                    url: None,
                     name: "vocab.txt",
                     bytes: 93939,
                     sha256: "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
@@ -94,7 +122,7 @@ impl Model {
             .join("models")
             .join(self.id())
             .join(match self {
-                Self::Streaming => "fp32-v1",
+                Self::Streaming | Self::Diarizer => "fp32-v1",
                 Self::Batch => "int8-v1",
             }))
     }
@@ -277,7 +305,11 @@ async fn download(
         if offset >= asset.bytes {
             offset = 0;
         }
-        let mut request = client.get(format!("{}/{}", model.base_url(), asset.name));
+        let url = asset
+            .url
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("{}/{}", model.base_url(), asset.name));
+        let mut request = client.get(url);
         if offset > 0 {
             request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
         }
@@ -344,6 +376,7 @@ mod tests {
         let path = dir.path().join("model.onnx");
         let asset = Asset {
             name: "model.onnx",
+            url: None,
             bytes: 3,
             sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         };
