@@ -5,7 +5,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { arch } from "@tauri-apps/plugin-os";
 import {
   AlertTriangle,
   Check,
@@ -557,14 +556,6 @@ function useConfiguredMapping(): {
 } {
   const { isReady } = useAiProvidersState("stt");
 
-  const targetArch = useQuery({
-    queryKey: ["target-arch"],
-    queryFn: () => arch(),
-    staleTime: Infinity,
-  });
-
-  const isAppleSilicon = targetArch.data === "aarch64";
-
   const supportedModels = useQuery({
     queryKey: ["list-supported-models"],
     queryFn: async () => {
@@ -575,22 +566,22 @@ function useConfiguredMapping(): {
   });
 
   const localModels = supportedModels.data ?? [];
-  const soniqoModels = localModels.filter((m) => m.model_type === "soniqo");
+  const soniqoModels = localModels.filter(
+    (m) => m.model_type === "soniqo" || m.model_type === "onnx",
+  );
 
   const soniqoDownloaded = useQueries({
     queries: [...soniqoModels.map((m) => sttModelQueries.isDownloaded(m.key))],
   });
 
-  const models: ModelEntry[] = isAppleSilicon
-    ? soniqoModels.map((model, i) => ({
-        id: model.key,
-        isDownloaded: soniqoDownloaded[i]?.data ?? false,
-        displayName: model.display_name,
-        sizeBytes: model.size_bytes,
-        mode: isRealtimeLocalModel(String(model.key)) ? "realtime" : "batch",
-        category: "latest",
-      }))
-    : [];
+  const models: ModelEntry[] = soniqoModels.map((model, i) => ({
+    id: model.key,
+    isDownloaded: soniqoDownloaded[i]?.data ?? false,
+    displayName: model.display_name,
+    sizeBytes: model.size_bytes,
+    mode: isRealtimeLocalModel(String(model.key)) ? "realtime" : "batch",
+    category: "latest",
+  }));
 
   return {
     providers: { fmtr: { configured: true, models } } as Record<
@@ -775,9 +766,10 @@ function LocalModelDropdownActions({ model }: { model: LocalModel }) {
   };
 
   const handleOpen = () => {
-    const resultPromise = String(model).startsWith("soniqo-")
-      ? localSttCommands.soniqoModelDir(model)
-      : localSttCommands.modelsDir();
+    const resultPromise =
+      String(model).startsWith("soniqo-") || String(model).startsWith("onnx-")
+        ? localSttCommands.soniqoModelDir(model)
+        : localSttCommands.modelsDir();
 
     void resultPromise.then((result) => {
       if (result.status === "ok") {

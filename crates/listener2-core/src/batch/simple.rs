@@ -375,7 +375,11 @@ fn soniqo_language_hint(language: Option<&str>) -> Option<String> {
 }
 
 fn uses_resilient_soniqo_chunking(model: hypr_transcribe_soniqo::SoniqoModel) -> bool {
-    matches!(model, hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch)
+    matches!(
+        model,
+        hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch
+            | hypr_transcribe_soniqo::SoniqoModel::OnnxParakeetBatch
+    )
 }
 
 fn soniqo_batch_progress(completed_chunks: usize, total_chunks: usize) -> f64 {
@@ -611,7 +615,7 @@ fn soniqo_channel_chunks(
     model: hypr_transcribe_soniqo::SoniqoModel,
     samples: &[f32],
 ) -> std::result::Result<Vec<ChannelChunk>, String> {
-    if model == hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch {
+    if uses_resilient_soniqo_chunking(model) {
         return Ok(
             match chunk_channel_audio::<hypr_audio_chunking::Error>(samples) {
                 Ok(chunks) => {

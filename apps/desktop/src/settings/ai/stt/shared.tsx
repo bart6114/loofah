@@ -31,6 +31,7 @@ export const displayModelId = (model: string) => model;
 function isOnDeviceModelId(model: string) {
   return (
     model.startsWith("soniqo-") ||
+    model.startsWith("onnx-") ||
     model.startsWith("am-") ||
     model.startsWith("Quantized")
   );

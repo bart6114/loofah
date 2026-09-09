@@ -1,5 +1,6 @@
 pub use hypr_local_model::{AmModel, LocalModel, SoniqoModel, WhisperModel};
 
+#[cfg(not(target_os = "windows"))]
 pub static SUPPORTED_MODELS: &[LocalModel] = &[
     LocalModel::Soniqo(SoniqoModel::ParakeetStreaming),
     LocalModel::Soniqo(SoniqoModel::ParakeetBatch),
@@ -8,11 +9,18 @@ pub static SUPPORTED_MODELS: &[LocalModel] = &[
     LocalModel::Am(AmModel::WhisperLargeV3),
 ];
 
+#[cfg(target_os = "windows")]
+pub static SUPPORTED_MODELS: &[LocalModel] = &[
+    LocalModel::Soniqo(SoniqoModel::OnnxParakeetStreaming),
+    LocalModel::Soniqo(SoniqoModel::OnnxParakeetBatch),
+];
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub enum SttModelType {
     Soniqo,
+    Onnx,
     Whispercpp,
     Argmax,
 }
@@ -34,7 +42,14 @@ pub fn stt_model_info(model: &LocalModel) -> SttModelInfo {
             display_name: value.display_name().to_string(),
             description: value.description().to_string(),
             size_bytes: Some(value.size_bytes()),
-            model_type: SttModelType::Soniqo,
+            model_type: if matches!(
+                value,
+                SoniqoModel::OnnxParakeetStreaming | SoniqoModel::OnnxParakeetBatch
+            ) {
+                SttModelType::Onnx
+            } else {
+                SttModelType::Soniqo
+            },
         },
         LocalModel::Whisper(value) => SttModelInfo {
             key: model.clone(),
@@ -80,7 +95,10 @@ mod tests {
             assert_eq!(info.display_name, model.display_name());
             assert_eq!(info.description, model.description());
             assert_eq!(info.size_bytes, Some(model.size_bytes()));
-            assert!(matches!(info.model_type, SttModelType::Soniqo));
+            assert!(matches!(
+                info.model_type,
+                SttModelType::Soniqo | SttModelType::Onnx
+            ));
         }
     }
 }

@@ -20,6 +20,7 @@ export function isSupportedLocalSttModel(
   return (
     typeof model === "string" &&
     (model.startsWith("soniqo-") ||
+      model.startsWith("onnx-") ||
       model.startsWith("am-") ||
       model.startsWith("Quantized"))
   );
@@ -48,7 +49,9 @@ export function isConfiguredSttModel(
 }
 
 export function isRealtimeLocalModel(model?: string | null) {
-  return model === "soniqo-parakeet-streaming";
+  return (
+    model === "soniqo-parakeet-streaming" || model === "onnx-parakeet-streaming"
+  );
 }
 
 function baseLanguageCode(language: string) {

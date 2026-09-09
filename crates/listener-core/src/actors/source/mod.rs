@@ -95,6 +95,11 @@ impl DeviceChangeWatcher {
                     tracing::info!("default_input_changed_restarting_source");
                     actor.stop(Some("device_change".to_string()));
                 }
+                #[cfg(target_os = "windows")]
+                Ok(DeviceSwitch::DefaultOutputChanged { .. } | DeviceSwitch::DeviceListChanged) => {
+                    tracing::info!("audio_endpoint_changed_restarting_source");
+                    actor.stop(Some("device_change".to_string()));
+                }
                 Ok(_) => {}
                 Err(_) => break,
             }

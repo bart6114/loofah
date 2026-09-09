@@ -3,10 +3,7 @@ use futures_util::Stream;
 use futures_util::task::AtomicWaker;
 use hypr_audio_utils::{pcm_i16_to_f32, pcm_i32_to_f32};
 use pin_project::pin_project;
-use ringbuf::{
-    HeapCons, HeapProd, HeapRb,
-    traits::{Observer, Producer, Split},
-};
+use ringbuf::{HeapCons, HeapProd, HeapRb, traits::Split};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
@@ -18,7 +15,7 @@ use wasapi::{
 };
 
 use crate::async_ring::RingbufAsyncReader;
-use crate::rt_ring::{PushStats, push_f32le_bytes_first_channel_to_ringbuf};
+use crate::rt_ring::{PushStats, push_interleaved_bytes_downmix_to_mono_ringbuf};
 
 use super::{BUFFER_SIZE, CHUNK_SIZE};
 
@@ -223,8 +220,8 @@ fn capture_audio_loop(
 
         temp_queue.clear();
         if let Err(err) = capture_client.read_from_device_to_deque(&mut temp_queue) {
-            error!("Failed to read audio data: {}", err);
-            continue;
+            let _ = audio_client.stop_stream();
+            return Err(err).context("WASAPI loopback device stopped");
         }
 
         if temp_queue.is_empty() {
@@ -261,13 +258,15 @@ fn push_wasapi_bytes(
     producer: &mut HeapProd<f32>,
 ) -> Result<PushStats> {
     match (format.sample_type, format.bits_per_sample) {
-        (SampleType::Float, 32) => Ok(push_f32le_bytes_first_channel_to_ringbuf(
+        (SampleType::Float, 32) => Ok(push_interleaved_bytes_downmix_to_mono_ringbuf(
             data,
             format.channels,
+            4,
             scratch,
             producer,
+            |bytes| f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
         )),
-        (SampleType::Int, 16) => Ok(push_pcm_bytes_first_channel_to_ringbuf(
+        (SampleType::Int, 16) => Ok(push_interleaved_bytes_downmix_to_mono_ringbuf(
             data,
             format.channels,
             2,
@@ -275,7 +274,7 @@ fn push_wasapi_bytes(
             producer,
             |bytes| pcm_i16_to_f32(i16::from_le_bytes([bytes[0], bytes[1]])),
         )),
-        (SampleType::Int, 32) => Ok(push_pcm_bytes_first_channel_to_ringbuf(
+        (SampleType::Int, 32) => Ok(push_interleaved_bytes_downmix_to_mono_ringbuf(
             data,
             format.channels,
             4,
@@ -288,61 +287,6 @@ fn push_wasapi_bytes(
             sample_type,
             bits_per_sample
         ),
-    }
-}
-
-fn push_pcm_bytes_first_channel_to_ringbuf(
-    data: &[u8],
-    channels: usize,
-    sample_bytes: usize,
-    scratch: &mut [f32],
-    producer: &mut HeapProd<f32>,
-    mut convert: impl FnMut(&[u8]) -> f32,
-) -> PushStats {
-    if scratch.is_empty() || channels == 0 || sample_bytes == 0 {
-        return PushStats::default();
-    }
-
-    let frame_size = channels.saturating_mul(sample_bytes);
-    if frame_size == 0 {
-        return PushStats::default();
-    }
-
-    let frame_count = data.len() / frame_size;
-    if frame_count == 0 {
-        return PushStats::default();
-    }
-
-    let mut offset = 0usize;
-    let mut pushed_total = 0usize;
-    let mut dropped_total = 0usize;
-
-    while offset < frame_count {
-        let count = (frame_count - offset).min(scratch.len());
-
-        let vacant = producer.vacant_len();
-        if vacant == 0 {
-            dropped_total += frame_count - offset;
-            break;
-        }
-
-        let convert_count = count.min(vacant);
-
-        for i in 0..convert_count {
-            let byte_offset = (offset + i) * frame_size;
-            scratch[i] = convert(&data[byte_offset..byte_offset + sample_bytes]);
-        }
-
-        let pushed = producer.push_slice(&scratch[..convert_count]);
-        pushed_total += pushed;
-        dropped_total += count - pushed;
-
-        offset += count;
-    }
-
-    PushStats {
-        pushed: pushed_total,
-        dropped: dropped_total,
     }
 }
 

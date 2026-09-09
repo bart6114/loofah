@@ -131,6 +131,7 @@ hypr-template-support = { path = "crates/template-support", package = "template-
 hypr-ticket-interface = { path = "crates/ticket-interface", package = "ticket-interface" }
 hypr-tiptap = { path = "crates/tiptap", package = "tiptap" }
 hypr-transcribe-core = { path = "crates/transcribe-core", package = "transcribe-core" }
+hypr-transcribe-onnx = { path = "crates/transcribe-onnx", package = "transcribe-onnx" }
 hypr-transcribe-soniqo = { path = "crates/transcribe-soniqo", package = "transcribe-soniqo" }
 hypr-transcribe-whisper-local = { path = "crates/transcribe-whisper-local", package = "transcribe-whisper-local" }
 hypr-transcript = { path = "crates/transcript", package = "transcript" }
