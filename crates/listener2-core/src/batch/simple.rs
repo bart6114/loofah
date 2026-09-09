@@ -107,7 +107,7 @@ async fn run_direct_batch<A: BatchSttAdapter>(
         };
         tracing::info!("batch transcription completed");
 
-        stamp_batch_response(&mut response, &*diarization.segments().await);
+        stamp_batch_response(&mut response, &*diarization.segments().await?);
 
         Ok(BatchRunOutput {
             session_id: params.session_id,
@@ -211,7 +211,7 @@ pub(super) async fn run_soniqo_batch(
         );
 
         let mut response = hypr_transcribe_soniqo::batch_response_from_channels(model, transcribed);
-        stamp_batch_response(&mut response, &*diarization.segments().await);
+        stamp_batch_response(&mut response, &*diarization.segments().await?);
 
         Ok(BatchRunOutput {
             session_id: params.session_id,

@@ -347,7 +347,7 @@ pub async fn main() {
             // carry `loof` along; no-op when the user never installed the CLI.
             {
                 let app_handle = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
+                tauri::async_runtime::spawn_blocking(move || {
                     embedded_cli::sync_installed(&app_handle);
                 });
             }

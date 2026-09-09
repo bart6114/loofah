@@ -29,6 +29,7 @@ pub enum SourceMsg {
     SetRecorder(Option<ActorRef<RecMsg>>),
     Frame(CaptureFrame),
     StreamFailed(String),
+    RecoveryChanged { microphone: bool, speaker: bool },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -133,9 +134,15 @@ impl Actor for SourceActor {
                     session_id: session_id.clone(),
                 });
 
-            let device_watcher = DeviceChangeWatcher::spawn(myself.clone());
+            #[cfg(not(target_os = "windows"))]
+            let device_watcher = Some(DeviceChangeWatcher::spawn(myself.clone()));
+            #[cfg(target_os = "windows")]
+            let device_watcher = None;
 
             let silence_stream_tx = Some(args.audio.play_silence());
+            #[cfg(target_os = "windows")]
+            let mic_device = args.mic_device;
+            #[cfg(not(target_os = "windows"))]
             let mic_device = args
                 .mic_device
                 .or_else(|| Some(args.audio.default_device_name()));
@@ -151,7 +158,7 @@ impl Actor for SourceActor {
                 onboarding: args.onboarding,
                 run_task: None,
                 stream_cancel_token: None,
-                _device_watcher: Some(device_watcher),
+                _device_watcher: device_watcher,
                 _silence_stream_tx: silence_stream_tx,
                 current_mode: ChannelMode::MicAndSpeaker,
                 pipeline,
@@ -213,6 +220,29 @@ impl Actor for SourceActor {
                     is_fatal: true,
                 });
                 myself.stop(Some(reason));
+            }
+            SourceMsg::RecoveryChanged {
+                microphone,
+                speaker,
+            } => {
+                let error = match (microphone, speaker) {
+                    (true, true) => {
+                        "Microphone and system audio disconnected. Reconnecting; the recording contains silence until they return."
+                    }
+                    (true, false) => {
+                        "Microphone disconnected. Reconnecting; system audio is still recording."
+                    }
+                    (false, true) => {
+                        "System audio disconnected. Reconnecting; the microphone is still recording."
+                    }
+                    (false, false) => "",
+                };
+                st.runtime.emit_error(SessionErrorEvent::AudioError {
+                    session_id: st.session_id.clone(),
+                    error: error.to_string(),
+                    device: st.mic_device.clone(),
+                    is_fatal: false,
+                });
             }
         }
 

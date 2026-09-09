@@ -1067,6 +1067,7 @@ dependencies = [
  "cpal",
  "dasp",
  "data",
+ "device-monitor",
  "ebur128",
  "futures-channel",
  "futures-util",
@@ -4024,6 +4025,7 @@ dependencies = [
  "tracing",
  "vault-read",
  "vault-write",
+ "windows 0.62.2",
  "winreg 0.55.0",
 ]
 
@@ -6892,10 +6894,13 @@ dependencies = [
  "futures-util",
  "serde",
  "serde_json",
+ "shell-words",
  "shellexpand",
  "specta",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -15193,11 +15198,13 @@ name = "tauri-plugin-notify"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "dunce",
  "notify",
  "notify-debouncer-full",
  "serde",
  "specta",
  "specta-typescript",
+ "storage",
  "tauri",
  "tauri-plugin",
  "tauri-plugin-settings",

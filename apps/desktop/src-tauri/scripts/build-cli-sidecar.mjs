@@ -3,6 +3,8 @@ import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { stageWindowsRuntime } from "./windows-runtime.mjs";
+
 const tauriDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -31,7 +33,10 @@ run("cargo", [
   "loof-cli",
   ...(target === host ? [] : ["--target", target]),
 ]);
-const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(repoDir, "target");
+const targetDir = path.resolve(
+  repoDir,
+  process.env.CARGO_TARGET_DIR ?? "target",
+);
 const built = path.join(
   targetDir,
   ...(target === host ? [] : [target]),
@@ -42,3 +47,4 @@ for (const dir of ["binaries", "resources/cli"]) {
   mkdirSync(path.join(tauriDir, dir), { recursive: true });
   copyFileSync(built, path.join(tauriDir, dir, `loof-${target}${suffix}`));
 }
+stageWindowsRuntime(tauriDir, [path.dirname(built)], target);

@@ -11,6 +11,7 @@ impl WriteJournal {
     }
 
     pub fn record(&self, relative: &str, hash: &str) {
+        let relative = hypr_storage::fs::relative_path_key(relative);
         if let Ok(mut journal) = self.0.lock() {
             journal.insert(relative.to_string(), hash.to_string());
         }
@@ -21,13 +22,15 @@ impl WriteJournal {
     /// paths still match their hashes, and no entry keeps claiming the old path
     /// (a write landing there again would be a new file, not ours).
     pub fn remap_prefix(&self, old_prefix: &str, new_prefix: &str) {
+        let old_prefix = hypr_storage::fs::relative_path_key(old_prefix);
+        let new_prefix = hypr_storage::fs::relative_path_key(new_prefix);
         let Ok(mut journal) = self.0.lock() else {
             return;
         };
         let moved: Vec<(String, String)> = journal
             .keys()
             .filter_map(|key| {
-                let rest = key.strip_prefix(old_prefix)?;
+                let rest = key.strip_prefix(old_prefix.as_ref())?;
                 if !rest.is_empty() && !rest.starts_with('/') {
                     return None;
                 }
@@ -42,8 +45,13 @@ impl WriteJournal {
     }
 
     pub fn matches_current_file(&self, vault_base: &Path, relative: &str) -> bool {
-        let abs = vault_base.join(relative);
-        let stored_hash = self.0.lock().ok().and_then(|j| j.get(relative).cloned());
+        let relative = hypr_storage::fs::relative_path_key(relative);
+        let abs = vault_base.join(relative.as_ref());
+        let stored_hash = self
+            .0
+            .lock()
+            .ok()
+            .and_then(|j| j.get(relative.as_ref()).cloned());
 
         if let Ok(current_bytes) = std::fs::read(&abs) {
             let current_hash = sha256(&current_bytes);
@@ -68,6 +76,20 @@ fn sha256(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_watch_events_match_native_writes_after_directory_renames() {
+        let vault = tempfile::tempdir().unwrap();
+        let journal = WriteJournal::new();
+        journal.record(r"sessions\old\notes.md", &sha256(b"note"));
+        let directory = vault.path().join("sessions/new");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("notes.md"), "note").unwrap();
+        journal.remap_prefix(r"sessions\old", r"sessions\new");
+        assert!(journal.matches_current_file(vault.path(), "sessions/new/notes.md"));
+        assert!(journal.matches_current_file(vault.path(), r"sessions\new\notes.md"));
+    }
 
     #[test]
     fn journal_records_and_validates_hashes() {

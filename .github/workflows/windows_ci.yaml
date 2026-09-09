@@ -52,7 +52,7 @@ jobs:
           platform: windows
       - run: pnpm -F ui build
       - run: cargo check --locked -p desktop -p loof-cli
-      - run: cargo test --locked -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p audio-actual -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
+      - run: cargo test --locked -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p hooks -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |
@@ -65,15 +65,18 @@ jobs:
       - run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging
       - name: Check CLI
         run: |
-          & target/release/loof.exe --version
+          New-Item -ItemType Directory -Force artifacts/cli | Out-Null
+          Copy-Item target/release/loof.exe artifacts/cli/
+          Copy-Item apps/desktop/src-tauri/resources/windows-runtime/*.dll artifacts/cli/
+          & artifacts/cli/loof.exe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & target/release/loof.exe mcp --help
+          & artifacts/cli/loof.exe mcp --help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: loofah-windows-${{ matrix.target }}-${{ github.sha }}
           path: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
-            target/release/loof.exe
+            artifacts/cli/
           if-no-files-found: error
           retention-days: 14

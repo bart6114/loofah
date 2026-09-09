@@ -92,9 +92,21 @@ function inspect(file, depth = 0) {
   if (visited.has(file.toLowerCase())) return;
   visited.add(file.toLowerCase());
   const binary = pe(file);
+  const hasCommonControlsManifest = fs
+    .readFileSync(file)
+    .includes(Buffer.from("Microsoft.Windows.Common-Controls"));
   console.log(`${file} (machine ${binary.machine})`);
   for (const entry of binary.imports) {
     if (/^(api|ext)-ms-/i.test(entry.dll)) continue;
+    if (
+      entry.dll.toLowerCase() === "comctl32.dll" &&
+      hasCommonControlsManifest
+    ) {
+      console.log(
+        "Common Controls is selected by the embedded manifest; System32 export comparison does not apply.",
+      );
+      continue;
+    }
     const dependency = find(entry.dll);
     if (!dependency) {
       console.error(`MISSING DLL: ${entry.dll}, imported by ${file}`);

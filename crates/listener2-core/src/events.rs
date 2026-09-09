@@ -15,6 +15,7 @@ pub enum BatchErrorCode {
     DirectBatchUnsupported,
     ProgressiveBatchUnsupported,
     DirectRequestFailed,
+    DiarizationFailed,
     ProgressiveActorSpawnFailed,
     ProgressiveStartCancelled,
     ProgressiveStoppedWithoutCompletionSignal,

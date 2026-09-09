@@ -87,11 +87,13 @@ specta = { workspace = true }
 specta-typescript = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 default = []
@@ -117,4 +119,3 @@ tantivy = "0.25"
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
 tauri = { workspace = true, features = ["test"] }
-tempfile = { workspace = true }

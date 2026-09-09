@@ -3,6 +3,14 @@ use std::path::Path;
 
 use tempfile::NamedTempFile;
 
+pub fn relative_path_key(path: &str) -> std::borrow::Cow<'_, str> {
+    #[cfg(target_os = "windows")]
+    if path.contains('\\') {
+        return std::borrow::Cow::Owned(path.replace('\\', "/"));
+    }
+    std::borrow::Cow::Borrowed(path)
+}
+
 pub fn rename_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {

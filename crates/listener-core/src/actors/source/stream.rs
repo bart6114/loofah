@@ -137,6 +137,16 @@ fn handle_capture_item(
             }
             StreamResult::Continue
         }
+        Some(Err(hypr_audio::Error::CaptureRecovering {
+            microphone,
+            speaker,
+        })) => {
+            let _ = ctx.actor.cast(SourceMsg::RecoveryChanged {
+                microphone,
+                speaker,
+            });
+            StreamResult::Continue
+        }
         Some(Err(error)) => {
             tracing::error!(error.message = %error, "capture_stream_failed");
             ctx.report_failure(error.to_string());

@@ -4,6 +4,9 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+#[cfg(any(target_os = "windows", test))]
+mod windows;
+
 const DEV_BUNDLE_ID: &str = "io.loofah.dev";
 #[cfg(target_os = "macos")]
 const MANAGED_CLI_DIR: &str = ".loof-cli";
@@ -34,96 +37,110 @@ pub struct EmbeddedCliStatus {
 }
 
 pub fn check<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &T) -> EmbeddedCliStatus {
-    let command_name = command_name_from_identifier(manager.config().identifier.as_ref());
-    let Some(install_path) = install_path_for_command(command_name) else {
-        return unavailable_status(command_name, "Loofah could not find your home directory.");
-    };
+    #[cfg(target_os = "windows")]
+    return windows::check(manager);
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(target_os = "windows"))]
     {
-        let _ = manager;
-        return EmbeddedCliStatus {
-            supported: false,
-            command_name: command_name.to_string(),
-            install_path: install_path.display().to_string(),
-            state: EmbeddedCliState::Unsupported,
-            details: Some("Bundled CLI installation is currently available on macOS.".to_string()),
+        let command_name = command_name_from_identifier(manager.config().identifier.as_ref());
+        let Some(install_path) = install_path_for_command(command_name) else {
+            return unavailable_status(command_name, "Loofah could not find your home directory.");
         };
-    }
 
-    #[cfg(target_os = "macos")]
-    {
-        let Some(resource_path) = resolve_resource_path(manager) else {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = manager;
             return EmbeddedCliStatus {
-                supported: true,
+                supported: false,
                 command_name: command_name.to_string(),
                 install_path: install_path.display().to_string(),
-                state: EmbeddedCliState::ResourceMissing,
-                details: Some("The CLI is not included in this build of Loofah.".to_string()),
+                state: EmbeddedCliState::Unsupported,
+                details: Some(
+                    "Bundled CLI installation is currently available on macOS.".to_string(),
+                ),
             };
-        };
+        }
 
-        classify_status(command_name, install_path, &resource_path)
+        #[cfg(target_os = "macos")]
+        {
+            let Some(resource_path) = resolve_resource_path(manager) else {
+                return EmbeddedCliStatus {
+                    supported: true,
+                    command_name: command_name.to_string(),
+                    install_path: install_path.display().to_string(),
+                    state: EmbeddedCliState::ResourceMissing,
+                    details: Some("The CLI is not included in this build of Loofah.".to_string()),
+                };
+            };
+
+            classify_status(command_name, install_path, &resource_path)
+        }
     }
 }
 
 pub fn install<R: tauri::Runtime, T: tauri::Manager<R>>(
     manager: &T,
 ) -> Result<EmbeddedCliStatus, String> {
-    let status = check(manager);
+    #[cfg(target_os = "windows")]
+    return windows::install(manager);
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(target_os = "windows"))]
     {
-        Ok(status)
-    }
+        let status = check(manager);
 
-    #[cfg(target_os = "macos")]
-    {
-        match status.state {
-            EmbeddedCliState::Unsupported | EmbeddedCliState::ResourceMissing => {
-                return Ok(status);
-            }
-            EmbeddedCliState::Conflict => {
-                return Err(format!(
-                    "Another file already exists at {}. Move it before installing the loof CLI.",
-                    status.install_path
-                ));
-            }
-            EmbeddedCliState::Installed | EmbeddedCliState::Missing => {}
-        }
-
-        let resource_path = resolve_resource_path(manager)
-            .ok_or_else(|| "The bundled CLI could not be found.".to_string())?;
-        let install_path = PathBuf::from(&status.install_path);
-
-        install_symlink(&resource_path, &install_path)?;
-        remove_legacy_managed_copies(&install_path, &status.command_name);
-        for legacy_command in
-            legacy_command_names_from_identifier(manager.config().identifier.as_ref())
+        #[cfg(not(target_os = "macos"))]
         {
-            let Some(legacy_path) = install_path_for_command(legacy_command) else {
-                continue;
-            };
-            if matches!(
-                classify_installation(&legacy_path, &resource_path),
-                Ok(EmbeddedCliState::Installed | EmbeddedCliState::Missing)
-            ) && std::fs::symlink_metadata(&legacy_path)
-                .is_ok_and(|metadata| metadata.file_type().is_symlink())
-            {
-                std::fs::remove_file(&legacy_path).map_err(|error| {
-                    format!(
-                        "Could not remove the legacy command at {}: {error}",
-                        legacy_path.display()
-                    )
-                })?;
-            }
-            remove_legacy_managed_copies(&legacy_path, legacy_command);
+            Ok(status)
         }
-        Ok(classify_status(
-            &status.command_name,
-            install_path,
-            &resource_path,
-        ))
+
+        #[cfg(target_os = "macos")]
+        {
+            match status.state {
+                EmbeddedCliState::Unsupported | EmbeddedCliState::ResourceMissing => {
+                    return Ok(status);
+                }
+                EmbeddedCliState::Conflict => {
+                    return Err(format!(
+                        "Another file already exists at {}. Move it before installing the loof CLI.",
+                        status.install_path
+                    ));
+                }
+                EmbeddedCliState::Installed | EmbeddedCliState::Missing => {}
+            }
+
+            let resource_path = resolve_resource_path(manager)
+                .ok_or_else(|| "The bundled CLI could not be found.".to_string())?;
+            let install_path = PathBuf::from(&status.install_path);
+
+            install_symlink(&resource_path, &install_path)?;
+            remove_legacy_managed_copies(&install_path, &status.command_name);
+            for legacy_command in
+                legacy_command_names_from_identifier(manager.config().identifier.as_ref())
+            {
+                let Some(legacy_path) = install_path_for_command(legacy_command) else {
+                    continue;
+                };
+                if matches!(
+                    classify_installation(&legacy_path, &resource_path),
+                    Ok(EmbeddedCliState::Installed | EmbeddedCliState::Missing)
+                ) && std::fs::symlink_metadata(&legacy_path)
+                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
+                {
+                    std::fs::remove_file(&legacy_path).map_err(|error| {
+                        format!(
+                            "Could not remove the legacy command at {}: {error}",
+                            legacy_path.display()
+                        )
+                    })?;
+                }
+                remove_legacy_managed_copies(&legacy_path, legacy_command);
+            }
+            Ok(classify_status(
+                &status.command_name,
+                install_path,
+                &resource_path,
+            ))
+        }
     }
 }
 
@@ -132,6 +149,9 @@ pub fn install<R: tauri::Runtime, T: tauri::Manager<R>>(
 /// and so old command names and pre-symlink installs migrate to `loof`.
 /// Never installs for users who haven't opted in via Settings -> Agents.
 pub fn sync_installed<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &T) {
+    #[cfg(target_os = "windows")]
+    windows::sync_installed(manager);
+
     #[cfg(not(target_os = "macos"))]
     {
         let _ = manager;

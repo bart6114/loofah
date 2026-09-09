@@ -296,7 +296,7 @@ export const updateLiveProgress = (
       live.loadingPhase = "connected";
       return;
     case "audio_error":
-      live.lastError = payload.error;
+      live.lastError = payload.error || null;
       if (payload.is_fatal) {
         live.loading = false;
       }

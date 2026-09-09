@@ -215,6 +215,10 @@ fn capture_audio_loop(
 
     while running.load(Ordering::Acquire) {
         if event.wait_for_event(250).is_err() {
+            // A removed endpoint may stop signaling without delivering a final packet.
+            audio_client
+                .get_current_padding()
+                .context("WASAPI endpoint became unavailable")?;
             continue;
         }
 

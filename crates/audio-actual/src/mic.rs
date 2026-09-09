@@ -98,11 +98,19 @@ impl MicInput {
                         || d.id()
                             .is_ok_and(|id| id.to_string() == name || id.1 == name)
                 })
-                .or(default_input_device)
                 .or_else(|| {
-                    host.input_devices().ok().and_then(|mut devices| {
-                        devices.find(|d| !is_tap_device(&get_device_name(d)))
-                    })
+                    #[cfg(target_os = "windows")]
+                    {
+                        None
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        default_input_device.or_else(|| {
+                            host.input_devices().ok().and_then(|mut devices| {
+                                devices.find(|d| !is_tap_device(&get_device_name(d)))
+                            })
+                        })
+                    }
                 })
                 .ok_or(crate::Error::NoInputDevice)?,
         };
