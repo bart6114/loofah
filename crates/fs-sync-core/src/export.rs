@@ -66,11 +66,13 @@ pub fn write_file_atomic(
         })?;
     }
 
-    if let Ok(existing) = std::fs::read(path) {
-        if existing == content {
-            return Ok(false);
+    match std::fs::read(path) {
+        Ok(existing) if existing == content => return Ok(false),
+        Ok(_) => {
+            copy_to_trash(vault_base, path)?;
         }
-        copy_to_trash(vault_base, path)?;
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
 
     if let Some(parent) = tmp_path.parent() {
@@ -168,6 +170,24 @@ mod tests {
     fn write_via_tmp(vault_base: &Path, path: &Path, content: &[u8]) -> crate::Result<bool> {
         let tmp_path = tmp_sibling_path(path);
         write_file_atomic(vault_base, path, &tmp_path, content)
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn an_unreadable_file_is_not_replaced_even_when_its_handle_allows_delete() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let vault = tempfile::tempdir().unwrap();
+        let path = vault.path().join("notes.md");
+        std::fs::write(&path, b"original notes").unwrap();
+        let locked = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(2 | 4)
+            .open(&path)
+            .unwrap();
+        assert!(write_via_tmp(vault.path(), &path, b"replacement").is_err());
+        drop(locked);
+        assert_eq!(std::fs::read(&path).unwrap(), b"original notes");
+        assert_eq!(std::fs::read_dir(vault.path()).unwrap().count(), 1);
     }
 
     #[test]
