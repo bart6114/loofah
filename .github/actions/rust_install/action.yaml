@@ -76,6 +76,7 @@ runs:
     - uses: Swatinem/rust-cache@v2
       with:
         cache-targets: "true"
+        cache-on-failure: ${{ inputs.platform == 'windows' }}
         prefix-key: v0-rust${{ steps.cache-key.outputs.suffix }}
         # src-tauri/.cargo/config.toml redirects its target dir outside the
         # default cached path; without this entry every tauri build is cold.
