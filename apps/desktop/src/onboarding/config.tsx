@@ -11,7 +11,7 @@ export type OnboardingStep =
 
 function getOnboardingSteps(): OnboardingStep[] {
   const steps: OnboardingStep[] = [];
-  if (platform() === "macos") {
+  if (platform() === "macos" || platform() === "windows") {
     steps.push("permissions");
   }
   if (

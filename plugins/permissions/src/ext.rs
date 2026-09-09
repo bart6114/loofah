@@ -201,6 +201,15 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         Err(std::io::Error::other(format!("failed to open {url}")).into())
     }
 
+    #[cfg(target_os = "windows")]
+    fn open_system_settings_url(&self, url: &str) -> Result<(), crate::Error> {
+        use windows::{core::{PCWSTR, w}, Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL}};
+        let url: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
+        let result = unsafe { ShellExecuteW(None, w!("open"), PCWSTR(url.as_ptr()), None, None, SW_SHOWNORMAL) };
+        if result.0 as isize <= 32 { return Err(std::io::Error::other("Unable to open Windows Settings").into()); }
+        Ok(())
+    }
+
     #[cfg(target_os = "macos")]
     fn open_privacy_settings(&self, anchor: &str) -> Result<(), crate::Error> {
         let urls = [
@@ -234,6 +243,8 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
     }
 
     async fn open_microphone(&self) -> Result<(), crate::Error> {
+        #[cfg(target_os = "windows")]
+        self.open_system_settings_url("ms-settings:privacy-microphone")?;
         #[cfg(target_os = "macos")]
         {
             self.open_privacy_settings("Privacy_Microphone")?;
@@ -243,6 +254,8 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
     }
 
     async fn open_system_audio(&self) -> Result<(), crate::Error> {
+        #[cfg(target_os = "windows")]
+        self.open_system_settings_url("ms-settings:sound")?;
         #[cfg(target_os = "macos")]
         {
             self.open_privacy_settings("Privacy_ScreenCapture")?;
@@ -371,7 +384,10 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
             }
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        self.open_microphone().await?;
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let audio = self.require_audio()?;
             audio.probe_mic(None)?;
@@ -383,9 +399,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
     async fn request_system_audio(&self) -> Result<(), crate::Error> {
         let audio = self.require_audio()?;
         let stop = audio.play_silence();
-        audio.probe_speaker()?;
+        let result = audio.probe_speaker();
         let _ = stop.send(());
-        Ok(())
+        result.map_err(Into::into)
     }
 
     async fn request_screen_recording(&self) -> Result<(), crate::Error> {
@@ -414,6 +430,8 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
     }
 
     async fn reset_microphone(&self) -> Result<(), crate::Error> {
+        #[cfg(target_os = "windows")]
+        self.open_microphone().await?;
         #[cfg(target_os = "macos")]
         self.reset_tcc("Microphone").await;
 

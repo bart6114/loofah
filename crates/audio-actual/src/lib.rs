@@ -269,9 +269,16 @@ impl AudioProvider for ActualAudio {
     }
 
     fn probe_mic(&self, device: Option<String>) -> Result<(), Error> {
-        let mut input = AudioInput::from_mic(device)?;
-        let _stream = input.stream();
-        Ok(())
+        #[cfg(target_os = "windows")]
+        {
+            mic::MicInput::new(device)?.probe()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut input = AudioInput::from_mic(device)?;
+            let _stream = input.stream();
+            Ok(())
+        }
     }
 
     fn probe_speaker(&self) -> Result<(), Error> {
