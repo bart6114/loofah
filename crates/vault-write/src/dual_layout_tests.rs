@@ -976,6 +976,7 @@ async fn a_rebuild_recorded_duplicate_blocks_lazy_resolution_of_the_legacy_claim
 
 /// A permission failure on a personal folder must not make the sessions homed
 /// under it look deleted: the prune protects descendants of unreadable dirs.
+#[cfg(unix)]
 #[tokio::test]
 async fn an_unreadable_personal_folder_does_not_prune_its_sessions() {
     use std::os::unix::fs::PermissionsExt;
