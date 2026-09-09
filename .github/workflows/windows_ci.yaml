@@ -68,6 +68,7 @@ jobs:
       - name: Check CLI
         run: |
           New-Item -ItemType Directory -Force artifacts/cli | Out-Null
+          Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe artifacts/
           Copy-Item target/release/loof.exe artifacts/cli/loof-staging.exe
           Copy-Item apps/desktop/src-tauri/resources/windows-runtime/*.dll artifacts/cli/
           & artifacts/cli/loof-staging.exe --version
@@ -88,10 +89,7 @@ jobs:
         if: always() && steps.bundle.outcome == 'success'
         with:
           name: loofah-windows-${{ matrix.target }}-${{ github.sha }}
-          path: |
-            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
-            artifacts/cli/
-            artifacts/logs/
+          path: artifacts/
           if-no-files-found: error
           retention-days: 14
 
