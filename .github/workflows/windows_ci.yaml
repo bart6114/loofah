@@ -52,7 +52,7 @@ jobs:
           platform: windows
       - run: pnpm -F ui build
       - run: cargo check --locked -p desktop -p loof-cli
-      - run: cargo test --locked -p desktop -p loof-cli -p vault-read -p vault-write -p audio-actual -p device-monitor -p detect -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
+      - run: cargo test --locked -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p audio-actual -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |

@@ -9,6 +9,21 @@ use std::{
 const MACOS_MINIMUM_SYSTEM_VERSION: &str = "15.0";
 
 fn main() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        // Tauri's resource compiler only links the manifest into binary targets.
+        // Library test executables also import Common Controls v6 through dialogs.
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows.manifest");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        tauri_build::try_build(
+            tauri_build::Attributes::new()
+                .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest()),
+        )
+        .expect("build Windows resources");
+        return;
+    }
+
     #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-arg=-fapple-link-rtlib");
 
