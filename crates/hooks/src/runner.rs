@@ -4,6 +4,11 @@ use std::time::Duration;
 use crate::config::HooksConfig;
 use crate::event::HookEvent;
 
+// Windows PowerShell's first launch also initializes the CLR; allow that startup
+// without shortening the time available to an otherwise fast hook.
+#[cfg(target_os = "windows")]
+const HOOK_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(not(target_os = "windows"))]
 const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]

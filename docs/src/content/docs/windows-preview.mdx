@@ -53,7 +53,7 @@ Keyboard shortcuts use Ctrl in place of Command. Standard window buttons support
 
 Meeting reminders use Windows notifications. Enable notifications for Loofah in Windows Settings and check Do Not Disturb if reminders are missing. Apple Reminders integration is unavailable on Windows; vault-backed tasks and GitHub tasks remain available.
 
-Hooks can run executables or `.ps1` files. Quote paths containing spaces. PowerShell hooks respect your account's execution policy, receive no interactive input, and have a five-second timeout. Arguments are passed directly without shell interpolation; use an explicit script for pipelines or redirection.
+Hooks can run executables or `.ps1` files. Quote paths containing spaces. PowerShell hooks respect your account's execution policy, receive no interactive input, and have a 15-second timeout, including interpreter startup. Arguments are passed directly without shell interpolation; use an explicit script for pipelines or redirection.
 
 ## Report a preview issue
 
