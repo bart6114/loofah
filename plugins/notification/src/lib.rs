@@ -74,3 +74,6 @@ mod test {
         std::fs::write(OUTPUT_FILE, format!("// @ts-nocheck\n{content}")).unwrap();
     }
 }
+
+#[cfg(target_os = "windows")]
+pub use hypr_notification::uninstall_windows;

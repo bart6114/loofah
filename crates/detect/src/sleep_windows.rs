@@ -59,6 +59,14 @@ pub struct SleepDetector {
     registration: Option<(usize, usize)>,
 }
 
+impl SleepDetector {
+    pub fn subscribe(callback: DetectCallback) -> Self {
+        let mut detector = Self::default();
+        detector.start(callback);
+        detector
+    }
+}
+
 impl Observer for SleepDetector {
     fn start(&mut self, callback: DetectCallback) {
         self.stop();

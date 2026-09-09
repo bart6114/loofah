@@ -159,6 +159,19 @@ fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEven
 pub async fn main() {
     tauri::async_runtime::set(tokio::runtime::Handle::current());
     let context = tauri::generate_context!();
+    #[cfg(target_os = "windows")]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("--uninstall-integrations"))
+    {
+        let identifier = &context.config().identifier;
+        let cli = embedded_cli::uninstall_windows(identifier);
+        let notifications = tauri_plugin_notification::uninstall_windows(identifier);
+        std::process::exit(if cli.is_ok() && notifications.is_ok() {
+            0
+        } else {
+            1
+        });
+    }
 
     let (root_supervisor_ctx, root_supervisor_handle) =
         match supervisor::spawn_root_supervisor().await {

@@ -10,6 +10,37 @@ const MACOS_MINIMUM_SYSTEM_VERSION: &str = "15.0";
 
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGN_COMMAND");
+        println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGNER_THUMBPRINT");
+        let config: serde_json::Value =
+            serde_json::from_str(&std::env::var("TAURI_CONFIG").unwrap_or_else(|_| "{}".into()))
+                .expect("valid Tauri config");
+        if config["identifier"].as_str() == Some("io.loofah.stable") {
+            for variable in [
+                "LOOFAH_WINDOWS_SIGN_COMMAND",
+                "LOOFAH_WINDOWS_SIGNER_THUMBPRINT",
+                "TAURI_SIGNING_PRIVATE_KEY",
+            ] {
+                assert!(
+                    std::env::var(variable).is_ok_and(|value| !value.trim().is_empty()),
+                    "Stable Windows builds require {variable}; use the staging config for unsigned test installers"
+                );
+            }
+            assert!(
+                config.pointer("/bundle/windows/signCommand").is_some(),
+                "Stable Windows builds require the verified Authenticode signing command"
+            );
+            assert!(
+                config
+                    .pointer("/plugins/updater/endpoints")
+                    .and_then(|value| value.as_array())
+                    .is_some_and(|endpoints| endpoints.iter().all(|endpoint| endpoint
+                        .as_str()
+                        .is_some_and(|url| url.ends_with("/latest-windows.json")))
+                        && !endpoints.is_empty()),
+                "Stable Windows builds must use the Windows updater feed"
+            );
+        }
         // Tauri's resource compiler only links the manifest into binary targets.
         // Library test executables also import Common Controls v6 through dialogs.
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows.manifest");

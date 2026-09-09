@@ -96,6 +96,17 @@ pub(super) fn device_changes(
     let (mic_tx, mic_rx) = watch::channel(0u64);
     let (speaker_tx, speaker_rx) = watch::channel(0u64);
     std::thread::spawn(move || {
+        let wake_mic = mic_tx.clone();
+        let wake_speaker = speaker_tx.clone();
+        let _sleep = hypr_detect::SleepDetector::subscribe(Arc::new(move |event| {
+            if matches!(
+                event,
+                hypr_detect::DetectEvent::SleepStateChanged { value: false }
+            ) {
+                wake_mic.send_modify(|value| *value = value.wrapping_add(1));
+                wake_speaker.send_modify(|value| *value = value.wrapping_add(1));
+            }
+        }));
         let (event_tx, event_rx) = std::sync::mpsc::channel();
         let _monitor = DeviceSwitchMonitor::spawn_debounced(event_tx);
         while !mic_tx.is_closed() || !speaker_tx.is_closed() {

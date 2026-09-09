@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { signWindows } from "./sign-windows.mjs";
 import { stageWindowsRuntime } from "./windows-runtime.mjs";
 
 const tauriDir = path.resolve(
@@ -43,8 +44,11 @@ const built = path.join(
   "release",
   `loof${suffix}`,
 );
+if (process.platform === "win32" && process.env.LOOFAH_WINDOWS_SIGN_COMMAND) {
+  signWindows(built);
+}
 for (const dir of ["binaries", "resources/cli"]) {
   mkdirSync(path.join(tauriDir, dir), { recursive: true });
   copyFileSync(built, path.join(tauriDir, dir, `loof-${target}${suffix}`));
 }
-stageWindowsRuntime(tauriDir, [path.dirname(built)], target);
+stageWindowsRuntime(tauriDir, [path.dirname(built)], target, { reset: true });

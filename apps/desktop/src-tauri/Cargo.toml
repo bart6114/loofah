@@ -18,6 +18,7 @@ crate-type = ["staticlib", "rlib"]
 
 [build-dependencies]
 tauri-build = { workspace = true, features = [] }
+serde_json = { workspace = true }
 
 [dependencies]
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }

@@ -674,3 +674,8 @@ mod tests {
         assert!(!dir.path().join("home/.local/bin/.fmtr-cli").exists());
     }
 }
+
+#[cfg(target_os = "windows")]
+pub fn uninstall_windows(identifier: &str) -> Result<(), String> {
+    windows::uninstall(identifier)
+}

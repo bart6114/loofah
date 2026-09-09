@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-pub use windows::{set_app_id, shutdown as shutdown_windows};
+pub use windows::{set_app_id, shutdown as shutdown_windows, uninstall as uninstall_windows};
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};

@@ -297,3 +297,5 @@ pub fn shutdown() {
     clear();
     activation::shutdown();
 }
+
+pub use activation::uninstall;

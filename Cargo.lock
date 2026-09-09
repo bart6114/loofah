@@ -1067,6 +1067,7 @@ dependencies = [
  "cpal",
  "dasp",
  "data",
+ "detect",
  "device-monitor",
  "ebur128",
  "futures-channel",

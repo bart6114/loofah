@@ -56,13 +56,27 @@ jobs:
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |
-          Get-ChildItem target/debug/deps/loofah_desktop_lib-*.exe | ForEach-Object {
+          Get-ChildItem target/debug/deps/loofah_desktop_lib-*.exe -ErrorAction SilentlyContinue | ForEach-Object {
             node apps/desktop/src-tauri/scripts/check-windows-runtime.mjs $_.FullName
           }
       - if: github.event_name == 'workflow_dispatch' && inputs.speech-models
         run: cargo test --locked -p transcribe-onnx --test inference -- --ignored --nocapture
+      - name: Verify signing configuration contracts
+        run: node --test apps/desktop/src-tauri/scripts/sign-windows.test.mjs
+      - name: Run real speaker detection
+        if: github.event_name == 'workflow_dispatch' && inputs.speech-models
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP 'six-speakers.wav'
+          Invoke-WebRequest 'https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav' -OutFile $fixture
+          if ((Get-FileHash $fixture -Algorithm SHA256).Hash -ne '51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760') { throw 'Diarization fixture checksum mismatch' }
+          $env:LOOFAH_DIARIZATION_FIXTURE = $fixture
+          cargo test --locked -p transcribe-onnx --test diarization -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p transcribe-onnx --lib embedding_matches_reference -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
-      - run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging
+      - id: bundle
+        run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging
       - name: Check CLI
         run: |
           New-Item -ItemType Directory -Force artifacts/cli | Out-Null
@@ -72,7 +86,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & artifacts/cli/loof.exe mcp --help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installed app and uninstall
+        run: ./apps/desktop/src-tauri/scripts/test-windows-install.ps1
       - uses: actions/upload-artifact@v4
+        if: always() && steps.bundle.outcome == 'success'
         with:
           name: loofah-windows-${{ matrix.target }}-${{ github.sha }}
           path: |

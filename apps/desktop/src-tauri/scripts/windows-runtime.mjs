@@ -1,8 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import path from "node:path";
 
-export function stageWindowsRuntime(tauriDir, artifactDirs, target) {
+export function stageWindowsRuntime(
+  tauriDir,
+  artifactDirs,
+  target,
+  { reset = false } = {},
+) {
   if (process.platform !== "win32") return;
   const architecture = target.startsWith("aarch64") ? "arm64" : "x64";
   const vswhere = path.join(
@@ -35,6 +46,7 @@ export function stageWindowsRuntime(tauriDir, artifactDirs, target) {
     throw new Error(`Visual C++ ${architecture} CRT is missing from ${root}`);
 
   const output = path.join(tauriDir, "resources/windows-runtime");
+  if (reset) rmSync(output, { recursive: true, force: true });
   mkdirSync(output, { recursive: true });
   for (const directory of [...artifactDirs, runtime]) {
     if (!existsSync(directory)) continue;

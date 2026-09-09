@@ -103,11 +103,7 @@ impl IClassFactory_Impl for Factory_Impl {
 }
 
 pub(super) fn register(id: &str) -> std::result::Result<(), String> {
-    let hash = id.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
-        (hash ^ byte as u64).wrapping_mul(0x100000001b3)
-    });
-    let clsid = GUID::from_u128(0x1b769a0c_6bc1_4e0f_8000_000000000000_u128 | hash as u128);
-    let guid = format!("{{{clsid:?}}}");
+    let (clsid, guid) = activator_id(id);
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let register = || -> std::result::Result<(), windows_core::Error> {
         let key = windows_registry::CURRENT_USER
@@ -157,4 +153,40 @@ pub(super) fn register(id: &str) -> std::result::Result<(), String> {
 
 pub(crate) fn shutdown() {
     STOP.lock().unwrap_or_else(|e| e.into_inner()).take();
+}
+
+fn activator_id(id: &str) -> (GUID, String) {
+    let hash = id.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
+        (hash ^ byte as u64).wrapping_mul(0x100000001b3)
+    });
+    let clsid = GUID::from_u128(0x1b769a0c_6bc1_4e0f_8000_000000000000_u128 | hash as u128);
+    let guid = format!("{{{clsid:?}}}");
+    (clsid, guid)
+}
+
+pub fn uninstall(id: &str) -> std::result::Result<(), String> {
+    let (_, guid) = activator_id(id);
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let class_path = format!(r"Software\Classes\CLSID\{guid}");
+    let app_path = format!(r"Software\Classes\AppUserModelId\{id}");
+    let expected = format!("\"{}\" -ToastActivated", exe.display());
+    let registry = windows_registry::CURRENT_USER;
+    if let Ok(key) = registry.open(format!(r"{class_path}\LocalServer32")) {
+        if key.get_string("").map_err(|e| e.to_string())? == expected {
+            registry
+                .remove_tree(&class_path)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    if let Ok(key) = registry.open(&app_path) {
+        if key.get_string("IconUri").map_err(|e| e.to_string())? == exe.to_string_lossy()
+            && key
+                .get_string("CustomActivator")
+                .map_err(|e| e.to_string())?
+                == guid
+        {
+            registry.remove_tree(&app_path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }

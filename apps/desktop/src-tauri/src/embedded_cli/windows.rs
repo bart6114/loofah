@@ -236,8 +236,62 @@ fn with_path_entry(current: &str, entry: &str) -> String {
     }
 }
 
+fn without_path_entry(current: &str, entry: &str) -> String {
+    current
+        .split(';')
+        .filter(|part| {
+            !part
+                .trim()
+                .trim_matches('"')
+                .trim_end_matches('\\')
+                .eq_ignore_ascii_case(entry.trim_end_matches('\\'))
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+fn uninstall_files(bin: &Path) -> Result<(), String> {
+    let Some(previous) = owned_installation(bin)? else {
+        return Ok(());
+    };
+    let staging = tempfile::Builder::new()
+        .prefix(".uninstall-")
+        .tempdir_in(bin.parent().ok_or("Invalid CLI install path")?)
+        .map_err(|e| e.to_string())?;
+    let moved = staging.path().join("bin");
+    std::fs::rename(bin, &moved)
+        .map_err(|e| format!("Close running CLI commands and try again: {e}"))?;
+    // Verify after the rename, before deleting anything, to preserve concurrent edits.
+    if owned_installation(&moved).ok().flatten().as_ref() != Some(&previous) {
+        if std::fs::rename(&moved, bin).is_err() {
+            let recovery = staging.keep();
+            return Err(format!(
+                "Changed CLI files were preserved at {}",
+                recovery.display()
+            ));
+        }
+        return Err("The CLI installation changed during uninstall; its files were kept.".into());
+    }
+    if let Err(error) = std::fs::remove_dir_all(&moved) {
+        let recovery = staging.keep();
+        return Err(format!(
+            "CLI cleanup failed: {error}. Remaining files are at {}",
+            recovery.display()
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
-fn add_to_user_path(bin: &Path) -> Result<(), String> {
+pub(super) fn uninstall(identifier: &str) -> Result<(), String> {
+    let command = super::command_name_from_identifier(identifier);
+    let bin = bin_dir(command).ok_or("The local application directory could not be found.")?;
+    uninstall_files(&bin)?;
+    update_user_path(&bin, false)
+}
+
+#[cfg(target_os = "windows")]
+fn update_user_path(bin: &Path, add: bool) -> Result<(), String> {
     use windows::Win32::{
         Foundation::{LPARAM, WPARAM},
         UI::WindowsAndMessaging::{
@@ -262,7 +316,11 @@ fn add_to_user_path(bin: &Path) -> Result<(), String> {
     } else {
         String::new()
     };
-    let updated = with_path_entry(&current, &bin.display().to_string());
+    let updated = if add {
+        with_path_entry(&current, &bin.display().to_string())
+    } else {
+        without_path_entry(&current, &bin.display().to_string())
+    };
     if updated != current {
         let bytes = updated
             .encode_utf16()
@@ -303,7 +361,7 @@ pub(super) fn install<R: tauri::Runtime, T: tauri::Manager<R>>(
     let source = resource_path(manager).ok_or("The bundled CLI could not be found.")?;
     let bin = bin_dir(command).ok_or("The local application directory could not be found.")?;
     install_files(&source, &bin, command)?;
-    add_to_user_path(&bin)?;
+    update_user_path(&bin, true)?;
     Ok(check(manager))
 }
 
@@ -313,7 +371,7 @@ pub(super) fn sync_installed<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &
     if bin_dir(command).is_some_and(|bin| bin.join(MANIFEST).is_file()) {
         if matches!(check(manager).state, super::EmbeddedCliState::Installed) {
             if let Some(bin) = bin_dir(command) {
-                if let Err(error) = add_to_user_path(&bin) {
+                if let Err(error) = update_user_path(&bin, true) {
                     tracing::warn!(%error, "failed to refresh the Windows CLI PATH entry");
                 }
             }
@@ -369,6 +427,29 @@ mod tests {
         std::fs::write(bin.join("personal.txt"), "keep").unwrap();
         assert!(install_files(&source, &bin, "loof").is_err());
         assert!(bin.join("personal.txt").exists());
+    }
+
+    #[test]
+    fn uninstall_preserves_foreign_files_and_removes_only_owned_installations() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("loof.exe");
+        std::fs::write(&source, "bundled").unwrap();
+        let bin = dir.path().join("managed/bin");
+        install_files(&source, &bin, "loof").unwrap();
+        std::fs::write(bin.join("personal.txt"), "keep").unwrap();
+        assert!(uninstall_files(&bin).is_err());
+        assert!(bin.join("loof.exe").is_file());
+        std::fs::remove_file(bin.join("personal.txt")).unwrap();
+        uninstall_files(&bin).unwrap();
+        assert!(!bin.exists());
+        uninstall_files(&bin).unwrap();
+        assert_eq!(
+            without_path_entry(
+                r#"C:\Tools;"C:\LOOFAH\bin\";%USERPROFILE%\bin"#,
+                r"C:\Loofah\bin"
+            ),
+            r"C:\Tools;%USERPROFILE%\bin"
+        );
     }
 
     #[test]
