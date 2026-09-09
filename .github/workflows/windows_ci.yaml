@@ -53,6 +53,12 @@ jobs:
       - run: pnpm -F ui build
       - run: cargo check --locked -p desktop -p loof-cli
       - run: cargo test --locked -p desktop -p loof-cli -p vault-read -p vault-write -p audio-actual -p device-monitor -p detect -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
+      - name: Diagnose native runtime dependencies
+        if: failure()
+        run: |
+          Get-ChildItem target/debug/deps/loofah_desktop_lib-*.exe | ForEach-Object {
+            node apps/desktop/src-tauri/scripts/check-windows-runtime.mjs $_.FullName
+          }
       - if: github.event_name == 'workflow_dispatch' && inputs.speech-models
         run: cargo test --locked -p transcribe-onnx --test inference -- --ignored --nocapture
       - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
