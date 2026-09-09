@@ -3,6 +3,24 @@ use std::path::Path;
 
 use tempfile::NamedTempFile;
 
+pub fn rename_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        // Antivirus and sync clients briefly hold handles without FILE_SHARE_DELETE.
+        // Keep the original file in place; never fall back to delete-then-rename.
+        for delay_ms in [10, 20, 40, 80, 160, 320] {
+            match std::fs::rename(source, target) {
+                Ok(()) => return Ok(()),
+                Err(error) if matches!(error.raw_os_error(), Some(5 | 32 | 33)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    std::fs::rename(source, target)
+}
+
 pub fn atomic_write(target: &Path, content: &str) -> std::io::Result<()> {
     let parent = target.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
@@ -12,20 +30,16 @@ pub fn atomic_write(target: &Path, content: &str) -> std::io::Result<()> {
     let mut temp = NamedTempFile::new_in(parent)?;
     temp.write_all(content.as_bytes())?;
     temp.as_file().sync_all()?;
-    temp.persist(target)?;
+    rename_with_retry(temp.path(), target)?;
     Ok(())
 }
 
 pub async fn atomic_write_async(target: &Path, content: &str) -> std::io::Result<()> {
-    let parent = target.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
-    })?;
-    tokio::fs::create_dir_all(parent).await?;
-
-    let temp = NamedTempFile::new_in(parent)?;
-    tokio::fs::write(temp.path(), content).await?;
-    temp.persist(target)?;
-    Ok(())
+    let target = target.to_path_buf();
+    let content = content.to_owned();
+    tokio::task::spawn_blocking(move || atomic_write(&target, &content))
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 pub async fn copy_dir_recursive(
@@ -63,6 +77,44 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn retries_a_sync_client_handle_without_losing_the_previous_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("notes.md");
+        fs::write(&target, "old note").unwrap();
+        let reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&target)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            drop(reader);
+        });
+        atomic_write(&target, "new note").unwrap();
+        release.join().unwrap();
+        assert_eq!(fs::read_to_string(target).unwrap(), "new note");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_persistent_lock_preserves_the_original_and_cleans_up_staging_files() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("notes.md");
+        fs::write(&target, "old note").unwrap();
+        let _reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&target)
+            .unwrap();
+        assert!(atomic_write(&target, "new note").is_err());
+        assert_eq!(fs::read_to_string(target).unwrap(), "old note");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn atomic_write_creates_file() {

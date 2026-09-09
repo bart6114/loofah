@@ -39,8 +39,8 @@ pub fn tmp_sibling_path(path: &Path) -> PathBuf {
 /// holds byte-identical content, so callers replaying unchanged state never
 /// generate spurious filesystem events.
 ///
-/// When `path` exists with **different** content, the existing file is moved
-/// to `<vault_base>/.trash/<date>/...` (via `move_to_trash`) *before* the new
+/// When `path` exists with **different** content, the existing file is copied
+/// to `<vault_base>/.trash/<date>/...` (via `copy_to_trash`) *before* the new
 /// content is written — never silently overwritten. Writes are projections
 /// of what the caller currently models: a legacy or hand-edited vault file
 /// can carry frontmatter keys or JSON fields the caller doesn't know how to
@@ -70,7 +70,7 @@ pub fn write_file_atomic(
         if existing == content {
             return Ok(false);
         }
-        move_to_trash(vault_base, path)?;
+        copy_to_trash(vault_base, path)?;
     }
 
     if let Some(parent) = tmp_path.parent() {
@@ -82,7 +82,7 @@ pub fn write_file_atomic(
         file.write_all(content)?;
         file.sync_all()?;
     }
-    std::fs::rename(tmp_path, path)?;
+    hypr_storage::fs::rename_with_retry(tmp_path, path)?;
     Ok(true)
 }
 
@@ -97,6 +97,30 @@ pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
         return Ok(None);
     }
 
+    let target = trash_destination(vault_base, path)?;
+    hypr_storage::fs::rename_with_retry(path, &target)?;
+    Ok(Some(target))
+}
+
+/// An overwrite backs up the old bytes without creating a gap at the live path.
+/// A failed replacement (including a Windows sharing violation) leaves them readable.
+pub fn copy_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<PathBuf>> {
+    match std::fs::metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        result => {
+            result?;
+        }
+    }
+    let target = trash_destination(vault_base, path)?;
+    std::fs::copy(path, &target)?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&target)?
+        .sync_all()?;
+    Ok(Some(target))
+}
+
+fn trash_destination(vault_base: &Path, path: &Path) -> crate::Result<PathBuf> {
     let relative = path.strip_prefix(vault_base).unwrap_or(path);
     let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let mut target = vault_base.join(".trash").join(date).join(relative);
@@ -105,8 +129,7 @@ pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
         std::fs::create_dir_all(parent)?;
     }
     target = unique_path(target);
-    std::fs::rename(path, &target)?;
-    Ok(Some(target))
+    Ok(target)
 }
 
 fn unique_path(path: PathBuf) -> PathBuf {

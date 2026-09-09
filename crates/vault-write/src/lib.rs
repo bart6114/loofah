@@ -221,7 +221,7 @@ impl SessionStore {
                     .map_err(|e| StoreError::Io(format!("failed to sync temp file: {}", e)))?;
             }
 
-            std::fs::rename(&tmp_path, &abs_path)
+            hypr_storage::fs::rename_with_retry(&tmp_path, &abs_path)
                 .map_err(|e| StoreError::Io(format!("failed to rename temp file: {}", e)))?;
 
             Ok::<String, StoreError>(sha256(&bytes))
@@ -300,14 +300,14 @@ fn trash_foreign_bytes(
         Ok(existing) if existing == next => return Ok(()),
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        // Attempt-then-match, and an unreadable existing file is treated as content worth
-        // keeping: trashing is a rename, so it still succeeds where the read did not.
+        // An unreadable existing file must be preserved. The backup attempt below
+        // fails the write if we cannot safely retain its bytes.
         Err(_) => {}
     }
 
-    hypr_fs_sync_core::export::move_to_trash(vault_base, abs)
+    hypr_fs_sync_core::export::copy_to_trash(vault_base, abs)
         .map(|_| ())
-        .map_err(|e| StoreError::Io(format!("failed to move overwritten file to trash: {e}")))
+        .map_err(|e| StoreError::Io(format!("failed to back up overwritten file to trash: {e}")))
 }
 
 /// Rejects a vault-relative path that could escape the vault. Guards the id/kind segments
