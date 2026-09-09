@@ -370,6 +370,10 @@ msgstr ""
 msgid "Confirm"
 msgstr ""
 
+#: src/onboarding/index.tsx
+msgid "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+msgstr ""
+
 #: src/templates/auto-form.tsx
 msgid "Context always provided"
 msgstr ""
@@ -421,6 +425,10 @@ msgstr ""
 #. placeholder {0}: attachment.attachmentId
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
+msgid "Couldn’t open attachments in File Explorer"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -774,6 +782,10 @@ msgstr ""
 msgid "Keep Loofah available from the menu bar."
 msgstr ""
 
+#: src/settings/general/app-settings.tsx
+msgid "Keep Loofah available from the notification area."
+msgstr ""
+
 #: src/settings/general/index.tsx
 msgid "Language & Region"
 msgstr "ਭਾਸ਼ਾ ਅਤੇ ਖੇਤਰ"
@@ -1103,6 +1115,7 @@ msgstr ""
 msgid "permission panel."
 msgstr ""
 
+#: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Permissions"
@@ -1392,6 +1405,10 @@ msgid "Show app in Dock"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
+msgid "Show app in taskbar"
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
 msgid "Show floating bar"
 msgstr ""
 
@@ -1402,11 +1419,21 @@ msgstr ""
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/ai/stt/select.tsx
 #: src/sidebar/timeline/item.tsx
+msgid "Show in File Explorer"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
+#: src/settings/ai/stt/select.tsx
+#: src/sidebar/timeline/item.tsx
 msgid "Show in Finder"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show Loofah in the Dock and app switcher."
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "Show Loofah in the taskbar and app switcher."
 msgstr ""
 
 #: src/settings/general/app-settings.tsx

@@ -28,7 +28,10 @@ pub fn diarize_samples(samples: &[f32], sample_rate_hz: u32) -> Result<Vec<Diari
 }
 
 fn ensure_supported_platform() -> Result<()> {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+    if cfg!(any(
+        target_os = "windows",
+        all(target_os = "macos", target_arch = "aarch64")
+    )) {
         Ok(())
     } else {
         Err(Error::UnsupportedPlatform)
@@ -101,7 +104,56 @@ mod platform {
     }
 }
 
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+#[cfg(target_os = "windows")]
+mod platform {
+    use super::*;
+    use hypr_transcribe_onnx::{
+        diarize::Diarizer,
+        models::{self, Model},
+    };
+    static OPERATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    pub(super) fn model_download_state() -> Result<ModelDownloadState> {
+        let state = models::state(Model::Diarizer).map_err(|e| Error::Bridge(e.to_string()))?;
+        Ok(ModelDownloadState {
+            status: state.status,
+            current_file: state.current_file,
+            progress_percent: state.progress_percent,
+            local_path: state.local_path,
+            error: state.error,
+        })
+    }
+    pub(super) fn start_model_download() -> Result<()> {
+        models::start(Model::Diarizer).map_err(|e| Error::Bridge(e.to_string()))
+    }
+    pub(super) fn diarize_samples(
+        samples: &[f32],
+        sample_rate_hz: u32,
+    ) -> Result<Vec<DiarizeSegment>> {
+        let _operation = OPERATION.lock().unwrap_or_else(|e| e.into_inner());
+        let run =
+            || Diarizer::load().and_then(|mut engine| engine.process(samples, sample_rate_hz));
+        // Release the model after each job so batch transcription and local summaries
+        // do not leave several idle engines resident on a 16 GB machine.
+        run()
+            .map(|segments| {
+                segments
+                    .into_iter()
+                    .map(|s| DiarizeSegment {
+                        start_ms: s.start_ms,
+                        end_ms: s.end_ms,
+                        speaker_index: s.speaker_index,
+                    })
+                    .collect()
+            })
+            .map_err(|e| Error::Bridge(e.to_string()))
+    }
+}
+
+#[cfg(not(any(
+    target_os = "windows",
+    all(target_os = "macos", target_arch = "aarch64")
+)))]
 mod platform {
     use super::*;
 

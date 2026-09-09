@@ -183,7 +183,13 @@ mod tests {
     #[test]
     fn fmtr_soniqo_live_respects_platform_support() {
         let languages = vec!["en".parse().unwrap()];
-        let expected = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+        let expected = cfg!(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(
+                target_os = "windows",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )
+        ));
 
         assert_eq!(
             is_supported_languages_live("fmtr", Some("soniqo-parakeet-streaming"), &languages)

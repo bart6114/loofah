@@ -2,6 +2,8 @@
 //! fs-sync plugin's `attachment_save`: sanitize to a basename, then a `create_new`
 //! dedupe loop so an existing file is never overwritten.
 
+#[cfg(any(target_os = "windows", test))]
+use hypr_storage::fs::windows_safe_filename as windows_basename;
 use std::path::{Path, PathBuf};
 
 use super::{SessionStore, StoreError, validate_session_id};
@@ -63,6 +65,9 @@ fn sanitize_filename(filename: &str) -> Result<String, StoreError> {
         ));
     }
 
+    #[cfg(target_os = "windows")]
+    return Ok(windows_basename(clean_name));
+    #[cfg(not(target_os = "windows"))]
     Ok(clean_name.to_string())
 }
 
@@ -128,6 +133,41 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
 mod tests {
     use super::super::SessionMeta;
     use super::*;
+
+    #[test]
+    fn windows_attachment_names_cannot_address_devices_or_alternate_data_streams() {
+        for (name, expected) in [
+            ("CON.txt", "_CON.txt"),
+            ("aux", "_aux"),
+            ("COM¹.pdf", "_COM¹.pdf"),
+            ("CONOUT$", "_CONOUT$"),
+            ("notes.txt:stream", "notes.txt_stream"),
+            ("Agenda. ", "Agenda"),
+            (".hidden", "_.hidden"),
+        ] {
+            assert_eq!(windows_basename(name), expected);
+        }
+        assert_eq!(windows_basename("Réunion notes.pdf"), "Réunion notes.pdf");
+        let long = windows_basename(&format!("{}.pdf", "会議".repeat(100)));
+        assert!(long.len() <= 180);
+        assert!(long.ends_with(".pdf"));
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "windows")]
+    async fn windows_attachment_rename_is_returned_to_the_note_editor() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Meeting")).await.unwrap();
+        let saved = store
+            .save_attachment("s1", "NUL.txt", b"ordinary attachment".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(saved.attachment_id, "_NUL.txt");
+        assert_eq!(
+            std::fs::read(vault.path().join(saved.relative_path)).unwrap(),
+            b"ordinary attachment"
+        );
+    }
 
     fn meta(id: &str, title: &str) -> SessionMeta {
         SessionMeta {

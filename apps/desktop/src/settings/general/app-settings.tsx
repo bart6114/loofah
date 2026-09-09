@@ -1,4 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
+import { platform } from "@tauri-apps/plugin-os";
 import { type ReactNode, useId } from "react";
 
 import {
@@ -38,6 +39,7 @@ export function AppSettingsView({
   showTrayIcon,
   audioRetention,
 }: AppSettingsViewProps) {
+  const isWindows = platform() === "windows";
   return (
     <div className="flex flex-col gap-8">
       <section>
@@ -51,9 +53,19 @@ export function AppSettingsView({
             onChange={autostart.onChange}
           />
           <SettingRow
-            title={<Trans>Show app in Dock</Trans>}
+            title={
+              isWindows ? (
+                <Trans>Show app in taskbar</Trans>
+              ) : (
+                <Trans>Show app in Dock</Trans>
+              )
+            }
             description={
-              <Trans>Show Loofah in the Dock and app switcher.</Trans>
+              isWindows ? (
+                <Trans>Show Loofah in the taskbar and app switcher.</Trans>
+              ) : (
+                <Trans>Show Loofah in the Dock and app switcher.</Trans>
+              )
             }
             checked={showAppInDock.value}
             onChange={showAppInDock.onChange}
@@ -61,7 +73,11 @@ export function AppSettingsView({
           <SettingRow
             title={<Trans>Show tray icon</Trans>}
             description={
-              <Trans>Keep Loofah available from the menu bar.</Trans>
+              isWindows ? (
+                <Trans>Keep Loofah available from the notification area.</Trans>
+              ) : (
+                <Trans>Keep Loofah available from the menu bar.</Trans>
+              )
             }
             checked={showTrayIcon.value}
             onChange={showTrayIcon.onChange}

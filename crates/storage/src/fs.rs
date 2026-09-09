@@ -3,6 +3,90 @@ use std::path::Path;
 
 use tempfile::NamedTempFile;
 
+pub fn windows_safe_filename(name: &str) -> String {
+    let replaced: String = name
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                )
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let mut name = replaced.trim_end_matches(['.', ' ']).to_string();
+    let device = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    if name.is_empty()
+        || name.starts_with('.')
+        || matches!(
+            device.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$"
+        )
+        || ["COM", "LPT"].iter().any(|prefix| {
+            device.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(
+                    suffix,
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        })
+    {
+        name.insert(0, '_');
+    }
+    if name.len() > 180 {
+        let extension = Path::new(&name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .filter(|value| value.len() <= 24)
+            .map(|value| format!(".{value}"))
+            .unwrap_or_default();
+        let mut boundary = 180 - extension.len();
+        while !name.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        name.truncate(boundary);
+        name.push_str(&extension);
+        name.truncate(name.trim_end_matches(['.', ' ']).len());
+    }
+    name
+}
+
+pub fn relative_path_key(path: &str) -> std::borrow::Cow<'_, str> {
+    #[cfg(target_os = "windows")]
+    if path.contains('\\') {
+        return std::borrow::Cow::Owned(path.replace('\\', "/"));
+    }
+    std::borrow::Cow::Borrowed(path)
+}
+
+pub fn rename_with_retry(source: &Path, target: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        // Antivirus and sync clients briefly hold handles without FILE_SHARE_DELETE.
+        // Keep the original file in place; never fall back to delete-then-rename.
+        for delay_ms in [10, 20, 40, 80, 160, 320] {
+            match std::fs::rename(source, target) {
+                Ok(()) => return Ok(()),
+                Err(error) if matches!(error.raw_os_error(), Some(5 | 32 | 33)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    std::fs::rename(source, target)
+}
+
 pub fn atomic_write(target: &Path, content: &str) -> std::io::Result<()> {
     let parent = target.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
@@ -12,20 +96,31 @@ pub fn atomic_write(target: &Path, content: &str) -> std::io::Result<()> {
     let mut temp = NamedTempFile::new_in(parent)?;
     temp.write_all(content.as_bytes())?;
     temp.as_file().sync_all()?;
-    temp.persist(target)?;
+    rename_with_retry(temp.path(), target)?;
     Ok(())
 }
 
-pub async fn atomic_write_async(target: &Path, content: &str) -> std::io::Result<()> {
-    let parent = target.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
-    })?;
-    tokio::fs::create_dir_all(parent).await?;
+pub fn write_staged_file(target: &Path, temporary: &Path, content: &[u8]) -> std::io::Result<()> {
+    let temporary = std::path::absolute(temporary)?;
+    let file = std::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    let mut staged = NamedTempFile::from_parts(file, tempfile::TempPath::try_from_path(temporary)?);
+    staged.write_all(content)?;
+    staged.as_file().sync_all()?;
+    // Close the file before replacement, and remove our staging file if Windows
+    // sharing restrictions keep the replacement from succeeding.
+    let staged = staged.into_temp_path();
+    rename_with_retry(&staged, target)
+}
 
-    let temp = NamedTempFile::new_in(parent)?;
-    tokio::fs::write(temp.path(), content).await?;
-    temp.persist(target)?;
-    Ok(())
+pub async fn atomic_write_async(target: &Path, content: &str) -> std::io::Result<()> {
+    let target = target.to_path_buf();
+    let content = content.to_owned();
+    tokio::task::spawn_blocking(move || atomic_write(&target, &content))
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 pub async fn copy_dir_recursive(
@@ -63,6 +158,64 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn retries_a_sync_client_handle_without_losing_the_previous_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("notes.md");
+        fs::write(&target, "old note").unwrap();
+        let reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&target)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            drop(reader);
+        });
+        atomic_write(&target, "new note").unwrap();
+        release.join().unwrap();
+        assert_eq!(fs::read_to_string(target).unwrap(), "new note");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_persistent_lock_preserves_the_original_and_cleans_up_staging_files() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("notes.md");
+        fs::write(&target, "old note").unwrap();
+        let _reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&target)
+            .unwrap();
+        assert!(atomic_write(&target, "new note").is_err());
+        assert!(write_staged_file(&target, &dir.path().join(".tmp-note"), b"new note").is_err());
+        assert_eq!(fs::read_to_string(target).unwrap(), "old note");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_replacement_cleans_up_only_its_own_staging_file() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("notes.md");
+        let temporary = dir.path().join(".tmp-note");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("personal.txt"), "keep me").unwrap();
+        assert!(write_staged_file(&target, &temporary, b"new note").is_err());
+        assert!(!temporary.exists());
+        assert_eq!(
+            fs::read_to_string(target.join("personal.txt")).unwrap(),
+            "keep me"
+        );
+
+        fs::write(&temporary, "already here").unwrap();
+        assert!(write_staged_file(&target, &temporary, b"new note").is_err());
+        assert_eq!(fs::read_to_string(&temporary).unwrap(), "already here");
+    }
 
     #[test]
     fn atomic_write_creates_file() {

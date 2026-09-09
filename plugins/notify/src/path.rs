@@ -43,17 +43,28 @@ pub fn should_skip_path(relative_path: &str, path: &Path) -> bool {
 }
 
 pub fn to_relative_path(path: &Path, base: &Path) -> String {
-    path.strip_prefix(base)
+    let path = dunce::simplified(path);
+    let base = dunce::simplified(base);
+    let relative = path
+        .strip_prefix(base)
         .unwrap_or(path)
         .to_str()
-        .unwrap_or_default()
-        .to_string()
+        .unwrap_or_default();
+    hypr_storage::fs::relative_path_key(relative).into_owned()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_verbatim_paths_use_the_same_relative_key_as_regular_paths() {
+        let path = Path::new(r"\\?\C:\Users\Bart\vault\sessions\one\notes.md");
+        let base = Path::new(r"C:\Users\Bart\vault");
+        assert_eq!(to_relative_path(path, base), "sessions/one/notes.md");
+    }
 
     #[test]
     fn test_skip_ds_store() {

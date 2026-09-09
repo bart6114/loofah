@@ -218,11 +218,14 @@ fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
         ));
     }
 
-    if !model.starts_with("soniqo-") {
+    if model
+        .parse::<hypr_transcribe_soniqo::SoniqoModel>()
+        .is_err()
+    {
         return Err(Error::operation(
             ACTION,
             format!(
-                "speech-to-text model '{model}' is not supported by the CLI yet; only on-device Soniqo models (soniqo-*) work here"
+                "speech-to-text model '{model}' is not supported by the CLI yet; select an on-device Parakeet model"
             ),
         ));
     }

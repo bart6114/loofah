@@ -1,5 +1,6 @@
 import { Trans } from "@lingui/react/macro";
 import { useQueryClient } from "@tanstack/react-query";
+import { platform } from "@tauri-apps/plugin-os";
 import { useCallback, useState } from "react";
 
 import { cn } from "@hypr/utils";
@@ -119,15 +120,29 @@ function OnboardingScreenContent({
         <div className="flex flex-col gap-4 px-12 pb-16">
           <OnboardingSection
             title={<Trans>Start with permissions</Trans>}
-            completedTitle={<Trans>Permissions granted</Trans>}
+            completedTitle={
+              platform() === "windows" ? (
+                <Trans>Permissions</Trans>
+              ) : (
+                <Trans>Permissions granted</Trans>
+              )
+            }
             description={
-              <Trans>
-                Loofah needs access to your microphone and system audio to
-                record and transcribe your meetings
-              </Trans>
+              platform() === "windows" ? (
+                <Trans>
+                  Connect a microphone and allow desktop apps to use it in
+                  Windows Settings. You can skip this step to use notes and
+                  import recordings, then set up recording later.
+                </Trans>
+              ) : (
+                <Trans>
+                  Loofah needs access to your microphone and system audio to
+                  record and transcribe your meetings
+                </Trans>
+              )
             }
             status={getStepStatus("permissions", currentStep)}
-            skippable={false}
+            skippable={platform() === "windows"}
             onBack={goBack}
             onNext={goNext}
           >

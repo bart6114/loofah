@@ -1,6 +1,8 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { stageWindowsRuntime } from "./windows-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +25,21 @@ function runScript(scriptName) {
 }
 
 if (process.platform === "win32") {
-  console.log("[before-bundle] Windows detected, skipping shell bundle hooks.");
+  const tauriDir = path.resolve(scriptDir, "..");
+  const host = spawnSync("rustc", ["-vV"], { encoding: "utf8" }).stdout?.match(
+    /^host: (.+)$/m,
+  )?.[1];
+  const target = process.env.TAURI_ENV_TARGET_TRIPLE ?? host;
+  if (!target) throw new Error("Unable to determine the Windows build target");
+  const targetDir = path.resolve(
+    tauriDir,
+    process.env.CARGO_TARGET_DIR ?? "target",
+  );
+  stageWindowsRuntime(
+    tauriDir,
+    [path.join(targetDir, ...(target === host ? [] : [target]), "release")],
+    target,
+  );
   process.exit(0);
 }
 

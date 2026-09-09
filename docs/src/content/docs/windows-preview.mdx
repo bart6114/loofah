@@ -1,0 +1,60 @@
+---
+title: "Windows preview"
+description: "Install and test the Windows 11 preview on x64 and ARM64."
+---
+
+Windows support is in preview. Use Windows 11 on an x64 or ARM64 computer with at least 16 GB of RAM. A dedicated GPU is not required. Performance and long-recording acceptance testing on both architectures is still pending.
+
+## Install a test build
+
+Download the artifact matching your processor from a successful [Windows CI run](https://github.com/bart6114/loofah/actions/workflows/windows_ci.yaml). GitHub requires you to sign in to download workflow artifacts. Choose `x86_64-pc-windows-msvc` for Intel or AMD PCs, or `aarch64-pc-windows-msvc` for ARM PCs.
+
+Extract the artifact and run its `-setup.exe`. The installer works for your Windows account and includes the WebView2 installer. Preview installers are unsigned while publisher signing is being provisioned; Windows can show an unknown-publisher warning. These staging builds do not use the stable update feed.
+
+The staging app has its own settings and default vault. To try existing notes, use a copy of your vault. You can choose that copy in Settings. Vault files use the same format on macOS and Windows.
+
+## Recording and speech models
+
+Enable **Microphone access** and **Let desktop apps access your microphone** in **Windows Settings → Privacy & security → Microphone**. Loofah's permission screen links to these settings. System audio records the default Windows playback device through WASAPI loopback; no virtual audio driver is needed.
+
+If no microphone is connected, you can skip permissions during onboarding and use notes and imported recordings. Connect a microphone and enable access before starting a new recording.
+
+Recording follows changes to the default microphone and playback device. If a device disconnects, Loofah retries it while preserving the other audio source. It reopens both sources after the PC wakes from sleep. A recovery message appears while a source is unavailable.
+
+Download speech models in **Settings → Intelligence** before going offline:
+
+- The streaming Parakeet model provides live English transcription.
+- The batch Parakeet model transcribes recordings and imports in the supported [25 European languages](/languages).
+- Speaker detection downloads automatically alongside speech models and adds labels after transcription. Batch transcription still works if that download is missing or fails; its status and retry control are shown in Settings. Live speaker detection is unavailable.
+
+Windows runs these models locally on the CPU. Model files are checked against pinned checksums. Existing macOS model selections resolve to the corresponding Windows model when opening a shared vault; the app does not rewrite those selections merely because the platform changed.
+
+AI summaries can use the same local or API-key providers as on macOS. API providers require a network connection.
+
+## CLI and MCP
+
+Open **Settings → Agents** and install the bundled CLI. It lives under `%LOCALAPPDATA%\Loofah\cli\` and the app adds its directory to your account's `PATH`. Open a new terminal afterwards.
+
+Staging builds install `loof-staging`; stable builds use `loof`. For example:
+
+```powershell
+loof-staging --version
+loof-staging --json doctor
+loof-staging mcp
+```
+
+The artifact also includes a standalone `cli` directory. Keep its DLLs beside `loof-staging.exe` when moving or distributing it. The executable name selects the staging app's default vault. Use an absolute executable path when configuring an MCP client that cannot find the command on `PATH`.
+
+App updates refresh an opted-in CLI. Uninstalling the app removes the managed CLI and its PATH entry when its files are unchanged. Modified files are preserved. Your vault is separate from this cleanup.
+
+## Windows behavior
+
+Keyboard shortcuts use Ctrl in place of Command. Standard window buttons support minimize, maximize, and Snap. The floating recording bar and live captions can be moved between displays; use the bar's gear button to adjust appearance and caption position.
+
+Meeting reminders use Windows notifications. Enable notifications for Loofah in Windows Settings and check Do Not Disturb if reminders are missing. Apple Reminders integration is unavailable on Windows; vault-backed tasks and GitHub tasks remain available.
+
+Hooks can run executables or `.ps1` files. Quote paths containing spaces. PowerShell hooks respect your account's execution policy, receive no interactive input, and have a 15-second timeout, including interpreter startup. Arguments are passed directly without shell interpolation; use an explicit script for pipelines or redirection.
+
+## Report a preview issue
+
+Include your Windows build, processor architecture, audio-device names, whether the app was waking from sleep, and the workflow run that supplied the installer. For capture problems, describe which source stopped: microphone, system audio, or both. Avoid attaching private recordings or vault contents to a public issue.

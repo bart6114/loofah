@@ -64,7 +64,7 @@ export function getBatchProvider(
     return null;
   }
 
-  if (model.startsWith("soniqo-")) return "soniqo";
+  if (model.startsWith("soniqo-") || model.startsWith("onnx-")) return "soniqo";
   if (model.startsWith("am-")) return "am";
   return "fmtr";
 }

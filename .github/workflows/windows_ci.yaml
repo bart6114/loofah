@@ -1,0 +1,126 @@
+name: windows-ci
+
+on:
+  workflow_dispatch:
+    inputs:
+      speech-models:
+        description: Download pinned models and run real CPU inference
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    if: github.event_name != 'workflow_dispatch' || !inputs.speech-models
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The docs workspace includes workerd, which has no Windows ARM64 build.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm rebuild esbuild dprint
+      - run: node .github/scripts/install_windows_deno.mjs
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: windows
+      - run: pnpm -F ui build
+      - run: cargo check --locked -p desktop -p loof-cli
+      - run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p hooks -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
+      - name: Diagnose native runtime dependencies
+        if: failure()
+        run: |
+          Get-ChildItem target/debug/deps/*.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(loofah_desktop_lib|tauri_plugin_notify)-' } | ForEach-Object {
+            node apps/desktop/src-tauri/scripts/check-windows-runtime.mjs $_.FullName
+          }
+      - name: Verify signing configuration contracts
+        run: node --test apps/desktop/src-tauri/scripts/sign-windows.test.mjs
+      - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
+      - id: bundle
+        run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging
+      - name: Check CLI
+        run: |
+          New-Item -ItemType Directory -Force artifacts/cli | Out-Null
+          Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe artifacts/
+          Copy-Item target/release/loof.exe artifacts/cli/loof-staging.exe
+          Copy-Item apps/desktop/src-tauri/resources/windows-runtime/*.dll artifacts/cli/
+          & artifacts/cli/loof-staging.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & artifacts/cli/loof-staging.exe mcp --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installed app and uninstall
+        run: ./apps/desktop/src-tauri/scripts/test-windows-install.ps1
+      - name: Collect installed app logs
+        if: always() && steps.bundle.outcome == 'success'
+        run: |
+          $logs = Join-Path $env:LOCALAPPDATA 'io.loofah.staging/logs'
+          if (Test-Path $logs) {
+            New-Item -ItemType Directory -Force artifacts/logs | Out-Null
+            Get-ChildItem $logs -File | Copy-Item -Destination artifacts/logs/
+          }
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.bundle.outcome == 'success'
+        with:
+          name: loofah-windows-${{ matrix.target }}-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  speech-models:
+    if: github.event_name == 'workflow_dispatch' && inputs.speech-models
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: windows
+      - name: Run real live and batch transcription
+        run: cargo test --locked -p transcribe-onnx --test inference -- --ignored --nocapture
+      - name: Run real speaker detection
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP 'six-speakers.wav'
+          Invoke-WebRequest 'https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav' -OutFile $fixture
+          if ((Get-FileHash $fixture -Algorithm SHA256).Hash -ne '51a8b70d0213e25b410aa9494044f8a031177c144ffeca2a72f70aded939f760') { throw 'Diarization fixture checksum mismatch' }
+          $env:LOOFAH_DIARIZATION_FIXTURE = $fixture
+          cargo test --locked -p transcribe-onnx --test diarization -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p transcribe-onnx --lib embedding_matches_reference -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

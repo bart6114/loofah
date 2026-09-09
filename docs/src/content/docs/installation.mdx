@@ -25,7 +25,7 @@ Supported platforms:
 - Linux on x86_64 and arm64 (glibc 2.35 or newer, such as Ubuntu 22.04, Debian 12, RHEL 9, or later; musl-based distributions such as Alpine are not supported)
 
 :::note
-On-device transcription (`loof transcribe`) runs only on Apple Silicon Macs. Every other command and the MCP server work on all supported platforms.
+On-device transcription (`loof transcribe`) runs on Apple Silicon Macs and in the [Windows 11 preview](/windows-preview). Every other command and the MCP server work on all supported platforms.
 :::
 
 If the install directory is not on `PATH`, the script adds it to your shell profile (`~/.zshrc`, `~/.bashrc`/`~/.bash_profile`, or fish's `config.fish`). Restart your shell afterwards. If your shell still cannot find `loof`, add it manually:
@@ -59,7 +59,7 @@ loof --version
 
 Cargo normally writes commands to `~/.cargo/bin`. Add that directory to `PATH` if needed.
 
-There is no Homebrew formula or Windows package yet.
+There is no Homebrew formula yet. Windows 11 test installers and bundled CLI binaries are available through the [Windows preview](/windows-preview); the shell installer above remains macOS/Linux only.
 
 ## Connect to the vault
 

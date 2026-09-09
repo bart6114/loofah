@@ -1,10 +1,8 @@
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
+#[cfg(target_os = "macos")]
 pub fn is_do_not_disturb() -> bool {
-    if !cfg!(target_os = "macos") {
-        return false;
-    }
-
     match Command::new("defaults")
         .args([
             "read",
@@ -23,4 +21,14 @@ pub fn is_do_not_disturb() -> bool {
         }
         Err(_) => false,
     }
+}
+
+#[cfg(target_os = "windows")]
+pub fn is_do_not_disturb() -> bool {
+    use windows::Win32::UI::Shell::{QUNS_ACCEPTS_NOTIFICATIONS, SHQueryUserNotificationState};
+    unsafe { SHQueryUserNotificationState() }.is_ok_and(|state| state != QUNS_ACCEPTS_NOTIFICATIONS)
+}
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn is_do_not_disturb() -> bool {
+    false
 }

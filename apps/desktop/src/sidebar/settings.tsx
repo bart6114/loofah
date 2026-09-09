@@ -81,8 +81,8 @@ export function SettingsNav() {
       ],
     },
   ];
-  const isMacos = platform() === "macos";
-  if (isMacos) {
+  const os = platform();
+  if (os === "macos" || os === "windows") {
     groups[0].items.push({
       id: "permissions" as const,
       label: t`Permissions`,

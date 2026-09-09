@@ -243,6 +243,8 @@ impl FsSyncCore {
         std::fs::create_dir_all(&attachments_dir)?;
 
         let safe_filename = sanitize_filename(filename)?;
+        #[cfg(target_os = "windows")]
+        let safe_filename = hypr_storage::fs::windows_safe_filename(&safe_filename);
         let (file_path, final_filename) =
             write_unique_file(&attachments_dir, &safe_filename, data)?;
 
@@ -271,6 +273,8 @@ impl FsSyncCore {
             .and_then(|name| name.to_str())
             .ok_or_else(|| Error::Path("attachment_source_filename_invalid".into()))?;
         let safe_filename = sanitize_filename(filename)?;
+        #[cfg(target_os = "windows")]
+        let safe_filename = hypr_storage::fs::windows_safe_filename(&safe_filename);
         let session_dir = self.resolve_session_dir(session_id)?;
         let attachments_dir = session_dir.join("attachments");
         std::fs::create_dir_all(&attachments_dir)?;
@@ -1150,6 +1154,23 @@ mod tests {
 
         assert!(matches!(result, Err(Error::Path(message)) if message == "session_id_invalid"));
         temp.child("outside").assert(predicates::path::missing());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn attachment_save_uses_safe_windows_names_and_returns_the_actual_name() {
+        let temp = TempDir::new().unwrap();
+        temp.child("sessions")
+            .child(UUID_1)
+            .create_dir_all()
+            .unwrap();
+        let core = FsSyncCore::new(temp.path().to_path_buf());
+        let attachment = core.attachment_save(UUID_1, b"notes", "NUL.txt").unwrap();
+        assert_eq!(attachment.attachment_id, "_NUL.txt");
+        temp.child("sessions")
+            .child(UUID_1)
+            .child("attachments/_NUL.txt")
+            .assert("notes");
     }
 
     #[test]

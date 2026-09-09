@@ -92,12 +92,14 @@ impl DiarizerModel {
 
     pub fn size_bytes(&self) -> u64 {
         match self {
+            DiarizerModel::FluidCommunity if cfg!(target_os = "windows") => 49769506,
             DiarizerModel::FluidCommunity => 104857600,
         }
     }
 
     pub fn description(&self) -> &'static str {
         match self {
+            DiarizerModel::FluidCommunity if cfg!(target_os = "windows") => "48 MB",
             DiarizerModel::FluidCommunity => "100 MB",
         }
     }
@@ -248,7 +250,7 @@ impl LocalModel {
             LocalModel::Whisper(_) => is_apple_silicon,
             LocalModel::Am(_) => is_apple_silicon,
             LocalModel::GgufLlm(_) => cfg!(target_arch = "aarch64"),
-            LocalModel::Diarizer(_) => is_apple_silicon,
+            LocalModel::Diarizer(_) => is_apple_silicon || cfg!(target_os = "windows"),
         }
     }
 }

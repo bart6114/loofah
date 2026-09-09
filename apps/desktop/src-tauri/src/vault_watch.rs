@@ -152,6 +152,8 @@ pub fn classify_event(
     journal_match: bool,
     catalog_session_id: Option<&str>,
 ) -> WatchAction {
+    let relative = hypr_storage::fs::relative_path_key(relative);
+    let relative = relative.as_ref();
     if journal_match {
         return WatchAction::Ignore;
     }

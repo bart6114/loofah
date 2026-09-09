@@ -18,3 +18,9 @@ hypr-notification-macos = { path = "../notification-macos", package = "notificat
 
 [target.'cfg(target_os = "linux")'.dependencies]
 hypr-notification-linux = { path = "../notification-linux", package = "notification-linux", optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-registry = "0.6"
+windows-core = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+windows = { workspace = true, features = ["Data_Xml_Dom", "Foundation", "Foundation_Collections", "UI_Notifications", "Win32_System_WinRT", "Win32_System_Com", "Win32_UI_Notifications"] }

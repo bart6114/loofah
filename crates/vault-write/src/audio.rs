@@ -232,7 +232,7 @@ mod tests {
             .unwrap();
 
         let session_dir = vault.path().join("sessions/s1");
-        assert_eq!(stored, session_dir.join("audio.wav").to_str().unwrap());
+        assert_eq!(Path::new(&stored), session_dir.join("audio.wav"));
         assert!(
             hypr_fs_sync_core::audio::exists(&session_dir).unwrap(),
             "the audio player's existence check must find the stored recording"

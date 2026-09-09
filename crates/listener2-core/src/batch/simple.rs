@@ -107,7 +107,7 @@ async fn run_direct_batch<A: BatchSttAdapter>(
         };
         tracing::info!("batch transcription completed");
 
-        stamp_batch_response(&mut response, &*diarization.segments().await);
+        stamp_batch_response(&mut response, &*diarization.segments().await?);
 
         Ok(BatchRunOutput {
             session_id: params.session_id,
@@ -211,7 +211,7 @@ pub(super) async fn run_soniqo_batch(
         );
 
         let mut response = hypr_transcribe_soniqo::batch_response_from_channels(model, transcribed);
-        stamp_batch_response(&mut response, &*diarization.segments().await);
+        stamp_batch_response(&mut response, &*diarization.segments().await?);
 
         Ok(BatchRunOutput {
             session_id: params.session_id,
@@ -375,7 +375,11 @@ fn soniqo_language_hint(language: Option<&str>) -> Option<String> {
 }
 
 fn uses_resilient_soniqo_chunking(model: hypr_transcribe_soniqo::SoniqoModel) -> bool {
-    matches!(model, hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch)
+    matches!(
+        model,
+        hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch
+            | hypr_transcribe_soniqo::SoniqoModel::OnnxParakeetBatch
+    )
 }
 
 fn soniqo_batch_progress(completed_chunks: usize, total_chunks: usize) -> f64 {
@@ -497,10 +501,10 @@ fn transcribe_soniqo_channel_chunks(
             "soniqo_chunk_native_inference_start"
         );
 
-        let text = match transcribe_soniqo_samples(model, &chunk.samples, language) {
+        let transcript = match transcribe_soniqo_samples(model, &chunk.samples, language) {
             Ok(transcript) => {
                 successful_chunks += 1;
-                transcript.text
+                transcript
             }
             Err(e) => {
                 failed_chunks += 1;
@@ -525,11 +529,25 @@ fn transcribe_soniqo_channel_chunks(
             channel.index = channel_index,
             chunk.index = chunk_index,
             elapsed_ms = chunk_started_at.elapsed().as_millis() as u64,
-            transcript.text_chars = text.chars().count(),
+            transcript.text_chars = transcript.text.chars().count(),
             "soniqo_chunk_native_inference_completed"
         );
 
-        let text = text.trim();
+        if model.resolved() == hypr_transcribe_soniqo::SoniqoModel::OnnxParakeetBatch
+            && !transcript.chunks.is_empty()
+        {
+            let offset = chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64;
+            for mut part in transcript.chunks {
+                part.start_seconds += offset;
+                for span in &mut part.speech_spans {
+                    span.start_seconds += offset;
+                    span.end_seconds += offset;
+                }
+                transcript_chunks.push(part);
+            }
+            continue;
+        }
+        let text = transcript.text.trim();
         if !text.is_empty() {
             texts.push(text.to_string());
             transcript_chunks.push(hypr_transcribe_soniqo::FileTranscriptChunk {
@@ -549,21 +567,10 @@ fn transcribe_soniqo_channel_chunks(
         }
     }
 
-    if successful_chunks == 0 && failed_chunks > 0 {
-        return Err(format!(
-            "Soniqo failed to transcribe all {failed_chunks} chunk(s) for channel {channel_index}."
-        ));
-    }
-
     if failed_chunks > 0 {
-        tracing::warn!(
-            fmtr.stt.provider.name = "soniqo",
-            fmtr.stt.model = %model,
-            channel.index = channel_index,
-            chunk.success_count = successful_chunks,
-            chunk.failed_count = failed_chunks,
-            "soniqo_channel_completed_with_chunk_failures"
-        );
+        return Err(format!(
+            "Transcription incomplete: {failed_chunks} chunk(s) failed and {successful_chunks} succeeded on channel {channel_index}. The recording has been kept so you can retry."
+        ));
     }
 
     if transcript_chunks.is_empty() {
@@ -611,7 +618,7 @@ fn soniqo_channel_chunks(
     model: hypr_transcribe_soniqo::SoniqoModel,
     samples: &[f32],
 ) -> std::result::Result<Vec<ChannelChunk>, String> {
-    if model == hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch {
+    if uses_resilient_soniqo_chunking(model) {
         return Ok(
             match chunk_channel_audio::<hypr_audio_chunking::Error>(samples) {
                 Ok(chunks) => {
