@@ -43,7 +43,7 @@ loof-staging --json doctor
 loof-staging mcp
 ```
 
-The artifact also includes a standalone `cli` directory. Keep its DLLs beside `loof.exe` when moving or distributing it. Use an absolute executable path when configuring an MCP client that cannot find the command on `PATH`.
+The artifact also includes a standalone `cli` directory. Keep its DLLs beside `loof-staging.exe` when moving or distributing it. The executable name selects the staging app's default vault. Use an absolute executable path when configuring an MCP client that cannot find the command on `PATH`.
 
 App updates refresh an opted-in CLI. Uninstalling the app removes the managed CLI and its PATH entry when its files are unchanged. Modified files are preserved. Your vault is separate from this cleanup.
 
