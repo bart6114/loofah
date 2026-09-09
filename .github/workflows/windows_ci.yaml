@@ -88,6 +88,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test installed app and uninstall
         run: ./apps/desktop/src-tauri/scripts/test-windows-install.ps1
+      - name: Collect installed app logs
+        if: always() && steps.bundle.outcome == 'success'
+        run: |
+          $logs = Join-Path $env:LOCALAPPDATA 'io.loofah.staging/logs'
+          if (Test-Path $logs) {
+            New-Item -ItemType Directory -Force artifacts/logs | Out-Null
+            Get-ChildItem $logs -File | Copy-Item -Destination artifacts/logs/
+          }
       - uses: actions/upload-artifact@v4
         if: always() && steps.bundle.outcome == 'success'
         with:
@@ -95,5 +103,6 @@ jobs:
           path: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             artifacts/cli/
+            artifacts/logs/
           if-no-files-found: error
           retention-days: 14

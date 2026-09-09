@@ -26,6 +26,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Installed MCP command failed to start' }
 $app = Start-Process -FilePath $executable -PassThru
 try {
     if ($app.WaitForExit(10000)) { throw "Installed app exited during startup: $($app.ExitCode)" }
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        $app.Refresh()
+        if ($app.HasExited) { throw "Installed app exited before showing a window: $($app.ExitCode)" }
+        if ($app.MainWindowHandle -ne 0) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if ($app.MainWindowHandle -eq 0) { throw 'Installed app did not show a desktop window within 30 seconds' }
 } finally {
     if (-not $app.HasExited) {
         Stop-Process -Id $app.Id -Force
