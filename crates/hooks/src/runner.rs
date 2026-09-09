@@ -68,6 +68,14 @@ fn command_parts(command: &str) -> Result<Vec<String>, String> {
 }
 
 async fn execute_hook(command: &str, args: &[OsString]) -> HookResult {
+    execute_hook_with_timeout(command, args, HOOK_TIMEOUT).await
+}
+
+async fn execute_hook_with_timeout(
+    command: &str,
+    args: &[OsString],
+    timeout: Duration,
+) -> HookResult {
     let fail = |error: String| HookResult {
         command: command.to_string(),
         success: false,
@@ -124,7 +132,7 @@ async fn execute_hook(command: &str, args: &[OsString]) -> HookResult {
     let stderr = child.stderr.take().expect("piped stderr");
     let completion =
         async { tokio::try_join!(child.wait(), read_output(stdout), read_output(stderr)) };
-    match tokio::time::timeout(HOOK_TIMEOUT, completion).await {
+    match tokio::time::timeout(timeout, completion).await {
         Ok(Ok((status, stdout, stderr))) => HookResult {
             command: command.to_string(),
             success: status.success(),
@@ -140,7 +148,7 @@ async fn execute_hook(command: &str, args: &[OsString]) -> HookResult {
             let _ = child.kill().await;
             fail(format!(
                 "hook timed out after {} seconds",
-                HOOK_TIMEOUT.as_secs()
+                timeout.as_secs()
             ))
         }
     }
@@ -237,7 +245,13 @@ mod tests {
         let script = directory.path().join("meeting hook.ps1");
         std::fs::write(&script, "param([string]$Value)\n[Console]::Write($Value)\n").unwrap();
         let value = "meeting & $HOME; 'quoted'";
-        let result = execute_hook(&format!("\"{}\"", script.display()), &[value.into()]).await;
+        // This checks quoting, not cold CLR startup speed on a shared CI runner.
+        let result = execute_hook_with_timeout(
+            &format!("\"{}\"", script.display()),
+            &[value.into()],
+            Duration::from_secs(60),
+        )
+        .await;
         assert!(result.success, "{}", result.stderr);
         assert_eq!(result.stdout, value);
     }
@@ -247,5 +261,28 @@ mod tests {
         let result = execute_hook("nonexistent_command_12345", &[]).await;
         assert!(!result.success);
         assert!(result.stderr.contains("failed to spawn command"));
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture for hook timeout test"]
+    fn slow_hook() {
+        std::thread::sleep(Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn terminates_a_hook_that_exceeds_its_deadline() {
+        let executable = std::env::current_exe().unwrap();
+        let result = execute_hook_with_timeout(
+            &format!("\"{}\"", executable.display()),
+            &[
+                "--exact".into(),
+                "runner::tests::slow_hook".into(),
+                "--ignored".into(),
+            ],
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(!result.success);
+        assert_eq!(result.stderr, "hook timed out after 1 seconds");
     }
 }
