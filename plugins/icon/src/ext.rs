@@ -130,7 +130,19 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Icon<'a, R, M> {
             Ok(())
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            match name.as_str() {
+                "stable" => {
+                    crate::windows::update(self.manager.app_handle(), |state| state.dark = false)
+                }
+                "stable-dark" => {
+                    crate::windows::update(self.manager.app_handle(), |state| state.dark = true)
+                }
+                _ => Err(crate::Error::Custom(format!("Unknown icon: {name}"))),
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = name;
             Ok(())
@@ -170,7 +182,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Icon<'a, R, M> {
             Ok(())
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return crate::windows::update(self.manager.app_handle(), |state| state.dark = false);
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             Ok(())
         }
@@ -239,7 +253,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Icon<'a, R, M> {
             Ok(())
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return crate::windows::update(self.manager.app_handle(), |state| state.recording = show);
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = show;
             Ok(())
@@ -305,7 +321,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Icon<'a, R, M> {
             Ok(())
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return crate::windows::update(self.manager.app_handle(), |state| state.count = count);
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = count;
             Ok(())
@@ -374,7 +392,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Icon<'a, R, M> {
                 .map_err(|e| crate::Error::Custom(format!("Failed to receive icon data: {}", e)))
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return Ok(Some(crate::windows::get_icon()));
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             Ok(None)
         }
