@@ -12,7 +12,8 @@ use ::windows::{
     Data::Xml::Dom::XmlDocument,
     Foundation::{IPropertyValue, TypedEventHandler},
     UI::Notifications::{
-        ToastActivatedEventArgs, ToastDismissalReason, ToastNotification, ToastNotificationManager,
+        NotificationSetting, ToastActivatedEventArgs, ToastDismissalReason, ToastNotification,
+        ToastNotificationManager,
     },
     Win32::{
         Foundation::RPC_E_CHANGED_MODE,
@@ -222,7 +223,24 @@ fn show_inner(notification: &Notification) -> Result<()> {
             },
         ),
     )?;
+    let failure_key = token.clone();
+    toast.Failed(&TypedEventHandler::new(
+        move |_, args: ::windows::core::Ref<::windows::UI::Notifications::ToastFailedEventArgs>| {
+            let code = args.as_ref().and_then(|args| args.ErrorCode().ok());
+            tracing::error!(?code, "windows_notification_delivery_failed");
+            TOASTS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&failure_key);
+            Ok(())
+        },
+    ))?;
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(id))?;
+    let setting = notifier.Setting()?;
+    if setting != NotificationSetting::Enabled {
+        tracing::warn!(?setting, "windows_notifications_disabled");
+        return Ok(());
+    }
     TOASTS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
