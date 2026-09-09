@@ -17,6 +17,8 @@ The staging app has its own settings and default vault. To try existing notes, u
 
 Enable **Microphone access** and **Let desktop apps access your microphone** in **Windows Settings → Privacy & security → Microphone**. Loofah's permission screen links to these settings. System audio records the default Windows playback device through WASAPI loopback; no virtual audio driver is needed.
 
+If no microphone is connected, you can skip permissions during onboarding and use notes and imported recordings. Connect a microphone and enable access before starting a new recording.
+
 Recording follows changes to the default microphone and playback device. If a device disconnects, Loofah retries it while preserving the other audio source. It reopens both sources after the PC wakes from sleep. A recovery message appears while a source is unavailable.
 
 Download speech models in **Settings → Intelligence** before going offline:
