@@ -78,13 +78,7 @@ pub fn write_file_atomic(
     if let Some(parent) = tmp_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    {
-        use std::io::Write;
-        let mut file = std::fs::File::create(tmp_path)?;
-        file.write_all(content)?;
-        file.sync_all()?;
-    }
-    hypr_storage::fs::rename_with_retry(tmp_path, path)?;
+    hypr_storage::fs::write_staged_file(path, tmp_path, content)?;
     Ok(true)
 }
 

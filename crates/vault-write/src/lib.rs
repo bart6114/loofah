@@ -211,18 +211,8 @@ impl SessionStore {
             trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
 
             let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
-            {
-                use std::io::Write;
-                let mut file = std::fs::File::create(&tmp_path)
-                    .map_err(|e| StoreError::Io(format!("failed to create temp file: {}", e)))?;
-                file.write_all(&bytes)
-                    .map_err(|e| StoreError::Io(format!("failed to write temp file: {}", e)))?;
-                file.sync_all()
-                    .map_err(|e| StoreError::Io(format!("failed to sync temp file: {}", e)))?;
-            }
-
-            hypr_storage::fs::rename_with_retry(&tmp_path, &abs_path)
-                .map_err(|e| StoreError::Io(format!("failed to rename temp file: {}", e)))?;
+            hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes)
+                .map_err(|e| StoreError::Io(format!("failed to write file atomically: {}", e)))?;
 
             Ok::<String, StoreError>(sha256(&bytes))
         })

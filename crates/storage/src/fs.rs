@@ -100,6 +100,21 @@ pub fn atomic_write(target: &Path, content: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+pub fn write_staged_file(target: &Path, temporary: &Path, content: &[u8]) -> std::io::Result<()> {
+    let temporary = std::path::absolute(temporary)?;
+    let file = std::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    let mut staged = NamedTempFile::from_parts(file, tempfile::TempPath::try_from_path(temporary)?);
+    staged.write_all(content)?;
+    staged.as_file().sync_all()?;
+    // Close the file before replacement, and remove our staging file if Windows
+    // sharing restrictions keep the replacement from succeeding.
+    let staged = staged.into_temp_path();
+    rename_with_retry(&staged, target)
+}
+
 pub async fn atomic_write_async(target: &Path, content: &str) -> std::io::Result<()> {
     let target = target.to_path_buf();
     let content = content.to_owned();
@@ -178,8 +193,28 @@ mod tests {
             .open(&target)
             .unwrap();
         assert!(atomic_write(&target, "new note").is_err());
+        assert!(write_staged_file(&target, &dir.path().join(".tmp-note"), b"new note").is_err());
         assert_eq!(fs::read_to_string(target).unwrap(), "old note");
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_replacement_cleans_up_only_its_own_staging_file() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("notes.md");
+        let temporary = dir.path().join(".tmp-note");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("personal.txt"), "keep me").unwrap();
+        assert!(write_staged_file(&target, &temporary, b"new note").is_err());
+        assert!(!temporary.exists());
+        assert_eq!(
+            fs::read_to_string(target.join("personal.txt")).unwrap(),
+            "keep me"
+        );
+
+        fs::write(&temporary, "already here").unwrap();
+        assert!(write_staged_file(&target, &temporary, b"new note").is_err());
+        assert_eq!(fs::read_to_string(&temporary).unwrap(), "already here");
     }
 
     #[test]
