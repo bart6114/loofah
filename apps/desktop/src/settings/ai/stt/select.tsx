@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { platform } from "@tauri-apps/plugin-os";
 import {
   AlertTriangle,
   Check,
@@ -808,7 +809,11 @@ function LocalModelDropdownActions({ model }: { model: LocalModel }) {
     >
       <button
         type="button"
-        aria-label={t`Show in Finder`}
+        aria-label={
+          platform() === "windows"
+            ? t`Show in File Explorer`
+            : t`Show in Finder`
+        }
         className={cn([
           "flex size-6 items-center justify-center rounded-full",
           "text-muted-foreground hover:text-foreground",

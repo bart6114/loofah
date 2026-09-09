@@ -424,6 +424,10 @@ msgid "Couldn’t open “{0}”"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+msgid "Couldn’t open attachments in File Explorer"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
 msgstr ""
 
@@ -772,6 +776,10 @@ msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Keep Loofah available from the menu bar."
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "Keep Loofah available from the notification area."
 msgstr ""
 
 #: src/settings/general/index.tsx
@@ -1392,6 +1400,10 @@ msgid "Show app in Dock"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
+msgid "Show app in taskbar"
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
 msgid "Show floating bar"
 msgstr ""
 
@@ -1402,11 +1414,21 @@ msgstr ""
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/ai/stt/select.tsx
 #: src/sidebar/timeline/item.tsx
+msgid "Show in File Explorer"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
+#: src/settings/ai/stt/select.tsx
+#: src/sidebar/timeline/item.tsx
 msgid "Show in Finder"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show Loofah in the Dock and app switcher."
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "Show Loofah in the taskbar and app switcher."
 msgstr ""
 
 #: src/settings/general/app-settings.tsx

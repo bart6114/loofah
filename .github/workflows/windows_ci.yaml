@@ -8,7 +8,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main, chore/windows-support]
+    branches: [main]
   pull_request:
 
 permissions:
@@ -56,7 +56,7 @@ jobs:
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |
-          Get-ChildItem target/debug/deps/loofah_desktop_lib-*.exe -ErrorAction SilentlyContinue | ForEach-Object {
+          Get-ChildItem target/debug/deps/*.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(loofah_desktop_lib|tauri_plugin_notify)-' } | ForEach-Object {
             node apps/desktop/src-tauri/scripts/check-windows-runtime.mjs $_.FullName
           }
       - if: github.event_name == 'workflow_dispatch' && inputs.speech-models
