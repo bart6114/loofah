@@ -1,0 +1,58 @@
+name: windows-ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, chore/windows-support]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm_install
+      - uses: denoland/setup-deno@v2
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: windows
+      - run: pnpm -F ui build
+      - run: cargo check --locked -p desktop -p loof-cli
+      - run: cargo test --locked -p desktop -p loof-cli -p vault-read -p vault-write -p audio-actual -p device-monitor -p detect
+      - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
+      - run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --features staging
+      - name: Check CLI
+        run: |
+          & target/release/loof.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target/release/loof.exe mcp --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loofah-windows-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            target/release/loof.exe
+          if-no-files-found: error
+          retention-days: 14
