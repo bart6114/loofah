@@ -35,9 +35,23 @@ try {
 
 $sentinel = Join-Path $install 'personal-file.txt'
 Set-Content $sentinel 'preserve unknown files'
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }
+New-ItemProperty -Path $runKey -Name $config.productName -Value "`"$executable`" --background" -PropertyType String -Force | Out-Null
+$cliBin = Join-Path $env:LOCALAPPDATA 'Loofah/cli/loof-staging/bin'
+New-Item -ItemType Directory -Path $cliBin -Force | Out-Null
+$managedCli = Join-Path $cliBin 'loof-staging.exe'
+Copy-Item (Join-Path $install 'loof.exe') $managedCli
+$hash = (Get-FileHash $managedCli -Algorithm SHA256).Hash.ToLowerInvariant()
+@{ files = @{ 'loof-staging.exe' = $hash } } | ConvertTo-Json | Set-Content (Join-Path $cliBin '.loofah-cli.json') -Encoding utf8NoBOM
+$originalPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+[Environment]::SetEnvironmentVariable('Path', "$originalPath;$cliBin", 'User')
 $uninstaller = Join-Path $env:RUNNER_TEMP 'loofah-uninstall-test.exe'
 Copy-Item (Join-Path $install 'uninstall.exe') $uninstaller
 Run-Installer $uninstaller "/S _?=$install"
 if (Test-Path $executable) { throw 'Uninstall left the desktop executable behind' }
 if (-not (Test-Path $sentinel)) { throw 'Uninstall removed an unmanaged file' }
+if (Test-Path $cliBin) { throw 'Uninstall left the managed CLI behind' }
+if ([Environment]::GetEnvironmentVariable('Path', 'User').Split(';') -contains $cliBin) { throw 'Uninstall left the managed CLI on PATH' }
+if (Get-ItemProperty -Path $runKey -Name $config.productName -ErrorAction SilentlyContinue) { throw 'Uninstall left the startup entry behind' }
 Write-Output 'Installer, app startup, installed CLI/MCP, and uninstall smoke tests passed.'

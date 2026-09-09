@@ -64,7 +64,7 @@ jobs:
           node-version: "22"
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm rebuild esbuild dprint
-      - uses: denoland/setup-deno@v2
+      - run: node .github/scripts/install_windows_deno.mjs
       - uses: ./.github/actions/rust_install
         with:
           platform: windows

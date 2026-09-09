@@ -2,6 +2,8 @@
 //! fs-sync plugin's `attachment_save`: sanitize to a basename, then a `create_new`
 //! dedupe loop so an existing file is never overwritten.
 
+#[cfg(any(target_os = "windows", test))]
+use hypr_storage::fs::windows_safe_filename as windows_basename;
 use std::path::{Path, PathBuf};
 
 use super::{SessionStore, StoreError, validate_session_id};
@@ -67,64 +69,6 @@ fn sanitize_filename(filename: &str) -> Result<String, StoreError> {
     return Ok(windows_basename(clean_name));
     #[cfg(not(target_os = "windows"))]
     Ok(clean_name.to_string())
-}
-
-#[cfg(any(target_os = "windows", test))]
-fn windows_basename(name: &str) -> String {
-    let replaced: String = name
-        .chars()
-        .map(|character| {
-            if character.is_control()
-                || matches!(
-                    character,
-                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
-                )
-            {
-                '_'
-            } else {
-                character
-            }
-        })
-        .collect();
-    let mut name = replaced.trim_end_matches(['.', ' ']).to_string();
-    let device = name
-        .split('.')
-        .next()
-        .unwrap_or("")
-        .trim_end_matches(' ')
-        .to_ascii_uppercase();
-    if name.is_empty()
-        || name.starts_with('.')
-        || matches!(
-            device.as_str(),
-            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$"
-        )
-        || ["COM", "LPT"].iter().any(|prefix| {
-            device.strip_prefix(prefix).is_some_and(|suffix| {
-                matches!(
-                    suffix,
-                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
-                )
-            })
-        })
-    {
-        name.insert(0, '_');
-    }
-    if name.len() > 180 {
-        let extension = Path::new(&name)
-            .extension()
-            .and_then(|value| value.to_str())
-            .filter(|value| value.len() <= 24)
-            .map(|value| format!(".{value}"))
-            .unwrap_or_default();
-        let mut boundary = 180 - extension.len();
-        while !name.is_char_boundary(boundary) {
-            boundary -= 1;
-        }
-        name.truncate(boundary);
-        name.push_str(&extension);
-    }
-    name
 }
 
 /// First try the sanitized name verbatim, then `{stem} {counter}.{ext}` — `create_new`

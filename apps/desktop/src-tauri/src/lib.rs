@@ -166,7 +166,8 @@ pub async fn main() {
         let identifier = &context.config().identifier;
         let cli = embedded_cli::uninstall_windows(identifier);
         let notifications = tauri_plugin_notification::uninstall_windows(identifier);
-        std::process::exit(if cli.is_ok() && notifications.is_ok() {
+        let startup = autostart::uninstall_windows(identifier);
+        std::process::exit(if cli.is_ok() && notifications.is_ok() && startup.is_ok() {
             0
         } else {
             1

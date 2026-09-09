@@ -3,6 +3,64 @@ use std::path::Path;
 
 use tempfile::NamedTempFile;
 
+pub fn windows_safe_filename(name: &str) -> String {
+    let replaced: String = name
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                )
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let mut name = replaced.trim_end_matches(['.', ' ']).to_string();
+    let device = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    if name.is_empty()
+        || name.starts_with('.')
+        || matches!(
+            device.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$"
+        )
+        || ["COM", "LPT"].iter().any(|prefix| {
+            device.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(
+                    suffix,
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+        })
+    {
+        name.insert(0, '_');
+    }
+    if name.len() > 180 {
+        let extension = Path::new(&name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .filter(|value| value.len() <= 24)
+            .map(|value| format!(".{value}"))
+            .unwrap_or_default();
+        let mut boundary = 180 - extension.len();
+        while !name.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        name.truncate(boundary);
+        name.push_str(&extension);
+        name.truncate(name.trim_end_matches(['.', ' ']).len());
+    }
+    name
+}
+
 pub fn relative_path_key(path: &str) -> std::borrow::Cow<'_, str> {
     #[cfg(target_os = "windows")]
     if path.contains('\\') {

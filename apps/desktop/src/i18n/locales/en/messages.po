@@ -370,6 +370,10 @@ msgstr "Configure Providers"
 msgid "Confirm"
 msgstr "Confirm"
 
+#: src/onboarding/index.tsx
+msgid "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+msgstr "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+
 #: src/templates/auto-form.tsx
 msgid "Context always provided"
 msgstr "Context always provided"
@@ -1111,6 +1115,7 @@ msgstr "Peak: {0}"
 msgid "permission panel."
 msgstr "permission panel."
 
+#: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Permissions"

@@ -136,6 +136,15 @@ mod tests {
         let observed = attempts.clone();
         let health = Arc::new(CaptureHealth::default());
         let (_tx, rx) = watch::channel(0);
+        let mut healthy = recovering_chunks(
+            Box::pin(futures_util::stream::repeat_with(|| Ok(vec![0.5; 160]))),
+            Arc::new(|| panic!("The healthy source must not be reopened")),
+            rx.clone(),
+            health.clone(),
+            2,
+            16000,
+            160,
+        );
         let initial: ChunkStream = Box::pin(futures_util::stream::empty());
         let mut stream = recovering_chunks(
             initial,
@@ -158,6 +167,8 @@ mod tests {
             let mut silence_seen = false;
             loop {
                 let data = stream.next().await.unwrap().unwrap();
+                assert_eq!(healthy.next().await.unwrap().unwrap()[0], 0.5);
+                assert_eq!(health.recovering.load(Ordering::SeqCst) & 2, 0);
                 if data[0] == 0.0 {
                     silence_seen = true;
                 }
