@@ -21,6 +21,11 @@ import {
 } from "./selection";
 import { type Provider, PROVIDERS } from "./shared";
 
+import {
+  CHATGPT_PROVIDER,
+  listChatgptModels,
+  useChatgptAccount,
+} from "~/ai/chatgpt-account";
 import { providerRowId, ProviderIconSlot } from "~/settings/ai/shared";
 import { getProviderSelectionBlockers } from "~/settings/ai/shared/eligibility";
 import { listAnthropicModels } from "~/settings/ai/shared/list-anthropic";
@@ -78,12 +83,18 @@ export function SelectProviderAndModel({
   const visibleSelection = getVisibleModelSelection(
     current_llm_provider,
     current_llm_model,
-    selectedProviderConfigured,
+    selectedProviderConfigured || current_llm_provider === CHATGPT_PROVIDER,
   );
   const providerOptions = getConfiguredProviders(
     PROVIDERS,
     configuredProviders,
   );
+  if (
+    current_llm_provider === CHATGPT_PROVIDER &&
+    !providerOptions.some((p) => p.id === CHATGPT_PROVIDER)
+  ) {
+    providerOptions.push(PROVIDERS.find((p) => p.id === CHATGPT_PROVIDER)!);
+  }
   const configuredProviderIds = getConfiguredProviderIds(
     PROVIDERS,
     configuredProviders,
@@ -176,9 +187,9 @@ export function SelectProviderAndModel({
     return result.models;
   };
 
-  const needsDefaultSelection = !(
-    visibleSelection.provider && visibleSelection.model
-  );
+  const needsDefaultSelection =
+    current_llm_provider !== CHATGPT_PROVIDER &&
+    !(visibleSelection.provider && visibleSelection.model);
   const defaultSelectionQuery = useQuery({
     queryKey: [
       "default-ai-selection",
@@ -423,6 +434,10 @@ export function getLlmProviderStatus({
   isAuthenticated: boolean;
   isPaid: boolean;
 }): ProviderStatus {
+  if (provider.id === CHATGPT_PROVIDER)
+    return isAuthenticated
+      ? { configured: true, listModels: listChatgptModels }
+      : { configured: false };
   const baseUrl = String(config?.base_url || provider.baseUrl || "").trim();
   const apiKey = String(config?.api_key || "").trim();
 
@@ -487,6 +502,12 @@ function useConfiguredMapping(): {
   const { providers: configuredProviders, isReady } =
     useAiProvidersState("llm");
 
+  const { current_llm_provider } = useConfigValues([
+    "current_llm_provider",
+  ] as const);
+  const chatgptAccount = useChatgptAccount(
+    current_llm_provider === CHATGPT_PROVIDER,
+  );
   const mapping = useMemo(() => {
     return Object.fromEntries(
       PROVIDERS.map((provider) => {
@@ -496,15 +517,14 @@ function useConfiguredMapping(): {
           getLlmProviderStatus({
             provider,
             config,
-            // Accounts/auth were removed (Phase 1): there is no session left
-            // to gate on, so this always reads as eligible now.
-            isAuthenticated: true,
+            isAuthenticated:
+              provider.id !== CHATGPT_PROVIDER || !!chatgptAccount.data,
             isPaid: true,
           }),
         ];
       }),
     ) as Record<string, ProviderStatus>;
-  }, [configuredProviders]);
+  }, [configuredProviders, chatgptAccount.data]);
 
   return { providers: mapping, isReady };
 }

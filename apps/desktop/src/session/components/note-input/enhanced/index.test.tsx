@@ -1,4 +1,25 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+function render(ui: ReactNode) {
+  const client = new QueryClient();
+  return renderUI(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
+
+vi.mock("~/session/hooks/useSummarySource", () => ({
+  useSummarySource: () => true,
+}));
+vi.mock("~/shared/config", () => ({ useConfigValue: () => "" }));
+vi.mock("~/services/enhancer", () => ({ getEnhancerService: vi.fn() }));
+vi.mock("~/ai/task-window-sync", () => ({
+  isMainAITaskHostWindow: () => true,
+  requestMainEnhance: vi.fn(),
+}));
+vi.mock("../header", () => ({ TemplatePickerPopover: () => null }));
+import { cleanup, render as renderUI, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -144,10 +165,12 @@ describe("Enhanced", () => {
     hoisted.enhancedEditorMountCount = 0;
   });
 
-  it("renders an empty editor before the auto-enhance task is visible", () => {
+  it("offers generation before the auto-enhance task is visible", () => {
     render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
 
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Generate summary" }),
+    ).not.toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByText("Preparing summary...")).toBeNull();
     expect(screen.queryByTestId("spinner")).toBeNull();
@@ -304,7 +327,7 @@ describe("Enhanced", () => {
     expect(screen.queryByText("Generating title...")).toBeNull();
   });
 
-  it("renders the editor after an empty enhance task returns idle", () => {
+  it("offers generation after an empty enhance task returns idle", () => {
     hoisted.enhanceTask = {
       status: "idle",
       error: undefined,
@@ -315,7 +338,9 @@ describe("Enhanced", () => {
 
     render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
 
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Generate summary" }),
+    ).not.toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
   });
 

@@ -11,5 +11,5 @@ export function shouldShowEmptySummaryConfigError(status: LLMConnectionStatus) {
     return false;
   }
 
-  return status.reason === "missing_config";
+  return status.reason === "missing_config" || status.reason === "chatgpt";
 }

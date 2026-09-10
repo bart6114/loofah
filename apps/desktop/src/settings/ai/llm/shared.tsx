@@ -91,6 +91,14 @@ export const _PROVIDERS = [
     requirements: [{ kind: "requires_config", fields: ["api_key"] }],
   },
   {
+    id: "chatgpt_subscription",
+    displayName: "ChatGPT subscription",
+    badge: "Beta",
+    icon: <OpenAI size={16} />,
+    baseUrl: undefined,
+    requirements: [],
+  },
+  {
     id: "cloudflare_workers_ai",
     displayName: "Cloudflare Workers AI",
     badge: null,

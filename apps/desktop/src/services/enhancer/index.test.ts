@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EnhancerService } from ".";
 
+import { enqueueDatabaseWrite } from "~/shared/write-queue";
+
 const mocks = vi.hoisted(() => ({
   loadSessionContentSnapshot: vi.fn(),
   ensureSummaryDocument: vi.fn(),
@@ -63,7 +65,7 @@ function createSnapshot({
     rawNoteId: "session-1",
     rawContent: "",
     rawContentFormat: "prosemirror_json",
-    rawMarkdown: "",
+    rawMarkdown: "Planning notes",
     enhancedNotes: notes,
     transcripts:
       wordCount > 0
@@ -159,6 +161,46 @@ describe("EnhancerService", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("rejects empty input before creating or clearing a document", async () => {
+    const service = new EnhancerService(createDeps());
+    snapshot.rawMarkdown = "&nbsp;";
+    await expect(
+      service.enhance("session-1", { targetNoteId: "note-1" }),
+    ).rejects.toThrow("Add a note or transcript");
+    expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
+    expect(mocks.replaceSummaryDocumentTemplate).not.toHaveBeenCalled();
+  });
+
+  it("waits for pending note writes before reading the source", async () => {
+    const service = new EnhancerService(createDeps());
+    snapshot.rawMarkdown = "";
+    let finishWrite!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    const write = enqueueDatabaseWrite("session:session-1:note", async () => {
+      await gate;
+      snapshot.rawMarkdown = "Ship Friday";
+    });
+    const generation = service.enhance("session-1");
+    await Promise.resolve();
+    expect(mocks.loadSessionContentSnapshot).not.toHaveBeenCalled();
+    finishWrite();
+    await write;
+    await expect(generation).resolves.toMatchObject({ type: "started" });
+  });
+
+  it("deduplicates simultaneous starts", async () => {
+    const ai = createMockAITaskStore();
+    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+    await Promise.all([
+      service.enhance("session-1"),
+      service.enhance("session-1"),
+    ]);
+    expect(mocks.ensureSummaryDocument).toHaveBeenCalledTimes(1);
+    expect(ai.generate).toHaveBeenCalledTimes(1);
   });
 
   it("returns no_model without touching session storage", async () => {

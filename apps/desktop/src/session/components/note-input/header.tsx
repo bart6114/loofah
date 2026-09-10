@@ -24,6 +24,10 @@ import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
 
 import { useAITaskTask } from "~/ai/hooks";
+import {
+  isMainAITaskHostWindow,
+  requestMainEnhance,
+} from "~/ai/task-window-sync";
 import * as AudioPlayer from "~/audio-player";
 import { getEnhancerService } from "~/services/enhancer";
 import { useEnhancedNoteActions } from "~/session/components/note-input/enhanced-actions";
@@ -34,7 +38,7 @@ import {
 } from "~/session/components/note-input/transcript/export-data";
 import { useSessionTranscriptRenderData } from "~/session/components/note-input/transcript/render-request-hooks";
 import { useCanShowTranscript } from "~/session/components/shared";
-import { useEnsureDefaultSummary } from "~/session/hooks/useEnhancedNotes";
+import { useSummarySource } from "~/session/hooks/useSummarySource";
 import {
   deleteEnhancedNote,
   useEnhancedNote,
@@ -46,6 +50,7 @@ import {
   useNativeContextMenu,
 } from "~/shared/hooks/useNativeContextMenu";
 import { useWebResources } from "~/shared/ui/resource-list";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 import { type EditorView } from "~/store/zustand/tabs/schema";
 import { useListener } from "~/stt/contexts";
@@ -258,7 +263,7 @@ async function copyTextToClipboard(
   }
 }
 
-type TemplateSelection = {
+export type TemplateSelection = {
   templateId: string | null;
   title: string;
 };
@@ -473,6 +478,7 @@ function HeaderViewEnhancedActive({
     sessionId,
     enhancedNoteId,
   );
+  const hasSource = useSummarySource(sessionId);
   const content = useEnhancedNote(enhancedNoteId)?.content;
   const { viewTitle, templateTooltip } = useEnhancedViewTitle(enhancedNoteId);
   const noteMarkdown = useMemo(() => getStoredNoteMarkdown(content), [content]);
@@ -488,10 +494,32 @@ function HeaderViewEnhancedActive({
   }, [onRegenerate]);
   const handleSelectTemplate = useCallback(
     (selection: TemplateSelection) => {
-      if (isGenerating) {
+      if (isGenerating || !hasSource) {
         return;
       }
 
+      if (!isMainAITaskHostWindow()) {
+        void flushDatabaseWrites([`session:${sessionId}:note`])
+          .then(() =>
+            requestMainEnhance(sessionId, {
+              templateId: selection.templateId,
+              targetNoteId: enhancedNoteId,
+              templateTitle: selection.templateId ? selection.title : undefined,
+            }),
+          )
+          .then((result) => {
+            if (result.type === "no_model")
+              sonnerToast.error(
+                "Set up Intelligence in Settings before generating a summary.",
+              );
+          })
+          .catch((error) =>
+            sonnerToast.error(
+              error instanceof Error ? error.message : String(error),
+            ),
+          );
+        return;
+      }
       const service = getEnhancerService();
       if (!service) {
         return;
@@ -516,9 +544,12 @@ function HeaderViewEnhancedActive({
         })
         .catch((error) => {
           console.error("[enhancer] failed to replace summary template", error);
+          sonnerToast.error(
+            error instanceof Error ? error.message : String(error),
+          );
         });
     },
-    [enhancedNoteId, isGenerating, onSelectNote, sessionId],
+    [enhancedNoteId, isGenerating, hasSource, onSelectNote, sessionId],
   );
   const contextMenu = useMemo<MenuItemDef[]>(() => {
     const items: MenuItemDef[] = [
@@ -534,7 +565,7 @@ function HeaderViewEnhancedActive({
         id: `regenerate-enhanced-${enhancedNoteId}`,
         text: "Regenerate",
         action: handleRegenerate,
-        disabled: isGenerating,
+        disabled: isGenerating || !hasSource,
       },
     ];
 
@@ -556,6 +587,7 @@ function HeaderViewEnhancedActive({
     enhancedNoteId,
     handleCopy,
     handleRegenerate,
+    hasSource,
     isGenerating,
     noteMarkdown.length,
     onRemove,
@@ -844,7 +876,7 @@ function HeaderViewTranscriptActive({
   );
 }
 
-function TemplatePickerPopover({
+export function TemplatePickerPopover({
   onSelectTemplate,
   trigger,
 }: {
@@ -1367,6 +1399,28 @@ export function Header({
                 );
               }
 
+              if (view.type === "summary") {
+                return (
+                  <button
+                    key="summary"
+                    data-main-area-window-drag-region
+                    data-tauri-drag-region="false"
+                    type="button"
+                    aria-current={
+                      currentTab.type === "summary" ? "page" : undefined
+                    }
+                    className={iconHeaderViewClassName(
+                      currentTab.type === "summary",
+                      "tray",
+                      "px-2.5 text-xs font-medium",
+                    )}
+                    onClick={() => handleTabChange(view)}
+                  >
+                    Summary
+                  </button>
+                );
+              }
+
               if (view.type === "raw") {
                 return (
                   <HeaderViewRaw
@@ -1417,7 +1471,6 @@ export function useEditorTabs({
   audioExists?: boolean;
   sessionId: string;
 }): EditorView[] {
-  useEnsureDefaultSummary(sessionId);
   const canShowTranscript = useCanShowTranscript(sessionId, { audioExists });
 
   const enhancedNoteIds = useEnhancedNoteRecords(sessionId).map(
@@ -1443,7 +1496,7 @@ export function createEditorTabs({
   }));
 
   return [
-    ...enhancedTabs,
+    ...(enhancedTabs.length ? enhancedTabs : [{ type: "summary" } as const]),
     { type: "raw" },
     ...(canShowTranscript ? [{ type: "transcript" } as const] : []),
     { type: "attachments" },

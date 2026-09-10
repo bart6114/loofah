@@ -116,7 +116,7 @@ if (isMainWindow) {
 const rootElement = document.getElementById("root")!;
 
 async function enableReactScanInDev() {
-  if (!import.meta.env.DEV) {
+  if (!import.meta.env.DEV || import.meta.env.VITE_REACT_SCAN !== "true") {
     return;
   }
 

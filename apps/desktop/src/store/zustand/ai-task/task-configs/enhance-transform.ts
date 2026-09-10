@@ -10,11 +10,16 @@ import { collectEnhanceImageContext } from "./enhance-images";
 
 import { listPeople } from "~/people/queries";
 import {
+  EMPTY_SUMMARY_SOURCE_MESSAGE,
+  hasSummarySource,
+} from "~/services/enhancer/source";
+import {
   loadSessionContentSnapshot,
   type SessionContentSnapshot,
 } from "~/session/content-queries";
 import { modelSupportsImageInput } from "~/settings/ai/shared/model-capabilities";
 import type { SettingValues } from "~/settings/schema";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import {
   buildRenderTranscriptRequestFromRows,
   renderTranscriptSegments,
@@ -46,11 +51,15 @@ async function transformArgs(
   settingsValues: SettingValues,
 ): Promise<TaskArgsMapTransformed["enhance"]> {
   const { sessionId, templateId } = args;
+  await flushDatabaseWrites([`session:${sessionId}:note`]);
   const snapshot = await loadSessionContentSnapshot(sessionId);
   if (!snapshot) {
     throw new Error(`Session ${sessionId} no longer exists`);
   }
 
+  if (!hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)) {
+    throw new Error(EMPTY_SUMMARY_SOURCE_MESSAGE);
+  }
   const sessionContext = getSessionContext(snapshot);
   const templateRecord = await loadTemplate(templateId);
   const template = templateRecord

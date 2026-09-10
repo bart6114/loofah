@@ -4,12 +4,19 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { useQuery } from "@tanstack/react-query";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { extractReasoningMiddleware, wrapLanguageModel } from "ai";
 import { useMemo } from "react";
 
 import type { AIProviderStorage } from "@hypr/store";
 
+import {
+  CHATGPT_PROVIDER,
+  useChatgptAccount,
+  listChatgptModels,
+} from "~/ai/chatgpt-account";
+import { createChatgptModel } from "~/ai/chatgpt-model";
 import { type ProviderId, PROVIDERS } from "~/settings/ai/llm/shared";
 import { getProviderSelectionBlockers } from "~/settings/ai/shared/eligibility";
 import { useAiProvider } from "~/settings/providers";
@@ -25,6 +32,13 @@ type LLMConnectionInfo = {
 };
 
 export type LLMConnectionStatus =
+  | { status: "pending"; reason: "connecting"; providerId: ProviderId }
+  | {
+      status: "error";
+      reason: "chatgpt";
+      providerId: ProviderId;
+      message: string;
+    }
   | { status: "pending"; reason: "missing_provider" }
   | { status: "pending"; reason: "missing_model"; providerId: ProviderId }
   | { status: "error"; reason: "provider_not_found"; providerId: string }
@@ -60,15 +74,61 @@ export const useLLMConnection = (): LLMConnectionResult => {
     | AIProviderStorage
     | undefined;
 
-  return useMemo<LLMConnectionResult>(
-    () =>
-      resolveLLMConnection({
-        providerId: current_llm_provider,
-        modelId: current_llm_model,
-        providerConfig,
-      }),
-    [current_llm_model, current_llm_provider, providerConfig],
-  );
+  const account = useChatgptAccount(current_llm_provider === CHATGPT_PROVIDER);
+  const models = useQuery({
+    queryKey: ["models", CHATGPT_PROVIDER],
+    queryFn: listChatgptModels,
+    enabled: current_llm_provider === CHATGPT_PROVIDER && !!account.data,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  return useMemo<LLMConnectionResult>(() => {
+    if (current_llm_provider === CHATGPT_PROVIDER) {
+      if (account.isPending || (account.data && models.isPending))
+        return {
+          conn: null,
+          status: {
+            status: "pending",
+            reason: "connecting",
+            providerId: CHATGPT_PROVIDER,
+          },
+        };
+      const message =
+        account.error?.message ??
+        (!account.data
+          ? "Sign in to ChatGPT in Intelligence settings."
+          : (models.error?.message ??
+            (!models.data?.models.includes(current_llm_model ?? "")
+              ? "Select an available ChatGPT model in Intelligence settings."
+              : null)));
+      if (message)
+        return {
+          conn: null,
+          status: {
+            status: "error",
+            reason: "chatgpt",
+            providerId: CHATGPT_PROVIDER,
+            message,
+          },
+        };
+    }
+    return resolveLLMConnection({
+      providerId: current_llm_provider,
+      modelId: current_llm_model,
+      providerConfig,
+    });
+  }, [
+    current_llm_model,
+    current_llm_provider,
+    providerConfig,
+    account.data,
+    account.error,
+    account.isPending,
+    models.data,
+    models.error,
+    models.isPending,
+  ]);
 };
 
 export const useLLMConnectionStatus = (): LLMConnectionStatus => {
@@ -118,10 +178,6 @@ const resolveLLMConnection = (params: {
     "";
   const apiKey = providerConfig?.api_key?.trim() || "";
 
-  // There is no hosted provider left, so `isAuthenticated`/`isPaid` never
-  // gate anything here (every remaining provider only ever declares
-  // `requires_config`) — these are placeholders to satisfy the shared
-  // eligibility context shape.
   const blockers = getProviderSelectionBlockers(
     providerDefinition.requirements,
     {
@@ -166,6 +222,8 @@ const wrapWithThinkingMiddleware = (
 
 const createLanguageModel = (conn: LLMConnectionInfo): LanguageModelV3 => {
   switch (conn.providerId) {
+    case CHATGPT_PROVIDER:
+      return createChatgptModel(conn.modelId);
     case "anthropic": {
       const provider = createAnthropic({
         fetch: tauriFetch,

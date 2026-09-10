@@ -3,7 +3,10 @@ import type { LanguageModel } from "ai";
 export function deterministicGenerationSettings(model: LanguageModel): {
   temperature?: number;
 } {
-  if (usesDeprecatedTemperature(model)) {
+  if (
+    (typeof model !== "string" && model.provider === "chatgpt_subscription") ||
+    usesDeprecatedTemperature(model)
+  ) {
     return {};
   }
 

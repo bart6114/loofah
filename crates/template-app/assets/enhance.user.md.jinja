@@ -12,14 +12,14 @@
 {% endif %}
 {% if !post_meeting_memo.is_empty() %}
 
-# Meeting Notes
+{% if transcripts.is_empty() %}# Notes{% else %}# Meeting Notes{% endif %}
 
 {{ post_meeting_memo }}
 {% endif %}
 
-# Transcript
+{% if !transcripts.is_empty() %}# Transcript
 
-{{ macros::transcripts(transcripts=transcripts) }}
+{{ macros::transcripts(transcripts=transcripts) }}{% endif %}
 {% if template.is_some() %}
 
 # Output Template

@@ -119,16 +119,16 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#: src/settings/ai/shared/index.tsx
+msgid "Active"
+msgstr ""
+
 #: src/templates/template-icon-picker.tsx
 msgid "Activity"
 msgstr ""
 
 #: src/settings/dictionary/index.tsx
 msgid "Add"
-msgstr ""
-
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Add API key"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -154,10 +154,6 @@ msgstr ""
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Lisage kõnekeel"
-
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Add your own LLM API key to generate a summary from this transcript."
-msgstr ""
 
 #: src/settings/general/spoken-languages.tsx
 msgid "Additional spoken languages"
@@ -258,6 +254,10 @@ msgstr ""
 msgid "Base URL"
 msgstr ""
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Beta"
+msgstr ""
+
 #: src/sidebar/timeline/index.tsx
 msgid "By date"
 msgstr ""
@@ -272,6 +272,7 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
+#: src/settings/ai/llm/chatgpt.tsx
 #: src/settings/general/storage/change-location.tsx
 msgid "Cancel"
 msgstr ""
@@ -287,6 +288,10 @@ msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
 msgid "Change storage location?"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "ChatGPT subscription"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -366,8 +371,16 @@ msgstr ""
 msgid "Configure Providers"
 msgstr ""
 
+#: src/settings/ai/shared/index.tsx
+msgid "Configured"
+msgstr ""
+
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
+msgstr ""
+
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Connect an Intelligence provider to generate a summary from your notes or transcript."
 msgstr ""
 
 #: src/templates/auto-form.tsx
@@ -494,6 +507,10 @@ msgstr ""
 msgid "Dictionary"
 msgstr ""
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Disconnect"
+msgstr ""
+
 #: src/session/components/session-tags.tsx
 msgid "Dismiss suggested tag {name}"
 msgstr ""
@@ -615,6 +632,10 @@ msgstr ""
 
 #: src/shared/open-note-dialog.tsx
 msgid "Find a note..."
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Finish signing in in your browser…"
 msgstr ""
 
 #: src/templates/template-icon-picker.tsx
@@ -759,6 +780,10 @@ msgstr ""
 
 #: src/templates/sections-editor.tsx
 msgid "Insert below"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Install Codex CLI"
 msgstr ""
 
 #: src/settings/ai/llm/index.tsx
@@ -1077,6 +1102,10 @@ msgstr ""
 msgid "Open on GitHub"
 msgstr ""
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Opening your browser…"
+msgstr ""
+
 #: src/shared/startup-boundary.tsx
 msgid "Opening your vault…"
 msgstr ""
@@ -1382,6 +1411,10 @@ msgstr ""
 msgid "Set up AI summaries"
 msgstr ""
 
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Set up Intelligence"
+msgstr ""
+
 #: src/main/empty.tsx
 #: src/sidebar/settings.tsx
 msgid "Settings"
@@ -1415,6 +1448,14 @@ msgstr "Kuulamise ajal kompaktse ujuva juhtelemendi kuvamine."
 
 #: src/settings/general/app-settings.tsx
 msgid "Show tray icon"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Sign in with ChatGPT"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1653,6 +1694,10 @@ msgstr ""
 #: src/templates/details.tsx
 #: src/templates/sections-editor.tsx
 msgid "Untitled"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Update Codex CLI"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx
