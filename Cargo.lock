@@ -8429,6 +8429,7 @@ dependencies = [
  "tracing",
  "transcribe-core",
  "transcribe-soniqo",
+ "whisper-local-model",
 ]
 
 [[package]]

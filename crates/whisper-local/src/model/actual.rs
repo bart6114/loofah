@@ -104,6 +104,7 @@ impl LoadedWhisper {
             index: 0,
             languages,
             dynamic_prompt: String::new(),
+            initial_prompt: String::new(),
             state: self.ctx.create_state()?,
             token_beg: self.token_beg,
         })
@@ -117,11 +118,16 @@ pub struct Whisper {
     index: usize,
     languages: Vec<Language>,
     dynamic_prompt: String,
+    initial_prompt: String,
     state: WhisperState,
     token_beg: WhisperTokenId,
 }
 
 impl Whisper {
+    pub fn set_initial_prompt(&mut self, prompt: String) {
+        self.initial_prompt = prompt;
+    }
+
     pub fn builder() -> WhisperBuilder {
         WhisperBuilder::default()
     }
@@ -142,7 +148,7 @@ impl Whisper {
         let params = {
             let mut p = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
 
-            let parts = [self.dynamic_prompt.trim()];
+            let parts = [self.dynamic_prompt.trim(), self.initial_prompt.trim()];
             let joined = parts.join("\n");
             let initial_prompt = joined.trim();
 

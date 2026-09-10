@@ -203,7 +203,6 @@ where
         .fold(0.0_f64, f64::max);
 
     let metadata = build_metadata(model_path);
-    let mut model = build_model(loaded_model, params)?;
     let channel_durations = channel_samples
         .iter()
         .map(|samples| channel_duration_sec(samples))
@@ -222,6 +221,7 @@ where
     progress.emit(None);
 
     for (channel_idx, chunks) in channel_chunks.iter().enumerate() {
+        let mut model = build_model(loaded_model, params)?;
         let channel_index = [channel_idx as i32, channel_chunks.len() as i32];
         let channel_duration = channel_durations[channel_idx];
 

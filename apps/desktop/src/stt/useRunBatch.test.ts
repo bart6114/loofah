@@ -114,6 +114,10 @@ vi.mock("~/tags/suggestions", () => ({
   queueTagSuggestions: queueTagSuggestionsMock,
 }));
 
+test("routes Whisper Large V3 through progressive local batch transcription", () => {
+  expect(getBatchProvider("fmtr", "whisper-large-v3")).toBe("whispercpp");
+});
+
 describe("getBatchProvider", () => {
   test("maps local soniqo models to the soniqo batch provider", () => {
     expect(getBatchProvider("fmtr", "soniqo-parakeet-batch")).toBe("soniqo");
@@ -123,8 +127,17 @@ describe("getBatchProvider", () => {
     expect(getBatchProvider("fmtr", "am-parakeet-v3")).toBe("am");
   });
 
-  test("falls back to the fmtr batch provider for other local models", () => {
-    expect(getBatchProvider("fmtr", "QuantizedSmallEn")).toBe("fmtr");
+  test.each([
+    "whisper-large-v3",
+    "QuantizedLargeTurbo",
+    "QuantizedSmall",
+    "QuantizedSmallEn",
+    "QuantizedBase",
+    "QuantizedBaseEn",
+    "QuantizedTiny",
+    "QuantizedTinyEn",
+  ])("routes %s through the Whisper batch engine", (model) => {
+    expect(getBatchProvider("fmtr", model)).toBe("whispercpp");
   });
 
   test("returns null for any non-on-device provider — STT is on-device only", () => {

@@ -575,16 +575,20 @@ function useConfiguredMapping(): {
   });
 
   const localModels = supportedModels.data ?? [];
-  const soniqoModels = localModels.filter((m) => m.model_type === "soniqo");
+  const selectableModels = localModels.filter(
+    (m) => m.model_type === "soniqo" || m.model_type === "whispercpp",
+  );
 
-  const soniqoDownloaded = useQueries({
-    queries: [...soniqoModels.map((m) => sttModelQueries.isDownloaded(m.key))],
+  const downloadedModels = useQueries({
+    queries: [
+      ...selectableModels.map((m) => sttModelQueries.isDownloaded(m.key)),
+    ],
   });
 
   const models: ModelEntry[] = isAppleSilicon
-    ? soniqoModels.map((model, i) => ({
+    ? selectableModels.map((model, i) => ({
         id: model.key,
-        isDownloaded: soniqoDownloaded[i]?.data ?? false,
+        isDownloaded: downloadedModels[i]?.data ?? false,
         displayName: model.display_name,
         sizeBytes: model.size_bytes,
         mode: isRealtimeLocalModel(String(model.key)) ? "realtime" : "batch",
@@ -614,7 +618,7 @@ function ModelSelectItem({
   const isDownloading =
     !!downloadInfo || queuedDownloads.includes(model.id as LocalModel);
 
-  const label = displayModelLabel(model.id, model.displayName);
+  const label = model.displayName ?? model.id;
   const title = displayModelTitle(model.id, model.displayName);
   const sizeLabel = formatModelSize(model.sizeBytes);
   const showLocalActions = model.isDownloaded && isLocalModelId(model.id);
@@ -717,7 +721,7 @@ function ModelSelectedValue({ model }: { model: ModelEntry }) {
     <div className="flex max-w-full min-w-0 items-center gap-2">
       <LocalModelLabel
         model={model.id}
-        label={displayModelLabel(model.id, model.displayName)}
+        label={model.displayName ?? model.id}
         title={displayModelTitle(model.id, model.displayName)}
         className={cn(["min-w-0", isDeprecated && "opacity-60"])}
         labelClassName={cn([isDeprecated && "text-muted-foreground"])}

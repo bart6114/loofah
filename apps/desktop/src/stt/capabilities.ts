@@ -21,6 +21,7 @@ export function isSupportedLocalSttModel(
     typeof model === "string" &&
     (model.startsWith("soniqo-") ||
       model.startsWith("am-") ||
+      model.startsWith("whisper-") ||
       model.startsWith("Quantized"))
   );
 }

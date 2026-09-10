@@ -36,6 +36,16 @@ beforeEach(() => {
   });
 });
 
+test("Whisper Large V3 records first and preserves Dutch and English", () => {
+  expect(isSupportedLocalSttModel("whisper-large-v3")).toBe(true);
+  expect(
+    getOnDeviceTranscriptionConfig("whisper-large-v3", ["nl", "en"]),
+  ).toEqual({
+    languages: ["nl", "en"],
+    transcriptionMode: "batch",
+  });
+});
+
 describe("getOnDeviceTranscriptionMode", () => {
   test("uses live mode for realtime local models", () => {
     expect(getOnDeviceTranscriptionMode("soniqo-parakeet-streaming")).toBe(

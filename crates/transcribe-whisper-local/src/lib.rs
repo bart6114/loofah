@@ -14,6 +14,77 @@ mod tests {
     use tokio_tungstenite::{connect_async, tungstenite::Error as TungsteniteError};
 
     #[tokio::test]
+    #[ignore = "requires LOOFAH_WHISPER_MODEL pointing to downloaded Large V3 weights"]
+    async fn whisper_large_v3_batch_smoke() -> Result<(), Box<dyn std::error::Error>> {
+        let model_path = std::env::var("LOOFAH_WHISPER_MODEL")?;
+        let audio_path = std::env::var("LOOFAH_WHISPER_AUDIO")
+            .unwrap_or_else(|_| hypr_data::english_1::AUDIO_PATH.to_string());
+        let app = TranscribeService::builder()
+            .model_path(model_path.into())
+            .build()
+            .into_router(|err: String| async move { (StatusCode::INTERNAL_SERVER_ERROR, err) });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let params = owhisper_interface::ListenParams {
+            model: Some("whisper-large-v3".into()),
+            languages: vec!["nl".parse()?, "en".parse()?],
+            keywords: vec!["Kubernetes".into(), "ingress controller".into()],
+            ..Default::default()
+        };
+        let result = tokio::time::timeout(std::time::Duration::from_secs(300), async {
+            let mut stream = owhisper_client::WhisperCppAdapter::transcribe_file_streaming(
+                &format!("http://{addr}/v1"),
+                &params,
+                &audio_path,
+            )
+            .await?;
+            let mut response = None;
+            while let Some(event) = stream.next().await {
+                if let owhisper_interface::batch_stream::BatchStreamEvent::Result {
+                    response: value,
+                } = event?
+                {
+                    response = Some(value);
+                }
+            }
+            Ok::<_, owhisper_client::Error>(response)
+        })
+        .await;
+        server.abort();
+        let response = result??.expect("batch stream must finish with a transcript");
+        let words = response
+            .results
+            .channels
+            .iter()
+            .flat_map(|channel| &channel.alternatives)
+            .flat_map(|alternative| &alternative.words)
+            .collect::<Vec<_>>();
+        assert!(!words.is_empty());
+        assert!(
+            words
+                .iter()
+                .all(|word| word.end >= word.start && word.start >= 0.0)
+        );
+        let text = response
+            .results
+            .channels
+            .iter()
+            .flat_map(|channel| &channel.alternatives)
+            .map(|alternative| alternative.transcript.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        println!("Whisper transcript: {text}");
+        if let Ok(expected) = std::env::var("LOOFAH_WHISPER_EXPECT") {
+            assert!(
+                text.to_lowercase().contains(&expected.to_lowercase()),
+                "missing expected phrase: {expected}"
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_service() -> Result<(), Box<dyn std::error::Error>> {
         let model_path = dirs::data_dir()
             .unwrap()

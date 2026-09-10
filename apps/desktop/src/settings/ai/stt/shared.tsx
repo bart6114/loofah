@@ -32,6 +32,7 @@ function isOnDeviceModelId(model: string) {
   return (
     model.startsWith("soniqo-") ||
     model.startsWith("am-") ||
+    model.startsWith("whisper-") ||
     model.startsWith("Quantized")
   );
 }

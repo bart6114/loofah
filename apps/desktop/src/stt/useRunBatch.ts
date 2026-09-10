@@ -66,6 +66,9 @@ export function getBatchProvider(
 
   if (model.startsWith("soniqo-")) return "soniqo";
   if (model.startsWith("am-")) return "am";
+  if (model.startsWith("whisper-") || model.startsWith("Quantized")) {
+    return "whispercpp";
+  }
   return "fmtr";
 }
 

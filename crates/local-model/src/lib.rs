@@ -147,6 +147,7 @@ impl LocalModel {
             .collect::<Vec<_>>();
 
         models.extend([
+            LocalModel::Whisper(WhisperModel::LargeV3),
             LocalModel::Whisper(WhisperModel::QuantizedTiny),
             LocalModel::Whisper(WhisperModel::QuantizedTinyEn),
             LocalModel::Whisper(WhisperModel::QuantizedBase),
@@ -193,6 +194,7 @@ impl LocalModel {
     pub fn cli_name(&self) -> &'static str {
         match self {
             LocalModel::Soniqo(model) => model.as_str(),
+            LocalModel::Whisper(WhisperModel::LargeV3) => "whisper-large-v3",
             LocalModel::Whisper(WhisperModel::QuantizedTiny) => "whisper-tiny",
             LocalModel::Whisper(WhisperModel::QuantizedTinyEn) => "whisper-tiny-en",
             LocalModel::Whisper(WhisperModel::QuantizedBase) => "whisper-base",

@@ -24,6 +24,10 @@ pub fn is_supported_languages_live(
     model: Option<&str>,
     languages: &[hypr_language::Language],
 ) -> std::result::Result<bool, String> {
+    if provider == "whispercpp" {
+        return Ok(false);
+    }
+
     if provider == "custom" {
         return Ok(true);
     }
@@ -47,7 +51,11 @@ pub fn is_supported_languages_live(
             );
         }
 
-        if model.starts_with("am-") || model.starts_with("whisper-") {
+        if model.starts_with("am-")
+            || model
+                .parse::<hypr_whisper_local_model::WhisperModel>()
+                .is_ok()
+        {
             return Ok(false);
         }
     }
@@ -63,6 +71,25 @@ pub fn is_supported_languages_batch(
     model: Option<&str>,
     languages: &[hypr_language::Language],
 ) -> std::result::Result<bool, String> {
+    if matches!(provider, "whispercpp" | "fmtr")
+        && let Some(model) =
+            model.and_then(|model| model.parse::<hypr_whisper_local_model::WhisperModel>().ok())
+    {
+        let supported = model.supported_languages();
+        return Ok(languages.iter().all(|language| {
+            supported
+                .iter()
+                .any(|candidate| candidate.iso639() == language.iso639())
+        }));
+    }
+
+    if provider == "whispercpp" {
+        return Err(format!(
+            "unknown_whisper_model: {}",
+            model.unwrap_or_default()
+        ));
+    }
+
     if provider == "custom" {
         return Ok(true);
     }
@@ -130,6 +157,47 @@ pub fn list_documented_language_codes_batch() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whisper_large_v3_supports_mixed_languages_only_after_recording() {
+        let languages = vec!["nl-BE".parse().unwrap(), "en".parse().unwrap()];
+        for provider in ["fmtr", "whispercpp"] {
+            assert!(
+                is_supported_languages_batch(provider, Some("whisper-large-v3"), &languages)
+                    .unwrap()
+            );
+            assert!(
+                !is_supported_languages_live(provider, Some("whisper-large-v3"), &languages)
+                    .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn whisper_variants_respect_language_coverage_and_always_record_first() {
+        let english = vec!["en-GB".parse().unwrap()];
+        let mixed = vec!["nl-BE".parse().unwrap(), "en".parse().unwrap()];
+        for provider in ["fmtr", "whispercpp"] {
+            for (model, multilingual) in [
+                ("whisper-large-v3", true),
+                ("QuantizedLargeTurbo", true),
+                ("QuantizedSmall", true),
+                ("QuantizedSmallEn", false),
+                ("QuantizedBase", true),
+                ("QuantizedBaseEn", false),
+                ("QuantizedTiny", true),
+                ("QuantizedTinyEn", false),
+            ] {
+                assert!(is_supported_languages_batch(provider, Some(model), &english).unwrap());
+                assert_eq!(
+                    is_supported_languages_batch(provider, Some(model), &mixed).unwrap(),
+                    multilingual,
+                    "{provider}: {model}"
+                );
+                assert!(!is_supported_languages_live(provider, Some(model), &english).unwrap());
+            }
+        }
+    }
 
     #[test]
     fn soniqo_batch_accepts_documented_european_languages_for_parakeet() {

@@ -25,6 +25,7 @@ impl LoadedWhisper {
         Ok(Whisper {
             languages,
             dynamic_prompt: String::new(),
+            initial_prompt: String::new(),
         })
     }
 }
@@ -38,6 +39,7 @@ pub struct WhisperBuilder {
 pub struct Whisper {
     languages: Vec<Language>,
     dynamic_prompt: String,
+    initial_prompt: String,
 }
 
 impl WhisperBuilder {
@@ -60,6 +62,10 @@ impl WhisperBuilder {
 }
 
 impl Whisper {
+    pub fn set_initial_prompt(&mut self, prompt: String) {
+        self.initial_prompt = prompt;
+    }
+
     pub fn builder() -> WhisperBuilder {
         WhisperBuilder::default()
     }

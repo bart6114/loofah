@@ -61,14 +61,25 @@ pub(crate) fn build_model(
     loaded_model: &hypr_whisper_local::LoadedWhisper,
     params: &ListenParams,
 ) -> Result<hypr_whisper_local::Whisper, crate::Error> {
-    build_model_with_languages(
+    let mut model = build_model_with_languages(
         loaded_model,
         params
             .languages
             .iter()
             .filter_map(|lang| lang.clone().try_into().ok())
             .collect(),
-    )
+    )?;
+    model.set_initial_prompt(keyword_prompt(&params.keywords));
+    Ok(model)
+}
+
+fn keyword_prompt(keywords: &[String]) -> String {
+    keywords
+        .iter()
+        .map(|term| term.trim())
+        .filter(|term| !term.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 pub(crate) fn load_model(
@@ -236,6 +247,18 @@ fn synthetic_segment_timings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dictionary_terms_are_plain_transcription_context() {
+        assert_eq!(
+            keyword_prompt(&[
+                " Kubernetes ".into(),
+                "".into(),
+                "ingress controller".into()
+            ]),
+            "Kubernetes, ingress controller"
+        );
+        assert_eq!(keyword_prompt(&[]), "");
+    }
 
     #[test]
     fn parse_single_language() {

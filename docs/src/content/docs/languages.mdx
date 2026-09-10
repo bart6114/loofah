@@ -1,6 +1,6 @@
 ---
 title: "Supported meeting transcription languages"
-description: "Check Loofah’s on-device transcription languages, including live English and after-recording transcription in 25 European languages."
+description: "Check Loofah’s on-device transcription languages, including live English and multilingual after-recording transcription with Whisper."
 ---
 
 Tell Loofah which languages you expect **before you record or import audio**. The configured languages determine whether Loofah can transcribe the audio and whether the transcript can appear live.
@@ -22,12 +22,36 @@ The bundled models have different language coverage:
 | --- | --- | --- |
 | **Soniqo Parakeet Streaming** | Live | English |
 | **Soniqo Parakeet Batch** | After recording | Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, and Ukrainian |
+| **Whisper Tiny, Base, Small, Large Turbo, and Large V3 (Multilingual)** | After recording | Whisper’s multilingual language set, including Dutch and English |
+| **Whisper Tiny, Base, and Small (English)** | After recording | English |
 
 The streaming model is based on NVIDIA's [Parakeet Realtime EOU 120M](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1), which supports only English. The batch model is based on [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), which supports the 25 European languages listed above.
 
 If **Soniqo Parakeet Streaming** is selected and every configured language is English, the transcript appears during the meeting. If you configure one or more of the other supported languages, Loofah automatically records first and uses the batch model after you stop.
 
-**Language & Region** includes more languages than the current transcription models support because the main language also controls generated responses. If any configured spoken language is outside the list above, the current bundled models cannot reliably transcribe the complete language selection. **Settings → Transcription** shows a warning when the selected model does not support it.
+**Language & Region** includes more languages than the current transcription models support because the main language also controls generated responses. Every configured spoken language must be supported by your selected model. **Settings → Transcription** shows a warning when the selected model does not support it.
+
+## Choose a Whisper model
+
+**Settings → Transcription** offers these Whisper variants. Download a model, then select it; the selector shows the active model’s name.
+
+| Model | Approximate download |
+| --- | --- |
+| Tiny (Multilingual or English) | 44 MB |
+| Base (Multilingual or English) | 82 MB |
+| Small (Multilingual or English) | 264 MB |
+| Large Turbo (Multilingual) | 874 MB |
+| Large V3 (Multilingual) | 3.1 GB |
+
+Tiny, Base, Small, and Large Turbo use 8-bit quantized weights to reduce storage. Choose a multilingual variant if you expect more than English. All Whisper variants transcribe after recording or importing audio, using the same recording and speaker-detection workflow.
+
+## Dutch–English meetings with Whisper
+
+Download **Whisper Large V3 (Multilingual)** in **Settings → Transcription** and select it. The download is about 3.1 GB. It runs on your Mac’s GPU after recording or importing audio and uses Loofah’s speaker detection. No transcription API key is required. Whisper is available in the desktop app; CLI transcription currently supports Soniqo models.
+
+For Dutch meetings with English technical terms, set Dutch as your main language and add English under **Additional spoken languages**. Whisper transcribes speech in its original language, with translation disabled. Recognition of mixed-language speech still depends on the recording and model.
+
+Add names, acronyms, and terms such as Kubernetes under **Settings → Dictionary**. Loofah passes these terms to Whisper as transcription context; they are hints, not guaranteed spellings.
 
 ## Set the main language
 
