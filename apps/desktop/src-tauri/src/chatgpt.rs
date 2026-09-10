@@ -44,7 +44,7 @@ fn runtime_error() -> ChatgptError {
 fn codex_missing() -> ChatgptError {
     failure(
         "runtime_missing",
-        "Install Codex CLI 0.154.0 or later on this Mac, then try signing in again.",
+        "Install Codex CLI 0.153.4 or later on this Mac, then try signing in again.",
     )
 }
 
@@ -107,14 +107,14 @@ fn supported_codex_version(output: &str) -> bool {
         return false;
     };
     let parts: Vec<_> = version.split('.').map(str::parse::<u64>).collect();
-    matches!(parts.as_slice(), [Ok(major), Ok(minor), Ok(patch)] if (*major, *minor, *patch) >= (0, 154, 0))
+    matches!(parts.as_slice(), [Ok(major), Ok(minor), Ok(patch)] if (*major, *minor, *patch) >= (0, 153, 4))
 }
 
 async fn check_codex_version(binary: &std::path::Path) -> Result<(), ChatgptError> {
     let incompatible = || {
         failure(
             "runtime_incompatible",
-            "Loofah requires Codex CLI 0.154.0 or later. Update your Codex installation, then try again.",
+            "Loofah requires Codex CLI 0.153.4 or later. Update your Codex installation, then try again.",
         )
     };
     let output = tokio::time::timeout(
@@ -928,6 +928,7 @@ mod tests {
     #[test]
     fn version_check_rejects_old_prerelease_and_unrecognized_binaries() {
         for output in [
+            "codex-cli 0.153.4\n",
             "codex-cli 0.154.0\n",
             "codex-cli 0.155.1",
             "codex-cli 1.0.0",
@@ -936,6 +937,8 @@ mod tests {
         }
         for output in [
             "codex-cli 0.153.0",
+            "codex-cli 0.153.3",
+            "codex-cli 0.153.4-alpha.1",
             "codex-cli 0.154.0-alpha.1",
             "codex-cli 0.154",
             "some-other-codex 1.0.0",
@@ -949,7 +952,7 @@ mod tests {
     async fn version_probe_reports_actionable_errors() {
         let root = tempfile::tempdir().unwrap();
         let binary = root.path().join("codex");
-        for (version, supported) in [("0.153.0", false), ("0.154.0", true)] {
+        for (version, supported) in [("0.153.3", false), ("0.153.4", true), ("0.154.0", true)] {
             std::fs::write(
                 &binary,
                 format!("#!/bin/sh\nprintf 'codex-cli {version}\\n'\n"),
@@ -980,7 +983,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires a locally installed Codex CLI and prepared model catalog"]
-    async fn installed_cli_initializes_with_isolated_summary_configuration() {
+    async fn installed_cli_initializes_and_starts_login_with_isolated_summary_configuration() {
         let binary = installed_codex().await.unwrap();
         check_codex_version(&binary).await.unwrap();
         let home = tempfile::tempdir().unwrap();
@@ -989,6 +992,20 @@ mod tests {
             .await
             .unwrap();
         assert!(client.alive.load(Ordering::SeqCst));
+        assert!(client.account().await.unwrap().is_none());
+        let login = client
+            .request("account/login/start", json!({"type":"chatgpt"}))
+            .await
+            .unwrap();
+        let url = login["authUrl"].as_str().unwrap();
+        assert!(
+            url.starts_with("https://auth.openai.com/") || url.starts_with("https://chatgpt.com/")
+        );
+        let id = login["loginId"].as_str().unwrap();
+        client
+            .request("account/login/cancel", json!({"loginId":id}))
+            .await
+            .unwrap();
         client.stop();
     }
 

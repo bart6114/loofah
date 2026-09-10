@@ -380,8 +380,8 @@ msgid "Confirm"
 msgstr "Confirm"
 
 #: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Connect an Intelligence provider to generate a summary from this transcript."
-msgstr "Connect an Intelligence provider to generate a summary from this transcript."
+msgid "Connect an Intelligence provider to generate a summary from your notes or transcript."
+msgstr "Connect an Intelligence provider to generate a summary from your notes or transcript."
 
 #: src/templates/auto-form.tsx
 msgid "Context always provided"
@@ -1455,8 +1455,8 @@ msgid "Sign in with ChatGPT"
 msgstr "Sign in with ChatGPT"
 
 #: src/settings/ai/llm/chatgpt.tsx
-msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required. Requires Codex CLI 0.154.0 or later installed on this Mac."
-msgstr "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required. Requires Codex CLI 0.154.0 or later installed on this Mac."
+msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
+msgstr "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
 
 #: src/main/about-dialog.tsx
 msgid "since {since}"
@@ -1695,6 +1695,10 @@ msgstr "Unlock your login Keychain in the macOS prompt. Loofah will retry saving
 #: src/templates/sections-editor.tsx
 msgid "Untitled"
 msgstr "Untitled"
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Update Codex CLI"
+msgstr "Update Codex CLI"
 
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload audio"

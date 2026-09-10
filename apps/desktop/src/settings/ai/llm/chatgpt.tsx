@@ -17,7 +17,7 @@ import { useLlmSettings } from "./context";
 import {
   CHATGPT_ACCOUNT_KEY,
   CHATGPT_PROVIDER,
-  listChatgptModels,
+  refreshChatgptConnection,
   unwrapChatgpt,
   useChatgptAccount,
 } from "~/ai/chatgpt-account";
@@ -52,8 +52,7 @@ export function ChatgptSettings() {
       const opened = new Channel<null>();
       opened.onmessage = () => setBrowserOpened(true);
       unwrapChatgpt(await commands.chatgptLogin(opened));
-      await refresh();
-      const { models } = await listChatgptModels();
+      const { models } = await refreshChatgptConnection(queryClient);
       const model =
         current_llm_provider === CHATGPT_PROVIDER &&
         models.includes(current_llm_model ?? "")
@@ -82,6 +81,7 @@ export function ChatgptSettings() {
       ? login.error
       : null) ??
     account.error;
+  const errorCode = (error as (Error & { code?: string }) | null)?.code;
 
   return (
     <AccordionItem
@@ -112,18 +112,24 @@ export function ChatgptSettings() {
         <p className="text-muted-foreground text-sm">
           <Trans>
             Sign in with ChatGPT to generate summaries. Uses your account's
-            Codex allowance; no API key required. Requires Codex CLI 0.154.0 or
-            later installed on this Mac.
+            Codex allowance; no API key required.
           </Trans>
         </p>
-        <a
-          className="text-sm underline"
-          href="https://developers.openai.com/codex/cli"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Trans>Install Codex CLI</Trans>
-        </a>
+        {(errorCode === "runtime_missing" ||
+          errorCode === "runtime_incompatible") && (
+          <a
+            className="text-sm underline"
+            href="https://developers.openai.com/codex/cli"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {errorCode === "runtime_missing" ? (
+              <Trans>Install Codex CLI</Trans>
+            ) : (
+              <Trans>Update Codex CLI</Trans>
+            )}
+          </a>
+        )}
         {account.data && (
           <p className="text-sm">
             {account.data.email} · {account.data.planType}

@@ -380,7 +380,7 @@ msgid "Confirm"
 msgstr ""
 
 #: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Connect an Intelligence provider to generate a summary from this transcript."
+msgid "Connect an Intelligence provider to generate a summary from your notes or transcript."
 msgstr ""
 
 #: src/templates/auto-form.tsx
@@ -1455,7 +1455,7 @@ msgid "Sign in with ChatGPT"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
-msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required. Requires Codex CLI 0.154.0 or later installed on this Mac."
+msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1694,6 +1694,10 @@ msgstr ""
 #: src/templates/details.tsx
 #: src/templates/sections-editor.tsx
 msgid "Untitled"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Update Codex CLI"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx

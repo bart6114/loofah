@@ -106,7 +106,7 @@ describe("ChatGPT settings", () => {
       error: {
         code: "runtime_missing",
         message:
-          "Install Codex CLI 0.154.0 or later on this Mac, then try signing in again.",
+          "Install Codex CLI 0.153.4 or later on this Mac, then try signing in again.",
         retryable: false,
       },
     });
@@ -131,6 +131,52 @@ describe("ChatGPT settings", () => {
     );
     await screen.findByText("test@example.com · plus");
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Install Codex CLI" }),
+    ).toBeNull();
+  });
+
+  it("does not show installation instructions while checking for Codex", async () => {
+    mocks.account.mockReturnValue(new Promise(() => {}));
+    setup();
+    expect(
+      screen.queryByRole("link", { name: "Install Codex CLI" }),
+    ).toBeNull();
+  });
+
+  it.each([null, { email: "test@example.com", planType: "plus" }])(
+    "does not show installation instructions when Codex is available (%j)",
+    async (data) => {
+      mocks.account.mockResolvedValue({ status: "ok", data });
+      setup();
+      const button = await screen.findByRole("button", {
+        name: data ? "Disconnect" : "Sign in with ChatGPT",
+      });
+      await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+      expect(
+        screen.queryByRole("link", { name: "Install Codex CLI" }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("link", { name: "Update Codex CLI" }),
+      ).toBeNull();
+      expect(screen.queryByText(/Requires Codex CLI/)).toBeNull();
+    },
+  );
+
+  it("offers an update instead of installation for an incompatible Codex", async () => {
+    mocks.account.mockResolvedValue({
+      status: "error",
+      error: {
+        code: "runtime_incompatible",
+        message: "Update your Codex installation, then try again.",
+        retryable: false,
+      },
+    });
+    setup();
+    await screen.findByRole("link", { name: "Update Codex CLI" });
+    expect(
+      screen.queryByRole("link", { name: "Install Codex CLI" }),
+    ).toBeNull();
   });
 
   it("does not start the runtime until the foldout opens", async () => {
