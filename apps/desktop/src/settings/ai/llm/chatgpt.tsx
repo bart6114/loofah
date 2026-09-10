@@ -112,9 +112,18 @@ export function ChatgptSettings() {
         <p className="text-muted-foreground text-sm">
           <Trans>
             Sign in with ChatGPT to generate summaries. Uses your account's
-            Codex allowance; no API key required.
+            Codex allowance; no API key required. Requires Codex CLI 0.154.0 or
+            later installed on this Mac.
           </Trans>
         </p>
+        <a
+          className="text-sm underline"
+          href="https://developers.openai.com/codex/cli"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Trans>Install Codex CLI</Trans>
+        </a>
         {account.data && (
           <p className="text-sm">
             {account.data.email} · {account.data.planType}

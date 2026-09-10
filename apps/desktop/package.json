@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "ui:css": "pnpm -F @hypr/ui build",
-    "predev": "node src-tauri/scripts/prepare-codex.mjs && pnpm run ui:css",
+    "predev": "node src-tauri/scripts/prepare-codex-models.mjs && pnpm run ui:css",
     "dev": "vite",
     "predev:relay": "pnpm run ui:css",
     "dev:relay": "echo 'Make sure Loofah Staging app is running, then open http://localhost:1423' && vite",
-    "prebuild": "node src-tauri/scripts/prepare-codex.mjs && pnpm run ui:css",
+    "prebuild": "node src-tauri/scripts/prepare-codex-models.mjs && pnpm run ui:css",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "dotenvx run --ignore MISSING_ENV_FILE -f .env -- tauri",

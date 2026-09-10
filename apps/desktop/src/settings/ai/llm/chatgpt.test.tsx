@@ -100,6 +100,39 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ChatGPT settings", () => {
+  it("explains the CLI prerequisite and lets sign-in retry after installation", async () => {
+    mocks.account.mockResolvedValue({
+      status: "error",
+      error: {
+        code: "runtime_missing",
+        message:
+          "Install Codex CLI 0.154.0 or later on this Mac, then try signing in again.",
+        retryable: false,
+      },
+    });
+    setup();
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Install Codex CLI",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "Install Codex CLI" })
+        .getAttribute("href"),
+    ).toBe("https://developers.openai.com/codex/cli");
+    mocks.login.mockImplementation(async () => {
+      mocks.account.mockResolvedValue({
+        status: "ok",
+        data: { email: "test@example.com", planType: "plus" },
+      });
+      return { status: "ok", data: null };
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in with ChatGPT" }),
+    );
+    await screen.findByText("test@example.com · plus");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("does not start the runtime until the foldout opens", async () => {
     setup(false);
     expect(

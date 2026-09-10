@@ -782,6 +782,10 @@ msgstr ""
 msgid "Insert below"
 msgstr ""
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Install Codex CLI"
+msgstr ""
+
 #: src/settings/ai/llm/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Intelligence"
@@ -1451,7 +1455,7 @@ msgid "Sign in with ChatGPT"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
-msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
+msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required. Requires Codex CLI 0.154.0 or later installed on this Mac."
 msgstr ""
 
 #: src/main/about-dialog.tsx

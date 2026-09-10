@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::Stdio,
     sync::{
@@ -38,6 +39,120 @@ fn runtime_error() -> ChatgptError {
         "runtime",
         "The ChatGPT runtime stopped responding. Try again, or restart Loofah.",
     )
+}
+
+fn codex_missing() -> ChatgptError {
+    failure(
+        "runtime_missing",
+        "Install Codex CLI 0.154.0 or later on this Mac, then try signing in again.",
+    )
+}
+
+fn codex_in_paths(paths: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    paths
+        .into_iter()
+        .filter(|path| path.is_absolute())
+        .find_map(|path| {
+            let binary = path.join("codex");
+            let metadata = binary.metadata().ok()?;
+            (metadata.is_file() && metadata.permissions().mode() & 0o111 != 0).then_some(binary)
+        })
+}
+
+async fn installed_codex() -> Result<PathBuf, ChatgptError> {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut paths: Vec<_> = std::env::split_paths(&path).collect();
+    paths.extend([
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+    ]);
+    if let Some(home) = std::env::var_os("HOME") {
+        paths.push(PathBuf::from(home).join(".local/bin"));
+    }
+    if let Some(binary) = codex_in_paths(paths) {
+        return Ok(binary);
+    }
+    // Finder does not inherit shell PATH entries such as nvm's active Node installation.
+    let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
+    let output = tokio::time::timeout(
+        Duration::from_secs(5),
+        Command::new(shell)
+            .args(["-ilc", "command -v codex"])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .map_err(|_| codex_missing())?
+    .map_err(|_| codex_missing())?;
+    if output.status.success() {
+        if let Some(path) = String::from_utf8_lossy(&output.stdout).lines().last() {
+            let path = PathBuf::from(path.trim());
+            if path.file_name().is_some_and(|name| name == "codex") {
+                if let Some(binary) = path
+                    .parent()
+                    .and_then(|parent| codex_in_paths([parent.to_path_buf()]))
+                {
+                    return Ok(binary);
+                }
+            }
+        }
+    }
+    Err(codex_missing())
+}
+
+fn supported_codex_version(output: &str) -> bool {
+    let Some(version) = output.trim().strip_prefix("codex-cli ") else {
+        return false;
+    };
+    let parts: Vec<_> = version.split('.').map(str::parse::<u64>).collect();
+    matches!(parts.as_slice(), [Ok(major), Ok(minor), Ok(patch)] if (*major, *minor, *patch) >= (0, 154, 0))
+}
+
+async fn check_codex_version(binary: &std::path::Path) -> Result<(), ChatgptError> {
+    let incompatible = || {
+        failure(
+            "runtime_incompatible",
+            "Loofah requires Codex CLI 0.154.0 or later. Update your Codex installation, then try again.",
+        )
+    };
+    let output = tokio::time::timeout(
+        Duration::from_secs(5),
+        Command::new(binary)
+            .arg("--version")
+            .env("PATH", codex_path(binary))
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .map_err(|_| incompatible())?
+    .map_err(|_| incompatible())?;
+    if output.status.success() && supported_codex_version(&String::from_utf8_lossy(&output.stdout))
+    {
+        Ok(())
+    } else {
+        Err(incompatible())
+    }
+}
+
+fn codex_path(binary: &std::path::Path) -> std::ffi::OsString {
+    let mut paths = vec![binary.parent().unwrap().to_path_buf()];
+    paths.extend(
+        [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+        .map(PathBuf::from),
+    );
+    // npm installs launch through Node, which normally sits alongside the codex entry point.
+    std::env::join_paths(paths).unwrap()
 }
 
 fn provider_error(value: &Value) -> ChatgptError {
@@ -149,28 +264,20 @@ impl ChatgptState {
         if let Some(client) = slot.as_ref().filter(|c| c.alive.load(Ordering::SeqCst)) {
             return Ok(client.clone());
         }
-        let packaged = std::env::current_exe()
-            .map_err(|_| runtime_error())?
-            .with_file_name("loofah-codex");
-        let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let (binary, catalog) = if packaged.is_file() {
-            let resources = app.path().resource_dir().map_err(|_| runtime_error())?;
-            (packaged, resources.join("codex/models.json"))
-        } else if cfg!(debug_assertions) {
-            (
-                development.join("binaries/loofah-codex-aarch64-apple-darwin"),
-                development.join("resources/codex/models.json"),
-            )
+        let binary = installed_codex().await?;
+        check_codex_version(&binary).await?;
+        let catalog = if cfg!(debug_assertions) {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/codex/models.json")
         } else {
-            return Err(failure(
-                "runtime_missing",
-                "The ChatGPT runtime is missing. Reinstall Loofah.",
-            ));
+            app.path()
+                .resource_dir()
+                .map_err(|_| runtime_error())?
+                .join("codex/models.json")
         };
-        if !binary.is_file() || !catalog.is_file() {
+        if !catalog.is_file() {
             return Err(failure(
-                "runtime_missing",
-                "The ChatGPT runtime is missing from this build of Loofah.",
+                "configuration",
+                "The ChatGPT model configuration is missing. Reinstall Loofah.",
             ));
         }
         let home = app
@@ -310,7 +417,7 @@ impl Client {
         }
         let cwd = home.join("work");
         std::fs::create_dir_all(&cwd).map_err(|_| runtime_error())?;
-        let mut command = Command::new(binary);
+        let mut command = Command::new(&binary);
         command.arg("app-server").arg("--stdio").env_clear();
         for key in [
             "HOME",
@@ -329,7 +436,7 @@ impl Client {
         }
         command
             .env("CODEX_HOME", &home)
-            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+            .env("PATH", codex_path(&binary))
             .env("RUST_LOG", "off");
         for (key, value) in runtime_config(&catalog) {
             command.arg("-c").arg(format!("{key}={value}"));
@@ -793,6 +900,97 @@ async fn run_generation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_skips_non_executables_and_preserves_path_order() {
+        let root = tempfile::tempdir().unwrap();
+        let paths: Vec<_> = ["not-executable", "first", "second"]
+            .map(|name| root.path().join(name))
+            .into();
+        for (index, path) in paths.iter().enumerate() {
+            std::fs::create_dir(path).unwrap();
+            let binary = path.join("codex");
+            std::fs::write(&binary, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(
+                binary,
+                std::fs::Permissions::from_mode(if index == 0 { 0o644 } else { 0o755 }),
+            )
+            .unwrap();
+        }
+        assert_eq!(codex_in_paths(paths.clone()), Some(paths[1].join("codex")));
+        assert_eq!(
+            codex_in_paths([paths[0].clone(), root.path().join("missing")]),
+            None
+        );
+        assert_eq!(codex_in_paths([PathBuf::from(".")]), None);
+    }
+
+    #[test]
+    fn version_check_rejects_old_prerelease_and_unrecognized_binaries() {
+        for output in [
+            "codex-cli 0.154.0\n",
+            "codex-cli 0.155.1",
+            "codex-cli 1.0.0",
+        ] {
+            assert!(supported_codex_version(output));
+        }
+        for output in [
+            "codex-cli 0.153.0",
+            "codex-cli 0.154.0-alpha.1",
+            "codex-cli 0.154",
+            "some-other-codex 1.0.0",
+            "",
+        ] {
+            assert!(!supported_codex_version(output));
+        }
+    }
+
+    #[tokio::test]
+    async fn version_probe_reports_actionable_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("codex");
+        for (version, supported) in [("0.153.0", false), ("0.154.0", true)] {
+            std::fs::write(
+                &binary,
+                format!("#!/bin/sh\nprintf 'codex-cli {version}\\n'\n"),
+            )
+            .unwrap();
+            std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let result = check_codex_version(&binary).await;
+            if supported {
+                result.unwrap();
+            } else {
+                assert_eq!(result.unwrap_err().code, "runtime_incompatible");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn npm_entry_point_can_find_its_node_runtime() {
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("codex");
+        let node = root.path().join("node");
+        std::fs::write(&binary, "#!/usr/bin/env node\n").unwrap();
+        std::fs::write(&node, "#!/bin/sh\nprintf 'codex-cli 0.154.0\\n'\n").unwrap();
+        for path in [&binary, &node] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        check_codex_version(&binary).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a locally installed Codex CLI and prepared model catalog"]
+    async fn installed_cli_initializes_with_isolated_summary_configuration() {
+        let binary = installed_codex().await.unwrap();
+        check_codex_version(&binary).await.unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let catalog = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/codex/models.json");
+        let client = Client::start(binary, catalog, home.path().to_path_buf())
+            .await
+            .unwrap();
+        assert!(client.alive.load(Ordering::SeqCst));
+        client.stop();
+    }
 
     fn fixture(script: &str) -> Arc<Client> {
         let child = Command::new("/bin/sh")

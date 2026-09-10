@@ -16,8 +16,7 @@
   "bundle": {
     "externalBin": [
       "binaries/check-permissions",
-      "binaries/loof",
-      "binaries/loofah-codex"
+      "binaries/loof"
     ],
     "icon": [
       "icons/stable/32x32.png",
