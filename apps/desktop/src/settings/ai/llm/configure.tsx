@@ -2,6 +2,7 @@ import { Trans } from "@lingui/react/macro";
 
 import { Accordion } from "@hypr/ui/components/ui/accordion";
 
+import { ChatgptSettings } from "./chatgpt";
 import { useLlmSettings } from "./context";
 import { ProviderId, PROVIDERS } from "./shared";
 
@@ -15,6 +16,7 @@ export function ConfigureProviders() {
       <h3 className="text-md font-sans font-semibold">
         <Trans>Configure Providers</Trans>
       </h3>
+      <ChatgptSettings />
       <Accordion
         type="single"
         collapsible
@@ -22,7 +24,9 @@ export function ConfigureProviders() {
         value={accordionValue}
         onValueChange={setAccordionValue}
       >
-        {PROVIDERS.map((provider) => (
+        {PROVIDERS.filter(
+          (provider) => provider.id !== "chatgpt_subscription",
+        ).map((provider) => (
           <NonHyprProviderCard
             key={provider.id}
             config={provider}

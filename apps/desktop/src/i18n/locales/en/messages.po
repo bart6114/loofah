@@ -127,10 +127,6 @@ msgstr "Activity"
 msgid "Add"
 msgstr "Add"
 
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Add API key"
-msgstr "Add API key"
-
 #: src/session/components/note-input/attachments.tsx
 msgid "Add attachments"
 msgstr "Add attachments"
@@ -154,10 +150,6 @@ msgstr "Add names, jargon, or product terms to prefer"
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Add spoken language"
-
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Add your own LLM API key to generate a summary from this transcript."
-msgstr "Add your own LLM API key to generate a summary from this transcript."
 
 #: src/settings/general/spoken-languages.tsx
 msgid "Additional spoken languages"
@@ -258,6 +250,10 @@ msgstr "Back"
 msgid "Base URL"
 msgstr "Base URL"
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Beta"
+msgstr "Beta"
+
 #: src/sidebar/timeline/index.tsx
 msgid "By date"
 msgstr "By date"
@@ -272,6 +268,7 @@ msgstr "Can transcribe while the meeting is happening."
 
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
+#: src/settings/ai/llm/chatgpt.tsx
 #: src/settings/general/storage/change-location.tsx
 msgid "Cancel"
 msgstr "Cancel"
@@ -288,6 +285,10 @@ msgstr "Change"
 #: src/settings/general/storage/change-location.tsx
 msgid "Change storage location?"
 msgstr "Change storage location?"
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "ChatGPT subscription"
+msgstr "ChatGPT subscription"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Choose a file format and what to include."
@@ -369,6 +370,10 @@ msgstr "Configure Providers"
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
 msgstr "Confirm"
+
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Connect an Intelligence provider to generate a summary from this transcript."
+msgstr "Connect an Intelligence provider to generate a summary from this transcript."
 
 #: src/templates/auto-form.tsx
 msgid "Context always provided"
@@ -494,6 +499,10 @@ msgstr "Detection delay"
 msgid "Dictionary"
 msgstr "Dictionary"
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Disconnect"
+msgstr "Disconnect"
+
 #: src/session/components/session-tags.tsx
 msgid "Dismiss suggested tag {name}"
 msgstr "Dismiss suggested tag {name}"
@@ -616,6 +625,10 @@ msgstr "Finalizing transcript"
 #: src/shared/open-note-dialog.tsx
 msgid "Find a note..."
 msgstr "Find a note..."
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Finish signing in in your browser…"
+msgstr "Finish signing in in your browser…"
 
 #: src/templates/template-icon-picker.tsx
 msgid "Flags"
@@ -1382,6 +1395,10 @@ msgstr "Set as default"
 msgid "Set up AI summaries"
 msgstr "Set up AI summaries"
 
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Set up Intelligence"
+msgstr "Set up Intelligence"
+
 #: src/main/empty.tsx
 #: src/sidebar/settings.tsx
 msgid "Settings"
@@ -1416,6 +1433,14 @@ msgstr "Show the compact floating control while listening."
 #: src/settings/general/app-settings.tsx
 msgid "Show tray icon"
 msgstr "Show tray icon"
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Sign in with ChatGPT"
+msgstr "Sign in with ChatGPT"
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
+msgstr "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
 
 #: src/main/about-dialog.tsx
 msgid "since {since}"

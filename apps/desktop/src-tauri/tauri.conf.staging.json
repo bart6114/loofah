@@ -6,12 +6,19 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["loofah-staging", "freemeetingtranscriber-staging"]
+        "schemes": [
+          "loofah-staging",
+          "freemeetingtranscriber-staging"
+        ]
       }
     }
   },
   "bundle": {
-    "externalBin": ["binaries/check-permissions", "binaries/loof"],
+    "externalBin": [
+      "binaries/check-permissions",
+      "binaries/loof",
+      "binaries/loofah-codex"
+    ],
     "icon": [
       "icons/stable/32x32.png",
       "icons/stable/128x128.png",

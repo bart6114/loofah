@@ -50,7 +50,7 @@ export function ConfigError({
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             <Trans>
-              Add your own LLM API key to generate a summary from this
+              Connect an Intelligence provider to generate a summary from this
               transcript.
             </Trans>
           </p>
@@ -62,7 +62,7 @@ export function ConfigError({
               openNew({ type: "settings", state: { tab: "intelligence" } })
             }
           >
-            <Trans>Add API key</Trans>
+            <Trans>Set up Intelligence</Trans>
           </Button>
         </div>
       </div>

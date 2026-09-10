@@ -127,10 +127,6 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Add API key"
-msgstr ""
-
 #: src/session/components/note-input/attachments.tsx
 msgid "Add attachments"
 msgstr ""
@@ -154,10 +150,6 @@ msgstr ""
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Dodaj govorni jezik"
-
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Add your own LLM API key to generate a summary from this transcript."
-msgstr ""
 
 #: src/settings/general/spoken-languages.tsx
 msgid "Additional spoken languages"
@@ -258,6 +250,10 @@ msgstr ""
 msgid "Base URL"
 msgstr ""
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Beta"
+msgstr ""
+
 #: src/sidebar/timeline/index.tsx
 msgid "By date"
 msgstr ""
@@ -272,6 +268,7 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
+#: src/settings/ai/llm/chatgpt.tsx
 #: src/settings/general/storage/change-location.tsx
 msgid "Cancel"
 msgstr ""
@@ -287,6 +284,10 @@ msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
 msgid "Change storage location?"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "ChatGPT subscription"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -368,6 +369,10 @@ msgstr ""
 
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
+msgstr ""
+
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Connect an Intelligence provider to generate a summary from this transcript."
 msgstr ""
 
 #: src/templates/auto-form.tsx
@@ -494,6 +499,10 @@ msgstr ""
 msgid "Dictionary"
 msgstr ""
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Disconnect"
+msgstr ""
+
 #: src/session/components/session-tags.tsx
 msgid "Dismiss suggested tag {name}"
 msgstr ""
@@ -615,6 +624,10 @@ msgstr ""
 
 #: src/shared/open-note-dialog.tsx
 msgid "Find a note..."
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Finish signing in in your browser…"
 msgstr ""
 
 #: src/templates/template-icon-picker.tsx
@@ -1382,6 +1395,10 @@ msgstr ""
 msgid "Set up AI summaries"
 msgstr ""
 
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Set up Intelligence"
+msgstr ""
+
 #: src/main/empty.tsx
 #: src/sidebar/settings.tsx
 msgid "Settings"
@@ -1415,6 +1432,14 @@ msgstr "Pokažite kompaktnu lebdeću kontrolu dok slušate."
 
 #: src/settings/general/app-settings.tsx
 msgid "Show tray icon"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Sign in with ChatGPT"
+msgstr ""
+
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
 msgstr ""
 
 #: src/main/about-dialog.tsx

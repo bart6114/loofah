@@ -1,5 +1,6 @@
 mod appearance;
 mod autostart;
+mod chatgpt;
 mod commands;
 mod embedded_cli;
 mod ext;
@@ -171,7 +172,9 @@ pub async fn main() {
 
     legacy_db::retire_app_db(&context.config().identifier);
 
-    let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default()).manage(audio);
+    let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
+        .manage(audio)
+        .manage(chatgpt::ChatgptState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
     #[cfg(all(target_os = "macos", feature = "automation"))]
@@ -428,6 +431,7 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<chatgpt::ChatgptState>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
             // nothing is dirty, so this can never double-write.
@@ -511,6 +515,13 @@ fn get_onboarding_flag() -> Option<bool> {
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
+            chatgpt::chatgpt_account::<tauri::Wry>,
+            chatgpt::chatgpt_login::<tauri::Wry>,
+            chatgpt::chatgpt_cancel_login::<tauri::Wry>,
+            chatgpt::chatgpt_logout::<tauri::Wry>,
+            chatgpt::chatgpt_models::<tauri::Wry>,
+            chatgpt::chatgpt_generate::<tauri::Wry>,
+            chatgpt::chatgpt_cancel_generation::<tauri::Wry>,
             commands::get_onboarding_needed::<tauri::Wry>,
             commands::set_onboarding_needed::<tauri::Wry>,
             commands::get_dismissed_toasts::<tauri::Wry>,

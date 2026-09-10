@@ -5,7 +5,12 @@
   "identifier": "io.loofah.stable",
   "plugins": {
     "deep-link": {
-      "desktop": { "schemes": ["loofah", "freemeetingtranscriber"] }
+      "desktop": {
+        "schemes": [
+          "loofah",
+          "freemeetingtranscriber"
+        ]
+      }
     },
     "updater": {
       "endpoints": [
@@ -15,6 +20,10 @@
   },
   "bundle": {
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/check-permissions", "binaries/loof"]
+    "externalBin": [
+      "binaries/check-permissions",
+      "binaries/loof",
+      "binaries/loofah-codex"
+    ]
   }
 }

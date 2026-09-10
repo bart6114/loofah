@@ -60,6 +60,9 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: ^2.0.41
         version: 2.0.41(zod@4.3.6)
+      '@ai-sdk/provider':
+        specifier: 3.0.8
+        version: 3.0.8
       '@emoji-mart/data':
         specifier: ^1.2.1
         version: 1.2.1
