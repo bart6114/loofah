@@ -14,7 +14,7 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   commands as localSttCommands,
@@ -46,7 +46,6 @@ import {
   resolveLiveLanguageSupportMode,
 } from "./selection";
 import {
-  displayModelLabel,
   displayModelTitle,
   formatModelSize,
   type ProviderId,
@@ -66,9 +65,9 @@ import { getBaseLanguageDisplayName } from "~/settings/general/language";
 import { useAiProvidersState } from "~/settings/providers";
 import { useSetSettingValues } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
-import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { SettingsAlertToast } from "~/shared/ui/settings-alert";
 import {
+  getTranscriptionLanguages,
   isConfiguredSttModel,
   isFmtrLocalSttModel,
   isLiveTranscriptionSupported,
@@ -328,7 +327,7 @@ const TRANSCRIPTION_LANGUAGE_WARNING_TOAST_ID =
   "transcription-language-warning";
 const dismissedTranscriptionLanguageWarningKeys = new Set<string>();
 
-function TranscriptionLanguageWarningToast() {
+export function TranscriptionLanguageWarningToast() {
   const { i18n, t } = useLingui();
   const warning = useTranscriptionLanguageWarning();
 
@@ -336,7 +335,7 @@ function TranscriptionLanguageWarningToast() {
     return null;
   }
 
-  const model = displayModelLabel(warning.model);
+  const model = warning.model;
   const unsupportedLanguages = warning.unsupportedLanguages.map((language) =>
     getBaseLanguageDisplayName(language, i18n.locale),
   );
@@ -370,7 +369,7 @@ function TranscriptionLanguageWarningToastLifecycle({
   actionLabel: string;
   variant: "info" | "warning";
 }) {
-  useMountEffect(() => {
+  useEffect(() => {
     const showToast =
       variant === "info" ? sonnerToast.info : sonnerToast.warning;
     showToast(description, {
@@ -392,7 +391,7 @@ function TranscriptionLanguageWarningToastLifecycle({
     });
 
     return clearTranscriptionLanguageWarningToast;
-  });
+  }, [warningKey, description, actionLabel, variant]);
 
   return null;
 }
@@ -402,13 +401,20 @@ function clearTranscriptionLanguageWarningToast() {
 }
 
 function useTranscriptionLanguageWarning() {
-  const { current_stt_provider, current_stt_model, spoken_languages } =
-    useConfigValues([
-      "current_stt_provider",
-      "current_stt_model",
-      "spoken_languages",
-    ] as const);
+  const {
+    current_stt_provider,
+    current_stt_model,
+    ai_language,
+    spoken_languages,
+  } = useConfigValues([
+    "current_stt_provider",
+    "current_stt_model",
+    "ai_language",
+    "spoken_languages",
+  ] as const);
   const health = useConnectionHealth();
+  const languages = getTranscriptionLanguages(ai_language, spoken_languages);
+  const supportedModels = useQuery(sttModelQueries.supportedModels());
 
   const selectedSttModel = isConfiguredSttModel(
     current_stt_provider,
@@ -442,7 +448,7 @@ function useTranscriptionLanguageWarning() {
       current_stt_provider,
       selectedSttModel,
       useLiveMode,
-      spoken_languages,
+      languages,
     ],
     queryFn: async () => {
       const isSupportedLive = (languages: readonly string[]) =>
@@ -460,14 +466,14 @@ function useTranscriptionLanguageWarning() {
 
       if (!useLiveMode) {
         const issue = await getLanguageSupportIssue(
-          spoken_languages ?? [],
+          languages,
           isSupportedBatch,
         );
         return issue && { ...issue, liveOnly: false };
       }
 
       const liveIssue = await getLanguageSupportIssue(
-        spoken_languages ?? [],
+        languages,
         isSupportedLive,
       );
       if (!liveIssue) {
@@ -477,7 +483,7 @@ function useTranscriptionLanguageWarning() {
       // Recording demotes to the batch model when live can't cover the
       // configured languages, so a live-only gap just delays the transcript.
       const batchIssue = await getLanguageSupportIssue(
-        spoken_languages ?? [],
+        languages,
         isSupportedBatch,
       );
       return batchIssue
@@ -485,9 +491,7 @@ function useTranscriptionLanguageWarning() {
         : { ...liveIssue, liveOnly: true };
     },
     enabled:
-      isConfigured &&
-      liveSupport.data !== undefined &&
-      !!spoken_languages?.length,
+      isConfigured && liveSupport.data !== undefined && languages.length > 0,
   });
 
   if (
@@ -504,9 +508,11 @@ function useTranscriptionLanguageWarning() {
       current_stt_provider,
       selectedSttModel,
       languageSupportIssue.data.liveOnly ? "live" : "batch",
-      ...(spoken_languages ?? []),
+      ...languages,
     ].join(":"),
-    model: selectedSttModel,
+    model:
+      supportedModels.data?.find((model) => model.key === selectedSttModel)
+        ?.display_name ?? selectedSttModel,
     unsupportedLanguages: languageSupportIssue.data.unsupportedLanguages,
     liveOnly: languageSupportIssue.data.liveOnly,
   };
@@ -565,14 +571,7 @@ function useConfiguredMapping(): {
 
   const isAppleSilicon = targetArch.data === "aarch64";
 
-  const supportedModels = useQuery({
-    queryKey: ["list-supported-models"],
-    queryFn: async () => {
-      const result = await localSttCommands.listSupportedModels();
-      return result.status === "ok" ? result.data : [];
-    },
-    staleTime: Infinity,
-  });
+  const supportedModels = useQuery(sttModelQueries.supportedModels());
 
   const localModels = supportedModels.data ?? [];
   const selectableModels = localModels.filter(
