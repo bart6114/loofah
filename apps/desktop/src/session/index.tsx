@@ -23,7 +23,6 @@ import {
   useHasTranscript,
 } from "./components/shared";
 import { useAutoEnhance } from "./hooks/useAutoEnhance";
-import { useEnsureDefaultSummaryFromState } from "./hooks/useEnhancedNotes";
 import { shouldShowSessionTopAudioPlayer } from "./top-audio-player";
 
 import * as AudioPlayer from "~/audio-player";
@@ -180,15 +179,6 @@ function TabContentNoteInner({
   );
   const session = useSession(sessionId);
   const rawMd = useSessionRawMd(sessionId);
-  const contentHydrated = session !== null;
-  useEnsureDefaultSummaryFromState({
-    batchError: Boolean(batchError),
-    enabled: contentHydrated,
-    enhancedNoteCount: enhancedNoteIds.length,
-    hasTranscript,
-    sessionId,
-    sessionMode,
-  });
   const updateSessionTabState = useTabs((state) => state.updateSessionTabState);
 
   useAutoEnhance(tab);

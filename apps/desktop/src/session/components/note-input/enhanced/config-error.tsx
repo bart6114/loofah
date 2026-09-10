@@ -50,8 +50,8 @@ export function ConfigError({
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             <Trans>
-              Connect an Intelligence provider to generate a summary from this
-              transcript.
+              Connect an Intelligence provider to generate a summary from your
+              notes or transcript.
             </Trans>
           </p>
         </div>

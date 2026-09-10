@@ -1,3 +1,6 @@
+vi.mock("./enhanced/empty-summary", () => ({
+  EmptySummary: () => <div>Empty summary</div>,
+}));
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -250,6 +253,10 @@ describe("NoteInput tab selection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "transcript" }));
 
+    expect(hoisted.flushPendingChanges).toHaveBeenCalledOnce();
+    expect(
+      hoisted.flushPendingChanges.mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(handleTabChange).mock.invocationCallOrder[0]);
     expect(handleTabChange).toHaveBeenCalledWith({ type: "transcript" });
     expect(screen.getByTestId("current-tab").textContent).toBe("raw");
   });

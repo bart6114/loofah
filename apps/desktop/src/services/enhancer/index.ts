@@ -1,6 +1,7 @@
 import type { LanguageModel } from "ai";
 
 import { type EnhanceEligibilitySkipCode, getEligibility } from "./eligibility";
+import { EMPTY_SUMMARY_SOURCE_MESSAGE, hasSummarySource } from "./source";
 import {
   type EnhancerNote,
   ensureSummaryDocument,
@@ -12,12 +13,13 @@ import {
   loadSessionContentSnapshot,
   type SessionContentSnapshot,
 } from "~/session/content-queries";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 import type { TasksActions } from "~/store/zustand/ai-task/tasks";
 import { listenerStore } from "~/store/zustand/listener/instance";
 import { getTemplateById } from "~/templates/queries";
 
-type EnhanceResult =
+export type EnhanceResult =
   | { type: "started"; noteId: string }
   | { type: "already_active"; noteId: string }
   | { type: "no_model" };
@@ -143,6 +145,7 @@ export function initEnhancerService(deps: EnhancerDeps): EnhancerService {
 }
 
 export class EnhancerService {
+  private pendingEnhance = new Map<string, Promise<EnhanceResult>>();
   private activeAutoEnhance = new Set<string>();
   private pendingRetries = new Map<string, ReturnType<typeof setTimeout>>();
   private unsubscribe: (() => void) | null = null;
@@ -290,12 +293,33 @@ export class EnhancerService {
   }
 
   async enhance(sessionId: string, opts?: EnhanceOpts): Promise<EnhanceResult> {
+    const key = `${sessionId}:${opts?.targetNoteId ?? "default"}`;
+    const pending = this.pendingEnhance.get(key);
+    if (pending) return pending;
+    const request = this.startEnhance(sessionId, opts);
+    this.pendingEnhance.set(key, request);
+    try {
+      return await request;
+    } finally {
+      if (this.pendingEnhance.get(key) === request)
+        this.pendingEnhance.delete(key);
+    }
+  }
+
+  private async startEnhance(
+    sessionId: string,
+    opts?: EnhanceOpts,
+  ): Promise<EnhanceResult> {
     const { aiTaskStore, getModel, getSelectedTemplateId } = this.deps;
 
     const model = getModel();
     if (!model) return { type: "no_model" };
 
+    await flushDatabaseWrites([`session:${sessionId}:note`]);
     const snapshot = await this.loadSession(sessionId);
+    if (!hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)) {
+      throw new Error(EMPTY_SUMMARY_SOURCE_MESSAGE);
+    }
     let templateId = resolveTemplateId(opts, getSelectedTemplateId);
     const targetNote = opts?.targetNoteId
       ? getSessionEnhancedNote(snapshot, opts.targetNoteId)

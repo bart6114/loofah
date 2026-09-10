@@ -10,6 +10,12 @@ export function computeCurrentNoteTab(
   const firstEnhancedNoteId = enhancedNoteIds[0];
   const hasEnhancedNote = (id: string) => enhancedNoteIds.includes(id);
 
+  if (tabView?.type === "summary") {
+    return firstEnhancedNoteId
+      ? { type: "enhanced", id: firstEnhancedNoteId }
+      : tabView;
+  }
+
   if (isLiveSessionActive) {
     if (tabView?.type === "raw") {
       return tabView;

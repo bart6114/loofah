@@ -62,6 +62,28 @@ mod tests {
     use hypr_askama_utils::tpl_snapshot;
 
     #[test]
+    fn note_only_prompt_omits_transcript() {
+        use askama::Template;
+        let input = EnhanceUser {
+            session: Session {
+                title: Some("Release plan".into()),
+                started_at: None,
+                ended_at: None,
+                event: None,
+            },
+            participants: vec![],
+            template: None,
+            transcripts: vec![],
+            pre_meeting_memo: String::new(),
+            post_meeting_memo: "Ship the release on Friday.".into(),
+        };
+        let rendered = input.render().unwrap();
+        assert!(rendered.contains("# Notes\n\nShip the release on Friday."));
+        assert!(!rendered.contains("# Transcript"));
+        assert!(!rendered.contains("# Meeting Notes"));
+    }
+
+    #[test]
     fn test_language_as_specified() {
         let rendered = render_enhance_system(&EnhanceSystem {
             language: Some("ko".to_string()),
@@ -88,14 +110,14 @@ mod tests {
 
     Current date: 2025-01-01
 
-    You are an expert at creating structured, comprehensive meeting summaries in English. Maintain accuracy, completeness, and professional terminology.
+    You are an expert at creating structured summaries of the supplied notes and transcripts in English. Maintain accuracy, completeness, and professional terminology.
 
     # Format Requirements
 
     - Use Markdown format without code block wrappers.
     - Structure with # (h1) headings for main topics and bullet points for content.
     - Use only h1 headers. Do not use h2 or h3. Each header represents a section.
-    - Each section should have at least 3 detailed bullet points.
+    - Include only as many bullet points as the source supports. Never add filler or invent facts.
     - Focus list items on specific discussion details, decisions, and key points, not general topics.
     - Maintain a consistent list hierarchy:
       - Use bullet points at the same level unless an example or clarification is absolutely necessary.
@@ -110,7 +132,7 @@ mod tests {
     - Pre-Meeting Notes are a snapshot of what the user had written before the meeting started — agenda items, discussion topics, preliminary questions, etc.
     - Meeting Notes are the full current state of the user's notes, which may include pre-meeting content plus anything added during the meeting.
     - When both sections are present, focus on what changed or was added in Meeting Notes compared to Pre-Meeting Notes to understand what the user captured during the meeting.
-    - Either section may sometimes be empty.
+    - Either section may sometimes be empty. When there is no transcript, summarize the supplied notes on their own without inventing a meeting, speakers, or decisions.
 
     # Guidelines
 

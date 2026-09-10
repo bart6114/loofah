@@ -9,7 +9,13 @@ import {
   requestMainAITaskCancel,
   requestMainEnhance,
 } from "~/ai/task-window-sync";
+import {
+  EMPTY_SUMMARY_SOURCE_MESSAGE,
+  hasSummarySource,
+} from "~/services/enhancer/source";
+import { loadSessionContentSnapshot } from "~/session/content-queries";
 import { useEnhancedNote } from "~/session/queries";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
 export function useEnhancedNoteActions({
@@ -42,22 +48,42 @@ export function useEnhancedNoteActions({
         return;
       }
 
-      if (!isMainAITaskHostWindow()) {
-        void requestMainEnhance(sessionId, {
-          templateId: templateId ?? noteTemplateId,
-          targetNoteId: enhancedNoteId,
-        });
-        return;
-      }
+      try {
+        await flushDatabaseWrites([`session:${sessionId}:note`]);
+        const snapshot = await loadSessionContentSnapshot(sessionId);
+        if (
+          !snapshot ||
+          !hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)
+        ) {
+          sonnerToast.error(EMPTY_SUMMARY_SOURCE_MESSAGE);
+          return;
+        }
 
-      await enhanceTask.start({
-        model,
-        args: {
-          sessionId,
-          enhancedNoteId,
-          templateId: templateId ?? noteTemplateId,
-        },
-      });
+        if (!isMainAITaskHostWindow()) {
+          const result = await requestMainEnhance(sessionId, {
+            templateId: templateId ?? noteTemplateId,
+            targetNoteId: enhancedNoteId,
+          });
+          if (result.type === "no_model")
+            throw new Error(
+              "Set up Intelligence in Settings before regenerating this summary.",
+            );
+          return;
+        }
+
+        await enhanceTask.start({
+          model,
+          args: {
+            sessionId,
+            enhancedNoteId,
+            templateId: templateId ?? noteTemplateId,
+          },
+        });
+      } catch (error) {
+        sonnerToast.error(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     },
     [enhancedNoteId, model, enhanceTask.start, sessionId, noteTemplateId],
   );

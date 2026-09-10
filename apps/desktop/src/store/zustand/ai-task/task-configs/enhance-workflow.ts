@@ -12,6 +12,7 @@ import type { TaskArgsMapTransformed, TaskConfig } from ".";
 import type { EnhanceImageContext } from "./enhance-images";
 import { createEnhanceValidator } from "./enhance-validator";
 
+import { summaryNoteText } from "~/services/enhancer/source";
 import {
   formatSummaryLengthGuidance,
   getSummaryLengthPolicy,
@@ -48,6 +49,7 @@ async function* executeWorkflow(params: {
   const prompt = withLengthGuidance(
     withImageContextNote(await getUserPrompt(args), args.imageContext.length),
     args.transcripts,
+    summaryNoteText(args.postMeetingMemo),
   );
 
   yield* generateSummary({
@@ -201,9 +203,10 @@ ${IMAGE_CONTEXT_NOTE}`;
 function withLengthGuidance(
   prompt: string,
   transcripts: TaskArgsMapTransformed["enhance"]["transcripts"],
+  noteText: string,
 ): string {
   const guidance = formatSummaryLengthGuidance(
-    getSummaryLengthPolicy(transcripts),
+    getSummaryLengthPolicy(transcripts, noteText),
   );
   if (!guidance) {
     return prompt;

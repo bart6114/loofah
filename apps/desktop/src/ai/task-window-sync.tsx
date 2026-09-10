@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
 
-import { getEnhancerService } from "~/services/enhancer";
+import { type EnhanceResult, getEnhancerService } from "~/services/enhancer";
 import type { AITaskStore } from "~/store/zustand/ai-task";
 import type { RemoteTaskState, TaskState } from "~/store/zustand/ai-task/tasks";
 
@@ -11,6 +11,12 @@ const TASK_SYNC_EVENT = "hypr:ai-task-sync";
 const TASK_SYNC_REQUEST_EVENT = "hypr:ai-task-sync-request";
 const TASK_CANCEL_EVENT = "hypr:ai-task-cancel";
 const TASK_ENHANCE_EVENT = "hypr:ai-task-enhance";
+const TASK_ENHANCE_RESULT_EVENT = "hypr:ai-task-enhance-result";
+type TaskEnhanceResultPayload = {
+  requestId: string;
+  result?: EnhanceResult;
+  error?: string;
+};
 
 type TaskSyncPayload = {
   sourceLabel: string;
@@ -27,6 +33,8 @@ type TaskCancelPayload = {
 
 type TaskEnhancePayload = {
   sessionId: string;
+  requestId?: string;
+  sourceLabel?: string;
   auto?: "regenerate" | "if_empty";
   opts?: {
     isAuto?: boolean;
@@ -50,10 +58,45 @@ export async function requestMainEnhance(
   sessionId: string,
   opts?: TaskEnhancePayload["opts"],
 ) {
-  await emitTo("main", TASK_ENHANCE_EVENT, {
-    sessionId,
-    opts,
-  } satisfies TaskEnhancePayload);
+  const requestId = crypto.randomUUID();
+  const sourceLabel = getCurrentWebviewWindowLabel();
+  let active = true;
+  let unlisten: UnlistenFn | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await new Promise<EnhanceResult>((resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("Summary did not start. Please try again.")),
+        30_000,
+      );
+      void listen<TaskEnhanceResultPayload>(
+        TASK_ENHANCE_RESULT_EVENT,
+        ({ payload }) => {
+          if (payload.requestId !== requestId) return;
+          if (payload.error) reject(new Error(payload.error));
+          else if (payload.result) resolve(payload.result);
+        },
+      )
+        .then(async (stop) => {
+          if (!active) {
+            stop();
+            return;
+          }
+          unlisten = stop;
+          await emitTo("main", TASK_ENHANCE_EVENT, {
+            sessionId,
+            opts,
+            requestId,
+            sourceLabel,
+          } satisfies TaskEnhancePayload);
+        })
+        .catch(reject);
+    });
+  } finally {
+    active = false;
+    if (timeout) clearTimeout(timeout);
+    unlisten?.();
+  }
 }
 
 export async function requestMainAutoEnhance(
@@ -130,11 +173,11 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
         return;
       }
 
-      const { sessionId, auto, opts } = event.payload;
+      const { sessionId, auto, opts, requestId, sourceLabel } = event.payload;
       void (async () => {
         const service = getEnhancerService();
         if (!service) {
-          return;
+          throw new Error("Summary service is unavailable. Please try again.");
         }
 
         if (auto === "regenerate") {
@@ -143,10 +186,22 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
         } else if (auto === "if_empty") {
           await service.queueAutoEnhanceIfSummaryEmpty(sessionId);
         } else {
-          await service.enhance(sessionId, opts);
+          const result = await service.enhance(sessionId, opts);
+          if (requestId && sourceLabel) {
+            await emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
+              requestId,
+              result,
+            } satisfies TaskEnhanceResultPayload);
+          }
         }
       })().catch((error) => {
         console.error("[enhancer] remote enhancement failed", error);
+        if (requestId && sourceLabel) {
+          void emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
+            requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } satisfies TaskEnhanceResultPayload);
+        }
       });
     }).then((unlisten) => {
       if (active) {

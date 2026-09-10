@@ -23,7 +23,7 @@ describe("ConfigError", () => {
     expect(screen.getByText("Set up AI summaries")).not.toBeNull();
     expect(
       screen.getByText(
-        "Connect an Intelligence provider to generate a summary from this transcript.",
+        "Connect an Intelligence provider to generate a summary from your notes or transcript.",
       ),
     ).not.toBeNull();
 
