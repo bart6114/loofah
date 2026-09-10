@@ -14,9 +14,9 @@ async chatgptAccount() : Promise<Result<ChatgptAccount | null, ChatgptError>> {
     else return { status: "error", error: e  as any };
 }
 },
-async chatgptLogin() : Promise<Result<null, ChatgptError>> {
+async chatgptLogin(onBrowserOpened: TAURI_CHANNEL<null>) : Promise<Result<null, ChatgptError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("chatgpt_login") };
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_login", { onBrowserOpened }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

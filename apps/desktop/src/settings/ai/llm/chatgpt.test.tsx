@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,7 +9,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Accordion } from "@hypr/ui/components/ui/accordion";
+
 import { ChatgptSettings } from "./chatgpt";
+import { LlmSettingsProvider, useLlmSettings } from "./context";
 
 const mocks = vi.hoisted(() => ({
   account: vi.fn(),
@@ -27,6 +31,11 @@ vi.mock("~/types/tauri.gen", () => ({
     chatgptModels: mocks.models,
   },
 }));
+vi.mock("@tauri-apps/api/core", () => ({
+  Channel: class {
+    onmessage = (_event: null) => {};
+  },
+}));
 vi.mock("~/settings/queries", () => ({ setSettingValues: mocks.settings }));
 vi.mock("~/shared/config", () => ({
   useConfigValues: () => ({
@@ -35,15 +44,35 @@ vi.mock("~/shared/config", () => ({
   }),
 }));
 
-function setup() {
+function SettingsAccordion() {
+  const { accordionValue, setAccordionValue } = useLlmSettings();
+  return (
+    <Accordion
+      type="single"
+      collapsible
+      value={accordionValue}
+      onValueChange={setAccordionValue}
+    >
+      <ChatgptSettings />
+    </Accordion>
+  );
+}
+
+function setup(expanded = true) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <ChatgptSettings />
+      <LlmSettingsProvider>
+        <SettingsAccordion />
+      </LlmSettingsProvider>
     </QueryClientProvider>,
   );
+  if (expanded)
+    fireEvent.click(
+      screen.getByRole("button", { name: /ChatGPT subscription/ }),
+    );
 }
 
 beforeEach(() => {
@@ -71,6 +100,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ChatGPT settings", () => {
+  it("does not start the runtime until the foldout opens", async () => {
+    setup(false);
+    expect(
+      screen.queryByRole("button", { name: "Sign in with ChatGPT" }),
+    ).toBeNull();
+    expect(mocks.account).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: /ChatGPT subscription/ }),
+    );
+    await screen.findByRole("button", { name: "Sign in with ChatGPT" });
+    await waitFor(() => expect(mocks.account).toHaveBeenCalledTimes(1));
+    fireEvent.click(
+      screen.getByRole("button", { name: /ChatGPT subscription/ }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Sign in with ChatGPT" }),
+    ).toBeNull();
+  });
+
   it("signs in and preserves the saved available model", async () => {
     mocks.login.mockImplementation(async () => {
       mocks.account.mockResolvedValue({
@@ -92,6 +140,35 @@ describe("ChatGPT settings", () => {
         current_llm_model: "saved-model",
       }),
     );
+  });
+
+  it("keeps pending sign-in when the foldout is closed and reopened", async () => {
+    let complete!: () => void;
+    mocks.login.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = () => resolve({ status: "ok", data: null });
+        }),
+    );
+    setup();
+    const signIn = await screen.findByRole("button", {
+      name: "Sign in with ChatGPT",
+    });
+    await waitFor(() => expect(signIn.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(signIn);
+    await screen.findByText("Opening your browser…");
+    expect(screen.queryByText("Finish signing in in your browser…")).toBeNull();
+    act(() => mocks.login.mock.calls[0][0].onmessage(null));
+    await screen.findByText("Finish signing in in your browser…");
+    const foldout = screen.getByRole("button", {
+      name: /ChatGPT subscription/,
+    });
+    fireEvent.click(foldout);
+    fireEvent.click(foldout);
+    await screen.findByText("Finish signing in in your browser…");
+    expect(mocks.login).toHaveBeenCalledTimes(1);
+    complete();
+    await screen.findByRole("button", { name: "Sign in with ChatGPT" });
   });
 
   it("disconnects without choosing another provider", async () => {

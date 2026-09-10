@@ -6,13 +6,12 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{Manager, ipc::Channel};
-use tauri_plugin_opener::OpenerExt;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
@@ -150,12 +149,12 @@ impl ChatgptState {
         if let Some(client) = slot.as_ref().filter(|c| c.alive.load(Ordering::SeqCst)) {
             return Ok(client.clone());
         }
-        let resources = app.path().resource_dir().map_err(|_| runtime_error())?;
         let packaged = std::env::current_exe()
             .map_err(|_| runtime_error())?
             .with_file_name("loofah-codex");
         let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let (binary, catalog) = if packaged.is_file() {
+            let resources = app.path().resource_dir().map_err(|_| runtime_error())?;
             (packaged, resources.join("codex/models.json"))
         } else if cfg!(debug_assertions) {
             (
@@ -495,7 +494,9 @@ pub async fn chatgpt_account<R: tauri::Runtime>(
 #[specta::specta]
 pub async fn chatgpt_login<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
+    on_browser_opened: Channel<()>,
 ) -> Result<(), ChatgptError> {
+    let started = Instant::now();
     let state = app.state::<ChatgptState>();
     let _guard = state
         .login_lock
@@ -505,14 +506,32 @@ pub async fn chatgpt_login<R: tauri::Runtime>(
     *state.login_cancel.lock().unwrap() = Some(tx);
     let result = async {
         let client = state.client(&app).await?;
+        tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "chatgpt_login_runtime_ready");
         let mut events = client.notifications.subscribe();
         let login = client.request("account/login/start", json!({"type":"chatgpt"})).await?;
+        tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "chatgpt_login_url_ready");
         let id = login["loginId"].as_str().ok_or_else(runtime_error)?;
         let result = async {
             if *cancel.borrow() { return Err(failure("cancelled", "Sign-in cancelled.")); }
             let url = login["authUrl"].as_str().ok_or_else(runtime_error)?;
             if !url.starts_with("https://auth.openai.com/") && !url.starts_with("https://chatgpt.com/") { return Err(runtime_error()); }
-            app.opener().open_url(url, None::<&str>).map_err(|_| failure("browser", "Couldn't open your browser. Try signing in again."))?;
+            // Await Launch Services dispatch so launcher failures reach the UI.
+            let mut opener = Command::new("/usr/bin/open");
+            opener
+                .arg(url)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(true);
+            let status = tokio::select! {
+                _ = cancel.changed() => return Err(failure("cancelled", "Sign-in cancelled.")),
+                status = opener.status() => status,
+            };
+            if !status.is_ok_and(|status| status.success()) {
+                return Err(failure("browser", "Couldn't open your browser. Try signing in again."));
+            }
+            tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "chatgpt_login_browser_dispatched");
+            let _ = on_browser_opened.send(());
             loop {
                 tokio::select! {
                     _ = cancel.changed() => return Err(failure("cancelled", "Sign-in cancelled.")),

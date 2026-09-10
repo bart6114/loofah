@@ -20,7 +20,7 @@ export function unwrapChatgpt<T>(
   return result.data;
 }
 
-export function useChatgptAccount(enabled = true) {
+export function useChatgptAccount(enabled: boolean) {
   return useQuery({
     queryKey: CHATGPT_ACCOUNT_KEY,
     queryFn: async () => unwrapChatgpt(await commands.chatgptAccount()),

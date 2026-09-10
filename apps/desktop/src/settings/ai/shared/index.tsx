@@ -347,7 +347,7 @@ export function NonHyprProviderCard({
   );
 }
 
-function ProviderBadge({ badge }: { badge: string }) {
+export function ProviderBadge({ badge }: { badge: string }) {
   const isBatchOnly = badge === "Batch only";
   const badgeNode = (
     <span

@@ -1090,6 +1090,10 @@ msgstr "Open Loofah"
 msgid "Open on GitHub"
 msgstr "Open on GitHub"
 
+#: src/settings/ai/llm/chatgpt.tsx
+msgid "Opening your browser…"
+msgstr "Opening your browser…"
+
 #: src/shared/startup-boundary.tsx
 msgid "Opening your vault…"
 msgstr "Opening your vault…"

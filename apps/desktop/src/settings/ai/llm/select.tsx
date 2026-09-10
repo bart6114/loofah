@@ -502,7 +502,12 @@ function useConfiguredMapping(): {
   const { providers: configuredProviders, isReady } =
     useAiProvidersState("llm");
 
-  const chatgptAccount = useChatgptAccount();
+  const { current_llm_provider } = useConfigValues([
+    "current_llm_provider",
+  ] as const);
+  const chatgptAccount = useChatgptAccount(
+    current_llm_provider === CHATGPT_PROVIDER,
+  );
   const mapping = useMemo(() => {
     return Object.fromEntries(
       PROVIDERS.map((provider) => {

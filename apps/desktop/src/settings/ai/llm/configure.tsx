@@ -16,7 +16,6 @@ export function ConfigureProviders() {
       <h3 className="text-md font-sans font-semibold">
         <Trans>Configure Providers</Trans>
       </h3>
-      <ChatgptSettings />
       <Accordion
         type="single"
         collapsible
@@ -24,17 +23,19 @@ export function ConfigureProviders() {
         value={accordionValue}
         onValueChange={setAccordionValue}
       >
-        {PROVIDERS.filter(
-          (provider) => provider.id !== "chatgpt_subscription",
-        ).map((provider) => (
-          <NonHyprProviderCard
-            key={provider.id}
-            config={provider}
-            providerType="llm"
-            providers={PROVIDERS}
-            providerContext={<ProviderContext providerId={provider.id} />}
-          />
-        ))}
+        {PROVIDERS.map((provider) =>
+          provider.id === "chatgpt_subscription" ? (
+            <ChatgptSettings key={provider.id} />
+          ) : (
+            <NonHyprProviderCard
+              key={provider.id}
+              config={provider}
+              providerType="llm"
+              providers={PROVIDERS}
+              providerContext={<ProviderContext providerId={provider.id} />}
+            />
+          ),
+        )}
       </Accordion>
     </div>
   );
