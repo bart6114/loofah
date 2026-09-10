@@ -21,7 +21,11 @@ import {
   unwrapChatgpt,
   useChatgptAccount,
 } from "~/ai/chatgpt-account";
-import { ProviderBadge, ProviderIconSlot } from "~/settings/ai/shared";
+import {
+  ProviderBadge,
+  ProviderIconSlot,
+  ProviderStatus,
+} from "~/settings/ai/shared";
 import { setSettingValues } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
 import { commands } from "~/types/tauri.gen";
@@ -88,7 +92,7 @@ export function ChatgptSettings() {
       ])}
     >
       <AccordionTrigger className="gap-2 px-4 hover:no-underline">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <ProviderIconSlot>
             <OpenAI size={16} />
           </ProviderIconSlot>
@@ -97,6 +101,12 @@ export function ChatgptSettings() {
           </span>
           <ProviderBadge badge={t`Beta`} />
         </div>
+        <ProviderStatus
+          isActive={
+            current_llm_provider === CHATGPT_PROVIDER && !!current_llm_model
+          }
+          isConfigured={!!account.data}
+        />
       </AccordionTrigger>
       <AccordionContent className="flex flex-col gap-3 px-4">
         <p className="text-muted-foreground text-sm">

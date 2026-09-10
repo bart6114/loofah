@@ -136,11 +136,13 @@ export function NonHyprProviderCard({
   providerType,
   providers,
   providerContext,
+  isActive = false,
 }: {
   config: ProviderConfig;
   providerType: ProviderType;
   providers: readonly ProviderConfig[];
   providerContext?: ReactNode;
+  isActive?: boolean;
 }) {
   const { t } = useLingui();
   const [provider, providerMutation] = useProvider(providerType, config.id);
@@ -234,11 +236,14 @@ export function NonHyprProviderCard({
             "text-muted-foreground cursor-not-allowed",
         ])}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <ProviderIconSlot>{config.icon}</ProviderIconSlot>
           <span>{config.displayName}</span>
           {config.badge && <ProviderBadge badge={config.badge} />}
         </div>
+        {providerType === "llm" && (
+          <ProviderStatus isActive={isActive} isConfigured={isReady} />
+        )}
       </AccordionTrigger>
       <AccordionContent
         className={cn([
@@ -344,6 +349,29 @@ export function NonHyprProviderCard({
         </form>
       </AccordionContent>
     </AccordionItem>
+  );
+}
+
+export function ProviderStatus({
+  isActive,
+  isConfigured,
+}: {
+  isActive: boolean;
+  isConfigured: boolean;
+}) {
+  if (!isActive && !isConfigured) return null;
+
+  return (
+    <span
+      className={cn([
+        "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium normal-case",
+        isActive
+          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+          : "bg-background/60 text-muted-foreground",
+      ])}
+    >
+      {isActive ? <Trans>Active</Trans> : <Trans>Configured</Trans>}
+    </span>
   );
 }
 

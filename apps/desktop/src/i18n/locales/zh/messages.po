@@ -119,6 +119,10 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#: src/settings/ai/shared/index.tsx
+msgid "Active"
+msgstr ""
+
 #: src/templates/template-icon-picker.tsx
 msgid "Activity"
 msgstr ""
@@ -365,6 +369,10 @@ msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Configure Providers"
+msgstr ""
+
+#: src/settings/ai/shared/index.tsx
+msgid "Configured"
 msgstr ""
 
 #: src/onboarding/folder-location.tsx

@@ -7,9 +7,14 @@ import { useLlmSettings } from "./context";
 import { ProviderId, PROVIDERS } from "./shared";
 
 import { NonHyprProviderCard, StyledStreamdown } from "~/settings/ai/shared";
+import { useConfigValues } from "~/shared/config";
 
 export function ConfigureProviders() {
   const { accordionValue, setAccordionValue } = useLlmSettings();
+  const { current_llm_provider, current_llm_model } = useConfigValues([
+    "current_llm_provider",
+    "current_llm_model",
+  ] as const);
 
   return (
     <div className="flex flex-col gap-3">
@@ -31,6 +36,9 @@ export function ConfigureProviders() {
               key={provider.id}
               config={provider}
               providerType="llm"
+              isActive={
+                current_llm_provider === provider.id && !!current_llm_model
+              }
               providers={PROVIDERS}
               providerContext={<ProviderContext providerId={provider.id} />}
             />

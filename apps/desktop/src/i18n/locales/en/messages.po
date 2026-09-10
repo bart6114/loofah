@@ -119,6 +119,10 @@ msgstr "Accept suggested tag {name}"
 msgid "Actions"
 msgstr "Actions"
 
+#: src/settings/ai/shared/index.tsx
+msgid "Active"
+msgstr "Active"
+
 #: src/templates/template-icon-picker.tsx
 msgid "Activity"
 msgstr "Activity"
@@ -366,6 +370,10 @@ msgstr "comments"
 #: src/settings/ai/llm/configure.tsx
 msgid "Configure Providers"
 msgstr "Configure Providers"
+
+#: src/settings/ai/shared/index.tsx
+msgid "Configured"
+msgstr "Configured"
 
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
