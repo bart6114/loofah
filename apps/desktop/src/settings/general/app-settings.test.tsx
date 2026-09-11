@@ -20,7 +20,6 @@ function renderAppSettings({ floatingBar = true } = {}) {
         autoAcceptRelatedTags={setting(false)}
         showAppInDock={setting()}
         showTrayIcon={setting()}
-        audioRetention={{ value: "forever", onChange: vi.fn() }}
       />,
     ),
   };

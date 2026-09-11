@@ -9,11 +9,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode, useMemo } from "react";
 import ReactDOM from "react-dom/client";
-import { createManager } from "tinytick";
-import {
-  Provider as TinyTickProvider,
-  useCreateManager,
-} from "tinytick/ui-react";
 
 import "@hypr/ui/globals.css";
 import {
@@ -28,7 +23,6 @@ import { FloatingMeetingWindowHost } from "./meeting-float/host";
 import { routeTree } from "./routeTree.gen";
 import { EventListeners } from "./services/event-listeners";
 import { LocationInvalidationSync } from "./services/location-invalidation";
-import { TaskManager } from "./services/task-manager";
 import { RegenerateTranscriptConfirmDialog } from "./session/components/note-input/transcript/regenerate-confirm";
 import { useRemoteSessionDeletionUndoListener } from "./session/hooks/useDeleteSession";
 import { initializeApplicationSettings } from "./settings/queries";
@@ -77,28 +71,22 @@ function App() {
 }
 
 function AppRoot() {
-  const manager = useCreateManager(() => {
-    return createManager().start();
-  });
   const theme = useConfigValue("theme") as ThemePreference;
   useRemoteSessionDeletionUndoListener(isMainWindow);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TinyTickProvider manager={manager}>
-        <AppThemeProvider>
-          <AppI18nProvider>
-            <StartupBoundary>
-              <App />
-              <LocationInvalidationSync />
-              {isMainWindow ? <TaskManager /> : null}
-              {isMainWindow ? <FloatingMeetingWindowHost /> : null}
-              {isMainWindow ? <EventListeners /> : null}
-            </StartupBoundary>
-            <Toaster position="bottom-right" theme={theme} />
-          </AppI18nProvider>
-        </AppThemeProvider>
-      </TinyTickProvider>
+      <AppThemeProvider>
+        <AppI18nProvider>
+          <StartupBoundary>
+            <App />
+            <LocationInvalidationSync />
+            {isMainWindow ? <FloatingMeetingWindowHost /> : null}
+            {isMainWindow ? <EventListeners /> : null}
+          </StartupBoundary>
+          <Toaster position="bottom-right" theme={theme} />
+        </AppI18nProvider>
+      </AppThemeProvider>
     </QueryClientProvider>
   );
 }

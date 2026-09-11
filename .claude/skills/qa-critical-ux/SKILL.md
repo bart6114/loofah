@@ -32,7 +32,7 @@ explicitly waived by the user; an unwaived failure blocks release.
    Ollama) and one remote provider with an API key. A summary needs a meaningful
    transcript; use a spoken paragraph comfortably longer than 160 characters.
 6. Record the app version, vault path, selected languages, STT model and mode,
-   Intelligence provider/model, and audio-retention setting.
+   and Intelligence provider/model.
 
 ## Checklist
 
@@ -147,13 +147,11 @@ app-owned vault files:
 - `notes.md` for the editable note
 - `transcript.json` for transcript words and speaker assignments
 - `enhanced/<uuid>.md` for generated summaries
-- `audio.mp3`, `audio.wav`, or `audio.ogg` plus `audio.peaks.json` when retention
-  keeps the recording
+- `audio.mp3`, `audio.wav`, or `audio.ogg` plus `audio.peaks.json`
 - vault-root `config.json` for persisted settings
 
-With **Audio file retention → Don't save**, processed audio should disappear
-only after transcription succeeds; the app may retain it after a failure so it
-can repair the transcript. Unknown and dot-prefixed session files are not app
+Recordings are kept indefinitely unless the user explicitly deletes them.
+Unknown and dot-prefixed session files are not app
 content and must not be treated as evidence or modified.
 
 The Tauri webview is not reachable through an in-app browser pane. Use

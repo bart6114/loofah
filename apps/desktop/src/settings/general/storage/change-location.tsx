@@ -19,7 +19,6 @@ import {
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
 
-import { ObsidianVaultList } from "./obsidian-vault-list";
 import { displayPath } from "./path-utils";
 
 import { scheduleAutomaticRelaunch } from "~/shared/relaunch";
@@ -51,15 +50,6 @@ export function ChangeLocationRow() {
       if (result.status === "error") {
         throw new Error(result.error);
       }
-      return result.data;
-    },
-  });
-
-  const { data: obsidianVaults } = useQuery({
-    queryKey: ["obsidian-vaults"],
-    queryFn: async () => {
-      const result = await settingsCommands.obsidianVaults();
-      if (result.status === "error") return [];
       return result.data;
     },
   });
@@ -127,10 +117,6 @@ export function ChangeLocationRow() {
     setPendingPath(null);
   };
 
-  const detectedVaults = (obsidianVaults ?? []).filter(
-    (v) => v.path !== vaultBase,
-  );
-
   const pending = changeMutation.isPending;
   const pendingKind = changeMutation.variables?.kind;
 
@@ -165,13 +151,6 @@ export function ChangeLocationRow() {
             <Trans>Change</Trans>
           </Button>
         </div>
-
-        <ObsidianVaultList
-          vaults={detectedVaults}
-          home={home}
-          disabled={pending}
-          onSelect={openPickerForPath}
-        />
       </div>
 
       <Dialog
@@ -289,8 +268,7 @@ export function ChangeLocationRow() {
               </>
             )}
 
-            {(destinationKind === "vault" ||
-              destinationKind === "obsidian") && (
+            {destinationKind === "vault" && (
               <>
                 <DialogHeader>
                   <DialogTitle>

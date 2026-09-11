@@ -24,7 +24,6 @@ const {
   isSupportedLanguagesLiveMock,
   leftSidebarExpanded,
   setLeftSidebarExpandedMock,
-  deleteProcessedAudioForRetentionMock,
   sonnerToastWarningMock,
   sonnerToastErrorMock,
   catalogLocalSessionAudioMock,
@@ -49,7 +48,6 @@ const {
   isSupportedLanguagesLiveMock: vi.fn(),
   leftSidebarExpanded: { value: true },
   setLeftSidebarExpandedMock: vi.fn(),
-  deleteProcessedAudioForRetentionMock: vi.fn(),
   sonnerToastWarningMock: vi.fn(),
   sonnerToastErrorMock: vi.fn(),
   catalogLocalSessionAudioMock: vi.fn(),
@@ -101,12 +99,6 @@ vi.mock("./useSTTConnection", () => ({
 
 vi.mock("~/services/enhancer", () => ({
   getEnhancerService: getEnhancerServiceMock,
-}));
-
-vi.mock("~/services/audio-retention", () => ({
-  deleteProcessedAudioForRetention: deleteProcessedAudioForRetentionMock,
-  normalizeAudioRetention: (value: unknown) =>
-    typeof value === "string" ? value : "forever",
 }));
 
 vi.mock("~/session/attachments", () => ({
@@ -396,10 +388,6 @@ describe("useStartListening", () => {
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
     );
-    expect(deleteProcessedAudioForRetentionMock).toHaveBeenCalledWith(
-      "forever",
-      "session-1",
-    );
   });
 
   test("skips post-capture batch when the connection cannot run batch transcription", async () => {
@@ -429,7 +417,7 @@ describe("useStartListening", () => {
     expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();
   });
 
-  test("shows a toast and skips retention deletion when moving recorded audio into the session folder fails", async () => {
+  test("shows a toast when moving recorded audio into the session folder fails", async () => {
     catalogLocalSessionAudioMock.mockRejectedValueOnce(new Error("disk full"));
     const consoleError = vi
       .spyOn(console, "error")
@@ -456,7 +444,6 @@ describe("useStartListening", () => {
       "Recording audio could not be moved into the session folder — it remains at its original location",
       { id: "audio-catalog-failed" },
     );
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 
@@ -682,7 +669,6 @@ describe("useStartListening", () => {
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
     );
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 
@@ -828,10 +814,6 @@ describe("useStartListening", () => {
 
     expect(runBatchMock).not.toHaveBeenCalled();
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
-      "session-1",
-    );
-    expect(deleteProcessedAudioForRetentionMock).toHaveBeenCalledWith(
-      "forever",
       "session-1",
     );
   });

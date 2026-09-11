@@ -87,7 +87,7 @@ loof --json import recording.m4a --created-at 2024-03-05T14:00:00Z --started-at 
 loof --json import recording.m4a --into MEETING_ID --transcribe
 ```
 
-Transcribe a meeting's audio with the on-device model configured in the desktop app (replaces the meeting's transcript; requires the model to be downloaded via the desktop app first; progress goes to stderr; honors the app's audio retention setting — with retention "none", the recording is deleted once the transcript is saved):
+Transcribe a meeting's audio with the on-device model configured in the desktop app (replaces the meeting's transcript; requires the model to be downloaded via the desktop app first; progress goes to stderr; keeps the recording after transcription):
 
 ```bash
 loof --json transcribe MEETING_ID

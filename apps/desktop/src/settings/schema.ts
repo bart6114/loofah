@@ -59,16 +59,6 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "theme"],
     default: "system" as string,
   },
-  save_recordings: {
-    type: "boolean",
-    path: ["general", "save_recordings"],
-    default: true as boolean,
-  },
-  audio_retention: {
-    type: "string",
-    path: ["general", "audio_retention"],
-    default: "forever" as string,
-  },
   auto_accept_related_tags: {
     type: "boolean",
     path: ["general", "auto_accept_related_tags"],

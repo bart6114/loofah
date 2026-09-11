@@ -14,7 +14,6 @@ use crate::fs::copy_dir_recursive;
 pub enum VaultDirKind {
     EmptyOrMissing,
     Vault,
-    Obsidian,
     Other,
 }
 
@@ -24,9 +23,6 @@ pub fn classify_vault_dir(path: &Path) -> std::io::Result<VaultDirKind> {
     }
     if path.join("sessions").is_dir() || path.join(CONFIG_FILENAME).is_file() {
         return Ok(VaultDirKind::Vault);
-    }
-    if path.join(".obsidian").is_dir() {
-        return Ok(VaultDirKind::Obsidian);
     }
     Ok(VaultDirKind::Other)
 }
@@ -239,10 +235,7 @@ mod tests {
 
         let obsidian = temp.path().join("obsidian");
         fs::create_dir_all(obsidian.join(".obsidian")).unwrap();
-        assert_eq!(
-            classify_vault_dir(&obsidian).unwrap(),
-            VaultDirKind::Obsidian
-        );
+        assert_eq!(classify_vault_dir(&obsidian).unwrap(), VaultDirKind::Other);
 
         let other = temp.path().join("other");
         fs::create_dir_all(&other).unwrap();

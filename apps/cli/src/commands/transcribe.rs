@@ -65,7 +65,7 @@ pub(crate) async fn transcribe_session(
     }
 
     // Resolve the session's physical directory once: the basename may be a
-    // readable name rather than the id, so audio lookup and retention deletion
+    // readable name rather than the id, so audio lookup
     // must go through the store's catalog, never `sessions/<id>` directly.
     let session_dir = vault.join(
         store
@@ -126,33 +126,7 @@ pub(crate) async fn transcribe_session(
         .await
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
 
-    // Mirror the desktop's post-batch retention step (useRunBatch →
-    // deleteProcessedAudioForRetention): with audio_retention "none", the
-    // recording is deleted as soon as a transcript with words is persisted.
-    // A transcript exists with words here — the empty case errored above.
-    if config.audio_retention.as_deref() == Some("none") {
-        delete_session_audio(&session_dir);
-    }
-
     Ok(outcome)
-}
-
-/// Deletes the session's recording files (the flat `audio.*` names the readers
-/// know), like `fs-sync-core`'s `audio::delete`. Failures only warn: the
-/// transcript is already persisted, so the command's result stands — matching
-/// the desktop, which logs and moves on.
-fn delete_session_audio(session_dir: &Path) {
-    for name in AUDIO_FILE_NAMES {
-        let path = session_dir.join(name);
-        if let Err(error) = std::fs::remove_file(&path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            eprintln!(
-                "warning: audio retention is \"none\", but deleting {} failed: {error}",
-                path.display()
-            );
-        }
-    }
 }
 
 /// The flat `config.json` keys the CLI needs; deliberately not the settings
@@ -163,8 +137,6 @@ struct VaultConfig {
     current_stt_provider: Option<String>,
     #[serde(default)]
     current_stt_model: Option<String>,
-    #[serde(default)]
-    audio_retention: Option<String>,
 }
 
 fn read_vault_config(vault: &Path) -> Result<VaultConfig> {
@@ -297,7 +269,6 @@ mod tests {
         VaultConfig {
             current_stt_provider: provider.map(str::to_string),
             current_stt_model: model.map(str::to_string),
-            audio_retention: None,
         }
     }
 
@@ -357,7 +328,6 @@ mod tests {
         let config = read_vault_config(dir.path()).unwrap();
         assert_eq!(config.current_stt_provider, None);
         assert_eq!(config.current_stt_model, None);
-        assert_eq!(config.audio_retention, None);
 
         std::fs::write(
             dir.path().join("config.json"),
@@ -377,32 +347,10 @@ mod tests {
             config.current_stt_model.as_deref(),
             Some("soniqo-parakeet-batch")
         );
-        assert_eq!(config.audio_retention.as_deref(), Some("none"));
 
         std::fs::write(dir.path().join("config.json"), "{ not json").unwrap();
         let error = read_vault_config(dir.path()).unwrap_err();
         assert_eq!(error.code(), "operation_failed");
-    }
-
-    #[test]
-    fn delete_session_audio_clears_recordings_and_tolerates_absence() {
-        let dir = tempfile::tempdir().unwrap();
-
-        // A session without audio (or without a directory at all) is fine.
-        delete_session_audio(&dir.path().join("sessions").join("missing"));
-
-        let session_dir = dir.path().join("sessions").join("s1");
-        std::fs::create_dir_all(&session_dir).unwrap();
-        std::fs::write(session_dir.join("audio.mp3"), b"mp3").unwrap();
-        std::fs::write(session_dir.join("audio.wav"), b"wav").unwrap();
-        std::fs::write(session_dir.join("transcript.json"), b"{}").unwrap();
-
-        delete_session_audio(&session_dir);
-
-        assert!(!session_dir.join("audio.mp3").exists());
-        assert!(!session_dir.join("audio.wav").exists());
-        // Only recordings go; the transcript that replaced them stays.
-        assert!(session_dir.join("transcript.json").exists());
     }
 
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]

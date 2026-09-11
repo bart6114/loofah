@@ -21,7 +21,7 @@ import {
   useSetSettingValues,
   useStoredSettingValuesQuery,
 } from "~/settings/queries";
-import { resolveConfigValue, resolveConfigValues } from "~/shared/config";
+import { resolveConfigValues } from "~/shared/config";
 
 const SETTINGS_FORM_KEYS = [
   "autostart",
@@ -119,9 +119,6 @@ function SettingsAppContent({
   storedSettings: StoredSettingValues;
 }) {
   const { form } = useSettingsForm(storedSettings);
-  const setSettingValues = useSetSettingValues();
-  const audioRetention =
-    resolveConfigValue("audio_retention", storedSettings) || "forever";
 
   return (
     <div className="flex flex-col gap-8">
@@ -173,14 +170,6 @@ function SettingsAppContent({
                                     value: showTrayIconField.state.value,
                                     onChange: (val) =>
                                       showTrayIconField.handleChange(val),
-                                  }}
-                                  audioRetention={{
-                                    value: audioRetention,
-                                    onChange: (val) =>
-                                      setSettingValues({
-                                        audio_retention: val,
-                                        save_recordings: val !== "none",
-                                      }),
                                   }}
                                 />
                               )}

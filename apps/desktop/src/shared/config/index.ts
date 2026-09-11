@@ -59,14 +59,6 @@ export function resolveConfigValue<K extends SettingKey>(
   const definition = SETTING_DEFINITIONS[key];
   const defaultValue = "default" in definition ? definition.default : undefined;
 
-  if (
-    key === "audio_retention" &&
-    values.save_recordings === false &&
-    !hasValues.has("audio_retention")
-  ) {
-    return "none" as ConfigValueType<K>;
-  }
-
   const value = hasValues.has(key) ? values[key] : defaultValue;
   if (JSON_PARSED_KEYS.has(key)) {
     return parseStringArray(

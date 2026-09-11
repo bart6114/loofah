@@ -12,7 +12,6 @@ const COMMANDS: &[&str] = &[
     "audio_delete",
     "audio_metadata",
     "audio_peaks",
-    "audio_delete_orphaned_expired",
     "audio_import",
     "audio_import_data",
     "audio_source_metadata",

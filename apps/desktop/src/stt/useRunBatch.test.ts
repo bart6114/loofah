@@ -16,7 +16,6 @@ const {
   useConfigValueMock,
   isSupportedLanguagesBatchMock,
   sonnerToastWarningMock,
-  deleteProcessedAudioForRetentionMock,
   createTranscriptMock,
   appendTranscriptWordsAndHintsMock,
   queueTagSuggestionsMock,
@@ -29,7 +28,6 @@ const {
   useConfigValueMock: vi.fn(),
   isSupportedLanguagesBatchMock: vi.fn(),
   sonnerToastWarningMock: vi.fn(),
-  deleteProcessedAudioForRetentionMock: vi.fn(),
   createTranscriptMock: vi.fn(),
   appendTranscriptWordsAndHintsMock: vi.fn(),
   queueTagSuggestionsMock: vi.fn(),
@@ -53,12 +51,6 @@ vi.mock("@hypr/ui/components/ui/toast", () => ({
   sonnerToast: {
     warning: sonnerToastWarningMock,
   },
-}));
-
-vi.mock("~/services/audio-retention", () => ({
-  deleteProcessedAudioForRetention: deleteProcessedAudioForRetentionMock,
-  normalizeAudioRetention: (value: unknown) =>
-    typeof value === "string" ? value : "forever",
 }));
 
 vi.mock("~/session/queries", () => ({
@@ -191,7 +183,6 @@ describe("useRunBatch", () => {
     createTranscriptMock.mockResolvedValue(undefined);
     appendTranscriptWordsAndHintsMock.mockResolvedValue(undefined);
     queueTagSuggestionsMock.mockResolvedValue(undefined);
-    deleteProcessedAudioForRetentionMock.mockResolvedValue(undefined);
     isSupportedLanguagesBatchMock.mockResolvedValue(true);
     useListenerMock.mockImplementation((selector) =>
       selector({ startTranscription: startTranscriptionMock }),
@@ -216,7 +207,7 @@ describe("useRunBatch", () => {
     );
   });
 
-  test("waits for streamed persists before retention", async () => {
+  test("waits for streamed persists before suggesting tags", async () => {
     let resolveAppend: (() => void) | undefined;
     appendTranscriptWordsAndHintsMock.mockImplementationOnce(
       () =>
@@ -241,19 +232,16 @@ describe("useRunBatch", () => {
     await waitFor(() => {
       expect(appendTranscriptWordsAndHintsMock).toHaveBeenCalledTimes(1);
     });
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
+    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
 
     resolveAppend?.();
     await act(async () => await run);
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
     expect(queueTagSuggestionsMock).toHaveBeenCalledWith("session-1");
-    expect(deleteProcessedAudioForRetentionMock).toHaveBeenCalledTimes(1);
     expect(
       appendTranscriptWordsAndHintsMock.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      deleteProcessedAudioForRetentionMock.mock.invocationCallOrder[0],
-    );
+    ).toBeLessThan(queueTagSuggestionsMock.mock.invocationCallOrder[0]);
   });
 
   test("does not save for custom batch persist handlers", async () => {
@@ -294,7 +282,7 @@ describe("useRunBatch", () => {
     ).rejects.toThrow("provider failed");
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
+    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
   });
 
   test("passes selected transcription languages to batch transcription", async () => {

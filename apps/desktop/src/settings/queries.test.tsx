@@ -42,8 +42,6 @@ function appConfig(overrides: Record<string, unknown> = {}) {
     show_app_in_dock: true,
     show_tray_icon: true,
     theme: "system",
-    save_recordings: true,
-    audio_retention: "forever",
     notification_detect: true,
     respect_dnd: false,
     cloud_sync_enabled: true,
@@ -80,6 +78,20 @@ describe("config-backed settings", () => {
     expect(stored.values.theme).toBeUndefined();
   });
 
+  it("ignores retired audio settings from existing vaults", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ audio_retention: "none", save_recordings: false }),
+    });
+
+    const stored = await getStoredSettingValues();
+
+    expect(stored.values).not.toHaveProperty("audio_retention");
+    expect(stored.values).not.toHaveProperty("save_recordings");
+    expect([...stored.hasValues]).not.toContain("audio_retention");
+    expect([...stored.hasValues]).not.toContain("save_recordings");
+  });
+
   it("exposes explicit config values, stringifying array keys", async () => {
     mocks.getConfig.mockResolvedValue({
       status: "ok",
@@ -96,7 +108,6 @@ describe("config-backed settings", () => {
     expect(stored.values.spoken_languages).toBe('["en","ko"]');
     expect(stored.values.current_stt_provider).toBe("fmtr");
     expect(stored.hasValues.has("theme")).toBe(true);
-    expect(stored.hasValues.has("audio_retention")).toBe(false);
   });
 
   it("writes schema-typed JSON values in a single config call", async () => {

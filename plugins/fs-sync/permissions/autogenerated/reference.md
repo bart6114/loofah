@@ -17,7 +17,6 @@ Default permissions for the fs-sync plugin
 - `allow-audio-delete`
 - `allow-audio-metadata`
 - `allow-audio-peaks`
-- `allow-audio-delete-orphaned-expired`
 - `allow-audio-import`
 - `allow-audio-import-data`
 - `allow-audio-source-metadata`
@@ -249,32 +248,6 @@ Enables the audio_delete command without any pre-configured scope.
 <td>
 
 Denies the audio_delete command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:allow-audio-delete-orphaned-expired`
-
-</td>
-<td>
-
-Enables the audio_delete_orphaned_expired command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-audio-delete-orphaned-expired`
-
-</td>
-<td>
-
-Denies the audio_delete_orphaned_expired command without any pre-configured scope.
 
 </td>
 </tr>

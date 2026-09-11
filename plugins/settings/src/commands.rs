@@ -1,7 +1,6 @@
 use camino::Utf8PathBuf;
 
 use crate::SettingsPluginExt;
-use hypr_storage::ObsidianVault;
 
 #[tauri::command]
 #[specta::specta]
@@ -90,14 +89,6 @@ pub(crate) async fn classify_vault_dir<R: tauri::Runtime>(
     app.settings()
         .classify_vault_dir(Utf8PathBuf::from(&path))
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub(crate) fn obsidian_vaults<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-) -> Result<Vec<ObsidianVault>, String> {
-    app.settings().obsidian_vaults().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

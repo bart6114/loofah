@@ -83,8 +83,7 @@ pub struct SessionRecord {
 }
 
 /// One `session_list` entry: full meta plus the derived flags list consumers need
-/// (timeline grouping wants `event`/`folder` off the meta; audio retention wants
-/// `has_transcript_words` without a per-session round-trip).
+/// without a per-session round-trip.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct SessionListEntry {
     pub meta: SessionMeta,
@@ -92,7 +91,7 @@ pub struct SessionListEntry {
 }
 
 /// The slim `session_list_headers` row -- exactly what the always-mounted list
-/// subscribers (timeline, summaries, tags, float, audio retention) consume.
+/// subscribers (timeline, summaries, tags, float) consume.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct SessionListHeader {
     pub id: String,

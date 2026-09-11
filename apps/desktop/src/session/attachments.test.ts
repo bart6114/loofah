@@ -30,12 +30,7 @@ vi.mock("~/shared/write-queue", () => ({
   enqueueDatabaseWrite: mocks.enqueueDatabaseWrite,
 }));
 
-import {
-  catalogLocalSessionAudio,
-  cleanupDeletedSessionAudio,
-  deleteLocalSessionAudio,
-  deleteSessionAudio,
-} from "./attachments";
+import { catalogLocalSessionAudio, deleteSessionAudio } from "./attachments";
 
 describe("attachment catalog", () => {
   beforeEach(() => {
@@ -88,9 +83,9 @@ describe("attachment catalog", () => {
       data: ["recording.wav"],
     });
 
-    await expect(
-      deleteLocalSessionAudio("session-1", () => true),
-    ).resolves.toBe(true);
+    await expect(deleteSessionAudio("session-1", () => true)).resolves.toBe(
+      true,
+    );
     expect(mocks.audioDelete).toHaveBeenCalledWith("session-1");
     expect(mocks.sessionListAudio).toHaveBeenCalledWith("session-1");
     expect(mocks.sessionDeleteAudio).toHaveBeenCalledWith(
@@ -112,24 +107,6 @@ describe("attachment catalog", () => {
     await expect(deleteSessionAudio("session-1", () => true)).resolves.toBe(
       true,
     );
-  });
-
-  it("resolves false when retention finds no local audio to delete", async () => {
-    mocks.audioDelete.mockResolvedValue({ status: "ok", data: false });
-
-    await expect(
-      deleteLocalSessionAudio("session-1", () => true),
-    ).resolves.toBe(false);
-  });
-
-  // cleanupDeletedSessionAudio is likewise a graceful no-op — there is no
-  // longer a way to detect a logically-deleted-but-locally-present
-  // attachment to retry cleanup on. See the comment above its definition.
-  it("resolves without deleting anything (backing table dropped)", async () => {
-    await expect(
-      cleanupDeletedSessionAudio("session-1", () => true),
-    ).resolves.toBe(false);
-    expect(mocks.audioDelete).not.toHaveBeenCalled();
   });
 
   it("rechecks capture safety inside the serialized delete operation", async () => {

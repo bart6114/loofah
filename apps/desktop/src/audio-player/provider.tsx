@@ -14,8 +14,8 @@ import WaveSurfer from "wavesurfer.js";
 
 import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 
-import { isSessionAudioIdle } from "~/services/audio-retention";
 import { deleteSessionAudio } from "~/session/attachments";
+import { listenerStore } from "~/store/zustand/listener/instance";
 
 const TIME_UPDATE_STEP_SECONDS = 0.1;
 
@@ -408,5 +408,13 @@ export function AudioPlayerProvider({
     <AudioPlayerContext.Provider value={value}>
       {children}
     </AudioPlayerContext.Provider>
+  );
+}
+
+function isSessionAudioIdle(sessionId: string) {
+  const state = listenerStore.getState();
+  return (
+    state.getSessionMode(sessionId) === "inactive" &&
+    !(state.live.sessionId === sessionId && state.live.loading)
   );
 }

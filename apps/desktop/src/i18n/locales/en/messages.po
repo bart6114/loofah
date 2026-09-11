@@ -79,25 +79,9 @@ msgstr "{otherClusterCount, plural, one {Also apply to the other speaker on this
 msgid "+ Add tag"
 msgstr "+ Add tag"
 
-#: src/settings/general/app-settings.tsx
-msgid "1 day"
-msgstr "1 day"
-
 #: src/session/components/note-input/attachments.tsx
 msgid "1 file"
 msgstr "1 file"
-
-#: src/settings/general/app-settings.tsx
-msgid "1 month"
-msgstr "1 month"
-
-#: src/settings/general/app-settings.tsx
-msgid "1 week"
-msgstr "1 week"
-
-#: src/settings/general/app-settings.tsx
-msgid "3 days"
-msgstr "3 days"
 
 #: src/settings/general/storage/change-location.tsx
 msgid "A duplicate; the original stays where it is."
@@ -220,10 +204,6 @@ msgstr "Attachments"
 #: src/settings/general/permissions.tsx
 msgid "Audio"
 msgstr "Audio"
-
-#: src/settings/general/app-settings.tsx
-msgid "Audio file retention"
-msgstr "Audio file retention"
 
 #: src/templates/auto-form.tsx
 msgid "Auto prompt cannot be empty."
@@ -515,10 +495,6 @@ msgstr "Disconnect"
 msgid "Dismiss suggested tag {name}"
 msgstr "Dismiss suggested tag {name}"
 
-#: src/settings/general/app-settings.tsx
-msgid "Don't save"
-msgstr "Don't save"
-
 #: src/settings/general/notification.tsx
 msgid "Don't show notifications when Do-Not-Disturb is enabled on your system"
 msgstr "Don't show notifications when Do-Not-Disturb is enabled on your system"
@@ -654,10 +630,6 @@ msgstr "Food & Drink"
 msgid "For enabled notifications"
 msgstr "For enabled notifications"
 
-#: src/settings/general/app-settings.tsx
-msgid "Forever"
-msgstr "Forever"
-
 #: src/templates/template-icon-picker.tsx
 msgid "Frequently used"
 msgstr "Frequently used"
@@ -706,10 +678,6 @@ msgstr "Help Loofah listen to others"
 #: src/onboarding/permissions.tsx
 msgid "Help Loofah listen to you"
 msgstr "Help Loofah listen to you"
-
-#: src/settings/general/app-settings.tsx
-msgid "How long recorded meeting audio is kept on this device."
-msgstr "How long recorded meeting audio is kept on this device."
 
 #: src/settings/general/notification.tsx
 msgid "How long the mic must be active before triggering"

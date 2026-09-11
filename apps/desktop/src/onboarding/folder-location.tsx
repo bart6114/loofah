@@ -7,7 +7,6 @@ import { FolderIcon } from "lucide-react";
 import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { commands as settingsCommands } from "@hypr/plugin-settings";
 
-import { ObsidianVaultList } from "~/settings/general/storage/obsidian-vault-list";
 import { displayPath } from "~/settings/general/storage/path-utils";
 import { scheduleAutomaticRelaunch } from "~/shared/relaunch";
 
@@ -27,15 +26,6 @@ export function FolderLocationSection({
       if (result.status === "error") {
         throw new Error(result.error);
       }
-      return result.data;
-    },
-  });
-
-  const { data: obsidianVaults } = useQuery({
-    queryKey: ["obsidian-vaults"],
-    queryFn: async () => {
-      const result = await settingsCommands.obsidianVaults();
-      if (result.status === "error") return [];
       return result.data;
     },
   });
@@ -72,21 +62,7 @@ export function FolderLocationSection({
     },
   });
 
-  const useObsidianVaultMutation = useMutation({
-    mutationFn: async (vaultPath: string) => {
-      const result = await settingsCommands.setVaultBase(vaultPath);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-    },
-    onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: ["vault-base-path"] });
-      await handleStorageUpdate();
-    },
-  });
-
-  const isPending =
-    changeMutation.isPending || useObsidianVaultMutation.isPending;
+  const isPending = changeMutation.isPending;
 
   const handleChange = async () => {
     const selected = await selectFolder({
@@ -106,10 +82,6 @@ export function FolderLocationSection({
       openerCommands.openPath(vaultBase, null);
     }
   };
-
-  const detectedVaults = (obsidianVaults ?? []).filter(
-    (v) => v.path !== vaultBase,
-  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -136,13 +108,6 @@ export function FolderLocationSection({
           {t`Confirm`}
         </button>
       </div>
-
-      <ObsidianVaultList
-        vaults={detectedVaults}
-        home={home}
-        disabled={isPending}
-        onSelect={(path) => useObsidianVaultMutation.mutate(path)}
-      />
     </div>
   );
 }

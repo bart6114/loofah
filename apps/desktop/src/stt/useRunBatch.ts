@@ -7,10 +7,6 @@ import { useListener } from "./contexts";
 import { getSessionKeywords } from "./useKeywords";
 import { useSTTConnection } from "./useSTTConnection";
 
-import {
-  deleteProcessedAudioForRetention,
-  normalizeAudioRetention,
-} from "~/services/audio-retention";
 import { useSession } from "~/session/queries";
 import { useConfigValue } from "~/shared/config";
 import { id } from "~/shared/utils";
@@ -139,9 +135,6 @@ export const useRunBatch = (sessionId: string) => {
   const aiLanguage = useConfigValue("ai_language");
   const spokenLanguages = useConfigValue("spoken_languages");
   const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
-  const audioRetention = normalizeAudioRetention(
-    useConfigValue("audio_retention"),
-  );
 
   return useCallback(
     async (filePath: string, options?: RunOptions) => {
@@ -327,13 +320,10 @@ export const useRunBatch = (sessionId: string) => {
       if (transcriptWriteError) throw transcriptWriteError;
 
       await queueTagSuggestions(sessionId);
-
-      await deleteProcessedAudioForRetention(audioRetention, sessionId);
     },
     [
       conn,
       aiLanguage,
-      audioRetention,
       dictionaryTerms,
       session,
       spokenLanguages,

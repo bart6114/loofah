@@ -79,24 +79,8 @@ msgstr ""
 msgid "+ Add tag"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "1 day"
-msgstr ""
-
 #: src/session/components/note-input/attachments.tsx
 msgid "1 file"
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "1 month"
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "1 week"
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "3 days"
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -219,10 +203,6 @@ msgstr ""
 
 #: src/settings/general/permissions.tsx
 msgid "Audio"
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "Audio file retention"
 msgstr ""
 
 #: src/templates/auto-form.tsx
@@ -515,10 +495,6 @@ msgstr ""
 msgid "Dismiss suggested tag {name}"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Don't save"
-msgstr ""
-
 #: src/settings/general/notification.tsx
 msgid "Don't show notifications when Do-Not-Disturb is enabled on your system"
 msgstr ""
@@ -654,10 +630,6 @@ msgstr ""
 msgid "For enabled notifications"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Forever"
-msgstr ""
-
 #: src/templates/template-icon-picker.tsx
 msgid "Frequently used"
 msgstr ""
@@ -705,10 +677,6 @@ msgstr ""
 
 #: src/onboarding/permissions.tsx
 msgid "Help Loofah listen to you"
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "How long recorded meeting audio is kept on this device."
 msgstr ""
 
 #: src/settings/general/notification.tsx

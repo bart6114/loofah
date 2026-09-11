@@ -86,14 +86,6 @@ async save(settings: JsonValue) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async obsidianVaults() : Promise<Result<ObsidianVault[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|obsidian_vaults") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async getConfig() : Promise<Result<AppConfig, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:settings|get_config") };
@@ -123,15 +115,14 @@ async setConfigValues(values: Partial<{ [key in string]: JsonValue }>) : Promise
 /** user-defined types **/
 
 export type AiProviderEntry = (Partial<{ [key in string]: null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }> }>) & { type: string; base_url?: string }
-export type AppConfig = (Partial<{ [key in string]: null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }> }>) & { autostart: boolean; auto_stop_meetings: boolean; floating_bar_enabled: boolean; floating_bar_opacity: number; live_caption_opacity: number; live_caption_width: number; live_caption_line_count: number; live_caption_position: string; live_caption_minimized: boolean; show_app_in_dock: boolean; show_tray_icon: boolean; theme: string; save_recordings: boolean; audio_retention: string; auto_accept_related_tags: boolean; notification_detect: boolean; respect_dnd: boolean; cloud_sync_enabled: boolean; ai_language: string; spoken_languages: string[]; personalization_dictionary_terms: string[]; custom_summary_instructions: string; custom_summary_instructions_token_aware: boolean; auto_summary_prompt: string; ignored_platforms: string[]; included_platforms: string[]; mic_active_threshold: number; current_llm_provider?: string | null; current_llm_model?: string | null; current_stt_provider?: string | null; current_stt_model?: string | null; timezone?: string | null; selected_template_id?: string | null; ai_providers: Partial<{ [key in string]: AiProviderEntry }>; hooks?: JsonValue | null }
+export type AppConfig = (Partial<{ [key in string]: null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }> }>) & { autostart: boolean; auto_stop_meetings: boolean; floating_bar_enabled: boolean; floating_bar_opacity: number; live_caption_opacity: number; live_caption_width: number; live_caption_line_count: number; live_caption_position: string; live_caption_minimized: boolean; show_app_in_dock: boolean; show_tray_icon: boolean; theme: string; auto_accept_related_tags: boolean; notification_detect: boolean; respect_dnd: boolean; cloud_sync_enabled: boolean; ai_language: string; spoken_languages: string[]; personalization_dictionary_terms: string[]; custom_summary_instructions: string; custom_summary_instructions_token_aware: boolean; auto_summary_prompt: string; ignored_platforms: string[]; included_platforms: string[]; mic_active_threshold: number; current_llm_provider?: string | null; current_llm_model?: string | null; current_stt_provider?: string | null; current_stt_model?: string | null; timezone?: string | null; selected_template_id?: string | null; ai_providers: Partial<{ [key in string]: AiProviderEntry }>; hooks?: JsonValue | null }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
-export type ObsidianVault = { path: string }
 /**
  * What a picked storage folder currently holds, so the frontend can shape the
  * change-location dialog around the user's likely intent (move into empty,
  * switch to an existing vault, or create a subfolder inside a busy directory).
  */
-export type VaultDirKind = "empty_or_missing" | "vault" | "obsidian" | "other"
+export type VaultDirKind = "empty_or_missing" | "vault" | "other"
 
 /** tauri-specta globals **/
 

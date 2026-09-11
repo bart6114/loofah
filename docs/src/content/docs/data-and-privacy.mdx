@@ -7,7 +7,7 @@ Loofah has no account or cloud backend. Its vault on your Mac is the source of t
 
 ## Files in the vault
 
-The app stores notes, transcripts, attachments, settings, retained recordings, people, and templates as files in the vault. The default vault is in the app's data directory. You can change its location under **Settings → App → Storage**.
+The app stores notes, transcripts, attachments, settings, recordings, people, and templates as files in the vault. The default vault is in the app's data directory. You can change its location under **Settings → App → Storage**.
 
 To use the same vault on another Mac, move it into a supported local sync folder. See [Sync your notes](/syncing).
 
@@ -25,16 +25,9 @@ For fully local summaries, use LM Studio or Ollama. See [Use the app offline](/o
 
 ## Audio retention
 
-Open **Settings → App → Meetings → Audio file retention** and choose one of these values:
+Loofah keeps recordings indefinitely. Recording and transcription never automatically delete audio, including when you transcribe through the CLI.
 
-- **Don't save**
-- **1 day**
-- **3 days**
-- **1 week**
-- **1 month**
-- **Forever**
-
-Removing retained audio does not remove the memo, summary, or transcript. To copy a recording before it expires, open the meeting's **•••** menu and choose **Show in Finder**.
+You can explicitly delete a recording without removing its note, summary, or transcript. To find a recording, open the meeting's **•••** menu and choose **Show in Finder**.
 
 ## Telemetry
 

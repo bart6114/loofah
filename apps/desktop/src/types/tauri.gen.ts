@@ -650,7 +650,7 @@ ghost_sessions: string[]; errors: string[] }
 export type RecordingMetaSettled = { sessionId: string; succeeded: boolean }
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
- * subscribers (timeline, summaries, tags, float, audio retention) consume.
+ * subscribers (timeline, summaries, tags, float) consume.
  */
 export type SessionListHeader = { id: string; title: string; created_at: string; folder: string | null; tags: string[]; author: string | null; has_transcript_words: boolean }
 export type SessionMeta = { id: string; title: string; started_at: string | null; ended_at: string | null; created_at: string; tags: string[]; tag_suggestions?: TagSuggestionState | null;

@@ -1,14 +1,11 @@
-use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use crate::error::AudioImportError;
-use crate::path::is_uuid;
 use crate::runtime::{AudioImportEvent, AudioImportRuntime};
 use chrono::{DateTime, Utc};
-use hypr_vault_read::layout::nfc;
 use sha2::{Digest, Sha256};
 
 const AUDIO_FORMATS: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
@@ -302,33 +299,6 @@ fn delete_with(
 /// session identified by `_meta.json.id`; one holding an unreadable meta is left
 /// untouched; session content is never recursed into. Meta-less uuid-named
 /// directories are legacy recorder-fallback orphans, identified by basename.
-pub fn delete_orphaned_expired(
-    sessions_dir: &Path,
-    known_session_ids: &[String],
-    retention_ms: u64,
-    now_ms: u64,
-) -> std::io::Result<Vec<String>> {
-    if !sessions_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let known_session_ids: HashSet<String> = known_session_ids
-        .iter()
-        .map(|id| nfc(id).into_owned())
-        .collect();
-    let expires_before_ms = now_ms.saturating_sub(retention_ms);
-    let mut deleted = Vec::new();
-
-    delete_orphaned_expired_in_dir(
-        sessions_dir,
-        &known_session_ids,
-        expires_before_ms,
-        &mut deleted,
-    )?;
-
-    Ok(deleted)
-}
-
 pub fn source_metadata(source_path: &Path) -> std::io::Result<AudioSourceMetadata> {
     use hypr_audio_utils::Source;
 
@@ -345,88 +315,6 @@ pub fn source_metadata(source_path: &Path) -> std::io::Result<AudioSourceMetadat
         modified_at,
         duration_ms,
     })
-}
-
-fn delete_orphaned_expired_in_dir(
-    dir: &Path,
-    known_session_ids: &HashSet<String>,
-    expires_before_ms: u64,
-    deleted: &mut Vec<String>,
-) -> std::io::Result<()> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error),
-    };
-
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        // Hidden directories (.trash, sync-provider sidecars) are invisible to every
-        // layout reader -- audio inside them is recoverable history, never orphaned.
-        if name.starts_with('.') {
-            continue;
-        }
-
-        // Any `_meta.json` -- parseable or not -- protects the directory: a
-        // session's identity being absent from the caller's known-id list only
-        // proves the list is stale or the id was deliberately unindexed
-        // (duplicate-id conflicts), never that the audio is disposable. Only
-        // meta-less recorder-fallback dirs below are true orphan candidates.
-        if hypr_vault_read::has_session_boundary(&path) {
-            continue;
-        }
-        if is_uuid(name) {
-            // Legacy recorder fallback: `sessions/<id>` created for a recording
-            // before any `_meta.json` exists, so the basename is the id it was
-            // created for. Readable directories always carry a meta and never
-            // reach this branch.
-            if known_session_ids.contains(name) {
-                continue;
-            }
-            if orphan_audio_expired(&path, expires_before_ms)? {
-                delete(&path)?;
-                deleted.push(name.to_string());
-            }
-        } else {
-            delete_orphaned_expired_in_dir(&path, known_session_ids, expires_before_ms, deleted)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn orphan_audio_expired(session_dir: &Path, expires_before_ms: u64) -> std::io::Result<bool> {
-    let mut latest_modified_ms: Option<u64> = None;
-
-    for artifact in AUDIO_ARTIFACTS {
-        let path = session_dir.join(artifact);
-        let metadata = match std::fs::metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error),
-        };
-
-        let modified_ms = metadata
-            .modified()?
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::ZERO)
-            .as_millis()
-            .try_into()
-            .unwrap_or(u64::MAX);
-
-        latest_modified_ms =
-            Some(latest_modified_ms.map_or(modified_ms, |latest| latest.max(modified_ms)));
-    }
-
-    Ok(latest_modified_ms.is_some_and(|modified_ms| modified_ms <= expires_before_ms))
 }
 
 pub fn import_to_session(
@@ -509,23 +397,8 @@ mod tests {
     use super::*;
     use assert_fs::TempDir;
     use hypr_audio_utils::Source;
-    use std::time::SystemTime;
 
     const MIN_MP3_BYTES: u64 = 1024;
-    const KNOWN_SESSION_ID: &str = "11111111-1111-4111-8111-111111111111";
-    const ORPHAN_SESSION_ID: &str = "22222222-2222-4222-8222-222222222222";
-    const META_SESSION_ID: &str = "33333333-3333-4333-8333-333333333333";
-    const FRESH_ORPHAN_SESSION_ID: &str = "44444444-4444-4444-8444-444444444444";
-
-    fn now_ms() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-            .try_into()
-            .unwrap()
-    }
-
     fn write_audio(path: &Path) {
         std::fs::write(path, b"audio").unwrap();
     }
@@ -629,133 +502,6 @@ mod tests {
             std::io::ErrorKind::PermissionDenied
         );
         assert!(primary_path.exists());
-    }
-
-    #[test]
-    fn test_delete_orphaned_expired_removes_nested_orphan_audio() {
-        let temp = TempDir::new().unwrap();
-        let sessions_dir = temp.path();
-        let orphan_dir = sessions_dir.join("folder").join(ORPHAN_SESSION_ID);
-        let known_dir = sessions_dir.join(KNOWN_SESSION_ID);
-        let meta_dir = sessions_dir.join(META_SESSION_ID);
-        let corrupt_dir = sessions_dir.join("Broken notes");
-        std::fs::create_dir_all(&orphan_dir).unwrap();
-        std::fs::create_dir_all(&known_dir).unwrap();
-        std::fs::create_dir_all(&meta_dir).unwrap();
-        std::fs::create_dir_all(&corrupt_dir).unwrap();
-        write_audio(&orphan_dir.join("audio.wav"));
-        write_audio(&orphan_dir.join("audio_mic.wav"));
-        write_audio(&known_dir.join("audio.wav"));
-        write_audio(&meta_dir.join("audio.wav"));
-        write_audio(&corrupt_dir.join("audio.wav"));
-        std::fs::write(
-            meta_dir.join("_meta.json"),
-            crate::test_fixtures::session_meta_json(META_SESSION_ID),
-        )
-        .unwrap();
-        std::fs::write(corrupt_dir.join("_meta.json"), b"{ invalid").unwrap();
-
-        let deleted = delete_orphaned_expired(
-            sessions_dir,
-            &[KNOWN_SESSION_ID.to_string(), META_SESSION_ID.to_string()],
-            0,
-            now_ms(),
-        )
-        .unwrap();
-
-        assert_eq!(deleted, vec![ORPHAN_SESSION_ID.to_string()]);
-        assert!(!orphan_dir.join("audio.wav").exists());
-        assert!(!orphan_dir.join("audio_mic.wav").exists());
-        assert!(known_dir.join("audio.wav").exists());
-        assert!(meta_dir.join("audio.wav").exists());
-        assert!(corrupt_dir.join("audio.wav").exists());
-    }
-
-    /// Audio inside hidden directories (`.trash`, sync-provider sidecars) is
-    /// recoverable history, never orphaned -- retention must not walk into them
-    /// even when the directory inside is uuid-named and meta-less.
-    #[test]
-    fn delete_orphaned_expired_never_deletes_inside_hidden_directories() {
-        let temp = TempDir::new().unwrap();
-        let sessions_dir = temp.path();
-        let trashed = sessions_dir
-            .join(".trash")
-            .join("2026-08-01")
-            .join(ORPHAN_SESSION_ID);
-        let sidecar = sessions_dir.join(".stversions").join(ORPHAN_SESSION_ID);
-        std::fs::create_dir_all(&trashed).unwrap();
-        std::fs::create_dir_all(&sidecar).unwrap();
-        write_audio(&trashed.join("audio.wav"));
-        write_audio(&sidecar.join("audio.wav"));
-
-        let deleted = delete_orphaned_expired(sessions_dir, &[], 0, now_ms()).unwrap();
-
-        assert!(deleted.is_empty());
-        assert!(trashed.join("audio.wav").exists());
-        assert!(sidecar.join("audio.wav").exists());
-    }
-
-    /// A directory carrying any `_meta.json` is a session, not an orphan -- an id
-    /// missing from the caller's known list only proves the list is stale (or the
-    /// id was deliberately unindexed by a duplicate-id conflict), never that the
-    /// audio is disposable.
-    #[test]
-    fn delete_orphaned_expired_protects_any_dir_with_a_meta_even_if_unknown() {
-        let temp = TempDir::new().unwrap();
-        let sessions_dir = temp.path();
-        let readable_dir = sessions_dir.join("2026-03-20 — Planning — 222222");
-        std::fs::create_dir_all(&readable_dir).unwrap();
-        write_audio(&readable_dir.join("audio.wav"));
-        std::fs::write(
-            readable_dir.join("_meta.json"),
-            crate::test_fixtures::session_meta_json(ORPHAN_SESSION_ID),
-        )
-        .unwrap();
-
-        let deleted =
-            delete_orphaned_expired(sessions_dir, &[KNOWN_SESSION_ID.to_string()], 0, now_ms())
-                .unwrap();
-
-        assert!(deleted.is_empty());
-        assert!(readable_dir.join("audio.wav").exists());
-    }
-
-    #[test]
-    fn delete_orphaned_expired_never_recurses_into_session_content() {
-        let temp = TempDir::new().unwrap();
-        let sessions_dir = temp.path();
-        let session_dir = sessions_dir.join("2026-03-20 — Planning — 111111");
-        let inner_dir = session_dir.join("attachments").join(ORPHAN_SESSION_ID);
-        std::fs::create_dir_all(&inner_dir).unwrap();
-        write_audio(&session_dir.join("audio.wav"));
-        write_audio(&inner_dir.join("audio.wav"));
-        std::fs::write(
-            session_dir.join("_meta.json"),
-            crate::test_fixtures::session_meta_json(KNOWN_SESSION_ID),
-        )
-        .unwrap();
-
-        let deleted =
-            delete_orphaned_expired(sessions_dir, &[KNOWN_SESSION_ID.to_string()], 0, now_ms())
-                .unwrap();
-
-        assert!(deleted.is_empty());
-        assert!(session_dir.join("audio.wav").exists());
-        assert!(inner_dir.join("audio.wav").exists());
-    }
-
-    #[test]
-    fn test_delete_orphaned_expired_keeps_fresh_orphan_audio() {
-        let temp = TempDir::new().unwrap();
-        let sessions_dir = temp.path();
-        let orphan_dir = sessions_dir.join(FRESH_ORPHAN_SESSION_ID);
-        std::fs::create_dir_all(&orphan_dir).unwrap();
-        write_audio(&orphan_dir.join("audio.wav"));
-
-        let deleted = delete_orphaned_expired(sessions_dir, &[], u64::MAX, now_ms()).unwrap();
-
-        assert!(deleted.is_empty());
-        assert!(orphan_dir.join("audio.wav").exists());
     }
 
     #[test]

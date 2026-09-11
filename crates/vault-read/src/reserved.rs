@@ -53,7 +53,7 @@ pub const SESSION_TRANSIENT_FILES: [&str; 6] = [
 ///   app-managed storage the editor resolves by relative src, distinct from the loose
 ///   user attachments this contract leaves alone.
 /// - `audio/` -- legacy recording location; nothing writes it anymore, kept readable
-///   so retention can clear vaults written by old builds.
+///   for vaults written by old builds.
 pub const SESSION_OWNED_DIRS: [&str; 3] = ["enhanced", "attachments", "audio"];
 
 /// True when `name` (a bare file or directory name directly inside a session
