@@ -148,8 +148,6 @@ impl LocalModel {
 
         models.extend([
             LocalModel::Whisper(WhisperModel::LargeV3),
-            LocalModel::Whisper(WhisperModel::QuantizedTiny),
-            LocalModel::Whisper(WhisperModel::QuantizedTinyEn),
             LocalModel::Whisper(WhisperModel::QuantizedBase),
             LocalModel::Whisper(WhisperModel::QuantizedBaseEn),
             LocalModel::Whisper(WhisperModel::QuantizedSmall),
