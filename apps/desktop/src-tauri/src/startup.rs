@@ -13,7 +13,7 @@ pub enum StartupPhase {
     OpeningVault,
     Scanning { sessions_found: usize },
     Indexing { completed: usize, total: usize },
-    PreparingTemplates,
+    ArchivingLegacyTemplates,
     Ready,
     Failed { message: String },
 }
@@ -120,6 +120,22 @@ async fn initialize(
         );
     }
 
+    state.update(&app, StartupPhase::ArchivingLegacyTemplates);
+    let archive_base = store.vault_base().to_path_buf();
+    match tokio::task::spawn_blocking(move || {
+        hypr_vault_write::legacy_templates::archive(&archive_base)
+    })
+    .await
+    {
+        Ok(Ok(archived)) => tracing::info!(archived, "archived legacy summary templates"),
+        Ok(Err(error)) => {
+            tracing::error!(%error, "legacy template archival failed; will retry next startup")
+        }
+        Err(error) => {
+            tracing::error!(%error, "legacy template archival task failed; will retry next startup")
+        }
+    }
+
     let total = layout.session_count();
     state.update(
         &app,
@@ -145,13 +161,6 @@ async fn initialize(
         ghost_sessions = ?report.ghost_sessions,
         "startup session index rebuild complete"
     );
-
-    state.update(&app, StartupPhase::PreparingTemplates);
-    match store.seed_default_templates().await {
-        Ok(seeded) if seeded > 0 => tracing::info!(seeded, "seeded missing default templates"),
-        Ok(_) => {}
-        Err(error) => tracing::error!(%error, "default template seeding failed"),
-    }
 
     let vault_path = store.vault_base().to_path_buf();
     match tokio::task::spawn_blocking(move || {

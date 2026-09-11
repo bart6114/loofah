@@ -1,5 +1,5 @@
 import type { EditorView } from "prosemirror-view";
-import { forwardRef } from "react";
+import { forwardRef, useMemo } from "react";
 
 import type { FileHandlerConfig, NoteEditorRef } from "@hypr/editor/note";
 
@@ -41,7 +41,12 @@ export const Enhanced = forwardRef<
   ) => {
     const taskId = createTaskId(enhancedNoteId, "enhance");
     const { status, error, streamedText } = useAITaskTask(taskId, "enhance");
-    const enhancedNote = useEnhancedNote(enhancedNoteId);
+    // The task can finish before the coalesced index event refreshes the old summary cache.
+    const generationId = useMemo(
+      () => (status === "success" ? crypto.randomUUID() : undefined),
+      [status, enhancedNoteId],
+    );
+    const enhancedNote = useEnhancedNote(enhancedNoteId, generationId);
     const content = enhancedNote?.content;
 
     const hasContent = hasStoredNoteContent(content);

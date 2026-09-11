@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   main: true,
   enhance: vi.fn(),
   remote: vi.fn(),
+  openPrompt: vi.fn(),
 }));
 vi.mock("~/ai/hooks", () => ({
   useLLMConnectionStatus: () =>
@@ -36,23 +37,8 @@ vi.mock("~/shared/config", () => ({ useConfigValue: () => "template-1" }));
 vi.mock("./config-error", () => ({
   ConfigError: () => <div>Set up Intelligence</div>,
 }));
-vi.mock("../header", () => ({
-  TemplatePickerPopover: ({
-    onSelectTemplate,
-  }: {
-    onSelectTemplate: (selection: {
-      templateId: string;
-      title: string;
-    }) => void;
-  }) => (
-    <button
-      onClick={() =>
-        onSelectTemplate({ templateId: "decisions", title: "Decisions" })
-      }
-    >
-      Choose template
-    </button>
-  ),
+vi.mock("~/settings/use-open-summary-prompt", () => ({
+  useOpenSummaryPrompt: () => mocks.openPrompt,
 }));
 import { EmptySummary } from "./empty-summary";
 
@@ -102,23 +88,19 @@ describe("EmptySummary", () => {
       await waitFor(() =>
         expect(main ? mocks.enhance : mocks.remote).toHaveBeenCalledWith(
           "session-1",
-          { templateId: "template-1", targetNoteId: undefined },
+          { targetNoteId: undefined },
         ),
       );
       expect(main ? mocks.remote : mocks.enhance).not.toHaveBeenCalled();
     },
   );
-  it("generates with the chosen template before a document exists", async () => {
-    mocks.hasSource = true;
+  it("opens the shared prompt editor without generating", () => {
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "Choose template" }));
-    await waitFor(() =>
-      expect(mocks.enhance).toHaveBeenCalledWith("session-1", {
-        templateId: "decisions",
-        templateTitle: "Decisions",
-        targetNoteId: undefined,
-      }),
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit summary prompt" }),
     );
+    expect(mocks.openPrompt).toHaveBeenCalledOnce();
+    expect(mocks.enhance).not.toHaveBeenCalled();
   });
   it("shows start failures and allows retry", async () => {
     mocks.hasSource = true;

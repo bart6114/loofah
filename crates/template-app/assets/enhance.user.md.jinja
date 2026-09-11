@@ -20,9 +20,3 @@
 {% if !transcripts.is_empty() %}# Transcript
 
 {{ macros::transcripts(transcripts=transcripts) }}{% endif %}
-{% if template.is_some() %}
-
-# Output Template
-
-{{- macros::template_numbered(template=template) }}
-{% endif %}

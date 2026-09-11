@@ -35,7 +35,7 @@ pub struct RebuildReport {
 impl SessionStore {
     /// One-way: scan sessions/*/ -> reconcile the in-memory index; drop index entries whose
     /// folder is gone. Never writes to the vault -- read-only on the filesystem, write-only
-    /// on the index. Also reconciles the vault-root tasks file and the templates folder.
+    /// on the index. Also reconciles the vault-root tasks file.
     /// Only the entities whose value actually changed are notified onto the change bus
     /// (`PartialEq` diff), so the automatic startup/focus rescans stay silent over
     /// unchanged files -- the search projection and the frontend both ride that bus, and
@@ -279,7 +279,6 @@ impl SessionStore {
             }
         }
 
-        self.index_refresh_templates().await;
         self.index_refresh_people().await;
         self.index_refresh_tags().await;
 

@@ -121,7 +121,6 @@ describe("SettingsNav", () => {
       "AI",
       "Transcription",
       "Intelligence",
-      "Templates",
     ].forEach((label) => {
       expect(screen.getByText(label)).toBeTruthy();
     });
@@ -134,47 +133,13 @@ describe("SettingsNav", () => {
     expect(screen.queryByText("Personalization")).toBeNull();
   });
 
-  it("opens Templates with Auto selected", () => {
+  it("opens Intelligence and has no Templates navigation", () => {
     render(<SettingsNav />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Templates" }));
-
-    expect(mocks.openNew).toHaveBeenCalledWith({
-      type: "templates",
-      state: {
-        showHomepage: false,
-        isWebMode: false,
-        selectedMineId: "__auto__",
-        selectedWebIndex: null,
-      },
-    });
-  });
-
-  it("selects Auto when reusing the Templates tab", () => {
-    const templatesTab = {
-      active: false,
-      pinned: false,
-      slotId: "templates-slot",
-      type: "templates" as const,
-      state: {
-        showHomepage: false,
-        isWebMode: false,
-        selectedMineId: "template-1",
-        selectedWebIndex: null,
-      },
-    };
-    mocks.tabs = [templatesTab];
-    render(<SettingsNav />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Templates" }));
-
-    expect(mocks.updateTemplatesTabState).toHaveBeenCalledWith(templatesTab, {
-      showHomepage: false,
-      isWebMode: false,
-      selectedMineId: "__auto__",
-      selectedWebIndex: null,
-    });
-    expect(mocks.select).toHaveBeenCalledWith(templatesTab);
-    expect(mocks.openNew).not.toHaveBeenCalled();
+    expect(screen.queryByText("Templates")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Intelligence" }));
+    expect(mocks.updateSettingsTabState).toHaveBeenCalledWith(
+      mocks.currentTab,
+      { tab: "intelligence" },
+    );
   });
 });

@@ -4,7 +4,6 @@ import { TabContentNote } from "~/session";
 import { TabContentSettings } from "~/settings";
 import { type Tab } from "~/store/zustand/tabs";
 import { TabContentTask } from "~/task";
-import { TabContentTemplate } from "~/templates";
 
 export function MainTabContent({ tab }: { tab: Tab }) {
   if (tab.type === "sessions") {
@@ -15,9 +14,6 @@ export function MainTabContent({ tab }: { tab: Tab }) {
   }
   if (tab.type === "settings") {
     return <TabContentSettings tab={tab} />;
-  }
-  if (tab.type === "templates") {
-    return <TabContentTemplate tab={tab} />;
   }
   if (tab.type === "onboarding") {
     return <TabContentOnboarding tab={tab} />;

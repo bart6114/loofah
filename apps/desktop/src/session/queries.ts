@@ -188,12 +188,15 @@ export function useEnhancedNoteRecords(
 
 export function useEnhancedNote(
   enhancedNoteId: string,
+  generationId?: string,
 ): EnhancedNoteRecord | null {
   const { data = null } = useIndexQuery({
     // Doc events carry session ids and the owning session isn't known here, so
     // this one stays table-level.
     entity: "docs",
-    queryKey: ["enhanced-doc", enhancedNoteId],
+    queryKey: generationId
+      ? ["enhanced-doc", enhancedNoteId, generationId]
+      : ["enhanced-doc", enhancedNoteId],
     queryFn: async () => {
       const result = await commands.enhancedDocGet(enhancedNoteId);
       if (result.status === "error") {

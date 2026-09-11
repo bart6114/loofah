@@ -15,7 +15,7 @@ For agents with shell access, use the `loof` CLI for both reading and writing. S
   config.json            app configuration
   settings.json          app settings
   tags.json  tasks.json  people.json  events.json  calendars.json
-  templates/  humans/  organizations/
+  humans/  organizations/
   .trash/                soft-deleted files, kept by date; recoverable
   sessions/<id>/         one session per directory; may be a meeting or standalone note
     _meta.json           identity + metadata; its presence marks a session

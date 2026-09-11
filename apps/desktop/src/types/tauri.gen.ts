@@ -4,641 +4,955 @@
 
 /** user-defined commands **/
 
-
 export const commands = {
-async chatgptAccount() : Promise<Result<ChatgptAccount | null, ChatgptError>> {
+  async chatgptAccount(): Promise<Result<ChatgptAccount | null, ChatgptError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async chatgptLogin(onBrowserOpened: TAURI_CHANNEL<null>) : Promise<Result<null, ChatgptError>> {
+      return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async chatgptLogin(
+    onBrowserOpened: TAURI_CHANNEL<null>,
+  ): Promise<Result<null, ChatgptError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("chatgpt_login", { onBrowserOpened }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async chatgptCancelLogin() : Promise<void> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("chatgpt_login", { onBrowserOpened }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async chatgptCancelLogin(): Promise<void> {
     await TAURI_INVOKE("chatgpt_cancel_login");
-},
-async chatgptLogout() : Promise<Result<null, ChatgptError>> {
+  },
+  async chatgptLogout(): Promise<Result<null, ChatgptError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("chatgpt_logout") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async chatgptModels() : Promise<Result<ChatgptModel[], ChatgptError>> {
+      return { status: "ok", data: await TAURI_INVOKE("chatgpt_logout") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async chatgptModels(): Promise<Result<ChatgptModel[], ChatgptError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("chatgpt_models") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async chatgptGenerate(request: ChatgptGeneration, events: TAURI_CHANNEL<ChatgptEvent>) : Promise<Result<null, ChatgptError>> {
+      return { status: "ok", data: await TAURI_INVOKE("chatgpt_models") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async chatgptGenerate(
+    request: ChatgptGeneration,
+    events: TAURI_CHANNEL<ChatgptEvent>,
+  ): Promise<Result<null, ChatgptError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("chatgpt_generate", { request, events }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async chatgptCancelGeneration(requestId: string) : Promise<void> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("chatgpt_generate", { request, events }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async chatgptCancelGeneration(requestId: string): Promise<void> {
     await TAURI_INVOKE("chatgpt_cancel_generation", { requestId });
-},
-async getOnboardingNeeded() : Promise<Result<boolean, string>> {
+  },
+  async getOnboardingNeeded(): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_onboarding_needed") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setOnboardingNeeded(v: boolean) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("get_onboarding_needed"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setOnboardingNeeded(v: boolean): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("set_onboarding_needed", { v }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getDismissedToasts() : Promise<Result<string[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("set_onboarding_needed", { v }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getDismissedToasts(): Promise<Result<string[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_dismissed_toasts") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setDismissedToasts(v: string[]) : Promise<Result<null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("get_dismissed_toasts") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setDismissedToasts(v: string[]): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("set_dismissed_toasts", { v }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async showDevtool() : Promise<boolean> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("set_dismissed_toasts", { v }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async showDevtool(): Promise<boolean> {
     return await TAURI_INVOKE("show_devtool");
-},
-async completeAppExit() : Promise<void> {
+  },
+  async completeAppExit(): Promise<void> {
     await TAURI_INVOKE("complete_app_exit");
-},
-async getPinnedTabs() : Promise<Result<string | null, string>> {
+  },
+  async getPinnedTabs(): Promise<Result<string | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_pinned_tabs") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setPinnedTabs(v: string) : Promise<Result<null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("get_pinned_tabs") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setPinnedTabs(v: string): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("set_pinned_tabs", { v }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getRecentlyOpenedSessions() : Promise<Result<string | null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("set_pinned_tabs", { v }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getRecentlyOpenedSessions(): Promise<Result<string | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_recently_opened_sessions") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setRecentlyOpenedSessions(v: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("get_recently_opened_sessions"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setRecentlyOpenedSessions(v: string): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("set_recently_opened_sessions", { v }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async checkEmbeddedCli() : Promise<Result<EmbeddedCliStatus, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("set_recently_opened_sessions", { v }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async checkEmbeddedCli(): Promise<Result<EmbeddedCliStatus, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("check_embedded_cli") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async installEmbeddedCli() : Promise<Result<EmbeddedCliStatus, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("check_embedded_cli") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async installEmbeddedCli(): Promise<Result<EmbeddedCliStatus, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("install_embedded_cli") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Settings' "change storage location", with the session store frozen for the duration:
- * the plugin's bare `copy_vault`/`move_vault` know nothing about in-flight writes, so
- * calling them directly can copy a vault while a recording or a debounced transcript
- * flush is still landing files in it. Freezing refuses while a recording lease is held,
- * flushes the live transcript buffers, and blocks every writer until the relocation is
- * done. `keep_original` picks copy (old vault left behind) over move.
- */
-async relocateVault(newPath: string, keepOriginal: boolean) : Promise<Result<null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("install_embedded_cli") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Settings' "change storage location", with the session store frozen for the duration:
+   * the plugin's bare `copy_vault`/`move_vault` know nothing about in-flight writes, so
+   * calling them directly can copy a vault while a recording or a debounced transcript
+   * flush is still landing files in it. Freezing refuses while a recording lease is held,
+   * flushes the live transcript buffers, and blocks every writer until the relocation is
+   * done. `keep_original` picks copy (old vault left behind) over move.
+   */
+  async relocateVault(
+    newPath: string,
+    keepOriginal: boolean,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("relocate_vault", { newPath, keepOriginal }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getStartupStatus() : Promise<StartupStatus> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("relocate_vault", { newPath, keepOriginal }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getStartupStatus(): Promise<StartupStatus> {
     return await TAURI_INVOKE("get_startup_status");
-},
-async sessionWriteMeta(meta: SessionMeta) : Promise<Result<null, string>> {
+  },
+  async sessionWriteMeta(meta: SessionMeta): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_write_meta", { meta }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionUpdateMeta(sessionId: string, patch: SessionMetaPatch) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_write_meta", { meta }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionUpdateMeta(
+    sessionId: string,
+    patch: SessionMetaPatch,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_update_meta", { sessionId, patch }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionQueueTagSuggestions(sessionId: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_update_meta", { sessionId, patch }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionQueueTagSuggestions(
+    sessionId: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_queue_tag_suggestions", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionAcceptTagSuggestion(sessionId: string, name: string) : Promise<Result<boolean, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_queue_tag_suggestions", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionAcceptTagSuggestion(
+    sessionId: string,
+    name: string,
+  ): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_accept_tag_suggestion", { sessionId, name }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionDismissTagSuggestion(sessionId: string, name: string) : Promise<Result<boolean, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_accept_tag_suggestion", {
+          sessionId,
+          name,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionDismissTagSuggestion(
+    sessionId: string,
+    name: string,
+  ): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_dismiss_tag_suggestion", { sessionId, name }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionWriteNote(sessionId: string, markdown: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_dismiss_tag_suggestion", {
+          sessionId,
+          name,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionWriteNote(
+    sessionId: string,
+    markdown: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_write_note", { sessionId, markdown }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionReadNote(sessionId: string) : Promise<Result<string | null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_write_note", { sessionId, markdown }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionReadNote(
+    sessionId: string,
+  ): Promise<Result<string | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_read_note", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionWriteEnhancedDoc(doc: EnhancedDoc) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_read_note", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionWriteEnhancedDoc(
+    doc: EnhancedDoc,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_write_enhanced_doc", { doc }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionUpdateEnhancedDoc(sessionId: string, docId: string, patch: EnhancedDocPatch) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_write_enhanced_doc", { doc }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionUpdateEnhancedDoc(
+    sessionId: string,
+    docId: string,
+    patch: EnhancedDocPatch,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_update_enhanced_doc", { sessionId, docId, patch }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionDeleteEnhancedDoc(sessionId: string, docId: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_update_enhanced_doc", {
+          sessionId,
+          docId,
+          patch,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionDeleteEnhancedDoc(
+    sessionId: string,
+    docId: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_delete_enhanced_doc", { sessionId, docId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async templateList() : Promise<Result<TemplateItem[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_delete_enhanced_doc", {
+          sessionId,
+          docId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async peopleList(): Promise<Result<PersonItem[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("template_list") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async templateGet(id: string) : Promise<Result<TemplateItem | null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("people_list") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async peopleEnsure(name: string): Promise<Result<PersonItem, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("template_get", { id }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async templateUpsert(template: TemplateInput) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("people_ensure", { name }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async tagsList(): Promise<Result<TagItem[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("template_upsert", { template }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async templateDelete(id: string) : Promise<Result<null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("tags_list") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async tagsEnsure(name: string): Promise<Result<TagItem, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("template_delete", { id }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async peopleList() : Promise<Result<PersonItem[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("tags_ensure", { name }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionListTasks(
+    sourceType: string,
+    sourceId: string,
+  ): Promise<Result<TaskItem[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("people_list") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async peopleEnsure(name: string) : Promise<Result<PersonItem, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_list_tasks", {
+          sourceType,
+          sourceId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionReplaceTasks(
+    sourceType: string,
+    sourceId: string,
+    tasks: TaskInput[],
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("people_ensure", { name }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async tagsList() : Promise<Result<TagItem[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_replace_tasks", {
+          sourceType,
+          sourceId,
+          tasks,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionRemoveTasks(
+    sourceType: string,
+    sourceId: string,
+    taskIds: string[],
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tags_list") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async tagsEnsure(name: string) : Promise<Result<TagItem, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_remove_tasks", {
+          sourceType,
+          sourceId,
+          taskIds,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionMoveTasks(
+    taskIds: string[],
+    sourceType: string,
+    sourceId: string,
+    insertionOrder: number,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tags_ensure", { name }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionListTasks(sourceType: string, sourceId: string) : Promise<Result<TaskItem[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_move_tasks", {
+          taskIds,
+          sourceType,
+          sourceId,
+          insertionOrder,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionAppendTranscript(
+    sessionId: string,
+    delta: TranscriptDelta,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_list_tasks", { sourceType, sourceId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionReplaceTasks(sourceType: string, sourceId: string, tasks: TaskInput[]) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_append_transcript", {
+          sessionId,
+          delta,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionFlushTranscript(
+    sessionId: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_replace_tasks", { sourceType, sourceId, tasks }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionRemoveTasks(sourceType: string, sourceId: string, taskIds: string[]) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_flush_transcript", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionWriteTranscript(
+    sessionId: string,
+    transcript: TranscriptWithData,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_remove_tasks", { sourceType, sourceId, taskIds }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionMoveTasks(taskIds: string[], sourceType: string, sourceId: string, insertionOrder: number) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_write_transcript", {
+          sessionId,
+          transcript,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionAssignTranscriptSpeaker(
+    transcriptId: string,
+    channel: number,
+    speakerIndex: number | null,
+    speakerLabel: string,
+    anchorWordId: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_move_tasks", { taskIds, sourceType, sourceId, insertionOrder }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionAppendTranscript(sessionId: string, delta: TranscriptDelta) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_assign_transcript_speaker", {
+          transcriptId,
+          channel,
+          speakerIndex,
+          speakerLabel,
+          anchorWordId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionReplaceTranscripts(
+    sessionId: string,
+    transcript: TranscriptWithData,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_append_transcript", { sessionId, delta }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionFlushTranscript(sessionId: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_replace_transcripts", {
+          sessionId,
+          transcript,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionDelete(sessionId: string): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_flush_transcript", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionWriteTranscript(sessionId: string, transcript: TranscriptWithData) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_delete", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionRestore(sessionId: string): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_write_transcript", { sessionId, transcript }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionAssignTranscriptSpeaker(transcriptId: string, channel: number, speakerIndex: number | null, speakerLabel: string, anchorWordId: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_restore", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionRebuildIndex(): Promise<Result<RebuildReport, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_assign_transcript_speaker", { transcriptId, channel, speakerIndex, speakerLabel, anchorWordId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionReplaceTranscripts(sessionId: string, transcript: TranscriptWithData) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_rebuild_index"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionStoreAudio(
+    sessionId: string,
+    sourcePath: string,
+  ): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_replace_transcripts", { sessionId, transcript }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionDelete(sessionId: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_store_audio", {
+          sessionId,
+          sourcePath,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionListAudio(sessionId: string): Promise<Result<string[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_delete", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionRestore(sessionId: string) : Promise<Result<boolean, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_list_audio", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionDeleteAudio(
+    sessionId: string,
+    filename: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_restore", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionRebuildIndex() : Promise<Result<RebuildReport, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_delete_audio", {
+          sessionId,
+          filename,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionGet(
+    sessionId: string,
+  ): Promise<Result<SessionRecord | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_rebuild_index") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionStoreAudio(sessionId: string, sourcePath: string) : Promise<Result<string, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_get", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionListHeaders(): Promise<Result<SessionListHeader[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_store_audio", { sessionId, sourcePath }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionListAudio(sessionId: string) : Promise<Result<string[], string>> {
+      return { status: "ok", data: await TAURI_INVOKE("session_list_headers") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async vaultStats(): Promise<Result<VaultStats, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_list_audio", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionDeleteAudio(sessionId: string, filename: string) : Promise<Result<null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("vault_stats") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionIds(): Promise<Result<string[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_delete_audio", { sessionId, filename }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionGet(sessionId: string) : Promise<Result<SessionRecord | null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("session_ids") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionIsEmpty(sessionId: string): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_get", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionListHeaders() : Promise<Result<SessionListHeader[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_is_empty", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionHasTranscript(
+    sessionId: string,
+  ): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_list_headers") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async vaultStats() : Promise<Result<VaultStats, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_has_transcript", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionEnhancedDocs(
+    sessionId: string,
+  ): Promise<Result<EnhancedDoc[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("vault_stats") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionIds() : Promise<Result<string[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_enhanced_docs", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async enhancedDocGet(
+    docId: string,
+  ): Promise<Result<EnhancedDoc | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_ids") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionIsEmpty(sessionId: string) : Promise<Result<boolean, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("enhanced_doc_get", { docId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionTranscripts(
+    sessionId: string,
+  ): Promise<Result<TranscriptWithData[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_is_empty", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionHasTranscript(sessionId: string) : Promise<Result<boolean, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_transcripts", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async transcriptGet(
+    transcriptId: string,
+  ): Promise<Result<TranscriptWithData | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_has_transcript", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionEnhancedDocs(sessionId: string) : Promise<Result<EnhancedDoc[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("transcript_get", { transcriptId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionFindByTrackingId(
+    trackingId: string,
+  ): Promise<Result<SessionMeta | null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_enhanced_docs", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async enhancedDocGet(docId: string) : Promise<Result<EnhancedDoc | null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_find_by_tracking_id", { trackingId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Reserves the session's directory for an imminent recording and returns its
+   * absolute path -- the stable value the pre-start hook receives. Paired with
+   * `session_release_recording_prepare` on start failure; a successful start's
+   * lease is cleared by the `Stopped` capture lifecycle.
+   */
+  async sessionPrepareRecording(
+    sessionId: string,
+  ): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("enhanced_doc_get", { docId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionTranscripts(sessionId: string) : Promise<Result<TranscriptWithData[], string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_prepare_recording", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionReleaseRecordingPrepare(
+    sessionId: string,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_transcripts", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async transcriptGet(transcriptId: string) : Promise<Result<TranscriptWithData | null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_release_recording_prepare", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * User-invoked "rename folder to match title": renames the session's physical
+   * directory to the readable name derived from its current title. Refused while the
+   * session holds a recording path lease; returns the resulting directory basename.
+   */
+  async sessionRenameDirToTitle(
+    sessionId: string,
+  ): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("transcript_get", { transcriptId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionFindByTrackingId(trackingId: string) : Promise<Result<SessionMeta | null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("session_find_by_tracking_id", { trackingId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Reserves the session's directory for an imminent recording and returns its
- * absolute path -- the stable value the pre-start hook receives. Paired with
- * `session_release_recording_prepare` on start failure; a successful start's
- * lease is cleared by the `Stopped` capture lifecycle.
- */
-async sessionPrepareRecording(sessionId: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("session_prepare_recording", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionReleaseRecordingPrepare(sessionId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("session_release_recording_prepare", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * User-invoked "rename folder to match title": renames the session's physical
- * directory to the readable name derived from its current title. Refused while the
- * session holds a recording path lease; returns the resulting directory basename.
- */
-async sessionRenameDirToTitle(sessionId: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("session_rename_dir_to_title", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-}
-}
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_rename_dir_to_title", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+};
 
 /** user-defined events **/
 
-
 export const events = __makeEvents__<{
-indexChanged: IndexChanged,
-recordingMetaSettled: RecordingMetaSettled,
-startupProgress: StartupProgress
+  indexChanged: IndexChanged;
+  recordingMetaSettled: RecordingMetaSettled;
+  startupProgress: StartupProgress;
 }>({
-indexChanged: "index-changed",
-recordingMetaSettled: "recording-meta-settled",
-startupProgress: "startup-progress"
-})
+  indexChanged: "index-changed",
+  recordingMetaSettled: "recording-meta-settled",
+  startupProgress: "startup-progress",
+});
 
 /** user-defined constants **/
 
-
-
 /** user-defined types **/
 
-export type ChatgptAccount = { email: string; planType: string }
-export type ChatgptError = { code: string; message: string; retryable: boolean }
-export type ChatgptEvent = { type: "text"; delta: string } | { type: "complete"; input_tokens: number | null; output_tokens: number | null } | { type: "error"; error: ChatgptError }
-export type ChatgptGeneration = { requestId: string; model: string; system: string; prompt: string; images: string[]; maxOutputTokens: number | null }
-export type ChatgptModel = { model: string; displayName: string; isDefault: boolean; inputModalities?: string[] }
-export type EmbeddedCliState = "installed" | "missing" | "conflict" | "unsupported" | "resource_missing"
-export type EmbeddedCliStatus = { supported: boolean; commandName: string; installPath: string; state: EmbeddedCliState; details: string | null }
+export type ChatgptAccount = { email: string; planType: string };
+export type ChatgptError = {
+  code: string;
+  message: string;
+  retryable: boolean;
+};
+export type ChatgptEvent =
+  | { type: "text"; delta: string }
+  | {
+      type: "complete";
+      input_tokens: number | null;
+      output_tokens: number | null;
+    }
+  | { type: "error"; error: ChatgptError };
+export type ChatgptGeneration = {
+  requestId: string;
+  model: string;
+  system: string;
+  prompt: string;
+  images: string[];
+  maxOutputTokens: number | null;
+};
+export type ChatgptModel = {
+  model: string;
+  displayName: string;
+  isDefault: boolean;
+  inputModalities?: string[];
+};
+export type EmbeddedCliState =
+  | "installed"
+  | "missing"
+  | "conflict"
+  | "unsupported"
+  | "resource_missing";
+export type EmbeddedCliStatus = {
+  supported: boolean;
+  commandName: string;
+  installPath: string;
+  state: EmbeddedCliState;
+  details: string | null;
+};
 /**
  * One AI-generated document (`summary` or `template_output`), file-canonical at
  * `sessions/<session_id>/enhanced/<id>.md`. `id` is the same UUID the `session_documents`
  * index row uses, and the frontmatter carries every metadata column that row mirrors --
  * there is deliberately no sidecar file.
  */
-export type EnhancedDoc = { id: string; session_id: string; 
-/**
- * "summary" (no template) or "template_output".
- */
-kind: string; title: string; template_id: string; sort_order: number; 
-/**
- * Body only -- never includes the frontmatter block.
- */
-markdown: string }
+export type EnhancedDoc = {
+  id: string;
+  session_id: string;
+  /**
+   * "summary" (no template) or "template_output".
+   */
+  kind: string;
+  title: string;
+  template_id: string;
+  sort_order: number;
+  /**
+   * Body only -- never includes the frontmatter block.
+   */
+  markdown: string;
+};
 /**
  * Partial update for an existing enhanced doc: `None` means "leave as-is". The `expected_*`
  * fields are compare-and-swap guards against the *current file content* -- a mismatch
  * returns `StoreError::Conflict` and changes nothing, which is the store-level equivalent
  * of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
  */
-export type EnhancedDocPatch = { kind?: string | null; title?: string | null; template_id?: string | null; sort_order?: number | null; markdown?: string | null; expected_title?: string | null; expected_markdown?: string | null }
+export type EnhancedDocPatch = {
+  kind?: string | null;
+  title?: string | null;
+  template_id?: string | null;
+  sort_order?: number | null;
+  markdown?: string | null;
+  expected_title?: string | null;
+  expected_markdown?: string | null;
+};
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
  */
-export type IndexChanged = { entity: IndexEntity; ids: string[] }
+export type IndexChanged = { entity: IndexEntity; ids: string[] };
 /**
  * Which index map changed. Serialized as the lowercase strings the frontend matches
  * on in the `index-changed` payload.
  */
-export type IndexEntity = "sessions" | "docs" | "transcripts" | "tasks" | "templates" | "people" | 
-/**
- * The vault-root `tags.json` registry changed (not a session's `_meta.json`
- * tags -- those ride `Sessions`).
- */
-"tags" | 
-/**
- * A session's *physical directory* changed (rename, move, delete/restore,
- * external relocation caught by a rebuild) -- content-free, so the search
- * projection ignores it; the frontend uses it to invalidate every cache
- * holding an absolute session path.
- */
-"locations"
-export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
+export type IndexEntity =
+  | "sessions"
+  | "docs"
+  | "transcripts"
+  | "tasks"
+  | "people"
+  /**
+   * The vault-root `tags.json` registry changed (not a session's `_meta.json`
+   * tags -- those ride `Sessions`).
+   */
+  | "tags"
+  /**
+   * A session's *physical directory* changed (rename, move, delete/restore,
+   * external relocation caught by a rebuild) -- content-free, so the search
+   * projection ignores it; the frontend uses it to invalidate every cache
+   * holding an absolute session path.
+   */
+  | "locations";
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | Partial<{ [key in string]: JsonValue }>;
 /**
  * One person, file-canonical in the vault-root `people.json`. The id doubles as the
  * value speaker hints store, so it is generated human-readable (`bob_peters`) — a
  * transcript keeps degrading gracefully if `people.json` disappears.
  */
-export type PersonItem = { id: string; name?: string }
+export type PersonItem = { id: string; name?: string };
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
  * from files* this pass, not the resulting index size. `errors` never aborts the scan --
  * an unparseable file is logged here and its existing index entry is left untouched (see
  * the hard rule in each match arm below: corruption must never look like deletion).
  */
-export type RebuildReport = { sessions: number; 
-/**
- * Documents read this pass -- the note (`notes.md`, or the pre-rename `_memo.md`)
- * and every `enhanced/<doc_id>.md` doc, not just the note.
- */
-notes: number; transcripts: number; 
-/**
- * Folder ids that have at least one recognized content file (a `<kind>.md` document or
- * `transcript.json`) but no `_meta.json` -- left deliberately unindexed; files untouched.
- */
-ghost_sessions: string[]; errors: string[] }
+export type RebuildReport = {
+  sessions: number;
+  /**
+   * Documents read this pass -- the note (`notes.md`, or the pre-rename `_memo.md`)
+   * and every `enhanced/<doc_id>.md` doc, not just the note.
+   */
+  notes: number;
+  transcripts: number;
+  /**
+   * Folder ids that have at least one recognized content file (a `<kind>.md` document or
+   * `transcript.json`) but no `_meta.json` -- left deliberately unindexed; files untouched.
+   */
+  ghost_sessions: string[];
+  errors: string[];
+};
 /**
  * Emitted after every `Stopped`-driven metadata attempt has finished -- including
  * the missing-store and failed-write branches. It means "the end-of-recording
@@ -647,36 +961,62 @@ ghost_sessions: string[]; errors: string[] }
  * `resource_dir` for the post-stop hook, so the hook can never receive a path the
  * pending rename is about to move.
  */
-export type RecordingMetaSettled = { sessionId: string; succeeded: boolean }
+export type RecordingMetaSettled = { sessionId: string; succeeded: boolean };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
  * subscribers (timeline, summaries, tags, float) consume.
  */
-export type SessionListHeader = { id: string; title: string; created_at: string; folder: string | null; tags: string[]; author: string | null; has_transcript_words: boolean }
-export type SessionMeta = { id: string; title: string; started_at: string | null; ended_at: string | null; created_at: string; tags: string[]; tag_suggestions?: TagSuggestionState | null;
-/**
- * Marker for app-created special sessions (today only the onboarding welcome
- * note) so they can be found again across restarts. Pre-removal builds carried
- * this inside the retired calendar-event envelope, which now round-trips
- * through `extra` -- see `session_find_by_tracking_id`'s legacy fallback.
- */
-tracking_id?: string | null; folder?: string | null; 
-/**
- * Who wrote this note. Absent = the human vault owner; present = an
- * agent/other writer (free-form, e.g. "claude-code").
- */
-author?: string | null; 
-/**
- * The skill the author ran to produce this note, if any (free-form,
- * e.g. "meeting-summarizer"). Only meaningful alongside `author`.
- */
-skill?: string | null }
+export type SessionListHeader = {
+  id: string;
+  title: string;
+  created_at: string;
+  folder: string | null;
+  tags: string[];
+  author: string | null;
+  has_transcript_words: boolean;
+};
+export type SessionMeta = {
+  id: string;
+  title: string;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+  tags: string[];
+  tag_suggestions?: TagSuggestionState | null;
+  /**
+   * Marker for app-created special sessions (today only the onboarding welcome
+   * note) so they can be found again across restarts. Pre-removal builds carried
+   * this inside the retired calendar-event envelope, which now round-trips
+   * through `extra` -- see `session_find_by_tracking_id`'s legacy fallback.
+   */
+  tracking_id?: string | null;
+  folder?: string | null;
+  /**
+   * Who wrote this note. Absent = the human vault owner; present = an
+   * agent/other writer (free-form, e.g. "claude-code").
+   */
+  author?: string | null;
+  /**
+   * The skill the author ran to produce this note, if any (free-form,
+   * e.g. "meeting-summarizer"). Only meaningful alongside `author`.
+   */
+  skill?: string | null;
+};
 /**
  * Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
  * field without knowing the rest. There is deliberately no way to clear a field back to
  * absent -- no mutation site needs that today.
  */
-export type SessionMetaPatch = { title?: string | null; started_at?: string | null; ended_at?: string | null; created_at?: string | null; tags?: string[] | null; tracking_id?: string | null; folder?: string | null; author?: string | null }
+export type SessionMetaPatch = {
+  title?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  created_at?: string | null;
+  tags?: string[] | null;
+  tracking_id?: string | null;
+  folder?: string | null;
+  author?: string | null;
+};
 /**
  * What `session_get` returns: the file-canonical equivalent of the old
  * `SESSION_SELECT_SQL` (sessions row + COALESCE'd note document join). The note is
@@ -684,10 +1024,21 @@ export type SessionMetaPatch = { title?: string | null; started_at?: string | nu
  * SQL fallback's legacy bare-id row was a permanently-empty placeholder, so
  * preferring the file loses nothing.
  */
-export type SessionRecord = { meta: SessionMeta; note_markdown: string | null }
-export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessions_found: number } | { kind: "indexing"; completed: number; total: number } | { kind: "preparingTemplates" } | { kind: "ready" } | { kind: "failed"; message: string }
-export type StartupProgress = { status: StartupStatus }
-export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase }
+export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
+export type StartupPhase =
+  | { kind: "openingVault" }
+  | { kind: "scanning"; sessions_found: number }
+  | { kind: "indexing"; completed: number; total: number }
+  | { kind: "archivingLegacyTemplates" }
+  | { kind: "ready" }
+  | { kind: "failed"; message: string };
+export type StartupProgress = { status: StartupStatus };
+export type StartupStatus = {
+  revision: number;
+  vaultPath: string;
+  isCloudStorage: boolean;
+  phase: StartupPhase;
+};
 /**
  * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
  * (lowercased) name itself — unlike people's lossy slug, two names normalizing
@@ -695,16 +1046,29 @@ export type StartupStatus = { revision: number; vaultPath: string; isCloudStorag
  * Sessions keep storing raw tag strings in `_meta.json` and degrade gracefully if
  * `tags.json` disappears.
  */
-export type TagItem = { id: string; name?: string }
-export type TagSuggestionItem = { name: string; confidence: number }
-export type TagSuggestionState = { source_hash: string; algorithm_version: number; status: TagSuggestionStatus; items: TagSuggestionItem[]; dismissed: string[] }
-export type TagSuggestionStatus = "pending" | "complete"
+export type TagItem = { id: string; name?: string };
+export type TagSuggestionItem = { name: string; confidence: number };
+export type TagSuggestionState = {
+  source_hash: string;
+  algorithm_version: number;
+  status: TagSuggestionStatus;
+  items: TagSuggestionItem[];
+  dismissed: string[];
+};
+export type TagSuggestionStatus = "pending" | "complete";
 /**
  * What the frontend sends on a write: source coordinates come from the command arguments,
  * timestamps and `assignee` are managed store-side (preserved from the existing entry when
  * the task already exists).
  */
-export type TaskInput = { id: string; source_order: number; status: string; text: string; body: JsonValue; due_at?: string }
+export type TaskInput = {
+  id: string;
+  source_order: number;
+  status: string;
+  text: string;
+  body: JsonValue;
+  due_at?: string;
+};
 /**
  * One action item, file-canonical in `sessions/<session_id>/tasks.json` (or the vault-root
  * `tasks.json` for a source that cannot be tied to a session). Mirrors the live columns of
@@ -712,112 +1076,156 @@ export type TaskInput = { id: string; source_order: number; status: string; text
  * D10) and minus `deleted_at` -- deletion removes the entry and the list is rewritten
  * atomically.
  */
-export type TaskItem = { id: string; 
-/**
- * "session_raw_note" (source_id is the session id) or "enhanced_note" (source_id is
- * the enhanced doc id). Stored verbatim for any other value.
- */
-source_type: string; source_id: string; source_order: number; 
-/**
- * "todo" | "in_progress" | "done". Stored verbatim; the frontend validates on read.
- */
-status: string; 
-/**
- * Plain-text preview of the first paragraph, kept alongside the body like the old
- * `text` column so the file is greppable.
- */
-text: string; 
-/**
- * The TipTap `JSONContent[]` body, stored as real JSON (the old `body_json` column
- * held it stringified).
- */
-body: JsonValue; due_at?: string; assignee?: string; created_at: string; updated_at: string }
-/**
- * What the frontend sends on a write: timestamps are managed store-side (`created_at`
- * survives for a template that already exists).
- */
-export type TemplateInput = { id: string; title: string; description: string; pinned: boolean; pin_order?: number | null; category?: string | null; icon: JsonValue; targets?: JsonValue | null; sections: JsonValue }
-/**
- * One summary template, file-canonical at `templates/<id>.json`. Mirrors the live columns
- * of the legacy `templates` table; `icon`/`targets`/`sections` are stored as real JSON
- * (the old `icon_json`/`targets_json`/`sections_json` columns held them stringified).
- */
-export type TemplateItem = { id: string; title?: string; description?: string; pinned?: boolean; pin_order?: number | null; category?: string | null; icon?: JsonValue; targets?: JsonValue | null; sections?: JsonValue; created_at?: string; updated_at?: string }
-export type TranscriptDelta = { transcript_id: string; new_words: TranscriptWord[]; replaced_ids: string[]; new_hints: TranscriptSpeakerHint[]; started_at_ms: number }
-export type TranscriptSpeakerHint = { id?: string | null; word_id: string; type: string; value?: JsonValue }
-export type TranscriptWithData = { id: string; user_id?: string; created_at?: string; session_id: string; started_at?: number; ended_at?: number | null; memo_md?: string; words?: TranscriptWord[]; speaker_hints?: TranscriptSpeakerHint[] }
-export type TranscriptWord = { id?: string | null; text: string; start_ms: number; end_ms: number; channel: number; speaker?: string | null; metadata?: Partial<{ [key in string]: JsonValue }> | null }
-export type VaultStats = { sessions: number; 
-/**
- * Sessions with a non-empty note.
- */
-notes: number; recordings: number; recording_bytes: number; transcript_words: number; enhanced_docs: number; tasks_total: number; tasks_done: number; tags: number; people: number; templates: number; 
-/**
- * Summed `ended_at - started_at` across sessions that have both.
- */
-duration_seconds: number; first_session_at: string | null; 
-/**
- * Ascending by year.
- */
-years: VaultYearStats[] }
-export type VaultYearStats = { year: number; sessions: number; recordings: number; transcript_words: number; enhanced_docs: number; duration_seconds: number }
+export type TaskItem = {
+  id: string;
+  /**
+   * "session_raw_note" (source_id is the session id) or "enhanced_note" (source_id is
+   * the enhanced doc id). Stored verbatim for any other value.
+   */
+  source_type: string;
+  source_id: string;
+  source_order: number;
+  /**
+   * "todo" | "in_progress" | "done". Stored verbatim; the frontend validates on read.
+   */
+  status: string;
+  /**
+   * Plain-text preview of the first paragraph, kept alongside the body like the old
+   * `text` column so the file is greppable.
+   */
+  text: string;
+  /**
+   * The TipTap `JSONContent[]` body, stored as real JSON (the old `body_json` column
+   * held it stringified).
+   */
+  body: JsonValue;
+  due_at?: string;
+  assignee?: string;
+  created_at: string;
+  updated_at: string;
+};
+export type TranscriptDelta = {
+  transcript_id: string;
+  new_words: TranscriptWord[];
+  replaced_ids: string[];
+  new_hints: TranscriptSpeakerHint[];
+  started_at_ms: number;
+};
+export type TranscriptSpeakerHint = {
+  id?: string | null;
+  word_id: string;
+  type: string;
+  value?: JsonValue;
+};
+export type TranscriptWithData = {
+  id: string;
+  user_id?: string;
+  created_at?: string;
+  session_id: string;
+  started_at?: number;
+  ended_at?: number | null;
+  memo_md?: string;
+  words?: TranscriptWord[];
+  speaker_hints?: TranscriptSpeakerHint[];
+};
+export type TranscriptWord = {
+  id?: string | null;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  speaker?: string | null;
+  metadata?: Partial<{ [key in string]: JsonValue }> | null;
+};
+export type VaultStats = {
+  sessions: number;
+  /**
+   * Sessions with a non-empty note.
+   */
+  notes: number;
+  recordings: number;
+  recording_bytes: number;
+  transcript_words: number;
+  enhanced_docs: number;
+  tasks_total: number;
+  tasks_done: number;
+  tags: number;
+  people: number;
+  /**
+   * Summed `ended_at - started_at` across sessions that have both.
+   */
+  duration_seconds: number;
+  first_session_at: string | null;
+  /**
+   * Ascending by year.
+   */
+  years: VaultYearStats[];
+};
+export type VaultYearStats = {
+  year: number;
+  sessions: number;
+  recordings: number;
+  transcript_words: number;
+  enhanced_docs: number;
+  duration_seconds: number;
+};
 
 /** tauri-specta globals **/
 
 import {
-	invoke as TAURI_INVOKE,
-	Channel as TAURI_CHANNEL,
+  invoke as TAURI_INVOKE,
+  Channel as TAURI_CHANNEL,
 } from "@tauri-apps/api/core";
 import * as TAURI_API_EVENT from "@tauri-apps/api/event";
 import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-	listen: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
-	emit: null extends T
-		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
-		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
+  listen: (
+    cb: TAURI_API_EVENT.EventCallback<T>,
+  ) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+  once: (
+    cb: TAURI_API_EVENT.EventCallback<T>,
+  ) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+  emit: null extends T
+    ? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
+    : (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
 export type Result<T, E> =
-	| { status: "ok"; data: T }
-	| { status: "error"; error: E };
+  | { status: "ok"; data: T }
+  | { status: "error"; error: E };
 
 function __makeEvents__<T extends Record<string, any>>(
-	mappings: Record<keyof T, string>,
+  mappings: Record<keyof T, string>,
 ) {
-	return new Proxy(
-		{} as unknown as {
-			[K in keyof T]: __EventObj__<T[K]> & {
-				(handle: __WebviewWindow__): __EventObj__<T[K]>;
-			};
-		},
-		{
-			get: (_, event) => {
-				const name = mappings[event as keyof T];
+  return new Proxy(
+    {} as unknown as {
+      [K in keyof T]: __EventObj__<T[K]> & {
+        (handle: __WebviewWindow__): __EventObj__<T[K]>;
+      };
+    },
+    {
+      get: (_, event) => {
+        const name = mappings[event as keyof T];
 
-				return new Proxy((() => {}) as any, {
-					apply: (_, __, [window]: [__WebviewWindow__]) => ({
-						listen: (arg: any) => window.listen(name, arg),
-						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg),
-					}),
-					get: (_, command: keyof __EventObj__<any>) => {
-						switch (command) {
-							case "listen":
-								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case "once":
-								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case "emit":
-								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
-						}
-					},
-				});
-			},
-		},
-	);
+        return new Proxy((() => {}) as any, {
+          apply: (_, __, [window]: [__WebviewWindow__]) => ({
+            listen: (arg: any) => window.listen(name, arg),
+            once: (arg: any) => window.once(name, arg),
+            emit: (arg: any) => window.emit(name, arg),
+          }),
+          get: (_, command: keyof __EventObj__<any>) => {
+            switch (command) {
+              case "listen":
+                return (arg: any) => TAURI_API_EVENT.listen(name, arg);
+              case "once":
+                return (arg: any) => TAURI_API_EVENT.once(name, arg);
+              case "emit":
+                return (arg: any) => TAURI_API_EVENT.emit(name, arg);
+            }
+          },
+        });
+      },
+    },
+  );
 }

@@ -98,7 +98,7 @@ vi.mock("~/shared/config", () => ({
   useConfigValue: (key: string) => mocks.values[key] ?? "",
 }));
 
-import { AutoPromptForm, AutoTemplateDetails } from "./auto-form";
+import { SummaryPromptForm, SummaryPromptSettings } from "./summary-prompt";
 
 const defaultPrompt =
   "Today is {{ current_date }}. Write the summary in {{ language }}.";
@@ -112,7 +112,7 @@ function renderWithQueryClient(node: ReactNode) {
   );
 }
 
-describe("Auto prompt editor", () => {
+describe("Summary prompt editor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.values.auto_summary_prompt = "";
@@ -128,11 +128,11 @@ describe("Auto prompt editor", () => {
   afterEach(cleanup);
 
   it("loads the built-in source and shows supported variables and context", async () => {
-    renderWithQueryClient(<AutoTemplateDetails />);
+    renderWithQueryClient(<SummaryPromptSettings />);
 
     expect(
       (await screen.findByRole("textbox", {
-        name: "Auto summary prompt",
+        name: "Summary prompt",
       })) as HTMLTextAreaElement,
     ).toHaveProperty("value", defaultPrompt);
     expect(screen.getByRole("button", { name: /Current date/ })).toBeTruthy();
@@ -143,27 +143,26 @@ describe("Auto prompt editor", () => {
 
   it("inserts supported variables as canonical prompt tokens", () => {
     renderWithQueryClient(
-      <AutoPromptForm defaultPrompt={defaultPrompt} promptOverride="" />,
+      <SummaryPromptForm defaultPrompt={defaultPrompt} promptOverride="" />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Language/ }));
 
     expect(
       screen.getByRole("textbox", {
-        name: "Auto summary prompt",
+        name: "Summary prompt",
       }) as HTMLTextAreaElement,
     ).toHaveProperty("value", `${defaultPrompt}\n{{ language }}`);
   });
 
   it("validates and saves a customized prompt", async () => {
     renderWithQueryClient(
-      <AutoPromptForm defaultPrompt={defaultPrompt} promptOverride="" />,
+      <SummaryPromptForm defaultPrompt={defaultPrompt} promptOverride="" />,
     );
 
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Auto summary prompt" }),
-      { target: { value: "Write in {{ language }}." } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Summary prompt" }), {
+      target: { value: "Write in {{ language }}." },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -182,13 +181,15 @@ describe("Auto prompt editor", () => {
 
   it("stores the default-equivalent source as an empty override", async () => {
     renderWithQueryClient(
-      <AutoPromptForm defaultPrompt={defaultPrompt} promptOverride="Custom" />,
+      <SummaryPromptForm
+        defaultPrompt={defaultPrompt}
+        promptOverride="Custom"
+      />,
     );
 
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Auto summary prompt" }),
-      { target: { value: `  ${defaultPrompt}\n` } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Summary prompt" }), {
+      target: { value: `  ${defaultPrompt}\n` },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -205,13 +206,12 @@ describe("Auto prompt editor", () => {
       error: "unknown variables: customer",
     });
     renderWithQueryClient(
-      <AutoPromptForm defaultPrompt={defaultPrompt} promptOverride="" />,
+      <SummaryPromptForm defaultPrompt={defaultPrompt} promptOverride="" />,
     );
 
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Auto summary prompt" }),
-      { target: { value: "Hello {{ customer }}" } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Summary prompt" }), {
+      target: { value: "Hello {{ customer }}" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain(
@@ -222,7 +222,7 @@ describe("Auto prompt editor", () => {
 
   it("resets a customized prompt to the built-in source", async () => {
     renderWithQueryClient(
-      <AutoPromptForm
+      <SummaryPromptForm
         defaultPrompt={defaultPrompt}
         promptOverride="Custom prompt"
       />,
@@ -238,7 +238,7 @@ describe("Auto prompt editor", () => {
     );
     expect(
       screen.getByRole("textbox", {
-        name: "Auto summary prompt",
+        name: "Summary prompt",
       }) as HTMLTextAreaElement,
     ).toHaveProperty("value", defaultPrompt);
   });

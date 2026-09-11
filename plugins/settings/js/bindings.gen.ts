@@ -4,182 +4,273 @@
 
 /** user-defined commands **/
 
-
 export const commands = {
-async settingsPath() : Promise<Result<string, string>> {
+  async settingsPath(): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|settings_path") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async globalBase() : Promise<Result<string, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|settings_path"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async globalBase(): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|global_base") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async vaultBase() : Promise<Result<string, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|global_base"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async vaultBase(): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|vault_base") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async copyVault(newPath: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|vault_base"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async copyVault(newPath: string): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|copy_vault", { newPath }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async moveVault(newPath: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|copy_vault", { newPath }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async moveVault(newPath: string): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|move_vault", { newPath }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setVaultBase(newPath: string) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|move_vault", { newPath }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setVaultBase(newPath: string): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|set_vault_base", { newPath }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async isEmptyOrMissingDir(path: string) : Promise<Result<boolean, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|set_vault_base", { newPath }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async isEmptyOrMissingDir(path: string): Promise<Result<boolean, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|is_empty_or_missing_dir", { path }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async classifyVaultDir(path: string) : Promise<Result<VaultDirKind, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|is_empty_or_missing_dir", {
+          path,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async classifyVaultDir(path: string): Promise<Result<VaultDirKind, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|classify_vault_dir", { path }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async load() : Promise<Result<JsonValue, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|classify_vault_dir", {
+          path,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async load(): Promise<Result<JsonValue, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|load") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async save(settings: JsonValue) : Promise<Result<null, string>> {
+      return { status: "ok", data: await TAURI_INVOKE("plugin:settings|load") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async save(settings: JsonValue): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|save", { settings }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getConfig() : Promise<Result<AppConfig, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|save", { settings }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getConfig(): Promise<Result<AppConfig, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|get_config") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setConfigValues(values: Partial<{ [key in string]: JsonValue }>) : Promise<Result<null, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|get_config"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setConfigValues(
+    values: Partial<{ [key in string]: JsonValue }>,
+  ): Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:settings|set_config_values", { values }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-}
-}
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("plugin:settings|set_config_values", {
+          values,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+};
 
 /** user-defined events **/
 
-
-
 /** user-defined constants **/
-
-
 
 /** user-defined types **/
 
-export type AiProviderEntry = (Partial<{ [key in string]: null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }> }>) & { type: string; base_url?: string }
-export type AppConfig = (Partial<{ [key in string]: null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }> }>) & { autostart: boolean; auto_stop_meetings: boolean; floating_bar_enabled: boolean; floating_bar_opacity: number; live_caption_opacity: number; live_caption_width: number; live_caption_line_count: number; live_caption_position: string; live_caption_minimized: boolean; show_app_in_dock: boolean; show_tray_icon: boolean; theme: string; auto_accept_related_tags: boolean; notification_detect: boolean; respect_dnd: boolean; cloud_sync_enabled: boolean; ai_language: string; spoken_languages: string[]; personalization_dictionary_terms: string[]; custom_summary_instructions: string; custom_summary_instructions_token_aware: boolean; auto_summary_prompt: string; ignored_platforms: string[]; included_platforms: string[]; mic_active_threshold: number; current_llm_provider?: string | null; current_llm_model?: string | null; current_stt_provider?: string | null; current_stt_model?: string | null; timezone?: string | null; selected_template_id?: string | null; ai_providers: Partial<{ [key in string]: AiProviderEntry }>; hooks?: JsonValue | null }
-export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
+export type AiProviderEntry = Partial<{
+  [key in string]:
+    | null
+    | boolean
+    | number
+    | string
+    | JsonValue[]
+    | Partial<{ [key in string]: JsonValue }>;
+}> & { type: string; base_url?: string };
+export type AppConfig = Partial<{
+  [key in string]:
+    | null
+    | boolean
+    | number
+    | string
+    | JsonValue[]
+    | Partial<{ [key in string]: JsonValue }>;
+}> & {
+  autostart: boolean;
+  auto_stop_meetings: boolean;
+  floating_bar_enabled: boolean;
+  floating_bar_opacity: number;
+  live_caption_opacity: number;
+  live_caption_width: number;
+  live_caption_line_count: number;
+  live_caption_position: string;
+  live_caption_minimized: boolean;
+  show_app_in_dock: boolean;
+  show_tray_icon: boolean;
+  theme: string;
+  auto_accept_related_tags: boolean;
+  notification_detect: boolean;
+  respect_dnd: boolean;
+  cloud_sync_enabled: boolean;
+  ai_language: string;
+  spoken_languages: string[];
+  personalization_dictionary_terms: string[];
+  custom_summary_instructions: string;
+  custom_summary_instructions_token_aware: boolean;
+  auto_summary_prompt: string;
+  ignored_platforms: string[];
+  included_platforms: string[];
+  mic_active_threshold: number;
+  current_llm_provider?: string | null;
+  current_llm_model?: string | null;
+  current_stt_provider?: string | null;
+  current_stt_model?: string | null;
+  timezone?: string | null;
+  ai_providers: Partial<{ [key in string]: AiProviderEntry }>;
+  hooks?: JsonValue | null;
+};
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | Partial<{ [key in string]: JsonValue }>;
 /**
  * What a picked storage folder currently holds, so the frontend can shape the
  * change-location dialog around the user's likely intent (move into empty,
  * switch to an existing vault, or create a subfolder inside a busy directory).
  */
-export type VaultDirKind = "empty_or_missing" | "vault" | "other"
+export type VaultDirKind = "empty_or_missing" | "vault" | "other";
 
 /** tauri-specta globals **/
 
 import {
-	invoke as TAURI_INVOKE,
-	Channel as TAURI_CHANNEL,
+  invoke as TAURI_INVOKE,
+  Channel as TAURI_CHANNEL,
 } from "@tauri-apps/api/core";
 import * as TAURI_API_EVENT from "@tauri-apps/api/event";
 import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-	listen: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
-	emit: null extends T
-		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
-		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
+  listen: (
+    cb: TAURI_API_EVENT.EventCallback<T>,
+  ) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+  once: (
+    cb: TAURI_API_EVENT.EventCallback<T>,
+  ) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+  emit: null extends T
+    ? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
+    : (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
 export type Result<T, E> =
-	| { status: "ok"; data: T }
-	| { status: "error"; error: E };
+  | { status: "ok"; data: T }
+  | { status: "error"; error: E };
 
 function __makeEvents__<T extends Record<string, any>>(
-	mappings: Record<keyof T, string>,
+  mappings: Record<keyof T, string>,
 ) {
-	return new Proxy(
-		{} as unknown as {
-			[K in keyof T]: __EventObj__<T[K]> & {
-				(handle: __WebviewWindow__): __EventObj__<T[K]>;
-			};
-		},
-		{
-			get: (_, event) => {
-				const name = mappings[event as keyof T];
+  return new Proxy(
+    {} as unknown as {
+      [K in keyof T]: __EventObj__<T[K]> & {
+        (handle: __WebviewWindow__): __EventObj__<T[K]>;
+      };
+    },
+    {
+      get: (_, event) => {
+        const name = mappings[event as keyof T];
 
-				return new Proxy((() => {}) as any, {
-					apply: (_, __, [window]: [__WebviewWindow__]) => ({
-						listen: (arg: any) => window.listen(name, arg),
-						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg),
-					}),
-					get: (_, command: keyof __EventObj__<any>) => {
-						switch (command) {
-							case "listen":
-								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case "once":
-								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case "emit":
-								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
-						}
-					},
-				});
-			},
-		},
-	);
+        return new Proxy((() => {}) as any, {
+          apply: (_, __, [window]: [__WebviewWindow__]) => ({
+            listen: (arg: any) => window.listen(name, arg),
+            once: (arg: any) => window.once(name, arg),
+            emit: (arg: any) => window.emit(name, arg),
+          }),
+          get: (_, command: keyof __EventObj__<any>) => {
+            switch (command) {
+              case "listen":
+                return (arg: any) => TAURI_API_EVENT.listen(name, arg);
+              case "once":
+                return (arg: any) => TAURI_API_EVENT.once(name, arg);
+              case "emit":
+                return (arg: any) => TAURI_API_EVENT.emit(name, arg);
+            }
+          },
+        });
+      },
+    },
+  );
 }

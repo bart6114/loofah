@@ -1,8 +1,8 @@
+import { Trans } from "@lingui/react/macro";
 import { useMutation } from "@tanstack/react-query";
 
 import { Button } from "@hypr/ui/components/ui/button";
 
-import { TemplatePickerPopover, type TemplateSelection } from "../header";
 import { ConfigError } from "./config-error";
 
 import { useLLMConnectionStatus } from "~/ai/hooks";
@@ -13,8 +13,7 @@ import {
 import { getEnhancerService } from "~/services/enhancer";
 import { EMPTY_SUMMARY_SOURCE_MESSAGE } from "~/services/enhancer/source";
 import { useSummarySource } from "~/session/hooks/useSummarySource";
-import { useEnhancedNote } from "~/session/queries";
-import { useConfigValue } from "~/shared/config";
+import { useOpenSummaryPrompt } from "~/settings/use-open-summary-prompt";
 import { flushDatabaseWrites } from "~/shared/write-queue";
 
 export function EmptySummary({
@@ -33,19 +32,12 @@ export function EmptySummary({
   const modelReady = llmStatus.status === "success";
   const connecting =
     llmStatus.status === "pending" && llmStatus.reason === "connecting";
-  const existingTemplateId = useEnhancedNote(enhancedNoteId ?? "")?.templateId;
-  const selectedTemplateId = useConfigValue("selected_template_id");
+  const openSummaryPrompt = useOpenSummaryPrompt();
   const generate = useMutation({
-    mutationFn: async (selection?: TemplateSelection) => {
+    mutationFn: async () => {
       await flushDatabaseWrites([`session:${sessionId}:note`]);
       const opts = {
         targetNoteId: enhancedNoteId,
-        templateId: selection
-          ? selection.templateId
-          : enhancedNoteId
-            ? existingTemplateId || null
-            : selectedTemplateId || undefined,
-        ...(selection?.templateId ? { templateTitle: selection.title } : {}),
       };
       if (!isMainAITaskHostWindow()) {
         const result = await requestMainEnhance(sessionId, opts);
@@ -91,17 +83,9 @@ export function EmptySummary({
             ? "Starting summary…"
             : "Generate summary"}
       </Button>
-      <TemplatePickerPopover
-        trigger={
-          <Button
-            variant="outline"
-            disabled={!hasSource || !modelReady || generate.isPending}
-          >
-            Choose template
-          </Button>
-        }
-        onSelectTemplate={(selection) => generate.mutate(selection)}
-      />
+      <Button variant="ghost" onClick={openSummaryPrompt}>
+        <Trans>Edit summary prompt</Trans>
+      </Button>
       {generate.error && (
         <p role="alert" className="text-destructive text-sm">
           {generate.error.message}

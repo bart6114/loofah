@@ -87,10 +87,6 @@ msgstr "1 file"
 msgid "A duplicate; the original stays where it is."
 msgstr "A duplicate; the original stays where it is."
 
-#: src/templates/template-sidebar.tsx
-msgid "A to Z"
-msgstr "A to Z"
-
 #: src/main/about-dialog.tsx
 msgid "About Loofah"
 msgstr "About Loofah"
@@ -106,10 +102,6 @@ msgstr "Actions"
 #: src/settings/ai/shared/index.tsx
 msgid "Active"
 msgstr "Active"
-
-#: src/templates/template-icon-picker.tsx
-msgid "Activity"
-msgstr "Activity"
 
 #: src/settings/dictionary/index.tsx
 msgid "Add"
@@ -167,10 +159,6 @@ msgstr "Always ready without manually launching."
 msgid "Analyzing structure..."
 msgstr "Analyzing structure..."
 
-#: src/templates/template-icon-picker.tsx
-msgid "Animals & Nature"
-msgstr "Animals & Nature"
-
 #: src/settings/ai/shared/index.tsx
 msgid "API Key"
 msgstr "API Key"
@@ -204,14 +192,6 @@ msgstr "Attachments"
 #: src/settings/general/permissions.tsx
 msgid "Audio"
 msgstr "Audio"
-
-#: src/templates/auto-form.tsx
-msgid "Auto prompt cannot be empty."
-msgstr "Auto prompt cannot be empty."
-
-#: src/templates/auto-form.tsx
-msgid "Auto summary prompt"
-msgstr "Auto summary prompt"
 
 #: src/settings/general/app-settings.tsx
 msgid "Automatically apply related tags"
@@ -278,10 +258,6 @@ msgstr "ChatGPT subscription"
 msgid "Choose a file format and what to include."
 msgstr "Choose a file format and what to include."
 
-#: src/templates/template-icon-picker.tsx
-msgid "Choose custom color"
-msgstr "Choose custom color"
-
 #: src/main/audio-import-dialog.tsx
 msgid "Choose files"
 msgstr "Choose files"
@@ -296,10 +272,6 @@ msgstr "Choose light, dark, or match your system setting."
 msgid "Choose storage location"
 msgstr "Choose storage location"
 
-#: src/templates/template-icon-picker.tsx
-msgid "Choose template icon"
-msgstr "Choose template icon"
-
 #: src/session/components/note-input/attachments.tsx
 msgid "Choosing…"
 msgstr "Choosing…"
@@ -307,14 +279,6 @@ msgstr "Choosing…"
 #: src/main/audio-import-dialog.tsx
 msgid "Clear"
 msgstr "Clear"
-
-#: src/templates/template-sidebar.tsx
-msgid "Clear search"
-msgstr "Clear search"
-
-#: src/shared/ui/resource-list/preview-header.tsx
-msgid "Clone"
-msgstr "Clone"
 
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
@@ -363,7 +327,7 @@ msgstr "Confirm"
 msgid "Connect an Intelligence provider to generate a summary from your notes or transcript."
 msgstr "Connect an Intelligence provider to generate a summary from your notes or transcript."
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Context always provided"
 msgstr "Context always provided"
 
@@ -424,26 +388,9 @@ msgstr "Couldn’t open attachments in Finder"
 msgid "Couldn’t remove attachment"
 msgstr "Couldn’t remove attachment"
 
-#: src/templates/details.tsx
-msgid "Create template"
-msgstr "Create template"
-
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
 msgstr "Created"
-
-#: src/templates/auto-form.tsx
-msgid "Current default"
-msgstr "Current default"
-
-#: src/templates/auto-form.tsx
-msgid "Customize Auto"
-msgstr "Customize Auto"
-
-#: src/templates/auto-form.tsx
-#: src/templates/template-sidebar.tsx
-msgid "Customized"
-msgstr "Customized"
 
 #: src/settings/general/theme.tsx
 msgid "Dark"
@@ -453,13 +400,7 @@ msgstr "Dark"
 msgid "Date and time are required"
 msgstr "Date and time are required"
 
-#: src/templates/auto-form.tsx
-msgid "Default"
-msgstr "Default"
-
 #: src/session/components/outer-header/overflow/delete.tsx
-#: src/templates/sections-editor.tsx
-#: src/templates/template-form.tsx
 msgid "Delete"
 msgstr "Delete"
 
@@ -474,10 +415,6 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
-
-#: src/templates/template-form.tsx
-msgid "Describe the template purpose..."
-msgstr "Describe the template purpose..."
 
 #: src/settings/general/notification.tsx
 msgid "Detection delay"
@@ -515,11 +452,6 @@ msgstr "Drop audio files or a folder here"
 msgid "Drop files to attach them"
 msgstr "Drop files to attach them"
 
-#: src/templates/details.tsx
-#: src/templates/template-form.tsx
-msgid "Duplicate"
-msgstr "Duplicate"
-
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Duration"
 msgstr "Duration"
@@ -532,13 +464,10 @@ msgstr "Each file becomes its own note and is transcribed and summarized one at 
 msgid "Edit date"
 msgstr "Edit date"
 
-#: src/templates/auto-form.tsx
-msgid "Edit the complete system prompt used when Auto generates a summary."
-msgstr "Edit the complete system prompt used when Auto generates a summary."
-
-#: src/templates/template-icon-picker.tsx
-msgid "Emojis"
-msgstr "Emojis"
+#: src/session/components/note-input/enhanced/empty-summary.tsx
+#: src/session/components/note-input/header.tsx
+msgid "Edit summary prompt"
+msgstr "Edit summary prompt"
 
 #. placeholder {0}: permissionName.toLowerCase()
 #: src/onboarding/permissions.tsx
@@ -548,10 +477,6 @@ msgstr "Enable {0}"
 #: src/session/components/session-date.tsx
 msgid "Enter a valid date and time"
 msgstr "Enter a valid date and time"
-
-#: src/templates/template-form.tsx
-msgid "Enter template title"
-msgstr "Enter template title"
 
 #: src/settings/ai/shared/index.tsx
 msgid "Enter your API key"
@@ -590,10 +515,6 @@ msgstr "Failed to load issue"
 msgid "Failed to load pull request"
 msgstr "Failed to load pull request"
 
-#: src/templates/details.tsx
-msgid "Favorite template"
-msgstr "Favorite template"
-
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "File format"
 msgstr "File format"
@@ -614,25 +535,13 @@ msgstr "Find a note..."
 msgid "Finish signing in in your browser…"
 msgstr "Finish signing in in your browser…"
 
-#: src/templates/template-icon-picker.tsx
-msgid "Flags"
-msgstr "Flags"
-
 #: src/sidebar/timeline/item.tsx
 msgid "Folder renamed"
 msgstr "Folder renamed"
 
-#: src/templates/template-icon-picker.tsx
-msgid "Food & Drink"
-msgstr "Food & Drink"
-
 #: src/settings/general/notification.tsx
 msgid "For enabled notifications"
 msgstr "For enabled notifications"
-
-#: src/templates/template-icon-picker.tsx
-msgid "Frequently used"
-msgstr "Frequently used"
 
 #: src/sidebar/settings.tsx
 msgid "General"
@@ -682,10 +591,6 @@ msgstr "Help Loofah listen to you"
 #: src/settings/general/notification.tsx
 msgid "How long the mic must be active before triggering"
 msgstr "How long the mic must be active before triggering"
-
-#: src/templates/template-icon-picker.tsx
-msgid "Icons"
-msgstr "Icons"
 
 #: src/main/audio-import-dialog.tsx
 msgid "Import {selectedCount} files"
@@ -741,14 +646,6 @@ msgstr "Included automatically with on-device transcription — no setup needed.
 #: src/settings/general/storage/rebuild-index.tsx
 msgid "Index rebuilt from the files in your folder."
 msgstr "Index rebuilt from the files in your folder."
-
-#: src/templates/sections-editor.tsx
-msgid "Insert above"
-msgstr "Insert above"
-
-#: src/templates/sections-editor.tsx
-msgid "Insert below"
-msgstr "Insert below"
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Install Codex CLI"
@@ -808,13 +705,13 @@ msgstr "Live transcription isn't available for this language combination. You'll
 msgid "Loading"
 msgstr "Loading"
 
-#: src/templates/auto-form.tsx
-msgid "Loading Auto prompt..."
-msgstr "Loading Auto prompt..."
-
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr "Loading models..."
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Loading summary prompt..."
+msgstr "Loading summary prompt..."
 
 #: src/changelog/index.tsx
 #: src/task/resource-view.tsx
@@ -833,7 +730,7 @@ msgstr "Loofah can hear your voice"
 msgid "Loofah needs access to your microphone and system audio to record and transcribe your meetings"
 msgstr "Loofah needs access to your microphone and system audio to record and transcribe your meetings"
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loofah sends these separately, so editing the prompt cannot remove the meeting source material."
 msgstr "Loofah sends these separately, so editing the prompt cannot remove the meeting source material."
 
@@ -865,7 +762,7 @@ msgstr "Match whole word"
 msgid "Meeting"
 msgstr "Meeting"
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Meeting notes"
 msgstr "Meeting notes"
 
@@ -903,10 +800,6 @@ msgstr "Microphone detection"
 msgid "Model being used"
 msgstr "Model being used"
 
-#: src/templates/sections-editor.tsx
-msgid "Move down"
-msgstr "Move down"
-
 #: src/settings/general/storage/change-location.tsx
 msgid "Move my vault"
 msgstr "Move my vault"
@@ -918,10 +811,6 @@ msgstr "Move my vault here"
 #: src/session/components/note-input/attachments.tsx
 msgid "Move to Trash"
 msgstr "Move to Trash"
-
-#: src/templates/sections-editor.tsx
-msgid "Move up"
-msgstr "Move up"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Name"
@@ -947,10 +836,6 @@ msgstr "No attachments yet"
 msgid "No changelog available for this version."
 msgstr "No changelog available for this version."
 
-#: src/templates/details.tsx
-msgid "No community templates available"
-msgstr "No community templates available"
-
 #: src/task/resource-view.tsx
 msgid "No content."
 msgstr "No content."
@@ -958,14 +843,6 @@ msgstr "No content."
 #: src/task/resource-view.tsx
 msgid "No description provided."
 msgstr "No description provided."
-
-#: src/templates/template-icon-picker.tsx
-msgid "No emoji found"
-msgstr "No emoji found"
-
-#: src/templates/template-icon-picker.tsx
-msgid "No icons found"
-msgstr "No icons found"
 
 #: src/sidebar/timeline/index.tsx
 msgid "No items today"
@@ -997,10 +874,6 @@ msgstr "No notes found."
 msgid "No results found."
 msgstr "No results found."
 
-#: src/templates/details.tsx
-msgid "No templates yet"
-msgstr "No templates yet"
-
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Not downloaded"
 msgstr "Not downloaded"
@@ -1030,10 +903,6 @@ msgstr "Notifications"
 #: src/sidebar/timeline/index.tsx
 msgid "Now"
 msgstr "Now"
-
-#: src/templates/template-icon-picker.tsx
-msgid "Objects"
-msgstr "Objects"
 
 #: src/settings/todo/permission.tsx
 #: src/task/resource-view.tsx
@@ -1087,7 +956,7 @@ msgid "Override the timezone used for the sidebar timeline"
 msgstr "Override the timezone used for the sidebar timeline"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Participants"
 msgstr "Participants"
 
@@ -1241,7 +1110,7 @@ msgstr "Required to record your voice during meetings and calls"
 msgid "Reset"
 msgstr "Reset"
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Reset to default"
 msgstr "Reset to default"
 
@@ -1278,7 +1147,7 @@ msgstr "Retry {0}"
 msgid "Runs after the recording finishes, not during the meeting."
 msgstr "Runs after the recording finishes, not during the meeting."
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Save"
 msgstr "Save"
 
@@ -1286,13 +1155,9 @@ msgstr "Save"
 msgid "Save date"
 msgstr "Save date"
 
-#: src/templates/template-icon-picker.tsx
-msgid "Search emoji..."
-msgstr "Search emoji..."
-
-#: src/templates/template-icon-picker.tsx
-msgid "Search icons..."
-msgstr "Search icons..."
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
+msgstr "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 
 #: src/settings/general/notification.tsx
 msgid "Search installed apps to exclude them. Click an excluded app to include it again."
@@ -1310,11 +1175,6 @@ msgstr "Search language..."
 msgid "Search or create new"
 msgstr "Search or create new"
 
-#: src/session/components/note-input/header.tsx
-#: src/templates/template-sidebar.tsx
-msgid "Search templates..."
-msgstr "Search templates..."
-
 #: src/settings/general/timezone.tsx
 msgid "Search timezone..."
 msgstr "Search timezone..."
@@ -1323,14 +1183,6 @@ msgstr "Search timezone..."
 #: src/settings/general/searchable-select.tsx
 msgid "Search..."
 msgstr "Search..."
-
-#: src/templates/sections-editor.tsx
-msgid "Section actions"
-msgstr "Section actions"
-
-#: src/session/components/note-input/header.tsx
-msgid "See all templates"
-msgstr "See all templates"
 
 #: src/settings/ai/shared/model-combobox.tsx
 #: src/settings/ai/stt/select.tsx
@@ -1358,7 +1210,7 @@ msgstr "Select timezone"
 msgid "Select..."
 msgstr "Select..."
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Session details"
 msgstr "Session details"
 
@@ -1369,11 +1221,6 @@ msgstr "Session note views"
 #: src/session/components/title-input.tsx
 msgid "Session title"
 msgstr "Session title"
-
-#: src/templates/auto-form.tsx
-#: src/templates/details.tsx
-msgid "Set as default"
-msgstr "Set as default"
 
 #: src/session/components/note-input/enhanced/config-error.tsx
 msgid "Set up AI summaries"
@@ -1437,10 +1284,6 @@ msgstr "Size"
 #: src/onboarding/shared.tsx
 msgid "Skip"
 msgstr "Skip"
-
-#: src/templates/template-icon-picker.tsx
-msgid "Smileys & People"
-msgstr "Smileys & People"
 
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 msgid "Something went wrong while generating the summary."
@@ -1513,6 +1356,14 @@ msgstr "Summaries and chat need a language model. Use a local server like Ollama
 msgid "Summary"
 msgstr "Summary"
 
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Summary prompt"
+msgstr "Summary prompt"
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Summary prompt cannot be empty."
+msgstr "Summary prompt cannot be empty."
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Switch"
 msgstr "Switch"
@@ -1532,10 +1383,6 @@ msgstr "Switching..."
 #: src/shared/startup-boundary.tsx
 msgid "Switching…"
 msgstr "Switching…"
-
-#: src/templates/template-icon-picker.tsx
-msgid "Symbols"
-msgstr "Symbols"
 
 #: src/settings/general/theme.tsx
 msgid "System"
@@ -1557,20 +1404,6 @@ msgstr "Tag name"
 #: src/main/about-dialog.tsx
 msgid "Tags"
 msgstr "Tags"
-
-#: src/templates/details.tsx
-#: src/templates/template-form.tsx
-msgid "Template actions"
-msgstr "Template actions"
-
-#: src/templates/sections-editor.tsx
-msgid "Template content with Jinja2: {{ variable }}, {% if condition %}"
-msgstr "Template content with Jinja2: {{ variable }}, {% if condition %}"
-
-#: src/sidebar/settings.tsx
-#: src/templates/template-sidebar.tsx
-msgid "Templates"
-msgstr "Templates"
 
 #: src/settings/general/storage/change-location.tsx
 msgid "The app restarts to apply."
@@ -1612,7 +1445,7 @@ msgstr "Transcribing"
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Transcript"
 msgstr "Transcript"
 
@@ -1632,10 +1465,6 @@ msgstr "Transcription model configured"
 #: src/settings/ai/stt/select.tsx
 msgid "Transcription model is needed to make Loofah listen to your conversations."
 msgstr "Transcription model is needed to make Loofah listen to your conversations."
-
-#: src/templates/template-icon-picker.tsx
-msgid "Travel & Places"
-msgstr "Travel & Places"
 
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/startup-boundary.tsx
@@ -1657,10 +1486,7 @@ msgstr "Unlock your login Keychain in the macOS prompt. Loofah will retry saving
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/title-input.tsx
 #: src/shared/open-note-dialog.tsx
-#: src/shared/ui/resource-list/preview-header.tsx
 #: src/sidebar/timeline/item.tsx
-#: src/templates/details.tsx
-#: src/templates/sections-editor.tsx
 msgid "Untitled"
 msgstr "Untitled"
 
@@ -1688,7 +1514,7 @@ msgstr "Use this folder for your vault?"
 msgid "Use your microphone to capture your voice"
 msgstr "Use your microphone to capture your voice"
 
-#: src/templates/auto-form.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
 msgstr "Variables"
 
@@ -1748,7 +1574,3 @@ msgstr "Your vault"
 #: src/settings/general/storage/change-location.tsx
 msgid "Your vault lives directly in the folder you pick, so we'll create one inside:"
 msgstr "Your vault lives directly in the folder you pick, so we'll create one inside:"
-
-#: src/templates/template-sidebar.tsx
-msgid "Z to A"
-msgstr "Z to A"

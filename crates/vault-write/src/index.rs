@@ -2,8 +2,8 @@
 //!
 //! The index is a typed, RwLock'd mirror of the vault files -- sessions
 //! (`_meta.json` + `notes.md`), documents (`enhanced/<uuid>.md`),
-//! transcripts (`transcript.json`), tasks (`tasks.json`) and templates
-//! (`templates/<id>.json`) -- built at startup by `rebuild_index` and kept current by:
+//! transcripts (`transcript.json`) and tasks (`tasks.json`) -- built at startup by
+//! `rebuild_index` and kept current by:
 //!
 //! 1. **Write-through**: every store write updates the index synchronously right after
 //!    the file write lands (the search projection rides this bus since Phase F), then
@@ -17,8 +17,8 @@
 //! drain everything else that arrived)
 //! and emits one `index-changed { entity, ids }` Tauri event per entity to all
 //! webviews. Granularity is table-level: `entity` names which map changed, `ids` are
-//! session ids (docs/transcripts/tasks carry their owning session id; templates carry
-//! template ids; the vault-root tasks file uses the reserved empty-string id).
+//! session ids (docs/transcripts/tasks carry their owning session id; the vault-root
+//! tasks file uses the reserved empty-string id).
 //!
 //! Corruption must never look like deletion (same invariant as `rebuild.rs`): a file
 //! that fails to read/parse during a rescan leaves the existing index entry untouched;
@@ -28,9 +28,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::{
-    EnhancedDoc, PersonItem, SessionMeta, SessionStore, StoreError, TagItem, TaskItem, TemplateItem,
-};
+use super::{EnhancedDoc, PersonItem, SessionMeta, SessionStore, StoreError, TagItem, TaskItem};
 use hypr_fs_format::TranscriptWithData;
 
 /// Which index map changed. Serialized as the lowercase strings the frontend matches
@@ -42,7 +40,6 @@ pub enum IndexEntity {
     Docs,
     Transcripts,
     Tasks,
-    Templates,
     People,
     /// The vault-root `tags.json` registry changed (not a session's `_meta.json`
     /// tags -- those ride `Sessions`).
@@ -202,7 +199,6 @@ pub struct VaultIndex {
     pub transcripts: HashMap<String, TranscriptSummary>,
     /// Session id (or `VAULT_TASKS_KEY`) -> that file's tasks.
     pub tasks: HashMap<String, Vec<TaskItem>>,
-    pub templates: HashMap<String, TemplateItem>,
     pub people: HashMap<String, PersonItem>,
     pub tags: HashMap<String, TagItem>,
 }
@@ -562,18 +558,6 @@ impl SessionStore {
         }
     }
 
-    pub(super) fn index_upsert_template(&self, template: &TemplateItem) {
-        let mut index = self.index.write().unwrap();
-        index
-            .templates
-            .insert(template.id.clone(), template.clone());
-    }
-
-    pub(super) fn index_remove_template(&self, template_id: &str) {
-        let mut index = self.index.write().unwrap();
-        index.templates.remove(template_id);
-    }
-
     pub(super) fn index_upsert_person(&self, person: &PersonItem) {
         let mut index = self.index.write().unwrap();
         index.people.insert(person.id.clone(), person.clone());
@@ -613,44 +597,9 @@ impl SessionStore {
 // -- rescans (file -> index reconciliation) ---------------------------------------
 //
 // The full rescan entry points (`rebuild_index` / `refresh_session`) live in
-// `rebuild.rs`; the helpers below are what they share with the templates path.
+// `rebuild.rs`; the helpers below are the vault-root entity paths.
 
 impl SessionStore {
-    /// Reload the templates map from `templates/*.json` (via `list_templates`, which
-    /// already skips unparseable/dot files) and notify changed template ids -- also
-    /// the `vault_watch` entry point for external `templates/**` edits.
-    pub async fn index_refresh_templates(&self) {
-        let templates = match self.list_templates().await {
-            Ok(templates) => templates,
-            Err(error) => {
-                tracing::warn!(%error, "index: failed to rescan templates; keeping current entries");
-                return;
-            }
-        };
-
-        let new_map: HashMap<String, TemplateItem> = templates
-            .into_iter()
-            .map(|template| (template.id.clone(), template))
-            .collect();
-
-        let changed_ids: Vec<String> = {
-            let mut index = self.index.write().unwrap();
-            let mut changed: Vec<String> = index
-                .templates
-                .keys()
-                .chain(new_map.keys())
-                .filter(|id| index.templates.get(*id) != new_map.get(*id))
-                .cloned()
-                .collect::<HashSet<String>>()
-                .into_iter()
-                .collect();
-            changed.sort();
-            index.templates = new_map;
-            changed
-        };
-        self.notify_index_changed(IndexEntity::Templates, changed_ids);
-    }
-
     /// Reload the people map from the vault-root `people.json` and notify changed person
     /// ids -- also the `vault_watch` entry point for external `people.json` edits. A
     /// missing file reads as empty, so an external delete notifies every removed id.
@@ -798,12 +747,11 @@ pub(crate) const COALESCE_WINDOW: std::time::Duration = std::time::Duration::fro
 
 /// Stable emission order so bursts serialize deterministically (and tests can assert
 /// exact sequences).
-const ENTITY_ORDER: [IndexEntity; 8] = [
+const ENTITY_ORDER: [IndexEntity; 7] = [
     IndexEntity::Sessions,
     IndexEntity::Docs,
     IndexEntity::Transcripts,
     IndexEntity::Tasks,
-    IndexEntity::Templates,
     IndexEntity::People,
     IndexEntity::Tags,
     IndexEntity::Locations,
@@ -1029,20 +977,6 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        store
-            .upsert_template(super::super::TemplateInput {
-                id: "t-1".to_string(),
-                title: "Template".to_string(),
-                description: String::new(),
-                pinned: false,
-                pin_order: None,
-                category: None,
-                icon: serde_json::json!({}),
-                targets: None,
-                sections: serde_json::json!([]),
-            })
-            .await
-            .unwrap();
 
         store.rebuild_index().await.unwrap();
 
@@ -1066,7 +1000,6 @@ mod tests {
 
         let index = store.index.read().unwrap();
         assert_eq!(index.tasks.get("s1").unwrap()[0].text, "Ship it");
-        assert_eq!(index.templates.get("t-1").unwrap().title, "Template");
     }
 
     #[tokio::test]
@@ -1172,36 +1105,6 @@ mod tests {
         let entities = changed_entities(&store);
         assert!(entities.contains(&IndexEntity::Sessions));
         assert!(entities.contains(&IndexEntity::Transcripts));
-    }
-
-    #[tokio::test]
-    async fn template_writes_update_the_index_and_notify() {
-        let (store, _vault) = test_store().await;
-        store
-            .upsert_template(super::super::TemplateInput {
-                id: "t-1".to_string(),
-                title: "Mine".to_string(),
-                description: String::new(),
-                pinned: false,
-                pin_order: None,
-                category: None,
-                icon: serde_json::json!({}),
-                targets: None,
-                sections: serde_json::json!([]),
-            })
-            .await
-            .unwrap();
-        {
-            let index = store.index.read().unwrap();
-            assert_eq!(index.templates.get("t-1").unwrap().title, "Mine");
-        }
-
-        store.delete_template("t-1").await.unwrap();
-        {
-            let index = store.index.read().unwrap();
-            assert!(!index.templates.contains_key("t-1"));
-        }
-        assert!(changed_entities(&store).contains(&IndexEntity::Templates));
     }
 
     // -- command semantics --
@@ -1585,32 +1488,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_refresh_templates_ingests_external_template_edits() {
-        let (store, vault) = test_store().await;
-        std::fs::create_dir_all(vault.path().join("templates")).unwrap();
-        std::fs::write(
-            vault.path().join("templates/hand-made.json"),
-            serde_json::json!({ "id": "hand-made", "title": "Dropped in" }).to_string(),
-        )
-        .unwrap();
-
-        store.index_refresh_templates().await;
-
-        {
-            let index = store.index.read().unwrap();
-            assert_eq!(
-                index.templates.get("hand-made").unwrap().title,
-                "Dropped in"
-            );
-        }
-        let changes = drain_changes(&store);
-        assert_eq!(
-            changes,
-            vec![(IndexEntity::Templates, vec!["hand-made".to_string()])]
-        );
-    }
-
-    #[tokio::test]
     async fn index_refresh_people_ingests_external_edits_and_deletions() {
         let (store, vault) = test_store().await;
         std::fs::write(
@@ -1727,7 +1604,6 @@ mod tests {
             (IndexEntity::Docs, "docs"),
             (IndexEntity::Transcripts, "transcripts"),
             (IndexEntity::Tasks, "tasks"),
-            (IndexEntity::Templates, "templates"),
             (IndexEntity::People, "people"),
         ] {
             assert_eq!(

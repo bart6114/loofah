@@ -19,7 +19,7 @@ Dev builds use the **raw bundle id** as the folder name; release builds use
 
 | What | Where | Notes |
 |---|---|---|
-| Sessions, `config.json`, `templates/` | *vault base* | Defaults to the app-support dir, but is relocatable — `global.json` in the global base points at it |
+| Sessions, `config.json` | *vault base* | Defaults to the app-support dir, but is relocatable — `global.json` in the global base points at it |
 | `models/stt/`, `models/llm/` | *global base* — always the app-support dir | Never moves with the vault |
 | **Soniqo STT models** | `~/Library/Caches/qwen3-speech/models/aufklarer/` | Neither of the above |
 | Logs | `~/Library/Logs/<bundle-id>/app.log` | |

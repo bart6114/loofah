@@ -88,25 +88,6 @@ export const mappingMentionSchema = z.object({
   target_type: mentionTargetTypeSchema,
 });
 
-export const templateSectionSchema = z.object({
-  title: z.string(),
-  description: z.string(),
-});
-
-export const templateSchema = z.object({
-  user_id: z.string(),
-  title: z.string(),
-  description: z.string(),
-  pinned: z.preprocess((val) => val ?? false, z.boolean()),
-  pin_order: z.preprocess((val) => val ?? undefined, z.number().optional()),
-  category: z.preprocess((val) => val ?? undefined, z.string().optional()),
-  targets: z.preprocess(
-    (val) => val ?? undefined,
-    jsonObject(z.array(z.string())).optional(),
-  ),
-  sections: jsonObject(z.array(templateSectionSchema)),
-});
-
 export const chatGroupSchema = z.object({
   user_id: z.string(),
   created_at: z.string(),
@@ -256,8 +237,6 @@ export type MappingSessionParticipant = z.infer<
 export type Tag = z.infer<typeof tagSchema>;
 export type MappingTagSession = z.infer<typeof mappingTagSessionSchema>;
 export type MappingMention = z.infer<typeof mappingMentionSchema>;
-export type Template = z.infer<typeof templateSchema>;
-export type TemplateSection = z.infer<typeof templateSectionSchema>;
 export type ChatGroup = z.infer<typeof chatGroupSchema>;
 export type ChatMessageStatus = z.infer<typeof chatMessageStatusSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;

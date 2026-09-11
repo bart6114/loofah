@@ -67,29 +67,6 @@ Session: {{ title }}
 {%- endif -%}
 {%- endmacro -%}
 
-{%- macro template_context(template) -%}
-{%- match template -%}
-{%- when Some with (tpl) %}
-Template: {{ tpl.title }}
-{%- match tpl.description -%}
-{%- when Some with (desc) %}
-Description: {{ desc }}
-{%- when None -%}
-{%- endmatch %}
-
-Sections to cover:
-{%- for section in tpl.sections %}
-
-- {{ section.title }}
-  {%- match section.description -%}
-  {%- when Some with (desc) %}: {{ desc }}
-  {%- when None -%}
-  {%- endmatch -%}
-  {%- endfor -%}
-  {%- when None -%}
-  {%- endmatch -%}
-  {%- endmacro -%}
-
 {%- macro participants_list(participants) -%}
 {%- if !participants.is_empty() %}
 Participants:
@@ -99,32 +76,6 @@ Participants:
   {% endfor -%}
   {%- endif -%}
   {%- endmacro -%}
-
-{%- macro template_numbered(template) -%}
-{%- match template -%}
-{%- when Some with (tpl) %}
-
-# Summary Template
-
-Name: {{ tpl.title }}
-{%- match tpl.description -%}
-{%- when Some with (desc) %}
-Description: {{ desc }}
-{%- when None -%}
-{%- endmatch %}
-
-Sections:
-{% for section in tpl.sections -%}
-{{ loop.index }}. {{ section.title }}{% if section.description.is_some() %} - {{ section.description.as_ref().unwrap() }}{% endif %}
-{% endfor -%}
-{%- when None %}
-
-# Instructions
-
-1. Analyze the content and decide the sections to use.
-2. Generate a well-formatted markdown summary.
-   {% endmatch -%}
-   {%- endmacro -%}
 
 {%- macro session_context_details(ctx) -%}
 {%- if let Some(title) = ctx.title %}

@@ -3,7 +3,6 @@ import { type ReactNode } from "react";
 import { cn } from "@hypr/utils";
 
 import { SettingsNav } from "./settings";
-import { TemplatesNav } from "./templates";
 import { TimelineView } from "./timeline";
 
 import { useTabs } from "~/store/zustand/tabs";
@@ -16,8 +15,7 @@ export function LeftSidebar({
   const currentTab = useTabs((state) => state.currentTab);
 
   const isSettingsMode = currentTab?.type === "settings";
-  const isTemplatesMode = currentTab?.type === "templates";
-  const isSpecialMode = isSettingsMode || isTemplatesMode;
+  const isSpecialMode = isSettingsMode;
   const isTimelineSidebarLayout = !isSpecialMode;
 
   return (
@@ -33,8 +31,6 @@ export function LeftSidebar({
         <div className="relative min-h-0 flex-1 overflow-hidden">
           {isSettingsMode ? (
             <SettingsNav />
-          ) : isTemplatesMode ? (
-            <TemplatesNav />
           ) : (
             <div className="flex h-full min-h-0 flex-col">
               <div className="relative min-h-0 flex-1">

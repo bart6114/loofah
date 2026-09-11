@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BracesIcon, SparklesIcon } from "lucide-react";
+import { BracesIcon } from "lucide-react";
 import { useRef } from "react";
 
 import {
@@ -12,28 +12,27 @@ import {
 import { commands as templateCommands } from "@hypr/plugin-template";
 import { Badge } from "@hypr/ui/components/ui/badge";
 import { Button } from "@hypr/ui/components/ui/button";
-import { cn } from "@hypr/utils";
 
 import { setSettingValue } from "~/settings/queries";
 import { useConfigValue } from "~/shared/config";
 
-export const AUTO_PROMPT_TOKENS: readonly PromptTokenDefinition[] = [
+export const SUMMARY_PROMPT_TOKENS: readonly PromptTokenDefinition[] = [
   { name: "current_date", label: "Current date" },
   { name: "language", label: "Language" },
 ];
 
-export function AutoTemplateDetails() {
+export function SummaryPromptSettings() {
   const promptOverride = useConfigValue("auto_summary_prompt");
   const sourceQuery = useQuery({
     queryKey: ["template-source", "enhance-system"],
-    queryFn: loadDefaultAutoPrompt,
+    queryFn: loadDefaultSummaryPrompt,
     staleTime: Number.POSITIVE_INFINITY,
   });
 
   if (sourceQuery.isLoading) {
     return (
       <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-        <Trans>Loading Auto prompt...</Trans>
+        <Trans>Loading summary prompt...</Trans>
       </div>
     );
   }
@@ -41,13 +40,13 @@ export function AutoTemplateDetails() {
   if (sourceQuery.error || !sourceQuery.data) {
     return (
       <div className="text-destructive flex h-full items-center justify-center px-6 text-center text-sm">
-        {sourceQuery.error?.message || "Auto prompt is unavailable."}
+        {sourceQuery.error?.message || "Summary prompt is unavailable."}
       </div>
     );
   }
 
   return (
-    <AutoPromptForm
+    <SummaryPromptForm
       key={`${promptOverride}:${sourceQuery.data}`}
       defaultPrompt={sourceQuery.data}
       promptOverride={promptOverride}
@@ -55,7 +54,7 @@ export function AutoTemplateDetails() {
   );
 }
 
-export function AutoPromptForm({
+export function SummaryPromptForm({
   defaultPrompt,
   promptOverride,
 }: {
@@ -64,8 +63,6 @@ export function AutoPromptForm({
 }) {
   const { t } = useLingui();
   const editorRef = useRef<PromptEditorHandle>(null);
-  const selectedTemplateId = useConfigValue("selected_template_id");
-  const isDefault = !selectedTemplateId;
   const isCustomized = Boolean(promptOverride.trim());
   const initialPrompt = isCustomized ? promptOverride : defaultPrompt;
 
@@ -73,7 +70,7 @@ export function AutoPromptForm({
     mutationFn: async (source: string) => {
       const normalized = normalizePrompt(source);
       if (!normalized) {
-        throw new Error(t`Auto prompt cannot be empty.`);
+        throw new Error(t`Summary prompt cannot be empty.`);
       }
       const stored = promptsMatch(normalized, defaultPrompt) ? "" : normalized;
       const rendered = await templateCommands.render({
@@ -109,54 +106,24 @@ export function AutoPromptForm({
 
   return (
     <form
-      className="flex h-full min-h-0 flex-col"
+      id="summary-prompt"
+      className="flex flex-col"
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
         void form.handleSubmit().catch(() => {});
       }}
     >
-      <div className="flex h-12 shrink-0 items-center justify-between gap-3 pr-1 pl-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <SparklesIcon className="text-brand size-4 shrink-0" />
-          <span className="truncate text-sm font-semibold">Auto</span>
-          <Badge variant="secondary" className="h-5 rounded-full text-[10px]">
-            {isCustomized ? <Trans>Customized</Trans> : <Trans>Default</Trans>}
-          </Badge>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={cn([
-            "text-muted-foreground hover:text-foreground shrink-0",
-            isDefault ? "bg-muted hover:bg-accent text-foreground" : null,
-          ])}
-          onClick={() => {
-            void setSettingValue("selected_template_id", "").catch((error) => {
-              console.error("[templates] failed to set Auto as default", error);
-            });
-          }}
-          disabled={isDefault}
-        >
-          {isDefault ? (
-            <Trans>Current default</Trans>
-          ) : (
-            <Trans>Set as default</Trans>
-          )}
-        </Button>
-      </div>
-
-      <div className="scroll-fade-y min-h-0 flex-1 overflow-y-auto px-6 pt-3 pb-6">
+      <div className="py-3">
         <div className="mx-auto flex max-w-4xl flex-col gap-5">
           <div>
             <h1 className="text-lg font-semibold">
-              <Trans>Customize Auto</Trans>
+              <Trans>Summary prompt</Trans>
             </h1>
             <p className="text-muted-foreground mt-1 text-sm">
               <Trans>
-                Edit the complete system prompt used when Auto generates a
-                summary.
+                Saved changes apply to future summaries. Existing text changes
+                only when you regenerate it.
               </Trans>
             </p>
           </div>
@@ -166,20 +133,20 @@ export function AutoPromptForm({
               <div className="border-border bg-card overflow-hidden rounded-2xl border">
                 <PromptEditor
                   ref={editorRef}
-                  ariaLabel={t`Auto summary prompt`}
+                  ariaLabel={t`Summary prompt`}
                   className="min-h-[28rem] px-4 py-3 font-mono text-sm leading-5"
                   initialValue={field.state.value}
                   maxLength={16000}
                   onChange={field.handleChange}
                   onBlur={field.handleBlur}
-                  tokens={AUTO_PROMPT_TOKENS}
+                  tokens={SUMMARY_PROMPT_TOKENS}
                 />
                 <div className="border-border bg-muted/40 flex items-center justify-between gap-3 border-t px-3 py-2">
                   <span className="text-muted-foreground text-xs font-medium">
                     <Trans>Variables</Trans>
                   </span>
                   <div className="flex flex-wrap justify-end gap-1.5">
-                    {AUTO_PROMPT_TOKENS.map((token) => (
+                    {SUMMARY_PROMPT_TOKENS.map((token) => (
                       <Button
                         key={token.name}
                         type="button"
@@ -271,7 +238,7 @@ export function AutoPromptForm({
   );
 }
 
-async function loadDefaultAutoPrompt(): Promise<string> {
+async function loadDefaultSummaryPrompt(): Promise<string> {
   const result = await templateCommands.getTemplateSource("enhanceSystem");
   if (result.status === "error") {
     throw new Error(result.error);

@@ -110,18 +110,6 @@ pub fn audio_dir(id: &str) -> PathBuf {
     audio_dir_in(&sessions_root().join(id))
 }
 
-pub fn templates_root() -> PathBuf {
-    PathBuf::from("templates")
-}
-
-pub fn template_path(id: &str) -> PathBuf {
-    templates_root().join(format!("{}.json", id))
-}
-
-pub fn deleted_default_templates_path() -> PathBuf {
-    templates_root().join(".deleted-defaults.json")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,12 +138,6 @@ mod tests {
         assert_eq!(people_path(), PathBuf::from("people.json"));
         assert_eq!(tags_path(), PathBuf::from("tags.json"));
         assert_eq!(audio_dir("s1"), PathBuf::from("sessions/s1/audio"));
-        assert_eq!(templates_root(), PathBuf::from("templates"));
-        assert_eq!(template_path("t-1"), PathBuf::from("templates/t-1.json"));
-        assert_eq!(
-            deleted_default_templates_path(),
-            PathBuf::from("templates/.deleted-defaults.json")
-        );
     }
 
     #[test]

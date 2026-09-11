@@ -8,6 +8,7 @@ import {
 import { SettingsTodo } from "./todo";
 
 import { LLM } from "~/settings/ai/llm";
+import { SummaryPromptSettings } from "~/settings/ai/llm/summary-prompt";
 import { STT } from "~/settings/ai/stt";
 import { SettingsDevelopers } from "~/settings/developers";
 import { SettingsDictionary } from "~/settings/dictionary";
@@ -52,6 +53,8 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
         return <SettingsDictionary />;
       case "transcription":
         return <STT />;
+      case "summary-prompt":
+        return <SummaryPromptSettings />;
       case "intelligence":
         return <LLM />;
       case "todo":

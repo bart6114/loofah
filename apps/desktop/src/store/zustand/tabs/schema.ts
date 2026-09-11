@@ -3,13 +3,13 @@ import type {
   EditorView,
   SessionsState,
   TabInput as WindowsTabInput,
-  TemplatesState,
 } from "@hypr/plugin-windows";
 
-export type { ChangelogState, EditorView, SessionsState, TemplatesState };
+export type { ChangelogState, EditorView, SessionsState };
 
 export type SupportedWindowTabInput = Exclude<
   WindowsTabInput,
+  | { type: "templates" }
   | { type: "extension" }
   | { type: "extensions" }
   | { type: "folders" }
@@ -24,6 +24,7 @@ export const isTabInputSupported = (
   tab: WindowsTabInput,
 ): tab is SupportedWindowTabInput => {
   return (
+    tab.type !== "templates" &&
     tab.type !== "extension" &&
     tab.type !== "extensions" &&
     tab.type !== "folders" &&
@@ -41,6 +42,7 @@ export type SettingsTab =
   | "dictionary"
   | "transcription"
   | "intelligence"
+  | "summary-prompt"
   | "todo";
 
 export const normalizeSettingsTab = (
@@ -54,6 +56,7 @@ export const normalizeSettingsTab = (
     case "dictionary":
     case "transcription":
     case "intelligence":
+    case "summary-prompt":
     case "todo":
       return tab;
     case "personalization":
@@ -91,10 +94,6 @@ export type Tab =
       id: string;
       state: SessionsState;
     })
-  | (BaseTab & {
-      type: "templates";
-      state: TemplatesState;
-    })
   | (BaseTab & { type: "empty" })
   | (BaseTab & {
       type: "changelog";
@@ -128,17 +127,6 @@ export const getDefaultState = (tab: TabInput): Tab => {
         id: tab.id,
         state: tab.state ?? { view: null, autoStart: null },
       };
-    case "templates":
-      return {
-        ...base,
-        type: "templates",
-        state: tab.state ?? {
-          showHomepage: false,
-          isWebMode: true,
-          selectedMineId: null,
-          selectedWebIndex: null,
-        },
-      };
     case "empty":
       return { ...base, type: "empty" };
     case "changelog":
@@ -169,8 +157,6 @@ export const uniqueIdfromTab = (tab: Tab): string => {
   switch (tab.type) {
     case "sessions":
       return `sessions-${tab.id}`;
-    case "templates":
-      return `templates`;
     case "empty":
       return `empty-${tab.slotId}`;
     case "changelog":

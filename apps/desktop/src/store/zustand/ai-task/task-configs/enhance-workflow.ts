@@ -19,7 +19,6 @@ import {
 } from "~/services/enhancer/summary-length";
 import { normalizeBulletPoints } from "~/store/zustand/ai-task/shared/transform_impl";
 import { withEarlyValidationRetry } from "~/store/zustand/ai-task/shared/validate";
-import { assertCanonicalTemplateSections } from "~/templates/codec";
 
 const AI_GENERATION_MAX_RETRIES = 4;
 const SUMMARY_MAX_OUTPUT_TOKENS = 8192;
@@ -81,26 +80,14 @@ async function getUserPrompt(args: TaskArgsMapTransformed["enhance"]) {
   const {
     session,
     participants,
-    template: rawTemplate,
     transcripts,
     preMeetingMemo,
     postMeetingMemo,
   } = args;
-  const template = rawTemplate
-    ? {
-        ...rawTemplate,
-        sections: assertCanonicalTemplateSections(
-          rawTemplate.sections,
-          "enhance render template.sections",
-        ),
-      }
-    : null;
-
   const result = await templateCommands.render({
     enhanceUser: {
       session,
       participants,
-      template,
       transcripts,
       preMeetingMemo,
       postMeetingMemo,
@@ -126,9 +113,7 @@ async function* generateSummary(params: {
 
   onProgress({ type: "generating" });
 
-  const validator = createEnhanceValidator(args.template, {
-    overrideTemplateFormatting: Boolean(args.promptOverride.trim()),
-  });
+  const validator = createEnhanceValidator(Boolean(args.promptOverride.trim()));
 
   yield* withEarlyValidationRetry(
     (retrySignal, { previousFeedback }) => {

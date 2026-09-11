@@ -18,12 +18,7 @@ export function extractEnhanceTagNames(
     summaryMarkdown,
     transformedArgs.preMeetingMemo,
     transformedArgs.postMeetingMemo,
-    transformedArgs.template?.title,
-    transformedArgs.template?.description,
-    ...(transformedArgs.template?.sections ?? []).flatMap((section) => [
-      section.title,
-      section.description,
-    ]),
+    transformedArgs.promptOverride,
   ];
 
   return extractHashtagNames(sources);

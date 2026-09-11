@@ -14,7 +14,6 @@ import {
   hasSummarySource,
 } from "~/services/enhancer/source";
 import { loadSessionContentSnapshot } from "~/session/content-queries";
-import { useEnhancedNote } from "~/session/queries";
 import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
@@ -30,63 +29,53 @@ export function useEnhancedNoteActions({
     ? createTaskId(enhancedNoteId, "enhance")
     : null;
 
-  const noteTemplateId =
-    useEnhancedNote(enhancedNoteId ?? "")?.templateId || undefined;
-
   const enhanceTask = useAITaskTask(taskId, "enhance");
 
-  const onRegenerate = useCallback(
-    async (templateId: string | null) => {
-      if (!enhancedNoteId) {
+  const onRegenerate = useCallback(async () => {
+    if (!enhancedNoteId) {
+      return;
+    }
+
+    if (!model) {
+      sonnerToast.error(
+        "Set up Intelligence in Settings before regenerating this summary.",
+      );
+      return;
+    }
+
+    try {
+      await flushDatabaseWrites([`session:${sessionId}:note`]);
+      const snapshot = await loadSessionContentSnapshot(sessionId);
+      if (
+        !snapshot ||
+        !hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)
+      ) {
+        sonnerToast.error(EMPTY_SUMMARY_SOURCE_MESSAGE);
         return;
       }
 
-      if (!model) {
-        sonnerToast.error(
-          "Set up Intelligence in Settings before regenerating this summary.",
-        );
-        return;
-      }
-
-      try {
-        await flushDatabaseWrites([`session:${sessionId}:note`]);
-        const snapshot = await loadSessionContentSnapshot(sessionId);
-        if (
-          !snapshot ||
-          !hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)
-        ) {
-          sonnerToast.error(EMPTY_SUMMARY_SOURCE_MESSAGE);
-          return;
-        }
-
-        if (!isMainAITaskHostWindow()) {
-          const result = await requestMainEnhance(sessionId, {
-            templateId: templateId ?? noteTemplateId,
-            targetNoteId: enhancedNoteId,
-          });
-          if (result.type === "no_model")
-            throw new Error(
-              "Set up Intelligence in Settings before regenerating this summary.",
-            );
-          return;
-        }
-
-        await enhanceTask.start({
-          model,
-          args: {
-            sessionId,
-            enhancedNoteId,
-            templateId: templateId ?? noteTemplateId,
-          },
+      if (!isMainAITaskHostWindow()) {
+        const result = await requestMainEnhance(sessionId, {
+          targetNoteId: enhancedNoteId,
         });
-      } catch (error) {
-        sonnerToast.error(
-          error instanceof Error ? error.message : String(error),
-        );
+        if (result.type === "no_model")
+          throw new Error(
+            "Set up Intelligence in Settings before regenerating this summary.",
+          );
+        return;
       }
-    },
-    [enhancedNoteId, model, enhanceTask.start, sessionId, noteTemplateId],
-  );
+
+      await enhanceTask.start({
+        model,
+        args: {
+          sessionId,
+          enhancedNoteId,
+        },
+      });
+    } catch (error) {
+      sonnerToast.error(error instanceof Error ? error.message : String(error));
+    }
+  }, [enhancedNoteId, model, enhanceTask.start, sessionId]);
 
   const onCancel = useCallback(() => {
     if (!taskId) {

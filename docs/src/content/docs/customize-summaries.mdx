@@ -1,27 +1,27 @@
 ---
-title: "Customize meeting summaries"
-description: "Choose a summary template or change the prompt used by Auto."
+title: Customize meeting summaries
+description: "Edit the shared prompt used for every summary."
 ---
 
-Summary generation is optional. When you use it, you can either let Auto decide the structure or choose a template with fixed sections.
+Summary generation is optional. When Intelligence is configured, every summary uses one shared prompt for your vault.
 
-## Use a template
+## Edit the summary prompt
 
-Open a meeting and use the picker beside **Summary**. You can create templates for decisions, action items, one-on-ones, or any other structure you use regularly.
+1. Open **Settings → Intelligence → Summary prompt**, or choose **Edit summary prompt** from a summary's menu.
+2. Edit the prompt and click **Save**.
+3. Regenerate an existing summary to apply your changes to it.
 
-Selecting another template does not change a summary that already exists. Regenerate the summary when you want to apply the new selection.
+Saved changes apply to future generation, including automatic summaries and regeneration of older summaries. Existing text stays as it is until you regenerate it. Regeneration preserves the document's title.
 
-## Change the Auto prompt
+The **Current date** and **Language** buttons insert variables that are filled in when the prompt runs. Invalid syntax and unsupported variables must be corrected before saving. Use **Reset to default** to restore the bundled prompt.
 
-1. Open **Templates**.
-2. Select **Auto**.
-3. Edit the prompt and click **Save**.
+Loofah supplies notes, transcripts, session details, participants, and supported note images separately. Your prompt can choose its own format; the summary-length policy still applies.
 
-This is the complete system prompt used by Auto. The **Current date** and **Language** buttons insert variables that are filled in when the prompt runs.
+Each session gets one Summary. Older additional summaries remain available to read, edit, and regenerate.
 
-The app supplies meeting notes, transcript text, session details, and participants separately. Removing those words from the prompt does not stop that context from being sent to the selected Intelligence provider.
+## Older templates
 
-The custom prompt only affects Auto. Named templates keep their own sections. Use **Reset to default** to restore the built-in prompt.
+Your previous custom Auto prompt carries over automatically. Saved summary documents are preserved. Old template definitions are archived under `.trash/<date>/templates/` in your vault, where you can recover their text with Finder. They are no longer active templates.
 
 ## Add names and jargon
 

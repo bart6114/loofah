@@ -38,9 +38,7 @@ type TaskEnhancePayload = {
   auto?: "regenerate" | "if_empty";
   opts?: {
     isAuto?: boolean;
-    templateId?: string | null;
     targetNoteId?: string;
-    templateTitle?: string;
   };
 };
 

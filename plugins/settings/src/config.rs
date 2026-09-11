@@ -56,8 +56,6 @@ pub struct AppConfig {
     pub current_stt_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_template_id: Option<String>,
     pub ai_providers: HashMap<String, AiProviderEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hooks: Option<Value>,
@@ -98,7 +96,6 @@ impl Default for AppConfig {
             current_stt_provider: None,
             current_stt_model: None,
             timezone: None,
-            selected_template_id: None,
             ai_providers: HashMap::new(),
             hooks: None,
             extra: serde_json::Map::new(),
@@ -214,6 +211,36 @@ mod tests {
         assert_eq!(
             reloaded.snapshot().ai_providers["llm:openai"].base_url,
             "https://api.openai.com/v1"
+        );
+    }
+
+    #[tokio::test]
+    async fn summary_prompt_survives_settings_writes_and_restart() {
+        let temp = tempdir().unwrap();
+        std::fs::write(temp.path().join("config.json"), r#"{"auto_summary_prompt":"Decisions in {{ language }}", "selected_template_id":"retired"}"#).unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert_eq!(
+            state.snapshot().auto_summary_prompt,
+            "Decisions in {{ language }}"
+        );
+        state
+            .set_values(values(&[("theme", json!("dark"))]))
+            .await
+            .unwrap();
+        let reloaded = ConfigState::load_or_default(temp.path());
+        assert_eq!(
+            reloaded.snapshot().auto_summary_prompt,
+            "Decisions in {{ language }}"
+        );
+        reloaded
+            .set_values(values(&[("auto_summary_prompt", json!(""))]))
+            .await
+            .unwrap();
+        assert_eq!(
+            ConfigState::load_or_default(temp.path())
+                .snapshot()
+                .auto_summary_prompt,
+            ""
         );
     }
 

@@ -4,7 +4,6 @@ import { enhanceTransform } from "./enhance-transform";
 
 const mocks = vi.hoisted(() => ({
   collectEnhanceImageContext: vi.fn(),
-  getTemplateById: vi.fn(),
   loadSessionContentSnapshot: vi.fn(),
   buildRenderTranscriptRequestFromRows: vi.fn(),
   renderTranscriptSegments: vi.fn(),
@@ -12,10 +11,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./enhance-images", () => ({
   collectEnhanceImageContext: mocks.collectEnhanceImageContext,
-}));
-
-vi.mock("~/templates/queries", () => ({
-  getTemplateById: mocks.getTemplateById,
 }));
 
 vi.mock("~/session/content-queries", () => ({
@@ -63,7 +58,6 @@ describe("enhanceTransform.transformArgs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.collectEnhanceImageContext.mockResolvedValue([]);
-    mocks.getTemplateById.mockResolvedValue(null);
     mocks.loadSessionContentSnapshot.mockResolvedValue(createSnapshot());
     mocks.buildRenderTranscriptRequestFromRows.mockReturnValue(null);
     mocks.renderTranscriptSegments.mockResolvedValue([]);
@@ -90,7 +84,7 @@ describe("enhanceTransform.transformArgs", () => {
     expect(mocks.renderTranscriptSegments).not.toHaveBeenCalled();
   });
 
-  it("rejects empty source before loading templates or starting a model", async () => {
+  it("rejects empty source before starting a model", async () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue({
       ...createSnapshot(),
       rawMarkdown: "&nbsp;",
@@ -102,34 +96,9 @@ describe("enhanceTransform.transformArgs", () => {
         settingsValues,
       ),
     ).rejects.toThrow("Add a note or transcript");
-    expect(mocks.getTemplateById).not.toHaveBeenCalled();
   });
 
-  it("uses the selected template when it can be loaded", async () => {
-    mocks.getTemplateById.mockResolvedValue({
-      title: "Standup",
-      description: "Daily sync",
-      sections: [{ title: "Updates", description: null }],
-    });
-
-    const result = await enhanceTransform.transformArgs(
-      {
-        sessionId: "session-1",
-        enhancedNoteId: "note-1",
-        templateId: "template-1",
-      },
-      settingsValues,
-    );
-
-    expect(result.template).toEqual({
-      title: "Standup",
-      description: "Daily sync",
-      sections: [{ title: "Updates", description: null }],
-    });
-    expect(result.participants).toEqual([]);
-  });
-
-  it("uses the saved prompt override for Auto summaries", async () => {
+  it("uses the saved prompt override for summaries", async () => {
     const result = await enhanceTransform.transformArgs(
       { sessionId: "session-1", enhancedNoteId: "note-1" },
       {
@@ -141,12 +110,17 @@ describe("enhanceTransform.transformArgs", () => {
     expect(result.promptOverride).toBe("  Start with decisions.  ");
   });
 
-  it("ignores the Auto override when a named template is selected", async () => {
+  it("uses the shared prompt when regenerating a legacy summary", async () => {
+    mocks.loadSessionContentSnapshot.mockResolvedValue({
+      ...createSnapshot(),
+      enhancedNotes: [
+        { id: "note-1", kind: "template_output", templateId: "retired" },
+      ],
+    });
     const result = await enhanceTransform.transformArgs(
       {
         sessionId: "session-1",
         enhancedNoteId: "note-1",
-        templateId: "template-1",
       },
       {
         ...settingsValues,
@@ -154,37 +128,17 @@ describe("enhanceTransform.transformArgs", () => {
       },
     );
 
-    expect(result.promptOverride).toBe("");
+    expect(result.promptOverride).toBe("Start with decisions.");
+    expect(result).not.toHaveProperty("template");
   });
 
-  it("uses the built-in Auto prompt when no override is saved", async () => {
+  it("uses the built-in prompt when no override is saved", async () => {
     const result = await enhanceTransform.transformArgs(
       { sessionId: "session-1", enhancedNoteId: "note-1" },
       settingsValues,
     );
 
     expect(result.promptOverride).toBe("");
-  });
-
-  it("falls back to generic enhancement when template loading fails", async () => {
-    mocks.getTemplateById.mockRejectedValue(new Error("Failed query"));
-
-    const result = await enhanceTransform.transformArgs(
-      {
-        sessionId: "session-1",
-        enhancedNoteId: "note-1",
-        templateId: "template-1",
-      },
-      settingsValues,
-    );
-
-    expect(result.template).toBeNull();
-    expect(result.promptOverride).toBe("");
-    expect(result.session.title).toBe("Weekly Review");
-    expect(consoleError).toHaveBeenCalledWith(
-      "[enhance] failed to load template",
-      expect.any(Error),
-    );
   });
 
   it("collects image context from canonical transcript and note content", async () => {

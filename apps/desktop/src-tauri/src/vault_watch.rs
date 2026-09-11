@@ -118,11 +118,8 @@ pub enum WatchAction {
     /// `_meta.json`, so the only safe response is one read-only rediscovery
     /// pass (`rebuild_index`) rather than an id guessed from the path.
     RebuildSessions,
-    /// An external edit under `templates/` -- rescans the in-memory templates index
-    /// (Phase E1; templates have no SQL half to refresh).
-    RefreshTemplates,
     /// An external edit of the vault-root `people.json` -- rescans the in-memory
-    /// people index (same shape as templates: file-canonical, no per-id granularity).
+    /// people index (file-canonical, no per-id granularity).
     RefreshPeople,
     /// An external edit of the vault-root `tags.json` -- rescans the in-memory
     /// tags index (same shape as people).
@@ -160,10 +157,6 @@ pub fn classify_event(
         return WatchAction::Ignore;
     }
 
-    if is_templates_path(relative) {
-        return WatchAction::RefreshTemplates;
-    }
-
     if is_people_path(relative) {
         return WatchAction::RefreshPeople;
     }
@@ -196,13 +189,6 @@ fn has_hidden_session_component(relative: &str) -> bool {
         .split('/')
         .skip(1)
         .any(|component| component.starts_with('.'))
-}
-
-/// Any change under `templates/` (including `.deleted-defaults.json` -- a tombstone
-/// edit changes which defaults exist) rescans the whole templates index; the map is
-/// small enough that per-file granularity isn't worth the bookkeeping.
-fn is_templates_path(relative: &str) -> bool {
-    relative == "templates" || relative.starts_with("templates/")
 }
 
 fn is_people_path(relative: &str) -> bool {
@@ -302,7 +288,6 @@ async fn ids_to_refresh(store: &SessionStore, changed: &HashSet<String>) -> Refr
                 plan.session_ids.insert(id);
             }
             WatchAction::RebuildSessions => plan.rebuild_sessions = true,
-            WatchAction::RefreshTemplates => plan.templates = true,
             WatchAction::RefreshPeople => plan.people = true,
             WatchAction::RefreshTags => plan.tags = true,
             WatchAction::Ignore => {}
@@ -318,7 +303,6 @@ struct RefreshPlan {
     /// one `rebuild_index` pass, which rediscovers every session and thereby
     /// subsumes the per-id refreshes in `session_ids`.
     rebuild_sessions: bool,
-    templates: bool,
     people: bool,
     tags: bool,
 }
@@ -366,10 +350,6 @@ async fn handle_batch(store: &SessionStore, changed: &HashSet<String>) {
         }
     } else {
         refresh_ids(store, plan.session_ids).await;
-    }
-    if plan.templates {
-        store.index_refresh_templates().await;
-        tracing::info!("vault watch: refreshed templates index from external change");
     }
     if plan.people {
         store.index_refresh_people().await;
@@ -549,17 +529,16 @@ mod tests {
         ));
     }
 
-    /// Phase E1: external edits under `templates/` refresh the in-memory templates
-    /// index. Own writes still win, and trashed template files stay ignored.
+    /// Retired templates and their trash copies never enter the index.
     #[test]
-    fn template_paths_refresh_templates_unless_own_write_or_trash() {
+    fn retired_template_paths_are_ignored() {
         assert!(matches!(
             classify_event("templates/t-1.json", false, None),
-            WatchAction::RefreshTemplates
+            WatchAction::Ignore
         ));
         assert!(matches!(
             classify_event("templates/.deleted-defaults.json", false, None),
-            WatchAction::RefreshTemplates
+            WatchAction::Ignore
         ));
         assert!(matches!(
             classify_event("templates/t-1.json", true, None),

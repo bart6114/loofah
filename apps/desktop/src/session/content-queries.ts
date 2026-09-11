@@ -18,6 +18,7 @@ export type SessionContentSnapshot = {
     content: string;
     contentFormat: string;
     templateId: string;
+    kind: string;
     position: number;
   }>;
   transcripts: Array<{
@@ -69,6 +70,7 @@ export async function loadSessionContentSnapshot(
     content: doc.markdown,
     contentFormat: "md",
     templateId: doc.template_id,
+    kind: doc.kind,
     position: Number(doc.sort_order),
   }));
 

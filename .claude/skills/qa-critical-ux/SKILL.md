@@ -105,8 +105,8 @@ the matrix.
   automatically, reflects the transcript and typed note context, and an
   untitled session receives a useful generated title. Generation failures must
   be visible and retryable rather than silent.
-- Regenerate once and, when templates are in scope, switch the summary template
-  and regenerate. PASS when the selected format is used without damaging the
+- Regenerate once, edit **Settings → Intelligence → Summary prompt**, then
+  regenerate again. PASS when the saved prompt is used without damaging the
   transcript or note.
 - PASS with no Intelligence model when recording and transcription still work
   and the empty Summary view offers setup instead of reporting a false

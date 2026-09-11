@@ -27,10 +27,13 @@ describe("detached summary requests", () => {
   });
   afterEach(() => vi.useRealTimers());
   it("waits for the matching start result and removes the listener", async () => {
-    const pending = requestMainEnhance("session-1");
+    const pending = requestMainEnhance("session-1", {
+      targetNoteId: "legacy-summary",
+    });
     await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalled());
     const payload = mocks.emitTo.mock.calls[0][2];
     expect(payload.sourceLabel).toBe("note-window");
+    expect(payload.opts).toEqual({ targetNoteId: "legacy-summary" });
     respond({
       payload: {
         requestId: payload.requestId,

@@ -3,6 +3,7 @@ import { Trans } from "@lingui/react/macro";
 import { ConfigureProviders } from "./configure";
 import { LlmSettingsProvider } from "./context";
 import { SelectProviderAndModel } from "./select";
+import { SummaryPromptSettings } from "./summary-prompt";
 
 import { SettingsPageTitle } from "~/settings/page-title";
 
@@ -13,6 +14,7 @@ export function LLM() {
         <SettingsPageTitle title={<Trans>Intelligence</Trans>} />
         <SelectProviderAndModel />
         <ConfigureProviders />
+        <SummaryPromptSettings />
       </div>
     </LlmSettingsProvider>
   );

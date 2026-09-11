@@ -157,10 +157,6 @@ export const SETTING_DEFINITIONS = {
     type: "string",
     path: ["general", "timezone"],
   },
-  selected_template_id: {
-    type: "string",
-    path: ["general", "selected_template_id"],
-  },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFINITIONS;

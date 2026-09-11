@@ -1,6 +1,4 @@
-use crate::{
-    EnhanceTemplate, Error, Participant, Session, Transcript, ValidationError, common_derives,
-};
+use crate::{Error, Participant, Session, Transcript, ValidationError, common_derives};
 use minijinja::{Environment, UndefinedBehavior, context};
 
 common_derives! {
@@ -48,7 +46,6 @@ common_derives! {
     pub struct EnhanceUser {
         pub session: Session,
         pub participants: Vec<Participant>,
-        pub template: Option<EnhanceTemplate>,
         pub transcripts: Vec<Transcript>,
         pub pre_meeting_memo: String,
         pub post_meeting_memo: String,
@@ -58,7 +55,7 @@ common_derives! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Segment, TemplateSection};
+    use crate::Segment;
     use hypr_askama_utils::tpl_snapshot;
 
     #[test]
@@ -72,7 +69,6 @@ mod tests {
                 event: None,
             },
             participants: vec![],
-            template: None,
             transcripts: vec![],
             pre_meeting_memo: String::new(),
             post_meeting_memo: "Ship the release on Friday.".into(),
@@ -158,6 +154,17 @@ mod tests {
     }
 
     #[test]
+    fn custom_prompt_rejects_invalid_syntax() {
+        assert!(
+            render_enhance_system(&EnhanceSystem {
+                language: None,
+                prompt_override: "{% if language %}unclosed".to_string(),
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
     fn test_custom_system_prompt_rejects_unknown_variables() {
         let error = render_enhance_system(&EnhanceSystem {
             language: None,
@@ -209,20 +216,6 @@ mod tests {
                     job_title: Some("CTO".to_string()),
                 },
             ],
-            template: Some(EnhanceTemplate {
-                title: "Meeting".to_string(),
-                description: Some("Meeting description".to_string()),
-                sections: vec![
-                    TemplateSection {
-                        title: "Section 1".to_string(),
-                        description: Some("Section 1 description".to_string()),
-                    },
-                    TemplateSection {
-                        title: "Section 2".to_string(),
-                        description: Some("Section 2 description".to_string()),
-                    },
-                ],
-            }),
             transcripts: vec![Transcript {
                 segments: vec![Segment {
                     text: "Hello".to_string(),
@@ -249,19 +242,7 @@ mod tests {
 
 
     John Doe: Hello
-
-
-    # Output Template
-
-    # Summary Template
-
-    Name: Meeting
-    Description: Meeting description
-
-    Sections:
-    1. Section 1 - Section 1 description
-    2. Section 2 - Section 2 description
-    ");
+");
 
     tpl_snapshot!(
         test_enhance_user_with_memos,
@@ -273,7 +254,6 @@ mod tests {
                 event: None,
             },
             participants: vec![],
-            template: None,
             transcripts: vec![Transcript {
                 segments: vec![Segment {
                     text: "Shipped the feature".to_string(),
