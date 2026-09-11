@@ -98,11 +98,11 @@ export default defineConfig({
           items: [
             "installation",
             "agents/overview",
-            "agents/vault",
-            "agents/cli",
-            "agents/mcp",
-            "agents/connect-clients",
             "agents/skills",
+            "agents/cli",
+            "agents/connect-clients",
+            "agents/mcp",
+            "agents/vault",
           ],
         },
         {

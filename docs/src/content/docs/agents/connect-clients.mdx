@@ -1,9 +1,17 @@
 ---
-title: "Connect meeting notes to your agents with MCP"
-description: "Use Loofah's read-only MCP server with Claude Desktop, Claude Code, Codex, or Hermes."
+title: "Connect your agent"
+description: "Start with the Loofah skill and CLI, or configure an optional read-only MCP connection."
 ---
 
-Loofah's MCP server lets an agent search and read your local meeting notes. It cannot create sessions, edit notes, or change the vault.
+## Recommended: skill and CLI
+
+For agents that can run shell commands, use the `loof` CLI to read and write your personal knowledge vault. Copy the [skill installation prompt](/agents/skills#install-with-a-prompt) into your agent. It teaches the agent how to use the CLI and asks it to remember to use the skill through `loof` when you want to save notes or retrieve knowledge.
+
+The prompt checks whether the CLI is installed and can reach your vault. If needed, follow [Install the CLI](/installation), then use the [CLI examples](/agents/cli). No MCP configuration is needed for this workflow.
+
+## Optional: MCP
+
+Use MCP when your client cannot run shell commands or you want a read-only connection. Loofah's MCP server lets an agent search and read your local notes. It cannot create sessions, edit notes, or change the vault. The client-specific instructions below configure MCP.
 
 Install the [`loof` CLI](/installation) first, then check that it can find your vault:
 
@@ -11,7 +19,7 @@ Install the [`loof` CLI](/installation) first, then check that it can find your 
 loof doctor
 ```
 
-Every client starts the same local command: `loof mcp`.
+For MCP, every client starts the same local command: `loof mcp`.
 
 ## Claude Desktop on macOS
 

@@ -5,6 +5,8 @@ description: "The standing AGENTS.md every vault carries: what Loofah is, how th
 
 Loofah is a local-first knowledge and note-taking app that began with meeting transcription. Its **vault** can hold recorded meetings, standalone notes, imported material, and work an agent creates from other authorized sources. The vault is a plain folder of Markdown and JSON files and the only source of truth. There is no database or cloud copy. A copy of this page is kept at the vault root as `AGENTS.md`. Full, current documentation lives at https://loofah.io/, with machine-readable indexes at https://loofah.io/llms.txt and https://loofah.io/llms-full.txt.
 
+For agents with shell access, use the `loof` CLI for both reading and writing. Start with the [skill installation prompt](https://loofah.io/agents/skills/#install-with-a-prompt) to install the Loofah skill and remember to use it through the CLI when the user wants to save or retrieve knowledge.
+
 ## Vault structure
 
 ```text
@@ -58,15 +60,7 @@ Use Loofah's typed, read-only interfaces for session data.
 Do not use `find`, `grep`, `rg`, filesystem crawling, or direct SQLite queries
 to find or read sessions.
 
-Prefer the Loofah MCP tools when they are available:
-
-- `list_meetings` to resolve a session ID
-- `get_meeting` for notes, summaries, and action items
-- `get_meeting_transcript` for the full speaker-labeled transcript
-
-The MCP tool names retain `meeting` for compatibility even when the session is a standalone note.
-
-If MCP is unavailable, use the loof CLI with `--json`:
+Prefer the `loof` CLI with `--json`, even when MCP tools are connected:
 
 (`meetings` is a compatibility alias for `sessions` while deprecation is phased in.)
 
@@ -82,7 +76,9 @@ application-data directory, following the `vault_path` redirect in its
 `--vault-path ABSOLUTE_VAULT_DIR` only when the user explicitly provides a
 non-default vault path; do not crawl the filesystem to find one. Never guess a
 session ID. Fetch a transcript only when notes and summaries do not contain
-the needed context.
+the needed context. Transcript commands return the complete transcript and can produce large responses.
+
+If CLI access is unavailable or the user requests MCP, use connected Loofah MCP tools for read-only access: `list_meetings` or `search_meetings` to resolve an ID, `get_meeting` for notes, summaries, and action items, and `get_meeting_transcript` for the full transcript. The tool names retain `meeting` for compatibility with standalone notes too. Saving or editing notes requires the CLI.
 
 ## The loof CLI
 

@@ -1,6 +1,6 @@
 # MCP tools and resources
 
-All tools are read-only and idempotent.
+Use these tools when CLI access is unavailable or the user specifically requests MCP. Prefer the CLI for agents with shell access. All MCP tools are read-only and idempotent.
 
 | Tool | Use |
 | --- | --- |

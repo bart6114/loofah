@@ -1,24 +1,69 @@
 ---
 title: "Loofah skill"
-description: "Install the repository skill that teaches agents to use Loofah safely."
+description: "Install the Loofah skill with a copyable prompt so your agent can use the loof CLI to store notes and retrieve saved context in your personal knowledge vault."
 ---
 
-The public skill gives compatible agents a simple workflow:
+Loofah is your personal knowledge vault. Use the public skill to teach your agent to save notes, research, ideas, and decisions through the `loof` CLI, then find that knowledge when you need it. Notes do not need a meeting, recording, or transcript.
 
-1. Use connected Loofah MCP tools for reading when available.
-2. Fall back to `loof --json` when MCP is unavailable.
+We recommend the CLI for agents that can run shell commands. It supports both reading and writing with structured JSON output. Start by installing the skill so your agent knows how and when to use it.
+
+## Install with a prompt
+
+Copy this prompt into an agent that supports installing skills:
+
+```text
+Download and install the complete Loofah skill from:
+https://github.com/bart6114/loofah/tree/main/skills/loofah
+
+Use your supported skill installer, or download SKILL.md and all files
+under references/ into a folder named loofah in your skills directory.
+Make it available for future conversations and verify the installation.
+
+Remember in your persistent memory that Loofah is my personal knowledge
+vault. When I ask you to save notes, keep research for later, or store
+knowledge persistently, use the loofah skill through the loof CLI to
+save it in Loofah. Also use this skill through the CLI when I ask to
+retrieve saved knowledge. Prefer loof --json for both reading and writing,
+even when Loofah MCP tools are connected.
+Keep the notes in Loofah and remember this preference across conversations.
+If you cannot install skills or save persistent memory, tell me which
+part needs manual setup.
+
+Check loof --version and loof --json doctor to verify CLI and vault
+access. If the CLI is unavailable, explain how to install it. Installing
+the skill does not install the CLI. Use MCP only as a read-only alternative
+when you cannot run the CLI or I specifically ask for MCP.
+```
+
+The prompt asks your agent to install the skill and remember to use Loofah through the CLI when you want to save or retrieve knowledge. Persistent memory and skill installation depend on your agent's capabilities. If you need to install the skill manually, follow the steps below.
+
+## What the skill does
+
+The skill gives your agent a workflow for storing knowledge and finding context:
+
+1. Check CLI availability and vault access with `loof --version` and `loof --json doctor`.
+2. Use `loof --json` for both reading and writing, including when MCP is connected.
 3. Resolve session IDs from list or search results.
-4. Read session details before requesting the full transcript.
-5. Write only through the CLI because the MCP server is read-only. You can create standalone knowledge notes, edit note bodies, attach source artifacts, import audio, and transcribe it.
-6. Never crawl or modify vault files directly.
+4. Read notes, summaries, and action items before requesting a transcript. Transcript commands return the complete transcript and can produce large responses.
+5. Write only through the CLI because the MCP server is read-only. You can create standalone knowledge notes, edit note bodies, add or remove tags, attach files, import audio into a new session or an existing one without a recording, and transcribe it.
+6. Use MCP as a read-only alternative when CLI access is unavailable or you explicitly request it.
+7. Never crawl or modify vault files directly.
+
+Agent-created sessions record `--author <agent-name>` and, when a skill produced the note, `--skill <skill-name>`. Existing sessions keep their authorship. See [CLI for agents](/agents/cli) for examples.
+
+The skill also tells agents to prefer appending to notes, confirm before replacing an existing transcript or overwriting an export, and obtain authorization before sharing private meeting content. Transcription honors your audio retention setting: with retention set to "none", the recording is deleted after the transcript is saved. The CLI cannot edit summaries or settings, or replace an existing recording.
 
 ## Source
 
 The maintained package is [`skills/loofah`](https://github.com/bart6114/loofah/tree/main/skills/loofah). It includes references for setup, CLI commands, MCP tools, and errors.
 
-## Install it
+## Manual setup
+
+Your agent needs shell access and the Loofah CLI to follow the recommended workflow. On macOS, open **Settings > Agents** in Loofah and click **Install** in the **CLI** section. For standalone installation, see [Install the CLI](/installation).
 
 For an agent that loads skills from the filesystem, copy the complete `skills/loofah` directory into that agent's skills directory. Keep the directory name `loofah` so its relative links continue to work.
+
+To update an installed copy, replace it with the latest complete directory from the source linked above.
 
 :::note
 Skill locations differ between clients. Follow your agent's installation instructions and copy the whole directory, not just `SKILL.md`.
