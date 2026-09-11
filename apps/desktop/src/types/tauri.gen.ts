@@ -6,6 +6,52 @@
 
 
 export const commands = {
+async chatgptAccount() : Promise<Result<ChatgptAccount | null, ChatgptError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptLogin(onBrowserOpened: TAURI_CHANNEL<null>) : Promise<Result<null, ChatgptError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_login", { onBrowserOpened }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptCancelLogin() : Promise<void> {
+    await TAURI_INVOKE("chatgpt_cancel_login");
+},
+async chatgptLogout() : Promise<Result<null, ChatgptError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_logout") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptModels() : Promise<Result<ChatgptModel[], ChatgptError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_models") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptGenerate(request: ChatgptGeneration, events: TAURI_CHANNEL<ChatgptEvent>) : Promise<Result<null, ChatgptError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_generate", { request, events }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptCancelGeneration(requestId: string) : Promise<void> {
+    await TAURI_INVOKE("chatgpt_cancel_generation", { requestId });
+},
 async getOnboardingNeeded() : Promise<Result<boolean, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_onboarding_needed") };
@@ -519,6 +565,11 @@ startupProgress: "startup-progress"
 
 /** user-defined types **/
 
+export type ChatgptAccount = { email: string; planType: string }
+export type ChatgptError = { code: string; message: string; retryable: boolean }
+export type ChatgptEvent = { type: "text"; delta: string } | { type: "complete"; input_tokens: number | null; output_tokens: number | null } | { type: "error"; error: ChatgptError }
+export type ChatgptGeneration = { requestId: string; model: string; system: string; prompt: string; images: string[]; maxOutputTokens: number | null }
+export type ChatgptModel = { model: string; displayName: string; isDefault: boolean; inputModalities?: string[] }
 export type EmbeddedCliState = "installed" | "missing" | "conflict" | "unsupported" | "resource_missing"
 export type EmbeddedCliStatus = { supported: boolean; commandName: string; installPath: string; state: EmbeddedCliState; details: string | null }
 /**

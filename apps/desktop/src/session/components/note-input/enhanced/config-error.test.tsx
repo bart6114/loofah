@@ -16,18 +16,20 @@ describe("ConfigError", () => {
     openNew.mockReset();
   });
 
-  it("offers API key setup from the empty summary state", () => {
+  it("offers Intelligence setup from the empty summary state", () => {
     render(<ConfigError sessionTitle="Weekly sync" />);
 
     expect(screen.getByRole("alert")).not.toBeNull();
     expect(screen.getByText("Set up AI summaries")).not.toBeNull();
     expect(
       screen.getByText(
-        "Add your own LLM API key to generate a summary from this transcript.",
+        "Connect an Intelligence provider to generate a summary from your notes or transcript.",
       ),
     ).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add API key" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up Intelligence" }),
+    );
     expect(openNew).toHaveBeenNthCalledWith(1, {
       type: "settings",
       state: { tab: "intelligence" },

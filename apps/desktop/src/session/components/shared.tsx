@@ -35,6 +35,8 @@ export function useCurrentNoteHasContent(
   const enhancedNoteId = currentView.type === "enhanced" ? currentView.id : "";
   const enhancedContent = useEnhancedNote(enhancedNoteId)?.content;
 
+  if (currentView.type === "summary") return false;
+
   if (currentView.type === "enhanced") {
     return hasStoredNoteContent(enhancedContent);
   }

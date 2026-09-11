@@ -48,7 +48,7 @@ function createSnapshot() {
         ended_at: 200,
         memo: "![pre](asset://localhost/pre.png)",
         wordsJson: "[]",
-        words: [],
+        words: [{ text: "Discussed the release" }],
         speaker_hints: [],
       },
     ],
@@ -72,6 +72,37 @@ describe("enhanceTransform.transformArgs", () => {
 
   afterEach(() => {
     consoleError.mockRestore();
+  });
+
+  it("uses note text without rendering a transcript", async () => {
+    const snapshot = {
+      ...createSnapshot(),
+      rawMarkdown: "Ship Friday",
+      transcripts: [],
+    };
+    mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
+    const result = await enhanceTransform.transformArgs(
+      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      settingsValues,
+    );
+    expect(result.postMeetingMemo).toBe("Ship Friday");
+    expect(result.transcripts).toEqual([]);
+    expect(mocks.renderTranscriptSegments).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty source before loading templates or starting a model", async () => {
+    mocks.loadSessionContentSnapshot.mockResolvedValue({
+      ...createSnapshot(),
+      rawMarkdown: "&nbsp;",
+      transcripts: [],
+    });
+    await expect(
+      enhanceTransform.transformArgs(
+        { sessionId: "session-1", enhancedNoteId: "note-1" },
+        settingsValues,
+      ),
+    ).rejects.toThrow("Add a note or transcript");
+    expect(mocks.getTemplateById).not.toHaveBeenCalled();
   });
 
   it("uses the selected template when it can be loaded", async () => {

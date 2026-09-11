@@ -3,6 +3,8 @@ crate::common_derives! {
     pub enum EditorView {
         #[serde(rename = "raw")]
         Raw,
+        #[serde(rename = "summary")]
+        Summary,
         #[serde(rename = "transcript")]
         Transcript,
         #[serde(rename = "enhanced")]

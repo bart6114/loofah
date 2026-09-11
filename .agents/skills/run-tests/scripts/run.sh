@@ -103,6 +103,7 @@ run_rust() {
     SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
   fi
 
+  run_step "ChatGPT model catalog" node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 

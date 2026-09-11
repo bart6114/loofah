@@ -420,3 +420,30 @@ describe("computeCurrentNoteTab", () => {
     });
   });
 });
+
+describe("empty Summary selection", () => {
+  it.each([true, false])(
+    "remains accessible during live capture: %s",
+    (live) => {
+      expect(
+        computeCurrentNoteTab({ type: "summary" }, live, [], false, null),
+      ).toEqual({ type: "summary" });
+    },
+  );
+  it("selects the created document when generation starts", () => {
+    expect(
+      computeCurrentNoteTab(
+        { type: "summary" },
+        false,
+        ["summary-1"],
+        false,
+        null,
+      ),
+    ).toEqual({ type: "enhanced", id: "summary-1" });
+  });
+  it("keeps Notes selected when a summary document appears", () => {
+    expect(
+      computeCurrentNoteTab({ type: "raw" }, false, ["summary-1"], false, null),
+    ).toEqual({ type: "raw" });
+  });
+});

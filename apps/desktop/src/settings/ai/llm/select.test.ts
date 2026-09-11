@@ -47,3 +47,22 @@ describe("getLlmProviderStatus", () => {
     expect(status.listModels).toBeTypeOf("function");
   });
 });
+
+describe("ChatGPT subscription eligibility", () => {
+  test("requires an account rather than an API key", () => {
+    expect(
+      getLlmProviderStatus({
+        provider: provider("chatgpt_subscription"),
+        isAuthenticated: false,
+        isPaid: true,
+      }).configured,
+    ).toBe(false);
+    expect(
+      getLlmProviderStatus({
+        provider: provider("chatgpt_subscription"),
+        isAuthenticated: true,
+        isPaid: false,
+      }).configured,
+    ).toBe(true);
+  });
+});
