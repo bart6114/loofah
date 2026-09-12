@@ -363,11 +363,15 @@ async fn append_source(
     session: hypr_transcribe_soniqo::LiveTranscriptionSession,
     model: hypr_transcribe_soniqo::SoniqoModel,
     source: hypr_transcribe_soniqo::TranscriptSource,
-    samples: Vec<f32>,
+    mut samples: Vec<f32>,
     start: f64,
     duration: f64,
     response_tx: &tokio::sync::mpsc::Sender<Result<StreamResponse, LocalSoniqoLiveError>>,
 ) -> Result<hypr_transcribe_soniqo::LiveTranscriptionSession, LocalSoniqoLiveError> {
+    if matches!(source, hypr_transcribe_soniqo::TranscriptSource::Microphone) {
+        normalize_quiet_microphone(&mut samples);
+    }
+
     let joined = tokio::task::spawn_blocking(move || {
         let mut session = session;
         let result = session.append(source, &samples);
@@ -422,6 +426,28 @@ fn i16_bytes_to_f32(bytes: &Bytes) -> Vec<f32> {
         .chunks_exact(2)
         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / i16::MAX as f32)
         .collect()
+}
+
+fn normalize_quiet_microphone(samples: &mut [f32]) {
+    if samples.is_empty() {
+        return;
+    }
+
+    let rms =
+        (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt();
+    if !(0.0005..0.03).contains(&rms) {
+        return;
+    }
+
+    // Parakeet EOU uses unnormalized mel features and can miss quiet headset speech.
+    // Limit the boost and preserve headroom; silence and the recorded audio stay untouched.
+    let peak = samples
+        .iter()
+        .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+    let gain = (0.03 / rms).min(10.0).min(0.95 / peak).max(1.0);
+    for sample in samples {
+        *sample *= gain;
+    }
 }
 
 fn suppress_echo_dominant_mic(mic: &mut [f32], speaker: &[f32]) -> bool {
@@ -522,6 +548,33 @@ fn echo_score_at_lag(mic: &[f32], speaker: &[f32], lag: isize) -> Option<EchoSco
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boosts_quiet_microphone_without_exceeding_gain_limit() {
+        let mut samples = vec![0.002, -0.002, 0.002, -0.002];
+        normalize_quiet_microphone(&mut samples);
+        for sample in samples {
+            assert!((sample.abs() - 0.02).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn leaves_silence_noise_and_normal_volume_unchanged() {
+        for mut samples in [vec![], vec![0.0; 4000], vec![0.0001; 4000], vec![0.1; 4000]] {
+            let original = samples.clone();
+            normalize_quiet_microphone(&mut samples);
+            assert_eq!(samples, original);
+        }
+    }
+
+    #[test]
+    fn quiet_microphone_boost_preserves_peak_headroom() {
+        let mut samples = vec![0.002; 4000];
+        samples[0] = -0.5;
+        normalize_quiet_microphone(&mut samples);
+        assert!((samples[0] + 0.95).abs() < 1e-6);
+        assert!(samples.iter().all(|sample| sample.abs() <= 0.95));
+    }
 
     fn test_signal(len: usize, seed: u32) -> Vec<f32> {
         let mut state = seed;
