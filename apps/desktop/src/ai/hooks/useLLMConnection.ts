@@ -97,10 +97,10 @@ export const useLLMConnection = (): LLMConnectionResult => {
       const message =
         account.error?.message ??
         (!account.data
-          ? "Sign in to ChatGPT in Intelligence settings."
+          ? "Sign in to ChatGPT in summary settings."
           : (models.error?.message ??
             (!models.data?.models.includes(current_llm_model ?? "")
-              ? "Select an available ChatGPT model in Intelligence settings."
+              ? "Select an available ChatGPT model in summary settings."
               : null)));
       if (message)
         return {

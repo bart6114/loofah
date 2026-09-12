@@ -186,6 +186,7 @@ export type AppConfig = Partial<{
   cloud_sync_enabled: boolean;
   ai_language: string;
   spoken_languages: string[];
+  meeting_languages?: string[] | null;
   personalization_dictionary_terms: string[];
   custom_summary_instructions: string;
   custom_summary_instructions_token_aware: boolean;

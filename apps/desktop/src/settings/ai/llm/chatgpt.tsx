@@ -30,7 +30,9 @@ import { setSettingValues } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
 import { commands } from "~/types/tauri.gen";
 
-export function ChatgptSettings() {
+export function ChatgptSettings({
+  activateOnLogin = true,
+}: { activateOnLogin?: boolean } = {}) {
   const { t } = useLingui();
   const { accordionValue } = useLlmSettings();
   const [browserOpened, setBrowserOpened] = useState(false);
@@ -58,7 +60,7 @@ export function ChatgptSettings() {
         models.includes(current_llm_model ?? "")
           ? current_llm_model
           : models[0];
-      if (model)
+      if (model && activateOnLogin)
         await setSettingValues({
           current_llm_provider: CHATGPT_PROVIDER,
           current_llm_model: model,

@@ -2,15 +2,9 @@ import { Trans } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
 import { Loader2Icon } from "lucide-react";
 
-import { AppSettingsView } from "./app-settings";
-import {
-  CORE_TRANSCRIPTION_LANGUAGE_CODES,
-  getAdditionalSpokenLanguages,
-} from "./language";
-import { MainLanguageView } from "./main-language";
+import { AppSettingsView, RecordingSettingsView } from "./app-settings";
 import { NotificationSettingsView } from "./notification";
 import { Permissions } from "./permissions";
-import { SpokenLanguagesView } from "./spoken-languages";
 import { StorageSettingsView } from "./storage";
 import { ThemeSelector } from "./theme";
 import { TimezoneSelector } from "./timezone";
@@ -23,82 +17,17 @@ import {
 } from "~/settings/queries";
 import { resolveConfigValues } from "~/shared/config";
 
-const SETTINGS_FORM_KEYS = [
-  "autostart",
-  "auto_stop_meetings",
-  "floating_bar_enabled",
-  "auto_accept_related_tags",
-  "show_app_in_dock",
-  "show_tray_icon",
-  "notification_detect",
-  "ai_language",
-  "spoken_languages",
-  "current_stt_provider",
-] as const;
-
-function useSettingsForm(storedSettings: StoredSettingValues) {
-  const settingsValue = resolveConfigValues(SETTINGS_FORM_KEYS, storedSettings);
-
-  const setSettingValues = useSetSettingValues();
-
-  const form = useForm({
-    defaultValues: {
-      autostart: settingsValue.autostart,
-      auto_stop_meetings: settingsValue.auto_stop_meetings,
-      floating_bar_enabled: settingsValue.floating_bar_enabled,
-      auto_accept_related_tags: settingsValue.auto_accept_related_tags,
-      show_app_in_dock: settingsValue.show_app_in_dock,
-      show_tray_icon: settingsValue.show_tray_icon,
-      notification_detect: settingsValue.notification_detect,
-      ai_language: settingsValue.ai_language,
-      spoken_languages: getAdditionalSpokenLanguages(
-        settingsValue.ai_language,
-        settingsValue.spoken_languages,
-      ),
-    },
-    listeners: {
-      onChange: ({ formApi }) => {
-        const {
-          form: { errors },
-        } = formApi.getAllErrors();
-        if (errors.length > 0) {
-          console.log(errors);
-        }
-        void formApi.handleSubmit();
-      },
-    },
-    onSubmit: ({ value }) => {
-      const normalizedValue = {
-        ...value,
-        spoken_languages: getAdditionalSpokenLanguages(
-          value.ai_language,
-          value.spoken_languages,
-        ),
-      };
-
-      setSettingValues({
-        autostart: normalizedValue.autostart,
-        auto_stop_meetings: normalizedValue.auto_stop_meetings,
-        floating_bar_enabled: normalizedValue.floating_bar_enabled,
-        auto_accept_related_tags: normalizedValue.auto_accept_related_tags,
-        show_app_in_dock: normalizedValue.show_app_in_dock,
-        show_tray_icon: normalizedValue.show_tray_icon,
-        notification_detect: normalizedValue.notification_detect,
-        ai_language: normalizedValue.ai_language,
-        spoken_languages: JSON.stringify(normalizedValue.spoken_languages),
-      });
-    },
-  });
-
-  return { form, value: settingsValue };
+export function SettingsApp() {
+  return <GeneralSettings page="app" />;
 }
 
-export function SettingsApp() {
-  const { data, isLoading, error } = useStoredSettingValuesQuery();
+export function SettingsNotifications() {
+  return <GeneralSettings page="recording" />;
+}
 
-  if (error) {
-    throw error;
-  }
+function GeneralSettings({ page }: { page: "app" | "recording" }) {
+  const { data, isLoading, error } = useStoredSettingValuesQuery();
+  if (error) throw error;
   if (isLoading || !data) {
     return (
       <div className="flex min-h-48 items-center justify-center">
@@ -109,137 +38,118 @@ export function SettingsApp() {
       </div>
     );
   }
-
-  return <SettingsAppContent storedSettings={data} />;
+  return (
+    <GeneralSettingsContent key={page} storedSettings={data} page={page} />
+  );
 }
 
-function SettingsAppContent({
+function GeneralSettingsContent({
   storedSettings,
+  page,
 }: {
   storedSettings: StoredSettingValues;
+  page: "app" | "recording";
 }) {
-  const { form } = useSettingsForm(storedSettings);
+  const config = resolveConfigValues(
+    [
+      "autostart",
+      "show_app_in_dock",
+      "show_tray_icon",
+      "auto_stop_meetings",
+      "floating_bar_enabled",
+      "auto_accept_related_tags",
+    ] as const,
+    storedSettings,
+  );
+  const setSettingValues = useSetSettingValues();
+  const form = useForm({
+    defaultValues: config,
+    listeners: {
+      onChange: ({ formApi }) => {
+        void formApi.handleSubmit();
+      },
+    },
+    onSubmit: ({ value }) => {
+      setSettingValues(value);
+    },
+  });
 
   return (
     <div className="flex flex-col gap-8">
-      <SettingsPageTitle title={<Trans>App</Trans>} />
-      <div className="flex flex-col gap-4">
-        <ThemeSelector />
-        <form.Field name="autostart">
-          {(autostartField) => (
-            <form.Field name="auto_stop_meetings">
-              {(autoStopMeetingsField) => (
-                <form.Field name="floating_bar_enabled">
-                  {(floatingBarEnabledField) => (
-                    <form.Field name="auto_accept_related_tags">
-                      {(autoAcceptRelatedTagsField) => (
-                        <form.Field name="show_app_in_dock">
-                          {(showAppInDockField) => (
-                            <form.Field name="show_tray_icon">
-                              {(showTrayIconField) => (
-                                <AppSettingsView
-                                  autostart={{
-                                    value: autostartField.state.value,
-                                    onChange: (val) =>
-                                      autostartField.handleChange(val),
-                                  }}
-                                  autoStopMeetings={{
-                                    value: autoStopMeetingsField.state.value,
-                                    onChange: (val) =>
-                                      autoStopMeetingsField.handleChange(val),
-                                  }}
-                                  floatingBar={{
-                                    value: floatingBarEnabledField.state.value,
-                                    onChange: (val) =>
-                                      floatingBarEnabledField.handleChange(val),
-                                  }}
-                                  autoAcceptRelatedTags={{
-                                    value:
-                                      autoAcceptRelatedTagsField.state.value,
-                                    onChange: (val) =>
-                                      autoAcceptRelatedTagsField.handleChange(
-                                        val,
-                                      ),
-                                  }}
-                                  showAppInDock={{
-                                    value: showAppInDockField.state.value,
-                                    onChange: (val) =>
-                                      showAppInDockField.handleChange(val),
-                                  }}
-                                  showTrayIcon={{
-                                    value: showTrayIconField.state.value,
-                                    onChange: (val) =>
-                                      showTrayIconField.handleChange(val),
-                                  }}
-                                />
-                              )}
-                            </form.Field>
-                          )}
-                        </form.Field>
-                      )}
-                    </form.Field>
-                  )}
-                </form.Field>
-              )}
-            </form.Field>
-          )}
-        </form.Field>
-      </div>
-
-      <div>
-        <h2 className="mb-4 font-sans text-lg font-semibold">
-          <Trans>Language &amp; Region</Trans>
-        </h2>
-        <div className="flex flex-col gap-6">
-          <form.Field name="ai_language">
-            {(field) => (
-              <MainLanguageView
-                value={field.state.value}
-                onChange={(val) => {
-                  field.handleChange(val);
-                  form.setFieldValue(
-                    "spoken_languages",
-                    getAdditionalSpokenLanguages(
-                      val,
-                      form.state.values.spoken_languages,
-                    ),
-                  );
-                }}
-                supportedLanguages={CORE_TRANSCRIPTION_LANGUAGE_CODES}
-              />
+      <SettingsPageTitle
+        title={page === "app" ? <Trans>App</Trans> : <Trans>Recording</Trans>}
+      />
+      {page === "app" ? (
+        <>
+          <ThemeSelector />
+          <form.Field name="autostart">
+            {(autostart) => (
+              <form.Field name="show_app_in_dock">
+                {(dock) => (
+                  <form.Field name="show_tray_icon">
+                    {(tray) => (
+                      <form.Field name="auto_accept_related_tags">
+                        {(tags) => (
+                          <AppSettingsView
+                            autostart={{
+                              value: autostart.state.value,
+                              onChange: autostart.handleChange,
+                            }}
+                            showAppInDock={{
+                              value: dock.state.value,
+                              onChange: dock.handleChange,
+                            }}
+                            showTrayIcon={{
+                              value: tray.state.value,
+                              onChange: tray.handleChange,
+                            }}
+                            autoAcceptRelatedTags={{
+                              value: tags.state.value,
+                              onChange: tags.handleChange,
+                            }}
+                          />
+                        )}
+                      </form.Field>
+                    )}
+                  </form.Field>
+                )}
+              </form.Field>
             )}
           </form.Field>
           <TimezoneSelector />
-          <form.Field name="spoken_languages">
-            {(field) => (
-              <SpokenLanguagesView
-                mainLanguage={form.state.values.ai_language}
-                value={field.state.value}
-                onChange={(val) =>
-                  field.handleChange(
-                    getAdditionalSpokenLanguages(
-                      form.state.values.ai_language,
-                      val,
-                    ),
-                  )
-                }
-                supportedLanguages={CORE_TRANSCRIPTION_LANGUAGE_CODES}
-              />
+        </>
+      ) : (
+        <>
+          <form.Field name="auto_stop_meetings">
+            {(stop) => (
+              <form.Field name="floating_bar_enabled">
+                {(floating) => (
+                  <RecordingSettingsView
+                    autoStopMeetings={{
+                      value: stop.state.value,
+                      onChange: stop.handleChange,
+                    }}
+                    floatingBar={{
+                      value: floating.state.value,
+                      onChange: floating.handleChange,
+                    }}
+                  />
+                )}
+              </form.Field>
             )}
           </form.Field>
-        </div>
-      </div>
-
-      <StorageSettingsView />
+          <NotificationSettingsView />
+        </>
+      )}
     </div>
   );
 }
 
-export function SettingsNotifications() {
+export function SettingsStorage() {
   return (
-    <div className="flex flex-col gap-6">
-      <SettingsPageTitle title={<Trans>Notifications</Trans>} />
-      <NotificationSettingsView />
+    <div className="flex flex-col gap-8">
+      <SettingsPageTitle title={<Trans>Storage</Trans>} />
+      <StorageSettingsView />
     </div>
   );
 }

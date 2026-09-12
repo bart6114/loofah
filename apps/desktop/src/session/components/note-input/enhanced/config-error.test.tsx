@@ -19,17 +19,15 @@ describe("ConfigError", () => {
   it("offers Intelligence setup from the empty summary state", () => {
     render(<ConfigError sessionTitle="Weekly sync" />);
 
-    expect(screen.getByRole("alert")).not.toBeNull();
-    expect(screen.getByText("Set up AI summaries")).not.toBeNull();
+    expect(screen.getByRole("status")).not.toBeNull();
+    expect(screen.getByText("Summaries are off")).not.toBeNull();
     expect(
       screen.getByText(
-        "Connect an Intelligence provider to generate a summary from your notes or transcript.",
+        "Recording and transcription still work. Set up summaries when you want to turn your notes or transcript into a summary.",
       ),
     ).not.toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Set up Intelligence" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Set up summaries" }));
     expect(openNew).toHaveBeenNthCalledWith(1, {
       type: "settings",
       state: { tab: "intelligence" },

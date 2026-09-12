@@ -95,10 +95,15 @@ function parseStringArray(value: unknown, fallback: string[]) {
   }
 }
 
-function getLiveConfigLanguages(aiLanguage: string, spokenLanguages: string[]) {
+function getLiveConfigLanguages(
+  aiLanguage: string,
+  spokenLanguages: string[],
+  meetingLanguages?: string[],
+) {
   return getTranscriptionLanguages(
     aiLanguage || undefined,
     parseStringArray(spokenLanguages, []),
+    meetingLanguages,
   );
 }
 
@@ -106,6 +111,7 @@ function LiveCaptureConfigSync() {
   const settingsValues = useConfigValues([
     "ai_language",
     "spoken_languages",
+    "meeting_languages",
     "current_stt_provider",
     "current_stt_model",
   ] as const);
@@ -125,6 +131,7 @@ function LiveCaptureConfigSyncReady({
   settingsValues: {
     ai_language: string;
     spoken_languages: string[];
+    meeting_languages: string[] | undefined;
     current_stt_provider: string | undefined;
     current_stt_model: string | undefined;
   };
@@ -148,6 +155,7 @@ function LiveCaptureConfigSyncReady({
       const languages = getLiveConfigLanguages(
         settingsValues.ai_language,
         settingsValues.spoken_languages,
+        settingsValues.meeting_languages,
       );
       const liveConfig = await getLiveTranscriptionConfig({
         provider: settingsValues.current_stt_provider,

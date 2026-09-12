@@ -1,24 +1,14 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2 } from "lucide-react";
+import { useMemo } from "react";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@hypr/ui/components/ui/select";
+import { Button } from "@hypr/ui/components/ui/button";
 import { cn } from "@hypr/utils";
 
 import { useLlmSettings } from "./context";
-import { HealthStatusIndicator, useConnectionHealth } from "./health";
-import {
-  getDefaultLlmSelection,
-  getPreferredProviderModel,
-  isSameModelSelection,
-  shouldShowMissingModelWarning,
-} from "./selection";
+import { useConnectionHealth } from "./health";
 import { type Provider, PROVIDERS } from "./shared";
 
 import {
@@ -43,373 +33,265 @@ import {
 } from "~/settings/ai/shared/list-openai";
 import { listOpenRouterModels } from "~/settings/ai/shared/list-openrouter";
 import { ModelCombobox } from "~/settings/ai/shared/model-combobox";
-import { PersistAiSelection } from "~/settings/ai/shared/persist-selection";
-import {
-  getConfiguredProviderIds,
-  getConfiguredProviders,
-  getVisibleModelSelection,
-} from "~/settings/ai/shared/selection";
 import { useAiProvidersState } from "~/settings/providers";
 import { setSettingValues, useSettingsReady } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
-import { SettingsAlertToast } from "~/shared/ui/settings-alert";
 
 export function SelectProviderAndModel({
   showAlerts = true,
 }: {
   showAlerts?: boolean;
 } = {}) {
-  const { t } = useLingui();
-  const { providers: configuredProviders, isReady: providerSettingsReady } =
-    useConfiguredMapping();
+  const { providers, isReady } = useConfiguredMapping();
   const settingsReady = useSettingsReady();
   const queryClient = useQueryClient();
-  const { setAccordionValue } = useLlmSettings();
-  const [pendingSelection, setPendingSelection] = useState<{
-    provider: string;
-    model: string;
-    originProvider: string | undefined;
-    originModel: string | undefined;
-  } | null>(null);
-  const [isResolvingProvider, setIsResolvingProvider] = useState(false);
-
-  const { current_llm_model, current_llm_provider } = useConfigValues([
-    "current_llm_model",
+  const { setEditingConnection, setConnectionProvider, setAccordionValue } =
+    useLlmSettings();
+  const { current_llm_provider, current_llm_model } = useConfigValues([
     "current_llm_provider",
+    "current_llm_model",
   ] as const);
-  const selectedProviderConfigured = current_llm_provider
-    ? (configuredProviders[current_llm_provider]?.configured ?? false)
-    : false;
-  const visibleSelection = getVisibleModelSelection(
-    current_llm_provider,
-    current_llm_model,
-    selectedProviderConfigured || current_llm_provider === CHATGPT_PROVIDER,
-  );
-  const providerOptions = getConfiguredProviders(
-    PROVIDERS,
-    configuredProviders,
-  );
-  if (
-    current_llm_provider === CHATGPT_PROVIDER &&
-    !providerOptions.some((p) => p.id === CHATGPT_PROVIDER)
-  ) {
-    providerOptions.push(PROVIDERS.find((p) => p.id === CHATGPT_PROVIDER)!);
-  }
-  const configuredProviderIds = getConfiguredProviderIds(
-    PROVIDERS,
-    configuredProviders,
-    current_llm_provider,
-  );
-  const pendingSelectionSettled =
-    pendingSelection &&
-    isSameModelSelection(
-      current_llm_provider,
-      current_llm_model,
-      pendingSelection.provider,
-      pendingSelection.model,
-    );
-  if (pendingSelectionSettled) {
-    setPendingSelection(null);
-  }
-  const activePendingSelection =
-    pendingSelection &&
-    !pendingSelectionSettled &&
-    isSameModelSelection(
-      current_llm_provider,
-      current_llm_model,
-      pendingSelection.originProvider,
-      pendingSelection.originModel,
-    )
-      ? pendingSelection
-      : null;
-
-  const lastSelectedModelsRef = useRef<Record<string, string>>(
-    current_llm_provider && current_llm_model
-      ? { [current_llm_provider]: current_llm_model }
-      : {},
-  );
-  const selectionRequestRef = useRef(0);
-
-  const persistSelection = (
-    provider: string,
-    model: string,
-    requestId: number,
-  ) => {
-    void setSettingValues({
-      current_llm_provider: provider,
-      current_llm_model: model,
-    }).catch((error) => {
-      console.error("[settings] failed to update LLM selection", error);
-      if (selectionRequestRef.current === requestId) {
-        setPendingSelection(null);
-      }
-    });
-  };
-
-  const rememberModel = (provider?: string, model?: string) => {
-    if (!provider || model === undefined) {
-      return;
-    }
-
-    lastSelectedModelsRef.current[provider] = model;
-  };
-
-  const getCachedModels = (provider: string) => {
-    const status = configuredProviders[provider];
-    if (!status?.listModels) {
-      return [];
-    }
-
-    return (
-      queryClient.getQueryData<ListModelsResult>([
-        "models",
-        provider,
-        status.listModels,
-      ])?.models ?? []
-    );
-  };
-
-  const fetchModels = async (provider: string) => {
-    const status = configuredProviders[provider];
-    const listModels = status?.listModels;
-    if (!listModels) {
-      return [];
-    }
-
-    const result = await queryClient.fetchQuery({
-      queryKey: ["models", provider, listModels],
-      queryFn: async () => await listModels(),
-      retry: 3,
-      retryDelay: 300,
-      staleTime: 1000 * 2,
-    });
-
-    return result.models;
-  };
-
-  const needsDefaultSelection =
-    current_llm_provider !== CHATGPT_PROVIDER &&
-    !(visibleSelection.provider && visibleSelection.model);
-  const defaultSelectionQuery = useQuery({
-    queryKey: [
-      "default-ai-selection",
-      "llm",
-      current_llm_provider ?? "",
-      current_llm_model ?? "",
-      configuredProviderIds,
-      fetchModels,
-    ],
-    queryFn: async () =>
-      await getDefaultLlmSelection(
-        configuredProviderIds,
-        current_llm_provider,
-        current_llm_model,
-        fetchModels,
-      ),
-    enabled:
-      !activePendingSelection &&
-      providerSettingsReady &&
-      needsDefaultSelection &&
-      configuredProviderIds.length > 0,
-    retry: false,
-    staleTime: Infinity,
-  });
-  const defaultSelection = needsDefaultSelection
-    ? defaultSelectionQuery.data
-    : null;
-  const effectiveSelection = activePendingSelection
-    ? {
-        provider: activePendingSelection.provider,
-        model: activePendingSelection.model,
-      }
-    : (defaultSelection ?? visibleSelection);
-
   const health = useConnectionHealth();
-  const isConfigured = !!(
-    effectiveSelection.provider && effectiveSelection.model
-  );
-  const hasError =
-    isConfigured && !activePendingSelection && health.status === "error";
-  const isResolvingSelection =
-    isResolvingProvider || defaultSelectionQuery.isFetching;
-  const showMissingModelWarning = shouldShowMissingModelWarning({
-    isConfigured,
-    isResolvingSelection,
-    providerSettingsReady,
-    settingsReady,
+  const provider = PROVIDERS.find(({ id }) => id === current_llm_provider);
+  const hasSelection = !!current_llm_provider;
+  const selection = useMutation({
+    mutationFn: setSettingValues,
   });
-  const alertDescription = showMissingModelWarning
-    ? t`Language model is needed to make Loofah summarize and chat about your conversations.`
-    : providerSettingsReady &&
-        settingsReady &&
-        !isResolvingSelection &&
-        hasError
-      ? health.message
-      : undefined;
+  const checkConnection = useMutation({
+    mutationFn: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["llm-health-check"] }),
+        queryClient.invalidateQueries({ queryKey: ["chatgpt-account"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["models", current_llm_provider],
+        }),
+      ]);
+    },
+  });
+  const connectionChecking =
+    checkConnection.isPending || health.status === "pending";
+  const editConnection = () => {
+    setConnectionProvider(current_llm_provider ?? "");
+    setAccordionValue(current_llm_provider ?? "");
+    setEditingConnection(true);
+  };
 
-  const handleProviderChange = (provider: string) => {
-    const requestId = ++selectionRequestRef.current;
-
-    const status = configuredProviders[provider];
-    if (!status?.listModels) {
-      setAccordionValue(provider);
-    }
-
-    rememberModel(current_llm_provider, current_llm_model);
-    const originSelection = {
-      originProvider: current_llm_provider,
-      originModel: current_llm_model,
-    };
-    setPendingSelection({ provider, model: "", ...originSelection });
-    setIsResolvingProvider(false);
-
-    const nextModel = getPreferredProviderModel(
-      lastSelectedModelsRef.current[provider],
-      getCachedModels(provider),
-      { allowSavedModelWithoutChoices: provider === "custom" },
+  if (!settingsReady || !isReady) {
+    return (
+      <p role="status" className="text-muted-foreground text-sm">
+        <Trans>Loading connection…</Trans>
+      </p>
     );
-
-    if (nextModel) {
-      setPendingSelection({ provider, model: nextModel, ...originSelection });
-      rememberModel(provider, nextModel);
-      persistSelection(provider, nextModel, requestId);
-      return;
-    }
-
-    setIsResolvingProvider(true);
-    void (async () => {
-      let models: string[];
-      try {
-        models = await fetchModels(provider);
-      } catch {
-        if (selectionRequestRef.current === requestId) {
-          setIsResolvingProvider(false);
-          if (provider !== "custom") {
-            setPendingSelection(null);
-          }
-        }
-        return;
-      }
-      const resolvedModel = getPreferredProviderModel(
-        lastSelectedModelsRef.current[provider],
-        models,
-        { allowSavedModelWithoutChoices: provider === "custom" },
-      );
-
-      if (selectionRequestRef.current !== requestId) {
-        return;
-      }
-
-      setIsResolvingProvider(false);
-      if (!resolvedModel) {
-        if (provider !== "custom") {
-          setPendingSelection(null);
-        }
-        return;
-      }
-
-      setPendingSelection({
-        provider,
-        model: resolvedModel,
-        ...originSelection,
-      });
-      rememberModel(provider, resolvedModel);
-      persistSelection(provider, resolvedModel, requestId);
-    })();
-  };
-
-  const handleModelChange = (model: string) => {
-    if (!effectiveSelection.provider) {
-      return;
-    }
-
-    const requestId = ++selectionRequestRef.current;
-    rememberModel(effectiveSelection.provider, model);
-    setPendingSelection({
-      provider: effectiveSelection.provider,
-      model,
-      originProvider: current_llm_provider,
-      originModel: current_llm_model,
-    });
-    setIsResolvingProvider(false);
-    persistSelection(effectiveSelection.provider, model, requestId);
-  };
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      {defaultSelection && !activePendingSelection ? (
-        <PersistAiSelection
-          key={`llm:${defaultSelection.provider}:${defaultSelection.model}`}
-          type="llm"
-          provider={defaultSelection.provider}
-          model={defaultSelection.model}
-        />
-      ) : null}
-      {showAlerts && (
-        <SettingsAlertToast
-          id="llm-settings-alert"
-          description={alertDescription}
-          variant={hasError ? "error" : "warning"}
-        />
-      )}
-
-      <h3 className="text-md font-sans font-semibold">
-        <Trans>Model being used</Trans>
-      </h3>
-      <div className="flex flex-row items-center gap-4">
-        <div className="min-w-0 flex-2" data-llm-provider-selector>
-          <Select
-            value={effectiveSelection.provider}
-            onValueChange={handleProviderChange}
-          >
-            <SelectTrigger className="bg-card shadow-none focus:ring-0">
-              <SelectValue placeholder={t`Select a provider`} />
-            </SelectTrigger>
-            <SelectContent>
-              {providerOptions.map((provider) => {
-                const configured =
-                  configuredProviders[provider.id]?.configured ?? false;
-
-                return (
-                  <SelectItem
-                    key={provider.id}
-                    value={provider.id}
-                    disabled={!configured}
-                    className={cn([
-                      "data-disabled:text-muted-foreground data-disabled:!opacity-100",
-                      !configured && "text-muted-foreground",
-                    ])}
-                  >
-                    <div className="flex items-center gap-2">
-                      <ProviderIconSlot>{provider.icon}</ProviderIconSlot>
-                      <span>{provider.displayName}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+    <section className="flex flex-col gap-4 rounded-xl border p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-semibold">
+            {hasSelection ? (
+              <Trans>Current connection</Trans>
+            ) : (
+              <Trans>Summaries are off</Trans>
+            )}
+          </h3>
+          {!hasSelection && (
+            <p className="text-muted-foreground text-sm">
+              <Trans>
+                Recording and transcription still work. Connect an AI service or
+                a local AI app when you want summaries.
+              </Trans>
+            </p>
+          )}
+          {hasSelection && (
+            <div className="flex items-center gap-2 text-sm">
+              {provider && <ProviderIconSlot>{provider.icon}</ProviderIconSlot>}
+              <span>{provider?.displayName ?? current_llm_provider}</span>
+              <span className="text-muted-foreground text-xs">
+                <Trans>Selected</Trans>
+              </span>
+            </div>
+          )}
         </div>
-
-        <span className="text-muted-foreground">/</span>
-
-        <div className="min-w-0 flex-3">
-          <ModelCombobox
-            providerId={effectiveSelection.provider}
-            value={effectiveSelection.model}
-            onChange={handleModelChange}
-            disabled={!effectiveSelection.provider}
-            listModels={
-              effectiveSelection.provider
-                ? configuredProviders[effectiveSelection.provider]?.listModels
-                : undefined
-            }
-            isConfigured={isConfigured && health.status === "success"}
-            suffix={isConfigured ? <HealthStatusIndicator /> : undefined}
-          />
-        </div>
+        <Button variant="outline" size="sm" onClick={editConnection}>
+          {hasSelection ? (
+            <Trans>Change connection</Trans>
+          ) : (
+            <Trans>Set up summaries</Trans>
+          )}
+        </Button>
       </div>
-    </div>
+      {hasSelection && (
+        <>
+          <p className="text-muted-foreground text-xs">
+            {current_llm_provider === "ollama" ||
+            current_llm_provider === "lmstudio" ? (
+              <Trans>
+                Uses your AI app's configured server. Choose an on-device model
+                in that app to keep summaries local.
+              </Trans>
+            ) : current_llm_provider === "custom" ? (
+              <Trans>
+                Text for summaries is sent to your configured server.
+              </Trans>
+            ) : (
+              <Trans>Text for summaries is sent to this provider.</Trans>
+            )}
+          </p>
+          <div className="flex flex-col gap-2">
+            <span className="text-muted-foreground text-xs">
+              <Trans>Model</Trans>
+            </span>
+            <ModelCombobox
+              providerId={current_llm_provider}
+              value={current_llm_model ?? ""}
+              onChange={(model) =>
+                selection.mutate({ current_llm_model: model })
+              }
+              disabled={selection.isPending}
+              listModels={providers[current_llm_provider]?.listModels}
+            />
+          </div>
+          <div
+            role="status"
+            className={cn([
+              "flex items-center gap-2 text-sm",
+              health.status === "error" && !connectionChecking
+                ? "text-destructive"
+                : "text-muted-foreground",
+            ])}
+          >
+            {health.status === "success" && !connectionChecking ? (
+              <>
+                <Check className="text-brand size-4" />
+                <Trans>Ready for summaries</Trans>
+              </>
+            ) : connectionChecking ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                <Trans>Checking connection…</Trans>
+              </>
+            ) : health.status === "error" ? (
+              <Trans>Connection unavailable</Trans>
+            ) : (
+              <Trans>Choose a model to finish setup</Trans>
+            )}
+          </div>
+          {showAlerts && !connectionChecking && health.status === "error" && (
+            <div className="flex flex-col gap-2">
+              <p className="text-muted-foreground text-sm">
+                <Trans>
+                  Check this connection's sign-in, API key, or local AI app,
+                  then try again.
+                </Trans>
+              </p>
+              {health.message && (
+                <details className="text-muted-foreground text-xs">
+                  <summary className="cursor-pointer">
+                    <Trans>Connection details</Trans>
+                  </summary>
+                  <p className="mt-2 break-words">{health.message}</p>
+                </details>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                disabled={checkConnection.isPending}
+                onClick={() => checkConnection.mutate()}
+              >
+                <Trans>Check connection</Trans>
+              </Button>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground self-start"
+            disabled={selection.isPending}
+            onClick={() =>
+              selection.mutate({
+                current_llm_provider: "",
+                current_llm_model: "",
+              })
+            }
+          >
+            <Trans>Turn off summaries</Trans>
+          </Button>
+        </>
+      )}
+      {selection.error && (
+        <p role="alert" className="text-destructive text-sm">
+          {selection.error.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
+export function SetupModelSelection({ providerId }: { providerId: string }) {
+  const { t } = useLingui();
+  const { providers } = useConfiguredMapping();
+  const { setEditingConnection } = useLlmSettings();
+  const { current_llm_provider, current_llm_model } = useConfigValues([
+    "current_llm_provider",
+    "current_llm_model",
+  ] as const);
+  const selection = useMutation({
+    mutationFn: (model: string) =>
+      setSettingValues({
+        current_llm_provider: providerId,
+        current_llm_model: model,
+      }),
+    onSuccess: () => setEditingConnection(false),
+  });
+  const form = useForm({
+    defaultValues: {
+      model:
+        current_llm_provider === providerId ? (current_llm_model ?? "") : "",
+    },
+    onSubmit: ({ value }) => selection.mutate(value.model),
+  });
+  const status = providers[providerId];
+  if (!status?.configured) return null;
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void form.handleSubmit();
+      }}
+    >
+      <form.Field name="model">
+        {(field) => (
+          <>
+            <span className="text-sm font-medium">
+              <Trans>Choose a model</Trans>
+            </span>
+            <ModelCombobox
+              providerId={providerId}
+              value={field.state.value}
+              onChange={field.handleChange}
+              listModels={status.listModels}
+              placeholder={t`Select a model`}
+            />
+            <Button
+              type="submit"
+              className="self-start"
+              disabled={!field.state.value || selection.isPending}
+            >
+              <Trans>Use this connection</Trans>
+            </Button>
+          </>
+        )}
+      </form.Field>
+      {selection.error && (
+        <p role="alert" className="text-destructive text-sm">
+          {selection.error.message}
+        </p>
+      )}
+    </form>
   );
 }
 

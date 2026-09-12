@@ -4,6 +4,7 @@ import {
   SettingsApp,
   SettingsNotifications,
   SettingsPermissions,
+  SettingsStorage,
 } from "./general";
 import { SettingsTodo } from "./todo";
 
@@ -34,7 +35,7 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
   const requestedTab = tab.state.tab as string | undefined;
   const activeTab =
     requestedTab === "data"
-      ? "app"
+      ? "storage"
       : requestedTab === "personalization"
         ? "dictionary"
         : (tab.state.tab ?? "app");
@@ -43,6 +44,8 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
     switch (activeTab) {
       case "app":
         return <SettingsApp />;
+      case "storage":
+        return <SettingsStorage />;
       case "notifications":
         return <SettingsNotifications />;
       case "permissions":
@@ -54,7 +57,7 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
       case "transcription":
         return <STT />;
       case "summary-prompt":
-        return <SummaryPromptSettings />;
+        return <SummaryPromptSettings initiallyOpen />;
       case "intelligence":
         return <LLM />;
       case "todo":

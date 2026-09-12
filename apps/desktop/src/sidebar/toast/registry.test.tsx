@@ -35,8 +35,8 @@ describe("sidebar toast registry", () => {
     );
 
     expect(toast?.id).toBe("missing-llm");
-    expect(toast?.description).toBe("Language model needed");
-    expect(toast?.primaryAction?.label).toBe("Add");
+    expect(toast?.description).toBe("Optional summaries");
+    expect(toast?.primaryAction?.label).toBe("Set up");
   });
 
   it("keeps the missing transcription model message short", () => {
@@ -106,8 +106,8 @@ describe("sidebar toast registry", () => {
     });
 
     expect(languageModelToast.id).toBe("devtools-missing-llm");
-    expect(languageModelToast.description).toBe("Language model needed");
-    expect(languageModelToast.primaryAction?.label).toBe("Add");
+    expect(languageModelToast.description).toBe("Optional summaries");
+    expect(languageModelToast.primaryAction?.label).toBe("Set up");
     expect(downloadToast.id).toBe("devtools-downloading-model");
     expect(downloadToast.loading).toBe(true);
   });

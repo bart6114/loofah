@@ -38,7 +38,7 @@ export function useEnhancedNoteActions({
 
     if (!model) {
       sonnerToast.error(
-        "Set up Intelligence in Settings before regenerating this summary.",
+        "Set up summaries in Settings before regenerating this summary.",
       );
       return;
     }
@@ -60,7 +60,7 @@ export function useEnhancedNoteActions({
         });
         if (result.type === "no_model")
           throw new Error(
-            "Set up Intelligence in Settings before regenerating this summary.",
+            "Set up summaries in Settings before regenerating this summary.",
           );
         return;
       }

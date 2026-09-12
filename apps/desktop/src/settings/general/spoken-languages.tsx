@@ -13,14 +13,12 @@ import {
 } from "./language";
 
 interface SpokenLanguagesViewProps {
-  mainLanguage: string;
   value: string[];
   onChange: (value: string[]) => void;
   supportedLanguages: readonly string[];
 }
 
 export function SpokenLanguagesView({
-  mainLanguage,
   value,
   onChange,
   supportedLanguages,
@@ -44,10 +42,9 @@ export function SpokenLanguagesView({
     return codes;
   }, [supportedLanguages]);
 
-  const mainLanguageCode = getBaseLanguageCode(mainLanguage);
   const selectedLanguageCodes = useMemo(
-    () => getAdditionalSpokenLanguages(mainLanguage, value),
-    [mainLanguage, value],
+    () => getAdditionalSpokenLanguages(undefined, value),
+    [value],
   );
 
   const filteredLanguages = useMemo(() => {
@@ -56,7 +53,6 @@ export function SpokenLanguagesView({
     }
     const query = languageSearchQuery.toLowerCase();
     return supportedLanguageCodes.filter((langCode) => {
-      if (langCode === mainLanguageCode) return false;
       if (selectedLanguageCodes.includes(langCode)) return false;
       const langName = getBaseLanguageDisplayName(langCode, i18n.locale);
       return langName.toLowerCase().includes(query);
@@ -64,7 +60,6 @@ export function SpokenLanguagesView({
   }, [
     i18n.locale,
     languageSearchQuery,
-    mainLanguageCode,
     selectedLanguageCodes,
     supportedLanguageCodes,
   ]);
@@ -73,7 +68,7 @@ export function SpokenLanguagesView({
     if (
       e.key === "Backspace" &&
       !languageSearchQuery &&
-      selectedLanguageCodes.length > 0
+      selectedLanguageCodes.length > 1
     ) {
       e.preventDefault();
       onChange(selectedLanguageCodes.slice(0, -1));
@@ -113,10 +108,13 @@ export function SpokenLanguagesView({
   return (
     <div>
       <h3 className="mb-1 text-sm font-medium">
-        <Trans>Additional spoken languages</Trans>
+        <Trans>Languages spoken in meetings</Trans>
       </h3>
       <p className="text-muted-foreground mb-3 text-xs">
-        <Trans>The main language is always included for transcription</Trans>
+        <Trans>
+          Choose the languages you expect to hear. Summary language is set
+          separately.
+        </Trans>
       </p>
       <div className="relative">
         <div
@@ -140,6 +138,8 @@ export function SpokenLanguagesView({
                 variant="ghost"
                 size="sm"
                 className="ml-0.5 h-3 w-3 p-0 hover:bg-transparent"
+                aria-label={t`Remove ${getBaseLanguageDisplayName(code, i18n.locale)}`}
+                disabled={selectedLanguageCodes.length === 1}
                 onClick={(e) => {
                   e.stopPropagation();
                   onChange(selectedLanguageCodes.filter((c) => c !== code));

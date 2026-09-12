@@ -18,6 +18,8 @@ export function OnboardingSection({
   onNext,
   onSkip,
   skippable = true,
+  skipLabel,
+  showCompletedCheck = true,
   children,
 }: {
   title: ReactNode;
@@ -28,6 +30,8 @@ export function OnboardingSection({
   onNext?: () => void;
   onSkip?: () => void;
   skippable?: boolean;
+  skipLabel?: ReactNode;
+  showCompletedCheck?: boolean;
   children: ReactNode;
 }) {
   const { t } = useLingui();
@@ -57,7 +61,7 @@ export function OnboardingSection({
           isActive && "mb-3 pt-4",
         ])}
       >
-        {isCompleted && (
+        {isCompleted && showCompletedCheck && (
           <CheckIcon className="text-brand size-4 shrink-0" strokeWidth={2.5} />
         )}
         <div className="flex min-w-0 flex-col gap-3">
@@ -92,7 +96,7 @@ export function OnboardingSection({
                       }}
                       className="text-muted-foreground hover:text-muted-foreground flex items-center gap-1 text-sm transition-colors"
                     >
-                      <Trans>Skip</Trans>
+                      {skipLabel ?? <Trans>Skip</Trans>}
                       <ChevronRightIcon className="size-3" />
                     </button>
                   ) : import.meta.env.DEV ? (

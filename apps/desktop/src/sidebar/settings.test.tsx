@@ -115,12 +115,14 @@ describe("SettingsNav", () => {
     [
       "General",
       "App",
-      "Notifications",
+      "Recording",
       "Agents",
+      "Advanced",
+      "Storage",
       "Permissions",
       "AI",
       "Transcription",
-      "Intelligence",
+      "Summaries",
     ].forEach((label) => {
       expect(screen.getByText(label)).toBeTruthy();
     });
@@ -136,7 +138,7 @@ describe("SettingsNav", () => {
   it("opens Intelligence and has no Templates navigation", () => {
     render(<SettingsNav />);
     expect(screen.queryByText("Templates")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Intelligence" }));
+    fireEvent.click(screen.getByRole("button", { name: "Summaries" }));
     expect(mocks.updateSettingsTabState).toHaveBeenCalledWith(
       mocks.currentTab,
       { tab: "intelligence" },

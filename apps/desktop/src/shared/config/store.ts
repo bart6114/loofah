@@ -35,6 +35,7 @@ const CONFIG_CHANGED_EVENT = "config-changed";
 // schema (and every consumer of it) still speaks JSON-encoded strings.
 export const ARRAY_SETTING_KEYS = new Set<SettingKey>([
   "spoken_languages",
+  "meeting_languages",
   "personalization_dictionary_terms",
   "ignored_platforms",
   "included_platforms",

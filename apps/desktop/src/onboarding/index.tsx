@@ -14,6 +14,7 @@ import { FinalDescription, FinalSection, finishOnboarding } from "./final";
 import { FolderLocationSection } from "./folder-location";
 import { LlmProviderSection } from "./llm-provider";
 import { PermissionsSection } from "./permissions";
+import { SummarySetupStatus, TranscriptionSetupStatus } from "./setup-status";
 import { OnboardingSection } from "./shared";
 import { SttModelSection } from "./stt-model";
 
@@ -148,12 +149,14 @@ function OnboardingScreenContent({
           </OnboardingSection>
 
           <OnboardingSection
-            title={<Trans>Transcription model</Trans>}
-            completedTitle={<Trans>Transcription model configured</Trans>}
+            title={<Trans>Set up transcription</Trans>}
+            completedTitle={<TranscriptionSetupStatus />}
+            showCompletedCheck={false}
+            skipLabel={<Trans>Set up transcription later</Trans>}
             description={
               <Trans>
-                Loofah transcribes meetings on your device. Pick a model to
-                download — you can keep going while it downloads.
+                Download a transcription model to turn recordings into text on
+                your Mac. You can keep going while it downloads.
               </Trans>
             }
             status={getStepStatus("stt-model", currentStep)}
@@ -164,12 +167,14 @@ function OnboardingScreenContent({
           </OnboardingSection>
 
           <OnboardingSection
-            title={<Trans>Language model</Trans>}
-            completedTitle={<Trans>Language model configured</Trans>}
+            title={<Trans>Summaries</Trans>}
+            completedTitle={<SummarySetupStatus />}
+            showCompletedCheck={false}
+            skipLabel={<Trans>Set up summaries later</Trans>}
             description={
               <Trans>
-                Summaries and chat need a language model. Use a local server
-                like Ollama, or bring an API key from your favorite provider.
+                Connect a service to create summaries of your meetings. You can
+                also set this up later.
               </Trans>
             }
             status={getStepStatus("llm-provider", currentStep)}

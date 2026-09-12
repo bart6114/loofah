@@ -14,7 +14,7 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
 import {
   commands as localSttCommands,
@@ -38,8 +38,8 @@ import { cn } from "@hypr/utils";
 
 import { useSttSettings } from "./context";
 import { DiarizationStatus } from "./diarization-status";
-import { HealthStatusIndicator, useConnectionHealth } from "./health";
-import { LocalModelBackendBadge, LocalModelLabel } from "./model-icon";
+import { useConnectionHealth } from "./health";
+import { LocalModelLabel } from "./model-icon";
 import {
   getDefaultSttSelection,
   getLanguageSupportIssue,
@@ -54,18 +54,15 @@ import {
 } from "./shared";
 
 import { useNotifications } from "~/contexts/notifications";
-import { ProviderIconSlot } from "~/settings/ai/shared";
 import { PersistAiSelection } from "~/settings/ai/shared/persist-selection";
 import {
   getConfiguredProviderIds,
-  getConfiguredProviders,
   getVisibleModelSelection,
 } from "~/settings/ai/shared/selection";
 import { getBaseLanguageDisplayName } from "~/settings/general/language";
 import { useAiProvidersState } from "~/settings/providers";
 import { useSetSettingValues } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
-import { SettingsAlertToast } from "~/shared/ui/settings-alert";
 import {
   getTranscriptionLanguages,
   isConfiguredSttModel,
@@ -76,10 +73,7 @@ import {
   isSupportedLanguagesLive,
   isSupportedLocalSttModel,
 } from "~/stt/capabilities";
-import {
-  getDefaultSttModel,
-  getPreferredProviderModel,
-} from "~/stt/model-selection";
+import { getPreferredProviderModel } from "~/stt/model-selection";
 
 export function SelectProviderAndModel({
   showAlerts = true,
@@ -91,128 +85,71 @@ export function SelectProviderAndModel({
     "current_stt_provider",
     "current_stt_model",
   ] as const);
-  const { providers: configuredProviders, isReady: providerSettingsReady } =
-    useConfiguredMapping();
-  const { startDownload } = useSttSettings();
+  const { providers: configuredProviders, isReady } = useConfiguredMapping();
+  const { startDownload, queuedDownloads } = useSttSettings();
+  const { activeDownloads } = useNotifications();
   const health = useConnectionHealth();
-  const [pendingProvider, setPendingProvider] = useState<ProviderId | null>(
-    null,
-  );
-
+  const setSelection = useSetSettingValues();
+  const models = configuredProviders.fmtr.models;
   const selectedSttModel = isConfiguredSttModel(
     current_stt_provider,
     current_stt_model,
   )
     ? current_stt_model
     : undefined;
-  const selectedProvider = current_stt_provider as ProviderId | undefined;
-  const selectedProviderConfigured = selectedProvider
-    ? (configuredProviders[selectedProvider]?.configured ?? false)
-    : false;
   const visibleSelection = getVisibleModelSelection(
-    selectedProvider,
+    current_stt_provider,
     selectedSttModel,
-    selectedProviderConfigured,
-  );
-  const selectableProviders = PROVIDERS.filter(({ disabled }) => !disabled);
-  const configuredProviderIds = getConfiguredProviderIds(
-    selectableProviders,
-    configuredProviders,
-    selectedProvider,
+    current_stt_provider === "fmtr",
   );
   const defaultSelection =
-    providerSettingsReady && !visibleSelection.model
+    isReady && !visibleSelection.model
       ? getDefaultSttSelection(
-          configuredProviderIds,
+          getConfiguredProviderIds(
+            PROVIDERS,
+            configuredProviders,
+            current_stt_provider,
+          ),
           configuredProviders,
-          selectedProvider,
+          current_stt_provider,
           current_stt_model,
         )
       : null;
-  const effectiveSelection = pendingProvider
-    ? { provider: pendingProvider, model: "" }
-    : (defaultSelection ?? visibleSelection);
-  const visibleProvider = effectiveSelection.provider as ProviderId | "";
-  const isConfigured = !!(visibleProvider && effectiveSelection.model);
-  const hasError = isConfigured && health.status === "error";
-  const alertDescription = !providerSettingsReady
-    ? undefined
-    : !isConfigured
-      ? t`Transcription model is needed to make Loofah listen to your conversations.`
-      : hasError
-        ? health.message
-        : undefined;
-  const selectedModels = visibleProvider
-    ? (configuredProviders[visibleProvider]?.models ?? [])
-    : [];
-  const displayedSttModel = effectiveSelection.model
-    ? getPreferredProviderModel(effectiveSelection.model, selectedModels, {
-        keepUnavailableSavedModel: true,
-      })
-    : undefined;
-  const selectedModel = selectedModels.find(
-    (model) => model.id === displayedSttModel,
+  const effectiveSelection = defaultSelection ?? visibleSelection;
+  const displayedModel = getPreferredProviderModel(
+    effectiveSelection.model,
+    models,
+    {
+      keepUnavailableSavedModel: true,
+    },
   );
-  const providerOptions = getConfiguredProviders(
-    selectableProviders,
-    configuredProviders,
+  const selectedModel = models.find((model) => model.id === displayedModel);
+  const primaryModel = selectedModel ?? models[0];
+  const downloadInfo = activeDownloads.find(
+    (download) => download.model === primaryModel?.id,
   );
-
-  const setSelection = useSetSettingValues();
-  const lastSelectedModelsRef = useRef<Record<string, string>>(
-    current_stt_provider && selectedSttModel
-      ? { [current_stt_provider]: selectedSttModel }
-      : {},
-  );
-  const rememberModel = (provider?: string, model?: string) => {
-    if (!provider || model === undefined) {
-      return;
-    }
-
-    lastSelectedModelsRef.current[provider] = model;
-  };
-
-  const handleProviderChange = (provider: string) => {
-    rememberModel(current_stt_provider, selectedSttModel);
-
-    const providerId = provider as ProviderId;
-    const nextModels = configuredProviders[providerId]?.models ?? [];
-    const nextModel =
-      getPreferredProviderModel(
-        lastSelectedModelsRef.current[provider],
-        nextModels,
-      ) ||
-      getDefaultSttModel(providerId) ||
-      "";
-
-    if (!nextModel) {
-      setPendingProvider(providerId);
-      return;
-    }
-
-    setPendingProvider(null);
-    rememberModel(provider, nextModel);
-    setSelection({
-      current_stt_provider: provider,
-      current_stt_model: nextModel,
-    });
-  };
-
+  const downloadingQuery = useQuery({
+    ...sttModelQueries.isDownloading(primaryModel?.id as LocalModel),
+    enabled: !!primaryModel && !primaryModel.isDownloaded,
+  });
+  const isDownloading =
+    !!primaryModel &&
+    !primaryModel.isDownloaded &&
+    (!!downloadInfo ||
+      queuedDownloads.includes(primaryModel.id as LocalModel) ||
+      downloadingQuery.data === true);
+  const hasError = !!selectedModel?.isDownloaded && health.status === "error";
   const handleModelChange = (model: string) => {
-    if (!visibleProvider) {
-      return;
-    }
-
-    rememberModel(visibleProvider, model);
-    setPendingProvider(null);
-    setSelection({
-      current_stt_provider: visibleProvider,
-      current_stt_model: model,
-    });
+    setSelection({ current_stt_provider: "fmtr", current_stt_model: model });
   };
+  const downloadModel = (model: string) => {
+    handleModelChange(model);
+    startDownload(model as LocalModel);
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {defaultSelection && !pendingProvider ? (
+      {defaultSelection ? (
         <PersistAiSelection
           key={`stt:${defaultSelection.provider}:${defaultSelection.model}`}
           type="stt"
@@ -220,104 +157,129 @@ export function SelectProviderAndModel({
           model={defaultSelection.model}
         />
       ) : null}
-      {showAlerts && (
-        <SettingsAlertToast
-          id="stt-settings-alert"
-          description={alertDescription}
-          variant={hasError ? "error" : "warning"}
-        />
+      {showAlerts && !hasError && selectedModel?.isDownloaded && (
+        <TranscriptionLanguageWarningToast />
       )}
-      {showAlerts && !alertDescription && <TranscriptionLanguageWarningToast />}
 
-      <h3 className="text-md font-sans font-semibold">
-        <Trans>Model being used</Trans>
-      </h3>
-      <div className="flex flex-row items-center gap-4">
-        <div className="min-w-0 flex-2" data-stt-provider-selector>
-          <Select value={visibleProvider} onValueChange={handleProviderChange}>
-            <SelectTrigger className="bg-card shadow-none focus:ring-0">
-              <SelectValue placeholder={t`Select a provider`} />
-            </SelectTrigger>
-            <SelectContent>
-              {providerOptions.map((provider) => {
-                const configured =
-                  configuredProviders[provider.id]?.configured ?? false;
-                return (
-                  <SelectItem
-                    key={provider.id}
-                    value={provider.id}
-                    disabled={provider.disabled}
-                    className={cn([
-                      "data-disabled:text-muted-foreground data-disabled:!opacity-100",
-                      !configured && "text-muted-foreground",
-                    ])}
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <ProviderIconSlot>{provider.icon}</ProviderIconSlot>
-                        <span>{provider.displayName}</span>
-                      </div>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+      <div className="border-border flex flex-col gap-4 rounded-2xl border p-4">
+        <div>
+          <h3 className="text-sm font-semibold">
+            <Trans>Transcription runs on your Mac</Trans>
+          </h3>
+          <p className="text-muted-foreground mt-1 text-xs">
+            <Trans>Works offline after downloading a model.</Trans>
+          </p>
         </div>
-
-        <span className="text-muted-foreground">/</span>
-
-        <div className="min-w-0 flex-3">
-          <Select
-            value={displayedSttModel || ""}
-            onValueChange={handleModelChange}
-            disabled={selectedModels.length === 0}
-          >
-            <SelectTrigger
-              className={cn([
-                "bg-card text-left shadow-none focus:ring-0",
-                "[&>span]:!flex [&>span]:w-full [&>span]:min-w-0 [&>span]:items-center [&>span]:justify-start [&>span]:gap-2 [&>span]:overflow-visible [&>span]:[-webkit-line-clamp:unset]",
-                isConfigured && "[&>svg:last-child]:hidden",
-              ])}
-            >
-              <SelectValue placeholder={t`Select a model`}>
-                {selectedModel ? (
-                  <ModelSelectedValue model={selectedModel} />
-                ) : undefined}
-              </SelectValue>
-              {isConfigured && <HealthStatusIndicator />}
-              {isConfigured && health.status === "success" && (
-                <Check className="text-brand -mr-1 h-4 w-4 shrink-0" />
-              )}
-            </SelectTrigger>
-            <SelectContent align="end">
-              {selectedModels.map((model, i) => {
-                const prevCategory =
-                  i > 0 ? selectedModels[i - 1].category : null;
-                const showHeader =
-                  model.category && model.category !== prevCategory;
-                const categoryLabel = showHeader
-                  ? getModelCategoryLabel(model.category)
-                  : null;
-                return (
-                  <span key={model.id}>
-                    {categoryLabel && (
-                      <div className="text-muted-foreground px-2 pt-2 pb-1 text-[11px] font-medium tracking-wide uppercase">
-                        {categoryLabel}
-                      </div>
-                    )}
-                    <ModelSelectItem
-                      model={model}
-                      onDownload={() => startDownload(model.id as LocalModel)}
-                    />
-                  </span>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
+        {!isReady ? (
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Loader2 className="size-4 animate-spin" />
+            <Trans>Checking transcription models…</Trans>
+          </p>
+        ) : primaryModel ? (
+          <>
+            <ModelSelectedValue model={primaryModel} />
+            {primaryModel.isDownloaded ? (
+              <p role="status" className="flex items-center gap-2 text-sm">
+                {hasError ? (
+                  <AlertTriangle className="size-4 shrink-0" />
+                ) : health.status === "pending" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="text-brand size-4" />
+                )}
+                {hasError ? (
+                  health.message
+                ) : health.status === "pending" ? (
+                  <Trans>Starting transcription…</Trans>
+                ) : health.status === "success" ? (
+                  <Trans>Downloaded and ready</Trans>
+                ) : (
+                  <Trans>Model downloaded</Trans>
+                )}
+              </p>
+            ) : isDownloading ? (
+              <div role="status" className="flex flex-col gap-2 text-sm">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  {downloadInfo ? (
+                    <Trans>
+                      Downloading · {Math.round(downloadInfo.progress)}%
+                    </Trans>
+                  ) : (
+                    <Trans>Downloading transcription model…</Trans>
+                  )}
+                </span>
+                {downloadInfo && (
+                  <progress
+                    aria-label={t`Transcription model download`}
+                    className="accent-brand h-2 w-full"
+                    value={downloadInfo.progress}
+                    max={100}
+                  />
+                )}
+                <span className="text-muted-foreground text-xs">
+                  <Trans>You can keep using Loofah while it downloads.</Trans>
+                </span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => downloadModel(primaryModel.id)}
+                className="bg-primary text-primary-foreground w-fit rounded-full px-4 py-2 text-sm font-medium"
+              >
+                <Trans>Download transcription model</Trans>
+                {formatModelSize(primaryModel.sizeBytes)
+                  ? ` · ${formatModelSize(primaryModel.sizeBytes)}`
+                  : ""}
+              </button>
+            )}
+          </>
+        ) : (
+          <p role="status" className="text-muted-foreground text-sm">
+            <Trans>No transcription models are available for this Mac.</Trans>
+          </p>
+        )}
       </div>
 
+      {models.length > 0 && (
+        <details className="border-border rounded-2xl border p-4">
+          <summary className="cursor-pointer text-sm font-medium">
+            <Trans>Choose another model</Trans>
+          </summary>
+          <div className="mt-4">
+            <p className="text-muted-foreground mb-3 text-xs">
+              <Trans>
+                Live models transcribe during the meeting. Other models
+                transcribe after recording.
+              </Trans>
+            </p>
+            <Select
+              value={displayedModel || ""}
+              onValueChange={handleModelChange}
+            >
+              <SelectTrigger
+                aria-label={t`Transcription model`}
+                className="bg-card text-left shadow-none focus:ring-0"
+              >
+                <SelectValue placeholder={t`Choose a model`}>
+                  {selectedModel ? (
+                    <ModelSelectedValue model={selectedModel} />
+                  ) : undefined}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent align="end">
+                {models.map((model) => (
+                  <ModelSelectItem
+                    key={model.id}
+                    model={model}
+                    onDownload={() => downloadModel(model.id)}
+                  />
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </details>
+      )}
       <DiarizationStatus />
     </div>
   );
@@ -406,14 +368,20 @@ function useTranscriptionLanguageWarning() {
     current_stt_model,
     ai_language,
     spoken_languages,
+    meeting_languages,
   } = useConfigValues([
     "current_stt_provider",
     "current_stt_model",
     "ai_language",
     "spoken_languages",
+    "meeting_languages",
   ] as const);
   const health = useConnectionHealth();
-  const languages = getTranscriptionLanguages(ai_language, spoken_languages);
+  const languages = getTranscriptionLanguages(
+    ai_language,
+    spoken_languages,
+    meeting_languages,
+  );
   const supportedModels = useQuery(sttModelQueries.supportedModels());
 
   const selectedSttModel = isConfiguredSttModel(
@@ -529,24 +497,14 @@ function formatLanguageList(languages: string[]) {
   return visibleLanguages.join(", ");
 }
 
-type ModelCategory = "latest" | null;
 type ModelEntry = {
   id: string;
   isDownloaded: boolean;
   displayName?: string;
   isDeprecated?: boolean;
-  category?: ModelCategory;
   sizeBytes?: number | null;
   mode?: "realtime" | "batch";
 };
-
-function getModelCategoryLabel(category?: ModelCategory) {
-  if (category === "latest") {
-    return "Recommended";
-  }
-
-  return null;
-}
 
 // STT has a single, always-eligible provider ("fmtr", on-device only):
 // there is no per-provider config/eligibility to compute anymore, just the
@@ -591,7 +549,6 @@ function useConfiguredMapping(): {
         displayName: model.display_name,
         sizeBytes: model.size_bytes,
         mode: isRealtimeLocalModel(String(model.key)) ? "realtime" : "batch",
-        category: "latest",
       }))
     : [];
 
@@ -600,7 +557,11 @@ function useConfiguredMapping(): {
       ProviderId,
       { configured: boolean; models: ModelEntry[] }
     >,
-    isReady,
+    isReady:
+      isReady &&
+      !targetArch.isPending &&
+      !supportedModels.isPending &&
+      !downloadedModels.some((query) => query.isPending),
   };
 }
 
@@ -623,20 +584,19 @@ function ModelSelectItem({
   const showLocalActions = model.isDownloaded && isLocalModelId(model.id);
   const isDeprecated = model.isDeprecated === true;
   const content = (
-    <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <LocalModelLabel
         model={model.id}
         label={label}
         title={title}
-        className="min-w-0 flex-1"
+        className="min-w-0"
       />
-      <div className="flex shrink-0 items-center gap-2 text-[11px]">
-        <LocalModelBackendBadge model={model.id} />
-        {model.mode !== "realtime" && <ModelModeBadge mode={model.mode} />}
-        {!model.isDownloaded && sizeLabel && (
-          <span className="text-muted-foreground font-mono">{sizeLabel}</span>
-        )}
-      </div>
+      <ModelModeBadge mode={model.mode} />
+      {!model.isDownloaded && sizeLabel && (
+        <span className="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
+          {sizeLabel}
+        </span>
+      )}
     </div>
   );
 
@@ -700,7 +660,6 @@ function ModelSelectItem({
         <button
           className={cn([
             "rounded-full px-2 text-[11px] font-medium",
-            "opacity-0 group-hover:opacity-100",
             "transition-all duration-150",
             "from-muted to-accent text-foreground bg-linear-to-t py-0.5 shadow-xs hover:shadow-md",
           ])}

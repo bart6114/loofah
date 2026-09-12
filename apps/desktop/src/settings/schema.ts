@@ -97,6 +97,10 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "sidebar_expanded_tags"],
     default: "[]" as string,
   },
+  meeting_languages: {
+    type: "string",
+    path: ["language", "meeting_languages"],
+  },
   spoken_languages: {
     type: "string",
     path: ["language", "spoken_languages"],
@@ -135,7 +139,7 @@ export const SETTING_DEFINITIONS = {
   mic_active_threshold: {
     type: "number",
     path: ["notification", "mic_active_threshold"],
-    default: 15 as number,
+    default: 5 as number,
   },
   current_llm_provider: {
     type: "string",

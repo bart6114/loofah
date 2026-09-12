@@ -87,11 +87,16 @@ export async function isSupportedLanguagesBatch(
 export function getTranscriptionLanguages(
   mainLanguage: string | null | undefined,
   spokenLanguages: readonly string[] | null | undefined,
+  meetingLanguages?: readonly string[] | null,
 ) {
   const seen = new Set<string>();
   const languages: string[] = [];
 
-  for (const language of [mainLanguage, ...(spokenLanguages ?? [])]) {
+  // Legacy vaults stored additional languages; explicit meeting languages are independent of AI output.
+  for (const language of meetingLanguages ?? [
+    mainLanguage,
+    ...(spokenLanguages ?? []),
+  ]) {
     if (!language) {
       continue;
     }

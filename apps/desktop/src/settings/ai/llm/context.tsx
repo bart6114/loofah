@@ -3,6 +3,10 @@ import { createContext, useContext, useState } from "react";
 type LlmSettingsContextType = {
   accordionValue: string;
   setAccordionValue: (value: string) => void;
+  editingConnection: boolean;
+  setEditingConnection: (value: boolean) => void;
+  connectionProvider: string;
+  setConnectionProvider: (value: string) => void;
 };
 
 const LlmSettingsContext = createContext<LlmSettingsContextType | null>(null);
@@ -14,11 +18,18 @@ export function LlmSettingsProvider({
 }) {
   const [accordionValue, setAccordionValue] = useState<string>("");
 
+  const [editingConnection, setEditingConnection] = useState(false);
+  const [connectionProvider, setConnectionProvider] = useState("");
+
   return (
     <LlmSettingsContext.Provider
       value={{
         accordionValue,
         setAccordionValue,
+        editingConnection,
+        setEditingConnection,
+        connectionProvider,
+        setConnectionProvider,
       }}
     >
       {children}

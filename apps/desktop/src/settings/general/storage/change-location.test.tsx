@@ -120,6 +120,13 @@ describe("ChangeLocationRow", () => {
     expect(screen.getByRole("button", { name: /change/i })).toBeTruthy();
   });
 
+  it("opens the current notes folder explicitly in Finder", async () => {
+    renderRow();
+    await screen.findByText(/Drive\/vault/);
+    fireEvent.click(screen.getByRole("button", { name: "Show in Finder" }));
+    expect(mocks.openPath).toHaveBeenCalledWith("/Users/x/Drive/vault", null);
+  });
+
   it("moves the vault into an empty folder by default", async () => {
     const dialog = await openDialogFor("/Users/x/Desktop/new-vault");
 

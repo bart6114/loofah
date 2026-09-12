@@ -134,6 +134,7 @@ export const useRunBatch = (sessionId: string) => {
   const { conn } = useSTTConnection();
   const aiLanguage = useConfigValue("ai_language");
   const spokenLanguages = useConfigValue("spoken_languages");
+  const meetingLanguages = useConfigValue("meeting_languages");
   const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
 
   return useCallback(
@@ -146,7 +147,11 @@ export const useRunBatch = (sessionId: string) => {
 
       const languages =
         options?.languages ??
-        getTranscriptionLanguages(aiLanguage, spokenLanguages);
+        getTranscriptionLanguages(
+          aiLanguage,
+          spokenLanguages,
+          meetingLanguages,
+        );
       const selectedModel = options?.model ?? conn?.model;
       const selectedProvider =
         conn && selectedModel
@@ -327,6 +332,7 @@ export const useRunBatch = (sessionId: string) => {
       dictionaryTerms,
       session,
       spokenLanguages,
+      meetingLanguages,
       startTranscription,
       sessionId,
     ],

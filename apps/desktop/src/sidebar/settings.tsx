@@ -2,7 +2,8 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { platform } from "@tauri-apps/plugin-os";
 import {
   AudioLinesIcon,
-  BellIcon,
+  MicIcon,
+  FolderIcon,
   Code2Icon,
   CogIcon,
   LockIcon,
@@ -49,18 +50,22 @@ export function SettingsNav() {
       label: t`General`,
       items: [
         { id: "app", label: t`App`, icon: CogIcon },
-        { id: "notifications", label: t`Notifications`, icon: BellIcon },
-        { id: "developers", label: t`Agents`, icon: Code2Icon },
+        { id: "notifications", label: t`Recording`, icon: MicIcon },
+        { id: "storage", label: t`Storage`, icon: FolderIcon },
       ],
     },
     {
       label: "AI",
       items: [
         { id: "transcription", label: t`Transcription`, icon: AudioLinesIcon },
-        { id: "intelligence", label: t`Intelligence`, icon: SparklesIcon },
+        { id: "intelligence", label: t`Summaries`, icon: SparklesIcon },
       ],
     },
   ];
+  groups.push({
+    label: t`Advanced`,
+    items: [{ id: "developers", label: t`Agents`, icon: Code2Icon }],
+  });
   const isMacos = platform() === "macos";
   if (isMacos) {
     groups[0].items.push({

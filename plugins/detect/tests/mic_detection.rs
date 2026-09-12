@@ -52,6 +52,12 @@ impl Harness {
         }
     }
 
+    fn with_threshold(secs: u64) -> Self {
+        let harness = Self::new();
+        harness.state.lock().unwrap().mic_active_threshold_secs = secs;
+        harness
+    }
+
     fn mic_started(&self, app: hypr_detect::InstalledApp) {
         handle_detect_event(
             &self.env,
@@ -86,8 +92,26 @@ impl Harness {
 }
 
 #[tokio::test(start_paused = true)]
-async fn test_mic_detected_after_delay() {
+async fn default_reminder_fires_after_five_seconds() {
     let h = Harness::new();
+    h.mic_started(zoom());
+    h.advance_secs(4).await;
+    assert!(h.take_events().is_empty());
+    h.advance_secs(1).await;
+    let events = h.take_events();
+    assert_eq!(events.len(), 1);
+    assert!(matches!(
+        &events[0],
+        DetectEvent::MicDetected {
+            duration_secs: 5,
+            ..
+        }
+    ));
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_mic_detected_after_delay() {
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     assert!(h.take_events().is_empty(), "nothing emitted immediately");
@@ -108,7 +132,7 @@ async fn test_mic_detected_after_delay() {
 
 #[tokio::test(start_paused = true)]
 async fn test_filtered_app_no_event() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(aqua_voice());
     assert!(
@@ -126,7 +150,7 @@ async fn test_filtered_app_no_event() {
 #[tokio::test(start_paused = true)]
 async fn test_screen_recording_app_no_event() {
     for app in [screen_studio(), snagit_2024()] {
-        let h = Harness::new();
+        let h = Harness::with_threshold(15);
 
         h.mic_started(app);
         assert!(
@@ -144,7 +168,7 @@ async fn test_screen_recording_app_no_event() {
 
 #[tokio::test(start_paused = true)]
 async fn test_cancel_before_timer() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -162,7 +186,7 @@ async fn test_cancel_before_timer() {
 
 #[tokio::test(start_paused = true)]
 async fn test_user_ignored_app_no_timer() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     {
         let mut guard = h.state.lock().unwrap();
@@ -187,7 +211,7 @@ async fn test_user_ignored_app_no_timer() {
 
 #[tokio::test(start_paused = true)]
 async fn test_full_scenario_zoom_and_dictation() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     assert!(h.take_events().is_empty(), "nothing emitted immediately");
@@ -217,7 +241,7 @@ async fn test_full_scenario_zoom_and_dictation() {
 
 #[tokio::test(start_paused = true)]
 async fn test_dnd_suppresses_mic_detected() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
     h.env.set_dnd(true);
     {
         let mut guard = h.state.lock().unwrap();
@@ -236,7 +260,7 @@ async fn test_dnd_suppresses_mic_detected() {
 
 #[tokio::test(start_paused = true)]
 async fn test_stop_and_restart_creates_new_timer() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -263,7 +287,7 @@ async fn test_stop_and_restart_creates_new_timer() {
 
 #[tokio::test(start_paused = true)]
 async fn test_duplicate_mic_started_no_timer_reset() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -282,7 +306,7 @@ async fn test_duplicate_mic_started_no_timer_reset() {
 
 #[tokio::test(start_paused = true)]
 async fn test_multiple_apps_independent_timers() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -310,7 +334,7 @@ async fn test_multiple_apps_independent_timers() {
 
 #[tokio::test(start_paused = true)]
 async fn test_ignore_during_active_tracking_cancels_timer() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -334,7 +358,7 @@ async fn test_ignore_during_active_tracking_cancels_timer() {
 
 #[tokio::test(start_paused = true)]
 async fn test_cooldown_suppresses_repeated_notifications() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -354,7 +378,7 @@ async fn test_cooldown_suppresses_repeated_notifications() {
 
 #[tokio::test(start_paused = true)]
 async fn test_cooldown_expires_after_ten_minutes() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
 
@@ -379,7 +403,7 @@ async fn test_cooldown_expires_after_ten_minutes() {
 
 #[tokio::test(start_paused = true)]
 async fn test_detect_disabled_mid_flight_suppresses_mic_detected() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     assert!(h.take_events().is_empty(), "nothing emitted immediately");
@@ -395,7 +419,7 @@ async fn test_detect_disabled_mid_flight_suppresses_mic_detected() {
 
 #[tokio::test(start_paused = true)]
 async fn test_mic_stopped_with_detect_disabled_cancels_timers_and_emits() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     assert!(h.take_events().is_empty(), "nothing emitted immediately");
@@ -425,7 +449,7 @@ async fn test_mic_stopped_with_detect_disabled_cancels_timers_and_emits() {
 
 #[tokio::test(start_paused = true)]
 async fn test_cooldown_is_per_app() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     h.advance_secs(15).await;
@@ -448,7 +472,7 @@ async fn test_cooldown_is_per_app() {
 
 #[tokio::test(start_paused = true)]
 async fn test_mic_started_with_detect_disabled_is_noop() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
     h.env.set_detect_enabled(false);
 
     h.mic_started(zoom());
@@ -462,7 +486,7 @@ async fn test_mic_started_with_detect_disabled_is_noop() {
 
 #[tokio::test(start_paused = true)]
 async fn test_dnd_does_not_suppress_mic_stopped_event() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     h.advance_secs(15).await;
@@ -489,7 +513,7 @@ async fn test_dnd_does_not_suppress_mic_stopped_event() {
 
 #[tokio::test(start_paused = true)]
 async fn test_multiple_apps_start_simultaneously() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     handle_detect_event(
         &h.env,
@@ -515,7 +539,7 @@ async fn test_multiple_apps_start_simultaneously() {
 
 #[tokio::test(start_paused = true)]
 async fn test_threshold_change_affects_new_timers() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     {
         let mut guard = h.state.lock().unwrap();
@@ -541,7 +565,7 @@ async fn test_threshold_change_affects_new_timers() {
 
 #[tokio::test(start_paused = true)]
 async fn test_detect_re_enabled_after_disabled_starts_fresh() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
     h.env.set_detect_enabled(false);
 
     h.mic_started(zoom());
@@ -558,7 +582,7 @@ async fn test_detect_re_enabled_after_disabled_starts_fresh() {
 
 #[tokio::test(start_paused = true)]
 async fn test_stop_all_apps_simultaneously() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     h.mic_started(slack());
@@ -578,7 +602,7 @@ async fn test_stop_all_apps_simultaneously() {
 
 #[tokio::test(start_paused = true)]
 async fn test_rapid_start_stop_start_within_threshold() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     h.advance_secs(5).await;
@@ -595,7 +619,7 @@ async fn test_rapid_start_stop_start_within_threshold() {
 
 #[tokio::test(start_paused = true)]
 async fn test_user_ignore_added_mid_flight_for_one_of_two_apps() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     h.mic_started(zoom());
     h.mic_started(slack());
@@ -623,7 +647,7 @@ async fn test_user_ignore_added_mid_flight_for_one_of_two_apps() {
 
 #[tokio::test(start_paused = true)]
 async fn test_dnd_toggled_mid_flight_after_timer_started() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     {
         let mut guard = h.state.lock().unwrap();
@@ -644,7 +668,7 @@ async fn test_dnd_toggled_mid_flight_after_timer_started() {
 
 #[tokio::test(start_paused = true)]
 async fn test_dnd_toggled_off_before_timer_fires() {
-    let h = Harness::new();
+    let h = Harness::with_threshold(15);
 
     {
         let mut guard = h.state.lock().unwrap();

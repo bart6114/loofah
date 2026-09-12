@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub cloud_sync_enabled: bool,
     pub ai_language: String,
     pub spoken_languages: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meeting_languages: Option<Vec<String>>,
     pub personalization_dictionary_terms: Vec<String>,
     pub custom_summary_instructions: String,
     pub custom_summary_instructions_token_aware: bool,
@@ -84,13 +86,14 @@ impl Default for AppConfig {
             cloud_sync_enabled: true,
             ai_language: "en".to_string(),
             spoken_languages: Vec::new(),
+            meeting_languages: None,
             personalization_dictionary_terms: Vec::new(),
             custom_summary_instructions: String::new(),
             custom_summary_instructions_token_aware: false,
             auto_summary_prompt: String::new(),
             ignored_platforms: Vec::new(),
             included_platforms: Vec::new(),
-            mic_active_threshold: 15.0,
+            mic_active_threshold: 5.0,
             current_llm_provider: None,
             current_llm_model: None,
             current_stt_provider: None,
@@ -164,6 +167,28 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    #[test]
+    fn meeting_languages_preserve_legacy_fallback_and_independent_selection() {
+        let legacy: AppConfig =
+            serde_json::from_value(json!({ "ai_language": "en", "spoken_languages": ["nl"] }))
+                .unwrap();
+        assert_eq!(legacy.meeting_languages, None);
+        assert!(
+            serde_json::to_value(&legacy)
+                .unwrap()
+                .get("meeting_languages")
+                .is_none()
+        );
+        let independent: AppConfig = serde_json::from_value(
+            json!({ "ai_language": "en", "spoken_languages": ["fr"], "meeting_languages": ["nl"] }),
+        )
+        .unwrap();
+        assert_eq!(independent.meeting_languages, Some(vec!["nl".to_string()]));
+        let restored: AppConfig =
+            serde_json::from_value(serde_json::to_value(independent).unwrap()).unwrap();
+        assert_eq!(restored.meeting_languages, Some(vec!["nl".to_string()]));
+    }
+
     fn values(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
         pairs
             .iter()
@@ -178,6 +203,7 @@ mod tests {
         let state = ConfigState::load_or_default(temp.path());
 
         assert_eq!(state.snapshot(), AppConfig::default());
+        assert_eq!(state.snapshot().mic_active_threshold, 5.0);
     }
 
     #[tokio::test]

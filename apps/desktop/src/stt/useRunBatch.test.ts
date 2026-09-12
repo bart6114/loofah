@@ -65,34 +65,10 @@ vi.mock("~/shared/utils", () => ({
   id: idMock,
 }));
 
-vi.mock("~/stt/capabilities", () => {
-  const baseLanguageCode = (language: string) =>
-    language.split(/[-_]/)[0]?.toLowerCase() ?? "";
-
+vi.mock("~/stt/capabilities", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/stt/capabilities")>();
   return {
-    getTranscriptionLanguages: (
-      mainLanguage: string | null | undefined,
-      spokenLanguages: readonly string[] | null | undefined,
-    ) => {
-      const seen = new Set<string>();
-      const languages: string[] = [];
-
-      for (const language of [mainLanguage, ...(spokenLanguages ?? [])]) {
-        if (!language) {
-          continue;
-        }
-
-        const baseCode = baseLanguageCode(language);
-        if (!baseCode || seen.has(baseCode)) {
-          continue;
-        }
-
-        seen.add(baseCode);
-        languages.push(language);
-      }
-
-      return languages;
-    },
+    ...actual,
     isSupportedLanguagesBatch: isSupportedLanguagesBatchMock,
   };
 });
@@ -203,7 +179,11 @@ describe("useRunBatch", () => {
       },
     });
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : [],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : [],
     );
   });
 
@@ -295,7 +275,11 @@ describe("useRunBatch", () => {
       },
     });
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "de" : ["en"],
+      key === "ai_language"
+        ? "de"
+        : key === "meeting_languages"
+          ? undefined
+          : ["en"],
     );
     startTranscriptionMock.mockResolvedValue(undefined);
 
@@ -311,6 +295,31 @@ describe("useRunBatch", () => {
         model: "soniqo-parakeet-batch",
         languages: ["de", "en"],
       }),
+      expect.any(Object),
+    );
+  });
+
+  test("uses explicit meeting languages independently of summary and legacy spoken languages", async () => {
+    useConfigValueMock.mockImplementation((key) => {
+      if (key === "ai_language") return "en";
+      if (key === "meeting_languages") return ["nl"];
+      if (key === "spoken_languages") return ["fr"];
+      return [];
+    });
+    startTranscriptionMock.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    await act(async () => {
+      await result.current("/tmp/session.wav");
+    });
+
+    expect(isSupportedLanguagesBatchMock).toHaveBeenCalledWith(
+      "soniqo",
+      "soniqo-parakeet-batch",
+      ["nl"],
+    );
+    expect(startTranscriptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ languages: ["nl"] }),
       expect.any(Object),
     );
   });

@@ -366,11 +366,11 @@ export function ProviderStatus({
       className={cn([
         "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium normal-case",
         isActive
-          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+          ? "bg-accent text-foreground"
           : "bg-background/60 text-muted-foreground",
       ])}
     >
-      {isActive ? <Trans>Active</Trans> : <Trans>Configured</Trans>}
+      {isActive ? <Trans>Selected</Trans> : <Trans>Saved</Trans>}
     </span>
   );
 }

@@ -1,51 +1,170 @@
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 import { Accordion } from "@hypr/ui/components/ui/accordion";
+import { Button } from "@hypr/ui/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@hypr/ui/components/ui/select";
+import { cn } from "@hypr/utils";
 
 import { ChatgptSettings } from "./chatgpt";
 import { useLlmSettings } from "./context";
-import { ProviderId, PROVIDERS } from "./shared";
+import { SetupModelSelection } from "./select";
+import { type ProviderId, PROVIDERS } from "./shared";
 
 import { NonHyprProviderCard, StyledStreamdown } from "~/settings/ai/shared";
 import { useConfigValues } from "~/shared/config";
 
+export function getConnectionRoute(provider: string) {
+  if (!provider) return null;
+  if (provider === "chatgpt_subscription") return "chatgpt";
+  if (provider === "ollama" || provider === "lmstudio") return "local";
+  return "api";
+}
+
 export function ConfigureProviders() {
-  const { accordionValue, setAccordionValue } = useLlmSettings();
+  const { t } = useLingui();
+  const {
+    accordionValue,
+    setAccordionValue,
+    editingConnection,
+    setEditingConnection,
+    connectionProvider,
+    setConnectionProvider,
+  } = useLlmSettings();
   const { current_llm_provider, current_llm_model } = useConfigValues([
     "current_llm_provider",
     "current_llm_model",
   ] as const);
-
+  if (!editingConnection) return null;
+  const route = getConnectionRoute(connectionProvider);
+  const provider = PROVIDERS.find(({ id }) => id === connectionProvider);
+  const routeProviders = PROVIDERS.filter(
+    ({ id }) => getConnectionRoute(id) === route,
+  );
+  const chooseProvider = (id: string) => {
+    setConnectionProvider(id);
+    setAccordionValue(id);
+  };
   return (
-    <div className="flex flex-col gap-3">
-      <h3 className="text-md font-sans font-semibold">
-        <Trans>Configure Providers</Trans>
-      </h3>
-      <Accordion
-        type="single"
-        collapsible
-        className="flex flex-col gap-3"
-        value={accordionValue}
-        onValueChange={setAccordionValue}
-      >
-        {PROVIDERS.map((provider) =>
-          provider.id === "chatgpt_subscription" ? (
-            <ChatgptSettings key={provider.id} />
-          ) : (
-            <NonHyprProviderCard
-              key={provider.id}
-              config={provider}
-              providerType="llm"
-              isActive={
-                current_llm_provider === provider.id && !!current_llm_model
-              }
-              providers={PROVIDERS}
-              providerContext={<ProviderContext providerId={provider.id} />}
-            />
-          ),
-        )}
-      </Accordion>
-    </div>
+    <section className="flex flex-col gap-4 rounded-xl border p-4">
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="text-sm font-semibold">
+          <Trans>Choose a connection</Trans>
+        </h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditingConnection(false)}
+        >
+          <Trans>Close setup</Trans>
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {[
+          {
+            id: "chatgpt",
+            provider: "chatgpt_subscription",
+            label: t`ChatGPT subscription`,
+            description: t`Sign in · Beta`,
+          },
+          {
+            id: "api",
+            provider: "openai",
+            label: t`API key`,
+            description: t`Connect an AI provider`,
+          },
+          {
+            id: "local",
+            provider: "lmstudio",
+            label: t`Local AI app`,
+            description: t`LM Studio or Ollama`,
+          },
+        ].map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={route === option.id}
+            onClick={() => {
+              if (route !== option.id) chooseProvider(option.provider);
+            }}
+            className={cn([
+              "flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-colors",
+              route === option.id
+                ? "border-brand bg-accent"
+                : "hover:bg-accent",
+            ])}
+          >
+            <span className="font-medium">{option.label}</span>
+            <span className="text-muted-foreground text-xs">
+              {option.description}
+            </span>
+          </button>
+        ))}
+      </div>
+      {route === "local" && (
+        <p className="text-muted-foreground text-sm">
+          <Trans>
+            Requires a separate app. Install LM Studio or Ollama, download a
+            model there, and keep its local server running while using
+            summaries.
+          </Trans>
+        </p>
+      )}
+      {route === "api" && (
+        <p className="text-muted-foreground text-sm">
+          <Trans>
+            The selected provider processes the text you send for summaries. API
+            usage may have separate charges.
+          </Trans>
+        </p>
+      )}
+      {route && route !== "chatgpt" && (
+        <Select value={connectionProvider} onValueChange={chooseProvider}>
+          <SelectTrigger
+            aria-label={route === "local" ? t`Local AI app` : t`AI provider`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {routeProviders.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.displayName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {provider && (
+        <>
+          <Accordion
+            type="single"
+            collapsible
+            value={accordionValue}
+            onValueChange={setAccordionValue}
+          >
+            {provider.id === "chatgpt_subscription" ? (
+              <ChatgptSettings activateOnLogin={false} />
+            ) : (
+              <NonHyprProviderCard
+                config={provider}
+                providerType="llm"
+                isActive={
+                  current_llm_provider === provider.id && !!current_llm_model
+                }
+                providers={PROVIDERS}
+                providerContext={<ProviderContext providerId={provider.id} />}
+              />
+            )}
+          </Accordion>
+          <SetupModelSelection key={provider.id} providerId={provider.id} />
+        </>
+      )}
+    </section>
   );
 }
 

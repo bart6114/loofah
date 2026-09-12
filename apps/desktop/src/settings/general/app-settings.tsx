@@ -11,8 +11,6 @@ interface SettingItem {
 
 interface AppSettingsViewProps {
   autostart: SettingItem;
-  autoStopMeetings: SettingItem;
-  floatingBar: SettingItem;
   autoAcceptRelatedTags: SettingItem;
   showAppInDock: SettingItem;
   showTrayIcon: SettingItem;
@@ -20,8 +18,6 @@ interface AppSettingsViewProps {
 
 export function AppSettingsView({
   autostart,
-  autoStopMeetings,
-  floatingBar,
   autoAcceptRelatedTags,
   showAppInDock,
   showTrayIcon,
@@ -47,7 +43,7 @@ export function AppSettingsView({
             onChange={showAppInDock.onChange}
           />
           <SettingRow
-            title={<Trans>Show tray icon</Trans>}
+            title={<Trans>Show in menu bar</Trans>}
             description={
               <Trans>Keep Loofah available from the menu bar.</Trans>
             }
@@ -58,41 +54,50 @@ export function AppSettingsView({
       </section>
 
       <section>
-        <h2 className="mb-4 font-sans text-lg font-semibold">
-          <Trans>Meetings</Trans>
-        </h2>
-        <div className="flex flex-col gap-4">
-          <SettingRow
-            title={<Trans>Stop when meeting ends</Trans>}
-            description={
-              <Trans>
-                Automatically stop listening when the meeting app releases the
-                microphone.
-              </Trans>
-            }
-            checked={autoStopMeetings.value}
-            onChange={autoStopMeetings.onChange}
-          />
-          <SettingRow
-            title={<Trans>Show floating bar</Trans>}
-            description={
-              <Trans>Show the compact floating control while listening.</Trans>
-            }
-            checked={floatingBar.value}
-            onChange={floatingBar.onChange}
-          />
-          <SettingRow
-            title={<Trans>Automatically apply related tags</Trans>}
-            description={
-              <Trans>
-                Apply only high-confidence tags from similar session content.
-              </Trans>
-            }
-            checked={autoAcceptRelatedTags.value}
-            onChange={autoAcceptRelatedTags.onChange}
-          />
-        </div>
+        <SettingRow
+          title={<Trans>Automatically apply related tags</Trans>}
+          description={
+            <Trans>
+              Apply only high-confidence tags from similar session content.
+            </Trans>
+          }
+          checked={autoAcceptRelatedTags.value}
+          onChange={autoAcceptRelatedTags.onChange}
+        />
       </section>
+    </div>
+  );
+}
+
+export function RecordingSettingsView({
+  autoStopMeetings,
+  floatingBar,
+}: {
+  autoStopMeetings: SettingItem;
+  floatingBar: SettingItem;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <SettingRow
+        title={<Trans>Stop recording when the meeting ends</Trans>}
+        description={
+          <Trans>
+            Stop automatically when the meeting app stops using the microphone.
+          </Trans>
+        }
+        checked={autoStopMeetings.value}
+        onChange={autoStopMeetings.onChange}
+      />
+      <SettingRow
+        title={<Trans>Show floating recording controls</Trans>}
+        description={
+          <Trans>
+            Keep compact recording controls visible while recording.
+          </Trans>
+        }
+        checked={floatingBar.value}
+        onChange={floatingBar.onChange}
+      />
     </div>
   );
 }

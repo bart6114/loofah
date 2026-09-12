@@ -204,6 +204,13 @@ describe("getLiveTranscriptionConfig", () => {
 });
 
 describe("getTranscriptionLanguages", () => {
+  test("explicit meeting languages stay independent of summary language", () => {
+    expect(getTranscriptionLanguages("en", ["fr"], ["nl"])).toEqual(["nl"]);
+    expect(getTranscriptionLanguages("de", ["fr"], ["nl"])).toEqual(["nl"]);
+  });
+  test("explicit empty selection does not reinstate the summary language", () => {
+    expect(getTranscriptionLanguages("en", ["fr"], [])).toEqual([]);
+  });
   test("prefers the main language before additional spoken languages", () => {
     expect(getTranscriptionLanguages("en", ["ko"])).toEqual(["en", "ko"]);
   });

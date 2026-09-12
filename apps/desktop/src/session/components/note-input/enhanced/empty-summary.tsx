@@ -43,7 +43,7 @@ export function EmptySummary({
         const result = await requestMainEnhance(sessionId, opts);
         if (result.type === "no_model")
           throw new Error(
-            "Set up Intelligence in Settings before generating a summary.",
+            "Set up summaries in Settings before generating a summary.",
           );
         return;
       }
@@ -53,7 +53,7 @@ export function EmptySummary({
       const result = await service.enhance(sessionId, opts);
       if (result.type === "no_model")
         throw new Error(
-          "Set up Intelligence in Settings before generating a summary.",
+          "Set up summaries in Settings before generating a summary.",
         );
     },
   });
@@ -78,7 +78,7 @@ export function EmptySummary({
         onClick={() => generate.mutate(undefined)}
       >
         {connecting
-          ? "Connecting Intelligence…"
+          ? "Connecting to your AI provider…"
           : generate.isPending
             ? "Starting summary…"
             : "Generate summary"}

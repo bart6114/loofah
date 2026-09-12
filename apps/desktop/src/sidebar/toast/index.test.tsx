@@ -144,12 +144,12 @@ describe("ToastNotifications", () => {
     act(() => vi.advanceTimersByTime(500));
 
     expect(mocks.message).toHaveBeenCalledWith(
-      "Language model needed",
+      "Optional summaries",
       expect.objectContaining({
         id: "missing-llm",
         duration: Infinity,
         closeButton: true,
-        action: expect.objectContaining({ label: "Add" }),
+        action: expect.objectContaining({ label: "Set up" }),
       }),
     );
 

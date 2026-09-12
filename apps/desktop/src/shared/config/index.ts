@@ -15,13 +15,15 @@ type JsonParsedKeys =
   | "included_platforms"
   | "sidebar_expanded_tags";
 
-type ConfigValueType<K extends SettingKey> = K extends JsonParsedKeys
-  ? string[]
-  : K extends keyof typeof SETTING_DEFINITIONS
-    ? "default" extends keyof (typeof SETTING_DEFINITIONS)[K]
-      ? SettingValue<K>
-      : SettingValue<K> | undefined
-    : never;
+type ConfigValueType<K extends SettingKey> = K extends "meeting_languages"
+  ? string[] | undefined
+  : K extends JsonParsedKeys
+    ? string[]
+    : K extends keyof typeof SETTING_DEFINITIONS
+      ? "default" extends keyof (typeof SETTING_DEFINITIONS)[K]
+        ? SettingValue<K>
+        : SettingValue<K> | undefined
+      : never;
 
 const JSON_PARSED_KEYS = new Set<SettingKey>([
   "spoken_languages",
@@ -60,6 +62,11 @@ export function resolveConfigValue<K extends SettingKey>(
   const defaultValue = "default" in definition ? definition.default : undefined;
 
   const value = hasValues.has(key) ? values[key] : defaultValue;
+  if (key === "meeting_languages") {
+    return (
+      value == null ? undefined : parseStringArray(value, [])
+    ) as ConfigValueType<K>;
+  }
   if (JSON_PARSED_KEYS.has(key)) {
     return parseStringArray(
       value,

@@ -53,7 +53,7 @@ function appConfig(overrides: Record<string, unknown> = {}) {
     auto_summary_prompt: "",
     ignored_platforms: [],
     included_platforms: [],
-    mic_active_threshold: 15,
+    mic_active_threshold: 5,
     ai_providers: {},
     ...overrides,
   };
@@ -108,6 +108,31 @@ describe("config-backed settings", () => {
     expect(stored.values.spoken_languages).toBe('["en","ko"]');
     expect(stored.values.current_stt_provider).toBe("fmtr");
     expect(stored.hasValues.has("theme")).toBe(true);
+  });
+
+  it("preserves explicitly independent meeting languages in config", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ meeting_languages: ["nl"] }),
+    });
+    const stored = await getStoredSettingValues();
+    expect(stored.values.meeting_languages).toBe('["nl"]');
+    expect(stored.hasValues.has("meeting_languages")).toBe(true);
+    await setSettingValues({ meeting_languages: '["nl"]', ai_language: "en" });
+    expect(mocks.setConfigValues).toHaveBeenCalledWith({
+      meeting_languages: ["nl"],
+      ai_language: "en",
+    });
+  });
+
+  it("preserves a saved 15-second reminder delay after the default changes", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ mic_active_threshold: 15 }),
+    });
+    const stored = await getStoredSettingValues();
+    expect(stored.values.mic_active_threshold).toBe(15);
+    expect(stored.hasValues.has("mic_active_threshold")).toBe(true);
   });
 
   it("writes schema-typed JSON values in a single config call", async () => {

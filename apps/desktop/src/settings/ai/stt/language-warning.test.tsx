@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     current_stt_model: "soniqo-parakeet-batch",
     ai_language: "zh",
     spoken_languages: [] as string[],
+    meeting_languages: undefined as string[] | undefined,
   },
   listSupportedModels: vi.fn(),
   isSupportedLanguagesLive: vi.fn(),
@@ -73,6 +74,7 @@ beforeEach(() => {
     current_stt_model: "soniqo-parakeet-batch",
     ai_language: "zh",
     spoken_languages: [],
+    meeting_languages: undefined,
   });
   mocks.listSupportedModels.mockResolvedValue({ status: "ok", data: models });
   mocks.isSupportedLanguagesLive.mockImplementation(
@@ -197,5 +199,22 @@ test("updates an existing toast when model display names become available", asyn
       expect.stringContaining("Soniqo Parakeet Batch can't transcribe Chinese"),
       expect.any(Object),
     ),
+  );
+});
+
+test("keeps English summary output out of an explicit Dutch meeting language set", async () => {
+  Object.assign(mocks.config, { ai_language: "en", meeting_languages: ["nl"] });
+  renderWarning();
+  await waitFor(() =>
+    expect(mocks.isSupportedLanguagesBatch).toHaveBeenCalledWith(
+      "fmtr",
+      "soniqo-parakeet-batch",
+      ["nl"],
+    ),
+  );
+  expect(mocks.isSupportedLanguagesBatch).not.toHaveBeenCalledWith(
+    "fmtr",
+    "soniqo-parakeet-batch",
+    ["en", "nl"],
   );
 });

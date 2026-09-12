@@ -44,7 +44,11 @@ vi.mock("~/shared/config", () => ({
   }),
 }));
 
-function SettingsAccordion() {
+function SettingsAccordion({
+  activateOnLogin = true,
+}: {
+  activateOnLogin?: boolean;
+}) {
   const { accordionValue, setAccordionValue } = useLlmSettings();
   return (
     <Accordion
@@ -53,19 +57,19 @@ function SettingsAccordion() {
       value={accordionValue}
       onValueChange={setAccordionValue}
     >
-      <ChatgptSettings />
+      <ChatgptSettings activateOnLogin={activateOnLogin} />
     </Accordion>
   );
 }
 
-function setup(expanded = true) {
+function setup(expanded = true, activateOnLogin = true) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
       <LlmSettingsProvider>
-        <SettingsAccordion />
+        <SettingsAccordion activateOnLogin={activateOnLogin} />
       </LlmSettingsProvider>
     </QueryClientProvider>,
   );
@@ -219,6 +223,25 @@ describe("ChatGPT settings", () => {
         current_llm_model: "saved-model",
       }),
     );
+  });
+
+  it("can sign in during connection setup without activating summaries", async () => {
+    mocks.login.mockImplementation(async () => {
+      mocks.account.mockResolvedValue({
+        status: "ok",
+        data: { email: "test@example.com", planType: "plus" },
+      });
+      return { status: "ok", data: null };
+    });
+    setup(true, false);
+    const button = await screen.findByRole("button", {
+      name: "Sign in with ChatGPT",
+    });
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(button);
+    await screen.findByText("test@example.com · plus");
+    await screen.findByRole("button", { name: "Disconnect" });
+    expect(mocks.settings).not.toHaveBeenCalled();
   });
 
   it("keeps pending sign-in when the foldout is closed and reopened", async () => {

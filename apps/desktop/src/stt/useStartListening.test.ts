@@ -272,7 +272,11 @@ describe("useStartListening", () => {
       "/vault/sessions/session-1/audio.wav",
     );
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : [],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : [],
     );
     leftSidebarExpanded.value = true;
     useSTTConnectionMock.mockReturnValue({
@@ -317,7 +321,11 @@ describe("useStartListening", () => {
   test("keeps the left sidebar state when listening fails to start", async () => {
     startMock.mockResolvedValue(false);
     useConfigValueMock.mockImplementation((key: string) =>
-      key === "ai_language" ? "en" : [],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : [],
     );
 
     const { result } = renderHook(() => useStartListening("session-1"));
@@ -945,9 +953,44 @@ describe("useStartListening", () => {
     });
   });
 
+  test.each([
+    { summaryLanguage: "en", meetingLanguage: "nl", mode: "batch" },
+    { summaryLanguage: "nl", meetingLanguage: "en", mode: "live" },
+  ])(
+    "uses $meetingLanguage for capture independently of $summaryLanguage summary output",
+    async ({ summaryLanguage, meetingLanguage, mode }) => {
+      useConfigValueMock.mockImplementation((key) => {
+        if (key === "ai_language") return summaryLanguage;
+        if (key === "meeting_languages") return [meetingLanguage];
+        if (key === "spoken_languages") return ["fr"];
+        return [];
+      });
+      useSTTConnectionMock.mockReturnValue({
+        conn: {
+          provider: "fmtr",
+          model: "soniqo-parakeet-streaming",
+          baseUrl: "http://localhost:8080",
+          apiKey: "",
+        },
+      });
+      const { result } = renderHook(() => useStartListening("session-1"));
+      await act(async () => {
+        await result.current();
+      });
+      expect(startMock.mock.calls[0]?.[0]).toMatchObject({
+        languages: [meetingLanguage],
+        transcription_mode: mode,
+      });
+    },
+  );
+
   test("demotes non-English main language to batch with the full language list", async () => {
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "de" : ["en"],
+      key === "ai_language"
+        ? "de"
+        : key === "meeting_languages"
+          ? undefined
+          : ["en"],
     );
     useSTTConnectionMock.mockReturnValue({
       conn: {
@@ -972,7 +1015,11 @@ describe("useStartListening", () => {
 
   test("demotes to batch instead of filtering unsupported extra spoken languages", async () => {
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : ["ko"],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : ["ko"],
     );
     useSTTConnectionMock.mockReturnValue({
       conn: {
@@ -997,7 +1044,11 @@ describe("useStartListening", () => {
 
   test("uses the main language for Deepgram live capture when extras are unsupported", async () => {
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : ["ko"],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : ["ko"],
     );
     useSTTConnectionMock.mockReturnValue({
       conn: {

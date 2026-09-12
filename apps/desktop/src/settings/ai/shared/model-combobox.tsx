@@ -62,7 +62,7 @@ const formatIgnoreReason = (reason: ModelIgnoreReason): string => {
     case "not_llm":
       return "Not an LLM type";
     case "not_chat_model":
-      return "Not a chat model";
+      return "Unsupported model for summaries";
     case "context_too_small":
       return "Context length too small";
   }

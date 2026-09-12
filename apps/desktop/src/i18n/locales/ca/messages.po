@@ -99,12 +99,12 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
-#: src/settings/ai/shared/index.tsx
-msgid "Active"
-msgstr ""
-
 #: src/settings/dictionary/index.tsx
 msgid "Add"
+msgstr ""
+
+#: src/settings/general/language-settings.tsx
+msgid "Add a meeting language to help transcription choose the right words."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -131,11 +131,8 @@ msgstr ""
 msgid "Add spoken language"
 msgstr "Afegeix un idioma parlat"
 
-#: src/settings/general/spoken-languages.tsx
-msgid "Additional spoken languages"
-msgstr "Idiomes parlats addicionals"
-
 #: src/settings/ai/shared/index.tsx
+#: src/sidebar/settings.tsx
 msgid "Advanced"
 msgstr ""
 
@@ -145,6 +142,10 @@ msgstr ""
 
 #: src/sidebar/settings.tsx
 msgid "Agents"
+msgstr ""
+
+#: src/settings/ai/llm/configure.tsx
+msgid "AI provider"
 msgstr ""
 
 #: src/shared/open-note-dialog.tsx
@@ -157,6 +158,10 @@ msgstr "Sempre a punt sense iniciar-lo manualment."
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 msgid "Analyzing structure..."
+msgstr ""
+
+#: src/settings/ai/llm/configure.tsx
+msgid "API key"
 msgstr ""
 
 #: src/settings/ai/shared/index.tsx
@@ -197,14 +202,6 @@ msgstr ""
 msgid "Automatically apply related tags"
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "Automatically detect when a meeting starts based on microphone activity."
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "Automatically stop listening when the meeting app releases the microphone."
-msgstr "Deixa d'escoltar automàticament quan l'aplicació de reunió alliberi el micròfon."
-
 #: src/settings/todo/permission.tsx
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
@@ -233,6 +230,7 @@ msgstr ""
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 #: src/settings/ai/llm/chatgpt.tsx
+#: src/settings/ai/llm/summary-prompt.tsx
 #: src/settings/general/storage/change-location.tsx
 msgid "Cancel"
 msgstr ""
@@ -242,8 +240,15 @@ msgid "Cancel date edit"
 msgstr ""
 
 #: src/onboarding/folder-location.tsx
-#: src/settings/general/storage/change-location.tsx
 msgid "Change"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Change connection"
+msgstr ""
+
+#: src/settings/general/storage/change-location.tsx
+msgid "Change folder"
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -251,15 +256,57 @@ msgid "Change storage location?"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
+#: src/settings/ai/llm/configure.tsx
 msgid "ChatGPT subscription"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Check connection"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Check this connection's sign-in, API key, or local AI app, then try again."
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Checking connection…"
+msgstr ""
+
+#: src/onboarding/setup-status.tsx
+msgid "Checking transcription download…"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Checking transcription models…"
+msgstr ""
+
+#: src/settings/ai/llm/configure.tsx
+msgid "Choose a connection"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Choose a file format and what to include."
 msgstr ""
 
+#: src/settings/ai/llm/select.tsx
+#: src/settings/ai/stt/select.tsx
+msgid "Choose a model"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Choose a model to finish setup"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Choose another model"
+msgstr ""
+
 #: src/main/audio-import-dialog.tsx
 msgid "Choose files"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Choose how Loofah writes your summaries."
 msgstr ""
 
 #: src/settings/general/theme.tsx
@@ -270,6 +317,10 @@ msgstr ""
 #: src/settings/general/storage/change-location.tsx
 #: src/shared/startup-boundary.tsx
 msgid "Choose storage location"
+msgstr ""
+
+#: src/settings/general/spoken-languages.tsx
+msgid "Choose the languages you expect to hear. Summary language is set separately."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -289,6 +340,10 @@ msgstr ""
 
 #: src/changelog/index.tsx
 msgid "Close changelog"
+msgstr ""
+
+#: src/settings/ai/llm/configure.tsx
+msgid "Close setup"
 msgstr ""
 
 #: src/task/resource-view.tsx
@@ -311,20 +366,24 @@ msgstr ""
 msgid "comments"
 msgstr ""
 
-#: src/settings/ai/llm/configure.tsx
-msgid "Configure Providers"
-msgstr ""
-
-#: src/settings/ai/shared/index.tsx
-msgid "Configured"
-msgstr ""
-
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
 msgstr ""
 
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Connect an Intelligence provider to generate a summary from your notes or transcript."
+#: src/onboarding/index.tsx
+msgid "Connect a service to create summaries of your meetings. You can also set this up later."
+msgstr ""
+
+#: src/settings/ai/llm/configure.tsx
+msgid "Connect an AI provider"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Connection details"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Connection unavailable"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -392,12 +451,28 @@ msgstr ""
 msgid "Created"
 msgstr ""
 
+#: src/settings/ai/llm/select.tsx
+msgid "Current connection"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Customize instructions"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Customized"
+msgstr ""
+
 #: src/settings/general/theme.tsx
 msgid "Dark"
 msgstr ""
 
 #: src/session/components/session-date.tsx
 msgid "Date and time are required"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Default"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/delete.tsx
@@ -416,12 +491,16 @@ msgstr ""
 msgid "Delete Selected ({sessionCount})"
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "Detection delay"
-msgstr ""
-
 #: src/settings/dictionary/index.tsx
 msgid "Dictionary"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Discard changes"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Discard your unsaved instructions?"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
@@ -433,6 +512,10 @@ msgid "Dismiss suggested tag {name}"
 msgstr ""
 
 #: src/settings/general/notification.tsx
+msgid "Don’t remind me for these apps"
+msgstr ""
+
+#: src/settings/general/notification.tsx
 msgid "Don't show notifications when Do-Not-Disturb is enabled on your system"
 msgstr ""
 
@@ -440,8 +523,29 @@ msgstr ""
 msgid "Download"
 msgstr ""
 
+#: src/onboarding/index.tsx
+msgid "Download a transcription model to turn recordings into text on your Mac. You can keep going while it downloads."
+msgstr ""
+
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Download failed"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Download transcription model"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Downloaded and ready"
+msgstr ""
+
+#. placeholder {0}: Math.round(downloadInfo.progress)
+#: src/settings/ai/stt/select.tsx
+msgid "Downloading · {0}%"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Downloading transcription model…"
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
@@ -490,10 +594,6 @@ msgstr ""
 msgid "Everything relocates; the old location is cleaned up."
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "Exclude apps from detection"
-msgstr ""
-
 #: src/sidebar/timeline/index.tsx
 msgid "Expand all"
 msgstr ""
@@ -537,10 +637,6 @@ msgstr ""
 
 #: src/sidebar/timeline/item.tsx
 msgid "Folder renamed"
-msgstr ""
-
-#: src/settings/general/notification.tsx
-msgid "For enabled notifications"
 msgstr ""
 
 #: src/sidebar/settings.tsx
@@ -589,7 +685,7 @@ msgid "Help Loofah listen to you"
 msgstr ""
 
 #: src/settings/general/notification.tsx
-msgid "How long the mic must be active before triggering"
+msgid "How long another app must use the microphone before showing a reminder"
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
@@ -643,17 +739,8 @@ msgstr ""
 msgid "Included automatically with on-device transcription — no setup needed."
 msgstr ""
 
-#: src/settings/general/storage/rebuild-index.tsx
-msgid "Index rebuilt from the files in your folder."
-msgstr ""
-
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Install Codex CLI"
-msgstr ""
-
-#: src/settings/ai/llm/index.tsx
-#: src/sidebar/settings.tsx
-msgid "Intelligence"
 msgstr ""
 
 #: src/onboarding/final.tsx
@@ -661,27 +748,23 @@ msgid "Join our community and stay updated:"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
+msgid "Keep compact recording controls visible while recording."
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Keep editing"
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
 msgid "Keep Loofah available from the menu bar."
 msgstr ""
 
-#: src/settings/general/index.tsx
-msgid "Language & Region"
-msgstr "Idioma i regió"
-
 #: src/settings/general/main-language.tsx
-msgid "Language for summaries, chats, and AI-generated responses"
-msgstr "Idioma per a resums, xats i respostes generades per IA"
-
-#: src/onboarding/index.tsx
-msgid "Language model"
+msgid "Language for summaries and generated titles"
 msgstr ""
 
-#: src/onboarding/index.tsx
-msgid "Language model configured"
-msgstr ""
-
-#: src/settings/ai/llm/select.tsx
-msgid "Language model is needed to make Loofah summarize and chat about your conversations."
+#: src/settings/general/spoken-languages.tsx
+msgid "Languages spoken in meetings"
 msgstr ""
 
 #: src/settings/general/theme.tsx
@@ -690,6 +773,10 @@ msgstr ""
 
 #: src/settings/ai/stt/select.tsx
 msgid "Live"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Live models transcribe during the meeting. Other models transcribe after recording."
 msgstr ""
 
 #. placeholder {0}: formatLanguageList(unsupportedLanguages)
@@ -701,8 +788,16 @@ msgstr ""
 msgid "Live transcription isn't available for this language combination. You'll get the transcript right after the recording ends instead."
 msgstr ""
 
+#: src/settings/ai/llm/configure.tsx
+msgid "LM Studio or Ollama"
+msgstr ""
+
 #: src/shared/startup-boundary.tsx
 msgid "Loading"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Loading connection…"
 msgstr ""
 
 #: src/settings/ai/shared/model-combobox.tsx
@@ -718,6 +813,10 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
+#: src/settings/ai/llm/configure.tsx
+msgid "Local AI app"
+msgstr ""
+
 #: src/onboarding/permissions.tsx
 msgid "Loofah can hear others"
 msgstr ""
@@ -731,11 +830,7 @@ msgid "Loofah needs access to your microphone and system audio to record and tra
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
-msgid "Loofah sends these separately, so editing the prompt cannot remove the meeting source material."
-msgstr ""
-
-#: src/onboarding/index.tsx
-msgid "Loofah transcribes meetings on your device. Pick a model to download — you can keep going while it downloads."
+msgid "Loofah sends meeting notes, the transcript, session details, and participants separately. Editing these instructions cannot remove that source material."
 msgstr ""
 
 #: src/shared/startup-boundary.tsx
@@ -745,10 +840,6 @@ msgstr ""
 #: src/settings/ai/shared/index.tsx
 msgid "macOS cannot access your login Keychain. Repairing briefly locks it and asks for your Mac password before Loofah retries this API key."
 msgstr ""
-
-#: src/settings/general/main-language.tsx
-msgid "Main language"
-msgstr "Idioma principal"
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Match case"
@@ -762,17 +853,9 @@ msgstr ""
 msgid "Meeting"
 msgstr ""
 
-#: src/settings/ai/llm/summary-prompt.tsx
-msgid "Meeting notes"
-msgstr ""
-
 #: src/main/about-dialog.tsx
 msgid "Meeting recordings"
 msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "Meetings"
-msgstr "Reunions"
 
 #: src/task/resource-view.tsx
 msgid "Merged"
@@ -791,13 +874,12 @@ msgstr ""
 msgid "Microphone access turned on"
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "Microphone detection"
+#: src/settings/ai/llm/select.tsx
+msgid "Model"
 msgstr ""
 
-#: src/settings/ai/llm/select.tsx
 #: src/settings/ai/stt/select.tsx
-msgid "Model being used"
+msgid "Model downloaded"
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -874,6 +956,10 @@ msgstr ""
 msgid "No results found."
 msgstr ""
 
+#: src/settings/ai/stt/select.tsx
+msgid "No transcription models are available for this Mac."
+msgstr ""
+
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Not downloaded"
 msgstr ""
@@ -891,14 +977,17 @@ msgstr ""
 msgid "Notes"
 msgstr ""
 
+#: src/settings/general/storage/index.tsx
+msgid "Notes & recordings folder"
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Notes over time"
 msgstr ""
 
-#: src/settings/general/index.tsx
-#: src/sidebar/settings.tsx
-msgid "Notifications"
-msgstr "Notificacions"
+#: src/settings/general/storage/rebuild-index.tsx
+msgid "Notes refreshed from the files in your folder."
+msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Now"
@@ -956,7 +1045,6 @@ msgid "Override the timezone used for the sidebar timeline"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
-#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Participants"
 msgstr ""
 
@@ -990,10 +1078,6 @@ msgstr ""
 msgid "Queued"
 msgstr ""
 
-#: src/settings/general/storage/rebuild-index.tsx
-msgid "Re-read every session file and rebuild the database index"
-msgstr ""
-
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "Re-transcribe"
 msgstr ""
@@ -1006,16 +1090,12 @@ msgstr ""
 msgid "Ready"
 msgstr ""
 
+#: src/settings/ai/llm/select.tsx
+msgid "Ready for summaries"
+msgstr ""
+
 #: src/onboarding/index.tsx
 msgid "Ready to go"
-msgstr ""
-
-#: src/settings/general/storage/rebuild-index.tsx
-msgid "Rebuild index"
-msgstr ""
-
-#: src/settings/general/storage/rebuild-index.tsx
-msgid "Rebuilding..."
 msgstr ""
 
 #: src/shared/open-note-dialog.tsx
@@ -1026,8 +1106,41 @@ msgstr ""
 msgid "Record"
 msgstr ""
 
+#: src/settings/general/index.tsx
+#: src/sidebar/settings.tsx
+msgid "Recording"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Recording and transcription still work. Connect an AI service or a local AI app when you want summaries."
+msgstr ""
+
+#: src/session/components/note-input/enhanced/config-error.tsx
+msgid "Recording and transcription still work. Set up summaries when you want to turn your notes or transcript into a summary."
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Recordings"
+msgstr ""
+
+#: src/settings/general/storage/rebuild-index.tsx
+msgid "Refresh notes from disk"
+msgstr ""
+
+#: src/settings/general/storage/rebuild-index.tsx
+msgid "Refresh the app if notes are missing or changes made outside Loofah are not showing."
+msgstr ""
+
+#: src/settings/general/storage/rebuild-index.tsx
+msgid "Refreshing..."
+msgstr ""
+
+#: src/settings/general/notification.tsx
+msgid "Remind me to record meetings"
+msgstr ""
+
+#: src/settings/general/notification.tsx
+msgid "Reminder preferences"
 msgstr ""
 
 #: src/settings/todo/provider-content.tsx
@@ -1039,8 +1152,10 @@ msgid "Remove"
 msgstr ""
 
 #. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: getBaseLanguageDisplayName(code, i18n.locale)
 #. placeholder {0}: upload.candidate.name
 #: src/session/components/note-input/attachments.tsx
+#: src/settings/general/spoken-languages.tsx
 msgid "Remove {0}"
 msgstr ""
 
@@ -1106,6 +1221,10 @@ msgstr ""
 msgid "Required to record your voice during meetings and calls"
 msgstr ""
 
+#: src/settings/ai/llm/configure.tsx
+msgid "Requires a separate app. Install LM Studio or Ollama, download a model there, and keep its local server running while using summaries."
+msgstr ""
+
 #: src/settings/todo/permission.tsx
 msgid "Reset"
 msgstr ""
@@ -1155,8 +1274,16 @@ msgstr ""
 msgid "Save date"
 msgstr ""
 
+#: src/settings/ai/shared/index.tsx
+msgid "Saved"
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Saving..."
 msgstr ""
 
 #: src/settings/general/notification.tsx
@@ -1184,14 +1311,9 @@ msgstr ""
 msgid "Search..."
 msgstr ""
 
-#: src/settings/ai/shared/model-combobox.tsx
-#: src/settings/ai/stt/select.tsx
-msgid "Select a model"
-msgstr ""
-
 #: src/settings/ai/llm/select.tsx
-#: src/settings/ai/stt/select.tsx
-msgid "Select a provider"
+#: src/settings/ai/shared/model-combobox.tsx
+msgid "Select a model"
 msgstr ""
 
 #: src/settings/general/theme.tsx
@@ -1210,8 +1332,9 @@ msgstr ""
 msgid "Select..."
 msgstr ""
 
-#: src/settings/ai/llm/summary-prompt.tsx
-msgid "Session details"
+#: src/settings/ai/llm/select.tsx
+#: src/settings/ai/shared/index.tsx
+msgid "Selected"
 msgstr ""
 
 #: src/session/components/note-input/header.tsx
@@ -1223,11 +1346,20 @@ msgid "Session title"
 msgstr ""
 
 #: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Set up AI summaries"
+#: src/settings/ai/llm/select.tsx
+msgid "Set up summaries"
 msgstr ""
 
-#: src/session/components/note-input/enhanced/config-error.tsx
-msgid "Set up Intelligence"
+#: src/onboarding/index.tsx
+msgid "Set up summaries later"
+msgstr ""
+
+#: src/onboarding/index.tsx
+msgid "Set up transcription"
+msgstr ""
+
+#: src/onboarding/index.tsx
+msgid "Set up transcription later"
 msgstr ""
 
 #: src/main/empty.tsx
@@ -1235,12 +1367,16 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
+#: src/settings/general/notification.tsx
+msgid "Show a reminder when another app uses the microphone. Recording starts only when you accept."
+msgstr ""
+
 #: src/settings/general/app-settings.tsx
 msgid "Show app in Dock"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
-msgid "Show floating bar"
+msgid "Show floating recording controls"
 msgstr ""
 
 #: src/session/components/memo-image-strip.tsx
@@ -1249,20 +1385,25 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/ai/stt/select.tsx
+#: src/settings/general/storage/change-location.tsx
 #: src/sidebar/timeline/item.tsx
 msgid "Show in Finder"
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "Show in menu bar"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show Loofah in the Dock and app switcher."
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Show the compact floating control while listening."
-msgstr "Mostra el control flotant compacte mentre escoltes."
+#: src/settings/general/notification.tsx
+msgid "Show reminder after"
+msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Show tray icon"
+#: src/settings/ai/llm/configure.tsx
+msgid "Sign in · Beta"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
@@ -1318,8 +1459,16 @@ msgstr ""
 msgid "Starting"
 msgstr ""
 
+#: src/settings/ai/stt/select.tsx
+msgid "Starting transcription…"
+msgstr ""
+
 #: src/session/components/outer-header/index.tsx
 msgid "Stop"
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "Stop automatically when the meeting app stops using the microphone."
 msgstr ""
 
 #: src/session/components/outer-header/index.tsx
@@ -1327,16 +1476,17 @@ msgstr ""
 msgid "Stop listening"
 msgstr ""
 
+#: src/settings/general/app-settings.tsx
+msgid "Stop recording when the meeting ends"
+msgstr ""
+
 #: src/session/components/outer-header/index.tsx
 msgid "Stop transcription"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Stop when meeting ends"
-msgstr "Atura't quan acabi la reunió"
-
 #: src/onboarding/index.tsx
-#: src/settings/general/storage/index.tsx
+#: src/settings/general/index.tsx
+#: src/sidebar/settings.tsx
 msgid "Storage"
 msgstr ""
 
@@ -1349,11 +1499,30 @@ msgid "Storage Updated"
 msgstr ""
 
 #: src/onboarding/index.tsx
-msgid "Summaries and chat need a language model. Use a local server like Ollama, or bring an API key from your favorite provider."
+#: src/settings/ai/llm/index.tsx
+#: src/sidebar/settings.tsx
+msgid "Summaries"
+msgstr ""
+
+#: src/session/components/note-input/enhanced/config-error.tsx
+#: src/settings/ai/llm/select.tsx
+msgid "Summaries are off"
+msgstr ""
+
+#: src/onboarding/setup-status.tsx
+msgid "Summaries not enabled"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Summary"
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Summary instructions"
+msgstr ""
+
+#: src/settings/general/main-language.tsx
+msgid "Summary language"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1362,6 +1531,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary prompt cannot be empty."
+msgstr ""
+
+#: src/onboarding/setup-status.tsx
+msgid "Summary service selected"
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -1405,6 +1578,14 @@ msgstr ""
 msgid "Tags"
 msgstr ""
 
+#: src/settings/ai/llm/select.tsx
+msgid "Text for summaries is sent to this provider."
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Text for summaries is sent to your configured server."
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "The app restarts to apply."
 msgstr ""
@@ -1413,9 +1594,9 @@ msgstr ""
 msgid "The app will restart after onboarding to apply your storage changes"
 msgstr ""
 
-#: src/settings/general/spoken-languages.tsx
-msgid "The main language is always included for transcription"
-msgstr "L'idioma principal sempre s'inclou per a la transcripció"
+#: src/settings/ai/llm/configure.tsx
+msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
+msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"
@@ -1445,7 +1626,6 @@ msgstr ""
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
-#: src/settings/ai/llm/summary-prompt.tsx
 msgid "Transcript"
 msgstr ""
 
@@ -1454,21 +1634,41 @@ msgstr ""
 msgid "Transcription"
 msgstr ""
 
-#: src/onboarding/index.tsx
+#: src/settings/ai/stt/select.tsx
 msgid "Transcription model"
 msgstr ""
 
-#: src/onboarding/index.tsx
-msgid "Transcription model configured"
+#: src/settings/ai/stt/select.tsx
+msgid "Transcription model download"
+msgstr ""
+
+#: src/onboarding/setup-status.tsx
+msgid "Transcription model downloaded"
+msgstr ""
+
+#: src/onboarding/setup-status.tsx
+msgid "Transcription model downloading"
+msgstr ""
+
+#: src/onboarding/setup-status.tsx
+msgid "Transcription not set up"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
-msgid "Transcription model is needed to make Loofah listen to your conversations."
+msgid "Transcription runs on your Mac"
+msgstr ""
+
+#: src/settings/general/storage/index.tsx
+msgid "Troubleshooting"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/startup-boundary.tsx
 msgid "Try again"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Turn off summaries"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -1481,6 +1681,10 @@ msgstr ""
 
 #: src/settings/ai/shared/index.tsx
 msgid "Unlock your login Keychain in the macOS prompt. Loofah will retry saving this API key automatically."
+msgstr ""
+
+#: src/settings/ai/llm/summary-prompt.tsx
+msgid "Unsaved changes"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -1506,12 +1710,20 @@ msgstr ""
 msgid "Use system audio to capture other speakers"
 msgstr ""
 
+#: src/settings/ai/llm/select.tsx
+msgid "Use this connection"
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Use this folder for your vault?"
 msgstr ""
 
 #: src/onboarding/permissions.tsx
 msgid "Use your microphone to capture your voice"
+msgstr ""
+
+#: src/settings/ai/llm/select.tsx
+msgid "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1539,6 +1751,10 @@ msgstr ""
 msgid "Where your notes and recordings are stored"
 msgstr ""
 
+#: src/settings/ai/stt/select.tsx
+msgid "Works offline after downloading a model."
+msgstr ""
+
 #: src/sidebar/timeline/item.tsx
 msgid "Written by {author}"
 msgstr ""
@@ -1549,6 +1765,10 @@ msgstr ""
 
 #: src/settings/todo/permission.tsx
 msgid "You can"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "You can keep using Loofah while it downloads."
 msgstr ""
 
 #: src/shared/startup-boundary.tsx
@@ -1564,7 +1784,7 @@ msgid "Your current vault stays where it is — nothing is moved or deleted. You
 msgstr ""
 
 #: src/settings/general/storage/index.tsx
-msgid "Your data lives as files in this folder. The internal database is a cache and can be rebuilt at any time."
+msgid "Your notes, recordings, and attachments are saved as files in this folder."
 msgstr ""
 
 #: src/main/about-dialog.tsx
