@@ -11,6 +11,22 @@ impl FmtrAdapter {
         languages: &[hypr_language::Language],
         model: Option<&str>,
     ) -> LanguageSupport {
+        if let Some(model) =
+            model.and_then(|model| model.parse::<hypr_whisper_local_model::WhisperModel>().ok())
+        {
+            let supported = model.supported_languages();
+            return if languages.iter().all(|language| {
+                supported
+                    .iter()
+                    .any(|candidate| candidate.iso639() == language.iso639())
+            }) {
+                LanguageSupport::Supported {
+                    quality: LanguageQuality::NoData,
+                }
+            } else {
+                LanguageSupport::NotSupported
+            };
+        }
         match soniqo_language_support(languages, model, true) {
             Some(support) => support,
             None => LanguageSupport::Supported {

@@ -413,7 +413,7 @@ impl AdapterKind {
     pub fn from_url_and_languages(
         base_url: &str,
         _languages: &[hypr_language::Language],
-        _model: Option<&str>,
+        model: Option<&str>,
     ) -> Self {
         use crate::providers::Provider;
 
@@ -422,6 +422,14 @@ impl AdapterKind {
         }
 
         if is_local_argmax(base_url) {
+            // The local Whisper server speaks the same multichannel protocol as Fmtr.
+            if model.is_some_and(|model| {
+                model
+                    .parse::<hypr_whisper_local_model::WhisperModel>()
+                    .is_ok()
+            }) {
+                return Self::Fmtr;
+            }
             return Self::Argmax;
         }
 
@@ -686,6 +694,24 @@ mod tests {
                 &[Ko, En],
                 None,
                 AdapterKind::Fmtr,
+            ),
+            (
+                "http://127.0.0.1:54321/v1",
+                &[Nl, En],
+                Some("whisper-large-v3"),
+                AdapterKind::Fmtr,
+            ),
+            (
+                "http://localhost:54321/v1",
+                &[En],
+                Some("QuantizedSmallEn"),
+                AdapterKind::Fmtr,
+            ),
+            (
+                "https://api.openai.com/v1",
+                &[En],
+                Some("whisper-large-v3"),
+                AdapterKind::OpenAI,
             ),
             // localhost argmax
             (

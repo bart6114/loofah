@@ -29,10 +29,7 @@ use super::message::{AudioExtract, IncomingMessage, process_incoming_message};
 use super::response::{
     TranscriptKind, build_transcript_response, format_timestamp_now, send_ws, send_ws_best_effort,
 };
-use super::{
-    build_metadata, build_model_with_languages, parse_listen_params, redemption_time,
-    transcribe_chunk,
-};
+use super::{build_metadata, build_model, parse_listen_params, redemption_time, transcribe_chunk};
 
 pub const LISTEN_PATH: &str = "/v1/listen";
 pub const HEALTH_PATH: &str = "/health";
@@ -218,12 +215,7 @@ async fn handle_websocket(
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let total_channels = (params.channels as usize).max(1);
     let redemption_time = redemption_time(&params);
-    let languages: Vec<hypr_whisper::Language> = params
-        .languages
-        .iter()
-        .filter_map(|lang| lang.clone().try_into().ok())
-        .collect();
-    match build_transcription_streams(total_channels, model.as_ref(), &languages, redemption_time) {
+    match build_transcription_streams(total_channels, model.as_ref(), &params, redemption_time) {
         Ok((audio_txs, mut stream)) => {
             let mut audio_txs = audio_txs;
             let mut stop_reason = None;
@@ -436,7 +428,7 @@ type TranscriptionStream =
 fn build_transcription_streams(
     total_channels: usize,
     loaded_model: &hypr_whisper_local::LoadedWhisper,
-    languages: &[hypr_whisper::Language],
+    params: &ListenParams,
     redemption_time: std::time::Duration,
 ) -> Result<
     (
@@ -452,7 +444,7 @@ fn build_transcription_streams(
         let (audio_tx, audio_rx) = mpsc::channel::<Vec<f32>>(8);
         audio_txs.push(audio_tx);
 
-        let model = build_model_with_languages(loaded_model, languages.to_vec())?;
+        let model = build_model(loaded_model, params)?;
         let chunk_stream = ChannelAudioSource::new(audio_rx)
             .speech_chunks(SpeechChunkingConfig::speech(redemption_time));
         let stream: TranscriptionStream = Box::pin(TranscribeChannelStream::new(

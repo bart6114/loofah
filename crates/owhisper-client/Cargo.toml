@@ -13,6 +13,7 @@ hypr-audio-utils = { workspace = true, optional = true }
 hypr-language = { workspace = true }
 hypr-observability = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true, optional = true }
+hypr-whisper-local-model = { workspace = true }
 hypr-ws-client = { workspace = true }
 soniox = { workspace = true }
 

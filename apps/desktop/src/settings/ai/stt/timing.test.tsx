@@ -74,7 +74,7 @@ test("saves either timing choice for a live-capable model", async () => {
 
 test("preserves a live preference across model and language fallbacks", () => {
   const view = renderTiming();
-  mocks.config.current_stt_model = "QuantizedSmallEn";
+  mocks.config.current_stt_model = "soniqo-parakeet-batch";
   view.rerender();
   expect(radio("While recording").disabled).toBe(true);
   expect(radio("After recording").checked).toBe(true);
@@ -96,7 +96,7 @@ test("preserves a live preference across model and language fallbacks", () => {
 });
 
 test("lets users deliberately keep after recording while live is unavailable", async () => {
-  mocks.config.current_stt_model = "QuantizedSmallEn";
+  mocks.config.current_stt_model = "soniqo-parakeet-batch";
   const view = renderTiming();
   fireEvent.click(radio("After recording"));
   await waitFor(() => expect(mocks.config.transcription_timing).toBe("batch"));
@@ -115,4 +115,24 @@ test("keeps the saved choice and reports a failed write", async () => {
     ),
   );
   expect(radio("While recording").checked).toBe(true);
+});
+
+test("allows live Whisper with Dutch and English while preserving the saved timing", async () => {
+  mocks.config.current_stt_model = "whisper-large-v3";
+  mocks.config.meeting_languages = ["nl", "en"];
+  mocks.config.transcription_timing = "batch";
+  renderTiming();
+  expect(radio("While recording").disabled).toBe(false);
+  expect(radio("After recording").checked).toBe(true);
+  fireEvent.click(radio("While recording"));
+  await waitFor(() => expect(radio("While recording").checked).toBe(true));
+});
+
+test("English-only Whisper allows English live but falls back for Dutch", () => {
+  mocks.config.current_stt_model = "QuantizedSmallEn";
+  const view = renderTiming();
+  expect(radio("While recording").disabled).toBe(false);
+  mocks.config.meeting_languages = ["nl"];
+  view.rerender();
+  expect(radio("While recording").disabled).toBe(true);
 });

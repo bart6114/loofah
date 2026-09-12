@@ -24,8 +24,15 @@ pub fn is_supported_languages_live(
     model: Option<&str>,
     languages: &[hypr_language::Language],
 ) -> std::result::Result<bool, String> {
-    if provider == "whispercpp" {
-        return Ok(false);
+    if provider == "whispercpp"
+        || (provider == "fmtr"
+            && model.is_some_and(|model| {
+                model
+                    .parse::<hypr_whisper_local_model::WhisperModel>()
+                    .is_ok()
+            }))
+    {
+        return is_supported_languages_batch(provider, model, languages);
     }
 
     if provider == "custom" {
@@ -51,11 +58,7 @@ pub fn is_supported_languages_live(
             );
         }
 
-        if model.starts_with("am-")
-            || model
-                .parse::<hypr_whisper_local_model::WhisperModel>()
-                .is_ok()
-        {
+        if model.starts_with("am-") {
             return Ok(false);
         }
     }
@@ -159,7 +162,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn whisper_large_v3_supports_mixed_languages_only_after_recording() {
+    fn whisper_large_v3_supports_mixed_languages_live_and_after_recording() {
         let languages = vec!["nl-BE".parse().unwrap(), "en".parse().unwrap()];
         for provider in ["fmtr", "whispercpp"] {
             assert!(
@@ -167,14 +170,14 @@ mod tests {
                     .unwrap()
             );
             assert!(
-                !is_supported_languages_live(provider, Some("whisper-large-v3"), &languages)
+                is_supported_languages_live(provider, Some("whisper-large-v3"), &languages)
                     .unwrap()
             );
         }
     }
 
     #[test]
-    fn whisper_variants_respect_language_coverage_and_always_record_first() {
+    fn whisper_variants_respect_language_coverage_live_and_after_recording() {
         let english = vec!["en-GB".parse().unwrap()];
         let mixed = vec!["nl-BE".parse().unwrap(), "en".parse().unwrap()];
         for provider in ["fmtr", "whispercpp"] {
@@ -194,7 +197,12 @@ mod tests {
                     multilingual,
                     "{provider}: {model}"
                 );
-                assert!(!is_supported_languages_live(provider, Some(model), &english).unwrap());
+                assert!(is_supported_languages_live(provider, Some(model), &english).unwrap());
+                assert_eq!(
+                    is_supported_languages_live(provider, Some(model), &mixed).unwrap(),
+                    multilingual,
+                    "{provider}: {model}"
+                );
             }
         }
     }

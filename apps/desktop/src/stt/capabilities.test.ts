@@ -51,7 +51,8 @@ test("an explicit live choice still respects model and meeting language restrict
   for (const [model, languages, mode] of [
     ["soniqo-parakeet-streaming", ["en"], "live"],
     ["soniqo-parakeet-streaming", ["en", "nl"], "batch"],
-    ["QuantizedSmallEn", ["en"], "batch"],
+    ["QuantizedSmallEn", ["en"], "live"],
+    ["QuantizedSmallEn", ["en", "nl"], "batch"],
   ] as const) {
     expect(
       await getLiveTranscriptionConfig({
@@ -64,14 +65,37 @@ test("an explicit live choice still respects model and meeting language restrict
   }
 });
 
-test("Whisper Large V3 records first and preserves Dutch and English", () => {
+test("Whisper Large V3 transcribes live and preserves Dutch and English", () => {
   expect(isSupportedLocalSttModel("whisper-large-v3")).toBe(true);
   expect(
     getOnDeviceTranscriptionConfig("whisper-large-v3", ["nl", "en"]),
   ).toEqual({
     languages: ["nl", "en"],
-    transcriptionMode: "batch",
+    transcriptionMode: "live",
   });
+});
+
+test("Whisper preserves an explicit after-recording preference", async () => {
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "whisper-large-v3",
+      languages: ["nl", "en"],
+      timing: "batch",
+    }),
+  ).toEqual({ languages: ["nl", "en"], transcriptionMode: "batch" });
+});
+
+test("Whisper respects backend language coverage before starting live capture", async () => {
+  isSupportedLanguagesLiveMock.mockResolvedValue({ status: "ok", data: false });
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "QuantizedSmall",
+      languages: ["unsupported"],
+      timing: "live",
+    }),
+  ).toEqual({ languages: ["unsupported"], transcriptionMode: "batch" });
 });
 
 describe("getOnDeviceTranscriptionMode", () => {

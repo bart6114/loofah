@@ -9,10 +9,8 @@ type LiveTranscriptionConfig = {
   transcriptionMode?: TranscriptionMode;
 };
 
-// Parakeet-EOU (the streaming model) has an English-only vocabulary; it decodes
-// other languages into gibberish. Must stay in sync with the authoritative Rust
-// check, `is_parakeet_eou_language` in crates/language/src/lib.rs.
-const SONIQO_STREAMING_LANGUAGE_CODES = new Set(["en"]);
+// Parakeet-EOU and English-only Whisper cannot decode other languages.
+const ENGLISH_LANGUAGE_CODES = new Set(["en"]);
 
 export function isSupportedLocalSttModel(
   model?: string | null,
@@ -49,7 +47,12 @@ export function isConfiguredSttModel(
 }
 
 export function isRealtimeLocalModel(model?: string | null) {
-  return model === "soniqo-parakeet-streaming";
+  return (
+    model === "soniqo-parakeet-streaming" ||
+    model === "whisper-large-v3" ||
+    /^Quantized(Tiny|Base|Small)(En)?$/.test(model ?? "") ||
+    model === "QuantizedLargeTurbo"
+  );
 }
 
 function baseLanguageCode(language: string) {
@@ -124,12 +127,14 @@ export function getOnDeviceTranscriptionConfig(
     };
   }
 
-  // Demote to batch when ANY configured language is outside the streaming
-  // model's support: the batch model covers more languages, and sending a
-  // truncated language list would bypass the Rust-side demotion check.
-  const supportsAllLive = languages.every((language) =>
-    SONIQO_STREAMING_LANGUAGE_CODES.has(baseLanguageCode(language)),
-  );
+  // Keep every language so the backend can validate coverage and select a fallback.
+  const englishOnly =
+    model === "soniqo-parakeet-streaming" || model?.endsWith("En");
+  const supportsAllLive =
+    !englishOnly ||
+    languages.every((language) =>
+      ENGLISH_LANGUAGE_CODES.has(baseLanguageCode(language)),
+    );
 
   return {
     languages: [...languages],
@@ -160,7 +165,14 @@ export async function getLiveTranscriptionConfig({
   }
 
   if (isFmtrLocalSttModel(provider, model)) {
-    return getOnDeviceTranscriptionConfig(model, languages);
+    const config = getOnDeviceTranscriptionConfig(model, languages);
+    if (
+      config.transcriptionMode === "live" &&
+      !(await isSupportedLanguagesLive("fmtr", model, languages))
+    ) {
+      return { ...config, transcriptionMode: "batch" };
+    }
+    return config;
   }
 
   const config = {

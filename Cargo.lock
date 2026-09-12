@@ -10238,6 +10238,7 @@ dependencies = [
  "tracing-subscriber",
  "transcribe-soniqo",
  "url",
+ "whisper-local-model",
  "ws-client",
 ]
 

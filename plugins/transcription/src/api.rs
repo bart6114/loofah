@@ -376,6 +376,41 @@ mod tests {
     }
 
     #[test]
+    fn local_whisper_capture_respects_live_languages_and_explicit_batch() {
+        for (model, languages, expected) in [
+            (
+                "whisper-large-v3",
+                vec![ISO639::Nl.into(), ISO639::En.into()],
+                TranscriptionMode::Live,
+            ),
+            (
+                "QuantizedSmall",
+                vec![ISO639::Nl.into()],
+                TranscriptionMode::Live,
+            ),
+            (
+                "QuantizedSmallEn",
+                vec![ISO639::En.into()],
+                TranscriptionMode::Live,
+            ),
+            (
+                "QuantizedSmallEn",
+                vec![ISO639::Nl.into()],
+                TranscriptionMode::Batch,
+            ),
+        ] {
+            let mut params =
+                capture_params_with_languages("http://127.0.0.1:54321/v1", model, languages);
+            assert_eq!(params.default_transcription_mode(), expected, "{model}");
+            params.transcription_mode = Some(TranscriptionMode::Batch);
+            assert_eq!(
+                params.default_transcription_mode(),
+                TranscriptionMode::Batch
+            );
+        }
+    }
+
+    #[test]
     fn defaults_realtime_provider_to_live_mode() {
         let params = capture_params("https://api.deepgram.com/v1", "nova-3-general");
 
