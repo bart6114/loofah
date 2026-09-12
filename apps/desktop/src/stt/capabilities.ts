@@ -148,11 +148,17 @@ export async function getLiveTranscriptionConfig({
   provider,
   model,
   languages,
+  timing,
 }: {
   provider?: string | null;
   model?: string | null;
   languages: readonly string[];
+  timing?: string;
 }): Promise<LiveTranscriptionConfig> {
+  if (timing === "batch") {
+    return { languages: [...languages], transcriptionMode: "batch" };
+  }
+
   if (isFmtrLocalSttModel(provider, model)) {
     return getOnDeviceTranscriptionConfig(model, languages);
   }

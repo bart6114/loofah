@@ -56,6 +56,7 @@ pub struct AppConfig {
     pub current_stt_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_stt_model: Option<String>,
+    pub transcription_timing: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
     pub ai_providers: HashMap<String, AiProviderEntry>,
@@ -98,6 +99,7 @@ impl Default for AppConfig {
             current_llm_model: None,
             current_stt_provider: None,
             current_stt_model: None,
+            transcription_timing: "live".to_string(),
             timezone: None,
             ai_providers: HashMap::new(),
             hooks: None,
@@ -204,6 +206,7 @@ mod tests {
 
         assert_eq!(state.snapshot(), AppConfig::default());
         assert_eq!(state.snapshot().mic_active_threshold, 5.0);
+        assert_eq!(state.snapshot().transcription_timing, "live");
     }
 
     #[tokio::test]
@@ -214,6 +217,7 @@ mod tests {
         state
             .set_values(values(&[
                 ("theme", json!("dark")),
+                ("transcription_timing", json!("batch")),
                 ("mic_active_threshold", json!(30)),
                 ("spoken_languages", json!(["en", "ko"])),
                 ("current_llm_provider", json!("openai")),
@@ -228,6 +232,7 @@ mod tests {
         let reloaded = ConfigState::load_or_default(temp.path());
         assert_eq!(reloaded.snapshot(), state.snapshot());
         assert_eq!(reloaded.snapshot().theme, "dark");
+        assert_eq!(reloaded.snapshot().transcription_timing, "batch");
         assert_eq!(reloaded.snapshot().mic_active_threshold, 30.0);
         assert_eq!(reloaded.snapshot().spoken_languages, vec!["en", "ko"]);
         assert_eq!(

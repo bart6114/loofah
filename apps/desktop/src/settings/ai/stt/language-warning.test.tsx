@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     ai_language: "zh",
     spoken_languages: [] as string[],
     meeting_languages: undefined as string[] | undefined,
+    transcription_timing: "live",
   },
   listSupportedModels: vi.fn(),
   isSupportedLanguagesLive: vi.fn(),
@@ -75,6 +76,7 @@ beforeEach(() => {
     ai_language: "zh",
     spoken_languages: [],
     meeting_languages: undefined,
+    transcription_timing: "live",
   });
   mocks.listSupportedModels.mockResolvedValue({ status: "ok", data: models });
   mocks.isSupportedLanguagesLive.mockImplementation(
@@ -94,6 +96,22 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+test("does not warn about unavailable streaming when the user chose after recording", async () => {
+  mocks.config.current_stt_model = "soniqo-parakeet-streaming";
+  mocks.config.meeting_languages = ["nl"];
+  mocks.config.transcription_timing = "batch";
+  renderWarning();
+  await waitFor(() =>
+    expect(mocks.isSupportedLanguagesBatch).toHaveBeenCalledWith(
+      "fmtr",
+      "soniqo-parakeet-streaming",
+      ["nl"],
+    ),
+  );
+  expect(mocks.warning).not.toHaveBeenCalled();
+  expect(mocks.info).not.toHaveBeenCalled();
+});
 
 test("names the model when the main language alone is unsupported", async () => {
   renderWarning();

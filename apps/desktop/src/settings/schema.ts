@@ -157,6 +157,11 @@ export const SETTING_DEFINITIONS = {
     type: "string",
     path: ["ai", "current_stt_model"],
   },
+  transcription_timing: {
+    type: "string",
+    path: ["ai", "transcription_timing"],
+    default: "live" as string,
+  },
   timezone: {
     type: "string",
     path: ["general", "timezone"],

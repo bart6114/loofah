@@ -66,6 +66,7 @@ export function useStartListening(sessionId: string) {
   const aiLanguage = useConfigValue("ai_language");
   const spokenLanguages = useConfigValue("spoken_languages");
   const meetingLanguages = useConfigValue("meeting_languages");
+  const transcriptionTiming = useConfigValue("transcription_timing");
   const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
 
   const start = useListener((state) => state.start);
@@ -213,6 +214,7 @@ export function useStartListening(sessionId: string) {
       provider: conn?.provider,
       model: conn?.model,
       languages,
+      timing: transcriptionTiming,
     });
 
     const started = await start(
@@ -253,6 +255,7 @@ export function useStartListening(sessionId: string) {
     setLeftSidebarExpanded,
     spokenLanguages,
     meetingLanguages,
+    transcriptionTiming,
     start,
   ]);
 

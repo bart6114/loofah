@@ -198,6 +198,7 @@ export type AppConfig = Partial<{
   current_llm_model?: string | null;
   current_stt_provider?: string | null;
   current_stt_model?: string | null;
+  transcription_timing: string;
   timezone?: string | null;
   ai_providers: Partial<{ [key in string]: AiProviderEntry }>;
   hooks?: JsonValue | null;

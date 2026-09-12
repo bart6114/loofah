@@ -953,6 +953,31 @@ describe("useStartListening", () => {
     });
   });
 
+  test("records first with a live-capable model when the user chooses after recording", async () => {
+    useConfigValueMock.mockImplementation((key) => {
+      if (key === "ai_language") return "en";
+      if (key === "meeting_languages") return ["en"];
+      if (key === "transcription_timing") return "batch";
+      return [];
+    });
+    useSTTConnectionMock.mockReturnValue({
+      conn: {
+        provider: "fmtr",
+        model: "soniqo-parakeet-streaming",
+        baseUrl: "soniqo://local",
+        apiKey: "",
+      },
+    });
+    const { result } = renderHook(() => useStartListening("session-1"));
+    await act(async () => {
+      await result.current();
+    });
+    expect(startMock.mock.calls[0]?.[0]).toMatchObject({
+      transcription_mode: "batch",
+      languages: ["en"],
+    });
+  });
+
   test.each([
     { summaryLanguage: "en", meetingLanguage: "nl", mode: "batch" },
     { summaryLanguage: "nl", meetingLanguage: "en", mode: "live" },

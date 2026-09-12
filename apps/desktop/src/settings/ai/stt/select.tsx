@@ -249,8 +249,8 @@ export function SelectProviderAndModel({
           <div className="mt-4">
             <p className="text-muted-foreground mb-3 text-xs">
               <Trans>
-                Live models transcribe during the meeting. Other models
-                transcribe after recording.
+                Models marked Live support transcription while recording. Choose
+                when to transcribe below.
               </Trans>
             </p>
             <Select
@@ -369,12 +369,14 @@ function useTranscriptionLanguageWarning() {
     ai_language,
     spoken_languages,
     meeting_languages,
+    transcription_timing,
   } = useConfigValues([
     "current_stt_provider",
     "current_stt_model",
     "ai_language",
     "spoken_languages",
     "meeting_languages",
+    "transcription_timing",
   ] as const);
   const health = useConnectionHealth();
   const languages = getTranscriptionLanguages(
@@ -404,11 +406,13 @@ function useTranscriptionLanguageWarning() {
       isLiveTranscriptionSupported(current_stt_provider, selectedSttModel),
     enabled: isConfigured,
   });
-  const useLiveMode = resolveLiveLanguageSupportMode({
-    isOnDeviceModel,
-    useLiveOnDeviceModel,
-    liveSupported: liveSupport.data,
-  });
+  const useLiveMode =
+    transcription_timing !== "batch" &&
+    resolveLiveLanguageSupportMode({
+      isOnDeviceModel,
+      useLiveOnDeviceModel,
+      liveSupported: liveSupport.data,
+    });
 
   const languageSupportIssue = useQuery({
     queryKey: [

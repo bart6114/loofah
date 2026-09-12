@@ -137,6 +137,7 @@ msgid "Advanced"
 msgstr "Advanced"
 
 #: src/settings/ai/stt/select.tsx
+#: src/settings/ai/stt/timing.tsx
 msgid "After recording"
 msgstr "After recording"
 
@@ -775,10 +776,6 @@ msgstr "Light"
 msgid "Live"
 msgstr "Live"
 
-#: src/settings/ai/stt/select.tsx
-msgid "Live models transcribe during the meeting. Other models transcribe after recording."
-msgstr "Live models transcribe during the meeting. Other models transcribe after recording."
-
 #. placeholder {0}: formatLanguageList(unsupportedLanguages)
 #: src/settings/ai/stt/select.tsx
 msgid "Live transcription isn't available for {0}. You'll get the transcript right after the recording ends instead."
@@ -881,6 +878,10 @@ msgstr "Model"
 #: src/settings/ai/stt/select.tsx
 msgid "Model downloaded"
 msgstr "Model downloaded"
+
+#: src/settings/ai/stt/select.tsx
+msgid "Models marked Live support transcription while recording. Choose when to transcribe below."
+msgstr "Models marked Live support transcription while recording. Choose when to transcribe below."
 
 #: src/settings/general/storage/change-location.tsx
 msgid "Move my vault"
@@ -1316,6 +1317,10 @@ msgstr "Search..."
 msgid "Select a model"
 msgstr "Select a model"
 
+#: src/settings/ai/stt/timing.tsx
+msgid "Select a transcription model to check live availability."
+msgstr "Select a transcription model to check live availability."
+
 #: src/settings/general/theme.tsx
 msgid "Select appearance"
 msgstr "Select appearance"
@@ -1401,6 +1406,10 @@ msgstr "Show Loofah in the Dock and app switcher."
 #: src/settings/general/notification.tsx
 msgid "Show reminder after"
 msgstr "Show reminder after"
+
+#: src/settings/ai/stt/timing.tsx
+msgid "Show the transcript as you speak."
+msgstr "Show the transcript as you speak."
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Sign in · Beta"
@@ -1602,6 +1611,14 @@ msgstr "The selected provider processes the text you send for summaries. API usa
 msgid "This folder already has files in it"
 msgstr "This folder already has files in it"
 
+#: src/settings/ai/stt/timing.tsx
+msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgstr "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+
+#: src/settings/ai/stt/timing.tsx
+msgid "This model transcribes after recording."
+msgstr "This model transcribes after recording."
+
 #. placeholder {0}: pending.speakerCount
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "This transcript has {0} assigned speakers. Re-transcribing replaces the transcript and removes those speaker assignments."
@@ -1618,6 +1635,10 @@ msgstr "Ticket"
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
 msgstr "Timezone"
+
+#: src/settings/ai/stt/timing.tsx
+msgid "Transcribe when the recording ends."
+msgstr "Transcribe when the recording ends."
 
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/outer-header/index.tsx
@@ -1657,6 +1678,10 @@ msgstr "Transcription not set up"
 #: src/settings/ai/stt/select.tsx
 msgid "Transcription runs on your Mac"
 msgstr "Transcription runs on your Mac"
+
+#: src/settings/ai/stt/timing.tsx
+msgid "Transcription timing"
+msgstr "Transcription timing"
 
 #: src/settings/general/storage/index.tsx
 msgid "Troubleshooting"
@@ -1750,6 +1775,10 @@ msgstr "What's new in {version}?"
 #: src/onboarding/index.tsx
 msgid "Where your notes and recordings are stored"
 msgstr "Where your notes and recordings are stored"
+
+#: src/settings/ai/stt/timing.tsx
+msgid "While recording"
+msgstr "While recording"
 
 #: src/settings/ai/stt/select.tsx
 msgid "Works offline after downloading a model."

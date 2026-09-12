@@ -36,6 +36,34 @@ beforeEach(() => {
   });
 });
 
+test("an explicit after-recording choice overrides live capability without dropping languages", async () => {
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "soniqo-parakeet-streaming",
+      languages: ["en"],
+      timing: "batch",
+    }),
+  ).toEqual({ languages: ["en"], transcriptionMode: "batch" });
+});
+
+test("an explicit live choice still respects model and meeting language restrictions", async () => {
+  for (const [model, languages, mode] of [
+    ["soniqo-parakeet-streaming", ["en"], "live"],
+    ["soniqo-parakeet-streaming", ["en", "nl"], "batch"],
+    ["QuantizedSmallEn", ["en"], "batch"],
+  ] as const) {
+    expect(
+      await getLiveTranscriptionConfig({
+        provider: "fmtr",
+        model,
+        languages,
+        timing: "live",
+      }),
+    ).toEqual({ languages: [...languages], transcriptionMode: mode });
+  }
+});
+
 test("Whisper Large V3 records first and preserves Dutch and English", () => {
   expect(isSupportedLocalSttModel("whisper-large-v3")).toBe(true);
   expect(

@@ -137,6 +137,7 @@ msgid "Advanced"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
+#: src/settings/ai/stt/timing.tsx
 msgid "After recording"
 msgstr ""
 
@@ -775,10 +776,6 @@ msgstr ""
 msgid "Live"
 msgstr ""
 
-#: src/settings/ai/stt/select.tsx
-msgid "Live models transcribe during the meeting. Other models transcribe after recording."
-msgstr ""
-
 #. placeholder {0}: formatLanguageList(unsupportedLanguages)
 #: src/settings/ai/stt/select.tsx
 msgid "Live transcription isn't available for {0}. You'll get the transcript right after the recording ends instead."
@@ -880,6 +877,10 @@ msgstr ""
 
 #: src/settings/ai/stt/select.tsx
 msgid "Model downloaded"
+msgstr ""
+
+#: src/settings/ai/stt/select.tsx
+msgid "Models marked Live support transcription while recording. Choose when to transcribe below."
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -1316,6 +1317,10 @@ msgstr ""
 msgid "Select a model"
 msgstr ""
 
+#: src/settings/ai/stt/timing.tsx
+msgid "Select a transcription model to check live availability."
+msgstr ""
+
 #: src/settings/general/theme.tsx
 msgid "Select appearance"
 msgstr ""
@@ -1400,6 +1405,10 @@ msgstr ""
 
 #: src/settings/general/notification.tsx
 msgid "Show reminder after"
+msgstr ""
+
+#: src/settings/ai/stt/timing.tsx
+msgid "Show the transcript as you speak."
 msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
@@ -1602,6 +1611,14 @@ msgstr ""
 msgid "This folder already has files in it"
 msgstr ""
 
+#: src/settings/ai/stt/timing.tsx
+msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgstr ""
+
+#: src/settings/ai/stt/timing.tsx
+msgid "This model transcribes after recording."
+msgstr ""
+
 #. placeholder {0}: pending.speakerCount
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "This transcript has {0} assigned speakers. Re-transcribing replaces the transcript and removes those speaker assignments."
@@ -1617,6 +1634,10 @@ msgstr ""
 
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
+msgstr ""
+
+#: src/settings/ai/stt/timing.tsx
+msgid "Transcribe when the recording ends."
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
@@ -1656,6 +1677,10 @@ msgstr ""
 
 #: src/settings/ai/stt/select.tsx
 msgid "Transcription runs on your Mac"
+msgstr ""
+
+#: src/settings/ai/stt/timing.tsx
+msgid "Transcription timing"
 msgstr ""
 
 #: src/settings/general/storage/index.tsx
@@ -1749,6 +1774,10 @@ msgstr ""
 
 #: src/onboarding/index.tsx
 msgid "Where your notes and recordings are stored"
+msgstr ""
+
+#: src/settings/ai/stt/timing.tsx
+msgid "While recording"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
