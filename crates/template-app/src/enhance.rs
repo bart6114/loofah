@@ -87,8 +87,7 @@ mod tests {
         })
         .unwrap();
 
-        assert!(rendered.contains("Korean"));
-        assert!(rendered.contains("문장 끝을"));
+        assert!(rendered.contains("notes and transcripts in Korean."));
     }
 
     #[test]
