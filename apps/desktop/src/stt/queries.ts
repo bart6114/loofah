@@ -283,7 +283,7 @@ function mapTranscript(transcript: TranscriptWithData): TranscriptRecord {
   return {
     id: transcript.id,
     // The owner concept died with the workspaces removal (D10).
-    ownerUserId: transcript.user_id ?? DEFAULT_USER_ID,
+    ownerUserId: transcript.user_id || DEFAULT_USER_ID,
     sessionId: transcript.session_id,
     startedAt: transcript.started_at ?? 0,
     endedAt: transcript.ended_at ?? undefined,
