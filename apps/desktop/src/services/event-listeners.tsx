@@ -76,41 +76,8 @@ function createCaptureConfigSignature(config: {
   return JSON.stringify(config);
 }
 
-function parseStringArray(value: unknown, fallback: string[]) {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
-  }
-
-  if (typeof value !== "string") {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function getLiveConfigLanguages(
-  aiLanguage: string,
-  spokenLanguages: string[],
-  meetingLanguages?: string[],
-) {
-  return getTranscriptionLanguages(
-    aiLanguage || undefined,
-    parseStringArray(spokenLanguages, []),
-    meetingLanguages,
-  );
-}
-
 function LiveCaptureConfigSync() {
   const settingsValues = useConfigValues([
-    "ai_language",
-    "spoken_languages",
     "meeting_languages",
     "current_stt_provider",
     "current_stt_model",
@@ -129,8 +96,6 @@ function LiveCaptureConfigSyncReady({
   settingsValues,
 }: {
   settingsValues: {
-    ai_language: string;
-    spoken_languages: string[];
     meeting_languages: string[] | undefined;
     current_stt_provider: string | undefined;
     current_stt_model: string | undefined;
@@ -152,9 +117,7 @@ function LiveCaptureConfigSyncReady({
         return;
       }
 
-      const languages = getLiveConfigLanguages(
-        settingsValues.ai_language,
-        settingsValues.spoken_languages,
+      const languages = getTranscriptionLanguages(
         settingsValues.meeting_languages,
       );
       const liveConfig = await getLiveTranscriptionConfig({

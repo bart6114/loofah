@@ -18,17 +18,11 @@ export function TranscriptionTiming() {
     "current_stt_provider",
     "current_stt_model",
     "transcription_timing",
-    "ai_language",
-    "spoken_languages",
     "meeting_languages",
   ] as const);
   const save = useMutation({ mutationFn: setSettingValues });
   const groupId = useId();
-  const languages = getTranscriptionLanguages(
-    config.ai_language,
-    config.spoken_languages,
-    config.meeting_languages,
-  );
+  const languages = getTranscriptionLanguages(config.meeting_languages);
   const configured = isFmtrLocalSttModel(
     config.current_stt_provider,
     config.current_stt_model,

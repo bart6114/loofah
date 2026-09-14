@@ -256,19 +256,23 @@ describe("getLiveTranscriptionConfig", () => {
 });
 
 describe("getTranscriptionLanguages", () => {
-  test("explicit meeting languages stay independent of summary language", () => {
-    expect(getTranscriptionLanguages("en", ["fr"], ["nl"])).toEqual(["nl"]);
-    expect(getTranscriptionLanguages("de", ["fr"], ["nl"])).toEqual(["nl"]);
+  test.each([undefined, null])(
+    "defaults to English when meeting languages are %s",
+    (languages) => {
+      expect(getTranscriptionLanguages(languages)).toEqual(["en"]);
+    },
+  );
+
+  test("preserves explicit meeting languages", () => {
+    expect(getTranscriptionLanguages(["nl", "fr"])).toEqual(["nl", "fr"]);
   });
-  test("explicit empty selection does not reinstate the summary language", () => {
-    expect(getTranscriptionLanguages("en", ["fr"], [])).toEqual([]);
-  });
-  test("prefers the main language before additional spoken languages", () => {
-    expect(getTranscriptionLanguages("en", ["ko"])).toEqual(["en", "ko"]);
+
+  test("preserves an explicit empty selection", () => {
+    expect(getTranscriptionLanguages([])).toEqual([]);
   });
 
   test("deduplicates regional variants by base language", () => {
-    expect(getTranscriptionLanguages("en-US", ["en", "ko"])).toEqual([
+    expect(getTranscriptionLanguages(["en-US", "en", "ko"])).toEqual([
       "en-US",
       "ko",
     ]);

@@ -11,16 +11,8 @@ import { useConfigValues } from "~/shared/config";
 import { getTranscriptionLanguages } from "~/stt/capabilities";
 
 function useLanguageSettings() {
-  const config = useConfigValues([
-    "ai_language",
-    "spoken_languages",
-    "meeting_languages",
-  ] as const);
-  const meetingLanguages = getTranscriptionLanguages(
-    config.ai_language,
-    config.spoken_languages,
-    config.meeting_languages,
-  );
+  const config = useConfigValues(["ai_language", "meeting_languages"] as const);
+  const meetingLanguages = getTranscriptionLanguages(config.meeting_languages);
   const save = useMutation({ mutationFn: setSettingValues });
   return { config, meetingLanguages, save };
 }

@@ -203,7 +203,7 @@ describe("EventListeners notification events", () => {
     expect(openNewMock).not.toHaveBeenCalled();
   });
 
-  test("live capture config sync mounts without auth providers", async () => {
+  test("live capture config sync defaults to English independently of legacy language settings", async () => {
     vi.useFakeTimers();
     useConfigValuesMock.mockReturnValue({
       ai_language: "ko",
@@ -232,7 +232,7 @@ describe("EventListeners notification events", () => {
 
     expect(updateCaptureConfigMock).toHaveBeenCalledWith({
       session_id: "session-1",
-      languages: ["ko"],
+      languages: ["en"],
       participant_human_ids: [],
       // The owner concept died (D10): an indexed session maps to the default user.
       self_human_id: "00000000-0000-0000-0000-000000000000",

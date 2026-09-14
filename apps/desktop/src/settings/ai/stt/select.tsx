@@ -366,24 +366,16 @@ function useTranscriptionLanguageWarning() {
   const {
     current_stt_provider,
     current_stt_model,
-    ai_language,
-    spoken_languages,
     meeting_languages,
     transcription_timing,
   } = useConfigValues([
     "current_stt_provider",
     "current_stt_model",
-    "ai_language",
-    "spoken_languages",
     "meeting_languages",
     "transcription_timing",
   ] as const);
   const health = useConnectionHealth();
-  const languages = getTranscriptionLanguages(
-    ai_language,
-    spoken_languages,
-    meeting_languages,
-  );
+  const languages = getTranscriptionLanguages(meeting_languages);
   const supportedModels = useQuery(sttModelQueries.supportedModels());
 
   const selectedSttModel = isConfiguredSttModel(
