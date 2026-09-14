@@ -207,10 +207,25 @@ where
         .iter()
         .map(|samples| channel_duration_sec(samples))
         .collect::<Vec<_>>();
+    let packing_started = std::time::Instant::now();
     let channel_chunks = channel_samples
         .iter()
-        .map(|samples| chunk_channel_audio::<crate::Error>(samples))
+        .map(|samples| {
+            chunk_channel_audio::<crate::Error>(samples).map(|chunks| {
+                let packed = super::packing::pack(samples, &chunks, super::packing::gap_override());
+                tracing::info!(
+                    vad_windows = chunks.len(),
+                    inference_windows = packed.len(),
+                    "whisper_packing"
+                );
+                packed
+            })
+        })
         .collect::<Result<Vec<_>, _>>()?;
+    tracing::info!(
+        elapsed_ms = packing_started.elapsed().as_millis(),
+        "whisper_packing_completed"
+    );
     let resolved_until = channel_chunks
         .iter()
         .zip(channel_durations.iter().copied())

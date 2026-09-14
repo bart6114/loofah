@@ -62,6 +62,7 @@ impl WhisperBuilder {
 }
 
 impl Whisper {
+    pub fn set_native_timestamps(&mut self, _enabled: bool) {}
     pub fn set_initial_prompt(&mut self, prompt: String) {
         self.initial_prompt = prompt;
     }

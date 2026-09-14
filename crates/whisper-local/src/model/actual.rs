@@ -109,6 +109,7 @@ impl LoadedWhisper {
             id: uuid::Uuid::new_v4().to_string(),
             index: 0,
             languages,
+            native_timestamps: false,
             dynamic_prompt: String::new(),
             initial_prompt: String::new(),
             state: self.ctx.create_state()?,
@@ -123,6 +124,7 @@ pub struct Whisper {
     #[allow(dead_code)]
     index: usize,
     languages: Vec<Language>,
+    native_timestamps: bool,
     dynamic_prompt: String,
     initial_prompt: String,
     state: WhisperState,
@@ -130,6 +132,9 @@ pub struct Whisper {
 }
 
 impl Whisper {
+    pub fn set_native_timestamps(&mut self, enabled: bool) {
+        self.native_timestamps = enabled;
+    }
     pub fn set_initial_prompt(&mut self, prompt: String) {
         self.initial_prompt = prompt;
     }
@@ -166,18 +171,20 @@ impl Whisper {
 
             p.set_initial_prompt(initial_prompt);
 
-            unsafe {
-                Self::suppress_beg(&mut p, &token_beg);
+            if !self.native_timestamps {
+                unsafe {
+                    Self::suppress_beg(&mut p, &token_beg);
+                }
             }
 
-            p.set_no_timestamps(true);
+            p.set_no_timestamps(!self.native_timestamps);
             p.set_token_timestamps(false);
             p.set_split_on_word(true);
 
             p.set_temperature(0.0);
             p.set_temperature_inc(0.2);
 
-            p.set_single_segment(true);
+            p.set_single_segment(!self.native_timestamps);
             p.set_suppress_blank(true);
             p.set_suppress_nst(true);
 
