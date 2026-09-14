@@ -88,30 +88,6 @@ export const mappingMentionSchema = z.object({
   target_type: mentionTargetTypeSchema,
 });
 
-export const chatGroupSchema = z.object({
-  user_id: z.string(),
-  created_at: z.string(),
-  title: z.string(),
-});
-
-export const chatMessageStatusSchema = z.enum([
-  "streaming",
-  "ready",
-  "error",
-  "aborted",
-]);
-
-export const chatMessageSchema = z.object({
-  user_id: z.string(),
-  created_at: z.string(),
-  chat_group_id: z.string(),
-  role: z.string(),
-  content: z.string(),
-  metadata: jsonObject(z.any()),
-  parts: jsonObject(z.any()),
-  status: chatMessageStatusSchema.default("ready"),
-});
-
 export const dailyNoteSchema = z.object({
   user_id: z.string(),
   date: z.string(),
@@ -237,9 +213,6 @@ export type MappingSessionParticipant = z.infer<
 export type Tag = z.infer<typeof tagSchema>;
 export type MappingTagSession = z.infer<typeof mappingTagSessionSchema>;
 export type MappingMention = z.infer<typeof mappingMentionSchema>;
-export type ChatGroup = z.infer<typeof chatGroupSchema>;
-export type ChatMessageStatus = z.infer<typeof chatMessageStatusSchema>;
-export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type DailyNote = z.infer<typeof dailyNoteSchema>;
 export type EnhancedNote = z.infer<typeof enhancedNoteSchema>;
 export type Task = z.infer<typeof taskSchema>;
@@ -250,7 +223,6 @@ export type SessionStorage = ToStorageType<typeof sessionSchema>;
 export type TranscriptStorage = ToStorageType<typeof transcriptSchema>;
 export type WordStorage = ToStorageType<typeof wordSchema>;
 export type SpeakerHintStorage = ToStorageType<typeof speakerHintSchema>;
-export type ChatMessageStorage = ToStorageType<typeof chatMessageSchema>;
 export type EnhancedNoteStorage = ToStorageType<typeof enhancedNoteSchema>;
 export type TaskStorage = ToStorageType<typeof taskSchema>;
 export type HumanStorage = ToStorageType<typeof humanSchema>;

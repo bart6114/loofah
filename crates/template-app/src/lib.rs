@@ -1,21 +1,17 @@
 mod activity_capture;
-mod chat;
 mod daily_summary;
 mod enhance;
 mod event_contact;
 mod title;
-mod tool;
 mod transcript_patch;
 mod types;
 mod validate;
 
 pub use activity_capture::*;
-pub use chat::*;
 pub use daily_summary::*;
 pub use enhance::*;
 pub use event_contact::*;
 pub use title::*;
-pub use tool::*;
 pub use transcript_patch::*;
 pub use types::*;
 pub use validate::*;
@@ -49,9 +45,6 @@ common_derives! {
         EventContactUser(EventContactUser),
         TitleSystem(TitleSystem),
         TitleUser(TitleUser),
-        ChatSystem(ChatSystem),
-        ContextBlock(ContextBlock),
-        ToolSearchSessions(ToolSearchSessions),
         TranscriptPatchSystem(TranscriptPatchSystem),
         TranscriptPatchUser(Box<TranscriptPatchUser>),
     }
@@ -81,9 +74,6 @@ pub fn render(t: Template) -> Result<String, Error> {
         Template::EventContactUser(t) => Ok(askama::Template::render(&t)?),
         Template::TitleSystem(t) => Ok(askama::Template::render(&t)?),
         Template::TitleUser(t) => Ok(askama::Template::render(&t)?),
-        Template::ChatSystem(t) => Ok(askama::Template::render(&t)?),
-        Template::ContextBlock(t) => Ok(askama::Template::render(&t)?),
-        Template::ToolSearchSessions(t) => Ok(askama::Template::render(&t)?),
         Template::TranscriptPatchSystem(t) => Ok(askama::Template::render(&t)?),
         Template::TranscriptPatchUser(t) => Ok(askama::Template::render(&*t)?),
     }

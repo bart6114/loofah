@@ -50,7 +50,6 @@ hypr-audio-sync = { path = "crates/audio-sync", package = "audio-sync" }
 hypr-audio-utils = { path = "crates/audio-utils", package = "audio-utils" }
 hypr-buffer = { path = "crates/buffer", package = "buffer" }
 hypr-bundle = { path = "crates/bundle", package = "bundle" }
-hypr-chatwoot = { path = "crates/chatwoot", package = "chatwoot" }
 hypr-claude = { path = "crates/claude", package = "claude" }
 hypr-cli-process = { path = "crates/cli-process", package = "cli-process" }
 hypr-codex = { path = "crates/codex", package = "codex" }
@@ -123,7 +122,6 @@ hypr-tcc = { path = "crates/tcc", package = "tcc" }
 hypr-teems = { path = "crates/teems", package = "teems" }
 hypr-template-app = { path = "crates/template-app", package = "template-app" }
 hypr-template-app-legacy = { path = "crates/template-app-legacy", package = "template-app-legacy" }
-hypr-template-cli = { path = "crates/template-cli", package = "template-cli" }
 hypr-template-eval = { path = "crates/template-eval", package = "template-eval" }
 hypr-template-support = { path = "crates/template-support", package = "template-support" }
 hypr-ticket-interface = { path = "crates/ticket-interface", package = "ticket-interface" }

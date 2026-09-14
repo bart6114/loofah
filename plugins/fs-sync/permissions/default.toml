@@ -22,7 +22,6 @@ permissions = [
     "allow-load-session-content",
     "allow-delete-session-folder",
     "allow-scan-and-read",
-    "allow-chat-dir",
     "allow-entity-dir",
     "allow-attachment-save",
     "allow-attachment-import-path",

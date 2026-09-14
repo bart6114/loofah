@@ -20,7 +20,6 @@ const COMMANDS: &[&str] = &[
     "load_session_content",
     "delete_session_folder",
     "scan_and_read",
-    "chat_dir",
     "entity_dir",
     "attachment_save",
     "attachment_import_path",

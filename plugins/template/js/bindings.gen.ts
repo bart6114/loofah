@@ -89,8 +89,6 @@ export type BugReport = {
   appVersion: string;
   source: string;
 };
-export type ChatSystem = { language: string | null };
-export type ContextBlock = { contexts: SessionContext[] };
 export type DailySummaryAnalysis = {
   time: string;
   appName: string;
@@ -182,15 +180,6 @@ export type Session = {
   endedAt: string | null;
   event: Event | null;
 };
-export type SessionContext = {
-  title: string | null;
-  date: string | null;
-  rawContent: string | null;
-  enhancedContent: string | null;
-  transcript: Transcript | null;
-  participants: Participant[];
-  event: Event | null;
-};
 export type SupportContext = {
   account: AccountInfo | null;
   device: DeviceInfo;
@@ -212,25 +201,10 @@ export type Template =
   | { eventContactUser: EventContactUser }
   | { titleSystem: TitleSystem }
   | { titleUser: TitleUser }
-  | { chatSystem: ChatSystem }
-  | { contextBlock: ContextBlock }
-  | { toolSearchSessions: ToolSearchSessions }
   | { transcriptPatchSystem: TranscriptPatchSystem }
   | { transcriptPatchUser: TranscriptPatchUser };
 export type TitleSystem = { language: string | null };
 export type TitleUser = { enhancedNote: string };
-export type ToolSearchSessionItem = {
-  id: string;
-  title: string | null;
-  excerpt: string | null;
-  score: number;
-  createdAt: number | null;
-  sessionContext: SessionContext | null;
-};
-export type ToolSearchSessions = {
-  query: string;
-  results: ToolSearchSessionItem[];
-};
 export type Transcript = {
   segments: Segment[];
   startedAt: number | null;

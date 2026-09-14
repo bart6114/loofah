@@ -468,16 +468,6 @@ pub(crate) async fn scan_and_read<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn chat_dir<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    chat_group_id: String,
-) -> Result<String, String> {
-    let base = app.settings().vault_base().map_err(|e| e.to_string())?;
-    Ok(base.join("chats").join(&chat_group_id).to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
 pub(crate) async fn entity_dir<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     dir_name: String,

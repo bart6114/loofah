@@ -2466,18 +2466,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chatwoot"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "progenitor-client 0.13.0",
- "progenitor-utils",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "chinese-number"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15542,13 +15530,6 @@ dependencies = [
  "specta",
  "strum 0.28.0",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "template-cli"
-version = "0.1.0"
-dependencies = [
- "askama 0.15.6",
 ]
 
 [[package]]

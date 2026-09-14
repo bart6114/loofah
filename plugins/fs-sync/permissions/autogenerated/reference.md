@@ -25,7 +25,6 @@ Default permissions for the fs-sync plugin
 - `allow-load-session-content`
 - `allow-delete-session-folder`
 - `allow-scan-and-read`
-- `allow-chat-dir`
 - `allow-entity-dir`
 - `allow-attachment-save`
 - `allow-attachment-import-path`
@@ -430,32 +429,6 @@ Enables the audio_source_metadata command without any pre-configured scope.
 <td>
 
 Denies the audio_source_metadata command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:allow-chat-dir`
-
-</td>
-<td>
-
-Enables the chat_dir command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-chat-dir`
-
-</td>
-<td>
-
-Denies the chat_dir command without any pre-configured scope.
 
 </td>
 </tr>

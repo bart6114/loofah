@@ -174,14 +174,6 @@ async scanAndRead(scanDir: string, filePatterns: string[], recursive: boolean, p
     else return { status: "error", error: e  as any };
 }
 },
-async chatDir(chatGroupId: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:fs-sync|chat_dir", { chatGroupId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async entityDir(dirName: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:fs-sync|entity_dir", { dirName }) };
