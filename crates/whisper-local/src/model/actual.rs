@@ -34,7 +34,7 @@ impl LoadedWhisperBuilder {
             let mut p = WhisperContextParameters {
                 gpu_device: 0,
                 use_gpu: true,
-                flash_attn: false, // crash on macos
+                flash_attn: std::env::var("LOOFAH_WHISPER_FLASH_ATTN").as_deref() == Ok("1"),
                 ..Default::default()
             };
             p.dtw_parameters.mode = whisper_rs::DtwMode::None;
@@ -46,7 +46,13 @@ impl LoadedWhisperBuilder {
             return Err(crate::Error::ModelNotFound);
         }
 
+        let start = std::time::Instant::now();
+        tracing::info!(model = ?std::path::Path::new(&model_path).file_name(), engine = "1.9.4", gpu = context_param.use_gpu, flash_attn = context_param.flash_attn, "whisper_model_loading");
         let ctx = WhisperContext::new_with_params(&model_path, context_param)?;
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "whisper_model_loaded"
+        );
         let token_beg = ctx.token_beg();
 
         Ok(LoadedWhisper { ctx, token_beg })

@@ -18262,7 +18262,6 @@ dependencies = [
 [[package]]
 name = "whisper-rs"
 version = "0.16.0"
-source = "git+https://codeberg.org/tazz4843/whisper-rs?rev=129b982#129b9826dc8c385f6a28198bdc4f8a275385fe85"
 dependencies = [
  "libc",
  "tracing",
@@ -18272,7 +18271,6 @@ dependencies = [
 [[package]]
 name = "whisper-rs-sys"
 version = "0.15.0"
-source = "git+https://codeberg.org/tazz4843/whisper-rs?rev=129b982#129b9826dc8c385f6a28198bdc4f8a275385fe85"
 dependencies = [
  "bindgen 0.72.1",
  "cfg-if",

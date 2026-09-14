@@ -16,6 +16,7 @@ members = [
   "plugins/*",
 ]
 exclude = [
+  "vendor/whisper-rs",
   "plugins/extensions",
   "crates/vad-ext",
 ]
