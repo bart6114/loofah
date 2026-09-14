@@ -40,7 +40,7 @@ export async function ensureTag(name: string): Promise<Tag> {
 // for typeahead so nothing in the vault is unsuggestable.
 export function useInUseTags(): string[] {
   const { data = EMPTY_NAMES } = useIndexQuery({
-    entity: "sessions",
+    entity: "session_headers",
     queryKey: ["in-use-tags"],
     queryFn: async () => {
       const result = await commands.sessionListHeaders();

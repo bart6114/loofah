@@ -40,7 +40,7 @@ function ToggleButton({
         <button
           onClick={onClick}
           className={cn([
-            "rounded-sm p-0.5 transition-colors",
+            "rounded-sm p-0.5 transition-none",
             active
               ? "bg-accent text-muted-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-muted-foreground",
@@ -72,7 +72,7 @@ function IconButton({
       onClick={onClick}
       disabled={disabled}
       className={cn([
-        "rounded-sm p-0.5 transition-colors",
+        "rounded-sm p-0.5 transition-none",
         disabled
           ? "text-muted-foreground/70 cursor-not-allowed"
           : "text-muted-foreground hover:bg-accent",

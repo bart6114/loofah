@@ -3,7 +3,12 @@ import { useCallback } from "react";
 
 import { resolveShellEntryPath } from "./-resolve-entry-path";
 
-import { StandaloneOnboardingScreen } from "~/onboarding";
+import { deferredView, DeferredView } from "~/shared/deferred-view";
+const onboarding = deferredView(() =>
+  import("~/onboarding").then((module) => ({
+    default: module.StandaloneOnboardingScreen,
+  })),
+);
 import { useTabs } from "~/store/zustand/tabs";
 
 export const Route = createFileRoute("/app/onboarding")({
@@ -24,5 +29,9 @@ function Component() {
     [navigate, openCurrent],
   );
 
-  return <StandaloneOnboardingScreen onFinish={handleFinish} />;
+  return (
+    <DeferredView viewKey="onboarding">
+      <onboarding.View onFinish={handleFinish} />
+    </DeferredView>
+  );
 }

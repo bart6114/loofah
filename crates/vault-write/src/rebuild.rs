@@ -41,6 +41,27 @@ impl SessionStore {
     /// unchanged files -- the search projection and the frontend both ride that bus, and
     /// a no-op rescan must not re-trigger either.
     pub async fn rebuild_index(&self) -> Result<RebuildReport, StoreError> {
+        let observed = self
+            .rebuild_generation
+            .load(std::sync::atomic::Ordering::SeqCst);
+        let mut previous = self.rebuild_lock.lock().await;
+        // A scan started after this request already covers it; requests during a
+        // running scan share one subsequent pass so late external edits are kept.
+        if let Some((generation, result)) = &*previous {
+            if *generation > observed {
+                return result.clone();
+            }
+        }
+        let generation = self
+            .rebuild_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        let result = self.rebuild_index_once().await;
+        *previous = Some((generation, result.clone()));
+        result
+    }
+
+    async fn rebuild_index_once(&self) -> Result<RebuildReport, StoreError> {
         // The scan and the catalog swap run under the store write lock: renames
         // (provisional reconcile, migration) also hold it, so the swap can never
         // revert the catalog to a directory a concurrent rename just moved away
@@ -467,6 +488,7 @@ impl SessionStore {
         let mut changes = Vec::new();
         {
             let mut index = self.index.write().unwrap();
+            let previous_header = index.session_header(id);
 
             if let Some(new_meta) = meta {
                 let old = index.sessions.get(id);
@@ -506,6 +528,9 @@ impl SessionStore {
                 if apply_map_value(&mut index.tasks, id, new_tasks) {
                     changes.push((IndexEntity::Tasks, id.to_string()));
                 }
+            }
+            if previous_header != index.session_header(id) {
+                changes.push((IndexEntity::SessionHeaders, id.to_string()));
             }
         }
         self.notify_many(changes);

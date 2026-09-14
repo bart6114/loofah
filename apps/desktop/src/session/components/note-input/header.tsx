@@ -138,7 +138,7 @@ function iconHeaderViewClassName(
   const heightClassName = size === "tray" ? "h-[26px]" : "h-7";
 
   return cn([
-    "group/header-view flex shrink-0 items-center justify-center rounded-md transition-colors select-none [&>svg]:shrink-0",
+    "group/header-view flex shrink-0 items-center justify-center rounded-md transition-none select-none [&>svg]:shrink-0",
     isActive
       ? [
           "text-foreground bg-card shadow-xs",

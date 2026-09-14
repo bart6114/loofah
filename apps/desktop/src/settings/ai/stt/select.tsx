@@ -664,7 +664,7 @@ function ModelSelectItem({
         <button
           className={cn([
             "rounded-full px-2 text-[11px] font-medium",
-            "transition-all duration-150",
+            "transition-none duration-150",
             "from-muted to-accent text-foreground bg-linear-to-t py-0.5 shadow-xs hover:shadow-md",
           ])}
           onClick={handleAction}

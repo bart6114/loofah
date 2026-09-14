@@ -132,7 +132,21 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
       } satisfies TaskSyncPayload);
     };
 
-    const unsubscribe = store.subscribe(emitSnapshot);
+    let previousTasks = Object.values(store.getState().tasks).filter(
+      (task) => task.taskType === "enhance",
+    );
+    const unsubscribe = store.subscribe((state) => {
+      const nextTasks = Object.values(state.tasks).filter(
+        (task) => task.taskType === "enhance",
+      );
+      if (
+        nextTasks.length === previousTasks.length &&
+        nextTasks.every((task, index) => task === previousTasks[index])
+      )
+        return;
+      previousTasks = nextTasks;
+      emitSnapshot();
+    });
     emitSnapshot();
 
     void listen<TaskSyncRequestPayload>(TASK_SYNC_REQUEST_EVENT, (event) => {

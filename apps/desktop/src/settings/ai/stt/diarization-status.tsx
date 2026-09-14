@@ -87,7 +87,7 @@ function DiarizationStatusRow() {
             <button
               className={cn([
                 "rounded-full px-2 py-0.5 font-medium",
-                "transition-all duration-150",
+                "transition-none duration-150",
                 "from-muted to-accent text-foreground bg-linear-to-t shadow-xs hover:shadow-md",
               ])}
               onClick={handleDownload}

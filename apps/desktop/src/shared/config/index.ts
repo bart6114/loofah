@@ -1,7 +1,7 @@
-import {
-  useStoredSettingValues,
-  type StoredSettingValues,
-} from "~/settings/queries";
+import { useShallow } from "zustand/react/shallow";
+
+import { useConfigSelector, type StoredSettingValues } from "./store";
+
 import {
   SETTING_DEFINITIONS,
   type SettingKey,
@@ -36,13 +36,17 @@ const JSON_PARSED_KEYS = new Set<SettingKey>([
 export function useConfigValue<K extends SettingKey>(
   key: K,
 ): ConfigValueType<K> {
-  return resolveConfigValue(key, useStoredSettingValues());
+  return useConfigSelector((stored) => resolveConfigValue(key, stored));
 }
 
 export function useConfigValues<K extends SettingKey>(
   keys: readonly K[],
 ): { [P in K]: ConfigValueType<P> } {
-  return resolveConfigValues(keys, useStoredSettingValues());
+  return useConfigSelector(
+    useShallow((stored: StoredSettingValues) =>
+      resolveConfigValues(keys, stored),
+    ),
+  );
 }
 
 export function resolveConfigValues<K extends SettingKey>(
@@ -95,6 +99,11 @@ function parseStringArray(value: unknown, fallback: string[]): string[] {
     const result = parsed.filter(
       (entry): entry is string => typeof entry === "string",
     );
+    if (parsedStringArrayCache.size >= 128) {
+      parsedStringArrayCache.delete(
+        parsedStringArrayCache.keys().next().value!,
+      );
+    }
     parsedStringArrayCache.set(value, result);
     return result;
   } catch {

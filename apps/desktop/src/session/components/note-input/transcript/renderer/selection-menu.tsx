@@ -19,7 +19,7 @@ const MENU_CONTAINER_CLASSES = [
 
 const MENU_BUTTON_CLASSES = [
   "px-2 py-1 text-xs rounded-xs",
-  "hover:bg-accent transition-colors",
+  "hover:bg-accent transition-none",
 ];
 
 export function SelectionMenu({

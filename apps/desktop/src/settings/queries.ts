@@ -1,5 +1,6 @@
 import { disable, enable } from "@tauri-apps/plugin-autostart";
 import { useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 import { commands as detectCommands } from "@hypr/plugin-detect";
 import { commands as localSttCommands } from "@hypr/plugin-local-stt";
@@ -18,6 +19,8 @@ import {
   fetchStoredSettingValues,
   type StoredSettingValues,
   useConfigStoreState,
+  useConfigStateSelector,
+  useConfigSelector,
   writeConfigValues,
 } from "~/shared/config/store";
 import { isConfiguredSttModel, isFmtrLocalSttModel } from "~/stt/capabilities";
@@ -45,8 +48,7 @@ export function useStoredSettingValues(): StoredSettingValues {
 }
 
 export function useSettingsReady(): boolean {
-  const { isLoading, error } = useStoredSettingValuesQuery();
-  return !isLoading && !error;
+  return useConfigStateSelector((state) => !state.isLoading && !state.error);
 }
 
 export function useStoredSettingValue<K extends SettingKey>(
@@ -55,11 +57,12 @@ export function useStoredSettingValue<K extends SettingKey>(
   value: SettingValue<K> | undefined;
   hasValue: boolean;
 } {
-  const { values, hasValues } = useStoredSettingValues();
-  return {
-    value: values[key] as SettingValue<K> | undefined,
-    hasValue: hasValues.has(key),
-  };
+  return useConfigSelector(
+    useShallow(({ values, hasValues }: StoredSettingValues) => ({
+      value: values[key] as SettingValue<K> | undefined,
+      hasValue: hasValues.has(key),
+    })),
+  );
 }
 
 export function getStoredSettingValues(): Promise<StoredSettingValues> {

@@ -30,6 +30,7 @@ import { initializeAppExitFlush } from "./shared/app-exit";
 import { useConfigValue } from "./shared/config";
 import { initConfigStore } from "./shared/config/store";
 import { ErrorComponent, NotFoundComponent } from "./shared/control";
+import { startPerformanceDiagnostics } from "./shared/performance";
 import { StartupBoundary } from "./shared/startup-boundary";
 import { bootstrapThemeFromSettings } from "./shared/theme/apply";
 import { AppThemeProvider } from "./shared/theme/provider";
@@ -117,6 +118,7 @@ async function enableReactScanInDev() {
 }
 
 async function renderApp() {
+  startPerformanceDiagnostics();
   void initConfigStore().catch((error) => {
     console.error("Failed to initialize the config store", error);
   });

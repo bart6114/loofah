@@ -96,7 +96,7 @@ export function FolderLocationSection({
         <button
           onClick={handleChange}
           disabled={isPending}
-          className="text-muted-foreground hover:text-muted-foreground shrink-0 text-sm transition-colors disabled:opacity-50"
+          className="text-muted-foreground hover:text-muted-foreground shrink-0 text-sm transition-none disabled:opacity-50"
         >
           {t`Change`}
         </button>

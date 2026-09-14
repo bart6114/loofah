@@ -36,7 +36,7 @@ export function SessionDate({ sessionId }: { sessionId: string }) {
         aria-label={t`Edit date`}
         title={t`Edit date`}
         onClick={() => setIsEditing(true)}
-        className="text-muted-foreground hover:text-foreground flex h-6 w-fit items-center text-xs transition-colors"
+        className="text-muted-foreground hover:text-foreground flex h-6 w-fit items-center text-xs transition-none"
       >
         {noteDate}
       </button>

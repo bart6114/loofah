@@ -37,7 +37,7 @@ export function FinalDescription() {
           <button
             key={social.label}
             onClick={() => void openerCommands.openUrl(social.url, null)}
-            className="text-muted-foreground hover:text-muted-foreground inline-flex size-5 items-center justify-center rounded-md transition-colors duration-150"
+            className="text-muted-foreground hover:text-muted-foreground inline-flex size-5 items-center justify-center rounded-md transition-none duration-150"
             aria-label={social.label}
           >
             <Icon

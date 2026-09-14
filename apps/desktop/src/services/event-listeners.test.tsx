@@ -217,10 +217,18 @@ describe("EventListeners notification events", () => {
 
     await vi.waitFor(() => expect(sessionIdsMock).toHaveBeenCalledTimes(1));
     expect(subscribeIndexChangedMock).toHaveBeenCalledWith(
-      "sessions",
+      "session_headers",
       expect.any(Function),
     );
-    await vi.runOnlyPendingTimersAsync();
+    const listener = listenerSubscribeMock.mock.calls[0]![0];
+    const state = getListenerStateMock();
+    for (let tick = 0; tick < 10; tick++) {
+      listener(
+        { ...state, live: { ...state.live, amplitude: tick, seconds: tick } },
+        state,
+      );
+      await vi.advanceTimersByTimeAsync(100);
+    }
 
     expect(updateCaptureConfigMock).toHaveBeenCalledWith({
       session_id: "session-1",

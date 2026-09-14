@@ -213,8 +213,15 @@ function LiveCaptureConfigSyncReady({
       console.error("[listener] failed to read live capture identities", error);
     };
 
-    const unsubscribeListener = listenerStore.subscribe(schedulePush);
-    const unsubscribeIndex = subscribeIndexChanged("sessions", () => {
+    const unsubscribeListener = listenerStore.subscribe((state, previous) => {
+      if (
+        state.live.sessionId !== previous.live.sessionId ||
+        state.live.status !== previous.live.status
+      ) {
+        schedulePush();
+      }
+    });
+    const unsubscribeIndex = subscribeIndexChanged("session_headers", () => {
       void refreshSessionIds().catch(handleRefreshError);
     });
     void refreshSessionIds().catch(handleRefreshError);

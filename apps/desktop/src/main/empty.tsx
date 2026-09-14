@@ -90,14 +90,14 @@ function ActionItem({
         "flex items-center justify-between gap-8",
         "text-foreground text-sm",
         "rounded-full px-4 py-2",
-        "hover:bg-accent cursor-pointer transition-colors",
+        "hover:bg-accent cursor-pointer transition-none",
       ])}
     >
       <span>{label}</span>
       {shortcut && shortcut.length > 0 ? (
         <Kbd
           className={cn([
-            "transition-all duration-100",
+            "transition-none duration-100",
             "group-hover:-translate-y-0.5 group-hover:shadow-[0_2px_0_0_var(--kbd-shadow-outer-hover),inset_0_1px_0_0_var(--kbd-shadow-inset)]",
             "group-active:translate-y-0.5 group-active:shadow-none",
           ])}

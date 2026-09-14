@@ -65,7 +65,7 @@ describe("meeting float index data", () => {
     const stop = await subscribeMeetingFloatData(onData, vi.fn());
 
     expect(mocks.subscribeIndexChanged).toHaveBeenCalledWith(
-      "sessions",
+      "session_headers",
       expect.any(Function),
     );
     expect(onData).toHaveBeenCalledWith(

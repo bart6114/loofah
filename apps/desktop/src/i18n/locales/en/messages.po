@@ -810,6 +810,10 @@ msgstr "Loading summary prompt..."
 msgid "Loading..."
 msgstr "Loading..."
 
+#: src/shared/deferred-view.tsx
+msgid "Loading…"
+msgstr "Loading…"
+
 #: src/settings/ai/llm/configure.tsx
 msgid "Local AI app"
 msgstr "Local AI app"
@@ -1699,6 +1703,10 @@ msgstr "Turn off summaries"
 #: src/session/components/note-input/attachments.tsx
 msgid "Type"
 msgstr "Type"
+
+#: src/shared/deferred-view.tsx
+msgid "Unable to open this view. Please try another view."
+msgstr "Unable to open this view. Please try another view."
 
 #: src/session/components/session-date.tsx
 msgid "Unknown date"

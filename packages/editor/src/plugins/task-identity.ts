@@ -1,21 +1,24 @@
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
+import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 
 import { createTaskId, createTaskItemId } from "../tasks";
-import { hasChangedNodeOfType } from "./changed-ranges";
 
 export function taskIdentityPlugin() {
+  const key = new PluginKey<boolean>("taskIdentityValidation");
   return new Plugin({
+    key,
+    state: {
+      init: (_, state) => hasInvalidTaskIdentity(state.doc),
+      apply: (transaction, needsValidation) =>
+        transaction.getMeta(key) === false
+          ? false
+          : needsValidation || taskIdentitiesChanged(transaction),
+    },
     appendTransaction(transactions, _oldState, newState) {
       if (!transactions.some((transaction) => transaction.docChanged)) {
         return null;
       }
-      if (
-        !hasChangedNodeOfType(newState.doc, transactions, "taskItem") &&
-        !hasInvalidTaskIdentity(newState.doc)
-      ) {
-        return null;
-      }
+      if (!key.getState(newState)) return null;
 
       const seenTaskIds = new Set<string>();
       const seenTaskItemIds = new Set<string>();
@@ -60,11 +63,7 @@ export function taskIdentityPlugin() {
         }
       });
 
-      if (updates.length === 0) {
-        return null;
-      }
-
-      let tr = newState.tr;
+      let tr = newState.tr.setMeta(key, false);
       updates.forEach(({ pos, taskId, taskItemId }) => {
         const node = tr.doc.nodeAt(pos);
         if (!node) {
@@ -115,4 +114,51 @@ function hasInvalidTaskIdentity(doc: PMNode) {
   });
 
   return invalid;
+}
+
+function taskIdentitiesChanged(transaction: Transaction): boolean {
+  return transaction.steps.some((step, index) => {
+    const before = transaction.docs[index]!;
+    const after = transaction.docs[index + 1] ?? transaction.doc;
+    let changed = false;
+    let hasRanges = false;
+    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      hasRanges = true;
+      if (
+        JSON.stringify(identitiesInRange(before, oldStart, oldEnd)) !==
+        JSON.stringify(identitiesInRange(after, newStart, newEnd))
+      )
+        changed = true;
+    });
+    // Attribute steps have empty maps; checking their target also handles task
+    // identity edits without treating text changes as identity changes.
+    if (!hasRanges) {
+      const pos = (step as unknown as { pos?: number }).pos;
+      if (typeof pos === "number") {
+        changed =
+          JSON.stringify(identitiesInRange(before, pos, pos)) !==
+          JSON.stringify(identitiesInRange(after, pos, pos));
+      }
+    }
+    return changed;
+  });
+}
+
+function identitiesInRange(doc: PMNode, from: number, to: number) {
+  const identities = new Map<number, unknown>();
+  const add = (node: PMNode, pos: number) => {
+    if (node.type.name === "taskItem")
+      identities.set(pos, [node.attrs.taskId, node.attrs.taskItemId]);
+  };
+  for (const pos of [from, to]) {
+    const resolved = doc.resolve(pos);
+    for (let depth = 1; depth <= resolved.depth; depth++)
+      add(resolved.node(depth), resolved.before(depth));
+    if (resolved.nodeAfter) add(resolved.nodeAfter, pos);
+  }
+  if (to > from)
+    doc.nodesBetween(from, to, (node, pos) => {
+      add(node, pos);
+    });
+  return [...identities.values()];
 }

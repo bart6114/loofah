@@ -903,6 +903,7 @@ export type IndexChanged = { entity: IndexEntity; ids: string[] };
  */
 export type IndexEntity =
   | "sessions"
+  | "session_headers"
   | "docs"
   | "transcripts"
   | "tasks"

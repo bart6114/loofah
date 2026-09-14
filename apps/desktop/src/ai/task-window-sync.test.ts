@@ -3,22 +3,29 @@ const mocks = vi.hoisted(() => ({
   listen: vi.fn(),
   emitTo: vi.fn(),
   stop: vi.fn(),
+  emit: vi.fn(),
+  label: "note-window",
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: mocks.listen,
   emitTo: mocks.emitTo,
-  emit: vi.fn(),
+  emit: mocks.emit,
 }));
 vi.mock("@hypr/plugin-windows", () => ({
-  getCurrentWebviewWindowLabel: () => "note-window",
+  getCurrentWebviewWindowLabel: () => mocks.label,
 }));
 vi.mock("~/services/enhancer", () => ({ getEnhancerService: vi.fn() }));
-import { requestMainEnhance } from "./task-window-sync";
+import { act, render } from "@testing-library/react";
+import { createElement } from "react";
+import { createStore } from "zustand/vanilla";
+
+import { AITaskWindowSyncBridge, requestMainEnhance } from "./task-window-sync";
 
 describe("detached summary requests", () => {
   let respond: (event: { payload: unknown }) => void;
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.label = "note-window";
     mocks.listen.mockImplementation(async (_event, callback) => {
       respond = callback;
       return mocks.stop;
@@ -61,4 +68,45 @@ describe("detached summary requests", () => {
     await assertion;
     expect(mocks.stop).toHaveBeenCalledOnce();
   });
+});
+
+it("does not broadcast unrelated task changes and sends the final summary snapshot", async () => {
+  mocks.label = "main";
+  mocks.emit.mockReset().mockResolvedValue(undefined);
+  mocks.listen.mockResolvedValue(() => {});
+  const task = {
+    taskType: "enhance",
+    status: "generating",
+    streamedText: "first",
+    sessionId: "s1",
+  };
+  const store = createStore<any>(() => ({
+    tasks: { summary: task },
+    cancel: vi.fn(),
+  }));
+  const view = render(createElement(AITaskWindowSyncBridge, { store }));
+  expect(mocks.emit).toHaveBeenCalledTimes(1);
+  act(() =>
+    store.setState({
+      tasks: {
+        summary: task,
+        title: { taskType: "title", streamedText: "title" },
+      },
+    }),
+  );
+  expect(mocks.emit).toHaveBeenCalledTimes(1);
+  act(() =>
+    store.setState({
+      tasks: {
+        summary: { ...task, status: "success", streamedText: "complete" },
+      },
+    }),
+  );
+  expect(mocks.emit).toHaveBeenCalledTimes(2);
+  expect(mocks.emit.mock.lastCall?.[1].tasks.summary).toMatchObject({
+    status: "success",
+    streamedText: "complete",
+  });
+  view.unmount();
+  mocks.label = "note-window";
 });

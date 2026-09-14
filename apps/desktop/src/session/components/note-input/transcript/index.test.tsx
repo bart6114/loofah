@@ -76,6 +76,7 @@ describe("Transcript", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -140,6 +141,27 @@ describe("Transcript", () => {
     expect(screen.queryByTestId("transcript-viewer")).toBeNull();
 
     flushAnimationFrame(animationFrames);
+    expect(screen.getByTestId("transcript-viewer")).not.toBeNull();
+  });
+
+  it("finishes loading when WebKit does not deliver animation frames", async () => {
+    vi.useFakeTimers();
+    transcripts = [
+      makeTranscript([
+        { id: "word-1", text: "Hello", start_ms: 0, end_ms: 1, channel: 0 },
+      ]),
+    ];
+    render(
+      <Transcript
+        sessionId={sessionId}
+        transcripts={transcripts}
+        scrollRef={createRef()}
+      />,
+    );
+    expect(screen.getByText("Loading transcript...")).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
     expect(screen.getByTestId("transcript-viewer")).not.toBeNull();
   });
 

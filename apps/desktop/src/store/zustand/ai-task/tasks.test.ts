@@ -28,6 +28,61 @@ afterEach(() => {
 });
 
 describe("createTasksSlice", () => {
+  it("batches a burst of chunks and flushes the latest text immediately on cancellation", async () => {
+    vi.useFakeTimers();
+    let state: ReturnType<typeof createTasksSlice>;
+    const snapshots: string[] = [];
+    const taskId = "note-burst-enhance" as const;
+    state = createTasksSlice(
+      (updater: any) => {
+        state =
+          typeof updater === "function"
+            ? updater(state)
+            : { ...state, ...updater };
+        snapshots.push(state.tasks[taskId]?.streamedText ?? "");
+      },
+      () => state,
+    );
+    let unblock!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let received!: () => void;
+    const burstReceived = new Promise<void>((resolve) => {
+      received = resolve;
+    });
+    TASK_CONFIGS.enhance.transformArgs = vi.fn(async () => ({}) as any);
+    TASK_CONFIGS.enhance.transforms = [];
+    TASK_CONFIGS.enhance.onSuccess = vi.fn(async () => {});
+    TASK_CONFIGS.enhance.executeWorkflow = vi.fn(async function* () {
+      for (let index = 0; index < 200; index++)
+        yield { type: "text-delta", text: "a" } as any;
+      received();
+      await blocked;
+    });
+    const pending = state.generate(taskId, {
+      model: {} as any,
+      taskType: "enhance",
+      args: { sessionId: "session", enhancedNoteId: "note" },
+    });
+    await burstReceived;
+    expect(state.tasks[taskId]?.streamedText).toBe("");
+    expect(snapshots).toHaveLength(1);
+    state.cancel(taskId);
+    expect(state.tasks[taskId]).toMatchObject({
+      status: "idle",
+      streamedText: "a".repeat(200),
+    });
+    unblock();
+    await pending;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(state.tasks[taskId]).toMatchObject({
+      status: "idle",
+      streamedText: "a".repeat(200),
+    });
+    expect(TASK_CONFIGS.enhance.onSuccess).not.toHaveBeenCalled();
+  });
+
   it("hydrates a remote task snapshot without an abort controller", () => {
     let state: ReturnType<typeof createTasksSlice>;
     const set = (updater: any) => {

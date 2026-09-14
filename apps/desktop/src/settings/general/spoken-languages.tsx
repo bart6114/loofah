@@ -202,7 +202,7 @@ export function SpokenLanguagesView({
                   onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setLanguageSelectedIndex(index)}
                   className={cn([
-                    "flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors",
+                    "flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-none",
                     languageSelectedIndex === index
                       ? "bg-accent"
                       : "hover:bg-accent",

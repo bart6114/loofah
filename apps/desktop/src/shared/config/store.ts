@@ -55,11 +55,43 @@ function setState(next: ConfigStoreState): void {
 }
 
 export function applyConfigSnapshot(config: AppConfig): void {
+  if (
+    state.snapshot &&
+    !state.error &&
+    configsEqual(state.snapshot.config, config)
+  ) {
+    return;
+  }
   setState({
     snapshot: { config, settings: toStoredSettingValues(config) },
     isLoading: false,
     error: null,
   });
+}
+
+function configsEqual(previous: AppConfig, next: AppConfig): boolean {
+  const keys = Object.keys(previous) as (keyof AppConfig)[];
+  return (
+    keys.length === Object.keys(next).length &&
+    keys.every(
+      (key) =>
+        Object.is(previous[key], next[key]) ||
+        JSON.stringify(previous[key]) === JSON.stringify(next[key]),
+    )
+  );
+}
+
+export const EMPTY_STORED_SETTINGS: StoredSettingValues = {
+  values: {},
+  hasValues: new Set(),
+};
+
+export function useConfigSelector<T>(
+  selector: (settings: StoredSettingValues) => T,
+): T {
+  return useSyncExternalStore(subscribe, () =>
+    selector(state.snapshot?.settings ?? EMPTY_STORED_SETTINGS),
+  );
 }
 
 export function initConfigStore(): Promise<void> {
@@ -94,8 +126,14 @@ function subscribe(subscriber: () => void): () => void {
   };
 }
 
+export function useConfigStateSelector<T>(
+  selector: (state: ConfigStoreState) => T,
+): T {
+  return useSyncExternalStore(subscribe, () => selector(state));
+}
+
 export function useConfigStoreState(): ConfigStoreState {
-  return useSyncExternalStore(subscribe, () => state);
+  return useConfigStateSelector((state) => state);
 }
 
 export async function fetchConfig(): Promise<AppConfig> {

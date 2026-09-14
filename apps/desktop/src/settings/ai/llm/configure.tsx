@@ -93,7 +93,7 @@ export function ConfigureProviders() {
               if (route !== option.id) chooseProvider(option.provider);
             }}
             className={cn([
-              "flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-colors",
+              "flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-none",
               route === option.id
                 ? "border-brand bg-accent"
                 : "hover:bg-accent",

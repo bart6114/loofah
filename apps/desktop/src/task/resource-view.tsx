@@ -102,7 +102,7 @@ export function ResourceView({ resource }: { resource: TaskResource }) {
               </h1>
               <button
                 type="button"
-                className="text-muted-foreground hover:bg-accent hover:text-muted-foreground shrink-0 rounded-md p-1.5 transition-colors"
+                className="text-muted-foreground hover:bg-accent hover:text-muted-foreground shrink-0 rounded-md p-1.5 transition-none"
                 onClick={() => openerCommands.openUrl(url, null)}
                 title={t`Open on GitHub`}
               >

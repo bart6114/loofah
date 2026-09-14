@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { commands as localSttCommands } from "@hypr/plugin-local-stt";
+import type { LocalModel } from "@hypr/plugin-local-stt";
+
+import { localSttQueries } from "./useLocalSttModel";
 
 import { type ProviderId } from "~/settings/ai/stt/shared";
 import { useConfigValues } from "~/shared/config";
@@ -27,54 +29,31 @@ export const useSTTConnection = () => {
     : null;
   const isLocalModel = !!localModel;
 
-  const local = useQuery({
-    enabled: current_stt_provider === "fmtr",
-    queryKey: ["stt-connection", current_stt_provider, localModel],
-    refetchInterval: 1000,
-    queryFn: async () => {
-      if (!localModel) {
-        return null;
-      }
-
-      const downloaded = await localSttCommands.isModelDownloaded(localModel);
-      if (downloaded.status !== "ok" || !downloaded.data) {
-        return { status: "not_downloaded" as const, connection: null };
-      }
-
-      const serverResult = await localSttCommands.getServerForModel(localModel);
-
-      if (serverResult.status !== "ok") {
-        return null;
-      }
-
-      const server = serverResult.data;
-
-      if (server?.status === "ready" && server.url) {
-        return {
-          status: "ready" as const,
-          connection: {
-            provider: current_stt_provider!,
-            model: localModel,
-            baseUrl: server.url,
-            apiKey: "",
-          },
-        };
-      }
-
-      return {
-        status: server?.status ?? "loading",
-        connection: null,
-      };
-    },
+  const downloaded = useQuery({
+    ...localSttQueries.isDownloaded(localModel as LocalModel),
+    enabled: !!localModel,
   });
-
-  const connection = useMemo(() => {
-    if (!current_stt_provider || !current_stt_model || !isLocalModel) {
+  const server = useQuery(localSttQueries.server(localModel));
+  const data = useMemo(() => {
+    if (!localModel || !current_stt_provider || downloaded.data === undefined)
       return null;
-    }
-
-    return local.data?.connection ?? null;
-  }, [current_stt_provider, current_stt_model, isLocalModel, local.data]);
+    if (!downloaded.data)
+      return { status: "not_downloaded" as const, connection: null };
+    return {
+      status: server.data?.status ?? "loading",
+      connection:
+        server.data?.status === "ready" && server.data.url
+          ? {
+              provider: current_stt_provider,
+              model: localModel,
+              baseUrl: server.data.url,
+              apiKey: "",
+            }
+          : null,
+    };
+  }, [current_stt_provider, downloaded.data, localModel, server.data]);
+  const local = { ...server, data };
+  const connection = data?.connection ?? null;
 
   return {
     conn: connection,

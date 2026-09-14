@@ -26,7 +26,7 @@ function ActionLink({
       onClick={onClick}
       disabled={disabled}
       className={cn([
-        "hover:text-foreground underline transition-colors",
+        "hover:text-foreground underline transition-none",
         disabled && "cursor-not-allowed opacity-50",
       ])}
     >
@@ -138,7 +138,7 @@ export function TroubleShootingLink({
         <button
           type="button"
           onClick={() => setShowActions(true)}
-          className="hover:text-foreground underline transition-colors"
+          className="hover:text-foreground underline transition-none"
         >
           <Trans>Having trouble?</Trans>
         </button>

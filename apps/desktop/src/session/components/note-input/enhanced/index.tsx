@@ -46,7 +46,11 @@ export const Enhanced = forwardRef<
       () => (status === "success" ? crypto.randomUUID() : undefined),
       [status, enhancedNoteId],
     );
-    const enhancedNote = useEnhancedNote(enhancedNoteId, generationId);
+    const enhancedNote = useEnhancedNote(
+      enhancedNoteId,
+      generationId,
+      sessionId,
+    );
     const content = enhancedNote?.content;
 
     const hasContent = hasStoredNoteContent(content);

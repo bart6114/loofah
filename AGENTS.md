@@ -52,6 +52,10 @@ Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crat
 - `desktop_build.yaml` is the separate staging lane: unversioned DMG artifact on every push to `main`.
 - Each push leaves a bot `chore(release)` commit on `main`, so local `main` is behind after every push — `git pull --rebase origin main` before pushing.
 
+## Responsiveness
+
+Always strive for a snappy, lightweight user experience while preserving functionality and data integrity. Hover, focus, pressed, and selection feedback should be immediate. Keep expensive work out of input handlers and frequent render paths; use narrow subscriptions, scoped invalidation, bounded background work, and deliberate caching. Preserve recording reliability and prioritize interactive responsiveness over background throughput. Validate performance-sensitive changes in a production macOS build with realistic vault sizes and concurrent recording or AI work, and add focused regression coverage for the behavior being improved.
+
 ## Code Style
 
 - Avoid creating types/interfaces unless shared. Inline function props.

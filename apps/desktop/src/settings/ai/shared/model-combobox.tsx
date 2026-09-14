@@ -307,7 +307,7 @@ export function ModelCombobox({
               <button
                 type="button"
                 onClick={toggleShowIgnored}
-                className="hover:text-foreground mr-1 flex items-center gap-1 text-xs transition-colors"
+                className="hover:text-foreground mr-1 flex items-center gap-1 text-xs transition-none"
               >
                 {showIgnored ? (
                   <EyeOff className="h-3 w-3" />
@@ -328,7 +328,7 @@ export function ModelCombobox({
                 type="button"
                 onClick={() => refetch()}
                 disabled={isFetching}
-                className="hover:text-foreground ml-auto flex items-center gap-1 text-xs transition-colors disabled:opacity-50"
+                className="hover:text-foreground ml-auto flex items-center gap-1 text-xs transition-none disabled:opacity-50"
               >
                 <RefreshCcw
                   className={cn(["h-3 w-3", isFetching && "animate-spin"])}

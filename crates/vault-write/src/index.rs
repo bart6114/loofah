@@ -37,6 +37,8 @@ use hypr_fs_format::TranscriptWithData;
 #[serde(rename_all = "lowercase")]
 pub enum IndexEntity {
     Sessions,
+    #[serde(rename = "session_headers")]
+    SessionHeaders,
     Docs,
     Transcripts,
     Tasks,
@@ -203,6 +205,20 @@ pub struct VaultIndex {
     pub tags: HashMap<String, TagItem>,
 }
 
+impl VaultIndex {
+    pub(super) fn session_header(&self, id: &str) -> Option<SessionListHeader> {
+        self.sessions.get(id).map(|entry| SessionListHeader {
+            id: entry.meta.id.clone(),
+            title: entry.meta.title.clone(),
+            created_at: entry.meta.created_at.clone(),
+            folder: entry.meta.folder.clone(),
+            tags: entry.meta.tags.clone(),
+            author: entry.meta.author.clone(),
+            has_transcript_words: has_transcript_words(self, id),
+        })
+    }
+}
+
 pub(crate) type IndexChangeSender = tokio::sync::mpsc::UnboundedSender<(IndexEntity, Vec<String>)>;
 pub type IndexChangeReceiver = tokio::sync::mpsc::UnboundedReceiver<(IndexEntity, Vec<String>)>;
 
@@ -250,16 +266,9 @@ impl SessionStore {
         let mut entries: Vec<SessionListHeader> = index
             .sessions
             .values()
-            .map(|entry| SessionListHeader {
-                id: entry.meta.id.clone(),
-                title: entry.meta.title.clone(),
-                created_at: entry.meta.created_at.clone(),
-                folder: entry.meta.folder.clone(),
-                tags: entry.meta.tags.clone(),
-                author: entry.meta.author.clone(),
-                has_transcript_words: has_transcript_words(&index, &entry.meta.id),
-            })
+            .filter_map(|entry| index.session_header(&entry.meta.id))
             .collect();
+        drop(index);
         entries.sort_by(|a, b| {
             (a.created_at.as_str(), a.id.as_str()).cmp(&(b.created_at.as_str(), b.id.as_str()))
         });
@@ -493,6 +502,7 @@ impl SessionStore {
 
     pub(super) fn index_upsert_meta(&self, meta: &SessionMeta) {
         let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
         match index.sessions.get_mut(&meta.id) {
             Some(entry) => entry.meta = meta.clone(),
             None => {
@@ -504,6 +514,11 @@ impl SessionStore {
                     },
                 );
             }
+        }
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
         }
     }
 
@@ -542,10 +557,16 @@ impl SessionStore {
         summary: TranscriptSummary,
     ) {
         let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(session_id);
         if summary.transcript_ids.is_empty() {
             index.transcripts.remove(session_id);
         } else {
             index.transcripts.insert(session_id.to_string(), summary);
+        }
+        let header_changed = previous_header != index.session_header(session_id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![session_id.to_string()]);
         }
     }
 
@@ -575,6 +596,7 @@ impl SessionStore {
         let mut changes = Vec::new();
         if index.sessions.remove(session_id).is_some() {
             changes.push((IndexEntity::Sessions, session_id.to_string()));
+            changes.push((IndexEntity::SessionHeaders, session_id.to_string()));
         }
         if index.docs.remove(session_id).is_some() {
             changes.push((IndexEntity::Docs, session_id.to_string()));
@@ -747,7 +769,7 @@ pub(crate) const COALESCE_WINDOW: std::time::Duration = std::time::Duration::fro
 
 /// Stable emission order so bursts serialize deterministically (and tests can assert
 /// exact sequences).
-const ENTITY_ORDER: [IndexEntity; 7] = [
+const ENTITY_ORDER: [IndexEntity; 8] = [
     IndexEntity::Sessions,
     IndexEntity::Docs,
     IndexEntity::Transcripts,
@@ -755,6 +777,7 @@ const ENTITY_ORDER: [IndexEntity; 7] = [
     IndexEntity::People,
     IndexEntity::Tags,
     IndexEntity::Locations,
+    IndexEntity::SessionHeaders,
 ];
 
 /// One coalesced flush: group a drained batch by entity, dedupe ids preserving
@@ -921,6 +944,82 @@ mod tests {
         // put it back for a later drain in the same test
         *store.index_changes_rx.lock().unwrap() = Some(rx);
         changes
+    }
+
+    #[tokio::test]
+    async fn header_events_follow_projection_changes_without_note_body_noise() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "One")).await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store.write_note("s1", "new body").await.unwrap();
+        let entities = changed_entities(&store);
+        assert!(entities.contains(&IndexEntity::Sessions));
+        assert!(!entities.contains(&IndexEntity::SessionHeaders));
+        store.write_meta(&meta("s1", "One")).await.unwrap();
+        assert!(!changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store.write_meta(&meta("s1", "Renamed")).await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store
+            .write_transcript("s1", transcript("t1", 0.0, vec![word("w1", "hi")]))
+            .await
+            .unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store
+            .write_transcript("s1", transcript("t1", 0.0, vec![word("w1", "changed")]))
+            .await
+            .unwrap();
+        assert!(!changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        let dir = session_path(&store, &vault, "s1").await;
+        std::fs::write(
+            dir.join("_meta.json"),
+            serde_json::to_vec(&meta("s1", "External")).unwrap(),
+        )
+        .unwrap();
+        store.refresh_session("s1").await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        std::fs::write(dir.join("_meta.json"), "invalid").unwrap();
+        let _ = store.refresh_session("s1").await;
+        assert!(!changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        std::fs::remove_file(dir.join("_meta.json")).unwrap();
+        store.refresh_session("s1").await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+    }
+
+    #[tokio::test]
+    async fn concurrent_rebuild_requests_share_a_followup_pass() {
+        let (store, _vault) = test_store().await;
+        let write_guard = store.lock_writes().await;
+        let running = {
+            let store = store.clone();
+            tokio::spawn(async move { store.rebuild_index().await })
+        };
+        while store
+            .rebuild_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+            == 0
+        {
+            tokio::task::yield_now().await;
+        }
+        let mut pending = Vec::new();
+        for _ in 0..20 {
+            let store = store.clone();
+            pending.push(tokio::spawn(async move { store.rebuild_index().await }));
+        }
+        // Poll every request while the first scan is held at the write lock.
+        for _ in 0..40 {
+            tokio::task::yield_now().await;
+        }
+        drop(write_guard);
+        running.await.unwrap().unwrap();
+        for request in pending {
+            request.await.unwrap().unwrap();
+        }
+        assert_eq!(
+            store
+                .rebuild_generation
+                .load(std::sync::atomic::Ordering::SeqCst),
+            2
+        );
     }
 
     fn changed_entities(store: &SessionStore) -> HashSet<IndexEntity> {

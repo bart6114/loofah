@@ -114,7 +114,7 @@ function ResourceNav({
               type="button"
               onClick={() => onNavClick(key)}
               className={cn([
-                "w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                "w-full rounded-md px-2 py-1.5 text-left text-xs transition-none",
                 isActive
                   ? "text-foreground font-medium"
                   : "text-muted-foreground hover:text-muted-foreground",

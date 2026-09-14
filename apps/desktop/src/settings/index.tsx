@@ -6,16 +6,37 @@ import {
   SettingsPermissions,
   SettingsStorage,
 } from "./general";
-import { SettingsTodo } from "./todo";
 
-import { LLM } from "~/settings/ai/llm";
-import { SummaryPromptSettings } from "~/settings/ai/llm/summary-prompt";
-import { STT } from "~/settings/ai/stt";
-import { SettingsDevelopers } from "~/settings/developers";
-import { SettingsDictionary } from "~/settings/dictionary";
 import { SettingsHydrationBoundary } from "~/settings/hydration-boundary";
+import {
+  deferredView,
+  DeferredView,
+  usePreloadViews,
+} from "~/shared/deferred-view";
 import { StandardContentWrapper } from "~/shared/main";
 import { type Tab } from "~/store/zustand/tabs";
+
+const todo = deferredView(() =>
+  import("./todo").then((m) => ({ default: m.SettingsTodo })),
+);
+const llm = deferredView(() =>
+  import("./ai/llm").then((m) => ({ default: m.LLM })),
+);
+const prompt = deferredView(() =>
+  import("./ai/llm/summary-prompt").then((m) => ({
+    default: m.SummaryPromptSettings,
+  })),
+);
+const stt = deferredView(() =>
+  import("./ai/stt").then((m) => ({ default: m.STT })),
+);
+const developers = deferredView(() =>
+  import("./developers").then((m) => ({ default: m.SettingsDevelopers })),
+);
+const dictionary = deferredView(() =>
+  import("./dictionary").then((m) => ({ default: m.SettingsDictionary })),
+);
+const preloaders = [stt.preload, llm.preload, developers.preload];
 
 export function TabContentSettings({
   tab,
@@ -32,6 +53,7 @@ export function TabContentSettings({
 }
 
 function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
+  usePreloadViews(preloaders);
   const requestedTab = tab.state.tab as string | undefined;
   const activeTab =
     requestedTab === "data"
@@ -51,17 +73,17 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
       case "permissions":
         return <SettingsPermissions />;
       case "developers":
-        return <SettingsDevelopers />;
+        return <developers.View />;
       case "dictionary":
-        return <SettingsDictionary />;
+        return <dictionary.View />;
       case "transcription":
-        return <STT />;
+        return <stt.View />;
       case "summary-prompt":
-        return <SummaryPromptSettings initiallyOpen />;
+        return <prompt.View initiallyOpen />;
       case "intelligence":
-        return <LLM />;
+        return <llm.View />;
       case "todo":
-        return <SettingsTodo />;
+        return <todo.View />;
       default:
         return <SettingsApp />;
     }
@@ -78,7 +100,7 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
             "scroll-fade-y scrollbar-hide h-full w-full flex-1 overflow-y-auto p-6",
           ])}
         >
-          {renderContent()}
+          <DeferredView viewKey={activeTab}>{renderContent()}</DeferredView>
         </div>
       </div>
     </div>

@@ -41,6 +41,8 @@ pub use transcript::TranscriptDelta;
 pub struct SessionStore {
     vault_base: PathBuf,
     journal: Arc<journal::WriteJournal>,
+    rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
+    rebuild_generation: Arc<std::sync::atomic::AtomicU64>,
     write_lock: Arc<tokio::sync::Mutex<()>>, // single store-wide lock; can become per-path if contention matters
     // one live buffer per actively-recording session; guards the debounced-flush lifecycle
     live: Arc<tokio::sync::Mutex<HashMap<String, transcript::LiveTranscriptBuffer>>>,
@@ -98,7 +100,7 @@ impl StartupLayout {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StoreError {
     Io(String),
     Serialize(String),
@@ -135,6 +137,8 @@ impl SessionStore {
         Self {
             vault_base,
             journal: Arc::new(journal::WriteJournal::new()),
+            rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
+            rebuild_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),
             live: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             index: Arc::new(std::sync::RwLock::new(index::VaultIndex::default())),

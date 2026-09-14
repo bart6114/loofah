@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   type ReactNode,
@@ -9,7 +9,6 @@ import {
 } from "react";
 
 import {
-  commands as localSttCommands,
   events as localSttEvents,
   type ServerStatus,
   type LocalModel,
@@ -19,6 +18,10 @@ import { useConfigValues } from "~/shared/config";
 import type { DownloadProgress } from "~/sidebar/toast/types";
 import { useTabs } from "~/store/zustand/tabs";
 import { isConfiguredSttModel, isFmtrLocalSttModel } from "~/stt/capabilities";
+import {
+  localSttQueries,
+  updateLocalModelDownloadQueries,
+} from "~/stt/useLocalSttModel";
 
 interface NotificationState {
   hasActiveBanner: boolean;
@@ -44,6 +47,7 @@ const MODEL_DISPLAY_NAMES: Partial<Record<LocalModel, string>> = {
 };
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const {
     current_stt_provider,
     current_stt_model,
@@ -66,21 +70,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     : null;
   const isLocalSttModel = !!sttModel;
 
-  const localSttQuery = useQuery({
-    enabled: isLocalSttModel,
-    queryKey: ["local-stt-status", sttModel],
-    refetchInterval: 1000,
-    queryFn: async () => {
-      if (!sttModel) return null;
-
-      const serverResult = await localSttCommands.getServerForModel(sttModel);
-      if (serverResult.status !== "ok") return null;
-
-      return serverResult.data?.status ?? null;
-    },
-  });
-
-  const localSttStatus = isLocalSttModel ? (localSttQuery.data ?? null) : null;
+  const localSttQuery = useQuery(localSttQueries.server(sttModel));
+  const localSttStatus = isLocalSttModel
+    ? (localSttQuery.data?.status ?? null)
+    : null;
 
   const [activeDownloads, setActiveDownloads] = useState<
     Map<LocalModel, number>
@@ -89,8 +82,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unlisten = localSttEvents.downloadProgressPayload.listen((event) => {
       const { model: eventModel, status } = event.payload;
+      updateLocalModelDownloadQueries(queryClient, eventModel, status);
 
       setActiveDownloads((prev) => {
+        const progress =
+          typeof status === "object" && "downloading" in status
+            ? Math.max(0, Math.min(100, status.downloading))
+            : undefined;
+        if (prev.get(eventModel) === progress) return prev;
         const next = new Map(prev);
         const isFailed = typeof status === "object" && "failed" in status;
         if (isFailed || status === "completed") {
@@ -105,7 +104,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [queryClient]);
 
   const hasActiveEnhancement = false;
 

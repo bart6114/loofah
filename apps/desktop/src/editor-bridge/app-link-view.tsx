@@ -318,7 +318,7 @@ export const AppLinkView = forwardRef<HTMLSpanElement, NodeViewComponentProps>(
           }}
           className={cn([
             "border-border/60 bg-muted/35 inline-flex h-6 max-w-full items-center gap-1.5 rounded-md border px-1.5 text-left align-baseline",
-            "hover:bg-accent transition-colors",
+            "hover:bg-accent transition-none",
           ])}
         >
           {showCheckbox ? (

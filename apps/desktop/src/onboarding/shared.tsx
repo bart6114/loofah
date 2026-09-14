@@ -82,7 +82,7 @@ export function OnboardingSection({
                   <button
                     onClick={onBack}
                     aria-label={t`Go to previous section`}
-                    className="text-muted-foreground hover:text-muted-foreground rounded p-0.5 transition-colors"
+                    className="text-muted-foreground hover:text-muted-foreground rounded p-0.5 transition-none"
                   >
                     <ChevronLeftIcon className="size-3" />
                   </button>
@@ -94,7 +94,7 @@ export function OnboardingSection({
                         onSkip?.();
                         onNext?.();
                       }}
-                      className="text-muted-foreground hover:text-muted-foreground flex items-center gap-1 text-sm transition-colors"
+                      className="text-muted-foreground hover:text-muted-foreground flex items-center gap-1 text-sm transition-none"
                     >
                       {skipLabel ?? <Trans>Skip</Trans>}
                       <ChevronRightIcon className="size-3" />
@@ -103,7 +103,7 @@ export function OnboardingSection({
                     <button
                       onClick={onNext}
                       aria-label={t`Go to next section`}
-                      className="text-muted-foreground hover:text-muted-foreground rounded p-0.5 transition-colors"
+                      className="text-muted-foreground hover:text-muted-foreground rounded p-0.5 transition-none"
                     >
                       <ChevronRightIcon className="size-3" />
                     </button>

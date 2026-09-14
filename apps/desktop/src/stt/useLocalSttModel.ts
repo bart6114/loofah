@@ -1,4 +1,8 @@
-import { queryOptions } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 
@@ -6,6 +10,7 @@ import {
   commands as localSttCommands,
   events as localSttEvents,
   type LocalModel,
+  type DownloadStatus,
 } from "@hypr/plugin-local-stt";
 
 export const localSttKeys = {
@@ -19,6 +24,18 @@ export const localSttKeys = {
 };
 
 export const localSttQueries = {
+  server: (model: LocalModel | null) =>
+    queryOptions({
+      queryKey: ["local-stt-server", model],
+      enabled: !!model,
+      refetchInterval: 1000,
+      queryFn: async () => {
+        if (!model) return null;
+        const result = await localSttCommands.getServerForModel(model);
+        if (result.status === "error") throw new Error(result.error);
+        return result.data;
+      },
+    }),
   supportedModels: () =>
     queryOptions({
       queryKey: [...localSttKeys.all, "supported-models"] as const,
@@ -33,7 +50,7 @@ export const localSttQueries = {
     }),
   isDownloaded: (model: LocalModel) =>
     queryOptions({
-      refetchInterval: 1000,
+      refetchOnMount: "always",
       queryKey: localSttKeys.modelDownloaded(model),
       queryFn: () => localSttCommands.isModelDownloaded(model),
       select: (result) => {
@@ -45,7 +62,7 @@ export const localSttQueries = {
     }),
   isDownloading: (model: LocalModel) =>
     queryOptions({
-      refetchInterval: 1000,
+      refetchOnMount: "always",
       queryKey: localSttKeys.modelDownloading(model),
       queryFn: () => localSttCommands.isModelDownloading(model),
       select: (result) => {
@@ -61,6 +78,7 @@ export function useLocalModelDownload(
   model: LocalModel,
   onDownloadComplete?: (model: LocalModel) => void,
 ) {
+  const queryClient = useQueryClient();
   const [progress, setProgress] = useState<number>(0);
   const [isStarting, setIsStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -81,6 +99,11 @@ export function useLocalModelDownload(
   useEffect(() => {
     const unlisten = localSttEvents.downloadProgressPayload.listen((event) => {
       if (event.payload.model === model) {
+        updateLocalModelDownloadQueries(
+          queryClient,
+          model,
+          event.payload.status,
+        );
         const { status } = event.payload;
         if (typeof status === "object" && "failed" in status) {
           setErrorMessage(status.failed);
@@ -99,7 +122,7 @@ export function useLocalModelDownload(
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [model]);
+  }, [model, queryClient]);
 
   useEffect(() => {
     if (isDownloaded.data && progress > 0) {
@@ -124,10 +147,14 @@ export function useLocalModelDownload(
   }, [isDownloaded.data, isDownloading.data, isStarting, model]);
 
   const handleCancel = useCallback(() => {
-    void localSttCommands.cancelDownload(model);
+    void localSttCommands.cancelDownload(model).finally(() => {
+      void queryClient.invalidateQueries({
+        queryKey: localSttKeys.model(model),
+      });
+    });
     setIsStarting(false);
     setProgress(0);
-  }, [model]);
+  }, [model, queryClient]);
 
   const handleDelete = useCallback(() => {
     void localSttCommands.deleteModel(model).then((result) => {
@@ -148,4 +175,22 @@ export function useLocalModelDownload(
     handleCancel,
     handleDelete,
   };
+}
+
+export function updateLocalModelDownloadQueries(
+  client: QueryClient,
+  model: LocalModel,
+  status: DownloadStatus,
+) {
+  const downloading = typeof status === "object" && "downloading" in status;
+  client.setQueryData(localSttKeys.modelDownloading(model), {
+    status: "ok",
+    data: downloading,
+  });
+  if (!downloading) {
+    void client.invalidateQueries({
+      queryKey: localSttKeys.modelDownloaded(model),
+    });
+    void client.invalidateQueries({ queryKey: ["local-stt-server", model] });
+  }
 }
