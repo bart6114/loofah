@@ -27,7 +27,6 @@ hypr-afconvert = { path = "crates/afconvert", package = "afconvert" }
 hypr-agc = { path = "crates/agc", package = "agc" }
 hypr-agent-access = { path = "crates/agent-access", package = "agent-access" }
 hypr-agent-core = { path = "crates/agent-core", package = "agent-core" }
-hypr-am = { path = "crates/am", package = "am" }
 hypr-amp = { path = "crates/amp", package = "amp" }
 hypr-api-agent = { path = "crates/api-agent", package = "api-agent" }
 hypr-api-claw = { path = "crates/api-claw", package = "api-claw" }
@@ -92,7 +91,6 @@ hypr-listener-core = { path = "crates/listener-core", package = "listener-core" 
 hypr-listener2-core = { path = "crates/listener2-core", package = "listener2-core" }
 hypr-llm-types = { path = "crates/llm-types", package = "llm-types" }
 hypr-lmstudio = { path = "crates/lmstudio", package = "lmstudio" }
-hypr-local-llm-core = { path = "crates/local-llm-core", package = "local-llm-core" }
 hypr-local-model = { path = "crates/local-model", package = "local-model" }
 hypr-local-stt-core = { path = "crates/local-stt-core", package = "local-stt-core" }
 hypr-local-stt-server = { path = "crates/local-stt-server", package = "local-stt-server" }

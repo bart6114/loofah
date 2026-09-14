@@ -134,7 +134,6 @@ pub async fn suggest_providers_for_languages_live<R: tauri::Runtime>(
         .map_err(|e| format!("unknown_language: {}", e))?;
 
     let all_providers = [
-        AdapterKind::Argmax,
         AdapterKind::Soniox,
         AdapterKind::Fireworks,
         AdapterKind::Deepgram,

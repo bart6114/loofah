@@ -195,7 +195,11 @@ describe("ToastNotifications", () => {
     mocks.notifications.hasActiveDownload = true;
     mocks.notifications.downloadingModel = "Parakeet v3";
     mocks.notifications.activeDownloads = [
-      { model: "am-parakeet-v3", displayName: "Parakeet v3", progress: 42 },
+      {
+        model: "soniqo-parakeet-batch",
+        displayName: "Parakeet v3",
+        progress: 42,
+      },
     ];
 
     render(<ToastNotifications />);

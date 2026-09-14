@@ -58,9 +58,7 @@ pub fn is_supported_languages_live(
             );
         }
 
-        if model.starts_with("am-") {
-            return Ok(false);
-        }
+        return Ok(false);
     }
 
     let adapter_kind =
@@ -113,7 +111,7 @@ pub fn is_supported_languages_batch(
             return Ok(model.batch_model().supports_languages(languages));
         }
 
-        return Ok(true);
+        return Ok(model == Some("cloud"));
     }
 
     let adapter_kind =
@@ -124,7 +122,6 @@ pub fn is_supported_languages_batch(
 
 pub fn suggest_providers_for_languages_batch(languages: &[hypr_language::Language]) -> Vec<String> {
     let all_providers = [
-        AdapterKind::Argmax,
         AdapterKind::Soniox,
         AdapterKind::Fireworks,
         AdapterKind::Deepgram,
@@ -160,6 +157,27 @@ pub fn list_documented_language_codes_batch() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_providers_and_models_are_ineligible() {
+        for provider in ["am", "argmax"] {
+            assert!(is_supported_languages_live(provider, None, &[]).is_err());
+            assert!(is_supported_languages_batch(provider, None, &[]).is_err());
+        }
+        for model in [
+            "am-parakeet-v2",
+            "am-parakeet-v3",
+            "am-whisper-large-v3",
+            "soniqo-qwen3-small",
+            "soniqo-qwen3-large",
+            "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+            "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+        ] {
+            assert!(!is_supported_languages_live("fmtr", Some(model), &[]).unwrap());
+            assert!(!is_supported_languages_batch("fmtr", Some(model), &[]).unwrap());
+            assert!(is_supported_languages_batch("soniqo", Some(model), &[]).is_err());
+        }
+    }
 
     #[test]
     fn whisper_large_v3_supports_mixed_languages_live_and_after_recording() {

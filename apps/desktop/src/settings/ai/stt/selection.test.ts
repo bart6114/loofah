@@ -47,9 +47,9 @@ describe("getPreferredProviderModel", () => {
     expect(
       getPreferredProviderModel(undefined, [
         { id: "soniqo-omnilingual", isDownloaded: false },
-        { id: "soniqo-qwen3-small", isDownloaded: true },
+        { id: "soniqo-parakeet-batch", isDownloaded: true },
       ]),
-    ).toBe("soniqo-qwen3-small");
+    ).toBe("soniqo-parakeet-batch");
   });
 
   test("can keep a saved model visible even when it is not selectable", () => {

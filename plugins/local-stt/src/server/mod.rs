@@ -1,4 +1,3 @@
-pub mod external;
 #[cfg(feature = "whisper-cpp")]
 pub mod internal;
 pub mod supervisor;
@@ -9,8 +8,6 @@ pub mod supervisor;
 pub enum ServerType {
     #[serde(rename = "internal")]
     Internal,
-    #[serde(rename = "external")]
-    External,
 }
 
 #[derive(

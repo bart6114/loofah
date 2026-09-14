@@ -163,9 +163,7 @@ fn read_vault_config(vault: &Path) -> Result<VaultConfig> {
 }
 
 /// Mirror of the desktop's `getBatchProvider` (useRunBatch.ts): provider must
-/// be "fmtr", and only `soniqo-*` models route to the in-process CoreML engine
-/// the CLI supports. `am-*` and other local models need the desktop's model
-/// servers, which the CLI does not run.
+/// be "fmtr", and a supported Soniqo model routes to the in-process CoreML engine.
 fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
     let provider = config
         .current_stt_provider
@@ -186,15 +184,20 @@ fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
     if provider != "fmtr" {
         return Err(Error::operation(
             ACTION,
-            format!("speech-to-text provider '{provider}' is not supported by the CLI yet"),
+            format!(
+                "speech-to-text provider '{provider}' is not supported by the CLI; open the desktop app to update Settings → Transcription"
+            ),
         ));
     }
 
-    if !model.starts_with("soniqo-") {
+    if model
+        .parse::<hypr_transcribe_soniqo::SoniqoModel>()
+        .is_err()
+    {
         return Err(Error::operation(
             ACTION,
             format!(
-                "speech-to-text model '{model}' is not supported by the CLI yet; only on-device Soniqo models (soniqo-*) work here"
+                "speech-to-text model '{model}' is not supported by the CLI yet; open the desktop app to select a supported Soniqo model under Settings → Transcription"
             ),
         ));
     }
@@ -216,11 +219,6 @@ fn ensure_soniqo_model_ready(model: &str) -> Result<()> {
     // mapping `run_soniqo_batch` applies), so check that model's cache.
     let batch_model = parsed.batch_model();
 
-    // Platform gating rides on `is_model_downloaded`'s own
-    // `ensure_supported_platform`: its errors distinguish a wrong
-    // OS/architecture from a model needing macOS 15, which a hand-rolled
-    // `is_available_on_current_platform` check would flatten into one
-    // misleading "Apple Silicon" message.
     let downloaded = hypr_transcribe_soniqo::is_model_downloaded(batch_model)
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
     if !downloaded {
@@ -300,7 +298,15 @@ mod tests {
 
     #[test]
     fn non_soniqo_models_are_rejected_as_unsupported() {
-        for model in ["am-parakeet-v3", "QuantizedSmallEn", "whisper-large-v3"] {
+        for model in [
+            "am-parakeet-v3",
+            "soniqo-qwen3-small",
+            "soniqo-qwen3-large",
+            "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+            "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+            "QuantizedSmallEn",
+            "whisper-large-v3",
+        ] {
             let error = resolve_soniqo_model(&config(Some("fmtr"), Some(model))).unwrap_err();
             assert!(error.to_string().contains(model));
             assert!(error.to_string().contains("not supported by the CLI"));
@@ -318,6 +324,57 @@ mod tests {
         let model =
             resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-parakeet-streaming"))).unwrap();
         assert_eq!(model, "soniqo-parakeet-streaming");
+    }
+
+    #[test]
+    fn historical_transcripts_keep_provenance_and_speakers_when_read_and_exported() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_dir = dir.path().join("sessions/s1");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let path = session_dir.join("transcript.json");
+        let original = serde_json::json!({"transcripts": [{
+            "id": "t1", "session_id": "s1", "words": [{
+                "text": "Historical words", "start_ms": 0.0, "end_ms": 1000.0, "channel": 0.0,
+                "speaker": "Alice", "metadata": {"model": "am-parakeet-v3", "arch": "ArgmaxSDK"}
+            }]
+        }]})
+        .to_string();
+        std::fs::write(&path, &original).unwrap();
+        let file = hypr_vault_read::transcript::read_transcript_json(dir.path(), "s1").unwrap();
+        let word = &file.transcripts[0].words[0];
+        assert_eq!(word.metadata.as_ref().unwrap()["model"], "am-parakeet-v3");
+        let export = dir.path().join("export.vtt");
+        hypr_listener2_core::export_words_to_vtt_file(
+            vec![hypr_listener2_core::VttWord {
+                text: word.text.clone(),
+                start_ms: word.start_ms as u64,
+                end_ms: word.end_ms as u64,
+                speaker: word.speaker.clone(),
+            }],
+            &export,
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(export).unwrap();
+        assert!(content.contains("Historical words"));
+        assert!(content.contains("Alice"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
+
+    #[test]
+    fn retired_vault_selection_is_read_only_and_actionable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        for (provider, model) in [
+            ("am", "am-parakeet-v3"),
+            ("fmtr", "soniqo-qwen3-small"),
+            ("fmtr", "aufklarer/Qwen3-ASR-1.7B-MLX-8bit"),
+        ] {
+            let original = serde_json::json!({"current_stt_provider": provider, "current_stt_model": model, "future": 42}).to_string();
+            std::fs::write(&path, &original).unwrap();
+            let error = resolve_soniqo_model(&read_vault_config(dir.path()).unwrap()).unwrap_err();
+            assert!(error.to_string().contains("open the desktop app"));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        }
     }
 
     #[test]
@@ -351,24 +408,6 @@ mod tests {
         std::fs::write(dir.path().join("config.json"), "{ not json").unwrap();
         let error = read_vault_config(dir.path()).unwrap_err();
         assert_eq!(error.code(), "operation_failed");
-    }
-
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    #[test]
-    fn macos_15_gated_models_report_the_version_requirement_not_the_arch() {
-        // Qwen3 models run only on macOS 15+; on an Apple Silicon Mac the
-        // failure must name that requirement, not claim the machine itself
-        // is unsupported.
-        let error = ensure_soniqo_model_ready("soniqo-qwen3-small").unwrap_err();
-        let message = error.to_string();
-        assert!(
-            message.contains("requires macOS 15"),
-            "unexpected message: {message}"
-        );
-        assert!(
-            !message.contains("Apple Silicon"),
-            "unexpected message: {message}"
-        );
     }
 
     #[test]

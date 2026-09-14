@@ -14,7 +14,6 @@ readonly rust_excludes=(
   tcc
   apple-note
   notification-linux
-  am
   aec
   agc
   whisper
@@ -32,7 +31,6 @@ readonly rust_excludes=(
   audio-device
   transcribe-whisper-local
   device-monitor
-  local-llm-core
   local-stt-server
   tauri-plugin-deeplink2
   tauri-plugin-detect

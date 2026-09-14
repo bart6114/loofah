@@ -24,8 +24,6 @@ private enum SpeechModelKind: String, CaseIterable {
   case parakeetStreaming = "soniqo-parakeet-streaming"
   case parakeetBatch = "soniqo-parakeet-batch"
   case omnilingual = "soniqo-omnilingual"
-  case qwen3Small = "soniqo-qwen3-small"
-  case qwen3Large = "soniqo-qwen3-large"
 
   static func resolve(_ identifier: String) -> Self? {
     Self(rawValue: identifier) ?? Self.allCases.first(where: { $0.repo == identifier })
@@ -39,10 +37,6 @@ private enum SpeechModelKind: String, CaseIterable {
       return "Soniqo Parakeet Batch"
     case .omnilingual:
       return "Soniqo Omnilingual"
-    case .qwen3Small:
-      return "Soniqo Qwen3 0.6B"
-    case .qwen3Large:
-      return "Soniqo Qwen3 1.7B"
     }
   }
 
@@ -54,10 +48,6 @@ private enum SpeechModelKind: String, CaseIterable {
       return "aufklarer/Parakeet-TDT-v3-CoreML-INT8"
     case .omnilingual:
       return "aufklarer/Omnilingual-ASR-CTC-300M-CoreML-INT8-10s"
-    case .qwen3Small:
-      return "aufklarer/Qwen3-ASR-0.6B-MLX-4bit"
-    case .qwen3Large:
-      return "aufklarer/Qwen3-ASR-1.7B-MLX-8bit"
     }
   }
 
@@ -67,7 +57,7 @@ private enum SpeechModelKind: String, CaseIterable {
 
   var fileTranscriptionChunkSeconds: Double? {
     switch self {
-    case .parakeetStreaming, .qwen3Small, .qwen3Large:
+    case .parakeetStreaming:
       return nil
     case .parakeetBatch:
       return parakeetBatchMaximumChunkSeconds
@@ -80,7 +70,7 @@ private enum SpeechModelKind: String, CaseIterable {
     switch self {
     case .parakeetBatch:
       return parakeetBatchMinimumChunkSeconds
-    case .parakeetStreaming, .omnilingual, .qwen3Small, .qwen3Large:
+    case .parakeetStreaming, .omnilingual:
       return nil
     }
   }
@@ -89,7 +79,7 @@ private enum SpeechModelKind: String, CaseIterable {
     switch self {
     case .parakeetBatch:
       return parakeetBatchMaximumChunkSeconds
-    case .parakeetStreaming, .omnilingual, .qwen3Small, .qwen3Large:
+    case .parakeetStreaming, .omnilingual:
       return nil
     }
   }
@@ -120,11 +110,6 @@ private enum SpeechModelKind: String, CaseIterable {
         && Self.directoryContainsRegularFile(
           at: directory.appendingPathComponent("omnilingual-ctc-300m-int8.mlpackage")
         )
-    case .qwen3Small, .qwen3Large:
-      return Self.regularFileExists(at: directory.appendingPathComponent("vocab.json"))
-        && Self.regularFileExists(at: directory.appendingPathComponent("merges.txt"))
-        && Self.regularFileExists(at: directory.appendingPathComponent("tokenizer_config.json"))
-        && Self.directoryContainsFile(withExtension: "safetensors", in: directory)
     }
   }
 
@@ -155,8 +140,6 @@ private enum SpeechModelKind: String, CaseIterable {
           progressHandler: progressHandler
         )
       )
-    case .qwen3Small, .qwen3Large:
-      throw SoniqoBridgeError.message("\(label) requires macOS 15 or newer.")
     }
   }
 

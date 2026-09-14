@@ -282,7 +282,7 @@ describe("useStartListening", () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
-        model: "am-test",
+        model: "soniqo-parakeet-batch",
         baseUrl: "http://localhost:8080",
         apiKey: "",
       },
@@ -419,7 +419,10 @@ describe("useStartListening", () => {
     });
 
     expect(canRunBatchTranscriptionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "fmtr", model: "am-test" }),
+      expect.objectContaining({
+        provider: "fmtr",
+        model: "soniqo-parakeet-batch",
+      }),
     );
     expect(runBatchMock).not.toHaveBeenCalled();
     expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();
@@ -915,7 +918,7 @@ describe("useStartListening", () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
-        model: "soniqo-qwen3-small",
+        model: "soniqo-omnilingual",
         baseUrl: "http://localhost:8080",
         apiKey: "",
       },

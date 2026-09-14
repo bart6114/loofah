@@ -108,6 +108,57 @@ impl Default for AppConfig {
     }
 }
 
+fn normalize_retired_stt(value: &mut Value) -> bool {
+    let retired_provider = matches!(
+        value.get("current_stt_provider").and_then(Value::as_str),
+        Some("am" | "argmax")
+    );
+    let retired_model = value
+        .get("current_stt_model")
+        .and_then(Value::as_str)
+        .is_some_and(|model| {
+            model.starts_with("am-")
+                || matches!(
+                    model,
+                    "soniqo-qwen3-small"
+                        | "soniqo-qwen3-large"
+                        | "aufklarer/Qwen3-ASR-0.6B-MLX-4bit"
+                        | "aufklarer/Qwen3-ASR-1.7B-MLX-8bit"
+                )
+        });
+    if retired_provider || retired_model {
+        value["current_stt_provider"] = Value::String("fmtr".into());
+        value["current_stt_model"] = Value::String("soniqo-parakeet-batch".into());
+        return true;
+    }
+    false
+}
+
+fn load_config<E: std::fmt::Display>(
+    path: &Path,
+    persist: impl FnOnce(&str) -> Result<(), E>,
+) -> AppConfig {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return AppConfig::default();
+    };
+    let Ok(mut value) = serde_json::from_str::<Value>(&content) else {
+        return AppConfig::default();
+    };
+    let Ok(config) = serde_json::from_value::<AppConfig>(value.clone()) else {
+        return AppConfig::default();
+    };
+    if !normalize_retired_stt(&mut value) {
+        return config;
+    }
+    let config = serde_json::from_value(value.clone()).expect("normalized selection is valid");
+    if let Err(error) =
+        persist(&serde_json::to_string_pretty(&value).expect("JSON config serializes"))
+    {
+        tracing::warn!(%error, "retired_stt_selection_migration_persist_failed");
+    }
+    config
+}
+
 pub struct ConfigState {
     path: PathBuf,
     config: std::sync::RwLock<AppConfig>,
@@ -117,10 +168,9 @@ pub struct ConfigState {
 impl ConfigState {
     pub fn load_or_default(vault_base: &Path) -> Self {
         let path = hypr_storage::vault::compute_config_path(vault_base);
-        let config = match std::fs::read_to_string(&path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-            Err(_) => AppConfig::default(),
-        };
+        let config = load_config(&path, |content| {
+            hypr_storage::fs::atomic_write(&path, content)
+        });
 
         Self {
             path,
@@ -136,6 +186,14 @@ impl ConfigState {
     pub async fn set_values(&self, values: HashMap<String, Value>) -> crate::Result<AppConfig> {
         let _guard = self.write_lock.lock().await;
 
+        // A failed startup parse must never turn a later partial save into data loss.
+        match std::fs::read_to_string(&self.path) {
+            Ok(content) => {
+                serde_json::from_str::<AppConfig>(&content)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         let current = self.snapshot();
         let Value::Object(mut map) = serde_json::to_value(&current)? else {
             unreachable!("AppConfig always serializes to an object");
@@ -143,7 +201,9 @@ impl ConfigState {
         for (key, value) in values {
             map.insert(key, value);
         }
-        let next: AppConfig = serde_json::from_value(Value::Object(map))?;
+        let mut value = Value::Object(map);
+        normalize_retired_stt(&mut value);
+        let next: AppConfig = serde_json::from_value(value)?;
 
         let content = serde_json::to_string_pretty(&next)?;
         hypr_storage::fs::atomic_write_async(&self.path, &content).await?;
@@ -400,6 +460,132 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(state.snapshot(), AppConfig::default());
         assert!(!temp.path().join("config.json").exists());
+    }
+
+    #[tokio::test]
+    async fn retired_selections_migrate_idempotently_without_touching_other_settings() {
+        for (provider, model) in [
+            ("am", "anything"),
+            ("argmax", "anything"),
+            ("fmtr", "am-parakeet-v2"),
+            ("fmtr", "am-parakeet-v3"),
+            ("fmtr", "am-whisper-large-v3"),
+            ("fmtr", "soniqo-qwen3-small"),
+            ("fmtr", "soniqo-qwen3-large"),
+            ("fmtr", "aufklarer/Qwen3-ASR-0.6B-MLX-4bit"),
+            ("fmtr", "aufklarer/Qwen3-ASR-1.7B-MLX-8bit"),
+        ] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("config.json");
+            let mut expected = json!({
+                "current_stt_provider": provider, "current_stt_model": model,
+                "current_llm_provider": "legacy", "current_llm_model": "HyprLLM",
+                "ai_providers": {"llm:legacy": {"type": "llm", "base_url": "", "future": 42}},
+                "spoken_languages": ["fr", "nl"], "meeting_languages": ["de"],
+                "transcription_timing": "live", "future": {"nested": [1, 2]}
+            });
+            std::fs::write(&path, expected.to_string()).unwrap();
+            expected["current_stt_provider"] = json!("fmtr");
+            expected["current_stt_model"] = json!("soniqo-parakeet-batch");
+            let state = ConfigState::load_or_default(temp.path());
+            assert_eq!(
+                state.snapshot().current_stt_model.as_deref(),
+                Some("soniqo-parakeet-batch")
+            );
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(serde_json::from_str::<Value>(&content).unwrap(), expected);
+            assert_eq!(
+                ConfigState::load_or_default(temp.path()).snapshot(),
+                state.snapshot()
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+            assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+            state
+                .set_values(values(&[
+                    ("current_stt_provider", json!(provider)),
+                    ("current_stt_model", json!(model)),
+                    ("theme", json!("dark")),
+                ]))
+                .await
+                .unwrap();
+            assert_eq!(
+                state.snapshot().current_stt_model.as_deref(),
+                Some("soniqo-parakeet-batch")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_migration_persistence_keeps_normalized_selection() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("config.json");
+        let original = r#"{"current_stt_provider":"am","current_stt_model":"am-parakeet-v3"}"#;
+        std::fs::write(&path, original).unwrap();
+        let config = load_config(&path, |_| {
+            Err(std::io::Error::other("injected write failure"))
+        });
+        assert_eq!(
+            config.current_stt_model.as_deref(),
+            Some("soniqo-parakeet-batch")
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        let state = ConfigState {
+            path: path.clone(),
+            config: std::sync::RwLock::new(config),
+            write_lock: tokio::sync::Mutex::new(()),
+        };
+        state
+            .set_values(values(&[("theme", json!("dark"))]))
+            .await
+            .unwrap();
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved["current_stt_model"], "soniqo-parakeet-batch");
+        assert_eq!(saved["theme"], "dark");
+    }
+
+    #[test]
+    fn supported_selections_are_not_rewritten() {
+        for model in [
+            "soniqo-parakeet-streaming",
+            "soniqo-parakeet-batch",
+            "soniqo-omnilingual",
+            "QuantizedTiny",
+            "whisper-large-v3",
+        ] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("config.json");
+            let original =
+                json!({"current_stt_provider": "fmtr", "current_stt_model": model}).to_string();
+            std::fs::write(&path, &original).unwrap();
+            assert_eq!(
+                ConfigState::load_or_default(temp.path())
+                    .snapshot()
+                    .current_stt_model
+                    .as_deref(),
+                Some(model)
+            );
+            assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_config_is_never_overwritten_by_migration_or_partial_save() {
+        for original in [
+            "{not json",
+            r#"{"current_stt_provider":"am","spoken_languages":42}"#,
+        ] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("config.json");
+            std::fs::write(&path, original).unwrap();
+            let state = ConfigState::load_or_default(temp.path());
+            assert!(
+                state
+                    .set_values(values(&[("theme", json!("dark"))]))
+                    .await
+                    .is_err()
+            );
+            assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+        }
     }
 
     #[test]

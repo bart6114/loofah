@@ -12,8 +12,6 @@ use super::{BatchParams, BatchRunOutput};
 
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 pub(super) enum ProgressiveProvider {
-    #[strum(serialize = "argmax")]
-    Argmax,
     #[strum(serialize = "openai")]
     OpenAI,
     #[strum(serialize = "whispercpp")]
@@ -64,7 +62,6 @@ fn resolve_progressive_provider(
     );
 
     match adapter_kind {
-        AdapterKind::Argmax => Ok(ProgressiveProvider::Argmax),
         AdapterKind::OpenAI
             if OpenAIAdapter::supports_progressive_batch_model(listen_params.model.as_deref()) =>
         {

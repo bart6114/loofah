@@ -17,10 +17,12 @@ export function isSupportedLocalSttModel(
 ): model is LocalModel {
   return (
     typeof model === "string" &&
-    (model.startsWith("soniqo-") ||
-      model.startsWith("am-") ||
-      model.startsWith("whisper-") ||
-      model.startsWith("Quantized"))
+    (model === "soniqo-parakeet-streaming" ||
+      model === "soniqo-parakeet-batch" ||
+      model === "soniqo-omnilingual" ||
+      model === "whisper-large-v3" ||
+      /^Quantized(Tiny|Base|Small)(En)?$/.test(model) ||
+      model === "QuantizedLargeTurbo")
   );
 }
 
@@ -43,7 +45,7 @@ export function isConfiguredSttModel(
     return isSupportedLocalSttModel(model);
   }
 
-  return true;
+  return provider !== "am" && provider !== "argmax";
 }
 
 export function isRealtimeLocalModel(model?: string | null) {
@@ -64,6 +66,14 @@ export async function isSupportedLanguagesLive(
   model: string | null | undefined,
   languages: readonly string[],
 ) {
+  if (
+    provider === "am" ||
+    provider === "argmax" ||
+    (provider === "fmtr" && !isSupportedLocalSttModel(model))
+  ) {
+    return false;
+  }
+
   const result = await listenerCommands.isSupportedLanguagesLive(
     provider,
     model ?? null,
@@ -78,6 +88,14 @@ export async function isSupportedLanguagesBatch(
   model: string | null | undefined,
   languages: readonly string[],
 ) {
+  if (
+    provider === "am" ||
+    provider === "argmax" ||
+    (provider === "fmtr" && !isSupportedLocalSttModel(model))
+  ) {
+    return false;
+  }
+
   const result = await listenerCommands.isSupportedLanguagesBatch(
     provider,
     model ?? null,
@@ -200,7 +218,7 @@ export async function isLiveTranscriptionSupported(
   provider?: string | null,
   model?: string | null,
 ) {
-  if (!provider || !model) {
+  if (!isConfiguredSttModel(provider, model) || !provider || !model) {
     return false;
   }
 

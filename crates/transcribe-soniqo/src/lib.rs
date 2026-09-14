@@ -62,10 +62,6 @@ pub enum SoniqoModel {
     ParakeetBatch,
     #[serde(rename = "soniqo-omnilingual")]
     Omnilingual,
-    #[serde(rename = "soniqo-qwen3-small")]
-    Qwen3Small,
-    #[serde(rename = "soniqo-qwen3-large")]
-    Qwen3Large,
 }
 
 impl SoniqoModel {
@@ -73,14 +69,6 @@ impl SoniqoModel {
         Self::ParakeetStreaming,
         Self::ParakeetBatch,
         Self::Omnilingual,
-    ];
-
-    const KNOWN: &'static [Self] = &[
-        Self::ParakeetStreaming,
-        Self::ParakeetBatch,
-        Self::Omnilingual,
-        Self::Qwen3Small,
-        Self::Qwen3Large,
     ];
 
     const SELECTABLE: &'static [Self] = &[Self::ParakeetStreaming, Self::ParakeetBatch];
@@ -98,8 +86,6 @@ impl SoniqoModel {
             Self::ParakeetStreaming => "soniqo-parakeet-streaming",
             Self::ParakeetBatch => "soniqo-parakeet-batch",
             Self::Omnilingual => "soniqo-omnilingual",
-            Self::Qwen3Small => "soniqo-qwen3-small",
-            Self::Qwen3Large => "soniqo-qwen3-large",
         }
     }
 
@@ -108,8 +94,6 @@ impl SoniqoModel {
             Self::ParakeetStreaming => "aufklarer/Parakeet-EOU-120M-CoreML-INT8",
             Self::ParakeetBatch => "aufklarer/Parakeet-TDT-v3-CoreML-INT8",
             Self::Omnilingual => "aufklarer/Omnilingual-ASR-CTC-300M-CoreML-INT8-10s",
-            Self::Qwen3Small => "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
-            Self::Qwen3Large => "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
         }
     }
 
@@ -118,8 +102,6 @@ impl SoniqoModel {
             Self::ParakeetStreaming => "Soniqo Parakeet Streaming",
             Self::ParakeetBatch => "Soniqo Parakeet Batch",
             Self::Omnilingual => "Soniqo Omnilingual",
-            Self::Qwen3Small => "Soniqo Qwen3 0.6B",
-            Self::Qwen3Large => "Soniqo Qwen3 1.7B",
         }
     }
 
@@ -128,8 +110,6 @@ impl SoniqoModel {
             Self::ParakeetStreaming => "Realtime English transcription.",
             Self::ParakeetBatch => "Batch transcription for 25 European languages.",
             Self::Omnilingual => "Multilingual batch transcription.",
-            Self::Qwen3Small => "Multilingual batch transcription.",
-            Self::Qwen3Large => "Multilingual batch transcription.",
         }
     }
 
@@ -138,8 +118,6 @@ impl SoniqoModel {
             Self::ParakeetStreaming => 120 * 1024 * 1024,
             Self::ParakeetBatch => 600 * 1024 * 1024,
             Self::Omnilingual => 300 * 1024 * 1024,
-            Self::Qwen3Small => 600 * 1024 * 1024,
-            Self::Qwen3Large => 1_700 * 1024 * 1024,
         }
     }
 
@@ -148,11 +126,7 @@ impl SoniqoModel {
     }
 
     pub const fn is_available_on_current_platform(self) -> bool {
-        cfg!(all(target_os = "macos", target_arch = "aarch64")) && !self.requires_macos_15()
-    }
-
-    const fn requires_macos_15(self) -> bool {
-        matches!(self, Self::Qwen3Small | Self::Qwen3Large)
+        cfg!(all(target_os = "macos", target_arch = "aarch64"))
     }
 
     pub const fn supports_live_on_current_platform(self) -> bool {
@@ -172,7 +146,7 @@ impl SoniqoModel {
             // other languages into English-shaped gibberish or nothing at all.
             Self::ParakeetStreaming => hypr_language::is_parakeet_eou_language(language),
             Self::ParakeetBatch => hypr_language::is_parakeet_tdt_v3_language(language),
-            Self::Omnilingual | Self::Qwen3Small | Self::Qwen3Large => true,
+            Self::Omnilingual => true,
         }
     }
 
@@ -193,7 +167,7 @@ impl FromStr for SoniqoModel {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
-        Self::KNOWN
+        Self::ALL
             .iter()
             .copied()
             .find(|model| value == model.as_str() || value == model.repo())
@@ -324,8 +298,6 @@ pub enum Error {
     UnsupportedModel(String),
     #[error("Soniqo is only available on macOS Apple Silicon")]
     UnsupportedPlatform,
-    #[error("{} requires macOS 15 or newer.", .0.display_name())]
-    RequiresMacOs15(SoniqoModel),
     #[error("Soniqo bridge failed: {0}")]
     Bridge(String),
     #[error("failed to parse Soniqo bridge response: {0}")]
@@ -336,13 +308,9 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn ensure_supported_platform(model: SoniqoModel) -> Result<()> {
+fn ensure_supported_platform(_model: SoniqoModel) -> Result<()> {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return Err(Error::UnsupportedPlatform);
-    }
-
-    if model.requires_macos_15() {
-        return Err(Error::RequiresMacOs15(model));
     }
 
     Ok(())
@@ -1045,18 +1013,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn retired_ids_and_repositories_are_not_models() {
+        for id in [
+            "soniqo-qwen3-small",
+            "soniqo-qwen3-large",
+            "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+            "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+        ] {
+            assert!(id.parse::<SoniqoModel>().is_err());
+            assert!(
+                !SoniqoModel::all()
+                    .iter()
+                    .any(|model| model.as_str() == id || model.repo() == id)
+            );
+        }
+    }
+
+    #[test]
     fn parses_model_ids() {
         assert_eq!(
             "soniqo-parakeet-streaming".parse::<SoniqoModel>().unwrap(),
             SoniqoModel::ParakeetStreaming
-        );
-        assert_eq!(
-            "soniqo-qwen3-small".parse::<SoniqoModel>().unwrap(),
-            SoniqoModel::Qwen3Small
-        );
-        assert_eq!(
-            "soniqo-qwen3-large".parse::<SoniqoModel>().unwrap(),
-            SoniqoModel::Qwen3Large
         );
     }
 
@@ -1120,8 +1097,6 @@ mod tests {
         let french = "fr".parse().unwrap();
 
         assert!(SoniqoModel::Omnilingual.supports_language(&french));
-        assert!(SoniqoModel::Qwen3Small.supports_language(&french));
-        assert!(SoniqoModel::Qwen3Large.supports_language(&french));
     }
 
     #[test]
@@ -1131,17 +1106,6 @@ mod tests {
             cfg!(all(target_os = "macos", target_arch = "aarch64")),
         );
         assert!(!SoniqoModel::ParakeetBatch.supports_live_on_current_platform());
-    }
-
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    #[test]
-    fn qwen3_platform_error_mentions_macos_15() {
-        let error = ensure_supported_platform(SoniqoModel::Qwen3Small).unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "Soniqo Qwen3 0.6B requires macOS 15 or newer."
-        );
     }
 
     #[test]

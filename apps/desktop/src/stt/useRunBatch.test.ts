@@ -91,8 +91,8 @@ describe("getBatchProvider", () => {
     expect(getBatchProvider("fmtr", "soniqo-parakeet-batch")).toBe("soniqo");
   });
 
-  test("maps local Argmax models to the am batch provider", () => {
-    expect(getBatchProvider("fmtr", "am-parakeet-v3")).toBe("am");
+  test("rejects retired models", () => {
+    expect(getBatchProvider("fmtr", "am-parakeet-v3")).toBeNull();
   });
 
   test.each([
@@ -129,7 +129,7 @@ describe("canRunBatchTranscription", () => {
     expect(
       canRunBatchTranscription(
         { provider: "fmtr", model: "soniqo-parakeet-streaming" },
-        "am-parakeet-v3",
+        "QuantizedTiny",
       ),
     ).toBe(true);
   });
@@ -402,4 +402,21 @@ describe("getSessionSpeakerCount", () => {
   test("returns undefined until at least two speakers are known", () => {
     expect(getSessionSpeakerCount(["human-a"], null)).toBe(undefined);
   });
+});
+
+test.each([
+  "am-parakeet-v2",
+  "am-parakeet-v3",
+  "am-whisper-large-v3",
+  "soniqo-qwen3-small",
+  "soniqo-qwen3-large",
+  "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+  "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+  "HyprLLM",
+  "soniqo-unknown",
+  "whisper-unknown",
+  "QuantizedUnknown",
+])("rejects unsupported model %s", (model) => {
+  expect(getBatchProvider("fmtr", model)).toBeNull();
+  expect(canRunBatchTranscription({ provider: "fmtr", model })).toBe(false);
 });

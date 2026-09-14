@@ -83,7 +83,6 @@ jobs:
             --exclude tcc \
             --exclude apple-note \
             --exclude notification-linux \
-            --exclude am \
             --exclude aec \
             --exclude agc \
             --exclude whisper \
@@ -101,7 +100,6 @@ jobs:
             --exclude audio-device \
             --exclude transcribe-whisper-local \
             --exclude device-monitor \
-            --exclude local-llm-core \
             --exclude local-stt-server \
             --exclude tauri-plugin-deeplink2 \
             --exclude tauri-plugin-detect \

@@ -631,17 +631,23 @@ mod tests {
     }
 
     #[test]
-    fn batch_idle_timeout_skips_cloud_am_batch() {
-        let params =
-            transcription_params(core::BatchProvider::Am, "https://api.deepgram.com", None);
+    fn batch_idle_timeout_skips_soniqo_batch() {
+        let params = transcription_params(
+            core::BatchProvider::Soniqo,
+            "soniqo://local",
+            Some("soniqo-parakeet-batch"),
+        );
 
         assert_eq!(batch_idle_timeout(&params), None);
     }
 
     #[test]
-    fn batch_idle_timeout_applies_to_local_am_batch() {
-        let params =
-            transcription_params(core::BatchProvider::Am, "http://localhost:50060/v1", None);
+    fn batch_idle_timeout_applies_to_local_whisper_batch() {
+        let params = transcription_params(
+            core::BatchProvider::WhisperLocal,
+            "http://localhost:50060/v1",
+            Some("QuantizedTiny"),
+        );
 
         assert_eq!(batch_idle_timeout(&params), Some(BATCH_IDLE_TIMEOUT));
     }

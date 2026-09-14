@@ -484,16 +484,6 @@ mod tests {
     }
 
     #[test]
-    fn defaults_local_argmax_capture_to_batch_mode() {
-        let params = capture_params("http://localhost:50060/v1", "parakeet-tdt-0.6b-v3");
-
-        assert_eq!(
-            params.default_transcription_mode(),
-            TranscriptionMode::Batch
-        );
-    }
-
-    #[test]
     fn defaults_soniqo_streaming_capture_to_platform_mode() {
         let params = capture_params("soniqo://local", "soniqo-parakeet-streaming");
         let expected = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {

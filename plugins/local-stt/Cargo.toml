@@ -35,11 +35,9 @@ tokio-tungstenite = { workspace = true }
 tower = { workspace = true }
 
 [dependencies]
-hypr-am = { workspace = true }
 hypr-audio-utils = { workspace = true }
 hypr-download-interface = { workspace = true }
 hypr-file = { workspace = true }
-hypr-host = { workspace = true }
 hypr-language = { workspace = true, features = ["whisper"] }
 hypr-local-model = { workspace = true }
 hypr-local-stt-core = { workspace = true, features = ["specta"] }
@@ -56,8 +54,6 @@ tauri = { workspace = true, features = ["test"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 
 tauri-plugin-settings = { workspace = true }
-tauri-plugin-shell = { workspace = true }
-tauri-plugin-sidecar2 = { workspace = true }
 tauri-plugin-windows = { workspace = true }
 
 dirs = { workspace = true }
@@ -72,7 +68,6 @@ axum = { workspace = true, features = ["ws"] }
 axum-extra = { workspace = true, features = ["query"] }
 tower-http = { workspace = true, features = ["cors", "trace"] }
 
-backon = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
@@ -81,6 +76,3 @@ tracing = { workspace = true }
 
 hypr-supervisor = { workspace = true }
 ractor = { workspace = true, features = ["async-trait"] }
-
-port-killer = "0.1.0"
-port_check = "0.3.0"

@@ -8,7 +8,6 @@ default = []
 local = ["hypr-audio-utils", "hypr-transcribe-soniqo"]
 
 [dependencies]
-hypr-am = { workspace = true }
 hypr-audio-utils = { workspace = true, optional = true }
 hypr-language = { workspace = true }
 hypr-observability = { workspace = true }

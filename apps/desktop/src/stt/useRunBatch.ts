@@ -14,6 +14,7 @@ import type { BatchPersistCallback } from "~/store/zustand/listener/transcript";
 import {
   getTranscriptionLanguages,
   isSupportedLanguagesBatch,
+  isSupportedLocalSttModel,
 } from "~/stt/capabilities";
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
@@ -56,16 +57,15 @@ export function getBatchProvider(
   provider: string,
   model: string,
 ): TranscriptionParams["provider"] | null {
-  if (provider !== "fmtr") {
+  if (provider !== "fmtr" || !isSupportedLocalSttModel(model)) {
     return null;
   }
 
   if (model.startsWith("soniqo-")) return "soniqo";
-  if (model.startsWith("am-")) return "am";
   if (model.startsWith("whisper-") || model.startsWith("Quantized")) {
     return "whispercpp";
   }
-  return "fmtr";
+  return null;
 }
 
 export function canRunBatchTranscription(

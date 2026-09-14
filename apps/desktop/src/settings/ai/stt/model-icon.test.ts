@@ -4,16 +4,12 @@ import { getLocalModelBackendBadge, getLocalModelIcon } from "./model-icon";
 
 describe("local model icons", () => {
   test("prioritizes model family over provider name", () => {
-    expect(getLocalModelIcon("soniqo-qwen3-0_6b")?.title).toBe("Qwen");
     expect(getLocalModelIcon("soniqo-parakeet-streaming")?.title).toBe(
       "NVIDIA Parakeet",
     );
   });
 
   test("uses researched logo assets for known model families", () => {
-    expect(getLocalModelIcon("soniqo-qwen3-0_6b")?.imageSrc).toBe(
-      "/assets/model-icons/qwen-logo.svg",
-    );
     expect(getLocalModelIcon("soniqo-omnilingual")?.imageSrc).toBe(
       "/assets/model-icons/meta-logo.svg",
     );
@@ -29,7 +25,7 @@ describe("local model icons", () => {
     expect(getLocalModelBackendBadge("whisper-small-apple-npu")?.label).toBe(
       "NPU",
     );
-    expect(getLocalModelBackendBadge("qwen3-ggml")?.label).toBe("GGML");
+    expect(getLocalModelBackendBadge("whisper-ggml")?.label).toBe("GGML");
     expect(getLocalModelBackendBadge("whisper-nvidia-cuda")?.label).toBe("NV");
   });
 });

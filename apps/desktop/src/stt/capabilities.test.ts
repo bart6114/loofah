@@ -106,7 +106,7 @@ describe("getOnDeviceTranscriptionMode", () => {
   });
 
   test("uses batch mode for non-realtime local models", () => {
-    expect(getOnDeviceTranscriptionMode("soniqo-qwen3-small")).toBe("batch");
+    expect(getOnDeviceTranscriptionMode("soniqo-omnilingual")).toBe("batch");
   });
 
   test("demotes to batch when the realtime local model does not support a configured language", () => {
@@ -125,7 +125,7 @@ describe("getOnDeviceTranscriptionMode", () => {
 describe("isSupportedLocalSttModel", () => {
   test("accepts shipped local STT model families", () => {
     expect(isSupportedLocalSttModel("soniqo-parakeet-streaming")).toBe(true);
-    expect(isSupportedLocalSttModel("am-parakeet-v3")).toBe(true);
+    expect(isSupportedLocalSttModel("soniqo-parakeet-batch")).toBe(true);
     expect(isSupportedLocalSttModel("QuantizedSmallEn")).toBe(true);
   });
 
@@ -139,7 +139,7 @@ describe("isSupportedLocalSttModel", () => {
 describe("isConfiguredSttModel", () => {
   test("requires an on-device model id for the on-device provider — no cloud model exists anymore", () => {
     expect(isConfiguredSttModel("fmtr", "cloud")).toBe(false);
-    expect(isConfiguredSttModel("fmtr", "soniqo-qwen3-small")).toBe(true);
+    expect(isConfiguredSttModel("fmtr", "soniqo-omnilingual")).toBe(true);
     expect(isConfiguredSttModel("fmtr", "removed-local-model")).toBe(false);
   });
 
@@ -237,19 +237,19 @@ describe("getLiveTranscriptionConfig", () => {
   });
 
   test("passes the provider through untouched — STT is on-device only, no Deepgram-compatibility mapping left", async () => {
-    await isSupportedLanguagesLive("fmtr", "am-parakeet-v3", ["en"]);
+    await isSupportedLanguagesLive("fmtr", "soniqo-parakeet-batch", ["en"]);
 
     expect(isSupportedLanguagesLiveMock.mock.calls[0]).toEqual([
       "fmtr",
-      "am-parakeet-v3",
+      "soniqo-parakeet-batch",
       ["en"],
     ]);
 
-    await isSupportedLanguagesBatch("fmtr", "am-parakeet-v3", ["en"]);
+    await isSupportedLanguagesBatch("fmtr", "soniqo-parakeet-batch", ["en"]);
 
     expect(isSupportedLanguagesBatchMock.mock.calls[0]).toEqual([
       "fmtr",
-      "am-parakeet-v3",
+      "soniqo-parakeet-batch",
       ["en"],
     ]);
   });
@@ -277,4 +277,31 @@ describe("getTranscriptionLanguages", () => {
       "ko",
     ]);
   });
+});
+
+test.each([
+  "am-parakeet-v2",
+  "am-parakeet-v3",
+  "am-whisper-large-v3",
+  "soniqo-qwen3-small",
+  "soniqo-qwen3-large",
+  "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+  "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+  "HyprLLM",
+  "soniqo-unknown",
+  "whisper-unknown",
+  "QuantizedUnknown",
+])("rejects unsupported model %s", (model) => {
+  expect(isSupportedLocalSttModel(model)).toBe(false);
+  expect(isConfiguredSttModel("fmtr", model)).toBe(false);
+});
+
+test.each(["am", "argmax"])("rejects retired provider %s", async (provider) => {
+  expect(isConfiguredSttModel(provider, "am-parakeet-v3")).toBe(false);
+  expect(
+    await isSupportedLanguagesLive(provider, "am-parakeet-v3", ["en"]),
+  ).toBe(false);
+  expect(
+    await isSupportedLanguagesBatch(provider, "am-parakeet-v3", ["en"]),
+  ).toBe(false);
 });

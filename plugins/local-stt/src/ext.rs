@@ -1,10 +1,10 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+#[cfg(feature = "whisper-cpp")]
 use ractor::{ActorRef, call_t, registry};
 use tauri_specta::Event;
 
 use tauri::{Manager, Runtime};
-use tauri_plugin_sidecar2::Sidecar2PluginExt;
 
 use hypr_model_downloader::{DownloadStatus, ModelDownloadManager, ModelDownloaderRuntime};
 
@@ -12,7 +12,7 @@ use hypr_model_downloader::{DownloadStatus, ModelDownloadManager, ModelDownloade
 use crate::server::internal;
 use crate::{
     model::{DiarizerModel, LocalModel, LocalModelKind},
-    server::{ServerInfo, ServerStatus, ServerType, external, supervisor},
+    server::{ServerInfo, ServerStatus, ServerType, supervisor},
     types::DownloadProgressPayload,
 };
 
@@ -61,17 +61,13 @@ pub struct LocalStt<'a, R: Runtime, M: Manager<R>> {
 impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
     fn ensure_stt_model(model: &LocalModel) -> Result<(), crate::Error> {
         match model {
-            LocalModel::Soniqo(_)
-            | LocalModel::Am(_)
-            | LocalModel::Whisper(_)
-            | LocalModel::Diarizer(_) => {
+            LocalModel::Soniqo(_) | LocalModel::Whisper(_) | LocalModel::Diarizer(_) => {
                 if model.is_available_on_current_platform() {
                     Ok(())
                 } else {
                     Err(crate::Error::UnsupportedPlatform)
                 }
             }
-            LocalModel::GgufLlm(_) => Err(crate::Error::UnsupportedModelType),
         }
     }
 
@@ -149,19 +145,17 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
         }
 
         let server_type = match &model {
-            LocalModel::Am(_) => ServerType::External,
             LocalModel::Whisper(_) => ServerType::Internal,
-            LocalModel::Soniqo(_) | LocalModel::GgufLlm(_) | LocalModel::Diarizer(_) => {
+            LocalModel::Soniqo(_) | LocalModel::Diarizer(_) => {
                 return Err(crate::Error::UnsupportedModelType);
             }
         };
 
-        let current_info = match server_type {
+        let current_info: Option<ServerInfo> = match server_type {
             #[cfg(feature = "whisper-cpp")]
             ServerType::Internal => internal_health().await,
             #[cfg(not(feature = "whisper-cpp"))]
             ServerType::Internal => None,
-            ServerType::External => external_health().await,
         };
 
         if let Some(info) = current_info.as_ref()
@@ -174,10 +168,6 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
             return Err(crate::Error::ServerStartFailed(
                 "missing_health_url".to_string(),
             ));
-        }
-
-        if matches!(server_type, ServerType::External) && !self.is_model_downloaded(&model).await? {
-            return Err(crate::Error::ModelNotDownloaded);
         }
 
         let supervisor = self.get_supervisor().await?;
@@ -199,15 +189,6 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
                 }
                 #[cfg(not(feature = "whisper-cpp"))]
                 Err(crate::Error::UnsupportedModelType)
-            }
-            ServerType::External => {
-                let data_dir = self.models_dir();
-                let am_model = match model {
-                    LocalModel::Am(m) => m,
-                    _ => return Err(crate::Error::UnsupportedModelType),
-                };
-
-                start_external_server(self.manager, &supervisor, data_dir, am_model).await
             }
         }
     }
@@ -258,9 +239,8 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
         }
 
         let server_type = match model {
-            LocalModel::Am(_) => ServerType::External,
             LocalModel::Whisper(_) => ServerType::Internal,
-            LocalModel::Soniqo(_) | LocalModel::GgufLlm(_) | LocalModel::Diarizer(_) => {
+            LocalModel::Soniqo(_) | LocalModel::Diarizer(_) => {
                 return Err(crate::Error::UnsupportedModelType);
             }
         };
@@ -270,7 +250,6 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
             ServerType::Internal => internal_health().await,
             #[cfg(not(feature = "whisper-cpp"))]
             ServerType::Internal => None,
-            ServerType::External => external_health().await,
         };
 
         Ok(info)
@@ -291,18 +270,9 @@ impl<'a, R: Runtime, M: Manager<R>> LocalStt<'a, R, M> {
             model: None,
         };
 
-        let external_info = external_health().await.unwrap_or(ServerInfo {
-            url: None,
-            status: ServerStatus::Unreachable,
-            model: None,
-        });
-
-        Ok([
-            (ServerType::Internal, internal_info),
-            (ServerType::External, external_info),
-        ]
-        .into_iter()
-        .collect())
+        Ok([(ServerType::Internal, internal_info)]
+            .into_iter()
+            .collect())
     }
 
     #[tracing::instrument(skip_all)]
@@ -604,52 +574,6 @@ async fn start_internal_server(
         .ok_or_else(|| crate::Error::ServerStartFailed("empty_health".to_string()))
 }
 
-async fn start_external_server<R: Runtime, T: Manager<R>>(
-    manager: &T,
-    supervisor: &supervisor::SupervisorRef,
-    data_dir: PathBuf,
-    model: hypr_am::AmModel,
-) -> Result<String, crate::Error> {
-    let am_key = {
-        let state = manager.state::<crate::SharedState>();
-        let key = {
-            let guard = state.lock().await;
-            guard.am_api_key.clone()
-        };
-
-        key.filter(|k| !k.is_empty())
-            .ok_or(crate::Error::AmApiKeyNotSet)?
-    };
-
-    let port = port_check::free_local_port()
-        .ok_or_else(|| crate::Error::ServerStartFailed("failed_to_find_free_port".to_string()))?;
-
-    let app_handle = manager.app_handle().clone();
-    let cmd_builder = external::CommandBuilder::new(move || {
-        let cmd = app_handle
-            .sidecar2()
-            .sidecar("fmtr-sidecar-stt")?
-            .args(["serve", "--any-token"]);
-
-        #[cfg(debug_assertions)]
-        let cmd = cmd.args(["-v", "-d"]);
-
-        Ok(cmd)
-    });
-
-    supervisor::start_external_stt(
-        supervisor,
-        external::ExternalSTTArgs::new(cmd_builder, am_key, model, data_dir, port),
-    )
-    .await
-    .map_err(|e| crate::Error::ServerStartFailed(e.to_string()))?;
-
-    external_health()
-        .await
-        .and_then(|info| info.url)
-        .ok_or_else(|| crate::Error::ServerStartFailed("empty_health".to_string()))
-}
-
 #[cfg(feature = "whisper-cpp")]
 async fn internal_health() -> Option<ServerInfo> {
     match registry::where_is(internal::InternalSTTActor::name()) {
@@ -661,21 +585,10 @@ async fn internal_health() -> Option<ServerInfo> {
     }
 }
 
-async fn external_health() -> Option<ServerInfo> {
-    match registry::where_is(external::ExternalSTTActor::name()) {
-        Some(cell) => {
-            let actor: ActorRef<external::ExternalSTTMessage> = cell.into();
-            call_t!(actor, external::ExternalSTTMessage::GetHealth, 10 * 1000).ok()
-        }
-        None => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::SoniqoModel;
-    use hypr_local_model::GgufLlmModel;
 
     fn state_with_status(status: &str) -> hypr_transcribe_soniqo::ModelDownloadState {
         hypr_transcribe_soniqo::ModelDownloadState {
@@ -707,17 +620,14 @@ mod tests {
 
     #[test]
     fn only_stt_completions_trigger_diarizer_download() {
+        assert!(stt_completion_triggers_diarizer(&LocalModel::Whisper(
+            hypr_whisper_local_model::WhisperModel::QuantizedTiny
+        )));
         assert!(stt_completion_triggers_diarizer(&LocalModel::Soniqo(
             SoniqoModel::ParakeetStreaming
         )));
-        assert!(stt_completion_triggers_diarizer(&LocalModel::Am(
-            hypr_am::AmModel::ParakeetV3
-        )));
         assert!(!stt_completion_triggers_diarizer(&LocalModel::Diarizer(
             DiarizerModel::FluidCommunity
-        )));
-        assert!(!stt_completion_triggers_diarizer(&LocalModel::GgufLlm(
-            GgufLlmModel::HyprLLM
         )));
     }
 
