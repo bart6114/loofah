@@ -187,7 +187,6 @@ export type AppConfig = Partial<{
   ai_language: string;
   spoken_languages: string[];
   meeting_languages?: string[] | null;
-  personalization_dictionary_terms: string[];
   custom_summary_instructions: string;
   custom_summary_instructions_token_aware: boolean;
   auto_summary_prompt: string;
@@ -201,7 +200,6 @@ export type AppConfig = Partial<{
   transcription_timing: string;
   timezone?: string | null;
   ai_providers: Partial<{ [key in string]: AiProviderEntry }>;
-  hooks?: JsonValue | null;
 };
 export type JsonValue =
   | null

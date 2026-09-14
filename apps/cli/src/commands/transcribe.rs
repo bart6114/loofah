@@ -326,8 +326,8 @@ mod tests {
         assert_eq!(model, "soniqo-parakeet-streaming");
     }
 
-    #[test]
-    fn historical_transcripts_keep_provenance_and_speakers_when_read_and_exported() {
+    #[tokio::test]
+    async fn historical_transcripts_keep_provenance_and_speakers_when_read_and_exported() {
         let dir = tempfile::tempdir().unwrap();
         let session_dir = dir.path().join("sessions/s1");
         std::fs::create_dir_all(&session_dir).unwrap();
@@ -343,20 +343,18 @@ mod tests {
         let file = hypr_vault_read::transcript::read_transcript_json(dir.path(), "s1").unwrap();
         let word = &file.transcripts[0].words[0];
         assert_eq!(word.metadata.as_ref().unwrap()["model"], "am-parakeet-v3");
-        let export = dir.path().join("export.vtt");
-        hypr_listener2_core::export_words_to_vtt_file(
-            vec![hypr_listener2_core::VttWord {
-                text: word.text.clone(),
-                start_ms: word.start_ms as u64,
-                end_ms: word.end_ms as u64,
-                speaker: word.speaker.clone(),
-            }],
-            &export,
-        )
-        .unwrap();
-        let content = std::fs::read_to_string(export).unwrap();
-        assert!(content.contains("Historical words"));
-        assert!(content.contains("Alice"));
+        std::fs::write(
+            session_dir.join("_meta.json"),
+            r#"{"id":"s1","title":"Historical meeting","created_at":"2026-03-20T00:00:00Z","tags":[]}"#,
+        ).unwrap();
+        let exported = hypr_agent_access::get_meeting_export(dir.path(), "s1".into())
+            .await
+            .unwrap();
+        let exported = serde_json::to_value(exported).unwrap();
+        let exported_word = &exported["transcripts"][0]["words"][0];
+        assert_eq!(exported_word["text"], "Historical words");
+        assert_eq!(exported_word["speaker"], "Alice");
+        assert_eq!(exported_word["metadata"]["model"], "am-parakeet-v3");
         assert_eq!(std::fs::read_to_string(path).unwrap(), original);
     }
 

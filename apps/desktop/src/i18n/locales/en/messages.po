@@ -99,10 +99,6 @@ msgstr "Accept suggested tag {name}"
 msgid "Actions"
 msgstr "Actions"
 
-#: src/settings/dictionary/index.tsx
-msgid "Add"
-msgstr "Add"
-
 #: src/settings/general/language-settings.tsx
 msgid "Add a meeting language to help transcription choose the right words."
 msgstr "Add a meeting language to help transcription choose the right words."
@@ -118,14 +114,6 @@ msgstr "Add files here or drop them anywhere in this area."
 #: src/settings/general/spoken-languages.tsx
 msgid "Add language"
 msgstr "Add language"
-
-#: src/settings/dictionary/index.tsx
-msgid "Add names, jargon, and product terms to improve transcription."
-msgstr "Add names, jargon, and product terms to improve transcription."
-
-#: src/settings/dictionary/index.tsx
-msgid "Add names, jargon, or product terms to prefer"
-msgstr "Add names, jargon, or product terms to prefer"
 
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
@@ -490,10 +478,6 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
-
-#: src/settings/dictionary/index.tsx
-msgid "Dictionary"
-msgstr "Dictionary"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
@@ -930,10 +914,6 @@ msgstr "No description provided."
 msgid "No items today"
 msgstr "No items today"
 
-#: src/settings/dictionary/index.tsx
-msgid "No match"
-msgstr "No match"
-
 #: src/settings/general/main-language.tsx
 #: src/settings/general/spoken-languages.tsx
 msgid "No matching languages found"
@@ -1144,10 +1124,6 @@ msgstr "Remove"
 #: src/settings/general/spoken-languages.tsx
 msgid "Remove {0}"
 msgstr "Remove {0}"
-
-#: src/settings/dictionary/index.tsx
-msgid "Remove {term}"
-msgstr "Remove {term}"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Remove attachment"

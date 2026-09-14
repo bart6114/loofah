@@ -105,7 +105,6 @@ jobs:
             --exclude tauri-plugin-detect \
             --exclude tauri-plugin-fs-sync \
             --exclude tauri-plugin-fs2 \
-            --exclude tauri-plugin-hooks \
             --exclude tauri-plugin-icon \
             --exclude tauri-plugin-local-stt \
             --exclude tauri-plugin-misc \

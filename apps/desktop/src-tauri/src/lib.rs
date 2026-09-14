@@ -198,7 +198,6 @@ pub async fn main() {
 
     builder = builder
         .plugin(tauri_plugin_todo::init())
-        .plugin(tauri_plugin_hooks::init())
         .plugin(tauri_plugin_icon::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_sidecar2::init())

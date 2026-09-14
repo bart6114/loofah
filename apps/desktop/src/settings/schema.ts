@@ -106,11 +106,6 @@ export const SETTING_DEFINITIONS = {
     path: ["language", "spoken_languages"],
     default: "[]" as string,
   },
-  personalization_dictionary_terms: {
-    type: "string",
-    path: ["personalization", "dictionary_terms"],
-    default: "[]" as string,
-  },
   custom_summary_instructions: {
     type: "string",
     path: ["personalization", "custom_summary_instructions"],

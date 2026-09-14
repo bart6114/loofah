@@ -41,7 +41,6 @@ pub struct AppConfig {
     pub spoken_languages: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meeting_languages: Option<Vec<String>>,
-    pub personalization_dictionary_terms: Vec<String>,
     pub custom_summary_instructions: String,
     pub custom_summary_instructions_token_aware: bool,
     pub auto_summary_prompt: String,
@@ -60,8 +59,6 @@ pub struct AppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
     pub ai_providers: HashMap<String, AiProviderEntry>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hooks: Option<Value>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,
 }
@@ -88,7 +85,6 @@ impl Default for AppConfig {
             ai_language: "en".to_string(),
             spoken_languages: Vec::new(),
             meeting_languages: None,
-            personalization_dictionary_terms: Vec::new(),
             custom_summary_instructions: String::new(),
             custom_summary_instructions_token_aware: false,
             auto_summary_prompt: String::new(),
@@ -102,7 +98,6 @@ impl Default for AppConfig {
             transcription_timing: "live".to_string(),
             timezone: None,
             ai_providers: HashMap::new(),
-            hooks: None,
             extra: serde_json::Map::new(),
         }
     }
@@ -340,7 +335,7 @@ mod tests {
         let temp = tempdir().unwrap();
         std::fs::write(
             temp.path().join("config.json"),
-            r#"{"autostart": true, "future_key": {"a": 1}}"#,
+            r#"{"autostart": true, "future_key": {"a": 1}, "personalization_dictionary_terms": ["Loofah"], "hooks": {"version": 0, "on": {"beforeListeningStarted": [{"command": "legacy-hook"}]}}}"#,
         )
         .unwrap();
 
@@ -355,6 +350,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(on_disk["future_key"], json!({"a": 1}));
+        assert_eq!(
+            on_disk["personalization_dictionary_terms"],
+            json!(["Loofah"])
+        );
+        assert_eq!(
+            on_disk["hooks"]["on"]["beforeListeningStarted"][0]["command"],
+            json!("legacy-hook")
+        );
         assert_eq!(on_disk["autostart"], json!(true));
         assert_eq!(on_disk["theme"], json!("light"));
     }

@@ -265,20 +265,23 @@ describe("Basic Tab Actions", () => {
     ]);
   });
 
-  test("openNew redirects legacy personalization settings to dictionary", () => {
-    useTabs.getState().openNew({
-      type: "settings",
-      state: { tab: "personalization" },
-    });
+  test.each(["personalization", "dictionary"])(
+    "openNew redirects retired %s settings to app",
+    (tab) => {
+      useTabs.getState().openNew({
+        type: "settings",
+        state: { tab },
+      });
 
-    expect(useTabs.getState()).toHaveCurrentTab({
-      type: "settings",
-      state: { tab: "dictionary" },
-    });
-    expect(useTabs.getState()).toMatchTabsInOrder([
-      { type: "settings", active: true, state: { tab: "dictionary" } },
-    ]);
-  });
+      expect(useTabs.getState()).toHaveCurrentTab({
+        type: "settings",
+        state: { tab: "app" },
+      });
+      expect(useTabs.getState()).toMatchTabsInOrder([
+        { type: "settings", active: true, state: { tab: "app" } },
+      ]);
+    },
+  );
 
   test("openNew normalizes an unknown/removed settings tab to app", () => {
     useTabs.getState().openNew({ type: "settings", state: { tab: "account" } });

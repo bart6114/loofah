@@ -38,11 +38,6 @@ vi.mock("./contexts", () => ({
   useListener: useListenerMock,
 }));
 
-vi.mock("./useKeywords", () => ({
-  getSessionKeywords: vi.fn(async () => []),
-  useKeywords: vi.fn(() => []),
-}));
-
 vi.mock("./useSTTConnection", () => ({
   useSTTConnection: useSTTConnectionMock,
 }));

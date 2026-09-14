@@ -3715,23 +3715,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6b926516df9c60bfa16e107b21086399f8285a44ca9711344b9e553c5146e2"
 
 [[package]]
-name = "denoise"
-version = "0.1.0"
-dependencies = [
- "approx",
- "audio-snapshot",
- "criterion",
- "dasp",
- "data",
- "hound",
- "onnx",
- "realfft",
- "rodio",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "der"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3876,7 +3859,6 @@ dependencies = [
  "tauri-plugin-export",
  "tauri-plugin-fs-sync",
  "tauri-plugin-fs2",
- "tauri-plugin-hooks",
  "tauri-plugin-http",
  "tauri-plugin-hypr-tray",
  "tauri-plugin-icon",
@@ -6758,19 +6740,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hooks"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "serde",
- "serde_json",
- "shellexpand",
- "specta",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
 name = "host"
 version = "0.1.0"
 dependencies = [
@@ -8356,7 +8325,6 @@ dependencies = [
  "audio-chunking",
  "audio-utils",
  "bytes",
- "denoise",
  "fs-format",
  "futures-util",
  "host",
@@ -14693,23 +14661,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-hooks"
-version = "0.1.0"
-dependencies = [
- "hooks",
- "serde",
- "serde_json",
- "specta",
- "specta-typescript",
- "tauri",
- "tauri-plugin",
- "tauri-plugin-settings",
- "tauri-specta",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
 name = "tauri-plugin-http"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15221,7 +15172,6 @@ dependencies = [
  "storage",
  "tauri",
  "tauri-plugin",
- "tauri-plugin-hooks",
  "tauri-plugin-hypr-tray",
  "tauri-plugin-local-stt",
  "tauri-plugin-settings",

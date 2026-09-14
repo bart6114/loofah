@@ -4,7 +4,6 @@ import type { TranscriptionParams } from "@hypr/plugin-transcription";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useListener } from "./contexts";
-import { getSessionKeywords } from "./useKeywords";
 import { useSTTConnection } from "./useSTTConnection";
 
 import { useSession } from "~/session/queries";
@@ -25,7 +24,6 @@ type RunOptions = {
   model?: string;
   baseUrl?: string;
   apiKey?: string;
-  keywords?: string[];
   languages?: string[];
   numSpeakers?: number;
   minSpeakers?: number;
@@ -133,7 +131,6 @@ export const useRunBatch = (sessionId: string) => {
   const startTranscription = useListener((state) => state.startTranscription);
   const { conn } = useSTTConnection();
   const meetingLanguages = useConfigValue("meeting_languages");
-  const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
 
   return useCallback(
     async (filePath: string, options?: RunOptions) => {
@@ -187,12 +184,6 @@ export const useRunBatch = (sessionId: string) => {
 
       const createdAt = new Date().toISOString();
       const memoMd = session?.raw_md ?? "";
-      const keywords =
-        options?.keywords ??
-        (await getSessionKeywords({
-          sessionId,
-          dictionaryTerms,
-        }));
       let transcriptId: string | null = null;
       const inferredNumSpeakers =
         options?.numSpeakers === undefined &&
@@ -302,7 +293,6 @@ export const useRunBatch = (sessionId: string) => {
         model: target.model,
         base_url: target.baseUrl,
         api_key: target.apiKey,
-        keywords,
         languages,
         num_speakers: options?.numSpeakers ?? inferredNumSpeakers,
         min_speakers: options?.minSpeakers,
@@ -319,13 +309,6 @@ export const useRunBatch = (sessionId: string) => {
 
       await queueTagSuggestions(sessionId);
     },
-    [
-      conn,
-      dictionaryTerms,
-      session,
-      meetingLanguages,
-      startTranscription,
-      sessionId,
-    ],
+    [conn, session, meetingLanguages, startTranscription, sessionId],
   );
 };

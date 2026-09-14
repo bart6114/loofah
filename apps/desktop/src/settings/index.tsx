@@ -30,9 +30,6 @@ const stt = deferredView(() =>
 const developers = deferredView(() =>
   import("./developers").then((m) => ({ default: m.SettingsDevelopers })),
 );
-const dictionary = deferredView(() =>
-  import("./dictionary").then((m) => ({ default: m.SettingsDictionary })),
-);
 const preloaders = [stt.preload, llm.preload, developers.preload];
 
 export function TabContentSettings({
@@ -53,11 +50,7 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
   usePreloadViews(preloaders);
   const requestedTab = tab.state.tab as string | undefined;
   const activeTab =
-    requestedTab === "data"
-      ? "storage"
-      : requestedTab === "personalization"
-        ? "dictionary"
-        : (tab.state.tab ?? "app");
+    requestedTab === "data" ? "storage" : (tab.state.tab ?? "app");
 
   const renderContent = () => {
     switch (activeTab) {
@@ -71,8 +64,6 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
         return <SettingsPermissions />;
       case "developers":
         return <developers.View />;
-      case "dictionary":
-        return <dictionary.View />;
       case "transcription":
         return <stt.View />;
       case "summary-prompt":

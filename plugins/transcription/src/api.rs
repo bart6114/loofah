@@ -27,7 +27,6 @@ pub struct CaptureParams {
     pub model: String,
     pub base_url: String,
     pub api_key: String,
-    pub keywords: Vec<String>,
     #[serde(default)]
     pub transcription_mode: Option<listener::TranscriptionMode>,
     #[serde(default)]
@@ -168,8 +167,6 @@ pub struct TranscriptionParams {
     #[serde(default)]
     pub languages: Vec<hypr_language::Language>,
     #[serde(default)]
-    pub keywords: Vec<String>,
-    #[serde(default)]
     pub num_speakers: Option<u32>,
     #[serde(default)]
     pub min_speakers: Option<u32>,
@@ -222,7 +219,7 @@ impl From<CaptureParams> for listener::actors::SessionParams {
             model: value.model,
             base_url: value.base_url,
             api_key: value.api_key,
-            keywords: value.keywords,
+            keywords: Vec::new(),
             participant_human_ids: value.participant_human_ids,
             self_human_id: value.self_human_id,
         }
@@ -338,7 +335,7 @@ impl From<TranscriptionParams> for listener2::BatchParams {
             base_url: value.base_url,
             api_key: value.api_key,
             languages: value.languages,
-            keywords: value.keywords,
+            keywords: Vec::new(),
             num_speakers: value.num_speakers,
             min_speakers: value.min_speakers,
             max_speakers: value.max_speakers,
@@ -368,7 +365,6 @@ mod tests {
             model: model.to_string(),
             base_url: base_url.to_string(),
             api_key: "test-key".to_string(),
-            keywords: vec![],
             transcription_mode: None,
             participant_human_ids: vec![],
             self_human_id: None,

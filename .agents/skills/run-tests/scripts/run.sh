@@ -36,7 +36,6 @@ readonly rust_excludes=(
   tauri-plugin-detect
   tauri-plugin-fs-sync
   tauri-plugin-fs2
-  tauri-plugin-hooks
   tauri-plugin-icon
   tauri-plugin-local-stt
   tauri-plugin-misc

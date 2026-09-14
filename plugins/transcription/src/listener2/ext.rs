@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -163,41 +162,8 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         stop_batch_session(&app, &registry, &session_id);
     }
 
-    pub async fn run_denoise(&self, params: core::DenoiseParams) -> Result<(), core::Error> {
-        let state = self.manager.state::<crate::SharedState>();
-        let guard = state.lock().await;
-        let app = guard.app.clone();
-        drop(guard);
-
-        let runtime = Arc::new(TauriDenoiseRuntime { app });
-        core::run_denoise(runtime, params).await
-    }
-
     pub fn parse_subtitle(&self, path: String) -> Result<core::Subtitle, String> {
         core::parse_subtitle_from_path(path)
-    }
-
-    pub fn export_to_vtt(
-        &self,
-        session_id: String,
-        words: Vec<core::VttWord>,
-    ) -> Result<String, String> {
-        use tauri_plugin_settings::SettingsPluginExt;
-
-        let base = self
-            .manager
-            .settings()
-            .vault_base()
-            .map_err(|e| e.to_string())?
-            .into_std_path_buf();
-        let session_dir = resolve_vtt_session_dir(&base, &session_id)?;
-
-        std::fs::create_dir_all(&session_dir).map_err(|e| e.to_string())?;
-
-        let vtt_path = session_dir.join("transcript.vtt");
-
-        core::export_words_to_vtt_file(words, &vtt_path)?;
-        Ok(vtt_path.to_string_lossy().into_owned())
     }
 }
 
@@ -216,19 +182,6 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> Listener2PluginExt<R> for T {
             manager: self,
             _runtime: std::marker::PhantomData,
         }
-    }
-}
-
-/// Resolve where a session's `transcript.vtt` belongs: the session's real directory
-/// by `_meta.json.id`, or the legacy `sessions/<id>` path when the id resolves nowhere
-/// (the session may not have been created yet).
-fn resolve_vtt_session_dir(vault_base: &Path, session_id: &str) -> Result<PathBuf, String> {
-    match hypr_vault_read::find_session(vault_base, session_id) {
-        Ok(Some((location, _))) => Ok(vault_base.join(location.relative_dir)),
-        Ok(None) => Ok(vault_base
-            .join(hypr_vault_read::paths::sessions_root())
-            .join(session_id)),
-        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -254,16 +207,6 @@ impl core::BatchRuntime for TauriBatchRuntime {
             return;
         }
         let _ = TranscriptionEvent::from(event).emit(&self.app);
-    }
-}
-
-struct TauriDenoiseRuntime {
-    app: tauri::AppHandle,
-}
-
-impl core::DenoiseRuntime for TauriDenoiseRuntime {
-    fn emit(&self, event: core::DenoiseEvent) {
-        let _ = event.emit(&self.app);
     }
 }
 
@@ -498,7 +441,6 @@ mod tests {
             base_url: base_url.to_string(),
             api_key: "key".to_string(),
             languages: vec![hypr_language::ISO639::En.into()],
-            keywords: vec![],
             num_speakers: None,
             min_speakers: None,
             max_speakers: None,
@@ -650,53 +592,5 @@ mod tests {
         );
 
         assert_eq!(batch_idle_timeout(&params), Some(BATCH_IDLE_TIMEOUT));
-    }
-
-    const UUID_1: &str = "550e8400-e29b-41d4-a716-446655440000";
-
-    fn seed_session_at(vault: &Path, relative_dir: &str, id: &str) {
-        let dir = vault.join(relative_dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("_meta.json"),
-            format!(
-                r#"{{"id":"{id}","title":"Test","started_at":null,"ended_at":null,"created_at":"2026-03-20T00:00:00Z","tags":[]}}"#
-            ),
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn vtt_session_dir_resolves_readable_directory_by_meta_id() {
-        let vault = tempfile::tempdir().unwrap();
-        let readable = "sessions/2026-03-20 — Test — abc123";
-        seed_session_at(vault.path(), readable, UUID_1);
-
-        assert_eq!(
-            resolve_vtt_session_dir(vault.path(), UUID_1),
-            Ok(vault.path().join(readable))
-        );
-    }
-
-    #[test]
-    fn vtt_session_dir_falls_back_to_legacy_path_when_session_resolves_nowhere() {
-        let vault = tempfile::tempdir().unwrap();
-
-        assert_eq!(
-            resolve_vtt_session_dir(vault.path(), UUID_1),
-            Ok(vault.path().join("sessions").join(UUID_1))
-        );
-    }
-
-    #[test]
-    fn vtt_session_dir_resolves_legacy_uuid_directory() {
-        let vault = tempfile::tempdir().unwrap();
-        let legacy = format!("sessions/{UUID_1}");
-        seed_session_at(vault.path(), &legacy, UUID_1);
-
-        assert_eq!(
-            resolve_vtt_session_dir(vault.path(), UUID_1),
-            Ok(vault.path().join(legacy))
-        );
     }
 }

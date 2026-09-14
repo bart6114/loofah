@@ -16,9 +16,7 @@ Default permissions for the plugin
 - `allow-render-transcript-segments`
 - `allow-start-transcription`
 - `allow-stop-transcription`
-- `allow-run-denoise`
 - `allow-parse-subtitle`
-- `allow-export-to-vtt`
 - `allow-is-supported-languages-batch`
 - `allow-suggest-providers-for-languages-batch`
 - `allow-list-documented-language-codes-batch`
@@ -31,32 +29,6 @@ Default permissions for the plugin
 <th>Description</th>
 </tr>
 
-
-<tr>
-<td>
-
-`transcription:allow-export-to-vtt`
-
-</td>
-<td>
-
-Enables the export_to_vtt command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`transcription:deny-export-to-vtt`
-
-</td>
-<td>
-
-Denies the export_to_vtt command without any pre-configured scope.
-
-</td>
-</tr>
 
 <tr>
 <td>
@@ -314,32 +286,6 @@ Enables the render_transcript_segments command without any pre-configured scope.
 <td>
 
 Denies the render_transcript_segments command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`transcription:allow-run-denoise`
-
-</td>
-<td>
-
-Enables the run_denoise command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`transcription:deny-run-denoise`
-
-</td>
-<td>
-
-Denies the run_denoise command without any pre-configured scope.
 
 </td>
 </tr>

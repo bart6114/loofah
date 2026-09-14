@@ -40,7 +40,6 @@ export type SettingsTab =
   | "notifications"
   | "developers"
   | "permissions"
-  | "dictionary"
   | "transcription"
   | "intelligence"
   | "summary-prompt";
@@ -54,13 +53,10 @@ export const normalizeSettingsTab = (
     case "notifications":
     case "developers":
     case "permissions":
-    case "dictionary":
     case "transcription":
     case "intelligence":
     case "summary-prompt":
       return tab;
-    case "personalization":
-      return "dictionary";
     default:
       return "app";
   }

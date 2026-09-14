@@ -3,7 +3,6 @@ import { useCallback, useRef } from "react";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useListener } from "./contexts";
-import { getSessionKeywords } from "./useKeywords";
 import {
   canRunBatchTranscription,
   isStoppedTranscriptionError,
@@ -65,7 +64,6 @@ export function useStartListening(sessionId: string) {
 
   const meetingLanguages = useConfigValue("meeting_languages");
   const transcriptionTiming = useConfigValue("transcription_timing");
-  const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
 
   const start = useListener((state) => state.start);
   const { conn } = useSTTConnection();
@@ -92,11 +90,6 @@ export function useStartListening(sessionId: string) {
     const trackTranscriptWrite = (write: Promise<void>) => {
       lastTranscriptWrite = write.catch(reportTranscriptWriteError);
     };
-    const keywords = await getSessionKeywords({
-      sessionId,
-      dictionaryTerms,
-    });
-
     const onStopped: OnStoppedCallback = async (_sessionId, details) => {
       // Cataloging can relocate the recording, so everything downstream reads the path it
       // settled at; the capture backend's path is only a fallback for when cataloging failed
@@ -219,7 +212,6 @@ export function useStartListening(sessionId: string) {
         model: conn?.model ?? "",
         base_url: conn?.baseUrl ?? "",
         api_key: conn?.apiKey ?? "",
-        keywords,
         transcription_mode: liveTranscriptionConfig.transcriptionMode,
         participant_human_ids: [],
         self_human_id: session?.user_id || null,
@@ -241,7 +233,6 @@ export function useStartListening(sessionId: string) {
     setLeftSidebarExpanded(false);
   }, [
     conn,
-    dictionaryTerms,
     hadTranscriptBeforeStart,
     session,
     sessionId,

@@ -10,7 +10,6 @@ import {
 
 type JsonParsedKeys =
   | "spoken_languages"
-  | "personalization_dictionary_terms"
   | "ignored_platforms"
   | "included_platforms"
   | "sidebar_expanded_tags";
@@ -27,7 +26,6 @@ type ConfigValueType<K extends SettingKey> = K extends "meeting_languages"
 
 const JSON_PARSED_KEYS = new Set<SettingKey>([
   "spoken_languages",
-  "personalization_dictionary_terms",
   "ignored_platforms",
   "included_platforms",
   "sidebar_expanded_tags",

@@ -50,8 +50,6 @@ Download **Whisper Large V3 (Multilingual)** in **Settings → Transcription** a
 
 For Dutch meetings with English technical terms, set Dutch as your main language and add English under **Additional spoken languages**. Whisper transcribes speech in its original language, with translation disabled. Recognition of mixed-language speech still depends on the recording and model.
 
-Add names, acronyms, and terms such as Kubernetes under **Settings → Dictionary**. Loofah passes these terms to Whisper as transcription context; they are hints, not guaranteed spellings.
-
 ## Set the main language
 
 Open **Settings → App → Language & Region** and choose **Main language**.
@@ -63,9 +61,5 @@ This language is used for generated summaries and titles. Changing it does not t
 Use **Additional spoken languages** when people may switch languages during a meeting. The app passes the full selection to the transcription model.
 
 Only add languages that are actually likely to be spoken. Every selected language must be supported by the model, and adding a non-English language changes the streaming model from live to after-recording transcription.
-
-## Names and specialist terms
-
-Language settings do not teach the model names or company jargon. Add those under **Settings → Dictionary**.
 
 Use [Customize meeting summaries](/customize-summaries) to control summary structure and wording.

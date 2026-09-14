@@ -1,5 +1,4 @@
 mod batch;
-mod denoise;
 mod error;
 mod events;
 mod runtime;
@@ -9,7 +8,6 @@ pub use batch::transcript;
 pub use batch::{
     BatchParams, BatchProvider, BatchRunMode, BatchRunOutput, expects_progressive_batch, run_batch,
 };
-pub use denoise::{DenoiseParams, run_denoise};
 pub use error::*;
 pub use events::*;
 pub use runtime::*;

@@ -11,15 +11,6 @@ pub struct Token {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct VttWord {
-    pub text: String,
-    pub start_ms: u64,
-    pub end_ms: u64,
-    pub speaker: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Subtitle {
     tokens: Vec<Token>,
 }
@@ -50,31 +41,32 @@ pub fn parse_subtitle_from_path<P: AsRef<std::path::Path>>(
     Ok(sub.into())
 }
 
-pub fn export_words_to_vtt_file<P: AsRef<std::path::Path>>(
-    words: Vec<VttWord>,
-    path: P,
-) -> std::result::Result<(), String> {
-    use aspasia::{Moment, webvtt::WebVttCue};
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let cues: Vec<WebVttCue> = words
-        .into_iter()
-        .map(|word| {
-            let start_i64 = i64::try_from(word.start_ms)
-                .map_err(|_| format!("start_ms {} exceeds i64::MAX", word.start_ms))?;
-            let end_i64 = i64::try_from(word.end_ms)
-                .map_err(|_| format!("end_ms {} exceeds i64::MAX", word.end_ms))?;
-
-            Ok(WebVttCue {
-                identifier: word.speaker,
-                text: word.text,
-                settings: None,
-                start: Moment::from(start_i64),
-                end: Moment::from(end_i64),
-            })
-        })
-        .collect::<Result<_, String>>()?;
-
-    let vtt = WebVttSubtitle::builder().cues(cues).build();
-    vtt.export(path.as_ref()).map_err(|e| e.to_string())?;
-    Ok(())
+    #[test]
+    fn imports_vtt_and_srt_without_modifying_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        for (extension, source) in [
+            (
+                "vtt",
+                "WEBVTT\n\nAlice\n00:00:01.000 --> 00:00:02.500\nHello there\n",
+            ),
+            ("srt", "1\n00:00:01,000 --> 00:00:02,500\nHello there\n"),
+        ] {
+            let path = dir.path().join(format!("transcript.{extension}"));
+            std::fs::write(&path, source).unwrap();
+            let subtitle = parse_subtitle_from_path(&path).unwrap();
+            assert_eq!(subtitle.tokens.len(), 1);
+            let token = &subtitle.tokens[0];
+            assert_eq!(token.text, "Hello there");
+            assert_eq!(token.start_time, 1000);
+            assert_eq!(token.end_time, 2500);
+            if extension == "vtt" {
+                assert_eq!(token.speaker.as_deref(), Some("Alice"));
+            }
+            assert_eq!(std::fs::read_to_string(path).unwrap(), source);
+        }
+    }
 }

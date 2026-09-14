@@ -47,7 +47,6 @@ function appConfig(overrides: Record<string, unknown> = {}) {
     cloud_sync_enabled: true,
     ai_language: "en",
     spoken_languages: [],
-    personalization_dictionary_terms: [],
     custom_summary_instructions: "",
     custom_summary_instructions_token_aware: false,
     auto_summary_prompt: "",
@@ -208,26 +207,24 @@ describe("config-backed settings", () => {
   it("updates against the latest config value", async () => {
     mocks.getConfig.mockResolvedValue({
       status: "ok",
-      data: appConfig({ personalization_dictionary_terms: ["Vertex"] }),
+      data: appConfig({ spoken_languages: ["en"] }),
     });
 
-    const next = await updateSettingValue(
-      "personalization_dictionary_terms",
-      (current) => JSON.stringify([...JSON.parse(current ?? "[]"), "Erebor"]),
+    const next = await updateSettingValue("spoken_languages", (current) =>
+      JSON.stringify([...JSON.parse(current ?? "[]"), "nl"]),
     );
 
-    expect(next).toBe(JSON.stringify(["Vertex", "Erebor"]));
+    expect(next).toBe(JSON.stringify(["en", "nl"]));
     expect(mocks.setConfigValues).toHaveBeenCalledWith({
-      personalization_dictionary_terms: ["Vertex", "Erebor"],
+      spoken_languages: ["en", "nl"],
     });
   });
 
   it("falls back to the schema default when updating an unset value", async () => {
-    const next = await updateSettingValue(
-      "personalization_dictionary_terms",
-      (current) => JSON.stringify([...JSON.parse(current ?? "[]"), "Erebor"]),
+    const next = await updateSettingValue("spoken_languages", (current) =>
+      JSON.stringify([...JSON.parse(current ?? "[]"), "nl"]),
     );
 
-    expect(next).toBe(JSON.stringify(["Erebor"]));
+    expect(next).toBe(JSON.stringify(["nl"]));
   });
 });
