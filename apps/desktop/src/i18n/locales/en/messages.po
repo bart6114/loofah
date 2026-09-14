@@ -203,7 +203,6 @@ msgstr "Audio"
 msgid "Automatically apply related tags"
 msgstr "Automatically apply related tags"
 
-#: src/settings/todo/permission.tsx
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
 msgstr "Back"
@@ -673,10 +672,6 @@ msgstr "Google Drive may still be downloading files"
 msgid "Got it"
 msgstr "Got it"
 
-#: src/settings/todo/permission.tsx
-msgid "Having trouble?"
-msgstr "Having trouble?"
-
 #: src/onboarding/permissions.tsx
 msgid "Help Loofah listen to others"
 msgstr "Help Loofah listen to others"
@@ -998,7 +993,6 @@ msgstr "Notes refreshed from the files in your folder."
 msgid "Now"
 msgstr "Now"
 
-#: src/settings/todo/permission.tsx
 #: src/task/resource-view.tsx
 msgid "Open"
 msgstr "Open"
@@ -1012,7 +1006,6 @@ msgstr "Open {0}"
 #. placeholder {0}: title.toLowerCase()
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
-#: src/settings/todo/permission.tsx
 msgid "Open {0} settings"
 msgstr "Open {0} settings"
 
@@ -1041,10 +1034,6 @@ msgstr "Opening your browser…"
 msgid "Opening your vault…"
 msgstr "Opening your vault…"
 
-#: src/settings/todo/permission.tsx
-msgid "or"
-msgstr "or"
-
 #: src/settings/general/timezone.tsx
 msgid "Override the timezone used for the sidebar timeline"
 msgstr "Override the timezone used for the sidebar timeline"
@@ -1057,10 +1046,6 @@ msgstr "Participants"
 #: src/main/about-dialog.tsx
 msgid "Peak: {0}"
 msgstr "Peak: {0}"
-
-#: src/settings/todo/permission.tsx
-msgid "permission panel."
-msgstr "permission panel."
 
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
@@ -1148,10 +1133,6 @@ msgstr "Remind me to record meetings"
 msgid "Reminder preferences"
 msgstr "Reminder preferences"
 
-#: src/settings/todo/provider-content.tsx
-msgid "Reminders"
-msgstr "Reminders"
-
 #: src/session/components/note-input/attachments.tsx
 msgid "Remove"
 msgstr "Remove"
@@ -1204,15 +1185,6 @@ msgstr "Replace all"
 msgid "Replace with..."
 msgstr "Replace with..."
 
-#: src/settings/todo/permission.tsx
-msgid "Request"
-msgstr "Request"
-
-#. placeholder {0}: title.toLowerCase()
-#: src/settings/todo/permission.tsx
-msgid "Request {0}"
-msgstr "Request {0}"
-
 #. placeholder {0}: title.toLowerCase()
 #: src/settings/general/permissions.tsx
 msgid "Request {0} permission"
@@ -1229,10 +1201,6 @@ msgstr "Required to record your voice during meetings and calls"
 #: src/settings/ai/llm/configure.tsx
 msgid "Requires a separate app. Install LM Studio or Ollama, download a model there, and keep its local server running while using summaries."
 msgstr "Requires a separate app. Install LM Studio or Ollama, download a model there, and keep its local server running while using summaries."
-
-#: src/settings/todo/permission.tsx
-msgid "Reset"
-msgstr "Reset"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Reset to default"
@@ -1632,10 +1600,6 @@ msgstr "This transcript has {0} assigned speakers. Re-transcribing replaces the 
 msgid "This transcript has 1 assigned speaker. Re-transcribing replaces the transcript and removes that speaker assignment."
 msgstr "This transcript has 1 assigned speaker. Re-transcribing replaces the transcript and removes that speaker assignment."
 
-#: src/settings/todo/index.tsx
-msgid "Ticket"
-msgstr "Ticket"
-
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
 msgstr "Timezone"
@@ -1799,10 +1763,6 @@ msgstr "Written by {author}"
 #: src/session/components/session-author-badge.tsx
 msgid "Written by {author} — not by you"
 msgstr "Written by {author} — not by you"
-
-#: src/settings/todo/permission.tsx
-msgid "You can"
-msgstr "You can"
 
 #: src/settings/ai/stt/select.tsx
 msgid "You can keep using Loofah while it downloads."

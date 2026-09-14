@@ -295,66 +295,6 @@
       "type": "string",
       "oneOf": [
         {
-          "description": "Enables the authorization_status command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-authorization-status",
-          "markdownDescription": "Enables the authorization_status command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the authorization_status command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-authorization-status",
-          "markdownDescription": "Denies the authorization_status command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the complete_todo command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-complete-todo",
-          "markdownDescription": "Enables the complete_todo command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the complete_todo command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-complete-todo",
-          "markdownDescription": "Denies the complete_todo command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the create_todo command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-create-todo",
-          "markdownDescription": "Enables the create_todo command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the create_todo command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-create-todo",
-          "markdownDescription": "Denies the create_todo command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the delete_todo command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-delete-todo",
-          "markdownDescription": "Enables the delete_todo command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the delete_todo command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-delete-todo",
-          "markdownDescription": "Denies the delete_todo command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the fetch_todos command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-fetch-todos",
-          "markdownDescription": "Enables the fetch_todos command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the fetch_todos command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-fetch-todos",
-          "markdownDescription": "Denies the fetch_todos command without any pre-configured scope."
-        },
-        {
           "description": "Enables the github_issue_comments command without any pre-configured scope.",
           "type": "string",
           "const": "allow-github-issue-comments",
@@ -391,46 +331,10 @@
           "markdownDescription": "Denies the github_issue_state command without any pre-configured scope."
         },
         {
-          "description": "Enables the list_todo_lists command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-list-todo-lists",
-          "markdownDescription": "Enables the list_todo_lists command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the list_todo_lists command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-list-todo-lists",
-          "markdownDescription": "Denies the list_todo_lists command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the ping command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-ping",
-          "markdownDescription": "Enables the ping command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the ping command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-ping",
-          "markdownDescription": "Denies the ping command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the request_full_access command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-request-full-access",
-          "markdownDescription": "Enables the request_full_access command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the request_full_access command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-request-full-access",
-          "markdownDescription": "Denies the request_full_access command without any pre-configured scope."
-        },
-        {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-authorization-status`\n- `allow-request-full-access`\n- `allow-list-todo-lists`\n- `allow-fetch-todos`\n- `allow-create-todo`\n- `allow-complete-todo`\n- `allow-delete-todo`\n- `allow-github-issue-state`\n- `allow-github-issue-detail`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-github-issue-state`\n- `allow-github-issue-detail`\n- `allow-github-issue-comments`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-authorization-status`\n- `allow-request-full-access`\n- `allow-list-todo-lists`\n- `allow-fetch-todos`\n- `allow-create-todo`\n- `allow-complete-todo`\n- `allow-delete-todo`\n- `allow-github-issue-state`\n- `allow-github-issue-detail`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-github-issue-state`\n- `allow-github-issue-detail`\n- `allow-github-issue-comments`"
         }
       ]
     }

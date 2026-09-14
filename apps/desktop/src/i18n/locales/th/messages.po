@@ -203,7 +203,6 @@ msgstr ""
 msgid "Automatically apply related tags"
 msgstr ""
 
-#: src/settings/todo/permission.tsx
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
 msgstr ""
@@ -673,10 +672,6 @@ msgstr ""
 msgid "Got it"
 msgstr ""
 
-#: src/settings/todo/permission.tsx
-msgid "Having trouble?"
-msgstr ""
-
 #: src/onboarding/permissions.tsx
 msgid "Help Loofah listen to others"
 msgstr ""
@@ -998,7 +993,6 @@ msgstr ""
 msgid "Now"
 msgstr ""
 
-#: src/settings/todo/permission.tsx
 #: src/task/resource-view.tsx
 msgid "Open"
 msgstr ""
@@ -1012,7 +1006,6 @@ msgstr ""
 #. placeholder {0}: title.toLowerCase()
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
-#: src/settings/todo/permission.tsx
 msgid "Open {0} settings"
 msgstr ""
 
@@ -1041,10 +1034,6 @@ msgstr ""
 msgid "Opening your vault…"
 msgstr ""
 
-#: src/settings/todo/permission.tsx
-msgid "or"
-msgstr ""
-
 #: src/settings/general/timezone.tsx
 msgid "Override the timezone used for the sidebar timeline"
 msgstr ""
@@ -1056,10 +1045,6 @@ msgstr ""
 #. placeholder {0}: peak.year
 #: src/main/about-dialog.tsx
 msgid "Peak: {0}"
-msgstr ""
-
-#: src/settings/todo/permission.tsx
-msgid "permission panel."
 msgstr ""
 
 #: src/settings/general/index.tsx
@@ -1148,10 +1133,6 @@ msgstr ""
 msgid "Reminder preferences"
 msgstr ""
 
-#: src/settings/todo/provider-content.tsx
-msgid "Reminders"
-msgstr ""
-
 #: src/session/components/note-input/attachments.tsx
 msgid "Remove"
 msgstr ""
@@ -1204,15 +1185,6 @@ msgstr ""
 msgid "Replace with..."
 msgstr ""
 
-#: src/settings/todo/permission.tsx
-msgid "Request"
-msgstr ""
-
-#. placeholder {0}: title.toLowerCase()
-#: src/settings/todo/permission.tsx
-msgid "Request {0}"
-msgstr ""
-
 #. placeholder {0}: title.toLowerCase()
 #: src/settings/general/permissions.tsx
 msgid "Request {0} permission"
@@ -1228,10 +1200,6 @@ msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Requires a separate app. Install LM Studio or Ollama, download a model there, and keep its local server running while using summaries."
-msgstr ""
-
-#: src/settings/todo/permission.tsx
-msgid "Reset"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1632,10 +1600,6 @@ msgstr ""
 msgid "This transcript has 1 assigned speaker. Re-transcribing replaces the transcript and removes that speaker assignment."
 msgstr ""
 
-#: src/settings/todo/index.tsx
-msgid "Ticket"
-msgstr ""
-
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
 msgstr ""
@@ -1798,10 +1762,6 @@ msgstr ""
 
 #: src/session/components/session-author-badge.tsx
 msgid "Written by {author} — not by you"
-msgstr ""
-
-#: src/settings/todo/permission.tsx
-msgid "You can"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx

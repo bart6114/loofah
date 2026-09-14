@@ -36,7 +36,6 @@ hypr-api-env = { path = "crates/api-env", package = "api-env" }
 hypr-api-error = { path = "crates/api-error", package = "api-error" }
 hypr-api-messenger = { path = "crates/api-messenger", package = "api-messenger" }
 hypr-apple-note = { path = "crates/apple-note", package = "apple-note" }
-hypr-apple-todo = { path = "crates/apple-todo", package = "apple-todo" }
 hypr-askama-utils = { path = "crates/askama-utils", package = "askama-utils" }
 hypr-audacity = { path = "crates/audacity", package = "audacity" }
 hypr-audio = { path = "crates/audio", package = "audio" }
@@ -347,8 +346,6 @@ objc2-application-services = "0.3.2"
 objc2-av-foundation = "0.3.2"
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
-objc2-core-location = "0.3.2"
-objc2-event-kit = "0.3.2"
 objc2-foundation = "0.3.2"
 objc2-security = "0.3.2"
 objc2-user-notifications = "0.3.2"

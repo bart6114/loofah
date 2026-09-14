@@ -16,9 +16,6 @@ import {
 import { StandardContentWrapper } from "~/shared/main";
 import { type Tab } from "~/store/zustand/tabs";
 
-const todo = deferredView(() =>
-  import("./todo").then((m) => ({ default: m.SettingsTodo })),
-);
 const llm = deferredView(() =>
   import("./ai/llm").then((m) => ({ default: m.LLM })),
 );
@@ -82,8 +79,6 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
         return <prompt.View initiallyOpen />;
       case "intelligence":
         return <llm.View />;
-      case "todo":
-        return <todo.View />;
       default:
         return <SettingsApp />;
     }

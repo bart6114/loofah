@@ -1,10 +1,8 @@
 mod commands;
 mod error;
-mod events;
 mod github_state;
 
 pub use error::Error;
-pub use events::*;
 
 const PLUGIN_NAME: &str = "todo";
 
@@ -12,18 +10,10 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .plugin_name(PLUGIN_NAME)
         .commands(tauri_specta::collect_commands![
-            commands::authorization_status,
-            commands::request_full_access,
-            commands::list_todo_lists,
-            commands::fetch_todos,
-            commands::create_todo,
-            commands::complete_todo,
-            commands::delete_todo,
             commands::github_issue_state,
             commands::github_issue_detail,
             commands::github_issue_comments,
         ])
-        .events(tauri_specta::collect_events![TodoChangedEvent])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
 
@@ -31,21 +21,6 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     let specta_builder = make_specta_builder();
     tauri::plugin::Builder::new(PLUGIN_NAME)
         .invoke_handler(specta_builder.invoke_handler())
-        .setup(move |app, _api| {
-            specta_builder.mount_events(app);
-
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::Manager as _;
-                use tauri_specta::Event;
-
-                let app_handle = app.app_handle().clone();
-                hypr_apple_todo::setup_change_notification(move || {
-                    let _ = TodoChangedEvent.emit(&app_handle);
-                });
-            }
-            Ok(())
-        })
         .build()
 }
 

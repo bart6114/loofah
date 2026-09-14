@@ -50,7 +50,7 @@ async resetPermission(permission: Permission) : Promise<Result<null, string>> {
 
 /** user-defined types **/
 
-export type Permission = "reminders" | "microphone" | "systemAudio" | "screenRecording" | "accessibility" | "inputMonitoring"
+export type Permission = "microphone" | "systemAudio" | "screenRecording" | "accessibility" | "inputMonitoring"
 export type PermissionStatus = "neverRequested" | "denied" | "authorized"
 
 /** tauri-specta globals **/

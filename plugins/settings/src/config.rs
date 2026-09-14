@@ -300,6 +300,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_task_provider_settings_preserve_config_and_task_files() {
+        let temp = tempdir().unwrap();
+        let legacy = json!({
+            "theme": "dark",
+            "current_task_provider": "apple-reminders",
+            "current_todo_provider": "apple-reminders",
+            "todo_providers": {"apple-reminders": {"list_id": "legacy-list"}},
+            "future_key": {"nested": [1, 2, 3]}
+        });
+        std::fs::write(temp.path().join("config.json"), legacy.to_string()).unwrap();
+        let session = temp.path().join("sessions/session-1");
+        std::fs::create_dir_all(&session).unwrap();
+        let tasks = br#"{
+  "tasks": [{
+    "id": "task-1",
+    "source_type": "session_raw_note",
+    "source_id": "session-1",
+    "source_order": 0,
+    "text": "Keep my task",
+    "status": "todo",
+    "body": [],
+    "created_at": "2026-09-14T00:00:00Z",
+    "updated_at": "2026-09-14T00:00:00Z"
+  }]
+}
+"#;
+        let tasks_path = session.join("tasks.json");
+        std::fs::write(&tasks_path, tasks).unwrap();
+
+        let state = ConfigState::load_or_default(temp.path());
+        assert_eq!(state.snapshot().theme, "dark");
+        assert_eq!(std::fs::read(&tasks_path).unwrap(), tasks);
+        state
+            .set_values(values(&[("theme", json!("light"))]))
+            .await
+            .unwrap();
+
+        let reloaded = ConfigState::load_or_default(temp.path()).snapshot();
+        assert_eq!(reloaded.theme, "light");
+        let config = serde_json::to_value(reloaded).unwrap();
+        for key in [
+            "current_task_provider",
+            "current_todo_provider",
+            "todo_providers",
+            "future_key",
+        ] {
+            assert_eq!(config[key], legacy[key]);
+        }
+        assert_eq!(std::fs::read(tasks_path).unwrap(), tasks);
+    }
+
+    #[tokio::test]
     async fn set_values_accepts_unknown_keys() {
         let temp = tempdir().unwrap();
         let state = ConfigState::load_or_default(temp.path());

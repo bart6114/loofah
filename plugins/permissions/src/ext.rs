@@ -6,8 +6,6 @@ use crate::models::PermissionStatus;
 use block2::StackBlock;
 #[cfg(target_os = "macos")]
 use objc2_av_foundation::{AVCaptureDevice, AVMediaTypeAudio};
-#[cfg(target_os = "macos")]
-use objc2_event_kit::{EKEntityType, EKEventStore};
 
 #[allow(unused_macros)]
 macro_rules! check {
@@ -22,7 +20,6 @@ macro_rules! check {
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum Permission {
-    Reminders,
     Microphone,
     SystemAudio,
     ScreenRecording,
@@ -65,7 +62,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
 
     pub async fn open(&self, permission: Permission) -> Result<(), crate::Error> {
         match permission {
-            Permission::Reminders => self.open_reminders().await,
             Permission::Microphone => self.open_microphone().await,
             Permission::SystemAudio => self.open_system_audio().await,
             Permission::ScreenRecording => self.open_screen_recording().await,
@@ -90,7 +86,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         }
 
         match permission {
-            Permission::Reminders => self.check_reminders().await,
             Permission::Microphone => self.check_microphone().await,
             Permission::SystemAudio => self.check_system_audio().await,
             Permission::ScreenRecording => self.check_screen_recording().await,
@@ -104,7 +99,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         use tauri_plugin_sidecar2::Sidecar2PluginExt;
 
         let arg = match permission {
-            Permission::Reminders => "reminders",
             Permission::Microphone => "microphone",
             Permission::SystemAudio => "systemAudio",
             Permission::ScreenRecording => "screenRecording",
@@ -134,11 +128,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         let value = value.trim();
 
         let status = match permission {
-            Permission::Reminders => match value {
-                "notDetermined" => PermissionStatus::NeverRequested,
-                "fullAccess" => PermissionStatus::Authorized,
-                _ => PermissionStatus::Denied,
-            },
             Permission::Microphone => match value {
                 "notDetermined" => PermissionStatus::NeverRequested,
                 "authorized" => PermissionStatus::Authorized,
@@ -171,7 +160,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
 
     pub async fn request(&self, permission: Permission) -> Result<(), crate::Error> {
         match permission {
-            Permission::Reminders => self.request_reminders().await,
             Permission::Microphone => self.request_microphone().await,
             Permission::SystemAudio => self.request_system_audio().await,
             Permission::ScreenRecording => self.request_screen_recording().await,
@@ -182,7 +170,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
 
     pub async fn reset(&self, permission: Permission) -> Result<(), crate::Error> {
         match permission {
-            Permission::Reminders => self.reset_reminders().await,
             Permission::Microphone => self.reset_microphone().await,
             Permission::SystemAudio => self.reset_system_audio().await,
             Permission::ScreenRecording => self.reset_screen_recording().await,
@@ -224,15 +211,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
             .unwrap_or_else(|| std::io::Error::other("failed to open System Settings").into()))
     }
 
-    async fn open_reminders(&self) -> Result<(), crate::Error> {
-        #[cfg(target_os = "macos")]
-        {
-            self.open_privacy_settings("Privacy_Reminders")?;
-        }
-
-        Ok(())
-    }
-
     async fn open_microphone(&self) -> Result<(), crate::Error> {
         #[cfg(target_os = "macos")]
         {
@@ -267,18 +245,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         }
 
         Ok(())
-    }
-
-    async fn check_reminders(&self) -> Result<PermissionStatus, crate::Error> {
-        #[cfg(target_os = "macos")]
-        return check!("reminders", unsafe {
-            EKEventStore::authorizationStatusForEntityType(EKEntityType::Reminder)
-        });
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            Ok(PermissionStatus::Denied)
-        }
     }
 
     async fn check_microphone(&self) -> Result<PermissionStatus, crate::Error> {
@@ -338,29 +304,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         }
     }
 
-    async fn request_reminders(&self) -> Result<(), crate::Error> {
-        #[cfg(target_os = "macos")]
-        {
-            use objc2_foundation::NSError;
-
-            let event_store = unsafe { EKEventStore::new() };
-            let (tx, rx) = std::sync::mpsc::channel::<bool>();
-            let completion =
-                block2::RcBlock::new(move |granted: objc2::runtime::Bool, _error: *mut NSError| {
-                    let _ = tx.send(granted.as_bool());
-                });
-
-            unsafe {
-                event_store
-                    .requestFullAccessToRemindersWithCompletion(&*completion as *const _ as *mut _)
-            };
-
-            let _ = rx.recv_timeout(std::time::Duration::from_secs(60));
-        }
-
-        Ok(())
-    }
-
     async fn request_microphone(&self) -> Result<(), crate::Error> {
         #[cfg(target_os = "macos")]
         {
@@ -402,13 +345,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Permissions<'a, R, M> {
         {
             macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
         }
-
-        Ok(())
-    }
-
-    async fn reset_reminders(&self) -> Result<(), crate::Error> {
-        #[cfg(target_os = "macos")]
-        self.reset_tcc("Reminders").await;
 
         Ok(())
     }
@@ -537,7 +473,6 @@ mod tests {
     #[test]
     fn other_permission_checks_keep_using_sidecar() {
         for permission in [
-            Permission::Reminders,
             Permission::Microphone,
             Permission::SystemAudio,
             Permission::ScreenRecording,

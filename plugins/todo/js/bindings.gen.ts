@@ -6,62 +6,6 @@
 
 
 export const commands = {
-async authorizationStatus() : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|authorization_status") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async requestFullAccess() : Promise<Result<boolean, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|request_full_access") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listTodoLists() : Promise<Result<ReminderList[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|list_todo_lists") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async fetchTodos(filter: ReminderFilter) : Promise<Result<Reminder[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|fetch_todos", { filter }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async createTodo(input: CreateReminderInput) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|create_todo", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async completeTodo(target: ReminderIdentifierInput) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|complete_todo", { target }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async deleteTodo(target: ReminderIdentifierInput) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:todo|delete_todo", { target }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async githubIssueState(owner: string, repo: string, number: number) : Promise<Result<GitHubIssueState, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:todo|github_issue_state", { owner, repo, number }) };
@@ -91,11 +35,6 @@ async githubIssueComments(owner: string, repo: string, number: number) : Promise
 /** user-defined events **/
 
 
-export const events = __makeEvents__<{
-todoChangedEvent: TodoChangedEvent
-}>({
-todoChangedEvent: "plugin:todo:todo-changed-event"
-})
 
 /** user-defined constants **/
 
@@ -103,37 +42,13 @@ todoChangedEvent: "plugin:todo:todo-changed-event"
 
 /** user-defined types **/
 
-export type Alarm = { absolute_date: string | null; relative_offset: number | null; proximity: AlarmProximity | null; alarm_type: AlarmType | null; email_address: string | null; sound_name: string | null; url: string | null; structured_location: StructuredLocation | null }
-export type AlarmProximity = "None" | "Enter" | "Leave"
-export type AlarmType = "Display" | "Audio" | "Procedure" | "Email"
-export type CalendarColor = { red: number; green: number; blue: number; alpha: number }
-export type CalendarSource = { identifier: string; title: string; source_type: CalendarSourceType }
-export type CalendarSourceType = "Local" | "Exchange" | "CalDav" | "MobileMe" | "Subscribed" | "Birthdays"
-export type CalendarType = "Local" | "CalDav" | "Exchange" | "Subscription" | "Birthday"
-export type CreateReminderInput = { title: string; list_id: string | null; notes: string | null; url: string | null; priority: ReminderPriority | null; due_date: DateComponents | null; start_date: DateComponents | null; alarms: Alarm[] | null; recurrence_rules: RecurrenceRule[] | null; is_completed: boolean | null; completion_date: string | null }
-export type DateComponents = { date: string | null; time: string | null; time_zone: string | null }
-export type GeoLocation = { latitude: number; longitude: number }
 export type GitHubIssueState = "Open" | "Closed" | "Merged"
 export type Issue = { id: number; number: number; title: string; body?: string | null; state: string; state_reason?: string | null; html_url: string; url: string; user?: User | null; assignees?: User[] | null; labels?: Label[] | null; milestone?: Milestone | null; pull_request?: IssuePullRequest | null; locked?: boolean | null; comments?: number | null; created_at: string; updated_at: string; closed_at?: string | null; closed_by?: User | null; draft?: boolean | null }
 export type IssueComment = { id: number; body?: string | null; user?: User | null; created_at: string; updated_at: string; html_url: string }
 export type IssuePullRequest = { url?: string | null; html_url?: string | null; diff_url?: string | null; patch_url?: string | null; merged_at?: string | null }
 export type Label = { id: number; name: string; color?: string | null; description?: string | null }
 export type Milestone = { id: number; number: number; title: string; description?: string | null; state: string }
-export type RecurrenceDayOfWeek = { weekday: Weekday; week_number: number | null }
-export type RecurrenceEnd = { Count: number } | { Until: string }
-export type RecurrenceFrequency = "Daily" | "Weekly" | "Monthly" | "Yearly"
-export type RecurrenceRule = { frequency: RecurrenceFrequency; interval: number; days_of_week: RecurrenceDayOfWeek[]; days_of_month: number[]; months_of_year: number[]; weeks_of_year: number[]; days_of_year: number[]; set_positions: number[]; first_day_of_week: Weekday | null; end: RecurrenceEnd | null }
-export type Reminder = { calendar_item_identifier: string; external_identifier: string; list: ReminderListRef; title: string; notes: string | null; url: string | null; priority: ReminderPriority; is_completed: boolean; completion_date: string | null; start_date_components: DateComponents | null; due_date_components: DateComponents | null; creation_date: string | null; last_modified_date: string | null; has_alarms: boolean; has_recurrence_rules: boolean; alarms: Alarm[]; recurrence_rules: RecurrenceRule[] }
-export type ReminderFilter = { kind: ReminderFilterKind; list_ids: string[] | null }
-export type ReminderFilterKind = "All" | { Incomplete: { from: string | null; to: string | null } } | { Completed: { from: string | null; to: string | null } }
-export type ReminderIdentifierInput = { calendar_item_identifier: string | null; external_identifier: string | null; list_id: string | null }
-export type ReminderList = { id: string; title: string; calendar_type: CalendarType; color: CalendarColor | null; allows_content_modifications: boolean; is_default: boolean; source: CalendarSource }
-export type ReminderListRef = { id: string; title: string }
-export type ReminderPriority = "None" | "High" | "Medium" | "Low"
-export type StructuredLocation = { title: string; geo: GeoLocation | null; radius: number | null }
-export type TodoChangedEvent = null
 export type User = { id: number; login: string; avatar_url?: string | null; html_url: string }
-export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday"
 
 /** tauri-specta globals **/
 

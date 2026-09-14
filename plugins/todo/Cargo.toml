@@ -8,7 +8,6 @@ links = "tauri-plugin-todo"
 description = ""
 
 [dependencies]
-hypr-apple-todo = { workspace = true, features = ["specta"] }
 hypr-github-issues = { workspace = true, features = ["specta"] }
 hypr-http = { workspace = true }
 
@@ -18,7 +17,7 @@ tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 reqwest = { workspace = true }
 
 serde = { workspace = true, features = ["derive"] }
-specta = { workspace = true, features = ["chrono"] }
+specta = { workspace = true }
 thiserror = { workspace = true }
 
 [build-dependencies]
