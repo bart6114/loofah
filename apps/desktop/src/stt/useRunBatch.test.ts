@@ -265,38 +265,46 @@ describe("useRunBatch", () => {
     expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
   });
 
-  test("passes selected transcription languages to batch transcription", async () => {
+  test("defaults Whisper batch to English without inheriting unsupported legacy languages", async () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
-        model: "soniqo-parakeet-batch",
-        baseUrl: "soniqo://local",
+        model: "whisper-large-v3",
+        baseUrl: "http://localhost:8080",
         apiKey: "",
       },
     });
-    useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language"
-        ? "de"
-        : key === "meeting_languages"
-          ? undefined
-          : ["en"],
+    useConfigValueMock.mockImplementation((key) => {
+      if (key === "ai_language") return "ga";
+      if (key === "spoken_languages") return ["zu"];
+      if (key === "meeting_languages") return undefined;
+      return [];
+    });
+    isSupportedLanguagesBatchMock.mockImplementation(
+      async (_provider, _model, languages) =>
+        languages.every((language: string) => language === "en"),
     );
     startTranscriptionMock.mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useRunBatch("session-1"));
-
     await act(async () => {
       await result.current("/tmp/session.wav");
     });
 
+    expect(isSupportedLanguagesBatchMock).toHaveBeenCalledWith(
+      "whispercpp",
+      "whisper-large-v3",
+      ["en"],
+    );
     expect(startTranscriptionMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider: "soniqo",
-        model: "soniqo-parakeet-batch",
-        languages: ["de", "en"],
+        provider: "whispercpp",
+        model: "whisper-large-v3",
+        languages: ["en"],
       }),
       expect.any(Object),
     );
+    expect(sonnerToastWarningMock).not.toHaveBeenCalled();
   });
 
   test("uses explicit meeting languages independently of summary and legacy spoken languages", async () => {

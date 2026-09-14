@@ -75,7 +75,7 @@ beforeEach(() => {
     current_stt_model: "soniqo-parakeet-batch",
     ai_language: "zh",
     spoken_languages: [],
-    meeting_languages: undefined,
+    meeting_languages: ["zh"],
     transcription_timing: "live",
   });
   mocks.listSupportedModels.mockResolvedValue({ status: "ok", data: models });
@@ -113,7 +113,7 @@ test("does not warn about unavailable streaming when the user chose after record
   expect(mocks.info).not.toHaveBeenCalled();
 });
 
-test("names the model when the main language alone is unsupported", async () => {
+test("names the model when the meeting language is unsupported", async () => {
   renderWarning();
 
   await waitFor(() =>
@@ -129,9 +129,8 @@ test("names the model when the main language alone is unsupported", async () => 
   );
 });
 
-test("checks the main and additional languages together", async () => {
-  mocks.config.ai_language = "en";
-  mocks.config.spoken_languages = ["zh"];
+test("checks all selected meeting languages together", async () => {
+  mocks.config.meeting_languages = ["en", "zh"];
   renderWarning();
 
   await waitFor(() => expect(mocks.warning).toHaveBeenCalled());
@@ -142,8 +141,8 @@ test("checks the main and additional languages together", async () => {
   );
 });
 
-test("refreshes and clears the warning when only the main language changes", async () => {
-  mocks.config.ai_language = "en";
+test("refreshes and clears the warning when meeting languages change", async () => {
+  mocks.config.meeting_languages = ["en"];
   const view = renderWarning();
   await waitFor(() =>
     expect(mocks.isSupportedLanguagesBatch).toHaveBeenCalledWith(
@@ -154,12 +153,12 @@ test("refreshes and clears the warning when only the main language changes", asy
   );
   expect(mocks.warning).not.toHaveBeenCalled();
 
-  mocks.config.ai_language = "zh";
+  mocks.config.meeting_languages = ["zh"];
   view.rerender();
   await waitFor(() => expect(mocks.warning).toHaveBeenCalled());
   mocks.dismiss.mockClear();
 
-  mocks.config.ai_language = "en";
+  mocks.config.meeting_languages = ["en"];
   view.rerender();
   await waitFor(() =>
     expect(mocks.dismiss).toHaveBeenCalledWith(
@@ -168,9 +167,9 @@ test("refreshes and clears the warning when only the main language changes", asy
   );
 });
 
-test("uses an informational batch fallback for a Dutch main language with streaming", async () => {
+test("uses an informational batch fallback for Dutch meetings with streaming", async () => {
   mocks.config.current_stt_model = "soniqo-parakeet-streaming";
-  mocks.config.ai_language = "nl";
+  mocks.config.meeting_languages = ["nl"];
   renderWarning();
 
   await waitFor(() =>
@@ -235,4 +234,21 @@ test("keeps English summary output out of an explicit Dutch meeting language set
     "soniqo-parakeet-batch",
     ["en", "nl"],
   );
+});
+
+test("defaults to English without warning about unsupported legacy languages", async () => {
+  Object.assign(mocks.config, {
+    ai_language: "zh",
+    spoken_languages: ["zh"],
+    meeting_languages: undefined,
+  });
+  const { client } = renderWarning();
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(mocks.isSupportedLanguagesBatch).toHaveBeenCalledWith(
+    "fmtr",
+    "soniqo-parakeet-batch",
+    ["en"],
+  );
+  expect(mocks.warning).not.toHaveBeenCalled();
+  expect(mocks.info).not.toHaveBeenCalled();
 });

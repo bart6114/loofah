@@ -1009,7 +1009,7 @@ describe("useStartListening", () => {
     },
   );
 
-  test("demotes non-English main language to batch with the full language list", async () => {
+  test("defaults live capture to English independently of legacy language settings", async () => {
     useConfigValueMock.mockImplementation((key) =>
       key === "ai_language"
         ? "de"
@@ -1033,17 +1033,17 @@ describe("useStartListening", () => {
     });
 
     expect(startMock.mock.calls[0]?.[0]).toMatchObject({
-      languages: ["de", "en"],
-      transcription_mode: "batch",
+      languages: ["en"],
+      transcription_mode: "live",
     });
   });
 
-  test("demotes to batch instead of filtering unsupported extra spoken languages", async () => {
+  test("demotes to batch instead of filtering unsupported meeting languages", async () => {
     useConfigValueMock.mockImplementation((key) =>
       key === "ai_language"
         ? "en"
         : key === "meeting_languages"
-          ? undefined
+          ? ["en", "ko"]
           : ["ko"],
     );
     useSTTConnectionMock.mockReturnValue({
@@ -1067,12 +1067,12 @@ describe("useStartListening", () => {
     });
   });
 
-  test("uses the main language for Deepgram live capture when extras are unsupported", async () => {
+  test("uses the primary meeting language for Deepgram live capture when extras are unsupported", async () => {
     useConfigValueMock.mockImplementation((key) =>
       key === "ai_language"
         ? "en"
         : key === "meeting_languages"
-          ? undefined
+          ? ["en", "ko"]
           : ["ko"],
     );
     useSTTConnectionMock.mockReturnValue({

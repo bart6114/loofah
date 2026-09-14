@@ -73,21 +73,21 @@ beforeEach(() => {
   mocks.config.meeting_languages = undefined;
 });
 describe("independent language settings", () => {
-  it("preserves legacy meeting languages when changing output language", async () => {
+  it("defaults meeting languages to English when changing output language", async () => {
     renderSettings(<SummaryLanguageSettings />);
     fireEvent.change(screen.getByLabelText("Output language"), {
       target: { value: "fr" },
     });
     await waitFor(() =>
       expect(mocks.save).toHaveBeenCalledWith(
-        { ai_language: "fr", meeting_languages: '["en","nl"]' },
+        { ai_language: "fr", meeting_languages: '["en"]' },
         expect.anything(),
       ),
     );
   });
   it("lets Dutch-only meetings keep English summaries", async () => {
     renderSettings(<MeetingLanguageSettings />);
-    expect(screen.getByText("en,nl")).toBeTruthy();
+    expect(screen.getByText("en")).toBeTruthy();
     fireEvent.click(screen.getByText("Dutch only"));
     await waitFor(() =>
       expect(mocks.save).toHaveBeenCalledWith(
