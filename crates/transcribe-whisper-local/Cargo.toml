@@ -18,9 +18,9 @@ bytes = { workspace = true }
 dirs = { workspace = true }
 futures-util = { workspace = true }
 hypr-data = { workspace = true }
-owhisper-client = { workspace = true, features = ["local"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 tokio-tungstenite = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dependencies]
 hypr-audio-chunking = { workspace = true }

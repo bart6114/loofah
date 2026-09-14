@@ -1,8 +1,11 @@
 // https://github.com/tazz4843/whisper-rs/blob/master/examples/audio_transcription.rs
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
@@ -48,7 +51,7 @@ impl LoadedWhisperBuilder {
         }
 
         let start = std::time::Instant::now();
-        tracing::info!(model = ?std::path::Path::new(&model_path).file_name(), engine = "1.9.4", gpu = context_param.use_gpu, flash_attn = context_param.flash_attn, "whisper_model_loading");
+        tracing::info!(model = ?std::path::Path::new(&model_path).file_name(), engine = whisper_rs::get_whisper_version(), gpu = context_param.use_gpu, metal = cfg!(feature = "metal"), flash_attn = context_param.flash_attn, "whisper_model_loading");
         let ctx = WhisperContext::new_with_params(&model_path, context_param)?;
         tracing::info!(
             elapsed_ms = start.elapsed().as_millis(),
@@ -112,6 +115,13 @@ impl LoadedWhisper {
             languages,
             native_timestamps: false,
             selected_language: None,
+            detection_calls: 0,
+            inference_calls: 0,
+            detection_threads: if self.ctx.model_n_audio_layer() == 12 {
+                4
+            } else {
+                1
+            },
             cancelled: Arc::new(AtomicBool::new(false)),
             dynamic_prompt: String::new(),
             initial_prompt: String::new(),
@@ -129,6 +139,9 @@ pub struct Whisper {
     languages: Vec<Language>,
     native_timestamps: bool,
     selected_language: Option<String>,
+    detection_calls: usize,
+    inference_calls: usize,
+    detection_threads: usize,
     cancelled: Arc<AtomicBool>,
     dynamic_prompt: String,
     initial_prompt: String,
@@ -140,6 +153,10 @@ impl Whisper {
     pub fn set_native_timestamps(&mut self, enabled: bool) {
         self.native_timestamps = enabled;
     }
+    pub fn counters(&self) -> (usize, usize) {
+        (self.detection_calls, self.inference_calls)
+    }
+
     pub fn select_language(&mut self, language: Option<&str>) {
         if self.selected_language.as_deref() != language {
             self.dynamic_prompt.clear();
@@ -147,23 +164,46 @@ impl Whisper {
         }
     }
 
-    pub fn set_cancellation(&mut self, cancelled: Arc<AtomicBool>) { self.cancelled = cancelled; }
+    pub fn set_cancellation(&mut self, cancelled: Arc<AtomicBool>) {
+        self.cancelled = cancelled;
+    }
 
     pub fn detect_language(&mut self, audio: &[f32]) -> Result<crate::Observation, crate::Error> {
-        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(crate::Error::Cancelled);
+        }
         let started = std::time::Instant::now();
-        let threads = std::env::var("LOOFAH_WHISPER_DETECTION_THREADS").ok()
-            .and_then(|s| s.parse::<usize>().ok()).filter(|n| [1, 2, 4].contains(n)).unwrap_or(1);
+        let threads = std::env::var("LOOFAH_WHISPER_DETECTION_THREADS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|n| [1, 2, 4].contains(n))
+            .unwrap_or(self.detection_threads);
+        self.detection_calls += 1;
         self.state.pcm_to_mel(audio, threads)?;
-        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(crate::Error::Cancelled);
+        }
         let (_, probabilities) = self.state.lang_detect(0, threads)?;
-        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(crate::Error::Cancelled);
+        }
         let scores = if self.languages.is_empty() {
-            probabilities.iter().enumerate().filter_map(|(i, p)| {
-                whisper_rs::get_lang_str(i as i32).map(|lang| (lang.to_owned(), *p))
-            }).collect()
+            probabilities
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    whisper_rs::get_lang_str(i as i32).map(|lang| (lang.to_owned(), *p))
+                })
+                .collect()
         } else {
-            self.languages.iter().filter_map(|lang| probabilities.get(lang.whisper_index()).map(|p| (lang.to_string(), *p))).collect()
+            self.languages
+                .iter()
+                .filter_map(|lang| {
+                    probabilities
+                        .get(lang.whisper_index())
+                        .map(|p| (lang.to_string(), *p))
+                })
+                .collect()
         };
         tracing::debug!(elapsed_ms = started.elapsed().as_millis(), threads, samples = audio.len(), scores = ?scores, "whisper_language_detection");
         Ok(crate::Observation { scores })
@@ -181,7 +221,9 @@ impl Whisper {
         #[cfg(debug_assertions)]
         self.debug(audio);
 
-        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(crate::Error::Cancelled);
+        }
         let started = std::time::Instant::now();
         let input_audio_length_sec = audio.len() as f32 / 16000.0;
         if input_audio_length_sec < 0.1 {
@@ -209,7 +251,9 @@ impl Whisper {
             }
             unsafe {
                 p.set_abort_callback(Some(abort));
-                p.set_abort_callback_user_data(Arc::as_ptr(&self.cancelled) as *mut std::ffi::c_void);
+                p.set_abort_callback_user_data(
+                    Arc::as_ptr(&self.cancelled) as *mut std::ffi::c_void
+                );
             }
             p.set_translate(false);
             p.set_detect_language(false);
@@ -241,9 +285,16 @@ impl Whisper {
             p
         };
 
+        self.inference_calls += 1;
         self.state.full(params, audio)?;
-        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
-        tracing::info!(elapsed_ms = started.elapsed().as_millis(), samples = audio.len(), "whisper_inference_completed");
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(crate::Error::Cancelled);
+        }
+        tracing::info!(
+            elapsed_ms = started.elapsed().as_millis(),
+            samples = audio.len(),
+            "whisper_inference_completed"
+        );
         let num_segments = self.state.full_n_segments();
 
         let mut segments = Vec::new();
@@ -292,10 +343,18 @@ impl Whisper {
     }
 
     fn get_language(&mut self, audio: &[f32]) -> Result<Option<String>, crate::Error> {
-        if let Some(language) = &self.selected_language { return Ok(Some(language.clone())); }
-        if self.languages.len() == 1 { return Ok(Some(self.languages[0].to_string())); }
+        if let Some(language) = &self.selected_language {
+            return Ok(Some(language.clone()));
+        }
+        if self.languages.len() == 1 {
+            return Ok(Some(self.languages[0].to_string()));
+        }
         let observation = self.detect_language(audio)?;
-        Ok(observation.scores.into_iter().max_by(|a,b| a.1.total_cmp(&b.1)).map(|(lang, _)| lang))
+        Ok(observation
+            .scores
+            .into_iter()
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(lang, _)| lang))
     }
 
     fn filter_segments(segments: Vec<Segment>) -> Vec<Segment> {
@@ -341,6 +400,7 @@ impl Whisper {
         }
     }
 
+    #[cfg(debug_assertions)]
     fn debug(&mut self, audio: &[f32]) {
         if let Ok(v) = std::env::var("HYPR_WHISPER_DEBUG")
             && v == "1"
@@ -368,6 +428,39 @@ impl Whisper {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linked_native_engine_matches_pinned_release() {
+        assert_eq!(whisper_rs::get_whisper_version(), "1.9.4");
+    }
+
+    #[test]
+    #[ignore = "requires LOOFAH_WHISPER_MODEL"]
+    fn language_change_preserves_vocabulary_and_cancellation_skips_detection() {
+        let loaded = LoadedWhisper::builder()
+            .model_path(std::env::var("LOOFAH_WHISPER_MODEL").unwrap())
+            .build()
+            .unwrap();
+        let mut model = loaded.session(vec![Language::En, Language::Nl]).unwrap();
+        model.set_initial_prompt("Kubernetes, Loofah".into());
+        model.select_language(Some("en"));
+        model.dynamic_prompt = "previous English context".into();
+        model.select_language(Some("en"));
+        assert!(!model.dynamic_prompt.is_empty());
+        model.select_language(Some("nl"));
+        assert!(model.dynamic_prompt.is_empty());
+        assert_eq!(model.initial_prompt, "Kubernetes, Loofah");
+        model.set_cancellation(Arc::new(AtomicBool::new(true)));
+        assert!(matches!(
+            model.detect_language(&[0.0; 16000]),
+            Err(crate::Error::Cancelled)
+        ));
+        assert!(matches!(
+            model.transcribe(&[0.0; 16000]),
+            Err(crate::Error::Cancelled)
+        ));
+        assert_eq!(model.counters(), (0, 0));
+    }
 
     #[test]
     fn test_whisper() {

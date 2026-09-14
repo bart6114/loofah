@@ -98,8 +98,10 @@ impl LanguageResolver {
             if let Some((winner, _)) = observation.best() {
                 votes.entry(winner.to_owned()).or_default().0 += 1;
             }
+            let total: f32 = observation.scores.iter().map(|(_, p)| p.max(0.0)).sum();
             for (lang, p) in &observation.scores {
-                votes.entry(lang.clone()).or_default().1 += p;
+                votes.entry(lang.clone()).or_default().1 +=
+                    if total > 0.0 { p / total } else { 0.0 };
             }
         }
         self.selected = votes

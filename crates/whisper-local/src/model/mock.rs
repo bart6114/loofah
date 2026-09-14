@@ -62,10 +62,17 @@ impl WhisperBuilder {
 }
 
 impl Whisper {
-    pub fn select_language(&mut self, _language: Option<&str>) { self.dynamic_prompt.clear(); }
+    pub fn counters(&self) -> (usize, usize) {
+        (0, 0)
+    }
+    pub fn select_language(&mut self, _language: Option<&str>) {
+        self.dynamic_prompt.clear();
+    }
     pub fn set_cancellation(&mut self, _cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) {}
     pub fn detect_language(&mut self, _audio: &[f32]) -> Result<crate::Observation, crate::Error> {
-        Ok(crate::Observation { scores: vec![("en".into(), 1.0)] })
+        Ok(crate::Observation {
+            scores: vec![("en".into(), 1.0)],
+        })
     }
 
     pub fn set_native_timestamps(&mut self, _enabled: bool) {}

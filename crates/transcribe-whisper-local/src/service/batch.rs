@@ -212,12 +212,23 @@ where
         .iter()
         .map(|samples| chunk_channel_audio::<crate::Error>(samples))
         .collect::<Result<Vec<_>, _>>()?;
+    let vad_ms = started.elapsed().as_millis();
+    let languages = super::configured_languages(params);
+    let mut models = channel_samples
+        .iter()
+        .map(|_| build_model(loaded_model, params))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut language = super::language::BatchLanguage::new(
-        hypr_whisper_local::LanguageResolver::new(&super::configured_languages(params)),
-        super::language::evidence_windows(&channel_samples, &raw_chunks),
+        hypr_whisper_local::LanguageResolver::new(&languages),
+        if languages.len() == 1 {
+            vec![]
+        } else {
+            super::language::evidence_windows(&channel_samples, &raw_chunks)
+        },
+        &channel_samples,
     );
-    let mut detector = build_model(loaded_model, params)?;
-    language.startup(&mut detector)?;
+    language.startup(&mut models[0])?;
+    let packing_started = std::time::Instant::now();
     let channel_chunks = channel_samples
         .iter()
         .zip(&raw_chunks)
@@ -231,6 +242,7 @@ where
             packed
         })
         .collect::<Vec<_>>();
+    let packing_ms = packing_started.elapsed().as_millis();
     drop(raw_chunks);
     let resolved_until = channel_chunks
         .iter()
@@ -239,10 +251,6 @@ where
         .collect::<Vec<_>>();
     let mut progress = ProgressTracker::new(resolved_until, total_duration, event_tx);
     progress.emit(None);
-    let mut models = channel_chunks
-        .iter()
-        .map(|_| build_model(loaded_model, params))
-        .collect::<Result<Vec<_>, _>>()?;
     let mut all_segments = vec![Vec::new(); channel_chunks.len()];
     let mut jobs = channel_chunks
         .iter()
@@ -255,14 +263,24 @@ where
         })
         .collect::<Vec<_>>();
     jobs.sort_by_key(|(channel, _, chunk)| (chunk.sample_start, *channel));
+    let mut first_text = true;
     for (channel, index, chunk) in jobs {
-        language.advance(chunk.sample_start, &mut detector)?;
-        models[channel].select_language(language.resolver.selected());
+        language.advance(chunk.sample_start, &mut models[0])?;
+        for model in &mut models {
+            model.select_language(language.resolver.selected());
+        }
         let segments = transcribe_chunk(
             &mut models[channel],
             &chunk.samples,
             chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64,
         )?;
+        if first_text && !segments.is_empty() {
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_millis(),
+                "whisper_batch_first_text"
+            );
+            first_text = false;
+        }
         for segment in segments {
             if let Some(tx) = progress.event_tx() {
                 let _ = tx.send(BatchSseMessage::Segment {
@@ -303,6 +321,10 @@ where
     tracing::info!(
         elapsed_ms = started.elapsed().as_millis(),
         channels = channel_chunks.len(),
+        vad_ms,
+        packing_ms,
+        detection_calls = models.iter().map(|m| m.counters().0).sum::<usize>(),
+        inference_calls = models.iter().map(|m| m.counters().1).sum::<usize>(),
         "whisper_batch_completed"
     );
 
@@ -330,4 +352,69 @@ fn join_transcript(segments: &[crate::service::Segment]) -> String {
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+    #[test]
+    #[ignore = "requires LOOFAH_WHISPER_MODEL; run in release mode"]
+    fn batch_benchmark() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter("transcribe_whisper_local=info,whisper_local=debug")
+            .with_test_writer()
+            .try_init();
+        let model_path = std::env::var("LOOFAH_WHISPER_MODEL").unwrap();
+        let model_path = Path::new(&model_path);
+        let load_started = std::time::Instant::now();
+        let loaded = super::super::load_model(model_path).unwrap();
+        println!("load_ms={}", load_started.elapsed().as_millis());
+        let audio_path = std::env::var("LOOFAH_WHISPER_AUDIO")
+            .unwrap_or_else(|_| hypr_data::english_1::AUDIO_PATH.into());
+        let params = ListenParams {
+            languages: std::env::var("LOOFAH_WHISPER_BENCH_LANGUAGES")
+                .unwrap_or_else(|_| "en".into())
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse().unwrap())
+                .collect(),
+            ..Default::default()
+        };
+        for run in 0..4 {
+            let started = std::time::Instant::now();
+            let response = transcribe_source(
+                hypr_audio_utils::source_from_path(Path::new(&audio_path)).unwrap(),
+                &params,
+                &loaded,
+                model_path,
+                None,
+            )
+            .unwrap();
+            let elapsed = started.elapsed();
+            let words: Vec<_> = response
+                .results
+                .channels
+                .iter()
+                .flat_map(|c| &c.alternatives[0].words)
+                .collect();
+            assert!(!words.is_empty());
+            assert!(
+                words
+                    .iter()
+                    .all(|w| w.start.is_finite() && w.end >= w.start)
+            );
+            println!(
+                "batch_run={run} elapsed_ms={} words={}",
+                elapsed.as_millis(),
+                words.len()
+            );
+            if let Ok(path) = std::env::var("LOOFAH_WHISPER_BENCH_OUTPUT") {
+                std::fs::write(
+                    format!("{path}-{run}.json"),
+                    serde_json::to_vec_pretty(&response).unwrap(),
+                )
+                .unwrap();
+            }
+        }
+    }
 }

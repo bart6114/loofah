@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     future::Future,
     path::PathBuf,
     pin::Pin,
@@ -13,23 +12,18 @@ use axum::{
     http::{Request, StatusCode},
     response::{IntoResponse, Response},
 };
-use futures_util::{SinkExt, Stream, StreamExt, stream::poll_fn};
-use hypr_audio_chunking::{SpeechChunkExt, SpeechChunkingConfig};
-use hypr_audio_interface::AsyncSource;
+use futures_util::{SinkExt, StreamExt};
 use hypr_model_manager::{ModelManager, ModelManagerBuilder};
-use hypr_transcribe_core::TARGET_SAMPLE_RATE;
 use hypr_ws_utils::ConnectionManager;
+use owhisper_interface::ListenParams;
 use owhisper_interface::stream::StreamResponse;
-use owhisper_interface::{ControlMessage, ListenParams};
-use tokio::sync::mpsc;
 use tower::Service;
 
 use super::batch;
-use super::message::{AudioExtract, IncomingMessage, process_incoming_message};
 use super::response::{
     TranscriptKind, build_transcript_response, format_timestamp_now, send_ws, send_ws_best_effort,
 };
-use super::{build_metadata, build_model, parse_listen_params, redemption_time, transcribe_chunk};
+use super::{build_metadata, parse_listen_params, redemption_time};
 
 pub const LISTEN_PATH: &str = "/v1/listen";
 pub const HEALTH_PATH: &str = "/health";
@@ -148,6 +142,7 @@ impl Service<Request<Body>> for TranscribeService {
 
                 let guard = connection_manager.acquire_connection();
                 Ok(ws_upgrade
+                    .max_message_size(4 * 1024 * 1024)
                     .on_upgrade(move |socket| async move {
                         handle_websocket(socket, params, metadata, guard, model, manager).await;
                     })
@@ -198,10 +193,17 @@ impl Service<Request<Body>> for TranscribeService {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum StopReason {
-    End,
-    Finalize,
+struct ConnectionTasks {
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    producer: tokio::task::AbortHandle,
+}
+
+impl Drop for ConnectionTasks {
+    fn drop(&mut self) {
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.producer.abort();
+    }
 }
 
 async fn handle_websocket(
@@ -210,344 +212,99 @@ async fn handle_websocket(
     metadata: owhisper_interface::stream::Metadata,
     guard: hypr_ws_utils::ConnectionGuard,
     model: Arc<hypr_whisper_local::LoadedWhisper>,
-    manager: ModelManager<hypr_whisper_local::LoadedWhisper>,
+    _manager: ModelManager<hypr_whisper_local::LoadedWhisper>,
 ) {
-    let (mut ws_sender, mut ws_receiver) = socket.split();
-    let total_channels = (params.channels as usize).max(1);
-    let redemption_time = redemption_time(&params);
-    match build_transcription_streams(total_channels, model.as_ref(), &params, redemption_time) {
-        Ok((audio_txs, mut stream)) => {
-            let mut audio_txs = audio_txs;
-            let mut stop_reason = None;
-            let mut receiving_input = true;
-            let mut channel_audio_durations = vec![0.0_f64; total_channels];
-            let mut stream_closed = false;
-
-            while !stream_closed {
-                tokio::select! {
-                    _ = guard.cancelled() => {
-                        tracing::info!("websocket_cancelled_by_new_connection");
-                        break;
-                    }
-                    item = stream.next() => {
-                        match item {
-                            Some(Ok((channel_idx, segment))) => {
-                                let channel_index = vec![channel_idx as i32, total_channels as i32];
-                                let channel = vec![channel_idx as u8];
-                                let transcript_kind = if stop_reason == Some(StopReason::Finalize) {
-                                    TranscriptKind::Finalized
-                                } else {
-                                    TranscriptKind::Confirmed
-                                };
-
-                                if !send_ws(&mut ws_sender, &StreamResponse::SpeechStartedResponse {
-                                    channel: channel.clone(),
-                                    timestamp: segment.start,
-                                }).await {
-                                    break;
-                                }
-
-                                if !send_ws(
-                                    &mut ws_sender,
-                                    &build_transcript_response(&segment, transcript_kind, &metadata, &channel_index),
-                                ).await {
-                                    break;
-                                }
-
-                                if !send_ws(&mut ws_sender, &StreamResponse::UtteranceEndResponse {
-                                    channel,
-                                    last_word_end: segment.start + segment.duration,
-                                }).await {
-                                    break;
-                                }
-                            }
-                            Some(Err(error)) => {
-                                send_ws_best_effort(
-                                    &mut ws_sender,
-                                    &StreamResponse::ErrorResponse {
-                                        error_code: None,
-                                        error_message: error.to_string(),
-                                        provider: "whisper-local".to_string(),
-                                    },
-                                )
-                                .await;
-                                break;
-                            }
-                            None => {
-                                stream_closed = true;
-                            }
-                        }
-                    }
-                    message = ws_receiver.next(), if receiving_input => {
-                        manager.keep_alive().await;
-
-                        let Some(message) = message else {
-                            receiving_input = false;
-                            stop_reason.get_or_insert(StopReason::End);
-                            audio_txs.clear();
-                            continue;
-                        };
-
-                        let message = match message {
-                            Ok(message) => message,
-                            Err(error) => {
-                                send_ws_best_effort(
-                                    &mut ws_sender,
-                                    &StreamResponse::ErrorResponse {
-                                        error_code: None,
-                                        error_message: format!("websocket receive error: {error}"),
-                                        provider: "whisper-local".to_string(),
-                                    },
-                                )
-                                .await;
-                                break;
-                            }
-                        };
-
-                        match process_incoming_message(&message, params.channels.max(1)) {
-                            Ok(IncomingMessage::Audio(AudioExtract::Mono(samples))) => {
-                                if samples.is_empty() {
-                                    continue;
-                                }
-                                channel_audio_durations[0] += samples.len() as f64 / TARGET_SAMPLE_RATE as f64;
-                                if audio_txs[0].send(samples).await.is_err() {
-                                    send_ws_best_effort(
-                                        &mut ws_sender,
-                                        &StreamResponse::ErrorResponse {
-                                            error_code: None,
-                                            error_message: "audio pipeline closed unexpectedly".to_string(),
-                                            provider: "whisper-local".to_string(),
-                                        },
-                                    )
-                                    .await;
-                                    break;
-                                }
-                            }
-                            Ok(IncomingMessage::Audio(AudioExtract::Dual { ch0, ch1 })) => {
-                                if total_channels >= 2 {
-                                    channel_audio_durations[0] += ch0.len() as f64 / TARGET_SAMPLE_RATE as f64;
-                                    channel_audio_durations[1] += ch1.len() as f64 / TARGET_SAMPLE_RATE as f64;
-                                    if audio_txs[0].send(ch0).await.is_err() || audio_txs[1].send(ch1).await.is_err() {
-                                        send_ws_best_effort(
-                                            &mut ws_sender,
-                                            &StreamResponse::ErrorResponse {
-                                                error_code: None,
-                                                error_message: "audio pipeline closed unexpectedly".to_string(),
-                                                provider: "whisper-local".to_string(),
-                                            },
-                                        )
-                                        .await;
-                                        break;
-                                    }
-                                } else {
-                                    let mixed = hypr_audio_utils::mix_audio_f32(&ch0, &ch1);
-                                    channel_audio_durations[0] += mixed.len() as f64 / TARGET_SAMPLE_RATE as f64;
-                                    if !mixed.is_empty() && audio_txs[0].send(mixed).await.is_err() {
-                                        send_ws_best_effort(
-                                            &mut ws_sender,
-                                            &StreamResponse::ErrorResponse {
-                                                error_code: None,
-                                                error_message: "audio pipeline closed unexpectedly".to_string(),
-                                                provider: "whisper-local".to_string(),
-                                            },
-                                        )
-                                        .await;
-                                        break;
-                                    }
-                                }
-                            }
-                            Ok(IncomingMessage::Audio(AudioExtract::End)) => {
-                                receiving_input = false;
-                                stop_reason.get_or_insert(StopReason::End);
-                                audio_txs.clear();
-                            }
-                            Ok(IncomingMessage::Audio(AudioExtract::Empty)) => {}
-                            Ok(IncomingMessage::Control(ControlMessage::KeepAlive)) => {}
-                            Ok(IncomingMessage::Control(ControlMessage::Finalize)) => {
-                                receiving_input = false;
-                                stop_reason = Some(StopReason::Finalize);
-                                audio_txs.clear();
-                            }
-                            Ok(IncomingMessage::Control(ControlMessage::CloseStream)) => {
-                                receiving_input = false;
-                                stop_reason.get_or_insert(StopReason::End);
-                                audio_txs.clear();
-                            }
-                            Err(error) => {
-                                send_ws_best_effort(
-                                    &mut ws_sender,
-                                    &StreamResponse::ErrorResponse {
-                                        error_code: None,
-                                        error_message: error.to_string(),
-                                        provider: "whisper-local".to_string(),
-                                    },
-                                )
-                                .await;
-                                break;
-                            }
+    use super::live_worker::Output;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let started = std::time::Instant::now();
+    let count = usize::from(params.channels).clamp(1, 2);
+    let redemption = redemption_time(&params);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let (jobs, mut output, completion) =
+        super::live_worker::start(model, params, cancelled.clone());
+    let (mut sender, receiver) = socket.split();
+    let lifecycle = tokio_util::sync::CancellationToken::new();
+    let input_lifecycle = lifecycle.clone();
+    let input_error = Arc::new(std::sync::Mutex::new(None));
+    let producer_error = input_error.clone();
+    let mut producer = tokio::spawn(async move {
+        let result = super::live_input::run(receiver, jobs, count, redemption).await;
+        if let Err(error) = &result {
+            *producer_error.lock().unwrap() = Some(error.clone());
+            input_lifecycle.cancel();
+        }
+        result
+    });
+    let _tasks = ConnectionTasks {
+        cancelled: cancelled.clone(),
+        producer: producer.abort_handle(),
+    };
+    let conversation = async {
+        let mut producer_done = false;
+        let mut first_text = true;
+        loop {
+            tokio::select! {
+                result = &mut producer, if !producer_done => {
+                    producer_done = true;
+                    match result {
+                        Ok(Ok(())) => {},
+                        error => {
+                            tracing::debug!(?error, "whisper_input_closed");
+                            return;
                         }
                     }
                 }
+                message = output.recv() => {
+                    match message {
+                        Some(Output::Segment(channel, segment, finalized)) => {
+                            if first_text { tracing::info!(elapsed_ms = started.elapsed().as_millis(), "whisper_live_first_text"); first_text = false; }
+                            if !send_ws(&mut sender, &StreamResponse::SpeechStartedResponse { channel: vec![channel as u8], timestamp: segment.start }).await { return; }
+                            if !send_ws(&mut sender, &build_transcript_response(&segment, if finalized { TranscriptKind::Finalized } else { TranscriptKind::Confirmed }, &metadata, &[channel as i32, count as i32])).await { return; }
+                            if !send_ws(&mut sender, &StreamResponse::UtteranceEndResponse { channel: vec![channel as u8], last_word_end: segment.start + segment.duration }).await { return; }
+                        }
+                        Some(Output::Finished { duration, finalized }) => {
+                            tracing::info!(elapsed_ms = started.elapsed().as_millis(), duration, finalized, "whisper_live_completed");
+                            send_ws_best_effort(&mut sender, &StreamResponse::TerminalResponse {
+                                request_id: metadata.request_id.clone(), created: format_timestamp_now(), duration, channels: count as u32,
+                            }).await;
+                            return;
+                        }
+                        Some(Output::Error(error)) => {
+                            send_ws_best_effort(&mut sender, &StreamResponse::ErrorResponse { error_code: None, error_message: error, provider: "whisper-local".into() }).await;
+                            return;
+                        }
+                        None => return,
+                    }
+                }
             }
-
-            if stream_closed {
-                let total_duration = channel_audio_durations.into_iter().fold(0.0_f64, f64::max);
-                send_ws_best_effort(
-                    &mut ws_sender,
-                    &StreamResponse::TerminalResponse {
-                        request_id: metadata.request_id.clone(),
-                        created: format_timestamp_now(),
-                        duration: total_duration,
-                        channels: total_channels as u32,
-                    },
-                )
-                .await;
-            }
-
-            let _ = ws_sender.close().await;
         }
-        Err(error) => {
+    };
+    tokio::select! {
+        _ = guard.cancelled() => { tracing::info!("websocket_cancelled_by_new_connection"); }
+        _ = lifecycle.cancelled() => {}
+        _ = conversation => {}
+    }
+    cancelled.store(true, Ordering::Release);
+    producer.abort();
+    // Dropping the receiver unblocks a worker stalled on output; completion never joins on Tokio.
+    drop(output);
+    let _ = completion.await;
+    let error = input_error.lock().unwrap().take();
+    if let Some(error) = error {
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
             send_ws_best_effort(
-                &mut ws_sender,
+                &mut sender,
                 &StreamResponse::ErrorResponse {
                     error_code: None,
-                    error_message: error.to_string(),
-                    provider: "whisper-local".to_string(),
+                    error_message: error,
+                    provider: "whisper-local".into(),
                 },
-            )
-            .await;
-            let _ = ws_sender.close().await;
-        }
+            ),
+        )
+        .await;
     }
-}
-
-type TranscriptionStream =
-    Pin<Box<dyn Stream<Item = Result<(usize, crate::service::Segment), crate::Error>> + Send>>;
-
-#[allow(clippy::type_complexity)]
-fn build_transcription_streams(
-    total_channels: usize,
-    loaded_model: &hypr_whisper_local::LoadedWhisper,
-    params: &ListenParams,
-    redemption_time: std::time::Duration,
-) -> Result<
-    (
-        Vec<mpsc::Sender<Vec<f32>>>,
-        futures_util::stream::SelectAll<TranscriptionStream>,
-    ),
-    crate::Error,
-> {
-    let mut audio_txs = Vec::with_capacity(total_channels);
-    let mut streams = futures_util::stream::SelectAll::new();
-
-    for channel_idx in 0..total_channels {
-        let (audio_tx, audio_rx) = mpsc::channel::<Vec<f32>>(8);
-        audio_txs.push(audio_tx);
-
-        let model = build_model(loaded_model, params)?;
-        let chunk_stream = ChannelAudioSource::new(audio_rx)
-            .speech_chunks(SpeechChunkingConfig::speech(redemption_time));
-        let stream: TranscriptionStream = Box::pin(TranscribeChannelStream::new(
-            channel_idx,
-            chunk_stream,
-            model,
-        ));
-        streams.push(stream);
-    }
-
-    Ok((audio_txs, streams))
-}
-
-struct ChannelAudioSource {
-    receiver: mpsc::Receiver<Vec<f32>>,
-    buffered: VecDeque<f32>,
-}
-
-impl ChannelAudioSource {
-    fn new(receiver: mpsc::Receiver<Vec<f32>>) -> Self {
-        Self {
-            receiver,
-            buffered: VecDeque::new(),
-        }
-    }
-}
-
-impl AsyncSource for ChannelAudioSource {
-    fn as_stream(&mut self) -> impl Stream<Item = f32> + '_ {
-        poll_fn(move |cx| {
-            loop {
-                if let Some(sample) = self.buffered.pop_front() {
-                    return Poll::Ready(Some(sample));
-                }
-
-                match self.receiver.poll_recv(cx) {
-                    Poll::Ready(Some(chunk)) => {
-                        self.buffered.extend(chunk);
-                        continue;
-                    }
-                    Poll::Ready(None) => return Poll::Ready(None),
-                    Poll::Pending => return Poll::Pending,
-                }
-            }
-        })
-    }
-
-    fn sample_rate(&self) -> u32 {
-        TARGET_SAMPLE_RATE
-    }
-}
-
-struct TranscribeChannelStream<S> {
-    channel_idx: usize,
-    chunk_stream: S,
-    model: hypr_whisper_local::Whisper,
-    pending: VecDeque<crate::service::Segment>,
-}
-
-impl<S> TranscribeChannelStream<S> {
-    fn new(channel_idx: usize, chunk_stream: S, model: hypr_whisper_local::Whisper) -> Self {
-        Self {
-            channel_idx,
-            chunk_stream,
-            model,
-            pending: VecDeque::new(),
-        }
-    }
-}
-
-impl<S> Stream for TranscribeChannelStream<S>
-where
-    S: Stream<Item = Result<hypr_audio_chunking::AudioChunk, hypr_audio_chunking::Error>> + Unpin,
-{
-    type Item = Result<(usize, crate::service::Segment), crate::Error>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(segment) = self.pending.pop_front() {
-            return Poll::Ready(Some(Ok((self.channel_idx, segment))));
-        }
-
-        loop {
-            match Pin::new(&mut self.chunk_stream).poll_next(cx) {
-                Poll::Ready(Some(Ok(chunk))) => {
-                    let start_sec = chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64;
-                    match transcribe_chunk(&mut self.model, &chunk.samples, start_sec) {
-                        Ok(segments) => {
-                            self.pending.extend(segments);
-                            if let Some(segment) = self.pending.pop_front() {
-                                return Poll::Ready(Some(Ok((self.channel_idx, segment))));
-                            }
-                        }
-                        Err(error) => return Poll::Ready(Some(Err(error))),
-                    }
-                }
-                Poll::Ready(Some(Err(error))) => {
-                    return Poll::Ready(Some(Err(error.into())));
-                }
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-    }
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), sender.close()).await;
 }
 
 #[cfg(test)]

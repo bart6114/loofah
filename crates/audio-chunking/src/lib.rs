@@ -10,4 +10,4 @@ pub use chunk::{AudioChunk, Chunker};
 #[cfg(feature = "vad")]
 pub use error::*;
 #[cfg(feature = "vad")]
-pub use speech::{SpeechChunkExt, SpeechChunker, SpeechChunkingConfig};
+pub use speech::{LiveSpeechChunker, SpeechChunkExt, SpeechChunker, SpeechChunkingConfig};

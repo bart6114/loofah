@@ -65,7 +65,7 @@ pub(super) fn build_stream_words(segment: &crate::service::Segment) -> Vec<strea
         .map(|(index, word)| {
             let word_start = segment.start + (index as f64 / count as f64) * segment.duration;
             let word_end = if index + 1 == count {
-                (segment.start + segment.duration - 0.1_f64).max(word_start + 0.05_f64)
+                segment.start + segment.duration
             } else {
                 segment.start + ((index + 1) as f64 / count as f64) * segment.duration
             };
