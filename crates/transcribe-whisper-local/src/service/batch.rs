@@ -207,57 +207,104 @@ where
         .iter()
         .map(|samples| channel_duration_sec(samples))
         .collect::<Vec<_>>();
-    let packing_started = std::time::Instant::now();
+    let started = std::time::Instant::now();
+    let raw_chunks = channel_samples
+        .iter()
+        .map(|samples| chunk_channel_audio::<crate::Error>(samples))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut language = super::language::BatchLanguage::new(
+        hypr_whisper_local::LanguageResolver::new(&super::configured_languages(params)),
+        super::language::evidence_windows(&channel_samples, &raw_chunks),
+    );
+    let mut detector = build_model(loaded_model, params)?;
+    language.startup(&mut detector)?;
     let channel_chunks = channel_samples
         .iter()
-        .map(|samples| {
-            chunk_channel_audio::<crate::Error>(samples).map(|chunks| {
-                let packed = super::packing::pack(samples, &chunks, super::packing::gap_override());
-                tracing::info!(
-                    vad_windows = chunks.len(),
-                    inference_windows = packed.len(),
-                    "whisper_packing"
-                );
-                packed
-            })
+        .zip(&raw_chunks)
+        .map(|(samples, chunks)| {
+            let packed = super::packing::pack(samples, chunks, super::packing::gap_override());
+            tracing::info!(
+                vad_windows = chunks.len(),
+                inference_windows = packed.len(),
+                "whisper_packing"
+            );
+            packed
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    tracing::info!(
-        elapsed_ms = packing_started.elapsed().as_millis(),
-        "whisper_packing_completed"
-    );
+        .collect::<Vec<_>>();
+    drop(raw_chunks);
     let resolved_until = channel_chunks
         .iter()
         .zip(channel_durations.iter().copied())
         .map(|(chunks, channel_duration)| initial_resolved_until(chunks, channel_duration))
         .collect::<Vec<_>>();
-    let mut response_channels = Vec::with_capacity(channel_chunks.len().max(1));
     let mut progress = ProgressTracker::new(resolved_until, total_duration, event_tx);
     progress.emit(None);
-
-    for (channel_idx, chunks) in channel_chunks.iter().enumerate() {
-        let mut model = build_model(loaded_model, params)?;
-        let channel_index = [channel_idx as i32, channel_chunks.len() as i32];
-        let channel_duration = channel_durations[channel_idx];
-
-        let (words, transcript, avg_confidence) = transcribe_chunks(
-            channel_idx,
-            chunks,
-            channel_duration,
-            &mut model,
-            &mut progress,
-            &metadata,
-            &channel_index,
+    let mut models = channel_chunks
+        .iter()
+        .map(|_| build_model(loaded_model, params))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut all_segments = vec![Vec::new(); channel_chunks.len()];
+    let mut jobs = channel_chunks
+        .iter()
+        .enumerate()
+        .flat_map(|(channel, chunks)| {
+            chunks
+                .iter()
+                .enumerate()
+                .map(move |(index, chunk)| (channel, index, chunk))
+        })
+        .collect::<Vec<_>>();
+    jobs.sort_by_key(|(channel, _, chunk)| (chunk.sample_start, *channel));
+    for (channel, index, chunk) in jobs {
+        language.advance(chunk.sample_start, &mut detector)?;
+        models[channel].select_language(language.resolver.selected());
+        let segments = transcribe_chunk(
+            &mut models[channel],
+            &chunk.samples,
+            chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64,
         )?;
-
-        response_channels.push(batch::Channel {
-            alternatives: vec![batch::Alternatives {
-                transcript,
-                confidence: avg_confidence,
-                words,
-            }],
-        });
+        for segment in segments {
+            if let Some(tx) = progress.event_tx() {
+                let _ = tx.send(BatchSseMessage::Segment {
+                    response: build_transcript_response(
+                        &segment,
+                        TranscriptKind::Confirmed,
+                        &metadata,
+                        &[channel as i32, channel_chunks.len() as i32],
+                    ),
+                });
+            }
+            all_segments[channel].push(segment);
+        }
+        progress.update_channel(
+            channel,
+            next_resolved_until(&channel_chunks[channel], index, channel_durations[channel]),
+        );
+        progress.emit(Some(join_transcript(&all_segments[channel])));
     }
+    let response_channels = all_segments
+        .into_iter()
+        .enumerate()
+        .map(|(channel, segments)| batch::Channel {
+            alternatives: vec![batch::Alternatives {
+                transcript: join_transcript(&segments),
+                confidence: if segments.is_empty() {
+                    0.0
+                } else {
+                    segments.iter().map(|s| s.confidence).sum::<f64>() / segments.len() as f64
+                },
+                words: segments
+                    .iter()
+                    .flat_map(|s| build_batch_words(s, channel as i32))
+                    .collect(),
+            }],
+        })
+        .collect::<Vec<_>>();
+    tracing::info!(
+        elapsed_ms = started.elapsed().as_millis(),
+        channels = channel_chunks.len(),
+        "whisper_batch_completed"
+    );
 
     let mut metadata_json = serde_json::to_value(&metadata).unwrap_or_default();
     if let Some(obj) = metadata_json.as_object_mut() {
@@ -274,60 +321,6 @@ where
             channels: response_channels,
         },
     })
-}
-
-fn transcribe_chunks(
-    channel_idx: usize,
-    chunks: &[hypr_audio_chunking::AudioChunk],
-    channel_duration: f64,
-    model: &mut hypr_whisper_local::Whisper,
-    progress: &mut ProgressTracker,
-    metadata: &owhisper_interface::stream::Metadata,
-    channel_index: &[i32],
-) -> Result<(Vec<batch::Word>, String, f64), crate::Error> {
-    let mut all_words = Vec::new();
-    let mut all_segments = Vec::new();
-    let mut cumulative_confidence = 0.0;
-    let mut segment_count = 0usize;
-
-    for (chunk_idx, chunk) in chunks.iter().enumerate() {
-        let chunk_start_sec = chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64;
-        progress.update_channel(channel_idx, chunk_start_sec);
-
-        let segments = transcribe_chunk(model, &chunk.samples, chunk_start_sec)?;
-        for segment in segments {
-            cumulative_confidence += segment.confidence;
-            segment_count += 1;
-            all_words.extend(build_batch_words(&segment, channel_idx as i32));
-
-            if let Some(tx) = progress.event_tx() {
-                let _ = tx.send(BatchSseMessage::Segment {
-                    response: build_transcript_response(
-                        &segment,
-                        TranscriptKind::Confirmed,
-                        metadata,
-                        channel_index,
-                    ),
-                });
-            }
-
-            all_segments.push(segment);
-        }
-
-        progress.update_channel(
-            channel_idx,
-            next_resolved_until(chunks, chunk_idx, channel_duration),
-        );
-        progress.emit(Some(join_transcript(&all_segments)));
-    }
-
-    let avg_confidence = if segment_count == 0 {
-        0.0
-    } else {
-        cumulative_confidence / segment_count as f64
-    };
-
-    Ok((all_words, join_transcript(&all_segments), avg_confidence))
 }
 
 fn join_transcript(segments: &[crate::service::Segment]) -> String {

@@ -1,4 +1,5 @@
 mod batch;
+mod language;
 mod message;
 mod packing;
 mod recorded;
@@ -62,17 +63,18 @@ pub(crate) fn build_model(
     loaded_model: &hypr_whisper_local::LoadedWhisper,
     params: &ListenParams,
 ) -> Result<hypr_whisper_local::Whisper, crate::Error> {
-    let mut model = build_model_with_languages(
-        loaded_model,
-        params
-            .languages
-            .iter()
-            .filter_map(|lang| lang.clone().try_into().ok())
-            .collect(),
-    )?;
+    let mut model = build_model_with_languages(loaded_model, configured_languages(params))?;
     model.set_initial_prompt(keyword_prompt(&params.keywords));
     model.set_native_timestamps(true);
     Ok(model)
+}
+
+pub(super) fn configured_languages(params: &ListenParams) -> Vec<hypr_whisper::Language> {
+    params
+        .languages
+        .iter()
+        .filter_map(|lang| lang.clone().try_into().ok())
+        .collect()
 }
 
 fn keyword_prompt(keywords: &[String]) -> String {

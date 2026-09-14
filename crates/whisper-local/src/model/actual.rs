@@ -1,5 +1,6 @@
 // https://github.com/tazz4843/whisper-rs/blob/master/examples/audio_transcription.rs
 
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -110,6 +111,8 @@ impl LoadedWhisper {
             index: 0,
             languages,
             native_timestamps: false,
+            selected_language: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
             dynamic_prompt: String::new(),
             initial_prompt: String::new(),
             state: self.ctx.create_state()?,
@@ -125,6 +128,8 @@ pub struct Whisper {
     index: usize,
     languages: Vec<Language>,
     native_timestamps: bool,
+    selected_language: Option<String>,
+    cancelled: Arc<AtomicBool>,
     dynamic_prompt: String,
     initial_prompt: String,
     state: WhisperState,
@@ -135,6 +140,35 @@ impl Whisper {
     pub fn set_native_timestamps(&mut self, enabled: bool) {
         self.native_timestamps = enabled;
     }
+    pub fn select_language(&mut self, language: Option<&str>) {
+        if self.selected_language.as_deref() != language {
+            self.dynamic_prompt.clear();
+            self.selected_language = language.map(str::to_owned);
+        }
+    }
+
+    pub fn set_cancellation(&mut self, cancelled: Arc<AtomicBool>) { self.cancelled = cancelled; }
+
+    pub fn detect_language(&mut self, audio: &[f32]) -> Result<crate::Observation, crate::Error> {
+        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        let started = std::time::Instant::now();
+        let threads = std::env::var("LOOFAH_WHISPER_DETECTION_THREADS").ok()
+            .and_then(|s| s.parse::<usize>().ok()).filter(|n| [1, 2, 4].contains(n)).unwrap_or(1);
+        self.state.pcm_to_mel(audio, threads)?;
+        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        let (_, probabilities) = self.state.lang_detect(0, threads)?;
+        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        let scores = if self.languages.is_empty() {
+            probabilities.iter().enumerate().filter_map(|(i, p)| {
+                whisper_rs::get_lang_str(i as i32).map(|lang| (lang.to_owned(), *p))
+            }).collect()
+        } else {
+            self.languages.iter().filter_map(|lang| probabilities.get(lang.whisper_index()).map(|p| (lang.to_string(), *p))).collect()
+        };
+        tracing::debug!(elapsed_ms = started.elapsed().as_millis(), threads, samples = audio.len(), scores = ?scores, "whisper_language_detection");
+        Ok(crate::Observation { scores })
+    }
+
     pub fn set_initial_prompt(&mut self, prompt: String) {
         self.initial_prompt = prompt;
     }
@@ -147,6 +181,8 @@ impl Whisper {
         #[cfg(debug_assertions)]
         self.debug(audio);
 
+        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        let started = std::time::Instant::now();
         let input_audio_length_sec = audio.len() as f32 / 16000.0;
         if input_audio_length_sec < 0.1 {
             tracing::warn!(input_audio_length_sec = ?input_audio_length_sec, "transcribe_skipped");
@@ -165,6 +201,16 @@ impl Whisper {
 
             tracing::info!(input_audio_length_sec = ?input_audio_length_sec, "transcribe_started");
 
+            p.set_n_threads(4);
+            // All text context is explicit, so a language change cannot retain decoder text.
+            p.set_no_context(true);
+            unsafe extern "C" fn abort(data: *mut std::ffi::c_void) -> bool {
+                unsafe { (*(data as *const AtomicBool)).load(Ordering::Acquire) }
+            }
+            unsafe {
+                p.set_abort_callback(Some(abort));
+                p.set_abort_callback_user_data(Arc::as_ptr(&self.cancelled) as *mut std::ffi::c_void);
+            }
             p.set_translate(false);
             p.set_detect_language(false);
             p.set_language(language.as_deref());
@@ -196,6 +242,8 @@ impl Whisper {
         };
 
         self.state.full(params, audio)?;
+        if self.cancelled.load(Ordering::Acquire) { return Err(crate::Error::Cancelled); }
+        tracing::info!(elapsed_ms = started.elapsed().as_millis(), samples = audio.len(), "whisper_inference_completed");
         let num_segments = self.state.full_n_segments();
 
         let mut segments = Vec::new();
@@ -244,40 +292,10 @@ impl Whisper {
     }
 
     fn get_language(&mut self, audio: &[f32]) -> Result<Option<String>, crate::Error> {
-        if self.languages.is_empty() {
-            tracing::info!("no_language_specified");
-            return Ok(None);
-        }
-
-        if self.languages.len() == 1 {
-            let lang = &self.languages[0];
-            tracing::info!("single_language_specified: {}", lang);
-            return Ok(Some(lang.to_string()));
-        }
-
-        let lang_str = {
-            self.state.pcm_to_mel(audio, 1)?;
-            let (_lang_id, lang_probs) = self.state.lang_detect(0, 1)?;
-
-            let mut best_lang = None;
-            let mut best_prob = f32::NEG_INFINITY;
-
-            for lang in &self.languages {
-                let lang_id = lang.whisper_index();
-                if lang_id < lang_probs.len() {
-                    let prob = lang_probs[lang_id];
-                    if prob > best_prob {
-                        best_prob = prob;
-                        best_lang = Some(lang.as_ref().to_string());
-                    }
-                }
-            }
-
-            tracing::info!("predicted: {:#?}, from: {:#?}", best_lang, self.languages);
-            best_lang
-        };
-
-        Ok(lang_str)
+        if let Some(language) = &self.selected_language { return Ok(Some(language.clone())); }
+        if self.languages.len() == 1 { return Ok(Some(self.languages[0].to_string())); }
+        let observation = self.detect_language(audio)?;
+        Ok(observation.scores.into_iter().max_by(|a,b| a.1.total_cmp(&b.1)).map(|(lang, _)| lang))
     }
 
     fn filter_segments(segments: Vec<Segment>) -> Vec<Segment> {

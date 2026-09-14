@@ -2,6 +2,8 @@ use serde::{Serialize, ser::Serializer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("inference cancelled")]
+    Cancelled,
     #[error("model_not_found")]
     ModelNotFound,
     #[cfg(feature = "actual")]
