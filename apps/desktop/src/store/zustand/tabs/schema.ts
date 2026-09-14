@@ -43,8 +43,7 @@ export type SettingsTab =
   | "dictionary"
   | "transcription"
   | "intelligence"
-  | "summary-prompt"
-  | "todo";
+  | "summary-prompt";
 
 export const normalizeSettingsTab = (
   tab: string | null | undefined,
@@ -59,7 +58,6 @@ export const normalizeSettingsTab = (
     case "transcription":
     case "intelligence":
     case "summary-prompt":
-    case "todo":
       return tab;
     case "personalization":
       return "dictionary";

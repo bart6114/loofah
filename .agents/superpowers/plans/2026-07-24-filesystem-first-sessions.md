@@ -115,7 +115,7 @@ ls plugins | grep -i -E "calendar|event"
 
 - [ ] **Step 3: Remove any calendar Tauri plugin wiring**
 
-If Step 1 found a calendar plugin (`plugins/*calendar*` or Apple EventKit permission requests in `apps/desktop/src-tauri/src/lib.rs` — search `Permission::Calendar\|Reminders`): remove plugin registration from `lib.rs`, the workspace member from root `Cargo.toml`, and the permission reset calls (`lib.rs` onboarding block resets `Permission::Reminders`).
+If Step 1 found a calendar plugin (`plugins/*calendar*`): remove plugin registration from `apps/desktop/src-tauri/src/lib.rs` and the workspace member from root `Cargo.toml`.
 
 - [ ] **Step 4: Verify, format, test, commit**
 
