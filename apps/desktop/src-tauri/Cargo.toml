@@ -18,6 +18,7 @@ crate-type = ["staticlib", "rlib"]
 
 [build-dependencies]
 tauri-build = { workspace = true, features = [] }
+serde_json = { workspace = true }
 
 [dependencies]
 # Keep aligned with tauri-plugin-tantivy for typed errors and projection tests.
@@ -37,7 +38,7 @@ tauri-plugin-fs-sync = { workspace = true }
 tauri-plugin-fs2 = { workspace = true }
 tauri-plugin-http = { workspace = true }
 tauri-plugin-icon = { workspace = true }
-tauri-plugin-local-stt = { workspace = true, features = ["metal"] }
+tauri-plugin-local-stt = { workspace = true }
 tauri-plugin-misc = { workspace = true }
 tauri-plugin-notification = { workspace = true }
 tauri-plugin-notify = { workspace = true }
@@ -88,11 +89,13 @@ specta = { workspace = true }
 specta-typescript = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 default = []
@@ -108,6 +111,7 @@ staging = ["dep:hypr-audio-mock"]
 automation = ["tauri-plugin-automation"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
+tauri-plugin-local-stt = { workspace = true, features = ["metal"] }
 tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 
@@ -115,4 +119,3 @@ hypr-intercept = { workspace = true }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
 tauri = { workspace = true, features = ["test"] }
-tempfile = { workspace = true }

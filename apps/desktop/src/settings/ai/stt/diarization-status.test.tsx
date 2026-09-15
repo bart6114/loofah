@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   arch: vi.fn(),
+  platform: vi.fn(),
   isModelDownloaded: vi.fn(),
   isModelDownloading: vi.fn(),
   downloadModel: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/plugin-os", () => ({
   arch: mocks.arch,
+  platform: mocks.platform,
 }));
 
 vi.mock("@hypr/plugin-local-stt", () => ({
@@ -55,6 +57,7 @@ function renderStatus() {
 }
 
 beforeEach(() => {
+  mocks.platform.mockReturnValue("macos");
   mocks.arch.mockResolvedValue("aarch64");
   mocks.isModelDownloaded.mockResolvedValue({ status: "ok", data: false });
   mocks.isModelDownloading.mockResolvedValue({ status: "ok", data: false });
@@ -84,6 +87,19 @@ describe("DiarizationStatus", () => {
     await screen.findByText("Not downloaded");
     expect(screen.queryByRole("button")).toBeNull();
   });
+
+  it.each(["x86_64", "aarch64"])(
+    "shows speaker model status on Windows %s",
+    async (architecture) => {
+      mocks.platform.mockReturnValue("windows");
+      mocks.arch.mockResolvedValue(architecture);
+      mocks.isModelDownloaded.mockResolvedValue({ status: "ok", data: true });
+      renderStatus();
+
+      await screen.findByText("Speaker detection");
+      await screen.findByText("Ready");
+    },
+  );
 
   it("shows a ready check when the model is downloaded", async () => {
     mocks.isModelDownloaded.mockResolvedValue({ status: "ok", data: true });

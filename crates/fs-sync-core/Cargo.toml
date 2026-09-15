@@ -12,6 +12,7 @@ hypr-audio-norm = { workspace = true }
 hypr-audio-utils = { workspace = true }
 hypr-frontmatter = { workspace = true }
 hypr-fs-format = { workspace = true }
+hypr-storage = { workspace = true }
 hypr-tiptap = { workspace = true }
 hypr-vault-read = { workspace = true }
 

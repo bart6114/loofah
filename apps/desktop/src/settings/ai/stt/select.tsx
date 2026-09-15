@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { arch } from "@tauri-apps/plugin-os";
+import { platform } from "@tauri-apps/plugin-os";
 import {
   AlertTriangle,
   Check,
@@ -46,7 +46,7 @@ import {
   resolveLiveLanguageSupportMode,
 } from "./selection";
 import {
-  displayModelTitle,
+  displayModelLabel,
   formatModelSize,
   type ProviderId,
   PROVIDERS,
@@ -517,19 +517,14 @@ function useConfiguredMapping(): {
 } {
   const { isReady } = useAiProvidersState("stt");
 
-  const targetArch = useQuery({
-    queryKey: ["target-arch"],
-    queryFn: () => arch(),
-    staleTime: Infinity,
-  });
-
-  const isAppleSilicon = targetArch.data === "aarch64";
-
   const supportedModels = useQuery(sttModelQueries.supportedModels());
 
   const localModels = supportedModels.data ?? [];
   const selectableModels = localModels.filter(
-    (m) => m.model_type === "soniqo" || m.model_type === "whispercpp",
+    (m) =>
+      m.model_type === "soniqo" ||
+      m.model_type === "onnx" ||
+      m.model_type === "whispercpp",
   );
 
   const downloadedModels = useQueries({
@@ -538,15 +533,13 @@ function useConfiguredMapping(): {
     ],
   });
 
-  const models: ModelEntry[] = isAppleSilicon
-    ? selectableModels.map((model, i) => ({
-        id: model.key,
-        isDownloaded: downloadedModels[i]?.data ?? false,
-        displayName: model.display_name,
-        sizeBytes: model.size_bytes,
-        mode: isRealtimeLocalModel(String(model.key)) ? "realtime" : "batch",
-      }))
-    : [];
+  const models: ModelEntry[] = selectableModels.map((model, i) => ({
+    id: model.key,
+    isDownloaded: downloadedModels[i]?.data ?? false,
+    displayName: model.display_name,
+    sizeBytes: model.size_bytes,
+    mode: isRealtimeLocalModel(String(model.key)) ? "realtime" : "batch",
+  }));
 
   return {
     providers: { fmtr: { configured: true, models } } as Record<
@@ -555,7 +548,6 @@ function useConfiguredMapping(): {
     >,
     isReady:
       isReady &&
-      !targetArch.isPending &&
       !supportedModels.isPending &&
       !downloadedModels.some((query) => query.isPending),
   };
@@ -574,19 +566,13 @@ function ModelSelectItem({
   const isDownloading =
     !!downloadInfo || queuedDownloads.includes(model.id as LocalModel);
 
-  const label = model.displayName ?? model.id;
-  const title = displayModelTitle(model.id, model.displayName);
+  const label = displayModelLabel(model.id, model.displayName);
   const sizeLabel = formatModelSize(model.sizeBytes);
   const showLocalActions = model.isDownloaded && isLocalModelId(model.id);
   const isDeprecated = model.isDeprecated === true;
   const content = (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <LocalModelLabel
-        model={model.id}
-        label={label}
-        title={title}
-        className="min-w-0"
-      />
+      <LocalModelLabel model={model.id} label={label} className="min-w-0" />
       <ModelModeBadge mode={model.mode} />
       {!model.isDownloaded && sizeLabel && (
         <span className="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
@@ -675,8 +661,7 @@ function ModelSelectedValue({ model }: { model: ModelEntry }) {
     <div className="flex max-w-full min-w-0 items-center gap-2">
       <LocalModelLabel
         model={model.id}
-        label={model.displayName ?? model.id}
-        title={displayModelTitle(model.id, model.displayName)}
+        label={displayModelLabel(model.id, model.displayName)}
         className={cn(["min-w-0", isDeprecated && "opacity-60"])}
         labelClassName={cn([isDeprecated && "text-muted-foreground"])}
       />
@@ -733,9 +718,10 @@ function LocalModelDropdownActions({ model }: { model: LocalModel }) {
   };
 
   const handleOpen = () => {
-    const resultPromise = String(model).startsWith("soniqo-")
-      ? localSttCommands.soniqoModelDir(model)
-      : localSttCommands.modelsDir();
+    const resultPromise =
+      String(model).startsWith("soniqo-") || String(model).startsWith("onnx-")
+        ? localSttCommands.soniqoModelDir(model)
+        : localSttCommands.modelsDir();
 
     void resultPromise.then((result) => {
       if (result.status === "ok") {
@@ -774,7 +760,11 @@ function LocalModelDropdownActions({ model }: { model: LocalModel }) {
     >
       <button
         type="button"
-        aria-label={t`Show in Finder`}
+        aria-label={
+          platform() === "windows"
+            ? t`Show in File Explorer`
+            : t`Show in Finder`
+        }
         className={cn([
           "flex size-6 items-center justify-center rounded-full",
           "text-muted-foreground hover:text-foreground",

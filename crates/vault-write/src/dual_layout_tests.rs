@@ -222,7 +222,7 @@ async fn audio_store_list_delete_use_the_readable_directory() {
         .store_audio(ID, source.to_str().unwrap())
         .await
         .unwrap();
-    assert_eq!(stored, dir.join("audio.wav").to_str().unwrap());
+    assert_eq!(Path::new(&stored), dir.join("audio.wav"));
     assert!(!source.exists());
 
     std::fs::create_dir_all(dir.join("audio")).unwrap();
@@ -456,11 +456,21 @@ async fn rebuild_reports_layout_diagnostics_and_nested_ghosts() {
 
     assert_eq!(report.sessions, 1);
     assert!(
-        report.errors.iter().any(|e| e.contains("sessions/broken")),
+        report
+            .errors
+            .iter()
+            .any(|e| e.contains(&format!("sessions{}broken", std::path::MAIN_SEPARATOR))),
         "{:?}",
         report.errors
     );
-    assert_eq!(report.ghost_sessions, vec!["Work/ghost".to_string()]);
+    assert_eq!(
+        report
+            .ghost_sessions
+            .iter()
+            .map(Path::new)
+            .collect::<Vec<_>>(),
+        vec![Path::new("Work/ghost")]
+    );
     assert!(store.session_get(ID).is_some());
 }
 
@@ -976,6 +986,7 @@ async fn a_rebuild_recorded_duplicate_blocks_lazy_resolution_of_the_legacy_claim
 
 /// A permission failure on a personal folder must not make the sessions homed
 /// under it look deleted: the prune protects descendants of unreadable dirs.
+#[cfg(unix)]
 #[tokio::test]
 async fn an_unreadable_personal_folder_does_not_prune_its_sessions() {
     use std::os::unix::fs::PermissionsExt;
@@ -1482,7 +1493,14 @@ async fn a_session_nested_under_a_ghost_directory_is_still_indexed() {
 
     let report = store.rebuild_index().await.unwrap();
 
-    assert_eq!(report.ghost_sessions, vec!["Work/ghost".to_string()]);
+    assert_eq!(
+        report
+            .ghost_sessions
+            .iter()
+            .map(Path::new)
+            .collect::<Vec<_>>(),
+        vec![Path::new("Work/ghost")]
+    );
     assert_eq!(report.sessions, 1);
     assert_eq!(store.session_get(ID).unwrap().meta.title, "Rescued");
 }

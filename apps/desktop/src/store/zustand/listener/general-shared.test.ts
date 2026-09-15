@@ -7,6 +7,7 @@ import {
   TRANSCRIPTION_FINAL_STALL_AUDIBLE_SECONDS,
   TRANSCRIPTION_STALL_AUDIBLE_SECONDS,
   tickTranscriptionStallWatchdog,
+  updateLiveProgress,
 } from "./general-shared";
 
 function createActiveLive(): GeneralState["live"] {
@@ -21,6 +22,28 @@ function createActiveLive(): GeneralState["live"] {
     eventUnlistenersBySession: {},
   };
 }
+
+it("keeps recording through device recovery and clears its warning on recovery", () => {
+  const live = createActiveLive();
+  updateLiveProgress(live, {
+    type: "audio_error",
+    session_id: "session-1",
+    error: "Microphone disconnected. Reconnecting.",
+    device: null,
+    is_fatal: false,
+  });
+  expect(live.status).toBe("active");
+  expect(live.lastError).toContain("Reconnecting");
+  updateLiveProgress(live, {
+    type: "audio_error",
+    session_id: "session-1",
+    error: "",
+    device: null,
+    is_fatal: false,
+  });
+  expect(live.lastError).toBeNull();
+  expect(live.status).toBe("active");
+});
 
 describe("tickTranscriptionStallWatchdog", () => {
   it("flags a stalled live transcription after sustained audible silence", () => {

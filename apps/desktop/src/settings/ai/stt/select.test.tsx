@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   setSelection: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-os", () => ({ arch: () => "aarch64" }));
+vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "macos" }));
 vi.mock("~/shared/config", () => ({ useConfigValues: () => mocks.config }));
 vi.mock("~/settings/providers", () => ({
   useAiProvidersState: () => ({ isReady: true }),

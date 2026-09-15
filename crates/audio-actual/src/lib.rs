@@ -84,11 +84,10 @@ pub struct AudioInput {
 impl AudioInput {
     pub fn get_default_device_name() -> String {
         let host = cpal::default_host();
-        let device = host.default_input_device().unwrap();
-        device
-            .description()
-            .map(|d| d.name().to_string())
-            .unwrap_or("Unknown Microphone".to_string())
+        host.default_input_device()
+            .and_then(|device| device.description().ok())
+            .map(|description| description.name().to_string())
+            .unwrap_or_else(|| "No microphone connected".to_string())
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -269,9 +268,16 @@ impl AudioProvider for ActualAudio {
     }
 
     fn probe_mic(&self, device: Option<String>) -> Result<(), Error> {
-        let mut input = AudioInput::from_mic(device)?;
-        let _stream = input.stream();
-        Ok(())
+        #[cfg(target_os = "windows")]
+        {
+            mic::MicInput::new(device)?.probe()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut input = AudioInput::from_mic(device)?;
+            let _stream = input.stream();
+            Ok(())
+        }
     }
 
     fn probe_speaker(&self) -> Result<(), Error> {

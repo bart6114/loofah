@@ -136,7 +136,21 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod platform {
+    use crate::{Error, window::overlay};
+    pub fn show() -> Result<(), Error> {
+        overlay::show("recording-bar")
+    }
+    pub fn hide() -> Result<(), Error> {
+        overlay::hide("recording-bar")
+    }
+    pub fn update(state: super::FloatingBarState) -> Result<(), Error> {
+        overlay::update("recording-bar", overlay::OverlayState::FloatingBar(state))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
     use super::FloatingBarState;
     use crate::Error;

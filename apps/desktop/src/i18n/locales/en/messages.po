@@ -359,6 +359,10 @@ msgid "Confirm"
 msgstr "Confirm"
 
 #: src/onboarding/index.tsx
+msgid "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+msgstr "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+
+#: src/onboarding/index.tsx
 msgid "Connect a service to create summaries of your meetings. You can also set this up later."
 msgstr "Connect a service to create summaries of your meetings. You can also set this up later."
 
@@ -426,6 +430,10 @@ msgstr "Couldn’t load attachments."
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
 msgstr "Couldn’t open “{0}”"
+
+#: src/session/components/note-input/attachments.tsx
+msgid "Couldn’t open attachments in File Explorer"
+msgstr "Couldn’t open attachments in File Explorer"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
@@ -739,6 +747,10 @@ msgstr "Keep editing"
 msgid "Keep Loofah available from the menu bar."
 msgstr "Keep Loofah available from the menu bar."
 
+#: src/settings/general/app-settings.tsx
+msgid "Keep Loofah available from the notification area."
+msgstr "Keep Loofah available from the notification area."
+
 #: src/settings/general/main-language.tsx
 msgid "Language for summaries and generated titles"
 msgstr "Language for summaries and generated titles"
@@ -1027,6 +1039,7 @@ msgstr "Participants"
 msgid "Peak: {0}"
 msgstr "Peak: {0}"
 
+#: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Permissions"
@@ -1329,12 +1342,22 @@ msgid "Show app in Dock"
 msgstr "Show app in Dock"
 
 #: src/settings/general/app-settings.tsx
+msgid "Show app in taskbar"
+msgstr "Show app in taskbar"
+
+#: src/settings/general/app-settings.tsx
 msgid "Show floating recording controls"
 msgstr "Show floating recording controls"
 
 #: src/session/components/memo-image-strip.tsx
 msgid "Show image in note"
 msgstr "Show image in note"
+
+#: src/session/components/note-input/attachments.tsx
+#: src/settings/ai/stt/select.tsx
+#: src/sidebar/timeline/item.tsx
+msgid "Show in File Explorer"
+msgstr "Show in File Explorer"
 
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/ai/stt/select.tsx
@@ -1351,6 +1374,10 @@ msgstr "Show in menu bar"
 msgid "Show Loofah in the Dock and app switcher."
 msgstr "Show Loofah in the Dock and app switcher."
 
+#: src/settings/general/app-settings.tsx
+msgid "Show Loofah in the taskbar and app switcher."
+msgstr "Show Loofah in the taskbar and app switcher."
+
 #: src/settings/general/notification.tsx
 msgid "Show reminder after"
 msgstr "Show reminder after"
@@ -1358,6 +1385,10 @@ msgstr "Show reminder after"
 #: src/settings/ai/stt/timing.tsx
 msgid "Show the transcript as you speak."
 msgstr "Show the transcript as you speak."
+
+#: src/settings/general/app-settings.tsx
+msgid "Show tray icon"
+msgstr "Show tray icon"
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Sign in · Beta"

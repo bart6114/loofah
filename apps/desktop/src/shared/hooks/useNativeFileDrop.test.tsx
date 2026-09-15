@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   handler: null as ((event: { payload: any }) => void) | null,
   unlisten: vi.fn(),
+  platform: vi.fn(() => "macos"),
 }));
 
+vi.mock("@tauri-apps/plugin-os", () => ({ platform: mocks.platform }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({
@@ -26,12 +28,17 @@ import {
 beforeEach(() => {
   mocks.handler = null;
   mocks.unlisten.mockClear();
+  mocks.platform.mockReturnValue("macos");
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("useNativeFileDrop", () => {
   it("uses native macOS points as CSS coordinates and hit-tests the target", () => {
+    vi.stubGlobal("devicePixelRatio", 2);
     expect(nativeDragPointToCssPoint({ x: 40, y: 20 })).toEqual({
       x: 40,
       y: 20,
@@ -46,6 +53,39 @@ describe("useNativeFileDrop", () => {
     expect(isPointInsideElement(element, { x: 40, y: 20 })).toBe(true);
     expect(isPointInsideElement(element, { x: 60, y: 20 })).toBe(false);
   });
+
+  it.each([1.25, 1.5, 2])(
+    "accepts Windows drops at %sx display scaling",
+    async (scale) => {
+      mocks.platform.mockReturnValue("windows");
+      vi.stubGlobal("devicePixelRatio", scale);
+      const onDrop = vi.fn();
+      const view = render(<Harness onDrop={onDrop} onHoverPaths={vi.fn()} />);
+      await waitFor(() => expect(mocks.handler).not.toBeNull());
+      vi.spyOn(
+        view.getByTestId("target"),
+        "getBoundingClientRect",
+      ).mockReturnValue({
+        left: 50,
+        top: 50,
+        right: 100,
+        bottom: 100,
+      } as DOMRect);
+      act(() => {
+        mocks.handler?.({
+          payload: {
+            type: "drop",
+            paths: ["C:\\Recordings\\meeting.wav"],
+            position: { x: 90 * scale, y: 90 * scale },
+          },
+        });
+      });
+      expect(onDrop).toHaveBeenCalledWith(["C:\\Recordings\\meeting.wav"], {
+        x: 90,
+        y: 90,
+      });
+    },
+  );
 
   it("tracks hover, preserves path order, resets, and cleans up", async () => {
     const onDrop = vi.fn();

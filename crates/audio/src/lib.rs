@@ -30,6 +30,8 @@ pub enum Error {
     MicStreamEnded,
     #[error("speaker_stream_ended")]
     SpeakerStreamEnded,
+    #[error("Audio device recovery: microphone={microphone}, system audio={speaker}")]
+    CaptureRecovering { microphone: bool, speaker: bool },
 }
 
 #[derive(Debug, Clone)]

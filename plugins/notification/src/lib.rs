@@ -31,11 +31,15 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .setup(move |app, _api| {
             specta_builder.mount_events(app);
             handler::init(app.clone());
+            #[cfg(target_os = "windows")]
+            hypr_notification::set_app_id(app.config().identifier.clone());
             Ok(())
         })
         .on_event(|app, event| match event {
             tauri::RunEvent::MainEventsCleared => {}
             tauri::RunEvent::Ready => {}
+            #[cfg(target_os = "windows")]
+            tauri::RunEvent::Exit => hypr_notification::shutdown_windows(),
             tauri::RunEvent::WindowEvent { label, event, .. } => {
                 if let Ok(tauri_plugin_windows::AppWindow::Main) =
                     tauri_plugin_windows::AppWindow::from_str(label.as_ref())
@@ -70,3 +74,6 @@ mod test {
         std::fs::write(OUTPUT_FILE, format!("// @ts-nocheck\n{content}")).unwrap();
     }
 }
+
+#[cfg(target_os = "windows")]
+pub use hypr_notification::uninstall_windows;

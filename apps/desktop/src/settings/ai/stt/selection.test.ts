@@ -182,3 +182,22 @@ describe("resolveLiveLanguageSupportMode", () => {
     ).toBe(false);
   });
 });
+
+test("resolves a saved Parakeet choice to the matching platform model", () => {
+  expect(
+    getPreferredProviderModel("soniqo-parakeet-batch", [
+      { id: "onnx-parakeet-streaming", isDownloaded: true },
+      { id: "onnx-parakeet-batch", isDownloaded: true },
+    ]),
+  ).toBe("onnx-parakeet-batch");
+  expect(
+    getPreferredProviderModel(
+      "onnx-parakeet-streaming",
+      [
+        { id: "soniqo-parakeet-batch", isDownloaded: true },
+        { id: "soniqo-parakeet-streaming", isDownloaded: false },
+      ],
+      { keepUnavailableSavedModel: true },
+    ),
+  ).toBe("soniqo-parakeet-streaming");
+});

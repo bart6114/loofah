@@ -1,4 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
+import { platform } from "@tauri-apps/plugin-os";
 import { BotIcon, SquareIcon } from "lucide-react";
 import { memo, type DragEvent, useCallback, useMemo } from "react";
 
@@ -370,7 +371,10 @@ const SessionItem = memo(
         },
         {
           id: "show",
-          text: t`Show in Finder`,
+          text:
+            platform() === "windows"
+              ? t`Show in File Explorer`
+              : t`Show in Finder`,
           action: handleShowInFinder,
         },
         {

@@ -34,3 +34,6 @@ hypr-tcc = { workspace = true }
 block2 = { workspace = true }
 objc2-av-foundation = { workspace = true }
 macos-accessibility-client = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
