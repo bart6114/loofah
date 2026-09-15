@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notify::NotifyPluginExt;
@@ -35,28 +35,29 @@ pub struct StartupProgress {
 
 #[derive(Clone)]
 pub struct StartupState {
-    inner: Arc<Mutex<StartupStatus>>,
+    inner: tokio::sync::watch::Sender<StartupStatus>,
 }
 
 impl StartupState {
     pub fn new(vault_path: Option<&Path>) -> Self {
         let path = vault_path.map(Path::to_path_buf).unwrap_or_default();
         Self {
-            inner: Arc::new(Mutex::new(StartupStatus {
+            inner: tokio::sync::watch::channel(StartupStatus {
                 revision: 0,
                 vault_path: path.to_string_lossy().into_owned(),
                 is_cloud_storage: is_cloud_storage_path(&path),
                 phase: StartupPhase::OpeningVault,
-            })),
+            })
+            .0,
         }
     }
 
     pub fn snapshot(&self) -> StartupStatus {
-        self.inner.lock().unwrap().clone()
+        self.inner.borrow().clone()
     }
 
     pub fn is_ready(&self) -> bool {
-        matches!(self.inner.lock().unwrap().phase, StartupPhase::Ready)
+        matches!(self.inner.borrow().phase, StartupPhase::Ready)
     }
 
     pub fn update<R: tauri::Runtime>(&self, app: &AppHandle<R>, phase: StartupPhase) {
@@ -66,11 +67,29 @@ impl StartupState {
         }
     }
 
-    fn set_phase(&self, phase: StartupPhase) -> StartupStatus {
-        let mut status = self.inner.lock().unwrap();
-        status.revision += 1;
-        status.phase = phase;
-        status.clone()
+    pub(crate) async fn wait_until_ready(&self) -> Result<(), String> {
+        let mut receiver = self.inner.subscribe();
+        loop {
+            match &receiver.borrow_and_update().phase {
+                StartupPhase::Ready => return Ok(()),
+                StartupPhase::Failed { message } => return Err(message.clone()),
+                _ => {}
+            }
+            receiver
+                .changed()
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
+    pub(crate) fn set_phase(&self, phase: StartupPhase) -> StartupStatus {
+        let mut updated = None;
+        self.inner.send_modify(|status| {
+            status.revision += 1;
+            status.phase = phase;
+            updated = Some(status.clone());
+        });
+        updated.unwrap()
     }
 }
 
@@ -194,6 +213,41 @@ fn is_cloud_storage_path(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn readiness_is_observed_before_and_after_subscription() {
+        let state = StartupState::new(None);
+        let wait = state.wait_until_ready();
+        tokio::pin!(wait);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(1), &mut wait)
+                .await
+                .is_err()
+        );
+        state.set_phase(StartupPhase::Ready);
+        wait.await.unwrap();
+        state.wait_until_ready().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_startup_wakes_waiters_and_late_subscribers() {
+        let state = StartupState::new(None);
+        let wait = state.wait_until_ready();
+        tokio::pin!(wait);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(1), &mut wait)
+                .await
+                .is_err()
+        );
+        state.set_phase(StartupPhase::Failed {
+            message: "unreadable vault".into(),
+        });
+        assert_eq!(wait.await.unwrap_err(), "unreadable vault");
+        assert_eq!(
+            state.wait_until_ready().await.unwrap_err(),
+            "unreadable vault"
+        );
+    }
 
     #[test]
     fn recognizes_macos_cloud_storage_paths() {
