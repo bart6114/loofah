@@ -69,9 +69,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn whisper_large_v3_is_selectable_with_full_model_metadata() {
+    fn whisper_large_v3_has_platform_specific_availability_and_full_metadata() {
         let model = LocalModel::Whisper(WhisperModel::LargeV3);
-        assert!(SUPPORTED_MODELS.contains(&model));
+        assert_eq!(
+            SUPPORTED_MODELS.contains(&model),
+            !cfg!(target_os = "windows")
+        );
         let info = stt_model_info(&model);
         assert!(matches!(info.model_type, SttModelType::Whispercpp));
         assert_eq!(info.size_bytes, Some(3095033483));
