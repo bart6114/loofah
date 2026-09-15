@@ -212,7 +212,9 @@ export function useStartListening(sessionId: string) {
         model: conn?.model ?? "",
         base_url: conn?.baseUrl ?? "",
         api_key: conn?.apiKey ?? "",
-        transcription_mode: liveTranscriptionConfig.transcriptionMode,
+        transcription_mode: conn?.baseUrl.trim()
+          ? liveTranscriptionConfig.transcriptionMode
+          : "batch",
         participant_human_ids: [],
         self_human_id: session?.user_id || null,
       },

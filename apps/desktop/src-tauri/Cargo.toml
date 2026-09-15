@@ -20,6 +20,8 @@ crate-type = ["staticlib", "rlib"]
 tauri-build = { workspace = true, features = [] }
 
 [dependencies]
+# Keep aligned with tauri-plugin-tantivy for typed errors and projection tests.
+tantivy = "0.25"
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }
 
 camino = { workspace = true }
@@ -110,9 +112,6 @@ tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 
 [dev-dependencies]
-# Same version as tauri-plugin-tantivy's, so `search_index`'s tests can stand up
-# a real in-RAM collection behind the plugin's `IndexState`.
-tantivy = "0.25"
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
 tauri = { workspace = true, features = ["test"] }
