@@ -115,15 +115,7 @@ impl Actor for SessionActor {
                 }
                 Err(error) => {
                     tracing::warn!(?error, "listener_spawn_failed");
-                    let degraded = if should_stop_on_listener_failure(state) {
-                        DegradedError::StreamError {
-                            message: error.to_string(),
-                        }
-                    } else {
-                        DegradedError::UpstreamUnavailable {
-                            message: mode::classify_connection_failure(&state.ctx.params.base_url),
-                        }
-                    };
+                    let degraded = classify_listener_startup_failure(state, &error);
 
                     handle_listener_failure(&myself, state, degraded).await;
                 }
@@ -332,15 +324,7 @@ async fn refresh_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState
         }
         Err(error) => {
             tracing::warn!(?error, "listener_refresh_failed");
-            let degraded = if should_stop_on_listener_failure(state) {
-                DegradedError::StreamError {
-                    message: error.to_string(),
-                }
-            } else {
-                DegradedError::UpstreamUnavailable {
-                    message: mode::classify_connection_failure(&state.ctx.params.base_url),
-                }
-            };
+            let degraded = classify_listener_startup_failure(state, &error);
             handle_listener_failure(&myself, state, degraded).await;
         }
     }
@@ -392,6 +376,35 @@ async fn handle_listener_failure(
     }
 }
 
+fn classify_listener_startup_failure(
+    state: &SessionState,
+    error: &ractor::SpawnErr,
+) -> DegradedError {
+    if let ractor::SpawnErr::StartupFailed(error) = error
+        && let Some(error) = error.downcast_ref::<owhisper_client::hypr_ws_client::Error>()
+        && error.is_auth_error()
+    {
+        return DegradedError::AuthenticationFailed {
+            provider: AdapterKind::from_url_and_languages(
+                &state.ctx.params.base_url,
+                &state.ctx.params.languages,
+                Some(&state.ctx.params.model),
+            )
+            .to_string(),
+        };
+    }
+
+    if should_stop_on_listener_failure(state) {
+        DegradedError::StreamError {
+            message: error.to_string(),
+        }
+    } else {
+        DegradedError::UpstreamUnavailable {
+            message: mode::classify_connection_failure(&state.ctx.params.base_url),
+        }
+    }
+}
+
 fn should_retry_listener_failure(degraded: &DegradedError) -> bool {
     !matches!(degraded, DegradedError::AuthenticationFailed { .. })
 }
@@ -434,14 +447,8 @@ async fn retry_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState) 
         }
         Err(error) => {
             tracing::warn!(?error, "listener_retry_failed");
-            handle_listener_failure(
-                &myself,
-                state,
-                DegradedError::UpstreamUnavailable {
-                    message: mode::classify_connection_failure(&state.ctx.params.base_url),
-                },
-            )
-            .await;
+            let degraded = classify_listener_startup_failure(state, &error);
+            handle_listener_failure(&myself, state, degraded).await;
         }
     }
 }
@@ -767,6 +774,105 @@ mod tests {
         assert_eq!(listener_retry_delay(0), Duration::from_secs(2));
         assert_eq!(listener_retry_delay(3), Duration::from_secs(20));
         assert_eq!(listener_retry_delay(20), Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn auth_handshake_failures_preserve_recording_without_retrying() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        for status in [401, 403] {
+            let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base_url = format!("http://{}/v1", server.local_addr().unwrap());
+            let server_task = tokio::spawn(async move {
+                loop {
+                    let (mut socket, _) = server.accept().await.unwrap();
+                    let mut request = Vec::new();
+                    while !request.ends_with(b"\r\n\r\n") {
+                        request.push(socket.read_u8().await.unwrap());
+                    }
+                    let response = format!(
+                        "HTTP/1.1 {status} Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                }
+            });
+            for onboarding in [true, false] {
+                let runtime = Arc::new(RecordingRuntime {
+                    lifecycle_events: std::sync::Mutex::new(vec![]),
+                });
+                let mut ctx = test_ctx();
+                ctx.runtime = runtime.clone();
+                ctx.params.base_url = base_url.clone();
+                ctx.params.model = "nova-3".to_string();
+                ctx.params.onboarding = onboarding;
+                let mut state = test_state(ctx);
+                let (actor_ref, handle) = Actor::spawn(None, SessionStopProbe, ()).await.unwrap();
+
+                for (index, phase) in ["start", "retry", "refresh"].into_iter().enumerate() {
+                    tokio::time::timeout(Duration::from_secs(5), async {
+                        match phase {
+                            "start" => SessionActor
+                                .post_start(actor_ref.clone(), &mut state)
+                                .await
+                                .unwrap(),
+                            "retry" => retry_listener(actor_ref.clone(), &mut state).await,
+                            _ => {
+                                state.mode.on_listener_attached();
+                                refresh_listener(actor_ref.clone(), &mut state).await;
+                            }
+                        }
+                    })
+                    .await
+                    .unwrap();
+                    assert_eq!(
+                        runtime.lifecycle_events.lock().unwrap().len(),
+                        index + 1,
+                        "{phase}"
+                    );
+                    assert!(!state.shutting_down, "{phase}");
+                    assert!(state.listener_cell.is_none(), "{phase}");
+                    assert_eq!(state.listener_retry_attempt, 0, "{phase}");
+                    assert!(
+                        matches!(
+                            runtime.lifecycle_events.lock().unwrap().last(),
+                            Some(crate::SessionLifecycleEvent::Active {
+                                current_transcription_mode: TranscriptionMode::Batch,
+                                error: Some(DegradedError::AuthenticationFailed { .. }),
+                                ..
+                            })
+                        ),
+                        "{phase}"
+                    );
+                }
+                actor_ref.stop(None);
+                handle.await.unwrap();
+            }
+            server_task.abort();
+            let _ = server_task.await;
+        }
+    }
+
+    #[test]
+    fn transient_startup_failures_remain_retryable() {
+        let state = test_state(test_ctx());
+        for error in [
+            owhisper_client::hypr_ws_client::Error::connect_timeout(1, 2),
+            owhisper_client::hypr_ws_client::Error::ConnectFailed {
+                attempt: 1,
+                max_attempts: 2,
+                message: "Unavailable".to_string(),
+                is_auth: false,
+                status_code: Some(503),
+                retryable: true,
+                retry_after_secs: None,
+            },
+        ] {
+            let degraded = classify_listener_startup_failure(
+                &state,
+                &ractor::SpawnErr::StartupFailed(Box::new(error)),
+            );
+            assert!(should_retry_listener_failure(&degraded));
+        }
     }
 
     #[test]

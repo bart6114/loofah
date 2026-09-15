@@ -51,6 +51,12 @@ impl CaptureParams {
             return listener::TranscriptionMode::Batch;
         }
 
+        // An absent endpoint means record-only, even if a caller requested live capture.
+        // Do not let adapter inference turn missing configuration into a cloud connection.
+        if self.base_url.trim().is_empty() {
+            return listener::TranscriptionMode::Batch;
+        }
+
         if let Some(model) =
             hypr_transcribe_soniqo::local_model_from_request(&self.base_url, &self.model)
         {
@@ -64,6 +70,12 @@ impl CaptureParams {
         }
 
         if hypr_transcribe_soniqo::is_local_base_url(&self.base_url) {
+            return listener::TranscriptionMode::Batch;
+        }
+
+        if !tauri::Url::parse(&self.base_url).is_ok_and(|url| {
+            matches!(url.scheme(), "http" | "https" | "ws" | "wss") && url.host_str().is_some()
+        }) {
             return listener::TranscriptionMode::Batch;
         }
 
@@ -368,6 +380,50 @@ mod tests {
             transcription_mode: None,
             participant_human_ids: vec![],
             self_human_id: None,
+        }
+    }
+
+    #[test]
+    fn missing_or_invalid_capture_endpoint_never_starts_a_listener() {
+        for base_url in [
+            "",
+            "   ",
+            "not-a-url",
+            "file:///tmp/transcription",
+            "http://",
+        ] {
+            for model in ["", "soniqo-parakeet-streaming", "nova-3"] {
+                for requested_mode in [
+                    None,
+                    Some(TranscriptionMode::Live),
+                    Some(TranscriptionMode::Batch),
+                ] {
+                    let mut params = capture_params(base_url, model);
+                    params.api_key.clear();
+                    params.transcription_mode = requested_mode;
+                    let session: hypr_transcription_core::listener::actors::SessionParams =
+                        params.into();
+                    assert_eq!(
+                        session.transcription_mode,
+                        TranscriptionMode::Batch,
+                        "endpoint={base_url:?}, model={model:?}, requested={requested_mode:?}"
+                    );
+                    assert_eq!(session.session_id, "session-1");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn configured_endpoint_preserves_provider_defaults_without_a_model_or_key() {
+        for base_url in [
+            "https://api.deepgram.com/v1",
+            "http://127.0.0.1:54321/v1",
+            "wss://example.com/v1",
+        ] {
+            let mut params = capture_params(base_url, "");
+            params.api_key.clear();
+            assert_eq!(params.default_transcription_mode(), TranscriptionMode::Live);
         }
     }
 
