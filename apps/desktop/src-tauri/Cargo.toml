@@ -88,7 +88,7 @@ specta-typescript = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
