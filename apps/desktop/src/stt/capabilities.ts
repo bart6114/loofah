@@ -177,7 +177,11 @@ export async function getLiveTranscriptionConfig({
   languages: readonly string[];
   timing?: string;
 }): Promise<LiveTranscriptionConfig> {
-  if (timing === "batch") {
+  if (
+    !provider ||
+    (provider === "fmtr" && !isSupportedLocalSttModel(model)) ||
+    timing === "batch"
+  ) {
     return { languages: [...languages], transcriptionMode: "batch" };
   }
 
@@ -197,7 +201,7 @@ export async function getLiveTranscriptionConfig({
     transcriptionMode: undefined as TranscriptionMode | undefined,
   } satisfies LiveTranscriptionConfig;
 
-  if (!provider || languages.length <= 1) {
+  if (languages.length <= 1) {
     return config;
   }
 

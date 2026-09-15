@@ -8,7 +8,7 @@ use tauri_plugin_settings::SettingsPluginExt;
 use tauri_plugin_tantivy::TantivyPluginExt;
 
 use crate::session_store::{
-    SessionStore, TagSuggestionItem, TagSuggestionStatus, is_tag_automation_candidate,
+    SessionStore, StoreError, TagSuggestionItem, TagSuggestionStatus, is_tag_automation_candidate,
 };
 
 pub const ALGORITHM_VERSION: u32 = 3;
@@ -16,7 +16,11 @@ const CANDIDATE_LIMIT: usize = 50;
 const SUGGESTION_LIMIT: usize = 3;
 const SUGGESTION_THRESHOLD: f32 = 0.35;
 const AUTO_ACCEPT_THRESHOLD: f32 = 0.75;
-const RETRY_DELAY: Duration = Duration::from_secs(5);
+const RETRY_DELAYS: [Duration; 3] = [
+    Duration::from_secs(5),
+    Duration::from_secs(15),
+    Duration::from_secs(30),
+];
 const NOTE_IDLE_DELAY: Duration = Duration::from_secs(10);
 const NOTE_MAX_WAIT: Duration = Duration::from_secs(120);
 const TRANSCRIPT_WEIGHT: f32 = 0.65;
@@ -24,8 +28,15 @@ const SUMMARY_WEIGHT: f32 = 0.25;
 const NOTE_WEIGHT: f32 = 0.10;
 
 enum QueueMessage {
-    Process(String),
-    DebounceElapsed { session_id: String, generation: u64 },
+    Process {
+        session_id: String,
+        revision: u64,
+        attempt: usize,
+    },
+    DebounceElapsed {
+        session_id: String,
+        generation: u64,
+    },
 }
 
 struct DebounceEntry {
@@ -38,10 +49,13 @@ struct DebounceState {
     next_generation: u64,
     entries: HashMap<String, DebounceEntry>,
     revisions: HashMap<String, u64>,
+    // Attempt number and whether its queued message is still awaiting processing.
+    attempts: HashMap<String, (usize, bool)>,
 }
 
 impl DebounceState {
     fn bump_revision(&mut self, session_id: &str) -> u64 {
+        self.attempts.remove(session_id);
         let revision = self
             .revisions
             .get(session_id)
@@ -50,6 +64,34 @@ impl DebounceState {
             .wrapping_add(1);
         self.revisions.insert(session_id.to_string(), revision);
         revision
+    }
+
+    fn claim_attempt(&mut self, session_id: &str, revision: u64, attempt: usize) -> bool {
+        if self.revision(session_id) != revision {
+            return false;
+        }
+        let entry = self
+            .attempts
+            .entry(session_id.to_string())
+            .or_insert((0, true));
+        if *entry != (attempt, true) {
+            return false;
+        }
+        entry.1 = false;
+        true
+    }
+
+    fn retry(&mut self, session_id: &str, revision: u64, attempt: usize) -> Option<Duration> {
+        if self.revision(session_id) != revision {
+            return None;
+        }
+        let delay = *RETRY_DELAYS.get(attempt)?;
+        let entry = self.attempts.get_mut(session_id)?;
+        if *entry != (attempt, false) {
+            return None;
+        }
+        *entry = (attempt + 1, true);
+        Some(delay)
     }
 
     fn schedule(
@@ -105,10 +147,14 @@ pub struct RelatedTagQueue {
 impl RelatedTagQueue {
     pub fn enqueue(&self, session_id: String) {
         let mut state = self.debounce.lock().unwrap();
-        state.bump_revision(&session_id);
+        let revision = state.bump_revision(&session_id);
         state.entries.remove(&session_id);
         drop(state);
-        let _ = self.sender.send(QueueMessage::Process(session_id));
+        let _ = self.sender.send(QueueMessage::Process {
+            session_id,
+            revision,
+            attempt: 0,
+        });
     }
 
     pub fn note_changed(&self, session_id: String) {
@@ -163,48 +209,156 @@ pub fn spawn<R: tauri::Runtime>(
     let worker_queue = queue.clone();
 
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        for entry in store.session_list() {
-            if entry
-                .meta
-                .tag_suggestions
-                .as_ref()
-                .is_some_and(|state| state.status == TagSuggestionStatus::Pending)
-            {
-                worker_queue.enqueue(entry.meta.id);
-            }
+        if let Err(error) = app
+            .state::<crate::startup::StartupState>()
+            .wait_until_ready()
+            .await
+        {
+            tracing::debug!(%error, "related tags: vault startup failed; worker stopped");
+            return;
         }
+        enqueue_pending(&store, &worker_queue);
 
         while let Some(message) = receiver.recv().await {
-            let session_id = match message {
-                QueueMessage::Process(session_id) => session_id,
-                QueueMessage::DebounceElapsed {
-                    session_id,
-                    generation,
-                } => {
-                    if !worker_queue
-                        .debounce
-                        .lock()
-                        .unwrap()
-                        .take_if_current(&session_id, generation)
-                    {
-                        continue;
-                    }
-                    session_id
-                }
-            };
-            if let Err(error) = process(&app, &store, &worker_queue, &session_id).await {
-                tracing::warn!(%session_id, %error, "related tags: analysis failed; retrying");
-                let retry_queue = worker_queue.clone();
+            if let Some((message, delay)) =
+                handle_message(&app, &store, &worker_queue, message).await
+            {
+                let sender = worker_queue.sender.clone();
                 tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(RETRY_DELAY).await;
-                    let _ = retry_queue.sender.send(QueueMessage::Process(session_id));
+                    tokio::time::sleep(delay).await;
+                    let _ = sender.send(message);
                 });
             }
         }
     });
 
     queue
+}
+
+fn enqueue_pending(store: &SessionStore, queue: &RelatedTagQueue) {
+    for entry in store.session_list() {
+        if entry
+            .meta
+            .tag_suggestions
+            .as_ref()
+            .is_some_and(|state| state.status == TagSuggestionStatus::Pending)
+            && queue.revision(&entry.meta.id) == 0
+        {
+            queue.enqueue(entry.meta.id);
+        }
+    }
+}
+
+#[derive(Debug)]
+enum ProcessingFailure {
+    MissingSession,
+    Retryable(String),
+    Terminal(String),
+}
+
+impl From<StoreError> for ProcessingFailure {
+    fn from(error: StoreError) -> Self {
+        match error {
+            StoreError::Io(_) | StoreError::Conflict(_) => Self::Retryable(error.to_string()),
+            StoreError::Serialize(_) => Self::Terminal(error.to_string()),
+        }
+    }
+}
+
+impl From<tauri_plugin_tantivy::Error> for ProcessingFailure {
+    fn from(error: tauri_plugin_tantivy::Error) -> Self {
+        use tantivy::TantivyError;
+        use tantivy::directory::error::{
+            LockError, OpenDirectoryError, OpenReadError, OpenWriteError,
+        };
+        use tauri_plugin_tantivy::Error as SearchError;
+        if matches!(
+            error,
+            SearchError::Io(_)
+                | SearchError::IndexNotInitialized
+                | SearchError::CollectionNotFound(_)
+                | SearchError::Tantivy(
+                    TantivyError::IoError(_)
+                        | TantivyError::OpenReadError(OpenReadError::IoError { .. })
+                        | TantivyError::OpenWriteError(OpenWriteError::IoError { .. })
+                        | TantivyError::OpenDirectoryError(
+                            OpenDirectoryError::IoError { .. }
+                                | OpenDirectoryError::FailedToCreateTempDir(_)
+                        )
+                        | TantivyError::LockFailure(LockError::IoError(_), _)
+                )
+        ) {
+            Self::Retryable(error.to_string())
+        } else {
+            Self::Terminal(error.to_string())
+        }
+    }
+}
+
+async fn handle_message<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    store: &SessionStore,
+    queue: &RelatedTagQueue,
+    message: QueueMessage,
+) -> Option<(QueueMessage, Duration)> {
+    let (session_id, revision, attempt) = {
+        let mut state = queue.debounce.lock().unwrap();
+        let (session_id, revision, attempt) = match message {
+            QueueMessage::Process {
+                session_id,
+                revision,
+                attempt,
+            } => (session_id, revision, attempt),
+            QueueMessage::DebounceElapsed {
+                session_id,
+                generation,
+            } => {
+                if !state.take_if_current(&session_id, generation) {
+                    return None;
+                }
+                let revision = state.revision(&session_id);
+                (session_id, revision, 0)
+            }
+        };
+        if !state.claim_attempt(&session_id, revision, attempt) {
+            return None;
+        }
+        (session_id, revision, attempt)
+    };
+    let result = process(app, store, queue, &session_id, revision).await;
+    if queue.revision(&session_id) != revision || store.session_get(&session_id).is_none() {
+        return None;
+    }
+    match result {
+        Ok(()) | Err(ProcessingFailure::MissingSession) => None,
+        Err(ProcessingFailure::Terminal(error)) => {
+            tracing::warn!(%session_id, %error, attempt = attempt + 1, "related tags: terminal analysis failure");
+            None
+        }
+        Err(ProcessingFailure::Retryable(error)) => {
+            let delay = {
+                let mut state = queue.debounce.lock().unwrap();
+                if state.revision(&session_id) != revision {
+                    return None;
+                }
+                state.retry(&session_id, revision, attempt)
+            };
+            if let Some(delay) = delay {
+                tracing::debug!(%session_id, %error, attempt = attempt + 2, delay_seconds = delay.as_secs(), "related tags: scheduling analysis retry");
+                Some((
+                    QueueMessage::Process {
+                        session_id,
+                        revision,
+                        attempt: attempt + 1,
+                    },
+                    delay,
+                ))
+            } else {
+                tracing::warn!(%session_id, %error, attempt = attempt + 1, "related tags: analysis retries exhausted");
+                None
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -229,19 +383,19 @@ async fn process<R: tauri::Runtime>(
     store: &SessionStore,
     queue: &RelatedTagQueue,
     session_id: &str,
-) -> Result<(), String> {
-    let analysis_revision = queue.revision(session_id);
+    analysis_revision: u64,
+) -> Result<(), ProcessingFailure> {
     let source = source_content(store, session_id).await?;
     if !store
         .mark_tag_suggestions_pending(session_id, source.hash.clone(), ALGORITHM_VERSION)
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(ProcessingFailure::from)?
     {
         return Ok(());
     }
     let current = store
         .session_get(session_id)
-        .ok_or_else(|| "session disappeared before analysis".to_string())?;
+        .ok_or(ProcessingFailure::MissingSession)?;
     if term_frequencies(&source.combined).len() < 10 {
         let latest_source = source_content(store, session_id).await?;
         if queue.revision(session_id) != analysis_revision || latest_source.hash != source.hash {
@@ -257,7 +411,7 @@ async fn process<R: tauri::Runtime>(
                 None,
             )
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(ProcessingFailure::from)?;
         tracing::info!(%session_id, count = 0, "related tags: analysis complete");
         return Ok(());
     }
@@ -265,7 +419,7 @@ async fn process<R: tauri::Runtime>(
         .tantivy()
         .related_documents(&source.combined, session_id, CANDIDATE_LIMIT)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(ProcessingFailure::from)?;
 
     let mut candidates = Vec::new();
     for hit in candidate_hits {
@@ -275,7 +429,11 @@ async fn process<R: tauri::Runtime>(
         if record.meta.tags.is_empty() {
             continue;
         }
-        let candidate_source = source_content(store, &hit.id).await?;
+        let candidate_source = match source_content(store, &hit.id).await {
+            Ok(source) => source,
+            Err(ProcessingFailure::MissingSession) => continue,
+            Err(error) => return Err(error),
+        };
         if !candidate_source.combined.is_empty() {
             candidates.push((record.meta.tags, candidate_source));
         }
@@ -297,7 +455,7 @@ async fn process<R: tauri::Runtime>(
             auto_accept.then_some(AUTO_ACCEPT_THRESHOLD),
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(ProcessingFailure::from)?;
 
     if completed && auto_accept {
         for suggestion in suggestions
@@ -322,14 +480,28 @@ struct SourceContent {
     hash: String,
 }
 
-async fn source_content(store: &SessionStore, session_id: &str) -> Result<SourceContent, String> {
+async fn source_content(
+    store: &SessionStore,
+    session_id: &str,
+) -> Result<SourceContent, ProcessingFailure> {
+    source_content_with_transcripts(store, session_id, store.session_transcripts(session_id)).await
+}
+
+async fn source_content_with_transcripts(
+    store: &SessionStore,
+    session_id: &str,
+    transcripts: impl std::future::Future<
+        Output = Result<Vec<hypr_fs_format::TranscriptWithData>, StoreError>,
+    >,
+) -> Result<SourceContent, ProcessingFailure> {
     let record = store
         .session_get(session_id)
-        .ok_or_else(|| format!("session {session_id} disappeared before analysis"))?;
-    let transcripts = store
-        .session_transcripts(session_id)
-        .await
-        .map_err(|error| error.to_string())?;
+        .ok_or(ProcessingFailure::MissingSession)?;
+    let result = transcripts.await;
+    if store.session_get(session_id).is_none() {
+        return Err(ProcessingFailure::MissingSession);
+    }
+    let transcripts = result.map_err(ProcessingFailure::from)?;
     let transcript = transcripts
         .iter()
         .flat_map(|transcript| transcript.words.iter())
@@ -516,6 +688,272 @@ mod tests {
             summary.to_string(),
             note.to_string(),
         )
+    }
+
+    async fn retry_harness() -> (
+        tempfile::TempDir,
+        SessionStore,
+        tauri::App<tauri::test::MockRuntime>,
+        RelatedTagQueue,
+        tokio::sync::mpsc::UnboundedReceiver<QueueMessage>,
+    ) {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        app.manage(tauri_plugin_tantivy::IndexState::default());
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let queue = RelatedTagQueue {
+            sender,
+            debounce: Arc::new(Mutex::new(DebounceState::default())),
+        };
+        (vault, store, app, queue, receiver)
+    }
+
+    async fn create_target(store: &SessionStore, id: &str) {
+        let meta = serde_json::from_value(serde_json::json!({
+            "id": id, "title": "Target", "created_at": "2026-09-15T00:00:00Z", "tags": []
+        }))
+        .unwrap();
+        store.write_meta(&meta).await.unwrap();
+        store
+            .write_note(
+                id,
+                "one two three four five six seven eight nine ten eleven twelve",
+            )
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn typed_failure_classification() {
+        assert!(matches!(
+            ProcessingFailure::from(StoreError::Io("x".into())),
+            ProcessingFailure::Retryable(_)
+        ));
+        assert!(matches!(
+            ProcessingFailure::from(StoreError::Conflict("x".into())),
+            ProcessingFailure::Retryable(_)
+        ));
+        assert!(matches!(
+            ProcessingFailure::from(StoreError::Serialize("x".into())),
+            ProcessingFailure::Terminal(_)
+        ));
+        use tauri_plugin_tantivy::Error;
+        for error in [
+            Error::IndexNotInitialized,
+            Error::CollectionNotFound("default".into()),
+            Error::Io(std::io::Error::other("x")),
+            Error::Tantivy(tantivy::TantivyError::IoError(Arc::new(
+                std::io::Error::other("x"),
+            ))),
+        ] {
+            assert!(matches!(
+                ProcessingFailure::from(error),
+                ProcessingFailure::Retryable(_)
+            ));
+        }
+        for error in [
+            Error::DocumentNotFound("x".into()),
+            Error::InvalidDocumentType("x".into()),
+            Error::Tantivy(tantivy::TantivyError::InvalidArgument("x".into())),
+        ] {
+            assert!(matches!(
+                ProcessingFailure::from(error),
+                ProcessingFailure::Terminal(_)
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn retries_stop_after_four_failures_and_pending_survives_restart() {
+        let (vault, store, app, queue, mut receiver) = retry_harness().await;
+        create_target(&store, "s1").await;
+        queue.enqueue("s1".into());
+        let mut message = receiver.try_recv().unwrap();
+        for delay in RETRY_DELAYS {
+            let (retry, actual) = handle_message(app.handle(), &store, &queue, message)
+                .await
+                .unwrap();
+            assert_eq!(actual, delay);
+            message = retry;
+        }
+        assert!(
+            handle_message(app.handle(), &store, &queue, message)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            store
+                .session_get("s1")
+                .unwrap()
+                .meta
+                .tag_suggestions
+                .unwrap()
+                .status,
+            TagSuggestionStatus::Pending
+        );
+        assert!(!queue.debounce.lock().unwrap().claim_attempt("s1", 0, 0));
+
+        let restarted = SessionStore::new(vault.path().to_path_buf());
+        restarted.rebuild_index().await.unwrap();
+        let (_, _, _, fresh_queue, mut fresh_receiver) = retry_harness().await;
+        enqueue_pending(&restarted, &fresh_queue);
+        let message = fresh_receiver.try_recv().unwrap();
+        let (_, delay) = handle_message(app.handle(), &restarted, &fresh_queue, message)
+            .await
+            .unwrap();
+        assert_eq!(delay, RETRY_DELAYS[0]);
+    }
+
+    #[tokio::test]
+    async fn deletion_before_processing_or_during_backoff_cancels_without_recreation() {
+        for during_backoff in [false, true] {
+            let (vault, store, app, queue, mut receiver) = retry_harness().await;
+            create_target(&store, "s1").await;
+            let dir = store.session_dir("s1").await.unwrap();
+            queue.enqueue("s1".into());
+            let mut message = receiver.try_recv().unwrap();
+            if during_backoff {
+                message = handle_message(app.handle(), &store, &queue, message)
+                    .await
+                    .unwrap()
+                    .0;
+            }
+            store.delete_session("s1").await.unwrap();
+            assert!(
+                handle_message(app.handle(), &store, &queue, message)
+                    .await
+                    .is_none()
+            );
+            assert!(store.session_get("s1").is_none());
+            assert!(!vault.path().join(dir).exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn transient_failure_recovers_and_terminal_failure_does_not_retry() {
+        let (vault, store, app, queue, mut receiver) = retry_harness().await;
+        create_target(&store, "s1").await;
+        store.write_note("s1", "short note").await.unwrap();
+        let transcript_path = vault
+            .path()
+            .join(store.session_dir("s1").await.unwrap())
+            .join("transcript.json");
+        std::fs::create_dir(&transcript_path).unwrap();
+        queue.enqueue("s1".into());
+        let retry = handle_message(app.handle(), &store, &queue, receiver.try_recv().unwrap())
+            .await
+            .unwrap()
+            .0;
+        std::fs::remove_dir(transcript_path).unwrap();
+        assert!(
+            handle_message(app.handle(), &store, &queue, retry)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            store
+                .session_get("s1")
+                .unwrap()
+                .meta
+                .tag_suggestions
+                .unwrap()
+                .status,
+            TagSuggestionStatus::Complete
+        );
+
+        std::fs::write(
+            vault
+                .path()
+                .join(store.session_dir("s1").await.unwrap())
+                .join("transcript.json"),
+            "{broken",
+        )
+        .unwrap();
+        queue.enqueue("s1".into());
+        assert!(
+            handle_message(app.handle(), &store, &queue, receiver.try_recv().unwrap())
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn edits_invalidate_old_timers_and_sessions_have_independent_budgets() {
+        let (_vault, store, app, queue, mut receiver) = retry_harness().await;
+        for id in ["s1", "s2"] {
+            create_target(&store, id).await;
+        }
+        queue.enqueue("s1".into());
+        let old_retry = handle_message(app.handle(), &store, &queue, receiver.try_recv().unwrap())
+            .await
+            .unwrap()
+            .0;
+        let (generation, _) = queue.debounce.lock().unwrap().schedule(
+            "s1",
+            Instant::now(),
+            NOTE_IDLE_DELAY,
+            NOTE_MAX_WAIT,
+        );
+        assert!(
+            handle_message(app.handle(), &store, &queue, old_retry)
+                .await
+                .is_none()
+        );
+        let (_, delay) = handle_message(
+            app.handle(),
+            &store,
+            &queue,
+            QueueMessage::DebounceElapsed {
+                session_id: "s1".into(),
+                generation,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(delay, RETRY_DELAYS[0]);
+        queue.enqueue("s2".into());
+        let (_, delay) = handle_message(app.handle(), &store, &queue, receiver.try_recv().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(delay, RETRY_DELAYS[0]);
+        queue.enqueue("s1".into());
+        let (_, delay) = handle_message(app.handle(), &store, &queue, receiver.try_recv().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(delay, RETRY_DELAYS[0]);
+    }
+
+    #[tokio::test]
+    async fn deletion_during_source_read_cancels_even_when_the_read_fails() {
+        for failed in [false, true] {
+            let (_vault, store, _app, _queue, _receiver) = retry_harness().await;
+            create_target(&store, "candidate").await;
+            let read = async {
+                store.delete_session("candidate").await.unwrap();
+                if failed {
+                    Err(StoreError::Io("file disappeared".into()))
+                } else {
+                    Ok(Vec::new())
+                }
+            };
+            let result = source_content_with_transcripts(&store, "candidate", read).await;
+            assert!(matches!(result, Err(ProcessingFailure::MissingSession)));
+        }
+    }
+
+    #[test]
+    fn only_one_timer_can_be_scheduled_or_claimed_for_an_attempt() {
+        let mut state = DebounceState::default();
+        let revision = state.bump_revision("s1");
+        assert!(state.claim_attempt("s1", revision, 0));
+        assert!(!state.claim_attempt("s1", revision, 0));
+        assert_eq!(state.retry("s1", revision, 0), Some(RETRY_DELAYS[0]));
+        assert_eq!(state.retry("s1", revision, 0), None);
+        assert!(state.claim_attempt("s1", revision, 1));
+        assert!(!state.claim_attempt("s1", revision, 1));
     }
 
     #[test]
