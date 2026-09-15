@@ -46,7 +46,7 @@ import {
   resolveLiveLanguageSupportMode,
 } from "./selection";
 import {
-  displayModelTitle,
+  displayModelLabel,
   formatModelSize,
   type ProviderId,
   PROVIDERS,
@@ -566,19 +566,13 @@ function ModelSelectItem({
   const isDownloading =
     !!downloadInfo || queuedDownloads.includes(model.id as LocalModel);
 
-  const label = model.displayName ?? model.id;
-  const title = displayModelTitle(model.id, model.displayName);
+  const label = displayModelLabel(model.id, model.displayName);
   const sizeLabel = formatModelSize(model.sizeBytes);
   const showLocalActions = model.isDownloaded && isLocalModelId(model.id);
   const isDeprecated = model.isDeprecated === true;
   const content = (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <LocalModelLabel
-        model={model.id}
-        label={label}
-        title={title}
-        className="min-w-0"
-      />
+      <LocalModelLabel model={model.id} label={label} className="min-w-0" />
       <ModelModeBadge mode={model.mode} />
       {!model.isDownloaded && sizeLabel && (
         <span className="text-muted-foreground ml-auto shrink-0 font-mono text-[11px]">
@@ -667,8 +661,7 @@ function ModelSelectedValue({ model }: { model: ModelEntry }) {
     <div className="flex max-w-full min-w-0 items-center gap-2">
       <LocalModelLabel
         model={model.id}
-        label={model.displayName ?? model.id}
-        title={displayModelTitle(model.id, model.displayName)}
+        label={displayModelLabel(model.id, model.displayName)}
         className={cn(["min-w-0", isDeprecated && "opacity-60"])}
         labelClassName={cn([isDeprecated && "text-muted-foreground"])}
       />
