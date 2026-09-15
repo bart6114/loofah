@@ -911,7 +911,7 @@ function SidebarActionRow({
       onClick={onClick}
       className={cn([
         "flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-left text-sm",
-        "hover:bg-sidebar-accent transition-colors",
+        "hover:bg-sidebar-accent transition-none",
         mutedLabel ? "text-muted-foreground/80" : "text-foreground/85",
       ])}
     >
@@ -1089,7 +1089,7 @@ function LeftSurfaceChromeButton({
       disabled={disabled}
       className={cn([
         "pointer-events-auto relative flex size-[var(--sidebar-chrome-button-size)] shrink-0 items-center justify-center rounded-full",
-        "text-muted-foreground hover:bg-accent hover:text-foreground transition-colors",
+        "text-muted-foreground hover:bg-accent hover:text-foreground transition-none",
         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
         "disabled:text-muted-foreground/70 disabled:hover:text-muted-foreground/70 disabled:hover:bg-transparent",
       ])}

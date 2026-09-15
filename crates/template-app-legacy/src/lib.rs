@@ -32,12 +32,6 @@ pub enum Template {
     #[strum(serialize = "suggest_tags.user")]
     #[serde(rename = "suggest_tags.user")]
     SuggestTagsUser,
-    #[strum(serialize = "chat.system")]
-    #[serde(rename = "chat.system")]
-    ChatSystem,
-    #[strum(serialize = "chat.user")]
-    #[serde(rename = "chat.user")]
-    ChatUser,
     #[strum(serialize = "auto_generate_tags.system")]
     #[serde(rename = "auto_generate_tags.system")]
     AutoGenerateTagsSystem,
@@ -97,10 +91,6 @@ fn init_environment() -> minijinja::Environment<'static> {
             assets::AUTO_GENERATE_TAGS_USER,
         )
         .unwrap();
-        env.add_template(Template::ChatSystem.as_ref(), assets::CHAT_SYSTEM)
-            .unwrap();
-        env.add_template(Template::ChatUser.as_ref(), assets::CHAT_USER)
-            .unwrap();
         env.add_template(
             Template::PostprocessTranscriptSystem.as_ref(),
             assets::POSTPROCESS_TRANSCRIPT_SYSTEM,
@@ -167,6 +157,29 @@ pub fn render_custom(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_and_title_templates_remain_available() {
+        let ctx = serde_json::json!({
+            "language": "en",
+            "enhanced_note": "Release planning",
+            "segments": [],
+            "session": { "title": "Release planning" },
+        });
+        let ctx = ctx.as_object().unwrap();
+        for template in [
+            Template::EnhanceSystem,
+            Template::EnhanceUser,
+            Template::TitleSystem,
+            Template::TitleUser,
+        ] {
+            assert!(!render(template, ctx).unwrap().trim().is_empty());
+        }
+        assert_eq!(
+            render_custom("Focus on decisions: {{ enhanced_note }}", ctx).unwrap(),
+            "Focus on decisions: Release planning"
+        );
+    }
 
     #[cfg(debug_assertions)]
     #[test]

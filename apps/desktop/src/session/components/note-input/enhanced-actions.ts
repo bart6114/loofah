@@ -9,7 +9,12 @@ import {
   requestMainAITaskCancel,
   requestMainEnhance,
 } from "~/ai/task-window-sync";
-import { useEnhancedNote } from "~/session/queries";
+import {
+  EMPTY_SUMMARY_SOURCE_MESSAGE,
+  hasSummarySource,
+} from "~/services/enhancer/source";
+import { loadSessionContentSnapshot } from "~/session/content-queries";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
 export function useEnhancedNoteActions({
@@ -24,29 +29,39 @@ export function useEnhancedNoteActions({
     ? createTaskId(enhancedNoteId, "enhance")
     : null;
 
-  const noteTemplateId =
-    useEnhancedNote(enhancedNoteId ?? "")?.templateId || undefined;
-
   const enhanceTask = useAITaskTask(taskId, "enhance");
 
-  const onRegenerate = useCallback(
-    async (templateId: string | null) => {
-      if (!enhancedNoteId) {
-        return;
-      }
+  const onRegenerate = useCallback(async () => {
+    if (!enhancedNoteId) {
+      return;
+    }
 
-      if (!model) {
-        sonnerToast.error(
-          "Set up Intelligence in Settings before regenerating this summary.",
-        );
+    if (!model) {
+      sonnerToast.error(
+        "Set up summaries in Settings before regenerating this summary.",
+      );
+      return;
+    }
+
+    try {
+      await flushDatabaseWrites([`session:${sessionId}:note`]);
+      const snapshot = await loadSessionContentSnapshot(sessionId);
+      if (
+        !snapshot ||
+        !hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)
+      ) {
+        sonnerToast.error(EMPTY_SUMMARY_SOURCE_MESSAGE);
         return;
       }
 
       if (!isMainAITaskHostWindow()) {
-        void requestMainEnhance(sessionId, {
-          templateId: templateId ?? noteTemplateId,
+        const result = await requestMainEnhance(sessionId, {
           targetNoteId: enhancedNoteId,
         });
+        if (result.type === "no_model")
+          throw new Error(
+            "Set up summaries in Settings before regenerating this summary.",
+          );
         return;
       }
 
@@ -55,12 +70,12 @@ export function useEnhancedNoteActions({
         args: {
           sessionId,
           enhancedNoteId,
-          templateId: templateId ?? noteTemplateId,
         },
       });
-    },
-    [enhancedNoteId, model, enhanceTask.start, sessionId, noteTemplateId],
-  );
+    } catch (error) {
+      sonnerToast.error(error instanceof Error ? error.message : String(error));
+    }
+  }, [enhancedNoteId, model, enhanceTask.start, sessionId]);
 
   const onCancel = useCallback(() => {
     if (!taskId) {

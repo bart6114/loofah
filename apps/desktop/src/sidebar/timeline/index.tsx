@@ -545,7 +545,7 @@ export const TimelineView = memo(function TimelineView({
               type="button"
               onClick={() => void setSettingValue("sidebar_group_by", mode)}
               className={cn([
-                "text-[10px] font-semibold tracking-[0.09em] uppercase transition-colors",
+                "text-[10px] font-semibold tracking-[0.09em] uppercase transition-none",
                 mode === groupBy
                   ? "text-foreground"
                   : "text-muted-foreground/50 hover:text-muted-foreground",
@@ -562,7 +562,7 @@ export const TimelineView = memo(function TimelineView({
               onClick={toggleAllTagsExpanded}
               className={cn([
                 "mr-3 ml-auto",
-                "text-muted-foreground/50 hover:text-muted-foreground transition-colors",
+                "text-muted-foreground/50 hover:text-muted-foreground transition-none",
               ])}
             >
               {anyTagExpanded ? (
@@ -724,7 +724,7 @@ function TimelineVirtualRow({
             }
             className={cn([
               "text-muted-foreground/70 hover:text-foreground flex w-full items-center gap-1",
-              "pt-2 text-[10px] font-semibold tracking-[0.09em] uppercase transition-colors",
+              "pt-2 text-[10px] font-semibold tracking-[0.09em] uppercase transition-none",
             ])}
           >
             {expandedTagSet.has(bucket.id) ? (
@@ -839,7 +839,7 @@ function TimelineTopChip({
 }) {
   const className = cn([
     "border-border bg-card text-muted-foreground flex h-6 items-center gap-1 rounded-full border px-2.5 text-xs font-medium shadow-xs",
-    onClick && "hover:bg-accent hover:text-foreground transition-colors",
+    onClick && "hover:bg-accent hover:text-foreground transition-none",
     "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
     props.className,
   ]);
@@ -977,7 +977,7 @@ function TimelineNowChip({
       aria-label={t`Go back to now`}
       className={cn([
         "border-border bg-card text-foreground flex h-6 items-center gap-1 rounded-full border px-2.5 text-xs font-medium shadow-md",
-        "hover:border-border hover:bg-accent hover:text-foreground transition-colors",
+        "hover:border-border hover:bg-accent hover:text-foreground transition-none",
         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
         className,
       ])}

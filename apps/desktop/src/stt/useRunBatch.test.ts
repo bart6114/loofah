@@ -16,7 +16,6 @@ const {
   useConfigValueMock,
   isSupportedLanguagesBatchMock,
   sonnerToastWarningMock,
-  deleteProcessedAudioForRetentionMock,
   createTranscriptMock,
   appendTranscriptWordsAndHintsMock,
   queueTagSuggestionsMock,
@@ -29,7 +28,6 @@ const {
   useConfigValueMock: vi.fn(),
   isSupportedLanguagesBatchMock: vi.fn(),
   sonnerToastWarningMock: vi.fn(),
-  deleteProcessedAudioForRetentionMock: vi.fn(),
   createTranscriptMock: vi.fn(),
   appendTranscriptWordsAndHintsMock: vi.fn(),
   queueTagSuggestionsMock: vi.fn(),
@@ -40,11 +38,6 @@ vi.mock("./contexts", () => ({
   useListener: useListenerMock,
 }));
 
-vi.mock("./useKeywords", () => ({
-  getSessionKeywords: vi.fn(async () => []),
-  useKeywords: vi.fn(() => []),
-}));
-
 vi.mock("./useSTTConnection", () => ({
   useSTTConnection: useSTTConnectionMock,
 }));
@@ -53,12 +46,6 @@ vi.mock("@hypr/ui/components/ui/toast", () => ({
   sonnerToast: {
     warning: sonnerToastWarningMock,
   },
-}));
-
-vi.mock("~/services/audio-retention", () => ({
-  deleteProcessedAudioForRetention: deleteProcessedAudioForRetentionMock,
-  normalizeAudioRetention: (value: unknown) =>
-    typeof value === "string" ? value : "forever",
 }));
 
 vi.mock("~/session/queries", () => ({
@@ -73,34 +60,10 @@ vi.mock("~/shared/utils", () => ({
   id: idMock,
 }));
 
-vi.mock("~/stt/capabilities", () => {
-  const baseLanguageCode = (language: string) =>
-    language.split(/[-_]/)[0]?.toLowerCase() ?? "";
-
+vi.mock("~/stt/capabilities", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/stt/capabilities")>();
   return {
-    getTranscriptionLanguages: (
-      mainLanguage: string | null | undefined,
-      spokenLanguages: readonly string[] | null | undefined,
-    ) => {
-      const seen = new Set<string>();
-      const languages: string[] = [];
-
-      for (const language of [mainLanguage, ...(spokenLanguages ?? [])]) {
-        if (!language) {
-          continue;
-        }
-
-        const baseCode = baseLanguageCode(language);
-        if (!baseCode || seen.has(baseCode)) {
-          continue;
-        }
-
-        seen.add(baseCode);
-        languages.push(language);
-      }
-
-      return languages;
-    },
+    ...actual,
     isSupportedLanguagesBatch: isSupportedLanguagesBatchMock,
   };
 });
@@ -114,17 +77,34 @@ vi.mock("~/tags/suggestions", () => ({
   queueTagSuggestions: queueTagSuggestionsMock,
 }));
 
+test("routes Whisper Large V3 through progressive local batch transcription", () => {
+  expect(getBatchProvider("fmtr", "whisper-large-v3")).toBe("whispercpp");
+});
+
 describe("getBatchProvider", () => {
-  test("maps local soniqo models to the soniqo batch provider", () => {
-    expect(getBatchProvider("fmtr", "soniqo-parakeet-batch")).toBe("soniqo");
+  test.each([
+    "soniqo-parakeet-batch",
+    "onnx-parakeet-streaming",
+    "onnx-parakeet-batch",
+  ])("routes %s through the native Parakeet batch engine", (model) => {
+    expect(getBatchProvider("fmtr", model)).toBe("soniqo");
   });
 
-  test("maps local Argmax models to the am batch provider", () => {
-    expect(getBatchProvider("fmtr", "am-parakeet-v3")).toBe("am");
+  test("rejects retired models", () => {
+    expect(getBatchProvider("fmtr", "am-parakeet-v3")).toBeNull();
   });
 
-  test("falls back to the fmtr batch provider for other local models", () => {
-    expect(getBatchProvider("fmtr", "QuantizedSmallEn")).toBe("fmtr");
+  test.each([
+    "whisper-large-v3",
+    "QuantizedLargeTurbo",
+    "QuantizedSmall",
+    "QuantizedSmallEn",
+    "QuantizedBase",
+    "QuantizedBaseEn",
+    "QuantizedTiny",
+    "QuantizedTinyEn",
+  ])("routes %s through the Whisper batch engine", (model) => {
+    expect(getBatchProvider("fmtr", model)).toBe("whispercpp");
   });
 
   test("returns null for any non-on-device provider — STT is on-device only", () => {
@@ -148,7 +128,7 @@ describe("canRunBatchTranscription", () => {
     expect(
       canRunBatchTranscription(
         { provider: "fmtr", model: "soniqo-parakeet-streaming" },
-        "am-parakeet-v3",
+        "QuantizedTiny",
       ),
     ).toBe(true);
   });
@@ -178,7 +158,6 @@ describe("useRunBatch", () => {
     createTranscriptMock.mockResolvedValue(undefined);
     appendTranscriptWordsAndHintsMock.mockResolvedValue(undefined);
     queueTagSuggestionsMock.mockResolvedValue(undefined);
-    deleteProcessedAudioForRetentionMock.mockResolvedValue(undefined);
     isSupportedLanguagesBatchMock.mockResolvedValue(true);
     useListenerMock.mockImplementation((selector) =>
       selector({ startTranscription: startTranscriptionMock }),
@@ -199,11 +178,15 @@ describe("useRunBatch", () => {
       },
     });
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : [],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : [],
     );
   });
 
-  test("waits for streamed persists before retention", async () => {
+  test("waits for streamed persists before suggesting tags", async () => {
     let resolveAppend: (() => void) | undefined;
     appendTranscriptWordsAndHintsMock.mockImplementationOnce(
       () =>
@@ -228,19 +211,16 @@ describe("useRunBatch", () => {
     await waitFor(() => {
       expect(appendTranscriptWordsAndHintsMock).toHaveBeenCalledTimes(1);
     });
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
+    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
 
     resolveAppend?.();
     await act(async () => await run);
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
     expect(queueTagSuggestionsMock).toHaveBeenCalledWith("session-1");
-    expect(deleteProcessedAudioForRetentionMock).toHaveBeenCalledTimes(1);
     expect(
       appendTranscriptWordsAndHintsMock.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      deleteProcessedAudioForRetentionMock.mock.invocationCallOrder[0],
-    );
+    ).toBeLessThan(queueTagSuggestionsMock.mock.invocationCallOrder[0]);
   });
 
   test("does not save for custom batch persist handlers", async () => {
@@ -281,35 +261,72 @@ describe("useRunBatch", () => {
     ).rejects.toThrow("provider failed");
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
+    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
   });
 
-  test("passes selected transcription languages to batch transcription", async () => {
+  test("defaults Whisper batch to English without inheriting unsupported legacy languages", async () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
-        model: "soniqo-parakeet-batch",
-        baseUrl: "soniqo://local",
+        model: "whisper-large-v3",
+        baseUrl: "http://localhost:8080",
         apiKey: "",
       },
     });
-    useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "de" : ["en"],
+    useConfigValueMock.mockImplementation((key) => {
+      if (key === "ai_language") return "ga";
+      if (key === "spoken_languages") return ["zu"];
+      if (key === "meeting_languages") return undefined;
+      return [];
+    });
+    isSupportedLanguagesBatchMock.mockImplementation(
+      async (_provider, _model, languages) =>
+        languages.every((language: string) => language === "en"),
     );
     startTranscriptionMock.mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useRunBatch("session-1"));
-
     await act(async () => {
       await result.current("/tmp/session.wav");
     });
 
+    expect(isSupportedLanguagesBatchMock).toHaveBeenCalledWith(
+      "whispercpp",
+      "whisper-large-v3",
+      ["en"],
+    );
     expect(startTranscriptionMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider: "soniqo",
-        model: "soniqo-parakeet-batch",
-        languages: ["de", "en"],
+        provider: "whispercpp",
+        model: "whisper-large-v3",
+        languages: ["en"],
       }),
+      expect.any(Object),
+    );
+    expect(sonnerToastWarningMock).not.toHaveBeenCalled();
+  });
+
+  test("uses explicit meeting languages independently of summary and legacy spoken languages", async () => {
+    useConfigValueMock.mockImplementation((key) => {
+      if (key === "ai_language") return "en";
+      if (key === "meeting_languages") return ["nl"];
+      if (key === "spoken_languages") return ["fr"];
+      return [];
+    });
+    startTranscriptionMock.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    await act(async () => {
+      await result.current("/tmp/session.wav");
+    });
+
+    expect(isSupportedLanguagesBatchMock).toHaveBeenCalledWith(
+      "soniqo",
+      "soniqo-parakeet-batch",
+      ["nl"],
+    );
+    expect(startTranscriptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ languages: ["nl"] }),
       expect.any(Object),
     );
   });
@@ -384,4 +401,22 @@ describe("getSessionSpeakerCount", () => {
   test("returns undefined until at least two speakers are known", () => {
     expect(getSessionSpeakerCount(["human-a"], null)).toBe(undefined);
   });
+});
+
+test.each([
+  "am-parakeet-v2",
+  "am-parakeet-v3",
+  "am-whisper-large-v3",
+  "soniqo-qwen3-small",
+  "soniqo-qwen3-large",
+  "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+  "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+  "HyprLLM",
+  "soniqo-unknown",
+  "onnx-unknown",
+  "whisper-unknown",
+  "QuantizedUnknown",
+])("rejects unsupported model %s", (model) => {
+  expect(getBatchProvider("fmtr", model)).toBeNull();
+  expect(canRunBatchTranscription({ provider: "fmtr", model })).toBe(false);
 });

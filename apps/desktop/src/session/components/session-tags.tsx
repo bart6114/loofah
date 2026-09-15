@@ -231,7 +231,7 @@ function TagAddControl({
         type="button"
         onClick={startEditing}
         className={cn([
-          "text-muted-foreground/70 hover:text-foreground rounded-full py-0.5 text-xs transition-colors",
+          "text-muted-foreground/70 hover:text-foreground rounded-full py-0.5 text-xs transition-none",
           attachedTags.length === 0 ? "pr-2" : "px-1",
         ])}
       >

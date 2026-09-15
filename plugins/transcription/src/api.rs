@@ -27,7 +27,6 @@ pub struct CaptureParams {
     pub model: String,
     pub base_url: String,
     pub api_key: String,
-    pub keywords: Vec<String>,
     #[serde(default)]
     pub transcription_mode: Option<listener::TranscriptionMode>,
     #[serde(default)]
@@ -168,8 +167,6 @@ pub struct TranscriptionParams {
     #[serde(default)]
     pub languages: Vec<hypr_language::Language>,
     #[serde(default)]
-    pub keywords: Vec<String>,
-    #[serde(default)]
     pub num_speakers: Option<u32>,
     #[serde(default)]
     pub min_speakers: Option<u32>,
@@ -222,7 +219,7 @@ impl From<CaptureParams> for listener::actors::SessionParams {
             model: value.model,
             base_url: value.base_url,
             api_key: value.api_key,
-            keywords: value.keywords,
+            keywords: Vec::new(),
             participant_human_ids: value.participant_human_ids,
             self_human_id: value.self_human_id,
         }
@@ -338,7 +335,7 @@ impl From<TranscriptionParams> for listener2::BatchParams {
             base_url: value.base_url,
             api_key: value.api_key,
             languages: value.languages,
-            keywords: value.keywords,
+            keywords: Vec::new(),
             num_speakers: value.num_speakers,
             min_speakers: value.min_speakers,
             max_speakers: value.max_speakers,
@@ -368,10 +365,44 @@ mod tests {
             model: model.to_string(),
             base_url: base_url.to_string(),
             api_key: "test-key".to_string(),
-            keywords: vec![],
             transcription_mode: None,
             participant_human_ids: vec![],
             self_human_id: None,
+        }
+    }
+
+    #[test]
+    fn local_whisper_capture_respects_live_languages_and_explicit_batch() {
+        for (model, languages, expected) in [
+            (
+                "whisper-large-v3",
+                vec![ISO639::Nl.into(), ISO639::En.into()],
+                TranscriptionMode::Live,
+            ),
+            (
+                "QuantizedSmall",
+                vec![ISO639::Nl.into()],
+                TranscriptionMode::Live,
+            ),
+            (
+                "QuantizedSmallEn",
+                vec![ISO639::En.into()],
+                TranscriptionMode::Live,
+            ),
+            (
+                "QuantizedSmallEn",
+                vec![ISO639::Nl.into()],
+                TranscriptionMode::Batch,
+            ),
+        ] {
+            let mut params =
+                capture_params_with_languages("http://127.0.0.1:54321/v1", model, languages);
+            assert_eq!(params.default_transcription_mode(), expected, "{model}");
+            params.transcription_mode = Some(TranscriptionMode::Batch);
+            assert_eq!(
+                params.default_transcription_mode(),
+                TranscriptionMode::Batch
+            );
         }
     }
 
@@ -441,16 +472,6 @@ mod tests {
     #[test]
     fn defaults_pyannote_capture_to_batch_mode() {
         let params = capture_params("https://api.pyannote.ai", "parakeet-tdt-0.6b-v3");
-
-        assert_eq!(
-            params.default_transcription_mode(),
-            TranscriptionMode::Batch
-        );
-    }
-
-    #[test]
-    fn defaults_local_argmax_capture_to_batch_mode() {
-        let params = capture_params("http://localhost:50060/v1", "parakeet-tdt-0.6b-v3");
 
         assert_eq!(
             params.default_transcription_mode(),

@@ -4,9 +4,7 @@ import type { StoreApi } from "zustand";
 
 import { commands as detectCommands } from "@hypr/plugin-detect";
 import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
-import { commands as hooksCommands } from "@hypr/plugin-hooks";
 import { commands as iconCommands } from "@hypr/plugin-icon";
-import { commands as settingsCommands } from "@hypr/plugin-settings";
 import {
   commands as listenerCommands,
   events as listenerEvents,
@@ -40,7 +38,6 @@ import {
 } from "./recording-meta-settled";
 import type { TranscriptActions, TranscriptState } from "./transcript";
 
-import { getSessionResourcePath } from "~/session/resource-path";
 import { fromResult } from "~/stt/fromResult";
 import { commands as sessionCommands } from "~/types/tauri.gen";
 
@@ -341,34 +338,25 @@ export const startLiveSession = <T extends LiveStore>(
       live.eventUnlistenersBySession[targetSessionId] = unlisteners;
     });
 
-    const [sessionPath, micUsingApps, bundleId] = yield* Effect.tryPromise({
+    const [, micUsingApps, bundleId] = yield* Effect.tryPromise({
       try: () => {
-        // Reserves the directory (a recording path lease) and returns the
-        // stable absolute path: the pre-start hook and the recorder both see
-        // a directory the first-title rename cannot move mid-start. Best
-        // effort -- a failed reservation (duplicate-claimed id, transient IO)
-        // must never block recording, so it falls back to the unleased
-        // resolution the pre-lease flow always used; the Started-lifecycle
-        // guard still protects the directory once capture is running.
-        const pathPromise = sessionCommands
+        // Reserve the directory so a title change cannot move it mid-start.
+        // Capture also protects its directory; a failed lease must not block it.
+        const reservation = sessionCommands
           .sessionPrepareRecording(targetSessionId)
           .then((r) => {
             if (r.status === "error") throw new Error(r.error);
             prepared = true;
-            return r.data;
           })
-          .catch(async (error) => {
+          .catch((error) => {
             console.warn(
               "[record] recording preparation failed; starting without a path lease:",
               error,
             );
-            const base = await settingsCommands.vaultBase();
-            if (base.status === "error") throw new Error(base.error);
-            return getSessionResourcePath(base.data, targetSessionId);
           });
-        preparePromise = pathPromise;
+        preparePromise = reservation;
         return Promise.all([
-          pathPromise,
+          reservation,
           detectCommands
             .listMicUsingApplications()
             .then((r) =>
@@ -380,7 +368,6 @@ export const startLiveSession = <T extends LiveStore>(
       catch: (error) => error,
     });
 
-    const app_meeting = micUsingApps?.[0] ?? null;
     const triggerAppIds = getAutoStopTriggerAppIds(micUsingApps, bundleId);
 
     if (triggerAppIds.length > 0) {
@@ -390,23 +377,6 @@ export const startLiveSession = <T extends LiveStore>(
         }
       });
     }
-
-    yield* Effect.tryPromise({
-      try: () =>
-        hooksCommands.runEventHooks({
-          beforeListeningStarted: {
-            args: {
-              resource_dir: sessionPath,
-              app_fmtr: bundleId,
-              app_meeting,
-            },
-          },
-        }),
-      catch: (error) => {
-        console.error("[hooks] BeforeListeningStarted failed:", error);
-        return error;
-      },
-    });
 
     yield* startSessionEffect(params);
 
@@ -597,9 +567,8 @@ export const stopLiveSession = <T extends GeneralState>(
 
   // The settle listener must be live before the stop request: `stopCapture`
   // returns after requesting shutdown, while `mark_recording_ended`'s rename
-  // runs later off the Stopped lifecycle -- the post-stop hook must not resolve
-  // its directory in between. (Normally already started with the capture
-  // listeners; this covers stop paths that never went through a start here.)
+  // runs later off the Stopped lifecycle. Transcript persistence must wait for
+  // that rename, including stop paths that never went through a start here.
   ensureRecordingMetaSettledListener();
 
   const program = Effect.gen(function* () {
@@ -627,44 +596,7 @@ export const stopLiveSession = <T extends GeneralState>(
           live.loading = false;
         });
       },
-      onSuccess: () => {
-        if (!sessionId) {
-          return;
-        }
-
-        // Wait for the end-of-recording meta stamp (and its possible directory
-        // rename) to settle before resolving the hook's resource_dir, so the
-        // path handed to the hook is not moved out from under it by the app.
-        void waitForRecordingMetaSettled(sessionId)
-          .then(() =>
-            Promise.all([
-              settingsCommands
-                .vaultBase()
-                .then((r) => {
-                  if (r.status === "error") throw new Error(r.error);
-                  return r.data;
-                })
-                .then((dataDirPath) =>
-                  getSessionResourcePath(dataDirPath, sessionId),
-                ),
-              getIdentifier().catch(() => "io.loofah.stable"),
-            ]),
-          )
-          .then(([sessionPath, bundleId]) => {
-            return hooksCommands.runEventHooks({
-              afterListeningStopped: {
-                args: {
-                  resource_dir: sessionPath,
-                  app_fmtr: bundleId,
-                  app_meeting: null,
-                },
-              },
-            });
-          })
-          .catch((error) => {
-            console.error("[hooks] AfterListeningStopped failed:", error);
-          });
-      },
+      onSuccess: () => {},
     });
   });
 };

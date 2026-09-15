@@ -13,16 +13,6 @@ const MODEL_ICON_ASSET_BASE = "/assets/model-icons";
 export function getLocalModelIcon(model: string): ModelIconSpec | null {
   const value = model.toLowerCase();
 
-  if (value.includes("qwen")) {
-    return {
-      label: "Q",
-      title: "Qwen",
-      className: "border-border bg-card text-muted-foreground",
-      imageSrc: `${MODEL_ICON_ASSET_BASE}/qwen-logo.svg`,
-      imageClassName: "size-4 object-contain",
-    };
-  }
-
   if (value.includes("omnilingual")) {
     return {
       label: "O",

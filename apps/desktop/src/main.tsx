@@ -10,11 +10,6 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { platform } from "@tauri-apps/plugin-os";
 import { StrictMode, useMemo } from "react";
 import ReactDOM from "react-dom/client";
-import { createManager } from "tinytick";
-import {
-  Provider as TinyTickProvider,
-  useCreateManager,
-} from "tinytick/ui-react";
 
 import "@hypr/ui/globals.css";
 import {
@@ -29,7 +24,6 @@ import { FloatingMeetingWindowHost } from "./meeting-float/host";
 import { routeTree } from "./routeTree.gen";
 import { EventListeners } from "./services/event-listeners";
 import { LocationInvalidationSync } from "./services/location-invalidation";
-import { TaskManager } from "./services/task-manager";
 import { RegenerateTranscriptConfirmDialog } from "./session/components/note-input/transcript/regenerate-confirm";
 import { useRemoteSessionDeletionUndoListener } from "./session/hooks/useDeleteSession";
 import { initializeApplicationSettings } from "./settings/queries";
@@ -37,6 +31,7 @@ import { initializeAppExitFlush } from "./shared/app-exit";
 import { useConfigValue } from "./shared/config";
 import { initConfigStore } from "./shared/config/store";
 import { ErrorComponent, NotFoundComponent } from "./shared/control";
+import { startPerformanceDiagnostics } from "./shared/performance";
 import { StartupBoundary } from "./shared/startup-boundary";
 import { bootstrapThemeFromSettings } from "./shared/theme/apply";
 import { AppThemeProvider } from "./shared/theme/provider";
@@ -78,28 +73,22 @@ function App() {
 }
 
 function AppRoot() {
-  const manager = useCreateManager(() => {
-    return createManager().start();
-  });
   const theme = useConfigValue("theme") as ThemePreference;
   useRemoteSessionDeletionUndoListener(isMainWindow);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TinyTickProvider manager={manager}>
-        <AppThemeProvider>
-          <AppI18nProvider>
-            <StartupBoundary>
-              <App />
-              <LocationInvalidationSync />
-              {isMainWindow ? <TaskManager /> : null}
-              {isMainWindow ? <FloatingMeetingWindowHost /> : null}
-              {isMainWindow ? <EventListeners /> : null}
-            </StartupBoundary>
-            <Toaster position="bottom-right" theme={theme} />
-          </AppI18nProvider>
-        </AppThemeProvider>
-      </TinyTickProvider>
+      <AppThemeProvider>
+        <AppI18nProvider>
+          <StartupBoundary>
+            <App />
+            <LocationInvalidationSync />
+            {isMainWindow ? <FloatingMeetingWindowHost /> : null}
+            {isMainWindow ? <EventListeners /> : null}
+          </StartupBoundary>
+          <Toaster position="bottom-right" theme={theme} />
+        </AppI18nProvider>
+      </AppThemeProvider>
     </QueryClientProvider>
   );
 }
@@ -118,7 +107,7 @@ if (isMainWindow) {
 const rootElement = document.getElementById("root")!;
 
 async function enableReactScanInDev() {
-  if (!import.meta.env.DEV) {
+  if (!import.meta.env.DEV || import.meta.env.VITE_REACT_SCAN !== "true") {
     return;
   }
 
@@ -131,6 +120,7 @@ async function enableReactScanInDev() {
 }
 
 async function renderApp() {
+  startPerformanceDiagnostics();
   void initConfigStore().catch((error) => {
     console.error("Failed to initialize the config store", error);
   });

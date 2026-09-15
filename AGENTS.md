@@ -12,7 +12,7 @@ Files in the user's vault directory are the only source of truth — there is no
 
 ## Session directory ownership
 
-Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crates/vault-read/src/reserved.rs`): `_meta.json`, `notes.md` (user note; legacy vaults may still have `_memo.md`, readable via fallback and migrated to trash on the next note write), `transcript.json`, `tasks.json`, the recording (`audio.mp3`/`audio.wav`/`audio.ogg`) with `audio.peaks.json` and its `audio_mic.wav`/`audio_spk.wav`/`*.tmp` transients, and the `enhanced/` (AI documents, `enhanced/<uuid>.md`) and `attachments/` (note-embedded files) directories; the `audio/` directory is legacy, read-only for retention. Every other file is a user attachment: the app must ignore it and never enumerate unknown files as content. Dot-prefixed files are never content.
+Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crates/vault-read/src/reserved.rs`): `_meta.json`, `notes.md` (user note; legacy vaults may still have `_memo.md`, readable via fallback and migrated to trash on the next note write), `transcript.json`, `tasks.json`, the recording (`audio.mp3`/`audio.wav`/`audio.ogg`) with `audio.peaks.json` and its `audio_mic.wav`/`audio_spk.wav`/`*.tmp` transients, and the `enhanced/` (AI documents, `enhanced/<uuid>.md`) and `attachments/` (note-embedded files) directories; the `audio/` directory is a legacy recording location. Every other file is a user attachment: the app must ignore it and never enumerate unknown files as content. Dot-prefixed files are never content.
 
 ## Commands
 
@@ -53,6 +53,10 @@ Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crat
 - `desktop_build.yaml` is the separate staging lane: unversioned DMG artifact on every push to `main`.
 - `windows_ci.yaml` produces unsigned preview installers and CLI artifacts for x64 and ARM64. `windows_release.yaml` is the separate signed Windows lane: it requires provisioned Authenticode and updater signing, saves artifacts by default, and publishes only with its explicit `publish` input. Its rolling feed is `latest-windows.json` on the existing `updater` release; preserve the macOS feed.
 - Each push leaves a bot `chore(release)` commit on `main`, so local `main` is behind after every push — `git pull --rebase origin main` before pushing.
+
+## Responsiveness
+
+Always strive for a snappy, lightweight user experience while preserving functionality and data integrity. Hover, focus, pressed, and selection feedback should be immediate. Keep expensive work out of input handlers and frequent render paths; use narrow subscriptions, scoped invalidation, bounded background work, and deliberate caching. Preserve recording reliability and prioritize interactive responsiveness over background throughput. Validate performance-sensitive changes in a production macOS build with realistic vault sizes and concurrent recording or AI work, and add focused regression coverage for the behavior being improved.
 
 ## Code Style
 

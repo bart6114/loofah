@@ -296,7 +296,7 @@ function YearChart({ years }: { years: VaultStats["years"] }) {
             tabIndex={0}
             aria-label={`${year.year}: ${formatCount(year.sessions)} notes`}
             title={`${year.year} · ${formatCount(year.sessions)} notes`}
-            className="bg-primary/60 hover:bg-primary focus-visible:bg-primary w-full rounded-t-[3px] transition-colors outline-none"
+            className="bg-primary/60 hover:bg-primary focus-visible:bg-primary w-full rounded-t-[3px] transition-none outline-none"
             style={{
               height:
                 year.sessions === 0

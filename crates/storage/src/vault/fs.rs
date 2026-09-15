@@ -14,7 +14,6 @@ use crate::fs::copy_dir_recursive;
 pub enum VaultDirKind {
     EmptyOrMissing,
     Vault,
-    Obsidian,
     Other,
 }
 
@@ -24,9 +23,6 @@ pub fn classify_vault_dir(path: &Path) -> std::io::Result<VaultDirKind> {
     }
     if path.join("sessions").is_dir() || path.join(CONFIG_FILENAME).is_file() {
         return Ok(VaultDirKind::Vault);
-    }
-    if path.join(".obsidian").is_dir() {
-        return Ok(VaultDirKind::Obsidian);
     }
     Ok(VaultDirKind::Other)
 }
@@ -38,7 +34,7 @@ const VAULT_DIRECTORIES: &[&str] = &[
     "sessions",
     "humans",
     "organizations",
-    "chats",
+    "chats", // Preserve legacy user data when copying or moving a vault.
     "prompts",
     "plugins",
     "templates",
@@ -208,6 +204,74 @@ mod tests {
         assert!(!dst.join("sessions").exists());
     }
 
+    fn legacy_chat_files() -> [(&'static str, &'static [u8]); 4] {
+        [
+            (
+                "chats/group/messages.json",
+                b"[{\"content\":\"Legacy note\"}]\r\n",
+            ),
+            ("chats/group/nested/unknown.bin", b"\x00\xff\x80opaque\n"),
+            ("chats/group/.hidden", b"hidden file\r\n"),
+            ("chats/.private/nested/.unknown", b"private data\x00"),
+        ]
+    }
+
+    fn write_legacy_chats(root: &Path) {
+        for (relative, bytes) in legacy_chat_files() {
+            let path = root.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+        }
+    }
+
+    fn assert_legacy_chats_unchanged(root: &Path) {
+        for (relative, bytes) in legacy_chat_files() {
+            assert_eq!(fs::read(root.join(relative)).unwrap(), bytes, "{relative}");
+        }
+    }
+
+    #[tokio::test]
+    async fn copy_preserves_opaque_legacy_chats_at_both_locations() {
+        let temp = tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        write_legacy_chats(&src);
+
+        copy_vault_items(&src, &dst).await.unwrap();
+
+        assert_legacy_chats_unchanged(&src);
+        assert_legacy_chats_unchanged(&dst);
+    }
+
+    #[tokio::test]
+    async fn move_cleanup_preserves_opaque_legacy_chats_at_destination() {
+        let temp = tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        write_legacy_chats(&src);
+
+        copy_vault_items(&src, &dst).await.unwrap();
+        remove_vault_items(&src).await.unwrap();
+
+        assert!(!src.join("chats").exists());
+        assert_legacy_chats_unchanged(&dst);
+    }
+
+    #[tokio::test]
+    async fn failed_legacy_chat_copy_preserves_source() {
+        let temp = tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        write_legacy_chats(&src);
+        fs::create_dir_all(&dst).unwrap();
+        fs::write(dst.join("chats"), b"conflicting file").unwrap();
+
+        assert!(copy_vault_items(&src, &dst).await.is_err());
+
+        assert_legacy_chats_unchanged(&src);
+        assert_eq!(fs::read(dst.join("chats")).unwrap(), b"conflicting file");
+    }
+
     #[test]
     fn classify_vault_dir_covers_all_shapes() {
         let temp = tempdir().unwrap();
@@ -239,10 +303,7 @@ mod tests {
 
         let obsidian = temp.path().join("obsidian");
         fs::create_dir_all(obsidian.join(".obsidian")).unwrap();
-        assert_eq!(
-            classify_vault_dir(&obsidian).unwrap(),
-            VaultDirKind::Obsidian
-        );
+        assert_eq!(classify_vault_dir(&obsidian).unwrap(), VaultDirKind::Other);
 
         let other = temp.path().join("other");
         fs::create_dir_all(&other).unwrap();

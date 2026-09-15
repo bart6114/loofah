@@ -20,6 +20,11 @@ describe("pinned tab persistence", () => {
       status: "ok",
       data: JSON.stringify([
         { type: "daily", pinned: true },
+        {
+          type: "templates",
+          state: { selectedMineId: "retired" },
+          pinned: true,
+        },
         { type: "chat_shortcuts", pinned: true },
         { type: "empty", pinned: true },
         { type: "sessions", id: "session-1", pinned: true },
@@ -31,11 +36,39 @@ describe("pinned tab persistence", () => {
     expect(pinnedTabs).toMatchObject([{ type: "sessions", id: "session-1" }]);
   });
 
+  it("restores a legacy todo settings tab as general app settings", async () => {
+    vi.mocked(commands.getPinnedTabs).mockResolvedValue({
+      status: "ok",
+      data: JSON.stringify([
+        { type: "settings", state: { tab: "todo" }, pinned: true },
+      ]),
+    });
+
+    await restorePinnedTabsToStore(
+      useTabs.getState().openNew,
+      useTabs.getState().pin,
+      () => useTabs.getState().tabs,
+    );
+
+    expect(useTabs.getState().tabs).toMatchObject([
+      { type: "settings", state: { tab: "app" }, pinned: true, active: true },
+    ]);
+    expect(useTabs.getState().currentTab).toMatchObject({
+      type: "settings",
+      state: { tab: "app" },
+    });
+  });
+
   it("restores supported tabs and ignores dropped daily and empty entries", async () => {
     vi.mocked(commands.getPinnedTabs).mockResolvedValue({
       status: "ok",
       data: JSON.stringify([
         { type: "daily", pinned: true },
+        {
+          type: "templates",
+          state: { selectedMineId: "retired" },
+          pinned: true,
+        },
         { type: "chat_shortcuts", pinned: true },
         { type: "empty", pinned: true },
         { type: "sessions", id: "session-1", pinned: true },

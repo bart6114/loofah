@@ -230,7 +230,7 @@ function ItemBase({
           }}
           className={cn([
             "absolute top-1/2 right-3 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm",
-            "text-destructive-foreground/80 hover:bg-destructive-foreground/15 hover:text-destructive-foreground transition-colors",
+            "text-destructive-foreground/80 hover:bg-destructive-foreground/15 hover:text-destructive-foreground transition-none",
             "focus-visible:ring-destructive-foreground/70 focus-visible:ring-2 focus-visible:outline-hidden",
           ])}
         >

@@ -1,12 +1,15 @@
-pub use hypr_local_model::{AmModel, LocalModel, SoniqoModel, WhisperModel};
+pub use hypr_local_model::{LocalModel, SoniqoModel, WhisperModel};
 
 #[cfg(not(target_os = "windows"))]
 pub static SUPPORTED_MODELS: &[LocalModel] = &[
     LocalModel::Soniqo(SoniqoModel::ParakeetStreaming),
     LocalModel::Soniqo(SoniqoModel::ParakeetBatch),
-    LocalModel::Am(AmModel::ParakeetV2),
-    LocalModel::Am(AmModel::ParakeetV3),
-    LocalModel::Am(AmModel::WhisperLargeV3),
+    LocalModel::Whisper(WhisperModel::LargeV3),
+    LocalModel::Whisper(WhisperModel::QuantizedLargeTurbo),
+    LocalModel::Whisper(WhisperModel::QuantizedSmall),
+    LocalModel::Whisper(WhisperModel::QuantizedSmallEn),
+    LocalModel::Whisper(WhisperModel::QuantizedBase),
+    LocalModel::Whisper(WhisperModel::QuantizedBaseEn),
 ];
 
 #[cfg(target_os = "windows")]
@@ -22,7 +25,6 @@ pub enum SttModelType {
     Soniqo,
     Onnx,
     Whispercpp,
-    Argmax,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -58,20 +60,23 @@ pub fn stt_model_info(model: &LocalModel) -> SttModelInfo {
             size_bytes: Some(value.model_size_bytes()),
             model_type: SttModelType::Whispercpp,
         },
-        LocalModel::Am(value) => SttModelInfo {
-            key: model.clone(),
-            display_name: value.display_name().to_string(),
-            description: value.description().to_string(),
-            size_bytes: Some(value.model_size_bytes()),
-            model_type: SttModelType::Argmax,
-        },
-        LocalModel::GgufLlm(_) | LocalModel::Diarizer(_) => unreachable!(),
+        LocalModel::Diarizer(_) => unreachable!(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whisper_large_v3_is_selectable_with_full_model_metadata() {
+        let model = LocalModel::Whisper(WhisperModel::LargeV3);
+        assert!(SUPPORTED_MODELS.contains(&model));
+        let info = stt_model_info(&model);
+        assert!(matches!(info.model_type, SttModelType::Whispercpp));
+        assert_eq!(info.size_bytes, Some(3095033483));
+        assert_eq!(info.display_name, "Whisper Large V3 (Multilingual)");
+    }
 
     #[test]
     fn supported_models_include_soniqo_models_from_rust_source_of_truth() {

@@ -56,63 +56,23 @@ describe("runBatchSession", () => {
     showNotificationMock.mockResolvedValue({ status: "ok", data: null });
   });
 
-  test("uses synthetic progress only for blocking batch providers", () => {
+  test.each([
+    ["fmtr", undefined, true],
+    ["soniqo", "soniqo-parakeet-batch", false],
+    ["whispercpp", "QuantizedTiny", false],
+    ["openai", "gpt-4o-transcribe", false],
+    ["openai", "gpt-4o-transcribe-diarize", true],
+  ] as const)("selects progress for %s / %s", (provider, model, expected) => {
     expect(
       shouldUseSyntheticBatchProgress({
-        session_id: "session-1",
-        provider: "fmtr",
+        session_id: "session",
+        provider,
+        model,
         file_path: "/tmp/session.wav",
         base_url: "",
         api_key: "",
       }),
-    ).toBe(true);
-    expect(
-      shouldUseSyntheticBatchProgress({
-        session_id: "session-1",
-        provider: "soniqo",
-        file_path: "/tmp/session.wav",
-        base_url: "soniqo://local",
-        api_key: "",
-      }),
-    ).toBe(false);
-    expect(
-      shouldUseSyntheticBatchProgress({
-        session_id: "session-1",
-        provider: "openai",
-        file_path: "/tmp/session.wav",
-        model: "gpt-4o-transcribe",
-        base_url: "",
-        api_key: "",
-      }),
-    ).toBe(false);
-    expect(
-      shouldUseSyntheticBatchProgress({
-        session_id: "session-1",
-        provider: "am",
-        file_path: "/tmp/session.wav",
-        base_url: "https://api.deepgram.com/v1",
-        api_key: "",
-      }),
-    ).toBe(true);
-    expect(
-      shouldUseSyntheticBatchProgress({
-        session_id: "session-1",
-        provider: "am",
-        file_path: "/tmp/session.wav",
-        base_url: "http://localhost:50060/v1",
-        api_key: "",
-      }),
-    ).toBe(false);
-    expect(
-      shouldUseSyntheticBatchProgress({
-        session_id: "session-1",
-        provider: "am",
-        file_path: "/tmp/session.wav",
-        model: "gpt-4o-transcribe",
-        base_url: "https://api.openai.com/v1",
-        api_key: "",
-      }),
-    ).toBe(false);
+    ).toBe(expected);
   });
 
   test("caps synthetic progress before completion", () => {

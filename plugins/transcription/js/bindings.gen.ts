@@ -110,25 +110,9 @@ async stopTranscription(sessionId: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async runDenoise(params: DenoiseParams) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:transcription|run_denoise", { params }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async parseSubtitle(path: string) : Promise<Result<Subtitle, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:transcription|parse_subtitle", { path }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async exportToVtt(sessionId: string, words: VttWord[]) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:transcription|export_to_vtt", { sessionId, words }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -167,13 +151,11 @@ export const events = __makeEvents__<{
 captureDataEvent: CaptureDataEvent,
 captureLifecycleEvent: CaptureLifecycleEvent,
 captureStatusEvent: CaptureStatusEvent,
-denoiseEvent: DenoiseEvent,
 transcriptionEvent: TranscriptionEvent
 }>({
 captureDataEvent: "plugin:transcription:capture-data-event",
 captureLifecycleEvent: "plugin:transcription:capture-lifecycle-event",
 captureStatusEvent: "plugin:transcription:capture-status-event",
-denoiseEvent: "plugin:transcription:denoise-event",
 transcriptionEvent: "plugin:transcription:transcription-event"
 })
 
@@ -186,7 +168,7 @@ transcriptionEvent: "plugin:transcription:transcription-event"
 export type BatchAlternatives = { transcript: string; confidence: number; words?: BatchWord[] }
 export type BatchChannel = { alternatives: BatchAlternatives[] }
 export type BatchErrorCode = "unknown" | "timed_out" | "audio_metadata_join_failed" | "audio_metadata_read_failed" | "batch_capability_unsupported" | "direct_batch_unsupported" | "progressive_batch_unsupported" | "direct_request_failed" | "diarization_failed" | "progressive_actor_spawn_failed" | "progressive_start_cancelled" | "progressive_stopped_without_completion_signal" | "progressive_finished_without_status" | "progressive_start_failed" | "progressive_stream_error" | "progressive_stream_timeout"
-export type BatchProvider = "argmax" | "whispercpp" | "deepgram" | "soniox" | "assemblyai" | "fireworks" | "openai" | "gladia" | "elevenlabs" | "pyannote" | "dashscope" | "mistral" | "fmtr" | "am" | "soniqo" | "aquavoice" | "cartesia"
+export type BatchProvider = "whispercpp" | "deepgram" | "soniox" | "assemblyai" | "fireworks" | "openai" | "gladia" | "elevenlabs" | "pyannote" | "dashscope" | "mistral" | "fmtr" | "soniqo" | "aquavoice" | "cartesia"
 export type BatchResponse = { metadata: JsonValue; results: BatchResults }
 export type BatchResults = { channels: BatchChannel[] }
 export type BatchRunMode = "direct" | "streamed"
@@ -195,14 +177,12 @@ export type BatchWord = { word: string; start: number; end: number; confidence: 
 export type CaptureConfigUpdate = { session_id: string; languages: string[]; participant_human_ids?: string[]; self_human_id?: string | null }
 export type CaptureDataEvent = { type: "audio_amplitude"; session_id: string; mic: number; speaker: number } | { type: "transcript_delta"; session_id: string; delta: LiveTranscriptDelta } | { type: "transcript_segment_delta"; session_id: string; delta: LiveTranscriptSegmentDelta }
 export type CaptureLifecycleEvent = { type: "started"; session_id: string; requested_live_transcription: boolean; live_transcription_active: boolean; degraded: DegradedError | null } | { type: "finalizing"; session_id: string } | { type: "stopped"; session_id: string; audio_path: string | null; requested_live_transcription: boolean; live_transcription_active: boolean; error: string | null }
-export type CaptureParams = { session_id: string; languages: string[]; onboarding: boolean; model: string; base_url: string; api_key: string; keywords: string[]; transcription_mode?: TranscriptionMode | null; participant_human_ids?: string[]; self_human_id?: string | null }
+export type CaptureParams = { session_id: string; languages: string[]; onboarding: boolean; model: string; base_url: string; api_key: string; transcription_mode?: TranscriptionMode | null; participant_human_ids?: string[]; self_human_id?: string | null }
 export type CaptureSnapshot = { state: CaptureState; activeSessionId: string | null; finalizingSessionIds: string[]; requestedLiveTranscription: boolean | null; liveTranscriptionActive: boolean | null }
 export type CaptureState = "active" | "finalizing" | "inactive"
 export type CaptureStatusEvent = { type: "audio_initializing"; session_id: string } | { type: "audio_ready"; session_id: string; device: string | null } | { type: "connecting"; session_id: string } | { type: "connected"; session_id: string; adapter: string } | { type: "audio_error"; session_id: string; error: string; device: string | null; is_fatal: boolean } | { type: "connection_error"; session_id: string; error: string }
 export type ChannelProfile = "DirectMic" | "RemoteParty" | "MixedCapture"
 export type DegradedError = { type: "authentication_failed"; provider: string } | { type: "upstream_unavailable"; message: string } | { type: "connection_timeout" } | { type: "stream_error"; message: string }
-export type DenoiseEvent = { type: "denoiseStarted"; session_id: string } | { type: "denoiseProgress"; session_id: string; percentage: number } | { type: "denoiseCompleted"; session_id: string } | { type: "denoiseFailed"; session_id: string; error: string }
-export type DenoiseParams = { session_id: string; input_path: string; output_path: string }
 export type FinalizedWord = { id: string; text: string; start_ms: number; end_ms: number; channel: number; state: WordState; speaker_index?: number | null }
 export type IdentityAssignment = { human_id: string; scope: IdentityScope }
 export type IdentityScope = { kind: "channel"; channel: ChannelProfile } | { kind: "channel_speaker"; channel: ChannelProfile; speaker_index: number } | { kind: "words"; word_ids: string[] }
@@ -234,8 +214,7 @@ export type Subtitle = { tokens: Token[] }
 export type Token = { text: string; start_time: number; end_time: number; speaker: string | null }
 export type TranscriptionEvent = { type: "started"; session_id: string } | { type: "progress"; session_id: string; event: BatchStreamEvent } | { type: "completed"; session_id: string; response: BatchResponse; mode: BatchRunMode } | { type: "stopped"; session_id: string } | { type: "failed"; session_id: string; code: BatchErrorCode; error: string }
 export type TranscriptionMode = "live" | "batch"
-export type TranscriptionParams = { session_id: string; provider: BatchProvider; file_path: string; model?: string | null; base_url: string; api_key: string; languages?: string[]; keywords?: string[]; num_speakers?: number | null; min_speakers?: number | null; max_speakers?: number | null }
-export type VttWord = { text: string; start_ms: number; end_ms: number; speaker: string | null }
+export type TranscriptionParams = { session_id: string; provider: BatchProvider; file_path: string; model?: string | null; base_url: string; api_key: string; languages?: string[]; num_speakers?: number | null; min_speakers?: number | null; max_speakers?: number | null }
 /**
  * Whether a finalized word is stable or awaiting correction.
  * 

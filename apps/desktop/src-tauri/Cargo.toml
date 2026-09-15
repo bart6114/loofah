@@ -34,7 +34,6 @@ tauri-plugin-dock = { workspace = true }
 tauri-plugin-export = { workspace = true }
 tauri-plugin-fs-sync = { workspace = true }
 tauri-plugin-fs2 = { workspace = true }
-tauri-plugin-hooks = { workspace = true }
 tauri-plugin-http = { workspace = true }
 tauri-plugin-icon = { workspace = true }
 tauri-plugin-local-stt = { workspace = true }
@@ -110,6 +109,7 @@ staging = ["dep:hypr-audio-mock"]
 automation = ["tauri-plugin-automation"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
+tauri-plugin-local-stt = { workspace = true, features = ["metal"] }
 tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 

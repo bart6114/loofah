@@ -3,7 +3,6 @@ import { useCallback, useRef } from "react";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useListener } from "./contexts";
-import { getSessionKeywords } from "./useKeywords";
 import {
   canRunBatchTranscription,
   isStoppedTranscriptionError,
@@ -13,10 +12,6 @@ import { useSTTConnection } from "./useSTTConnection";
 
 import { requestMainAutoEnhance } from "~/ai/task-window-sync";
 import { useShell } from "~/contexts/shell";
-import {
-  deleteProcessedAudioForRetention,
-  normalizeAudioRetention,
-} from "~/services/audio-retention";
 import { getEnhancerService } from "~/services/enhancer";
 import { catalogLocalSessionAudio } from "~/session/attachments";
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
@@ -67,12 +62,8 @@ export function useStartListening(sessionId: string) {
   const session = useSession(sessionId);
   const hadTranscriptBeforeStart = useSessionHasTranscript(sessionId);
 
-  const aiLanguage = useConfigValue("ai_language");
-  const spokenLanguages = useConfigValue("spoken_languages");
-  const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
-  const audioRetention = normalizeAudioRetention(
-    useConfigValue("audio_retention"),
-  );
+  const meetingLanguages = useConfigValue("meeting_languages");
+  const transcriptionTiming = useConfigValue("transcription_timing");
 
   const start = useListener((state) => state.start);
   const { conn } = useSTTConnection();
@@ -89,9 +80,7 @@ export function useStartListening(sessionId: string) {
     let transcriptId: string | null = null;
     const startedAt = Date.now();
     let lastTranscriptWrite = Promise.resolve();
-    let transcriptWriteError: unknown;
     const reportTranscriptWriteError = (error: unknown) => {
-      transcriptWriteError = error;
       console.error("[listener] failed to persist transcript", error);
       sonnerToast.error(`Transcript is NOT being saved: ${error}`, {
         id: "live-transcript-persist-failed",
@@ -101,12 +90,6 @@ export function useStartListening(sessionId: string) {
     const trackTranscriptWrite = (write: Promise<void>) => {
       lastTranscriptWrite = write.catch(reportTranscriptWriteError);
     };
-    const keywords = await getSessionKeywords({
-      sessionId,
-      dictionaryTerms,
-    });
-
-    let audioCatalogFailed = false;
     const onStopped: OnStoppedCallback = async (_sessionId, details) => {
       // Cataloging can relocate the recording, so everything downstream reads the path it
       // settled at; the capture backend's path is only a fallback for when cataloging failed
@@ -119,7 +102,6 @@ export function useStartListening(sessionId: string) {
             catalogLocalSessionAudio(sessionId, audioPath),
           );
         } catch (error) {
-          audioCatalogFailed = true;
           console.error("[listener] failed to catalog recorded audio", error);
           sonnerToast.error(
             "Recording audio could not be moved into the session folder — it remains at its original location",
@@ -189,17 +171,6 @@ export function useStartListening(sessionId: string) {
           await service.queueAutoEnhanceIfSummaryEmpty(sessionId);
         }
       }
-
-      // A failed batch repair, a live transcript that never fully persisted, or an audio file
-      // that never made it into the session folder all keep the recording around as the only
-      // (or only correctly-located) source for a later repair, regardless of retention policy.
-      if (
-        (postCaptureAction !== "batch_then_enhance" || batchCompleted) &&
-        !transcriptWriteError &&
-        !audioCatalogFailed
-      ) {
-        await deleteProcessedAudioForRetention(audioRetention, sessionId);
-      }
     };
 
     const handlePersist: LiveTranscriptPersistCallback = (delta) => {
@@ -225,11 +196,12 @@ export function useStartListening(sessionId: string) {
       );
     };
 
-    const languages = getTranscriptionLanguages(aiLanguage, spokenLanguages);
+    const languages = getTranscriptionLanguages(meetingLanguages);
     const liveTranscriptionConfig = await getLiveTranscriptionConfig({
       provider: conn?.provider,
       model: conn?.model,
       languages,
+      timing: transcriptionTiming,
     });
 
     const started = await start(
@@ -240,7 +212,6 @@ export function useStartListening(sessionId: string) {
         model: conn?.model ?? "",
         base_url: conn?.baseUrl ?? "",
         api_key: conn?.apiKey ?? "",
-        keywords,
         transcription_mode: liveTranscriptionConfig.transcriptionMode,
         participant_human_ids: [],
         self_human_id: session?.user_id || null,
@@ -261,15 +232,13 @@ export function useStartListening(sessionId: string) {
 
     setLeftSidebarExpanded(false);
   }, [
-    aiLanguage,
-    audioRetention,
     conn,
-    dictionaryTerms,
     hadTranscriptBeforeStart,
     session,
     sessionId,
     setLeftSidebarExpanded,
-    spokenLanguages,
+    meetingLanguages,
+    transcriptionTiming,
     start,
   ]);
 

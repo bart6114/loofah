@@ -4,13 +4,8 @@ import type { TranscriptionParams } from "@hypr/plugin-transcription";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useListener } from "./contexts";
-import { getSessionKeywords } from "./useKeywords";
 import { useSTTConnection } from "./useSTTConnection";
 
-import {
-  deleteProcessedAudioForRetention,
-  normalizeAudioRetention,
-} from "~/services/audio-retention";
 import { useSession } from "~/session/queries";
 import { useConfigValue } from "~/shared/config";
 import { id } from "~/shared/utils";
@@ -18,6 +13,7 @@ import type { BatchPersistCallback } from "~/store/zustand/listener/transcript";
 import {
   getTranscriptionLanguages,
   isSupportedLanguagesBatch,
+  isSupportedLocalSttModel,
 } from "~/stt/capabilities";
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
@@ -28,7 +24,6 @@ type RunOptions = {
   model?: string;
   baseUrl?: string;
   apiKey?: string;
-  keywords?: string[];
   languages?: string[];
   numSpeakers?: number;
   minSpeakers?: number;
@@ -60,13 +55,15 @@ export function getBatchProvider(
   provider: string,
   model: string,
 ): TranscriptionParams["provider"] | null {
-  if (provider !== "fmtr") {
+  if (provider !== "fmtr" || !isSupportedLocalSttModel(model)) {
     return null;
   }
 
   if (model.startsWith("soniqo-") || model.startsWith("onnx-")) return "soniqo";
-  if (model.startsWith("am-")) return "am";
-  return "fmtr";
+  if (model.startsWith("whisper-") || model.startsWith("Quantized")) {
+    return "whispercpp";
+  }
+  return null;
 }
 
 export function canRunBatchTranscription(
@@ -133,12 +130,7 @@ export const useRunBatch = (sessionId: string) => {
 
   const startTranscription = useListener((state) => state.startTranscription);
   const { conn } = useSTTConnection();
-  const aiLanguage = useConfigValue("ai_language");
-  const spokenLanguages = useConfigValue("spoken_languages");
-  const dictionaryTerms = useConfigValue("personalization_dictionary_terms");
-  const audioRetention = normalizeAudioRetention(
-    useConfigValue("audio_retention"),
-  );
+  const meetingLanguages = useConfigValue("meeting_languages");
 
   return useCallback(
     async (filePath: string, options?: RunOptions) => {
@@ -149,8 +141,7 @@ export const useRunBatch = (sessionId: string) => {
       }
 
       const languages =
-        options?.languages ??
-        getTranscriptionLanguages(aiLanguage, spokenLanguages);
+        options?.languages ?? getTranscriptionLanguages(meetingLanguages);
       const selectedModel = options?.model ?? conn?.model;
       const selectedProvider =
         conn && selectedModel
@@ -193,12 +184,6 @@ export const useRunBatch = (sessionId: string) => {
 
       const createdAt = new Date().toISOString();
       const memoMd = session?.raw_md ?? "";
-      const keywords =
-        options?.keywords ??
-        (await getSessionKeywords({
-          sessionId,
-          dictionaryTerms,
-        }));
       let transcriptId: string | null = null;
       const inferredNumSpeakers =
         options?.numSpeakers === undefined &&
@@ -308,7 +293,6 @@ export const useRunBatch = (sessionId: string) => {
         model: target.model,
         base_url: target.baseUrl,
         api_key: target.apiKey,
-        keywords,
         languages,
         num_speakers: options?.numSpeakers ?? inferredNumSpeakers,
         min_speakers: options?.minSpeakers,
@@ -324,18 +308,7 @@ export const useRunBatch = (sessionId: string) => {
       if (transcriptWriteError) throw transcriptWriteError;
 
       await queueTagSuggestions(sessionId);
-
-      await deleteProcessedAudioForRetention(audioRetention, sessionId);
     },
-    [
-      conn,
-      aiLanguage,
-      audioRetention,
-      dictionaryTerms,
-      session,
-      spokenLanguages,
-      startTranscription,
-      sessionId,
-    ],
+    [conn, session, meetingLanguages, startTranscription, sessionId],
   );
 };

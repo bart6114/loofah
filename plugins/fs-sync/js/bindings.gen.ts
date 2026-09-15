@@ -110,14 +110,6 @@ async audioPeaks(sessionId: string) : Promise<Result<AudioPeaks | null, string>>
     else return { status: "error", error: e  as any };
 }
 },
-async audioDeleteOrphanedExpired(knownSessionIds: string[], retentionMs: number, nowMs: number) : Promise<Result<string[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:fs-sync|audio_delete_orphaned_expired", { knownSessionIds, retentionMs, nowMs }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async audioImport(sessionId: string, sourcePath: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:fs-sync|audio_import", { sessionId, sourcePath }) };
@@ -177,14 +169,6 @@ async deleteSessionFolder(sessionId: string) : Promise<Result<null, string>> {
 async scanAndRead(scanDir: string, filePatterns: string[], recursive: boolean, pathFilter: string | null) : Promise<Result<ScanResult, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:fs-sync|scan_and_read", { scanDir, filePatterns, recursive, pathFilter }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async chatDir(chatGroupId: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("plugin:fs-sync|chat_dir", { chatGroupId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

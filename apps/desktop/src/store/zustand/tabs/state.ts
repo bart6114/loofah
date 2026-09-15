@@ -10,10 +10,6 @@ export type StateBasicActions = {
     tab: Tab,
     state: Extract<Tab, { type: "sessions" }>["state"],
   ) => void;
-  updateTemplatesTabState: (
-    tab: Tab,
-    state: Extract<Tab, { type: "templates" }>["state"],
-  ) => void;
   updateSettingsTabState: (
     tab: Tab,
     state: Extract<Tab, { type: "settings" }>["state"],
@@ -30,8 +26,6 @@ export const createStateUpdaterSlice = <T extends BasicState & NavigationState>(
 ): StateBasicActions => ({
   updateSessionTabState: (tab, state) =>
     updateTabState(tab, "sessions", state, get, set),
-  updateTemplatesTabState: (tab, state) =>
-    updateTabState(tab, "templates", state, get, set),
   updateSettingsTabState: (tab, state) =>
     updateTabState(tab, "settings", state, get, set),
   updateDailySummaryTabState: (tab, state) =>

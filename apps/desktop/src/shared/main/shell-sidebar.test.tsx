@@ -61,7 +61,7 @@ describe("ClassicMainSidebar", () => {
   });
 
   it("unlocks the custom sidebar when unmounted while active", () => {
-    mockCurrentTab = { type: "templates" };
+    mockCurrentTab = { type: "settings" };
 
     const { unmount } = render(<ClassicMainSidebar />);
 

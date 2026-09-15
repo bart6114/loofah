@@ -25,6 +25,7 @@ impl LoadedWhisper {
         Ok(Whisper {
             languages,
             dynamic_prompt: String::new(),
+            initial_prompt: String::new(),
         })
     }
 }
@@ -38,6 +39,7 @@ pub struct WhisperBuilder {
 pub struct Whisper {
     languages: Vec<Language>,
     dynamic_prompt: String,
+    initial_prompt: String,
 }
 
 impl WhisperBuilder {
@@ -60,6 +62,24 @@ impl WhisperBuilder {
 }
 
 impl Whisper {
+    pub fn counters(&self) -> (usize, usize) {
+        (0, 0)
+    }
+    pub fn select_language(&mut self, _language: Option<&str>) {
+        self.dynamic_prompt.clear();
+    }
+    pub fn set_cancellation(&mut self, _cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) {}
+    pub fn detect_language(&mut self, _audio: &[f32]) -> Result<crate::Observation, crate::Error> {
+        Ok(crate::Observation {
+            scores: vec![("en".into(), 1.0)],
+        })
+    }
+
+    pub fn set_native_timestamps(&mut self, _enabled: bool) {}
+    pub fn set_initial_prompt(&mut self, prompt: String) {
+        self.initial_prompt = prompt;
+    }
+
     pub fn builder() -> WhisperBuilder {
         WhisperBuilder::default()
     }

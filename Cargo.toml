@@ -16,6 +16,7 @@ members = [
   "plugins/*",
 ]
 exclude = [
+  "vendor/whisper-rs",
   "plugins/extensions",
   "crates/vad-ext",
 ]
@@ -26,7 +27,6 @@ hypr-afconvert = { path = "crates/afconvert", package = "afconvert" }
 hypr-agc = { path = "crates/agc", package = "agc" }
 hypr-agent-access = { path = "crates/agent-access", package = "agent-access" }
 hypr-agent-core = { path = "crates/agent-core", package = "agent-core" }
-hypr-am = { path = "crates/am", package = "am" }
 hypr-amp = { path = "crates/amp", package = "amp" }
 hypr-api-agent = { path = "crates/api-agent", package = "api-agent" }
 hypr-api-claw = { path = "crates/api-claw", package = "api-claw" }
@@ -35,7 +35,6 @@ hypr-api-env = { path = "crates/api-env", package = "api-env" }
 hypr-api-error = { path = "crates/api-error", package = "api-error" }
 hypr-api-messenger = { path = "crates/api-messenger", package = "api-messenger" }
 hypr-apple-note = { path = "crates/apple-note", package = "apple-note" }
-hypr-apple-todo = { path = "crates/apple-todo", package = "apple-todo" }
 hypr-askama-utils = { path = "crates/askama-utils", package = "askama-utils" }
 hypr-audacity = { path = "crates/audacity", package = "audacity" }
 hypr-audio = { path = "crates/audio", package = "audio" }
@@ -51,13 +50,11 @@ hypr-audio-sync = { path = "crates/audio-sync", package = "audio-sync" }
 hypr-audio-utils = { path = "crates/audio-utils", package = "audio-utils" }
 hypr-buffer = { path = "crates/buffer", package = "buffer" }
 hypr-bundle = { path = "crates/bundle", package = "bundle" }
-hypr-chatwoot = { path = "crates/chatwoot", package = "chatwoot" }
 hypr-claude = { path = "crates/claude", package = "claude" }
 hypr-cli-process = { path = "crates/cli-process", package = "cli-process" }
 hypr-codex = { path = "crates/codex", package = "codex" }
 hypr-cursor = { path = "crates/cursor", package = "cursor" }
 hypr-data = { path = "crates/data", package = "data" }
-hypr-denoise = { path = "crates/denoise", package = "denoise" }
 hypr-detect = { path = "crates/detect", package = "detect" }
 hypr-device-monitor = { path = "crates/device-monitor", package = "device-monitor" }
 hypr-devin = { path = "crates/devin", package = "devin" }
@@ -80,7 +77,6 @@ hypr-granola = { path = "crates/granola", package = "granola" }
 hypr-hf = { path = "crates/hf", package = "hf" }
 hypr-hid-host = { path = "crates/hid-host", package = "hid-host" }
 hypr-hid-interface = { path = "crates/hid-interface", package = "hid-interface" }
-hypr-hooks = { path = "crates/hooks", package = "hooks" }
 hypr-host = { path = "crates/host", package = "host" }
 hypr-http = { path = "crates/http", package = "hypr-http-utils" }
 hypr-importer-core = { path = "crates/importer-core", package = "importer-core" }
@@ -92,7 +88,6 @@ hypr-listener-core = { path = "crates/listener-core", package = "listener-core" 
 hypr-listener2-core = { path = "crates/listener2-core", package = "listener2-core" }
 hypr-llm-types = { path = "crates/llm-types", package = "llm-types" }
 hypr-lmstudio = { path = "crates/lmstudio", package = "lmstudio" }
-hypr-local-llm-core = { path = "crates/local-llm-core", package = "local-llm-core" }
 hypr-local-model = { path = "crates/local-model", package = "local-model" }
 hypr-local-stt-core = { path = "crates/local-stt-core", package = "local-stt-core" }
 hypr-local-stt-server = { path = "crates/local-stt-server", package = "local-stt-server" }
@@ -125,7 +120,6 @@ hypr-tcc = { path = "crates/tcc", package = "tcc" }
 hypr-teems = { path = "crates/teems", package = "teems" }
 hypr-template-app = { path = "crates/template-app", package = "template-app" }
 hypr-template-app-legacy = { path = "crates/template-app-legacy", package = "template-app-legacy" }
-hypr-template-cli = { path = "crates/template-cli", package = "template-cli" }
 hypr-template-eval = { path = "crates/template-eval", package = "template-eval" }
 hypr-template-support = { path = "crates/template-support", package = "template-support" }
 hypr-ticket-interface = { path = "crates/ticket-interface", package = "ticket-interface" }
@@ -181,7 +175,6 @@ tauri-plugin-dock = { path = "plugins/dock" }
 tauri-plugin-export = { path = "plugins/export" }
 tauri-plugin-fs-sync = { path = "plugins/fs-sync" }
 tauri-plugin-fs2 = { path = "plugins/fs2" }
-tauri-plugin-hooks = { path = "plugins/hooks" }
 tauri-plugin-icon = { path = "plugins/icon" }
 tauri-plugin-local-stt = { path = "plugins/local-stt" }
 tauri-plugin-misc = { path = "plugins/misc" }
@@ -347,8 +340,6 @@ objc2-application-services = "0.3.2"
 objc2-av-foundation = "0.3.2"
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
-objc2-core-location = "0.3.2"
-objc2-event-kit = "0.3.2"
 objc2-foundation = "0.3.2"
 objc2-security = "0.3.2"
 objc2-user-notifications = "0.3.2"

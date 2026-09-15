@@ -47,12 +47,10 @@ export function MainLanguageView({
     <div className="flex flex-row items-center justify-between">
       <div>
         <h3 className="mb-1 text-sm font-medium">
-          <Trans>Main language</Trans>
+          <Trans>Summary language</Trans>
         </h3>
         <p className="text-muted-foreground text-xs">
-          <Trans>
-            Language for summaries, chats, and AI-generated responses
-          </Trans>
+          <Trans>Language for summaries and generated titles</Trans>
         </p>
       </div>
       <SearchableSelect

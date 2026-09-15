@@ -7,7 +7,7 @@ use hypr_vad::silero_onnx::CHUNK_SIZE_16KHZ;
 use crate::{AudioChunk, Chunker};
 
 pub(crate) use continuous::speech_chunks;
-pub(crate) use session::{VadChunkerConfig, VadSession};
+pub(crate) use session::{VadChunkerConfig, VadSession, VadTransition};
 
 pub(crate) struct VadChunker {
     config: VadChunkerConfig,

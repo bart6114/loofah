@@ -42,20 +42,17 @@ function appConfig(overrides: Record<string, unknown> = {}) {
     show_app_in_dock: true,
     show_tray_icon: true,
     theme: "system",
-    save_recordings: true,
-    audio_retention: "forever",
     notification_detect: true,
     respect_dnd: false,
     cloud_sync_enabled: true,
     ai_language: "en",
     spoken_languages: [],
-    personalization_dictionary_terms: [],
     custom_summary_instructions: "",
     custom_summary_instructions_token_aware: false,
     auto_summary_prompt: "",
     ignored_platforms: [],
     included_platforms: [],
-    mic_active_threshold: 15,
+    mic_active_threshold: 5,
     ai_providers: {},
     ...overrides,
   };
@@ -80,6 +77,20 @@ describe("config-backed settings", () => {
     expect(stored.values.theme).toBeUndefined();
   });
 
+  it("ignores retired audio settings from existing vaults", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ audio_retention: "none", save_recordings: false }),
+    });
+
+    const stored = await getStoredSettingValues();
+
+    expect(stored.values).not.toHaveProperty("audio_retention");
+    expect(stored.values).not.toHaveProperty("save_recordings");
+    expect([...stored.hasValues]).not.toContain("audio_retention");
+    expect([...stored.hasValues]).not.toContain("save_recordings");
+  });
+
   it("exposes explicit config values, stringifying array keys", async () => {
     mocks.getConfig.mockResolvedValue({
       status: "ok",
@@ -96,7 +107,31 @@ describe("config-backed settings", () => {
     expect(stored.values.spoken_languages).toBe('["en","ko"]');
     expect(stored.values.current_stt_provider).toBe("fmtr");
     expect(stored.hasValues.has("theme")).toBe(true);
-    expect(stored.hasValues.has("audio_retention")).toBe(false);
+  });
+
+  it("preserves explicitly independent meeting languages in config", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ meeting_languages: ["nl"] }),
+    });
+    const stored = await getStoredSettingValues();
+    expect(stored.values.meeting_languages).toBe('["nl"]');
+    expect(stored.hasValues.has("meeting_languages")).toBe(true);
+    await setSettingValues({ meeting_languages: '["nl"]', ai_language: "en" });
+    expect(mocks.setConfigValues).toHaveBeenCalledWith({
+      meeting_languages: ["nl"],
+      ai_language: "en",
+    });
+  });
+
+  it("preserves a saved 15-second reminder delay after the default changes", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ mic_active_threshold: 15 }),
+    });
+    const stored = await getStoredSettingValues();
+    expect(stored.values.mic_active_threshold).toBe(15);
+    expect(stored.hasValues.has("mic_active_threshold")).toBe(true);
   });
 
   it("writes schema-typed JSON values in a single config call", async () => {
@@ -172,26 +207,24 @@ describe("config-backed settings", () => {
   it("updates against the latest config value", async () => {
     mocks.getConfig.mockResolvedValue({
       status: "ok",
-      data: appConfig({ personalization_dictionary_terms: ["Vertex"] }),
+      data: appConfig({ spoken_languages: ["en"] }),
     });
 
-    const next = await updateSettingValue(
-      "personalization_dictionary_terms",
-      (current) => JSON.stringify([...JSON.parse(current ?? "[]"), "Erebor"]),
+    const next = await updateSettingValue("spoken_languages", (current) =>
+      JSON.stringify([...JSON.parse(current ?? "[]"), "nl"]),
     );
 
-    expect(next).toBe(JSON.stringify(["Vertex", "Erebor"]));
+    expect(next).toBe(JSON.stringify(["en", "nl"]));
     expect(mocks.setConfigValues).toHaveBeenCalledWith({
-      personalization_dictionary_terms: ["Vertex", "Erebor"],
+      spoken_languages: ["en", "nl"],
     });
   });
 
   it("falls back to the schema default when updating an unset value", async () => {
-    const next = await updateSettingValue(
-      "personalization_dictionary_terms",
-      (current) => JSON.stringify([...JSON.parse(current ?? "[]"), "Erebor"]),
+    const next = await updateSettingValue("spoken_languages", (current) =>
+      JSON.stringify([...JSON.parse(current ?? "[]"), "nl"]),
     );
 
-    expect(next).toBe(JSON.stringify(["Erebor"]));
+    expect(next).toBe(JSON.stringify(["nl"]));
   });
 });

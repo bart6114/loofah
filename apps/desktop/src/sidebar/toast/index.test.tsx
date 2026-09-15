@@ -144,12 +144,12 @@ describe("ToastNotifications", () => {
     act(() => vi.advanceTimersByTime(500));
 
     expect(mocks.message).toHaveBeenCalledWith(
-      "Language model needed",
+      "Optional summaries",
       expect.objectContaining({
         id: "missing-llm",
         duration: Infinity,
         closeButton: true,
-        action: expect.objectContaining({ label: "Add" }),
+        action: expect.objectContaining({ label: "Set up" }),
       }),
     );
 
@@ -195,7 +195,11 @@ describe("ToastNotifications", () => {
     mocks.notifications.hasActiveDownload = true;
     mocks.notifications.downloadingModel = "Parakeet v3";
     mocks.notifications.activeDownloads = [
-      { model: "am-parakeet-v3", displayName: "Parakeet v3", progress: 42 },
+      {
+        model: "soniqo-parakeet-batch",
+        displayName: "Parakeet v3",
+        progress: 42,
+      },
     ];
 
     render(<ToastNotifications />);

@@ -357,7 +357,7 @@ export function SidebarTimelineUpdateButton({
       disabled={isDownloading || update.downloadStarting || update.installing}
       className={cn([
         "relative flex size-[var(--sidebar-chrome-button-size)] shrink-0 items-center justify-center rounded-full p-0",
-        "bg-brand/10 text-brand hover:bg-brand/20 shadow-sm transition-colors",
+        "bg-brand/10 text-brand hover:bg-brand/20 shadow-sm transition-none",
         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden",
         "disabled:bg-brand/10 disabled:text-brand disabled:hover:bg-brand/10 disabled:cursor-default disabled:opacity-70",
       ])}

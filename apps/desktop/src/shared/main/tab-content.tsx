@@ -1,29 +1,49 @@
-import { TabContentChangelog } from "~/changelog";
-import { TabContentOnboarding } from "~/onboarding";
 import { TabContentNote } from "~/session";
-import { TabContentSettings } from "~/settings";
+import {
+  deferredView,
+  DeferredView,
+  usePreloadViews,
+} from "~/shared/deferred-view";
 import { type Tab } from "~/store/zustand/tabs";
-import { TabContentTask } from "~/task";
-import { TabContentTemplate } from "~/templates";
+
+const changelog = deferredView(() =>
+  import("~/changelog").then((m) => ({ default: m.TabContentChangelog })),
+);
+const onboarding = deferredView(() =>
+  import("~/onboarding").then((m) => ({ default: m.TabContentOnboarding })),
+);
+const settings = deferredView(() =>
+  import("~/settings").then((m) => ({ default: m.TabContentSettings })),
+);
+const task = deferredView(() =>
+  import("~/task").then((m) => ({ default: m.TabContentTask })),
+);
+const preloaders = [settings.preload, task.preload, changelog.preload];
 
 export function MainTabContent({ tab }: { tab: Tab }) {
+  usePreloadViews(preloaders);
+  return (
+    <DeferredView viewKey={tab.type}>
+      <Content tab={tab} />
+    </DeferredView>
+  );
+}
+
+function Content({ tab }: { tab: Tab }) {
   if (tab.type === "sessions") {
     return <TabContentNote tab={tab} />;
   }
   if (tab.type === "changelog") {
-    return <TabContentChangelog tab={tab} />;
+    return <changelog.View tab={tab} />;
   }
   if (tab.type === "settings") {
-    return <TabContentSettings tab={tab} />;
-  }
-  if (tab.type === "templates") {
-    return <TabContentTemplate tab={tab} />;
+    return <settings.View tab={tab} />;
   }
   if (tab.type === "onboarding") {
-    return <TabContentOnboarding tab={tab} />;
+    return <onboarding.View tab={tab} />;
   }
   if (tab.type === "task") {
-    return <TabContentTask tab={tab} />;
+    return <task.View tab={tab} />;
   }
   return null;
 }

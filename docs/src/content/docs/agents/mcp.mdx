@@ -3,6 +3,8 @@ title: "MCP for agents"
 description: "Connect an MCP client to the local knowledge vault over stdio."
 ---
 
+For agents with shell access, we recommend the [CLI](/agents/cli) for both reading and writing. Start with the [skill installation prompt](/agents/skills#install-with-a-prompt) to make your agent aware of it and remember to use it. MCP is an optional read-only connection for clients without shell access, or when you prefer MCP.
+
 The MCP server is part of the `loof` executable. It communicates through standard input and output. It does not open a network port or send vault data to a hosted service. It is read-only: to create sessions, edit notes, attach source artifacts, or import and transcribe audio, use the [CLI](/reference/cli).
 
 The MCP tool names retain `meeting` for compatibility, but they can also return standalone knowledge sessions that have no recording or transcript.
@@ -20,7 +22,7 @@ The MCP tool names retain `meeting` for compatibility, but they can also return 
 }
 ```
 
-Use the absolute path to `loofah` if the client cannot find it on `PATH`. Restart the client after changing its MCP configuration. For exact Claude Desktop, Claude Code, Codex, and Hermes setup commands, see [Connect Loofah to Claude, Codex, or Hermes](/agents/connect-clients).
+Use the absolute path to `loof` if the client cannot find it on `PATH`. Restart the client after changing its MCP configuration. For exact Claude Desktop, Claude Code, Codex, and Hermes setup commands, see [Connect Loofah to Claude, Codex, or Hermes](/agents/connect-clients).
 
 For a custom vault path:
 

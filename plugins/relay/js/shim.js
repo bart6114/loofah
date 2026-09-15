@@ -185,7 +185,7 @@
     os_type: env.platform,
     family: env.isWindows ? "windows" : "unix",
     version: navigator.userAgent,
-    arch: "x86_64",
+    arch: "__RELAY_ARCH__",
     eol: env.isWindows ? "\r\n" : "\n",
     exe_extension: env.isWindows ? "exe" : "",
   };

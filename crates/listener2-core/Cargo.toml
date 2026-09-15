@@ -11,12 +11,12 @@ tauri-event = ["specta", "dep:tauri-specta"]
 [dependencies]
 hypr-audio-chunking = { workspace = true }
 hypr-audio-utils = { workspace = true }
-hypr-denoise = { workspace = true, features = ["onnx"] }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
 hypr-language = { workspace = true }
 hypr-transcribe-core = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
+hypr-whisper-local-model = { workspace = true }
 
 bytes = { workspace = true }
 hound = { workspace = true }

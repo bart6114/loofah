@@ -76,36 +76,9 @@ function createCaptureConfigSignature(config: {
   return JSON.stringify(config);
 }
 
-function parseStringArray(value: unknown, fallback: string[]) {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
-  }
-
-  if (typeof value !== "string") {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function getLiveConfigLanguages(aiLanguage: string, spokenLanguages: string[]) {
-  return getTranscriptionLanguages(
-    aiLanguage || undefined,
-    parseStringArray(spokenLanguages, []),
-  );
-}
-
 function LiveCaptureConfigSync() {
   const settingsValues = useConfigValues([
-    "ai_language",
-    "spoken_languages",
+    "meeting_languages",
     "current_stt_provider",
     "current_stt_model",
   ] as const);
@@ -123,8 +96,7 @@ function LiveCaptureConfigSyncReady({
   settingsValues,
 }: {
   settingsValues: {
-    ai_language: string;
-    spoken_languages: string[];
+    meeting_languages: string[] | undefined;
     current_stt_provider: string | undefined;
     current_stt_model: string | undefined;
   };
@@ -145,9 +117,8 @@ function LiveCaptureConfigSyncReady({
         return;
       }
 
-      const languages = getLiveConfigLanguages(
-        settingsValues.ai_language,
-        settingsValues.spoken_languages,
+      const languages = getTranscriptionLanguages(
+        settingsValues.meeting_languages,
       );
       const liveConfig = await getLiveTranscriptionConfig({
         provider: settingsValues.current_stt_provider,
@@ -205,8 +176,15 @@ function LiveCaptureConfigSyncReady({
       console.error("[listener] failed to read live capture identities", error);
     };
 
-    const unsubscribeListener = listenerStore.subscribe(schedulePush);
-    const unsubscribeIndex = subscribeIndexChanged("sessions", () => {
+    const unsubscribeListener = listenerStore.subscribe((state, previous) => {
+      if (
+        state.live.sessionId !== previous.live.sessionId ||
+        state.live.status !== previous.live.status
+      ) {
+        schedulePush();
+      }
+    });
+    const unsubscribeIndex = subscribeIndexChanged("session_headers", () => {
       void refreshSessionIds().catch(handleRefreshError);
     });
     void refreshSessionIds().catch(handleRefreshError);

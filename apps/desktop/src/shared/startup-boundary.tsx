@@ -206,8 +206,8 @@ function phaseDescription(
       return phase.total > 0
         ? t`Indexing notes — ${phase.completed} of ${phase.total}`
         : t`Indexing notes…`;
-    case "preparingTemplates":
-      return t`Preparing templates…`;
+    case "archivingLegacyTemplates":
+      return t`Archiving legacy templates…`;
     case "failed":
       return phase.message;
     case "ready":

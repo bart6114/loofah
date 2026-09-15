@@ -19,10 +19,9 @@ pub use hypr_transcription_core::listener::{
     LiveTranscriptSegment, LiveTranscriptSegmentDelta, LiveTranscriptUpdate,
 };
 pub use hypr_transcription_core::listener2::{
-    DenoiseEvent, DenoiseParams, DenoiseRuntime, Error as Listener2Error,
-    Result as Listener2Result, Subtitle, Token, VttWord, export_words_to_vtt_file,
+    Error as Listener2Error, Result as Listener2Result, Subtitle, Token,
     is_supported_languages_batch, list_documented_language_codes_batch, parse_subtitle_from_path,
-    run_denoise, suggest_providers_for_languages_batch,
+    suggest_providers_for_languages_batch,
 };
 pub use listener::{Listener, ListenerPluginExt};
 pub use listener2::{Listener2, Listener2PluginExt};
@@ -80,9 +79,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             listener::commands::render_transcript_segments,
             listener2::commands::start_transcription::<tauri::Wry>,
             listener2::commands::stop_transcription::<tauri::Wry>,
-            listener2::commands::run_denoise::<tauri::Wry>,
             listener2::commands::parse_subtitle::<tauri::Wry>,
-            listener2::commands::export_to_vtt::<tauri::Wry>,
             listener2::commands::is_supported_languages_batch::<tauri::Wry>,
             listener2::commands::suggest_providers_for_languages_batch::<tauri::Wry>,
             listener2::commands::list_documented_language_codes_batch::<tauri::Wry>,
@@ -92,7 +89,6 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             CaptureStatusEvent,
             CaptureDataEvent,
             TranscriptionEvent,
-            DenoiseEvent
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }

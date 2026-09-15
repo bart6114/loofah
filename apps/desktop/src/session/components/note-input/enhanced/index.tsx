@@ -1,17 +1,15 @@
 import type { EditorView } from "prosemirror-view";
-import { forwardRef } from "react";
+import { forwardRef, useMemo } from "react";
 
 import type { FileHandlerConfig, NoteEditorRef } from "@hypr/editor/note";
 
-import { ConfigError } from "./config-error";
 import { EnhancedEditor } from "./editor";
+import { EmptySummary } from "./empty-summary";
 import { EnhanceError } from "./enhance-error";
 import { StreamingView } from "./streaming";
 
 import { useAITaskTask } from "~/ai/hooks";
-import { useLLMConnectionStatus } from "~/ai/hooks";
 import { hasStoredNoteContent } from "~/session/components/shared";
-import { shouldShowEmptySummaryConfigError } from "~/session/enhance-config";
 import { useEnhancedNote } from "~/session/queries";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
@@ -42,9 +40,17 @@ export const Enhanced = forwardRef<
     ref,
   ) => {
     const taskId = createTaskId(enhancedNoteId, "enhance");
-    const llmStatus = useLLMConnectionStatus();
     const { status, error, streamedText } = useAITaskTask(taskId, "enhance");
-    const enhancedNote = useEnhancedNote(enhancedNoteId);
+    // The task can finish before the coalesced index event refreshes the old summary cache.
+    const generationId = useMemo(
+      () => (status === "success" ? crypto.randomUUID() : undefined),
+      [status, enhancedNoteId],
+    );
+    const enhancedNote = useEnhancedNote(
+      enhancedNoteId,
+      generationId,
+      sessionId,
+    );
     const content = enhancedNote?.content;
 
     const hasContent = hasStoredNoteContent(content);
@@ -72,20 +78,20 @@ export const Enhanced = forwardRef<
       ) : null;
     }
 
-    const isConfigError = shouldShowEmptySummaryConfigError(llmStatus);
-
-    if (status === "idle" && isConfigError && !hasContent) {
+    if (showStreaming) {
       return (
-        <ConfigError
+        <StreamingView
+          sessionId={sessionId}
           sessionTitle={sessionTitle}
-          titleTrailerElement={titleTrailerElement}
+          enhancedNoteId={enhancedNoteId}
         />
       );
     }
 
-    if (showStreaming) {
+    if (!hasContent) {
       return (
-        <StreamingView
+        <EmptySummary
+          titleTrailerElement={titleTrailerElement}
           sessionId={sessionId}
           sessionTitle={sessionTitle}
           enhancedNoteId={enhancedNoteId}

@@ -53,9 +53,10 @@ const EMPTY_SESSION_SUMMARIES: SessionSummaryRecord[] = [];
 
 export function useSession(sessionId: string): SessionRecord | null {
   const { data = null } = useIndexQuery({
-    // Session meta rides the "sessions" entity; the note body (`notes.md`) rides
-    // "docs". Both event kinds carry the session id.
-    entity: ["sessions", "docs"],
+    // Editable content revalidates on mount in case a write or watcher event is
+    // still in flight when the user switches back to the note.
+    refetchOnMount: "always",
+    entity: "sessions",
     ids: [sessionId],
     queryKey: ["session", sessionId],
     queryFn: async () => {
@@ -115,7 +116,7 @@ export function useSessionSummary(
 
 export function useSessionSummaries(enabled = true): SessionSummaryRecord[] {
   const { data = EMPTY_SESSION_SUMMARIES } = useIndexQuery({
-    entity: "sessions",
+    entity: "session_headers",
     queryKey: ["session-summaries"],
     enabled,
     queryFn: async () => {
@@ -188,12 +189,16 @@ export function useEnhancedNoteRecords(
 
 export function useEnhancedNote(
   enhancedNoteId: string,
+  generationId?: string,
+  sessionId?: string,
 ): EnhancedNoteRecord | null {
   const { data = null } = useIndexQuery({
-    // Doc events carry session ids and the owning session isn't known here, so
-    // this one stays table-level.
     entity: "docs",
-    queryKey: ["enhanced-doc", enhancedNoteId],
+    ids: sessionId ? [sessionId] : undefined,
+    refetchOnMount: "always",
+    queryKey: generationId
+      ? ["enhanced-doc", enhancedNoteId, generationId]
+      : ["enhanced-doc", enhancedNoteId],
     queryFn: async () => {
       const result = await commands.enhancedDocGet(enhancedNoteId);
       if (result.status === "error") {

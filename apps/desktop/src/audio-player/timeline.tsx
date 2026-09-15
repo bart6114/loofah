@@ -31,7 +31,7 @@ export function CompactPlayButton() {
         "flex items-center justify-center",
         "h-6 w-6 rounded-full",
         "bg-foreground",
-        "transition-all hover:opacity-85",
+        "transition-none hover:opacity-85",
         "shrink-0 select-none",
       ])}
     >
@@ -139,7 +139,7 @@ export function Timeline({
             "flex items-center justify-center",
             "h-5 w-5 rounded-full",
             "bg-foreground",
-            "transition-all hover:opacity-85",
+            "transition-none hover:opacity-85",
             "shrink-0 select-none",
           ])}
         >
@@ -170,7 +170,7 @@ export function Timeline({
                 className={cn([
                   "flex items-center justify-center",
                   "h-5 rounded px-1",
-                  "hover:bg-accent transition-colors",
+                  "hover:bg-accent transition-none",
                   "text-muted-foreground/80 font-mono text-[10px] select-none",
                 ])}
               >
@@ -193,7 +193,7 @@ export function Timeline({
                       }}
                       className={cn([
                         "block w-full px-3 py-1 text-left font-mono text-xs select-none",
-                        "hover:bg-accent transition-colors",
+                        "hover:bg-accent transition-none",
                         rate === playbackRate
                           ? "text-foreground font-semibold"
                           : "text-muted-foreground",

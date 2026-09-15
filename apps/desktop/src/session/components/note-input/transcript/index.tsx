@@ -35,11 +35,18 @@ export function Transcript({
     }
 
     let renderFrame: number | undefined;
+    // WebKit can suspend paint callbacks in an occluded window; content loading
+    // must still make progress when no animation frame arrives.
+    const fallback = setTimeout(() => setViewerReady(true), 100);
     const loadingFrame = requestAnimationFrame(() => {
-      renderFrame = requestAnimationFrame(() => setViewerReady(true));
+      renderFrame = requestAnimationFrame(() => {
+        clearTimeout(fallback);
+        setViewerReady(true);
+      });
     });
 
     return () => {
+      clearTimeout(fallback);
       cancelAnimationFrame(loadingFrame);
       if (renderFrame !== undefined) {
         cancelAnimationFrame(renderFrame);

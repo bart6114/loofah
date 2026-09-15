@@ -16,17 +16,14 @@ pub use error_detection::ProviderError;
 use owhisper_interface::ListenParams;
 pub use providers::{Auth, Provider, is_meta_model};
 
-#[cfg(feature = "local")]
-pub use adapter::StreamingBatchConfig;
 pub use adapter::deepgram::DeepgramModel;
 pub use adapter::{
-    AdapterKind, AquaVoiceAdapter, ArgmaxAdapter, AssemblyAIAdapter, BatchSttAdapter,
-    CallbackResult, CallbackSttAdapter, CartesiaAdapter, DashScopeAdapter, DeepgramAdapter,
-    ElevenLabsAdapter, FireworksAdapter, FmtrAdapter, GladiaAdapter, LanguageQuality,
-    LanguageSupport, MistralAdapter, OpenAIAdapter, PyannoteAdapter, RealtimeSttAdapter,
-    SmallestAIAdapter, SonioxAdapter, WhisperCppAdapter, append_provider_param,
-    documented_language_codes_batch, documented_language_codes_live, is_fmtr_proxy, is_local_host,
-    normalize_languages,
+    AdapterKind, AquaVoiceAdapter, AssemblyAIAdapter, BatchSttAdapter, CallbackResult,
+    CallbackSttAdapter, CartesiaAdapter, DashScopeAdapter, DeepgramAdapter, ElevenLabsAdapter,
+    FireworksAdapter, FmtrAdapter, GladiaAdapter, LanguageQuality, LanguageSupport, MistralAdapter,
+    OpenAIAdapter, PyannoteAdapter, RealtimeSttAdapter, SmallestAIAdapter, SonioxAdapter,
+    WhisperCppAdapter, append_provider_param, documented_language_codes_batch,
+    documented_language_codes_live, is_fmtr_proxy, is_local_host, normalize_languages,
 };
 pub use adapter::{StreamingBatchEvent, StreamingBatchStream};
 

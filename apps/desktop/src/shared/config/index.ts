@@ -1,7 +1,7 @@
-import {
-  useStoredSettingValues,
-  type StoredSettingValues,
-} from "~/settings/queries";
+import { useShallow } from "zustand/react/shallow";
+
+import { useConfigSelector, type StoredSettingValues } from "./store";
+
 import {
   SETTING_DEFINITIONS,
   type SettingKey,
@@ -10,22 +10,22 @@ import {
 
 type JsonParsedKeys =
   | "spoken_languages"
-  | "personalization_dictionary_terms"
   | "ignored_platforms"
   | "included_platforms"
   | "sidebar_expanded_tags";
 
-type ConfigValueType<K extends SettingKey> = K extends JsonParsedKeys
-  ? string[]
-  : K extends keyof typeof SETTING_DEFINITIONS
-    ? "default" extends keyof (typeof SETTING_DEFINITIONS)[K]
-      ? SettingValue<K>
-      : SettingValue<K> | undefined
-    : never;
+type ConfigValueType<K extends SettingKey> = K extends "meeting_languages"
+  ? string[] | undefined
+  : K extends JsonParsedKeys
+    ? string[]
+    : K extends keyof typeof SETTING_DEFINITIONS
+      ? "default" extends keyof (typeof SETTING_DEFINITIONS)[K]
+        ? SettingValue<K>
+        : SettingValue<K> | undefined
+      : never;
 
 const JSON_PARSED_KEYS = new Set<SettingKey>([
   "spoken_languages",
-  "personalization_dictionary_terms",
   "ignored_platforms",
   "included_platforms",
   "sidebar_expanded_tags",
@@ -34,13 +34,17 @@ const JSON_PARSED_KEYS = new Set<SettingKey>([
 export function useConfigValue<K extends SettingKey>(
   key: K,
 ): ConfigValueType<K> {
-  return resolveConfigValue(key, useStoredSettingValues());
+  return useConfigSelector((stored) => resolveConfigValue(key, stored));
 }
 
 export function useConfigValues<K extends SettingKey>(
   keys: readonly K[],
 ): { [P in K]: ConfigValueType<P> } {
-  return resolveConfigValues(keys, useStoredSettingValues());
+  return useConfigSelector(
+    useShallow((stored: StoredSettingValues) =>
+      resolveConfigValues(keys, stored),
+    ),
+  );
 }
 
 export function resolveConfigValues<K extends SettingKey>(
@@ -59,15 +63,12 @@ export function resolveConfigValue<K extends SettingKey>(
   const definition = SETTING_DEFINITIONS[key];
   const defaultValue = "default" in definition ? definition.default : undefined;
 
-  if (
-    key === "audio_retention" &&
-    values.save_recordings === false &&
-    !hasValues.has("audio_retention")
-  ) {
-    return "none" as ConfigValueType<K>;
-  }
-
   const value = hasValues.has(key) ? values[key] : defaultValue;
+  if (key === "meeting_languages") {
+    return (
+      value == null ? undefined : parseStringArray(value, [])
+    ) as ConfigValueType<K>;
+  }
   if (JSON_PARSED_KEYS.has(key)) {
     return parseStringArray(
       value,
@@ -96,6 +97,11 @@ function parseStringArray(value: unknown, fallback: string[]): string[] {
     const result = parsed.filter(
       (entry): entry is string => typeof entry === "string",
     );
+    if (parsedStringArrayCache.size >= 128) {
+      parsedStringArrayCache.delete(
+        parsedStringArrayCache.keys().next().value!,
+      );
+    }
     parsedStringArrayCache.set(value, result);
     return result;
   } catch {

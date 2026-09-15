@@ -326,26 +326,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "am"
-version = "0.1.0"
-dependencies = [
- "dirs 6.0.0",
- "download-interface",
- "file",
- "language",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
- "specta",
- "strum 0.28.0",
- "tar",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "amp"
 version = "0.1.0"
 dependencies = [
@@ -593,26 +573,6 @@ dependencies = [
  "prost-build",
  "serde",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "apple-todo"
-version = "0.1.0"
-dependencies = [
- "backon",
- "block2",
- "chrono",
- "objc2",
- "objc2-core-graphics",
- "objc2-core-location",
- "objc2-event-kit",
- "objc2-foundation",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "specta",
- "thiserror 2.0.18",
- "tracing",
 ]
 
 [[package]]
@@ -2537,18 +2497,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chatwoot"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "progenitor-client 0.13.0",
- "progenitor-utils",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "chinese-number"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3828,23 +3776,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6b926516df9c60bfa16e107b21086399f8285a44ca9711344b9e553c5146e2"
 
 [[package]]
-name = "denoise"
-version = "0.1.0"
-dependencies = [
- "approx",
- "audio-snapshot",
- "criterion",
- "dasp",
- "data",
- "hound",
- "onnx",
- "realfft",
- "rodio",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "der"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3989,7 +3920,6 @@ dependencies = [
  "tauri-plugin-export",
  "tauri-plugin-fs-sync",
  "tauri-plugin-fs2",
- "tauri-plugin-hooks",
  "tauri-plugin-http",
  "tauri-plugin-hypr-tray",
  "tauri-plugin-icon",
@@ -6889,22 +6819,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hooks"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "serde",
- "serde_json",
- "shell-words",
- "shellexpand",
- "specta",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "windows 0.62.2",
-]
-
-[[package]]
 name = "host"
 version = "0.1.0"
 dependencies = [
@@ -8496,7 +8410,6 @@ dependencies = [
  "audio-chunking",
  "audio-utils",
  "bytes",
- "denoise",
  "fs-format",
  "futures-util",
  "host",
@@ -8517,6 +8430,7 @@ dependencies = [
  "tracing",
  "transcribe-core",
  "transcribe-soniqo",
+ "whisper-local-model",
 ]
 
 [[package]]
@@ -8562,28 +8476,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "local-llm-core"
-version = "0.1.0"
-dependencies = [
- "dirs 6.0.0",
- "file",
- "gguf",
- "lmstudio",
- "local-model",
- "serde",
- "specta",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
 name = "local-model"
 version = "0.1.0"
 dependencies = [
- "am",
- "file",
  "model-downloader",
  "serde",
+ "serde_json",
  "specta",
  "transcribe-soniqo",
  "whisper-local-model",
@@ -9716,16 +9614,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "objc2-contacts"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b034b578389f89a85c055eacc8d8b368be5f04a6c1b07f672bf3aec21d0ef621"
-dependencies = [
- "objc2",
- "objc2-foundation",
-]
-
-[[package]]
 name = "objc2-core-audio"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9804,10 +9692,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca347214e24bc973fc025fd0d36ebb179ff30536ed1f80252706db19ee452009"
 dependencies = [
- "block2",
- "dispatch2",
  "objc2",
- "objc2-contacts",
  "objc2-foundation",
 ]
 
@@ -9861,22 +9746,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
-name = "objc2-event-kit"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51bc9ad7325642172110196bacd6af64027ec5549ded7fc6589ea03e0f792bf8"
-dependencies = [
- "bitflags 2.11.1",
- "block2",
- "objc2",
- "objc2-app-kit",
- "objc2-core-graphics",
- "objc2-core-location",
- "objc2-foundation",
- "objc2-map-kit",
-]
-
-[[package]]
 name = "objc2-exception-helper"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9928,16 +9797,6 @@ dependencies = [
  "bitflags 2.11.1",
  "objc2",
  "objc2-core-foundation",
-]
-
-[[package]]
-name = "objc2-map-kit"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "579edede1c244621cd8229b70ea6e20e6ec3bab5a74afdfd494b446b681e1e64"
-dependencies = [
- "objc2",
- "objc2-foundation",
 ]
 
 [[package]]
@@ -10382,7 +10241,6 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 name = "owhisper-client"
 version = "0.0.1"
 dependencies = [
- "am",
  "audio-utils",
  "backon",
  "base64 0.22.1",
@@ -10409,6 +10267,7 @@ dependencies = [
  "tracing-subscriber",
  "transcribe-soniqo",
  "url",
+ "whisper-local-model",
  "ws-client",
 ]
 
@@ -11110,18 +10969,6 @@ dependencies = [
  "tokio",
  "url",
 ]
-
-[[package]]
-name = "port-killer"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f8f8abaf06419461fc718f5a0929c18d06dd825f26c066e376f365f2d8c2ec2"
-
-[[package]]
-name = "port_check"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c2749dcd0984ec1be3c01001bb1d83623a58c3c0049a99b9afec61464fa98e7"
 
 [[package]]
 name = "portable-atomic"
@@ -13726,7 +13573,6 @@ version = "2.0.0-rc.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab7f01e9310a820edd31c80fde3cae445295adde21a3f9416517d7d65015b971"
 dependencies = [
- "chrono",
  "paste",
  "serde_json",
  "specta-macros",
@@ -15018,23 +14864,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-hooks"
-version = "0.1.0"
-dependencies = [
- "hooks",
- "serde",
- "serde_json",
- "specta",
- "specta-typescript",
- "tauri",
- "tauri-plugin",
- "tauri-plugin-settings",
- "tauri-specta",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
 name = "tauri-plugin-http"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15103,17 +14932,14 @@ dependencies = [
 name = "tauri-plugin-local-stt"
 version = "0.1.0"
 dependencies = [
- "am",
  "audio-utils",
  "axum",
  "axum-extra",
- "backon",
  "data",
  "dirs 6.0.0",
  "download-interface",
  "file",
  "futures-util",
- "host",
  "json-patch 4.1.0",
  "language",
  "local-model",
@@ -15121,8 +14947,6 @@ dependencies = [
  "model-downloader",
  "owhisper-client",
  "owhisper-interface",
- "port-killer",
- "port_check",
  "ractor",
  "reqwest 0.13.2",
  "rodio",
@@ -15136,8 +14960,6 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tauri-plugin-settings",
- "tauri-plugin-shell",
- "tauri-plugin-sidecar2",
  "tauri-plugin-windows",
  "tauri-specta",
  "thiserror 2.0.18",
@@ -15278,12 +15100,8 @@ dependencies = [
  "audio",
  "block2",
  "bundle",
- "futures-util",
  "macos-accessibility-client",
- "objc2",
  "objc2-av-foundation",
- "objc2-event-kit",
- "objc2-foundation",
  "serde",
  "specta",
  "specta-typescript",
@@ -15371,6 +15189,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -15508,7 +15327,6 @@ dependencies = [
 name = "tauri-plugin-todo"
 version = "0.1.0"
 dependencies = [
- "apple-todo",
  "github-issues",
  "hypr-http-utils",
  "reqwest 0.13.2",
@@ -15560,7 +15378,6 @@ dependencies = [
  "storage",
  "tauri",
  "tauri-plugin",
- "tauri-plugin-hooks",
  "tauri-plugin-hypr-tray",
  "tauri-plugin-local-stt",
  "tauri-plugin-settings",
@@ -15870,13 +15687,6 @@ dependencies = [
  "specta",
  "strum 0.28.0",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "template-cli"
-version = "0.1.0"
-dependencies = [
- "askama 0.15.6",
 ]
 
 [[package]]
@@ -16740,7 +16550,6 @@ dependencies = [
  "dirs 6.0.0",
  "futures-util",
  "model-manager",
- "owhisper-client",
  "owhisper-interface",
  "pyannote-local",
  "reqwest 0.13.2",
@@ -16754,6 +16563,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "tracing",
+ "tracing-subscriber",
  "transcribe-core",
  "whisper",
  "whisper-local",
@@ -18540,7 +18350,6 @@ dependencies = [
 [[package]]
 name = "whisper-rs"
 version = "0.16.0"
-source = "git+https://codeberg.org/tazz4843/whisper-rs?rev=129b982#129b9826dc8c385f6a28198bdc4f8a275385fe85"
 dependencies = [
  "libc",
  "tracing",
@@ -18550,7 +18359,6 @@ dependencies = [
 [[package]]
 name = "whisper-rs-sys"
 version = "0.15.0"
-source = "git+https://codeberg.org/tazz4843/whisper-rs?rev=129b982#129b9826dc8c385f6a28198bdc4f8a275385fe85"
 dependencies = [
  "bindgen 0.72.1",
  "cfg-if",

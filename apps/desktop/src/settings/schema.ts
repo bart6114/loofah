@@ -59,16 +59,6 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "theme"],
     default: "system" as string,
   },
-  save_recordings: {
-    type: "boolean",
-    path: ["general", "save_recordings"],
-    default: true as boolean,
-  },
-  audio_retention: {
-    type: "string",
-    path: ["general", "audio_retention"],
-    default: "forever" as string,
-  },
   auto_accept_related_tags: {
     type: "boolean",
     path: ["general", "auto_accept_related_tags"],
@@ -107,14 +97,13 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "sidebar_expanded_tags"],
     default: "[]" as string,
   },
+  meeting_languages: {
+    type: "string",
+    path: ["language", "meeting_languages"],
+  },
   spoken_languages: {
     type: "string",
     path: ["language", "spoken_languages"],
-    default: "[]" as string,
-  },
-  personalization_dictionary_terms: {
-    type: "string",
-    path: ["personalization", "dictionary_terms"],
     default: "[]" as string,
   },
   custom_summary_instructions: {
@@ -145,7 +134,7 @@ export const SETTING_DEFINITIONS = {
   mic_active_threshold: {
     type: "number",
     path: ["notification", "mic_active_threshold"],
-    default: 15 as number,
+    default: 5 as number,
   },
   current_llm_provider: {
     type: "string",
@@ -163,13 +152,14 @@ export const SETTING_DEFINITIONS = {
     type: "string",
     path: ["ai", "current_stt_model"],
   },
+  transcription_timing: {
+    type: "string",
+    path: ["ai", "transcription_timing"],
+    default: "live" as string,
+  },
   timezone: {
     type: "string",
     path: ["general", "timezone"],
-  },
-  selected_template_id: {
-    type: "string",
-    path: ["general", "selected_template_id"],
   },
 } as const;
 

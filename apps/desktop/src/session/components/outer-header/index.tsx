@@ -172,7 +172,7 @@ function HeaderMeetingControl({
         className={cn([
           "border-border bg-card text-foreground flex h-7 max-w-56 min-w-0 shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-0",
           "text-sm font-medium",
-          "hover:bg-accent transition-colors",
+          "hover:bg-accent transition-none",
           disabled && "hover:bg-card cursor-default opacity-60",
         ])}
       >

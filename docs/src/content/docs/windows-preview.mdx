@@ -21,7 +21,7 @@ If no microphone is connected, you can skip permissions during onboarding and us
 
 Recording follows changes to the default microphone and playback device. If a device disconnects, Loofah retries it while preserving the other audio source. It reopens both sources after the PC wakes from sleep. A recovery message appears while a source is unavailable.
 
-Download speech models in **Settings → Intelligence** before going offline:
+Download speech models in **Settings → Transcription** before going offline:
 
 - The streaming Parakeet model provides live English transcription.
 - The batch Parakeet model transcribes recordings and imports in the supported [25 European languages](/languages).
@@ -51,9 +51,7 @@ App updates refresh an opted-in CLI. Uninstalling the app removes the managed CL
 
 Keyboard shortcuts use Ctrl in place of Command. Standard window buttons support minimize, maximize, and Snap. The floating recording bar and live captions can be moved between displays; use the bar's gear button to adjust appearance and caption position.
 
-Meeting reminders use Windows notifications. Enable notifications for Loofah in Windows Settings and check Do Not Disturb if reminders are missing. Apple Reminders integration is unavailable on Windows; vault-backed tasks and GitHub tasks remain available.
-
-Hooks can run executables or `.ps1` files. Quote paths containing spaces. PowerShell hooks respect your account's execution policy, receive no interactive input, and have a 15-second timeout, including interpreter startup. Arguments are passed directly without shell interpolation; use an explicit script for pipelines or redirection.
+Meeting reminders use Windows notifications. Enable notifications for Loofah in Windows Settings and check Do Not Disturb if reminders are missing. Vault-backed tasks and GitHub tasks remain available.
 
 ## Report a preview issue
 

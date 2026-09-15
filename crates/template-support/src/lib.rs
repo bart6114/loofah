@@ -63,10 +63,6 @@ struct LogAnalysisComment<'a> {
     tail: &'a str,
 }
 
-#[derive(askama::Template, Default)]
-#[template(path = "support_chat.md.jinja", escape = "none")]
-struct SupportChatPrompt;
-
 #[derive(askama::Template)]
 #[template(path = "support_context.md.jinja", escape = "none")]
 struct SupportContextBlock<'a> {
@@ -150,8 +146,4 @@ pub fn render(t: SupportTemplate) -> Result<String, askama::Error> {
             tail: &t.tail,
         }),
     }
-}
-
-pub fn render_support_chat() -> Result<String, askama::Error> {
-    askama::Template::render(&SupportChatPrompt)
 }

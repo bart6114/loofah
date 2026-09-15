@@ -9,6 +9,7 @@ describe("llm providers", () => {
       "ollama",
       "openrouter",
       "openai",
+      "chatgpt_subscription",
       "cloudflare_workers_ai",
       "anthropic",
       "mistral",

@@ -12,7 +12,7 @@ const EMPTY_SESSIONS: Record<string, TimelineSessionRow> = {};
 
 export function useTimelineSessionsTable(): TimelineSessionsTable {
   const { data: timelineSessionsTable = EMPTY_SESSIONS } = useIndexQuery({
-    entity: "sessions",
+    entity: "session_headers",
     queryKey: ["timeline-sessions"],
     queryFn: async () => {
       const result = await commands.sessionListHeaders();

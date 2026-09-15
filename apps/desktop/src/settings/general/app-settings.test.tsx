@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppSettingsView } from "./app-settings";
+import { AppSettingsView, RecordingSettingsView } from "./app-settings";
 
 const { platform } = vi.hoisted(() => ({ platform: vi.fn(() => "macos") }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform }));
@@ -13,17 +13,14 @@ function setting(value = true) {
   };
 }
 
-function renderAppSettings({ floatingBar = true } = {}) {
+function renderAppSettings() {
   return {
     ...render(
       <AppSettingsView
         autostart={setting()}
-        autoStopMeetings={setting()}
-        floatingBar={setting(floatingBar)}
         autoAcceptRelatedTags={setting(false)}
         showAppInDock={setting()}
         showTrayIcon={setting()}
-        audioRetention={{ value: "forever", onChange: vi.fn() }}
       />,
     ),
   };
@@ -42,9 +39,14 @@ describe("AppSettingsView", () => {
   });
 
   it("keeps the floating bar setting available", () => {
-    renderAppSettings({ floatingBar: false });
+    render(
+      <RecordingSettingsView
+        autoStopMeetings={setting()}
+        floatingBar={setting(false)}
+      />,
+    );
 
-    expect(screen.getByText("Show floating bar")).toBeTruthy();
+    expect(screen.getByText("Show floating recording controls")).toBeTruthy();
   });
 
   it("does not expose a usage data setting", () => {

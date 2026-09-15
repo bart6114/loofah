@@ -2,8 +2,6 @@ use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 
-use hypr_storage::ObsidianVault;
-
 pub struct Settings<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
     manager: &'a M,
     _runtime: std::marker::PhantomData<fn() -> R>,
@@ -44,10 +42,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
             &settings_base,
             &settings_base,
         ))
-    }
-
-    pub fn obsidian_vaults(&self) -> Result<Vec<ObsidianVault>, crate::Error> {
-        hypr_storage::obsidian::list_vaults().map_err(Into::into)
     }
 
     pub fn is_empty_or_missing_dir(&self, path: Utf8PathBuf) -> Result<bool, crate::Error> {

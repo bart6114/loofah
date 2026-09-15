@@ -8,6 +8,7 @@ import {
   persistGeneratedTitle,
 } from "./title-success";
 
+import { summaryNoteText } from "~/services/enhancer/source";
 import {
   constrainSummaryLength,
   countNormalizedCharacters,
@@ -27,7 +28,10 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   getTaskState,
   signal,
 }) => {
-  const lengthPolicy = getSummaryLengthPolicy(transformedArgs.transcripts);
+  const lengthPolicy = getSummaryLengthPolicy(
+    transformedArgs.transcripts,
+    summaryNoteText(transformedArgs.postMeetingMemo),
+  );
   const constrainedText = constrainSummaryLength(text, lengthPolicy);
   if (!constrainedText) {
     return;

@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use owhisper_client::{
-    AdapterKind, AquaVoiceAdapter, ArgmaxAdapter, AssemblyAIAdapter, BatchSttAdapter,
-    CartesiaAdapter, DeepgramAdapter, ElevenLabsAdapter, FireworksAdapter, FmtrAdapter,
-    GladiaAdapter, MistralAdapter, OpenAIAdapter, PyannoteAdapter, SonioxAdapter,
+    AdapterKind, AquaVoiceAdapter, AssemblyAIAdapter, BatchSttAdapter, CartesiaAdapter,
+    DeepgramAdapter, ElevenLabsAdapter, FireworksAdapter, FmtrAdapter, GladiaAdapter,
+    MistralAdapter, OpenAIAdapter, PyannoteAdapter, SonioxAdapter,
 };
 use owhisper_interface::batch_stream::BatchStreamEvent;
 use tracing::Instrument;
@@ -56,7 +56,6 @@ pub(super) async fn run_direct_batch_for_adapter_kind(
     diarization: SharedDiarization,
 ) -> crate::Result<BatchRunOutput> {
     dispatch_batch!(adapter_kind, params, listen_params, diarization, {
-        Argmax => ArgmaxAdapter,
         Cartesia => CartesiaAdapter,
         Deepgram => DeepgramAdapter,
         Soniox => SonioxAdapter,

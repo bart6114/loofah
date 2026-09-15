@@ -1,6 +1,6 @@
 # CLI commands
 
-Use `--json` for agent-readable output.
+Use the CLI for both reading and writing, even when MCP is connected. Pass `--json` for agent-readable output. Start with `loof --version` and `loof --json doctor`; use `loof <command> --help` when you need to verify an option.
 
 (`meetings` is a compatibility alias for `sessions` and will be removed later.)
 
@@ -58,6 +58,12 @@ echo "Agenda" | loof --json sessions new --title "Weekly sync" --note - --author
 loof --json sessions new --title "Q1 review" --created-at 2024-03-05T14:00:00Z --started-at 2024-03-05T14:00:00Z --ended-at 2024-03-05T15:00:00Z --tag project-x --tag review --author claude-code
 ```
 
+When a specific skill produced the note, use `--skill NAME` to record it alongside `--author`. This optional flag is supported by both `sessions new` and `import` when creating a meeting, requires `--author`, and cannot be used with `import --into`:
+
+```bash
+loof --json sessions new --title "Weekly sync" --note notes.md --author claude-code --skill loofah
+```
+
 Edit an existing meeting's note (`--set` replaces, `--append` adds after a separating newline; exactly one of the two, fails if the meeting does not exist):
 
 ```bash
@@ -76,12 +82,12 @@ Import an audio file as a new meeting (prints the new meeting id; the audio is c
 
 ```bash
 loof --json import recording.m4a --title "Weekly sync" --author claude-code
-loof --json import recording.m4a --transcribe
-loof --json import recording.m4a --created-at 2024-03-05T14:00:00Z --started-at 2024-03-05T14:00:00Z
+loof --json import recording.m4a --transcribe --author claude-code --skill loofah
+loof --json import recording.m4a --created-at 2024-03-05T14:00:00Z --started-at 2024-03-05T14:00:00Z --author claude-code
 loof --json import recording.m4a --into MEETING_ID --transcribe
 ```
 
-Transcribe a meeting's audio with the on-device model configured in the desktop app (replaces the meeting's transcript; requires the model to be downloaded via the desktop app first; progress goes to stderr; honors the app's audio retention setting — with retention "none", the recording is deleted once the transcript is saved):
+Transcribe a meeting's audio with the on-device model configured in the desktop app (replaces the meeting's transcript; requires the model to be downloaded via the desktop app first; progress goes to stderr; keeps the recording after transcription):
 
 ```bash
 loof --json transcribe MEETING_ID

@@ -4,16 +4,33 @@ import {
   SettingsApp,
   SettingsNotifications,
   SettingsPermissions,
+  SettingsStorage,
 } from "./general";
-import { SettingsTodo } from "./todo";
 
-import { LLM } from "~/settings/ai/llm";
-import { STT } from "~/settings/ai/stt";
-import { SettingsDevelopers } from "~/settings/developers";
-import { SettingsDictionary } from "~/settings/dictionary";
 import { SettingsHydrationBoundary } from "~/settings/hydration-boundary";
+import {
+  deferredView,
+  DeferredView,
+  usePreloadViews,
+} from "~/shared/deferred-view";
 import { StandardContentWrapper } from "~/shared/main";
 import { type Tab } from "~/store/zustand/tabs";
+
+const llm = deferredView(() =>
+  import("./ai/llm").then((m) => ({ default: m.LLM })),
+);
+const prompt = deferredView(() =>
+  import("./ai/llm/summary-prompt").then((m) => ({
+    default: m.SummaryPromptSettings,
+  })),
+);
+const stt = deferredView(() =>
+  import("./ai/stt").then((m) => ({ default: m.STT })),
+);
+const developers = deferredView(() =>
+  import("./developers").then((m) => ({ default: m.SettingsDevelopers })),
+);
+const preloaders = [stt.preload, llm.preload, developers.preload];
 
 export function TabContentSettings({
   tab,
@@ -30,32 +47,29 @@ export function TabContentSettings({
 }
 
 function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
+  usePreloadViews(preloaders);
   const requestedTab = tab.state.tab as string | undefined;
   const activeTab =
-    requestedTab === "data"
-      ? "app"
-      : requestedTab === "personalization"
-        ? "dictionary"
-        : (tab.state.tab ?? "app");
+    requestedTab === "data" ? "storage" : (tab.state.tab ?? "app");
 
   const renderContent = () => {
     switch (activeTab) {
       case "app":
         return <SettingsApp />;
+      case "storage":
+        return <SettingsStorage />;
       case "notifications":
         return <SettingsNotifications />;
       case "permissions":
         return <SettingsPermissions />;
       case "developers":
-        return <SettingsDevelopers />;
-      case "dictionary":
-        return <SettingsDictionary />;
+        return <developers.View />;
       case "transcription":
-        return <STT />;
+        return <stt.View />;
+      case "summary-prompt":
+        return <prompt.View initiallyOpen />;
       case "intelligence":
-        return <LLM />;
-      case "todo":
-        return <SettingsTodo />;
+        return <llm.View />;
       default:
         return <SettingsApp />;
     }
@@ -72,7 +86,7 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
             "scroll-fade-y scrollbar-hide h-full w-full flex-1 overflow-y-auto p-6",
           ])}
         >
-          {renderContent()}
+          <DeferredView viewKey={activeTab}>{renderContent()}</DeferredView>
         </div>
       </div>
     </div>

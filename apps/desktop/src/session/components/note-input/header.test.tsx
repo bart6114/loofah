@@ -1,10 +1,16 @@
+vi.mock("~/session/hooks/useSummarySource", () => ({
+  useSummarySource: () => true,
+}));
+vi.mock("~/ai/task-window-sync", () => ({
+  isMainAITaskHostWindow: () => hoisted.isMainWebviewWindow,
+  requestMainEnhance: hoisted.requestMainEnhance,
+}));
 import {
   cleanup,
   fireEvent,
   render,
   renderHook,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +27,7 @@ type CapturedMenuItem =
 
 const hoisted = vi.hoisted(() => ({
   enhance: vi.fn(),
+  requestMainEnhance: vi.fn(),
   regenerateTranscript: vi.fn(),
   startListening: vi.fn(),
   stopListening: vi.fn(),
@@ -179,7 +186,7 @@ vi.mock("~/session/queries", () => ({
   useEnhancedNote: () => ({
     content: "",
     templateId: "template-1",
-    title: "Summary",
+    title: "Customer Call",
   }),
   useEnhancedNoteRecords: () => [{ id: "note-1" }],
   useSession: () => ({ raw_md: "" }),
@@ -219,10 +226,6 @@ vi.mock("~/shared/hooks/useNativeContextMenu", () => ({
     hoisted.nativeContextMenus.push(items);
     return vi.fn();
   },
-}));
-
-vi.mock("~/shared/ui/resource-list", () => ({
-  useWebResources: () => ({ data: [], isLoading: false }),
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
@@ -275,32 +278,16 @@ vi.mock("~/stt/window-control", () => ({
   requestMainListenerControl: hoisted.requestMainListenerControl,
 }));
 
-vi.mock("~/templates", () => ({
-  DEFAULT_TEMPLATE_ICON: {
-    type: "icon",
-    value: "notebook-tabs",
-    color: "#9ca3af",
-  },
-  TemplateIconGlyph: ({ icon }: { icon?: { type: string; value: string } }) => (
-    <span aria-hidden data-testid="template-icon">
-      {icon?.value}
-    </span>
-  ),
-  filterWebTemplatesAgainstUserTemplates: () => [],
-  getTemplateCreatorLabel: () => "You",
-  parseWebTemplates: () => [],
-  useCreateTemplate: () => vi.fn(),
-  useOpenTemplatesTab: () => vi.fn(),
-  useTemplateCreatorName: () => "You",
-  useUserTemplate: () => ({ data: { title: hoisted.activeTemplateTitle } }),
-  useUserTemplates: () => hoisted.userTemplates,
-}));
-
-import { Header, useEditorTabs } from "./header";
+import { createEditorTabs, Header, useEditorTabs } from "./header";
 
 describe("Header", () => {
   beforeEach(() => {
     hoisted.enhance.mockReset();
+    hoisted.requestMainEnhance.mockReset();
+    hoisted.requestMainEnhance.mockResolvedValue({
+      type: "started",
+      noteId: "note-1",
+    });
     hoisted.regenerateTranscript.mockReset();
     hoisted.startListening.mockReset();
     hoisted.stopListening.mockReset();
@@ -332,7 +319,7 @@ describe("Header", () => {
     cleanup();
   });
 
-  it("renders icon views and focuses summary before opening the template picker", () => {
+  it("renders saved summary titles and opens the summary menu", () => {
     const editorTabs: EditorView[] = [
       { type: "enhanced", id: "note-1" },
       { type: "raw" },
@@ -384,9 +371,7 @@ describe("Header", () => {
     expect(transcriptTab.className).not.toContain("min-w-10");
     expect(summaryTab.textContent).toBe("Customer Call");
     expect(transcriptTab.textContent).toBe("Transcript");
-    expect(summaryTab.getAttribute("title")).toBe(
-      "Customer Call was used to generate this summary.",
-    );
+    expect(summaryTab.getAttribute("title")).toBeNull();
 
     fireEvent.click(summaryTab);
 
@@ -415,7 +400,7 @@ describe("Header", () => {
 
     fireEvent.click(activeSummaryTab);
 
-    expect(screen.getByPlaceholderText("Search templates...")).not.toBeNull();
+    expect(screen.queryByPlaceholderText("Search templates...")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Note" }));
 
@@ -654,89 +639,6 @@ describe("Header", () => {
         "text" in item ? item.text : "separator",
       ),
     ).toEqual(["Copy", "Delete recording"]);
-  });
-
-  it("replaces the current enhanced note when changing templates", async () => {
-    hoisted.userTemplates = [
-      {
-        id: "template-2",
-        title: "Decision Log",
-        description: "",
-        pinned: false,
-        sections: [],
-      },
-    ];
-    hoisted.enhance.mockResolvedValue({
-      type: "started",
-      noteId: "note-1",
-    });
-    const editorTabs: EditorView[] = [
-      { type: "enhanced", id: "note-1" },
-      { type: "raw" },
-    ];
-    const handleTabChange = vi.fn();
-
-    render(
-      <Header
-        sessionId="session-1"
-        editorTabs={editorTabs}
-        currentTab={{ type: "enhanced", id: "note-1" }}
-        handleTabChange={handleTabChange}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Customer Call" }));
-    fireEvent.click(screen.getByRole("button", { name: /Decision Log/ }));
-
-    expect(hoisted.enhance).toHaveBeenCalledWith("session-1", {
-      templateId: "template-2",
-      targetNoteId: "note-1",
-      templateTitle: "Decision Log",
-    });
-    await waitFor(() =>
-      expect(handleTabChange).toHaveBeenCalledWith({
-        type: "enhanced",
-        id: "note-1",
-      }),
-    );
-  });
-
-  it("replaces the current enhanced note with auto generation", () => {
-    hoisted.userTemplates = [
-      {
-        id: "template-2",
-        title: "Decision Log",
-        description: "",
-        pinned: false,
-        sections: [],
-      },
-    ];
-    hoisted.enhance.mockResolvedValue({
-      type: "started",
-      noteId: "note-1",
-    });
-    const editorTabs: EditorView[] = [
-      { type: "enhanced", id: "note-1" },
-      { type: "raw" },
-    ];
-
-    render(
-      <Header
-        sessionId="session-1"
-        editorTabs={editorTabs}
-        currentTab={{ type: "enhanced", id: "note-1" }}
-        handleTabChange={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Customer Call" }));
-    fireEvent.click(screen.getByRole("button", { name: "Auto" }));
-
-    expect(hoisted.enhance).toHaveBeenCalledWith("session-1", {
-      templateId: null,
-      targetNoteId: "note-1",
-      templateTitle: undefined,
-    });
   });
 
   it("shows a spinner in the active enhanced tab while generating", () => {
@@ -1137,3 +1039,30 @@ function isMenuItem(
 ): item is Extract<CapturedMenuItem, { id: string }> {
   return "id" in item;
 }
+
+describe("always-accessible Summary tab", () => {
+  beforeEach(() => {
+    cleanup();
+    hoisted.enhance.mockClear();
+  });
+  afterEach(cleanup);
+  it.each([false, true])(
+    "shows Summary without documents; transcript visible: %s",
+    (canShowTranscript) => {
+      const tabs = createEditorTabs({ enhancedNoteIds: [], canShowTranscript });
+      expect(tabs[0]).toEqual({ type: "summary" });
+      const onChange = vi.fn();
+      render(
+        <Header
+          sessionId="session-1"
+          editorTabs={tabs}
+          currentTab={{ type: "raw" }}
+          handleTabChange={onChange}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Summary" }));
+      expect(onChange).toHaveBeenCalledWith({ type: "summary" });
+      expect(hoisted.enhance).not.toHaveBeenCalled();
+    },
+  );
+});

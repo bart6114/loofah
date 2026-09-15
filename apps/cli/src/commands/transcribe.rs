@@ -65,7 +65,7 @@ pub(crate) async fn transcribe_session(
     }
 
     // Resolve the session's physical directory once: the basename may be a
-    // readable name rather than the id, so audio lookup and retention deletion
+    // readable name rather than the id, so audio lookup
     // must go through the store's catalog, never `sessions/<id>` directly.
     let session_dir = vault.join(
         store
@@ -126,33 +126,7 @@ pub(crate) async fn transcribe_session(
         .await
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
 
-    // Mirror the desktop's post-batch retention step (useRunBatch →
-    // deleteProcessedAudioForRetention): with audio_retention "none", the
-    // recording is deleted as soon as a transcript with words is persisted.
-    // A transcript exists with words here — the empty case errored above.
-    if config.audio_retention.as_deref() == Some("none") {
-        delete_session_audio(&session_dir);
-    }
-
     Ok(outcome)
-}
-
-/// Deletes the session's recording files (the flat `audio.*` names the readers
-/// know), like `fs-sync-core`'s `audio::delete`. Failures only warn: the
-/// transcript is already persisted, so the command's result stands — matching
-/// the desktop, which logs and moves on.
-fn delete_session_audio(session_dir: &Path) {
-    for name in AUDIO_FILE_NAMES {
-        let path = session_dir.join(name);
-        if let Err(error) = std::fs::remove_file(&path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            eprintln!(
-                "warning: audio retention is \"none\", but deleting {} failed: {error}",
-                path.display()
-            );
-        }
-    }
 }
 
 /// The flat `config.json` keys the CLI needs; deliberately not the settings
@@ -163,8 +137,6 @@ struct VaultConfig {
     current_stt_provider: Option<String>,
     #[serde(default)]
     current_stt_model: Option<String>,
-    #[serde(default)]
-    audio_retention: Option<String>,
 }
 
 fn read_vault_config(vault: &Path) -> Result<VaultConfig> {
@@ -191,9 +163,7 @@ fn read_vault_config(vault: &Path) -> Result<VaultConfig> {
 }
 
 /// Mirror of the desktop's `getBatchProvider` (useRunBatch.ts): provider must
-/// be "fmtr", and only `soniqo-*` models route to the in-process CoreML engine
-/// the CLI supports. `am-*` and other local models need the desktop's model
-/// servers, which the CLI does not run.
+/// be "fmtr", and a supported Soniqo model routes to the in-process CoreML engine.
 fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
     let provider = config
         .current_stt_provider
@@ -214,7 +184,9 @@ fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
     if provider != "fmtr" {
         return Err(Error::operation(
             ACTION,
-            format!("speech-to-text provider '{provider}' is not supported by the CLI yet"),
+            format!(
+                "speech-to-text provider '{provider}' is not supported by the CLI; open the desktop app to update Settings → Transcription"
+            ),
         ));
     }
 
@@ -225,7 +197,7 @@ fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
         return Err(Error::operation(
             ACTION,
             format!(
-                "speech-to-text model '{model}' is not supported by the CLI yet; select an on-device Parakeet model"
+                "speech-to-text model '{model}' is not supported by the CLI yet; open the desktop app to select a supported on-device Parakeet model under Settings → Transcription"
             ),
         ));
     }
@@ -247,11 +219,6 @@ fn ensure_soniqo_model_ready(model: &str) -> Result<()> {
     // mapping `run_soniqo_batch` applies), so check that model's cache.
     let batch_model = parsed.batch_model();
 
-    // Platform gating rides on `is_model_downloaded`'s own
-    // `ensure_supported_platform`: its errors distinguish a wrong
-    // OS/architecture from a model needing macOS 15, which a hand-rolled
-    // `is_available_on_current_platform` check would flatten into one
-    // misleading "Apple Silicon" message.
     let downloaded = hypr_transcribe_soniqo::is_model_downloaded(batch_model)
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
     if !downloaded {
@@ -300,7 +267,6 @@ mod tests {
         VaultConfig {
             current_stt_provider: provider.map(str::to_string),
             current_stt_model: model.map(str::to_string),
-            audio_retention: None,
         }
     }
 
@@ -332,7 +298,15 @@ mod tests {
 
     #[test]
     fn non_soniqo_models_are_rejected_as_unsupported() {
-        for model in ["am-parakeet-v3", "QuantizedSmallEn", "whisper-large-v3"] {
+        for model in [
+            "am-parakeet-v3",
+            "soniqo-qwen3-small",
+            "soniqo-qwen3-large",
+            "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+            "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+            "QuantizedSmallEn",
+            "whisper-large-v3",
+        ] {
             let error = resolve_soniqo_model(&config(Some("fmtr"), Some(model))).unwrap_err();
             assert!(error.to_string().contains(model));
             assert!(error.to_string().contains("not supported by the CLI"));
@@ -352,6 +326,55 @@ mod tests {
         assert_eq!(model, "soniqo-parakeet-streaming");
     }
 
+    #[tokio::test]
+    async fn historical_transcripts_keep_provenance_and_speakers_when_read_and_exported() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_dir = dir.path().join("sessions/s1");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let path = session_dir.join("transcript.json");
+        let original = serde_json::json!({"transcripts": [{
+            "id": "t1", "session_id": "s1", "words": [{
+                "text": "Historical words", "start_ms": 0.0, "end_ms": 1000.0, "channel": 0.0,
+                "speaker": "Alice", "metadata": {"model": "am-parakeet-v3", "arch": "ArgmaxSDK"}
+            }]
+        }]})
+        .to_string();
+        std::fs::write(&path, &original).unwrap();
+        let file = hypr_vault_read::transcript::read_transcript_json(dir.path(), "s1").unwrap();
+        let word = &file.transcripts[0].words[0];
+        assert_eq!(word.metadata.as_ref().unwrap()["model"], "am-parakeet-v3");
+        std::fs::write(
+            session_dir.join("_meta.json"),
+            r#"{"id":"s1","title":"Historical meeting","created_at":"2026-03-20T00:00:00Z","tags":[]}"#,
+        ).unwrap();
+        let exported = hypr_agent_access::get_meeting_export(dir.path(), "s1".into())
+            .await
+            .unwrap();
+        let exported = serde_json::to_value(exported).unwrap();
+        let exported_word = &exported["transcripts"][0]["words"][0];
+        assert_eq!(exported_word["text"], "Historical words");
+        assert_eq!(exported_word["speaker"], "Alice");
+        assert_eq!(exported_word["metadata"]["model"], "am-parakeet-v3");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
+
+    #[test]
+    fn retired_vault_selection_is_read_only_and_actionable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        for (provider, model) in [
+            ("am", "am-parakeet-v3"),
+            ("fmtr", "soniqo-qwen3-small"),
+            ("fmtr", "aufklarer/Qwen3-ASR-1.7B-MLX-8bit"),
+        ] {
+            let original = serde_json::json!({"current_stt_provider": provider, "current_stt_model": model, "future": 42}).to_string();
+            std::fs::write(&path, &original).unwrap();
+            let error = resolve_soniqo_model(&read_vault_config(dir.path()).unwrap()).unwrap_err();
+            assert!(error.to_string().contains("open the desktop app"));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        }
+    }
+
     #[test]
     fn vault_config_reads_the_flat_keys_and_defaults_when_absent() {
         let dir = tempfile::tempdir().unwrap();
@@ -360,7 +383,6 @@ mod tests {
         let config = read_vault_config(dir.path()).unwrap();
         assert_eq!(config.current_stt_provider, None);
         assert_eq!(config.current_stt_model, None);
-        assert_eq!(config.audio_retention, None);
 
         std::fs::write(
             dir.path().join("config.json"),
@@ -380,50 +402,10 @@ mod tests {
             config.current_stt_model.as_deref(),
             Some("soniqo-parakeet-batch")
         );
-        assert_eq!(config.audio_retention.as_deref(), Some("none"));
 
         std::fs::write(dir.path().join("config.json"), "{ not json").unwrap();
         let error = read_vault_config(dir.path()).unwrap_err();
         assert_eq!(error.code(), "operation_failed");
-    }
-
-    #[test]
-    fn delete_session_audio_clears_recordings_and_tolerates_absence() {
-        let dir = tempfile::tempdir().unwrap();
-
-        // A session without audio (or without a directory at all) is fine.
-        delete_session_audio(&dir.path().join("sessions").join("missing"));
-
-        let session_dir = dir.path().join("sessions").join("s1");
-        std::fs::create_dir_all(&session_dir).unwrap();
-        std::fs::write(session_dir.join("audio.mp3"), b"mp3").unwrap();
-        std::fs::write(session_dir.join("audio.wav"), b"wav").unwrap();
-        std::fs::write(session_dir.join("transcript.json"), b"{}").unwrap();
-
-        delete_session_audio(&session_dir);
-
-        assert!(!session_dir.join("audio.mp3").exists());
-        assert!(!session_dir.join("audio.wav").exists());
-        // Only recordings go; the transcript that replaced them stays.
-        assert!(session_dir.join("transcript.json").exists());
-    }
-
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    #[test]
-    fn macos_15_gated_models_report_the_version_requirement_not_the_arch() {
-        // Qwen3 models run only on macOS 15+; on an Apple Silicon Mac the
-        // failure must name that requirement, not claim the machine itself
-        // is unsupported.
-        let error = ensure_soniqo_model_ready("soniqo-qwen3-small").unwrap_err();
-        let message = error.to_string();
-        assert!(
-            message.contains("requires macOS 15"),
-            "unexpected message: {message}"
-        );
-        assert!(
-            !message.contains("Apple Silicon"),
-            "unexpected message: {message}"
-        );
     }
 
     #[test]

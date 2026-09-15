@@ -127,9 +127,11 @@ export const SegmentRenderer = memo(
               <span
                 key={line.words[0]?.id ?? `line-${lineIdx}`}
                 data-line-current={isCurrentLine ? "true" : undefined}
+                data-line-start={audioExists ? lineStartMs : undefined}
+                data-line-end={audioExists ? lineEndMs : undefined}
                 className={cn([
                   "-mx-0.5 rounded-xs px-0.5",
-                  isCurrentLine && "bg-brand/10 dark:bg-brand/20",
+                  "data-[line-current=true]:bg-brand/10 dark:data-[line-current=true]:bg-brand/20",
                 ])}
               >
                 {lineIdx > 0 ? " " : null}

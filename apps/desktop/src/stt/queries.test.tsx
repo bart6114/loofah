@@ -3,6 +3,9 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SegmentKeyUtils } from "./live-segment";
+
+import { DEFAULT_USER_ID } from "~/shared/utils";
 import type { TranscriptWithData } from "~/types/tauri.gen";
 
 const mocks = vi.hoisted(() => ({
@@ -186,6 +189,42 @@ describe("transcript queries", () => {
     );
     expect(mocks.transcriptGet).toHaveBeenCalledWith("transcript-1");
   });
+
+  it.each(["", null, undefined])(
+    "labels live and saved microphone segments as You with owner %s",
+    async (userId) => {
+      mocks.transcriptGet.mockResolvedValue({
+        status: "ok",
+        data: {
+          id: "transcript-1",
+          user_id: userId,
+          session_id: "session-1",
+          started_at: 1000,
+          words: [],
+          speaker_hints: [],
+        },
+      });
+
+      const { result } = renderHook(
+        () => useTranscriptLabelContext("transcript-1"),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current).toBeDefined());
+      for (const speakerHumanId of [DEFAULT_USER_ID, null]) {
+        expect(
+          SegmentKeyUtils.renderLabel(
+            {
+              channel: "DirectMic",
+              speaker_index: null,
+              speaker_human_id: speakerHumanId,
+            },
+            result.current,
+          ),
+        ).toBe("You");
+      }
+    },
+  );
 
   it("resolves speaker labels straight from assigned hint values, not a lookup", async () => {
     mocks.transcriptGet.mockResolvedValue({

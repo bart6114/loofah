@@ -11,10 +11,6 @@ pub const AUTO_GENERATE_TAGS_SYSTEM: &str = include_str!("auto_generate_tags.sys
 #[allow(dead_code)]
 pub const AUTO_GENERATE_TAGS_USER: &str = include_str!("auto_generate_tags.user.jinja");
 #[allow(dead_code)]
-pub const CHAT_SYSTEM: &str = include_str!("chat.system.jinja");
-#[allow(dead_code)]
-pub const CHAT_USER: &str = include_str!("chat.user.jinja");
-#[allow(dead_code)]
 pub const POSTPROCESS_TRANSCRIPT_SYSTEM: &str = include_str!("postprocess_transcript.system.jinja");
 #[allow(dead_code)]
 pub const POSTPROCESS_TRANSCRIPT_USER: &str = include_str!("postprocess_transcript.user.jinja");

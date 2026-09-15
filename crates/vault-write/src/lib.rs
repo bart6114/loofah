@@ -12,6 +12,7 @@ pub mod enhanced;
 pub mod index;
 pub mod journal;
 pub mod layout_name;
+pub mod legacy_templates;
 pub mod locations;
 pub mod migrate;
 pub mod paths;
@@ -20,7 +21,6 @@ pub mod rebuild;
 pub mod stats;
 pub mod tags;
 pub mod tasks;
-pub mod templates;
 pub mod transcript;
 
 pub use attachments::SavedAttachment;
@@ -35,13 +35,14 @@ pub use rebuild::RebuildReport;
 pub use stats::{VaultStats, VaultYearStats};
 pub use tags::TagItem;
 pub use tasks::{TaskInput, TaskItem};
-pub use templates::{TemplateInput, TemplateItem};
 pub use transcript::TranscriptDelta;
 
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     vault_base: PathBuf,
     journal: Arc<journal::WriteJournal>,
+    rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
+    rebuild_generation: Arc<std::sync::atomic::AtomicU64>,
     write_lock: Arc<tokio::sync::Mutex<()>>, // single store-wide lock; can become per-path if contention matters
     // one live buffer per actively-recording session; guards the debounced-flush lifecycle
     live: Arc<tokio::sync::Mutex<HashMap<String, transcript::LiveTranscriptBuffer>>>,
@@ -99,7 +100,7 @@ impl StartupLayout {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StoreError {
     Io(String),
     Serialize(String),
@@ -136,6 +137,8 @@ impl SessionStore {
         Self {
             vault_base,
             journal: Arc::new(journal::WriteJournal::new()),
+            rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
+            rebuild_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),
             live: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             index: Arc::new(std::sync::RwLock::new(index::VaultIndex::default())),
@@ -268,7 +271,7 @@ pub(crate) type WriteGuard<'a> = tokio::sync::MutexGuard<'a, ()>;
 /// clients) edit it while the app runs, so an overwrite that destroys content the store
 /// never produced is unrecoverable data loss -- the same reasoning as
 /// `hypr_fs_sync_core::export::write_file_atomic`, applied at this store's primitive so
-/// every writer (note, meta, docs, transcript, tasks, templates) inherits it.
+/// every writer (note, meta, docs, transcript, tasks) inherits it.
 ///
 /// The write journal decides ownership: if the on-disk bytes still hash to what this store
 /// last wrote to this path, this is our own file and the overwrite is silent -- which is the
@@ -324,7 +327,7 @@ fn validate_relative_path(relative: &std::path::Path) -> Result<(), StoreError> 
 }
 
 /// A session id becomes a directory name directly under `sessions/`, so it must be a single
-/// safe path segment -- same rule (and rationale) as `templates::validate_template_id`. An
+/// safe path segment -- an
 /// empty id would make `sessions/<id>` resolve to `sessions/` itself, which
 /// `delete_session` would then move the user's entire vault of sessions to trash;
 /// an absolute id escapes the vault outright, because `Path::join` with an absolute path

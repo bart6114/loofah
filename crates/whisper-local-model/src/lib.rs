@@ -12,6 +12,9 @@
 )]
 
 pub enum WhisperModel {
+    #[serde(rename = "whisper-large-v3")]
+    #[strum(serialize = "whisper-large-v3")]
+    LargeV3,
     #[serde(rename = "QuantizedTiny")]
     QuantizedTiny,
     #[serde(rename = "QuantizedTinyEn")]
@@ -31,6 +34,7 @@ pub enum WhisperModel {
 impl WhisperModel {
     pub fn file_name(&self) -> &str {
         match self {
+            WhisperModel::LargeV3 => "ggml-large-v3.bin",
             WhisperModel::QuantizedTiny => "ggml-tiny-q8_0.bin",
             WhisperModel::QuantizedTinyEn => "ggml-tiny.en-q8_0.bin",
             WhisperModel::QuantizedBase => "ggml-base-q8_0.bin",
@@ -43,6 +47,7 @@ impl WhisperModel {
 
     pub fn display_name(&self) -> &str {
         match self {
+            WhisperModel::LargeV3 => "Whisper Large V3 (Multilingual)",
             WhisperModel::QuantizedTiny => "Whisper Tiny (Multilingual)",
             WhisperModel::QuantizedTinyEn => "Whisper Tiny (English)",
             WhisperModel::QuantizedBase => "Whisper Base (Multilingual)",
@@ -55,6 +60,9 @@ impl WhisperModel {
 
     pub fn model_url(&self) -> &str {
         match self {
+            WhisperModel::LargeV3 => {
+                "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3.bin"
+            }
             WhisperModel::QuantizedTiny => {
                 "https://hyprnote.s3.us-east-1.amazonaws.com/v0/ggerganov/whisper.cpp/main/ggml-tiny-q8_0.bin"
             }
@@ -74,7 +82,7 @@ impl WhisperModel {
                 "https://hyprnote.s3.us-east-1.amazonaws.com/v0/ggerganov/whisper.cpp/main/ggml-small.en-q8_0.bin"
             }
             WhisperModel::QuantizedLargeTurbo => {
-                "https://hyprnote.s3.us-east-1.amazonaws.com/v0/ggerganov/whisper.cpp/main/ggml-large-v3-turbo-q8_0.bin"
+                "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q8_0.bin"
             }
         }
     }
@@ -90,6 +98,7 @@ impl WhisperModel {
 
     pub fn model_size_bytes(&self) -> u64 {
         match self {
+            WhisperModel::LargeV3 => 3095033483,
             WhisperModel::QuantizedTiny => 43537433,
             WhisperModel::QuantizedTinyEn => 43550795,
             WhisperModel::QuantizedBase => 81768585,
@@ -102,6 +111,7 @@ impl WhisperModel {
 
     pub fn checksum(&self) -> u32 {
         match self {
+            WhisperModel::LargeV3 => 2408165328,
             WhisperModel::QuantizedTiny => 1235175537,
             WhisperModel::QuantizedTinyEn => 230334082,
             WhisperModel::QuantizedBase => 4019564439,
@@ -117,7 +127,8 @@ impl WhisperModel {
             WhisperModel::QuantizedTinyEn
             | WhisperModel::QuantizedBaseEn
             | WhisperModel::QuantizedSmallEn => vec![hypr_language::ISO639::En.into()],
-            WhisperModel::QuantizedTiny
+            WhisperModel::LargeV3
+            | WhisperModel::QuantizedTiny
             | WhisperModel::QuantizedBase
             | WhisperModel::QuantizedSmall
             | WhisperModel::QuantizedLargeTurbo => hypr_language::whisper_multilingual(),

@@ -165,7 +165,7 @@ export function AudioImportDialog() {
         <div
           className={cn([
             "flex flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-center",
-            "transition-colors",
+            "transition-none",
             isDragActive ? "border-primary bg-accent" : "border-border",
           ])}
         >

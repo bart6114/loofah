@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{DetectEvent, ProcessorState, env::Env, timer_registry::TimerRegistry};
 
-pub(crate) const DEFAULT_MIC_ACTIVE_THRESHOLD_SECS: u64 = 15;
+pub(crate) const DEFAULT_MIC_ACTIVE_THRESHOLD_SECS: u64 = 5;
 pub(crate) const COOLDOWN_DURATION: Duration = Duration::from_mins(10);
 
 #[derive(Default)]

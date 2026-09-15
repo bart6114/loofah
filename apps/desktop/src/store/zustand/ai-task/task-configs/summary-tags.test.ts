@@ -18,7 +18,6 @@ function createEnhanceArgs(
       event: null,
     },
     participants: [],
-    template: null,
     preMeetingMemo: "",
     postMeetingMemo: "",
     transcripts: [],
@@ -28,22 +27,13 @@ function createEnhanceArgs(
 }
 
 describe("summary tags", () => {
-  it("extracts unique hashtags from summary, memos, and template content", () => {
+  it("extracts unique hashtags from summary, memos, and the shared prompt", () => {
     const tags = extractEnhanceTagNames(
       "# Summary\n\nDiscussed #Launch and issue #123.",
       createEnhanceArgs({
         preMeetingMemo: "Prep #prep #launch",
         postMeetingMemo: "Next #follow-up",
-        template: {
-          title: "Template #customer",
-          description: null,
-          sections: [
-            {
-              title: "Actions",
-              description: "Use #owners",
-            },
-          ],
-        },
+        promptOverride: "Use #customer and #owners",
       }),
     );
 

@@ -49,6 +49,9 @@ jobs:
         run: |
           printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
           echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+      - name: Prepare ChatGPT model catalog
+        run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
+
       - name: Build Loofah CLI sidecar
         run: bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
       - run: pnpm -F desktop tauri build --ci --bundles app,dmg --config ./src-tauri/tauri.conf.staging.json --features staging

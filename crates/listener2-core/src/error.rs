@@ -75,8 +75,6 @@ pub enum Error {
     BatchError(String),
     #[error(transparent)]
     BatchFailed(#[from] BatchFailure),
-    #[error("denoise error: {0}")]
-    DenoiseError(String),
 }
 
 impl Serialize for Error {

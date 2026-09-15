@@ -5,6 +5,7 @@ import type { LocalModel } from "@hypr/plugin-local-stt";
 import { AppProviderIcon } from "~/settings/ai/shared";
 import { type ProviderRequirement } from "~/settings/ai/shared/eligibility";
 import { sortProviders } from "~/settings/ai/shared/sort-providers";
+import { isSupportedLocalSttModel } from "~/stt/capabilities";
 import { localSttQueries } from "~/stt/useLocalSttModel";
 
 export { localSttQueries as sttModelQueries };
@@ -28,17 +29,8 @@ type Provider = {
 // just an identity fallback for whatever id the local model reports.
 export const displayModelId = (model: string) => model;
 
-function isOnDeviceModelId(model: string) {
-  return (
-    model.startsWith("soniqo-") ||
-    model.startsWith("onnx-") ||
-    model.startsWith("am-") ||
-    model.startsWith("Quantized")
-  );
-}
-
 export function displayModelLabel(model: string, displayName?: string) {
-  if (isOnDeviceModelId(model)) {
+  if (isSupportedLocalSttModel(model)) {
     return "On device";
   }
 
@@ -65,7 +57,7 @@ export function formatModelSize(sizeBytes?: number | null) {
   })} ${unit}`;
 }
 
-// STT is on-device only: the sole provider hosts the local Soniqo/Argmax/
+// STT is on-device only: the sole provider hosts the local Soniqo/
 // Whisper models via `localSttCommands`. There is no cloud/hosted STT.
 export const _PROVIDERS = [
   {

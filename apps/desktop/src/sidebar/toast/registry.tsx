@@ -125,9 +125,9 @@ export function createToastRegistry({
     {
       toast: {
         id: "missing-llm",
-        description: "Language model needed",
+        description: "Optional summaries",
         primaryAction: {
-          label: "Add",
+          label: "Set up",
           onClick: onOpenLLMSettings,
         },
         dismissible: true,
@@ -159,9 +159,9 @@ export function createDevtoolsToastPreview({
     case "language-model":
       return {
         id: "devtools-missing-llm",
-        description: "Language model needed",
+        description: "Optional summaries",
         primaryAction: {
-          label: "Add",
+          label: "Set up",
           onClick: onOpenLLMSettings,
         },
         dismissible: true,

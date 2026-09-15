@@ -146,8 +146,16 @@ impl Pipeline {
                 );
             }
             ListenerRouting::Attached(actor) => {
+                // Drain older frames first: interleaving startup/reconnect audio
+                // with current frames corrupts the recognizer's context.
+                self.backlog_quota += 1.0;
                 self.flush_buffer_to_listener(actor);
-                self.send_to_listener(actor, &item.mic, &item.spk, item.mode);
+                if self.audio_buffer.is_empty() {
+                    self.backlog_quota = 0.0;
+                    self.send_to_listener(actor, &item.mic, &item.spk, item.mode);
+                } else {
+                    self.audio_buffer.push_item(item);
+                }
             }
             ListenerRouting::Dropped => {}
         }
@@ -419,7 +427,7 @@ mod tests {
     }
 
     enum ProbeEvent {
-        ListenerSingle,
+        ListenerSingle(bytes::Bytes),
         ListenerDual,
         RecorderSingle,
         RecorderDual,
@@ -449,8 +457,7 @@ mod tests {
         ) -> Result<(), ActorProcessingErr> {
             match message {
                 ListenerMsg::AudioSingle(bytes) => {
-                    let _ = bytes.len();
-                    let _ = self.0.send(ProbeEvent::ListenerSingle);
+                    let _ = self.0.send(ProbeEvent::ListenerSingle(bytes));
                 }
                 ListenerMsg::AudioDual(mic, spk) => {
                     let _ = (mic.len(), spk.len());
@@ -537,6 +544,54 @@ mod tests {
         assert!(matches!(event, ProbeEvent::ListenerDual));
         assert!(pipeline.audio_buffer.is_empty());
 
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn startup_backlog_stays_in_order_with_new_audio() {
+        let mut pipeline = test_pipeline();
+        let (probe_tx, mut probe_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (listener_ref, handle) = Actor::spawn(None, ListenerProbe(probe_tx), ())
+            .await
+            .unwrap();
+        let attached = ListenerRouting::Attached(listener_ref);
+        let mut expected = Vec::new();
+
+        for index in 1..=20 {
+            let samples = [index as f32 / 32.0; 4];
+            expected.push(f32_to_i16_bytes(samples.into_iter()));
+            let frame = CaptureFrame {
+                raw_mic: Arc::from([0.0; 4]),
+                raw_speaker: Arc::from(samples),
+                aec_mic: None,
+            };
+            if index == 5 {
+                pipeline.on_listener_routing_changed(&attached);
+            }
+            pipeline.dispatch_frame(
+                frame,
+                ChannelMode::SpeakerOnly,
+                if index < 5 {
+                    &ListenerRouting::Buffering
+                } else {
+                    &attached
+                },
+                None,
+            );
+        }
+
+        assert!(pipeline.audio_buffer.is_empty());
+        for bytes in expected {
+            let event = tokio::time::timeout(Duration::from_secs(1), probe_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let ProbeEvent::ListenerSingle(actual) = event else {
+                panic!("expected single-channel audio");
+            };
+            assert_eq!(actual, bytes);
+        }
+        assert!(probe_rx.try_recv().is_err());
         handle.abort();
     }
 

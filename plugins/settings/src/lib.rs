@@ -9,7 +9,6 @@ mod state;
 pub use config::*;
 pub use error::{Error, Result};
 pub use ext::*;
-pub use hypr_storage::ObsidianVault;
 pub use state::*;
 
 const PLUGIN_NAME: &str = "settings";
@@ -28,7 +27,6 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::classify_vault_dir::<tauri::Wry>,
             commands::load::<tauri::Wry>,
             commands::save::<tauri::Wry>,
-            commands::obsidian_vaults::<tauri::Wry>,
             commands::get_config::<tauri::Wry>,
             commands::set_config_values::<tauri::Wry>,
         ])

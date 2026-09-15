@@ -17,7 +17,6 @@ Default permissions for the fs-sync plugin
 - `allow-audio-delete`
 - `allow-audio-metadata`
 - `allow-audio-peaks`
-- `allow-audio-delete-orphaned-expired`
 - `allow-audio-import`
 - `allow-audio-import-data`
 - `allow-audio-source-metadata`
@@ -26,7 +25,6 @@ Default permissions for the fs-sync plugin
 - `allow-load-session-content`
 - `allow-delete-session-folder`
 - `allow-scan-and-read`
-- `allow-chat-dir`
 - `allow-entity-dir`
 - `allow-attachment-save`
 - `allow-attachment-import-path`
@@ -256,32 +254,6 @@ Denies the audio_delete command without any pre-configured scope.
 <tr>
 <td>
 
-`fs-sync:allow-audio-delete-orphaned-expired`
-
-</td>
-<td>
-
-Enables the audio_delete_orphaned_expired command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-audio-delete-orphaned-expired`
-
-</td>
-<td>
-
-Denies the audio_delete_orphaned_expired command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `fs-sync:allow-audio-exist`
 
 </td>
@@ -457,32 +429,6 @@ Enables the audio_source_metadata command without any pre-configured scope.
 <td>
 
 Denies the audio_source_metadata command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:allow-chat-dir`
-
-</td>
-<td>
-
-Enables the chat_dir command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-chat-dir`
-
-</td>
-<td>
-
-Denies the chat_dir command without any pre-configured scope.
 
 </td>
 </tr>

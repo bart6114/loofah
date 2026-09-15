@@ -1,7 +1,6 @@
 use hypr_template_eval::{EvalCase, EvalMessage, Expectation, Failed, PromptFragment};
 use template_app::{
-    EnhanceSystem, EnhanceTemplate, EnhanceUser, Participant, Segment, Session, Template,
-    TemplateSection, Transcript, render,
+    EnhanceSystem, EnhanceUser, Participant, Segment, Session, Template, Transcript, render,
 };
 
 use crate::support::render_failed;
@@ -37,20 +36,6 @@ pub fn structured_summary(samples: usize) -> Result<EvalCase, Failed> {
                             job_title: Some("PM".to_string()),
                         },
                     ],
-                    template: Some(EnhanceTemplate {
-                        title: "Daily Standup".to_string(),
-                        description: Some("Team standup summary".to_string()),
-                        sections: vec![
-                            TemplateSection {
-                                title: "Summary".to_string(),
-                                description: Some("Key updates and decisions".to_string()),
-                            },
-                            TemplateSection {
-                                title: "Action Items".to_string(),
-                                description: Some("Concrete follow-ups".to_string()),
-                            },
-                        ],
-                    }),
                     transcripts: vec![Transcript {
                         segments: vec![
                             Segment {
@@ -83,15 +68,15 @@ pub fn structured_summary(samples: usize) -> Result<EvalCase, Failed> {
             },
             PromptFragment {
                 role: "user".to_string(),
-                needle: "# Output Template".to_string(),
+                needle: "# Transcript".to_string(),
             },
             PromptFragment {
                 role: "user".to_string(),
-                needle: "1. Summary - Key updates and decisions".to_string(),
+                needle: "# Pre-Meeting Notes".to_string(),
             },
             PromptFragment {
                 role: "user".to_string(),
-                needle: "2. Action Items - Concrete follow-ups".to_string(),
+                needle: "# Meeting Notes".to_string(),
             },
         ],
         smoke_outputs: vec![

@@ -14,7 +14,6 @@ readonly rust_excludes=(
   tcc
   apple-note
   notification-linux
-  am
   aec
   agc
   whisper
@@ -32,13 +31,11 @@ readonly rust_excludes=(
   audio-device
   transcribe-whisper-local
   device-monitor
-  local-llm-core
   local-stt-server
   tauri-plugin-deeplink2
   tauri-plugin-detect
   tauri-plugin-fs-sync
   tauri-plugin-fs2
-  tauri-plugin-hooks
   tauri-plugin-icon
   tauri-plugin-local-stt
   tauri-plugin-misc
@@ -103,6 +100,7 @@ run_rust() {
     SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
   fi
 
+  run_step "ChatGPT model catalog" node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 

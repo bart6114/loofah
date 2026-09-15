@@ -2,8 +2,8 @@
 //!
 //! The index is a typed, RwLock'd mirror of the vault files -- sessions
 //! (`_meta.json` + `notes.md`), documents (`enhanced/<uuid>.md`),
-//! transcripts (`transcript.json`), tasks (`tasks.json`) and templates
-//! (`templates/<id>.json`) -- built at startup by `rebuild_index` and kept current by:
+//! transcripts (`transcript.json`) and tasks (`tasks.json`) -- built at startup by
+//! `rebuild_index` and kept current by:
 //!
 //! 1. **Write-through**: every store write updates the index synchronously right after
 //!    the file write lands (the search projection rides this bus since Phase F), then
@@ -17,8 +17,8 @@
 //! drain everything else that arrived)
 //! and emits one `index-changed { entity, ids }` Tauri event per entity to all
 //! webviews. Granularity is table-level: `entity` names which map changed, `ids` are
-//! session ids (docs/transcripts/tasks carry their owning session id; templates carry
-//! template ids; the vault-root tasks file uses the reserved empty-string id).
+//! session ids (docs/transcripts/tasks carry their owning session id; the vault-root
+//! tasks file uses the reserved empty-string id).
 //!
 //! Corruption must never look like deletion (same invariant as `rebuild.rs`): a file
 //! that fails to read/parse during a rescan leaves the existing index entry untouched;
@@ -28,9 +28,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::{
-    EnhancedDoc, PersonItem, SessionMeta, SessionStore, StoreError, TagItem, TaskItem, TemplateItem,
-};
+use super::{EnhancedDoc, PersonItem, SessionMeta, SessionStore, StoreError, TagItem, TaskItem};
 use hypr_fs_format::TranscriptWithData;
 
 /// Which index map changed. Serialized as the lowercase strings the frontend matches
@@ -39,10 +37,11 @@ use hypr_fs_format::TranscriptWithData;
 #[serde(rename_all = "lowercase")]
 pub enum IndexEntity {
     Sessions,
+    #[serde(rename = "session_headers")]
+    SessionHeaders,
     Docs,
     Transcripts,
     Tasks,
-    Templates,
     People,
     /// The vault-root `tags.json` registry changed (not a session's `_meta.json`
     /// tags -- those ride `Sessions`).
@@ -83,8 +82,7 @@ pub struct SessionRecord {
 }
 
 /// One `session_list` entry: full meta plus the derived flags list consumers need
-/// (timeline grouping wants `event`/`folder` off the meta; audio retention wants
-/// `has_transcript_words` without a per-session round-trip).
+/// without a per-session round-trip.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct SessionListEntry {
     pub meta: SessionMeta,
@@ -92,7 +90,7 @@ pub struct SessionListEntry {
 }
 
 /// The slim `session_list_headers` row -- exactly what the always-mounted list
-/// subscribers (timeline, summaries, tags, float, audio retention) consume.
+/// subscribers (timeline, summaries, tags, float) consume.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct SessionListHeader {
     pub id: String,
@@ -203,9 +201,22 @@ pub struct VaultIndex {
     pub transcripts: HashMap<String, TranscriptSummary>,
     /// Session id (or `VAULT_TASKS_KEY`) -> that file's tasks.
     pub tasks: HashMap<String, Vec<TaskItem>>,
-    pub templates: HashMap<String, TemplateItem>,
     pub people: HashMap<String, PersonItem>,
     pub tags: HashMap<String, TagItem>,
+}
+
+impl VaultIndex {
+    pub(super) fn session_header(&self, id: &str) -> Option<SessionListHeader> {
+        self.sessions.get(id).map(|entry| SessionListHeader {
+            id: entry.meta.id.clone(),
+            title: entry.meta.title.clone(),
+            created_at: entry.meta.created_at.clone(),
+            folder: entry.meta.folder.clone(),
+            tags: entry.meta.tags.clone(),
+            author: entry.meta.author.clone(),
+            has_transcript_words: has_transcript_words(self, id),
+        })
+    }
 }
 
 pub(crate) type IndexChangeSender = tokio::sync::mpsc::UnboundedSender<(IndexEntity, Vec<String>)>;
@@ -255,16 +266,9 @@ impl SessionStore {
         let mut entries: Vec<SessionListHeader> = index
             .sessions
             .values()
-            .map(|entry| SessionListHeader {
-                id: entry.meta.id.clone(),
-                title: entry.meta.title.clone(),
-                created_at: entry.meta.created_at.clone(),
-                folder: entry.meta.folder.clone(),
-                tags: entry.meta.tags.clone(),
-                author: entry.meta.author.clone(),
-                has_transcript_words: has_transcript_words(&index, &entry.meta.id),
-            })
+            .filter_map(|entry| index.session_header(&entry.meta.id))
             .collect();
+        drop(index);
         entries.sort_by(|a, b| {
             (a.created_at.as_str(), a.id.as_str()).cmp(&(b.created_at.as_str(), b.id.as_str()))
         });
@@ -498,6 +502,7 @@ impl SessionStore {
 
     pub(super) fn index_upsert_meta(&self, meta: &SessionMeta) {
         let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
         match index.sessions.get_mut(&meta.id) {
             Some(entry) => entry.meta = meta.clone(),
             None => {
@@ -509,6 +514,11 @@ impl SessionStore {
                     },
                 );
             }
+        }
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
         }
     }
 
@@ -547,10 +557,16 @@ impl SessionStore {
         summary: TranscriptSummary,
     ) {
         let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(session_id);
         if summary.transcript_ids.is_empty() {
             index.transcripts.remove(session_id);
         } else {
             index.transcripts.insert(session_id.to_string(), summary);
+        }
+        let header_changed = previous_header != index.session_header(session_id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![session_id.to_string()]);
         }
     }
 
@@ -561,18 +577,6 @@ impl SessionStore {
         } else {
             index.tasks.insert(key.to_string(), tasks);
         }
-    }
-
-    pub(super) fn index_upsert_template(&self, template: &TemplateItem) {
-        let mut index = self.index.write().unwrap();
-        index
-            .templates
-            .insert(template.id.clone(), template.clone());
-    }
-
-    pub(super) fn index_remove_template(&self, template_id: &str) {
-        let mut index = self.index.write().unwrap();
-        index.templates.remove(template_id);
     }
 
     pub(super) fn index_upsert_person(&self, person: &PersonItem) {
@@ -592,6 +596,7 @@ impl SessionStore {
         let mut changes = Vec::new();
         if index.sessions.remove(session_id).is_some() {
             changes.push((IndexEntity::Sessions, session_id.to_string()));
+            changes.push((IndexEntity::SessionHeaders, session_id.to_string()));
         }
         if index.docs.remove(session_id).is_some() {
             changes.push((IndexEntity::Docs, session_id.to_string()));
@@ -614,44 +619,9 @@ impl SessionStore {
 // -- rescans (file -> index reconciliation) ---------------------------------------
 //
 // The full rescan entry points (`rebuild_index` / `refresh_session`) live in
-// `rebuild.rs`; the helpers below are what they share with the templates path.
+// `rebuild.rs`; the helpers below are the vault-root entity paths.
 
 impl SessionStore {
-    /// Reload the templates map from `templates/*.json` (via `list_templates`, which
-    /// already skips unparseable/dot files) and notify changed template ids -- also
-    /// the `vault_watch` entry point for external `templates/**` edits.
-    pub async fn index_refresh_templates(&self) {
-        let templates = match self.list_templates().await {
-            Ok(templates) => templates,
-            Err(error) => {
-                tracing::warn!(%error, "index: failed to rescan templates; keeping current entries");
-                return;
-            }
-        };
-
-        let new_map: HashMap<String, TemplateItem> = templates
-            .into_iter()
-            .map(|template| (template.id.clone(), template))
-            .collect();
-
-        let changed_ids: Vec<String> = {
-            let mut index = self.index.write().unwrap();
-            let mut changed: Vec<String> = index
-                .templates
-                .keys()
-                .chain(new_map.keys())
-                .filter(|id| index.templates.get(*id) != new_map.get(*id))
-                .cloned()
-                .collect::<HashSet<String>>()
-                .into_iter()
-                .collect();
-            changed.sort();
-            index.templates = new_map;
-            changed
-        };
-        self.notify_index_changed(IndexEntity::Templates, changed_ids);
-    }
-
     /// Reload the people map from the vault-root `people.json` and notify changed person
     /// ids -- also the `vault_watch` entry point for external `people.json` edits. A
     /// missing file reads as empty, so an external delete notifies every removed id.
@@ -804,10 +774,10 @@ const ENTITY_ORDER: [IndexEntity; 8] = [
     IndexEntity::Docs,
     IndexEntity::Transcripts,
     IndexEntity::Tasks,
-    IndexEntity::Templates,
     IndexEntity::People,
     IndexEntity::Tags,
     IndexEntity::Locations,
+    IndexEntity::SessionHeaders,
 ];
 
 /// One coalesced flush: group a drained batch by entity, dedupe ids preserving
@@ -976,6 +946,82 @@ mod tests {
         changes
     }
 
+    #[tokio::test]
+    async fn header_events_follow_projection_changes_without_note_body_noise() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "One")).await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store.write_note("s1", "new body").await.unwrap();
+        let entities = changed_entities(&store);
+        assert!(entities.contains(&IndexEntity::Sessions));
+        assert!(!entities.contains(&IndexEntity::SessionHeaders));
+        store.write_meta(&meta("s1", "One")).await.unwrap();
+        assert!(!changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store.write_meta(&meta("s1", "Renamed")).await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store
+            .write_transcript("s1", transcript("t1", 0.0, vec![word("w1", "hi")]))
+            .await
+            .unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        store
+            .write_transcript("s1", transcript("t1", 0.0, vec![word("w1", "changed")]))
+            .await
+            .unwrap();
+        assert!(!changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        let dir = session_path(&store, &vault, "s1").await;
+        std::fs::write(
+            dir.join("_meta.json"),
+            serde_json::to_vec(&meta("s1", "External")).unwrap(),
+        )
+        .unwrap();
+        store.refresh_session("s1").await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        std::fs::write(dir.join("_meta.json"), "invalid").unwrap();
+        let _ = store.refresh_session("s1").await;
+        assert!(!changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+        std::fs::remove_file(dir.join("_meta.json")).unwrap();
+        store.refresh_session("s1").await.unwrap();
+        assert!(changed_entities(&store).contains(&IndexEntity::SessionHeaders));
+    }
+
+    #[tokio::test]
+    async fn concurrent_rebuild_requests_share_a_followup_pass() {
+        let (store, _vault) = test_store().await;
+        let write_guard = store.lock_writes().await;
+        let running = {
+            let store = store.clone();
+            tokio::spawn(async move { store.rebuild_index().await })
+        };
+        while store
+            .rebuild_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+            == 0
+        {
+            tokio::task::yield_now().await;
+        }
+        let mut pending = Vec::new();
+        for _ in 0..20 {
+            let store = store.clone();
+            pending.push(tokio::spawn(async move { store.rebuild_index().await }));
+        }
+        // Poll every request while the first scan is held at the write lock.
+        for _ in 0..40 {
+            tokio::task::yield_now().await;
+        }
+        drop(write_guard);
+        running.await.unwrap().unwrap();
+        for request in pending {
+            request.await.unwrap().unwrap();
+        }
+        assert_eq!(
+            store
+                .rebuild_generation
+                .load(std::sync::atomic::Ordering::SeqCst),
+            2
+        );
+    }
+
     fn changed_entities(store: &SessionStore) -> HashSet<IndexEntity> {
         drain_changes(store)
             .into_iter()
@@ -1030,20 +1076,6 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        store
-            .upsert_template(super::super::TemplateInput {
-                id: "t-1".to_string(),
-                title: "Template".to_string(),
-                description: String::new(),
-                pinned: false,
-                pin_order: None,
-                category: None,
-                icon: serde_json::json!({}),
-                targets: None,
-                sections: serde_json::json!([]),
-            })
-            .await
-            .unwrap();
 
         store.rebuild_index().await.unwrap();
 
@@ -1067,7 +1099,6 @@ mod tests {
 
         let index = store.index.read().unwrap();
         assert_eq!(index.tasks.get("s1").unwrap()[0].text, "Ship it");
-        assert_eq!(index.templates.get("t-1").unwrap().title, "Template");
     }
 
     #[tokio::test]
@@ -1173,36 +1204,6 @@ mod tests {
         let entities = changed_entities(&store);
         assert!(entities.contains(&IndexEntity::Sessions));
         assert!(entities.contains(&IndexEntity::Transcripts));
-    }
-
-    #[tokio::test]
-    async fn template_writes_update_the_index_and_notify() {
-        let (store, _vault) = test_store().await;
-        store
-            .upsert_template(super::super::TemplateInput {
-                id: "t-1".to_string(),
-                title: "Mine".to_string(),
-                description: String::new(),
-                pinned: false,
-                pin_order: None,
-                category: None,
-                icon: serde_json::json!({}),
-                targets: None,
-                sections: serde_json::json!([]),
-            })
-            .await
-            .unwrap();
-        {
-            let index = store.index.read().unwrap();
-            assert_eq!(index.templates.get("t-1").unwrap().title, "Mine");
-        }
-
-        store.delete_template("t-1").await.unwrap();
-        {
-            let index = store.index.read().unwrap();
-            assert!(!index.templates.contains_key("t-1"));
-        }
-        assert!(changed_entities(&store).contains(&IndexEntity::Templates));
     }
 
     // -- command semantics --
@@ -1586,32 +1587,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_refresh_templates_ingests_external_template_edits() {
-        let (store, vault) = test_store().await;
-        std::fs::create_dir_all(vault.path().join("templates")).unwrap();
-        std::fs::write(
-            vault.path().join("templates/hand-made.json"),
-            serde_json::json!({ "id": "hand-made", "title": "Dropped in" }).to_string(),
-        )
-        .unwrap();
-
-        store.index_refresh_templates().await;
-
-        {
-            let index = store.index.read().unwrap();
-            assert_eq!(
-                index.templates.get("hand-made").unwrap().title,
-                "Dropped in"
-            );
-        }
-        let changes = drain_changes(&store);
-        assert_eq!(
-            changes,
-            vec![(IndexEntity::Templates, vec!["hand-made".to_string()])]
-        );
-    }
-
-    #[tokio::test]
     async fn index_refresh_people_ingests_external_edits_and_deletions() {
         let (store, vault) = test_store().await;
         std::fs::write(
@@ -1728,7 +1703,6 @@ mod tests {
             (IndexEntity::Docs, "docs"),
             (IndexEntity::Transcripts, "transcripts"),
             (IndexEntity::Tasks, "tasks"),
-            (IndexEntity::Templates, "templates"),
             (IndexEntity::People, "people"),
         ] {
             assert_eq!(

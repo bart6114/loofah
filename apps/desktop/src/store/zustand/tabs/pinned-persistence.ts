@@ -53,7 +53,6 @@ const deserializePinnedTabs = (data: string): PinnedTab[] => {
       const tabType = (tab as { type: string }).type;
       switch (tabType) {
         case "sessions":
-        case "templates":
         case "changelog":
         case "settings":
         case "onboarding":

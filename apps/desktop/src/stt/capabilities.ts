@@ -9,20 +9,22 @@ type LiveTranscriptionConfig = {
   transcriptionMode?: TranscriptionMode;
 };
 
-// Parakeet-EOU (the streaming model) has an English-only vocabulary; it decodes
-// other languages into gibberish. Must stay in sync with the authoritative Rust
-// check, `is_parakeet_eou_language` in crates/language/src/lib.rs.
-const SONIQO_STREAMING_LANGUAGE_CODES = new Set(["en"]);
+// Parakeet-EOU and English-only Whisper cannot decode other languages.
+const ENGLISH_LANGUAGE_CODES = new Set(["en"]);
 
 export function isSupportedLocalSttModel(
   model?: string | null,
 ): model is LocalModel {
   return (
     typeof model === "string" &&
-    (model.startsWith("soniqo-") ||
-      model.startsWith("onnx-") ||
-      model.startsWith("am-") ||
-      model.startsWith("Quantized"))
+    (model === "soniqo-parakeet-streaming" ||
+      model === "soniqo-parakeet-batch" ||
+      model === "onnx-parakeet-streaming" ||
+      model === "onnx-parakeet-batch" ||
+      model === "soniqo-omnilingual" ||
+      model === "whisper-large-v3" ||
+      /^Quantized(Tiny|Base|Small)(En)?$/.test(model) ||
+      model === "QuantizedLargeTurbo")
   );
 }
 
@@ -45,12 +47,16 @@ export function isConfiguredSttModel(
     return isSupportedLocalSttModel(model);
   }
 
-  return true;
+  return provider !== "am" && provider !== "argmax";
 }
 
 export function isRealtimeLocalModel(model?: string | null) {
   return (
-    model === "soniqo-parakeet-streaming" || model === "onnx-parakeet-streaming"
+    model === "soniqo-parakeet-streaming" ||
+    model === "onnx-parakeet-streaming" ||
+    model === "whisper-large-v3" ||
+    /^Quantized(Tiny|Base|Small)(En)?$/.test(model ?? "") ||
+    model === "QuantizedLargeTurbo"
   );
 }
 
@@ -63,6 +69,14 @@ export async function isSupportedLanguagesLive(
   model: string | null | undefined,
   languages: readonly string[],
 ) {
+  if (
+    provider === "am" ||
+    provider === "argmax" ||
+    (provider === "fmtr" && !isSupportedLocalSttModel(model))
+  ) {
+    return false;
+  }
+
   const result = await listenerCommands.isSupportedLanguagesLive(
     provider,
     model ?? null,
@@ -77,6 +91,14 @@ export async function isSupportedLanguagesBatch(
   model: string | null | undefined,
   languages: readonly string[],
 ) {
+  if (
+    provider === "am" ||
+    provider === "argmax" ||
+    (provider === "fmtr" && !isSupportedLocalSttModel(model))
+  ) {
+    return false;
+  }
+
   const result = await listenerCommands.isSupportedLanguagesBatch(
     provider,
     model ?? null,
@@ -87,13 +109,12 @@ export async function isSupportedLanguagesBatch(
 }
 
 export function getTranscriptionLanguages(
-  mainLanguage: string | null | undefined,
-  spokenLanguages: readonly string[] | null | undefined,
+  meetingLanguages?: readonly string[] | null,
 ) {
   const seen = new Set<string>();
   const languages: string[] = [];
 
-  for (const language of [mainLanguage, ...(spokenLanguages ?? [])]) {
+  for (const language of meetingLanguages ?? ["en"]) {
     if (!language) {
       continue;
     }
@@ -121,12 +142,16 @@ export function getOnDeviceTranscriptionConfig(
     };
   }
 
-  // Demote to batch when ANY configured language is outside the streaming
-  // model's support: the batch model covers more languages, and sending a
-  // truncated language list would bypass the Rust-side demotion check.
-  const supportsAllLive = languages.every((language) =>
-    SONIQO_STREAMING_LANGUAGE_CODES.has(baseLanguageCode(language)),
-  );
+  // Keep every language so the backend can validate coverage and select a fallback.
+  const englishOnly =
+    model === "soniqo-parakeet-streaming" ||
+    model === "onnx-parakeet-streaming" ||
+    model?.endsWith("En");
+  const supportsAllLive =
+    !englishOnly ||
+    languages.every((language) =>
+      ENGLISH_LANGUAGE_CODES.has(baseLanguageCode(language)),
+    );
 
   return {
     languages: [...languages],
@@ -145,13 +170,26 @@ export async function getLiveTranscriptionConfig({
   provider,
   model,
   languages,
+  timing,
 }: {
   provider?: string | null;
   model?: string | null;
   languages: readonly string[];
+  timing?: string;
 }): Promise<LiveTranscriptionConfig> {
+  if (timing === "batch") {
+    return { languages: [...languages], transcriptionMode: "batch" };
+  }
+
   if (isFmtrLocalSttModel(provider, model)) {
-    return getOnDeviceTranscriptionConfig(model, languages);
+    const config = getOnDeviceTranscriptionConfig(model, languages);
+    if (
+      config.transcriptionMode === "live" &&
+      !(await isSupportedLanguagesLive("fmtr", model, languages))
+    ) {
+      return { ...config, transcriptionMode: "batch" };
+    }
+    return config;
   }
 
   const config = {
@@ -185,7 +223,7 @@ export async function isLiveTranscriptionSupported(
   provider?: string | null,
   model?: string | null,
 ) {
-  if (!provider || !model) {
+  if (!isConfiguredSttModel(provider, model) || !provider || !model) {
     return false;
   }
 

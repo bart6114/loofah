@@ -1,7 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { getSessionKeywords } from "./useKeywords";
 import { getPostCaptureAction, useStartListening } from "./useStartListening";
 
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
@@ -24,7 +23,6 @@ const {
   isSupportedLanguagesLiveMock,
   leftSidebarExpanded,
   setLeftSidebarExpandedMock,
-  deleteProcessedAudioForRetentionMock,
   sonnerToastWarningMock,
   sonnerToastErrorMock,
   catalogLocalSessionAudioMock,
@@ -49,7 +47,6 @@ const {
   isSupportedLanguagesLiveMock: vi.fn(),
   leftSidebarExpanded: { value: true },
   setLeftSidebarExpandedMock: vi.fn(),
-  deleteProcessedAudioForRetentionMock: vi.fn(),
   sonnerToastWarningMock: vi.fn(),
   sonnerToastErrorMock: vi.fn(),
   catalogLocalSessionAudioMock: vi.fn(),
@@ -79,11 +76,6 @@ vi.mock("~/ai/task-window-sync", () => ({
   requestMainAutoEnhance: requestMainAutoEnhanceMock,
 }));
 
-vi.mock("./useKeywords", () => ({
-  getSessionKeywords: vi.fn(async () => []),
-  useKeywords: vi.fn(() => []),
-}));
-
 vi.mock("./useRunBatch", () => ({
   STOPPED_TRANSCRIPTION_ERROR_MESSAGE: "Transcription stopped.",
   canRunBatchTranscription: canRunBatchTranscriptionMock,
@@ -101,12 +93,6 @@ vi.mock("./useSTTConnection", () => ({
 
 vi.mock("~/services/enhancer", () => ({
   getEnhancerService: getEnhancerServiceMock,
-}));
-
-vi.mock("~/services/audio-retention", () => ({
-  deleteProcessedAudioForRetention: deleteProcessedAudioForRetentionMock,
-  normalizeAudioRetention: (value: unknown) =>
-    typeof value === "string" ? value : "forever",
 }));
 
 vi.mock("~/session/attachments", () => ({
@@ -280,13 +266,17 @@ describe("useStartListening", () => {
       "/vault/sessions/session-1/audio.wav",
     );
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : [],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : [],
     );
     leftSidebarExpanded.value = true;
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
-        model: "am-test",
+        model: "soniqo-parakeet-batch",
         baseUrl: "http://localhost:8080",
         apiKey: "",
       },
@@ -325,7 +315,11 @@ describe("useStartListening", () => {
   test("keeps the left sidebar state when listening fails to start", async () => {
     startMock.mockResolvedValue(false);
     useConfigValueMock.mockImplementation((key: string) =>
-      key === "ai_language" ? "en" : [],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? undefined
+          : [],
     );
 
     const { result } = renderHook(() => useStartListening("session-1"));
@@ -335,29 +329,6 @@ describe("useStartListening", () => {
     });
 
     expect(setLeftSidebarExpandedMock).not.toHaveBeenCalled();
-  });
-
-  test("reads keywords from the same pre-start snapshot as the transcript memo", async () => {
-    const calls: string[] = [];
-    vi.mocked(getSessionKeywords).mockImplementation(async () => {
-      calls.push("keywords");
-      return ["launch"];
-    });
-    startMock.mockImplementation(async () => {
-      calls.push("start");
-      return true;
-    });
-
-    const { result } = renderHook(() => useStartListening("session-1"));
-
-    await act(async () => {
-      await result.current();
-    });
-
-    expect(calls).toEqual(["keywords", "start"]);
-    expect(startMock.mock.calls[0]?.[0]).toMatchObject({
-      keywords: ["launch"],
-    });
   });
 
   test("runs batch transcription after record-only capture stops", async () => {
@@ -396,10 +367,6 @@ describe("useStartListening", () => {
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
     );
-    expect(deleteProcessedAudioForRetentionMock).toHaveBeenCalledWith(
-      "forever",
-      "session-1",
-    );
   });
 
   test("skips post-capture batch when the connection cannot run batch transcription", async () => {
@@ -423,13 +390,16 @@ describe("useStartListening", () => {
     });
 
     expect(canRunBatchTranscriptionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "fmtr", model: "am-test" }),
+      expect.objectContaining({
+        provider: "fmtr",
+        model: "soniqo-parakeet-batch",
+      }),
     );
     expect(runBatchMock).not.toHaveBeenCalled();
     expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();
   });
 
-  test("shows a toast and skips retention deletion when moving recorded audio into the session folder fails", async () => {
+  test("shows a toast when moving recorded audio into the session folder fails", async () => {
     catalogLocalSessionAudioMock.mockRejectedValueOnce(new Error("disk full"));
     const consoleError = vi
       .spyOn(console, "error")
@@ -456,7 +426,6 @@ describe("useStartListening", () => {
       "Recording audio could not be moved into the session folder — it remains at its original location",
       { id: "audio-catalog-failed" },
     );
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 
@@ -682,7 +651,6 @@ describe("useStartListening", () => {
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
     );
-    expect(deleteProcessedAudioForRetentionMock).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 
@@ -830,10 +798,6 @@ describe("useStartListening", () => {
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
     );
-    expect(deleteProcessedAudioForRetentionMock).toHaveBeenCalledWith(
-      "forever",
-      "session-1",
-    );
   });
 
   test("regenerates the summary after resumed live capture writes transcript", async () => {
@@ -925,7 +889,7 @@ describe("useStartListening", () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
-        model: "soniqo-qwen3-small",
+        model: "soniqo-omnilingual",
         baseUrl: "http://localhost:8080",
         apiKey: "",
       },
@@ -963,9 +927,69 @@ describe("useStartListening", () => {
     });
   });
 
-  test("demotes non-English main language to batch with the full language list", async () => {
+  test("records first with a live-capable model when the user chooses after recording", async () => {
+    useConfigValueMock.mockImplementation((key) => {
+      if (key === "ai_language") return "en";
+      if (key === "meeting_languages") return ["en"];
+      if (key === "transcription_timing") return "batch";
+      return [];
+    });
+    useSTTConnectionMock.mockReturnValue({
+      conn: {
+        provider: "fmtr",
+        model: "soniqo-parakeet-streaming",
+        baseUrl: "soniqo://local",
+        apiKey: "",
+      },
+    });
+    const { result } = renderHook(() => useStartListening("session-1"));
+    await act(async () => {
+      await result.current();
+    });
+    expect(startMock.mock.calls[0]?.[0]).toMatchObject({
+      transcription_mode: "batch",
+      languages: ["en"],
+    });
+  });
+
+  test.each([
+    { summaryLanguage: "en", meetingLanguage: "nl", mode: "batch" },
+    { summaryLanguage: "nl", meetingLanguage: "en", mode: "live" },
+  ])(
+    "uses $meetingLanguage for capture independently of $summaryLanguage summary output",
+    async ({ summaryLanguage, meetingLanguage, mode }) => {
+      useConfigValueMock.mockImplementation((key) => {
+        if (key === "ai_language") return summaryLanguage;
+        if (key === "meeting_languages") return [meetingLanguage];
+        if (key === "spoken_languages") return ["fr"];
+        return [];
+      });
+      useSTTConnectionMock.mockReturnValue({
+        conn: {
+          provider: "fmtr",
+          model: "soniqo-parakeet-streaming",
+          baseUrl: "http://localhost:8080",
+          apiKey: "",
+        },
+      });
+      const { result } = renderHook(() => useStartListening("session-1"));
+      await act(async () => {
+        await result.current();
+      });
+      expect(startMock.mock.calls[0]?.[0]).toMatchObject({
+        languages: [meetingLanguage],
+        transcription_mode: mode,
+      });
+    },
+  );
+
+  test("defaults live capture to English independently of legacy language settings", async () => {
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "de" : ["en"],
+      key === "ai_language"
+        ? "de"
+        : key === "meeting_languages"
+          ? undefined
+          : ["en"],
     );
     useSTTConnectionMock.mockReturnValue({
       conn: {
@@ -983,14 +1007,18 @@ describe("useStartListening", () => {
     });
 
     expect(startMock.mock.calls[0]?.[0]).toMatchObject({
-      languages: ["de", "en"],
-      transcription_mode: "batch",
+      languages: ["en"],
+      transcription_mode: "live",
     });
   });
 
-  test("demotes to batch instead of filtering unsupported extra spoken languages", async () => {
+  test("demotes to batch instead of filtering unsupported meeting languages", async () => {
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : ["ko"],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? ["en", "ko"]
+          : ["ko"],
     );
     useSTTConnectionMock.mockReturnValue({
       conn: {
@@ -1013,9 +1041,13 @@ describe("useStartListening", () => {
     });
   });
 
-  test("uses the main language for Deepgram live capture when extras are unsupported", async () => {
+  test("uses the primary meeting language for Deepgram live capture when extras are unsupported", async () => {
     useConfigValueMock.mockImplementation((key) =>
-      key === "ai_language" ? "en" : ["ko"],
+      key === "ai_language"
+        ? "en"
+        : key === "meeting_languages"
+          ? ["en", "ko"]
+          : ["ko"],
     );
     useSTTConnectionMock.mockReturnValue({
       conn: {

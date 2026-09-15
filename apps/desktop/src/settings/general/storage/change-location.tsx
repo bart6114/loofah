@@ -19,7 +19,6 @@ import {
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
 
-import { ObsidianVaultList } from "./obsidian-vault-list";
 import { displayPath } from "./path-utils";
 
 import { scheduleAutomaticRelaunch } from "~/shared/relaunch";
@@ -51,15 +50,6 @@ export function ChangeLocationRow() {
       if (result.status === "error") {
         throw new Error(result.error);
       }
-      return result.data;
-    },
-  });
-
-  const { data: obsidianVaults } = useQuery({
-    queryKey: ["obsidian-vaults"],
-    queryFn: async () => {
-      const result = await settingsCommands.obsidianVaults();
-      if (result.status === "error") return [];
       return result.data;
     },
   });
@@ -127,10 +117,6 @@ export function ChangeLocationRow() {
     setPendingPath(null);
   };
 
-  const detectedVaults = (obsidianVaults ?? []).filter(
-    (v) => v.path !== vaultBase,
-  );
-
   const pending = changeMutation.isPending;
   const pendingKind = changeMutation.variables?.kind;
 
@@ -146,32 +132,24 @@ export function ChangeLocationRow() {
   return (
     <>
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-[minmax(0,1fr)_9rem] items-center gap-3">
-          <div className="border-border bg-muted flex min-w-0 items-center gap-3 rounded-lg border px-4 py-3">
-            <FolderIcon className="text-muted-foreground size-4 shrink-0" />
-            <button
-              onClick={handleOpenPath}
-              className="text-muted-foreground min-w-0 flex-1 truncate text-left text-sm hover:underline"
-            >
-              {displayPath(vaultBase, home)}
-            </button>
-          </div>
+        <div className="border-border bg-muted flex min-w-0 items-center gap-3 rounded-lg border px-4 py-3">
+          <FolderIcon className="text-muted-foreground size-4 shrink-0" />
+          <span className="text-muted-foreground min-w-0 flex-1 text-sm break-all">
+            {displayPath(vaultBase, home)}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            className="h-9 w-full justify-center"
-            onClick={handleChange}
-            disabled={pending}
+            onClick={handleOpenPath}
+            disabled={!vaultBase}
           >
-            <Trans>Change</Trans>
+            <Trans>Show in Finder</Trans>
+          </Button>
+          <Button variant="outline" onClick={handleChange} disabled={pending}>
+            <Trans>Change folder</Trans>
           </Button>
         </div>
-
-        <ObsidianVaultList
-          vaults={detectedVaults}
-          home={home}
-          disabled={pending}
-          onSelect={openPickerForPath}
-        />
       </div>
 
       <Dialog
@@ -289,8 +267,7 @@ export function ChangeLocationRow() {
               </>
             )}
 
-            {(destinationKind === "vault" ||
-              destinationKind === "obsidian") && (
+            {destinationKind === "vault" && (
               <>
                 <DialogHeader>
                   <DialogTitle>

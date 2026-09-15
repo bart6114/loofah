@@ -5,12 +5,22 @@ description: "Let agents search your local knowledge vault and store useful work
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-Loofah has two local interfaces for agents. Both work on the same knowledge vault. MCP is read-only; the CLI can also create and edit sessions. A session may be a recorded meeting or a standalone note containing research, decisions, project context, or material brought in from another tool.
+Loofah is your personal knowledge vault for notes, research, decisions, and meeting content. **We recommend the `loof` CLI for agents that can run shell commands.** It gives your agent one interface for searching, reading, and saving knowledge, with structured JSON output.
+
+## Start with the skill
+
+Copy the [skill installation prompt](/agents/skills#install-with-a-prompt) into your agent. It installs the instructions for using the CLI and asks the agent to remember Loofah as your personal knowledge vault, using the skill through `loof` whenever you want to save or retrieve knowledge.
+
+The skill and the CLI are separate: your agent also needs the [`loof` executable](/installation) available in its environment. The prompt checks CLI and vault access and explains any remaining setup. Once ready, follow [CLI for agents](/agents/cli) for command examples.
+
+## Choose an interface
+
+Both interfaces work on the same vault. A session may be a recorded meeting or a standalone note containing research, decisions, project context, or material brought in from another tool.
 
 | Interface | Use it when | Output |
 | --- | --- | --- |
-| MCP | The client can run a local stdio MCP server | Structured tool results and resources |
-| CLI | The agent can run shell commands | JSON with `--json`, or readable terminal output |
+| CLI (recommended) | The agent can run shell commands; supports reading and writing | JSON with `--json`, or readable terminal output |
+| MCP (optional) | You want a read-only connection, or your client supports MCP but cannot run shell commands | Structured tool results and resources |
 
 ## A reliable workflow
 
@@ -20,7 +30,7 @@ Loofah has two local interfaces for agents. Both work on the same knowledge vaul
 4. Fetch the transcript only when the notes and summaries are not enough.
 5. When the user asks to keep new work, create a session with clear authorship, useful tags, and the source artifact when appropriate.
 
-MCP is usually easier for reading because the client receives tool schemas directly. Use the CLI when MCP is not available, or when the task needs to create or edit a session, because MCP cannot write.
+The skill follows this workflow through the CLI, even when MCP is connected. MCP remains available when you explicitly choose it or your agent cannot run the CLI; it cannot save or edit notes.
 
 Every vault also carries a copy of the [vault guide for agents](/agents/vault/) at its root as `AGENTS.md`, so agents that land in the folder without this documentation still learn the layout and the rules.
 
@@ -44,6 +54,7 @@ loof --json sessions attach SESSION_ID onboarding-research.pdf
 This keeps the synthesized note searchable while preserving the source artifact beside it. The agent must still follow the source tool's permissions and should only write when the user asks it to.
 
 <CardGrid>
+  <LinkCard title="Install the skill" href="/agents/skills#install-with-a-prompt" description="Teach your agent to use Loofah through the CLI." />
   <LinkCard title="Use the CLI" href="/agents/cli" description="Run commands with JSON output." />
-  <LinkCard title="Use MCP" href="/agents/mcp" description="Connect a local stdio server." />
+  <LinkCard title="Use MCP" href="/agents/mcp" description="Set up an optional read-only connection." />
 </CardGrid>

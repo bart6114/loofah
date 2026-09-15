@@ -62,7 +62,7 @@ const formatIgnoreReason = (reason: ModelIgnoreReason): string => {
     case "not_llm":
       return "Not an LLM type";
     case "not_chat_model":
-      return "Not a chat model";
+      return "Unsupported model for summaries";
     case "context_too_small":
       return "Context length too small";
   }
@@ -307,7 +307,7 @@ export function ModelCombobox({
               <button
                 type="button"
                 onClick={toggleShowIgnored}
-                className="hover:text-foreground mr-1 flex items-center gap-1 text-xs transition-colors"
+                className="hover:text-foreground mr-1 flex items-center gap-1 text-xs transition-none"
               >
                 {showIgnored ? (
                   <EyeOff className="h-3 w-3" />
@@ -328,7 +328,7 @@ export function ModelCombobox({
                 type="button"
                 onClick={() => refetch()}
                 disabled={isFetching}
-                className="hover:text-foreground ml-auto flex items-center gap-1 text-xs transition-colors disabled:opacity-50"
+                className="hover:text-foreground ml-auto flex items-center gap-1 text-xs transition-none disabled:opacity-50"
               >
                 <RefreshCcw
                   className={cn(["h-3 w-3", isFetching && "animate-spin"])}

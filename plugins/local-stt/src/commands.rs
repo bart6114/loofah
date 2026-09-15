@@ -32,6 +32,7 @@ pub async fn list_supported_models() -> Result<Vec<SttModelInfo>, String> {
     Ok(SUPPORTED_MODELS
         .iter()
         .filter(|m| m.is_available_on_current_platform())
+        .filter(|m| !matches!(m, LocalModel::Whisper(_)) || cfg!(feature = "whisper-cpp"))
         .map(stt_model_info)
         .collect())
 }

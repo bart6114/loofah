@@ -36,7 +36,6 @@ pub struct VaultStats {
     pub tasks_done: u64,
     pub tags: u64,
     pub people: u64,
-    pub templates: u64,
     /// Summed `ended_at - started_at` across sessions that have both.
     pub duration_seconds: u64,
     pub first_session_at: Option<String>,
@@ -107,7 +106,6 @@ impl SessionStore {
                 tasks_done: all_tasks.filter(|task| task.status == "done").count() as u64,
                 tags: index.tags.len() as u64,
                 people: index.people.len() as u64,
-                templates: index.templates.len() as u64,
                 transcript_words: rows.iter().map(|row| row.word_count).sum(),
                 duration_seconds: rows.iter().map(|row| row.duration_seconds).sum(),
                 first_session_at: rows.iter().map(|row| row.created_at.clone()).min(),

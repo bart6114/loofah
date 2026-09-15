@@ -10,7 +10,7 @@ const MAX_GUIDANCE_SECTIONS = 8;
 export type SummaryLengthPolicy = {
   maxCharacters: number;
   maxSections: number | null;
-  transcriptCharacters: number;
+  sourceCharacters: number;
   guidance?: {
     maxCharacters: number;
     minSections: number;
@@ -42,6 +42,7 @@ export function countTranscriptWordCharacters(
 
 export function getSummaryLengthPolicy(
   transcripts: readonly Transcript[],
+  noteText = "",
 ): SummaryLengthPolicy | null {
   const transcriptCharacters = countNormalizedCharacters(
     transcripts
@@ -51,28 +52,30 @@ export function getSummaryLengthPolicy(
       .join(" "),
   );
 
-  if (transcriptCharacters === 0) {
+  const sourceCharacters =
+    transcriptCharacters || countNormalizedCharacters(noteText);
+
+  if (sourceCharacters === 0) {
     return null;
   }
 
   return {
-    transcriptCharacters,
-    maxCharacters: Math.max(transcriptCharacters, MIN_SUMMARY_CHARACTERS),
-    maxSections:
-      transcriptCharacters < SHORT_TRANSCRIPT_CHARACTER_LIMIT ? 2 : null,
+    sourceCharacters,
+    maxCharacters: Math.max(sourceCharacters, MIN_SUMMARY_CHARACTERS),
+    maxSections: sourceCharacters < SHORT_TRANSCRIPT_CHARACTER_LIMIT ? 2 : null,
     guidance: {
       maxCharacters: clamp(
-        transcriptCharacters,
+        sourceCharacters,
         MIN_SUMMARY_CHARACTERS,
         MAX_SUMMARY_GUIDANCE_CHARACTERS,
       ),
       minSections: clamp(
-        Math.ceil(transcriptCharacters / (SECTION_GUIDANCE_CHARACTER_STEP * 2)),
+        Math.ceil(sourceCharacters / (SECTION_GUIDANCE_CHARACTER_STEP * 2)),
         1,
         5,
       ),
       maxSections: clamp(
-        1 + Math.ceil(transcriptCharacters / SECTION_GUIDANCE_CHARACTER_STEP),
+        1 + Math.ceil(sourceCharacters / SECTION_GUIDANCE_CHARACTER_STEP),
         2,
         MAX_GUIDANCE_SECTIONS,
       ),
@@ -94,9 +97,9 @@ export function formatSummaryLengthGuidance(
       : `${guidance.minSections} to ${guidance.maxSections} sections`;
 
   return [
-    `Summary length: the transcript contains about ${policy.transcriptCharacters} characters.`,
+    `Summary length: the source contains about ${policy.sourceCharacters} characters.`,
     `Keep the summary proportional to it: use ${sections} and stay under ${guidance.maxCharacters} characters overall.`,
-    "A short meeting must produce a short summary; never pad with filler.",
+    "Short source material must produce a short summary; never pad with filler.",
   ].join(" ");
 }
 

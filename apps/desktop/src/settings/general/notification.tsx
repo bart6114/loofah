@@ -169,33 +169,35 @@ export function NotificationSettingsView() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <h3 className="mb-1 text-sm font-medium">
-                  <Trans>Microphone detection</Trans>
+                  <Trans>Remind me to record meetings</Trans>
                 </h3>
                 <p className="text-muted-foreground text-xs">
                   <Trans>
-                    Automatically detect when a meeting starts based on
-                    microphone activity.
+                    Show a reminder when another app uses the microphone.
+                    Recording starts only when you accept.
                   </Trans>
                 </p>
               </div>
               <Switch
+                aria-label={t`Remind me to record meetings`}
                 checked={field.state.value}
                 onCheckedChange={field.handleChange}
               />
             </div>
 
             {field.state.value && (
-              <div className={cn(["border-muted ml-3 border-l-2 pt-2 pl-4"])}>
+              <div className="pt-2 pl-6">
                 <form.Field name="mic_active_threshold">
                   {(thresholdField) => (
                     <div className="mb-4 flex items-center justify-between gap-4">
                       <div className="flex-1">
                         <h4 className="text-sm font-medium">
-                          <Trans>Detection delay</Trans>
+                          <Trans>Show reminder after</Trans>
                         </h4>
                         <p className="text-muted-foreground text-xs">
                           <Trans>
-                            How long the mic must be active before triggering
+                            How long another app must use the microphone before
+                            showing a reminder
                           </Trans>
                         </p>
                       </div>
@@ -223,7 +225,7 @@ export function NotificationSettingsView() {
 
                 <div className="mb-3 flex flex-col gap-1">
                   <h4 className="text-sm font-medium">
-                    <Trans>Exclude apps from detection</Trans>
+                    <Trans>Don’t remind me for these apps</Trans>
                   </h4>
                   <p className="text-muted-foreground text-xs">
                     <Trans>
@@ -343,7 +345,7 @@ export function NotificationSettingsView() {
         <div className="flex items-center gap-4 pt-4 pb-2">
           <div className="border-muted min-w-0 flex-1 border-t" />
           <span className="text-muted-foreground shrink-0 text-xs font-medium">
-            <Trans>For enabled notifications</Trans>
+            <Trans>Reminder preferences</Trans>
           </span>
           <div className="border-muted min-w-0 flex-1 border-t" />
         </div>

@@ -2,7 +2,6 @@ pub mod parsing;
 mod url_builder;
 
 mod aquavoice;
-mod argmax;
 pub(crate) mod assemblyai;
 pub(crate) mod cartesia;
 mod dashscope;
@@ -23,7 +22,6 @@ pub(crate) mod soniox;
 mod whispercpp;
 
 pub use aquavoice::*;
-pub use argmax::*;
 pub use assemblyai::*;
 pub use cartesia::*;
 pub use dashscope::*;
@@ -99,7 +97,11 @@ pub fn documented_language_codes_live() -> Vec<String> {
     codes.extend(gladia::documented_language_codes().iter().copied());
     codes.extend(assemblyai::documented_language_codes_live().iter().copied());
     codes.extend(elevenlabs::documented_language_codes());
-    codes.extend(argmax::PARAKEET_V3_LANGS.iter().copied());
+    codes.extend(
+        hypr_language::PARAKEET_TDT_V3_LANGUAGE_CODES
+            .iter()
+            .copied(),
+    );
 
     simple_documented_language_codes(codes)
 }
@@ -117,7 +119,11 @@ pub fn documented_language_codes_batch() -> Vec<String> {
             .copied(),
     );
     codes.extend(elevenlabs::documented_language_codes());
-    codes.extend(argmax::PARAKEET_V3_LANGS.iter().copied());
+    codes.extend(
+        hypr_language::PARAKEET_TDT_V3_LANGUAGE_CODES
+            .iter()
+            .copied(),
+    );
     codes.extend(pyannote::documented_language_codes());
 
     simple_documented_language_codes(codes)
@@ -304,8 +310,14 @@ pub fn normalize_languages(languages: &[hypr_language::Language]) -> Vec<hypr_la
     result
 }
 
-fn is_local_argmax(base_url: &str) -> bool {
-    host_matches(base_url, is_local_host) && !is_fmtr_proxy(base_url)
+fn is_local_whisper(base_url: &str, model: Option<&str>) -> bool {
+    host_matches(base_url, is_local_host)
+        && !is_fmtr_proxy(base_url)
+        && model.is_some_and(|model| {
+            model
+                .parse::<hypr_whisper_local_model::WhisperModel>()
+                .is_ok()
+        })
 }
 
 pub(crate) fn build_ws_url_from_base_with(
@@ -383,8 +395,6 @@ pub enum AdapterKind {
     AquaVoice,
     #[strum(serialize = "cartesia")]
     Cartesia,
-    #[strum(serialize = "argmax")]
-    Argmax,
     #[strum(serialize = "soniox")]
     Soniox,
     #[strum(serialize = "fireworks")]
@@ -413,7 +423,7 @@ impl AdapterKind {
     pub fn from_url_and_languages(
         base_url: &str,
         _languages: &[hypr_language::Language],
-        _model: Option<&str>,
+        model: Option<&str>,
     ) -> Self {
         use crate::providers::Provider;
 
@@ -421,8 +431,8 @@ impl AdapterKind {
             return Self::Fmtr;
         }
 
-        if is_local_argmax(base_url) {
-            return Self::Argmax;
+        if is_local_whisper(base_url, model) {
+            return Self::Fmtr;
         }
 
         Provider::from_url(base_url)
@@ -432,7 +442,7 @@ impl AdapterKind {
 
     pub fn has_live_mode(&self) -> bool {
         match self {
-            Self::AquaVoice | Self::Argmax | Self::OpenAI | Self::Pyannote => false,
+            Self::AquaVoice | Self::OpenAI | Self::Pyannote => false,
             Self::Soniox
             | Self::Cartesia
             | Self::Fireworks
@@ -465,7 +475,6 @@ impl AdapterKind {
             Self::Fireworks => FireworksAdapter::language_support_live(languages),
             Self::ElevenLabs => ElevenLabsAdapter::language_support_live(languages),
             Self::DashScope => DashScopeAdapter::language_support_live(languages),
-            Self::Argmax => ArgmaxAdapter::language_support_live(languages, model),
             Self::Mistral => MistralAdapter::language_support_live(languages),
             Self::Pyannote => LanguageSupport::NotSupported,
             Self::Fmtr => FmtrAdapter::language_support_live(languages, model),
@@ -491,7 +500,6 @@ impl AdapterKind {
             Self::Fireworks => FireworksAdapter::language_support_batch(languages),
             Self::ElevenLabs => ElevenLabsAdapter::language_support_batch(languages),
             Self::DashScope => DashScopeAdapter::language_support_batch(languages),
-            Self::Argmax => ArgmaxAdapter::language_support_batch(languages, model),
             Self::Mistral => MistralAdapter::language_support_batch(languages),
             Self::Pyannote => PyannoteAdapter::language_support_batch(languages, model),
             Self::Fmtr => FmtrAdapter::language_support_batch(languages, model),
@@ -650,16 +658,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_local_argmax() {
-        assert!(is_local_argmax("http://localhost:50060/v1"));
-        assert!(is_local_argmax("http://127.0.0.1:50060/v1"));
-
-        assert!(!is_local_argmax("https://example.com/stt"));
-        assert!(!is_local_argmax("http://localhost:3001/stt"));
-        assert!(!is_local_argmax("https://api.deepgram.com"));
-    }
-
-    #[test]
     fn test_adapter_kind_from_url_and_languages() {
         use hypr_language::ISO639::*;
 
@@ -687,12 +685,30 @@ mod tests {
                 None,
                 AdapterKind::Fmtr,
             ),
-            // localhost argmax
+            (
+                "http://127.0.0.1:54321/v1",
+                &[Nl, En],
+                Some("whisper-large-v3"),
+                AdapterKind::Fmtr,
+            ),
+            (
+                "http://localhost:54321/v1",
+                &[En],
+                Some("QuantizedSmallEn"),
+                AdapterKind::Fmtr,
+            ),
+            (
+                "https://api.openai.com/v1",
+                &[En],
+                Some("whisper-large-v3"),
+                AdapterKind::OpenAI,
+            ),
+            // Unknown localhost models retain the generic fallback
             (
                 "http://localhost:50060/v1",
                 &[En],
                 None,
-                AdapterKind::Argmax,
+                AdapterKind::Deepgram,
             ),
         ];
 
@@ -725,7 +741,6 @@ mod tests {
 
         let batch_only = [
             AdapterKind::AquaVoice,
-            AdapterKind::Argmax,
             AdapterKind::OpenAI,
             AdapterKind::Pyannote,
         ];
@@ -895,7 +910,7 @@ mod tests {
         );
         assert_eq!(
             AdapterKind::from_url_and_languages("http://localhost:50060/v1", &en, None),
-            AdapterKind::Argmax,
+            AdapterKind::Deepgram,
         );
     }
 

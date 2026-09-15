@@ -1,15 +1,10 @@
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import {
-  type RefObject,
-  useCallback,
-  useDeferredValue,
-  useRef,
-  useState,
-} from "react";
+import { type RefObject, useCallback, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { cn } from "@hypr/utils";
 
+import { usePlaybackHighlight } from "./playback-highlight";
 import { SelectionMenu } from "./selection-menu";
 import { TranscriptSeparator } from "./separator";
 import { RenderTranscript } from "./transcript";
@@ -70,8 +65,6 @@ export function TranscriptViewer({
     seek,
     audioExists,
   } = useAudioPlayer();
-  const time = useAudioTime();
-  const deferredCurrentMs = useDeferredValue(time.current * 1000);
   const isPlaying = playerState === "playing";
 
   useHotkeys(
@@ -89,7 +82,6 @@ export function TranscriptViewer({
     { enableOnFormTags: false },
   );
 
-  usePlaybackAutoScroll(containerRef, deferredCurrentMs, isPlaying);
   const shouldAutoScroll = currentActive && autoScrollEnabled;
   const shouldScrollLastTranscriptToEnd = currentActive && isNearBottom;
   useAutoScroll(
@@ -140,7 +132,7 @@ export function TranscriptViewer({
                     ? liveSegments
                     : []
                 }
-                currentMs={deferredCurrentMs}
+                currentMs={0}
                 seek={seek}
                 startPlayback={start}
                 audioExists={audioExists}
@@ -156,6 +148,7 @@ export function TranscriptViewer({
         />
       </div>
 
+      <PlaybackTracking containerRef={containerRef} isPlaying={isPlaying} />
       {canScroll && (
         <div
           data-transcript-scroll-controls
@@ -195,4 +188,17 @@ export function TranscriptViewer({
       )}
     </div>
   );
+}
+
+function PlaybackTracking({
+  containerRef,
+  isPlaying,
+}: {
+  containerRef: RefObject<HTMLDivElement | null>;
+  isPlaying: boolean;
+}) {
+  const time = useAudioTime();
+  usePlaybackHighlight(containerRef, time.current * 1000);
+  usePlaybackAutoScroll(containerRef, time.current * 1000, isPlaying);
+  return null;
 }

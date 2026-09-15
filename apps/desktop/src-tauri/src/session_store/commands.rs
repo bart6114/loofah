@@ -6,8 +6,8 @@ use hypr_fs_format::TranscriptWithData;
 
 use super::{
     EnhancedDoc, EnhancedDocPatch, PersonItem, RebuildReport, SessionListHeader, SessionMeta,
-    SessionMetaPatch, SessionRecord, SessionStore, TagItem, TaskInput, TaskItem, TemplateInput,
-    TemplateItem, TranscriptDelta, VaultStats,
+    SessionMetaPatch, SessionRecord, SessionStore, TagItem, TaskInput, TaskItem, TranscriptDelta,
+    VaultStats,
 };
 use crate::related_tags::RelatedTagQueue;
 
@@ -214,53 +214,6 @@ pub async fn session_move_tasks<R: tauri::Runtime>(
 ) -> Result<(), String> {
     store(&app)?
         .move_tasks(task_ids, &source_type, &source_id, insertion_order)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn template_list<R: tauri::Runtime>(
-    app: AppHandle<R>,
-) -> Result<Vec<TemplateItem>, String> {
-    store(&app)?
-        .list_templates()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn template_get<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    id: String,
-) -> Result<Option<TemplateItem>, String> {
-    store(&app)?
-        .get_template(&id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn template_upsert<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    template: TemplateInput,
-) -> Result<(), String> {
-    store(&app)?
-        .upsert_template(template)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn template_delete<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    id: String,
-) -> Result<(), String> {
-    store(&app)?
-        .delete_template(&id)
         .await
         .map_err(|e| e.to_string())
 }

@@ -342,3 +342,37 @@ impl<S> SseParserState<S> {
         }))
     }
 }
+
+#[cfg(test)]
+mod request_tests {
+    use super::*;
+
+    #[test]
+    fn local_batch_preserves_languages_and_dictionary_terms() {
+        let params = ListenParams {
+            model: Some("whisper-large-v3".into()),
+            languages: vec!["nl".parse().unwrap(), "en".parse().unwrap()],
+            keywords: vec!["Kubernetes".into(), "ingress controller".into()],
+            ..Default::default()
+        };
+        let url = build_batch_url("http://127.0.0.1:1234/v1", &params);
+        assert_eq!(url.path(), "/v1/listen");
+        let pairs = url.query_pairs().collect::<Vec<_>>();
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(key, _)| key == "language")
+                .map(|(_, value)| value.as_ref())
+                .collect::<Vec<_>>(),
+            ["nl", "en"]
+        );
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(key, _)| key == "keywords")
+                .map(|(_, value)| value.as_ref())
+                .collect::<Vec<_>>(),
+            ["Kubernetes", "ingress controller"]
+        );
+    }
+}

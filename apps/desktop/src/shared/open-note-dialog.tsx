@@ -305,7 +305,7 @@ export function OpenNoteDialog({
                   "flex items-center justify-center",
                   "bg-accent/80 hover:bg-accent/80",
                   "text-muted-foreground text-xs",
-                  "transition-colors",
+                  "transition-none",
                 ])}
               >
                 <XIcon className="h-3 w-3" />
@@ -328,7 +328,7 @@ export function OpenNoteDialog({
                         "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5",
                         "text-muted-foreground text-sm",
                         "data-[selected=true]:bg-accent/60",
-                        "transition-colors",
+                        "transition-none",
                       ])}
                     >
                       <FileTextIcon className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -359,7 +359,7 @@ export function OpenNoteDialog({
                             "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5",
                             "text-muted-foreground text-sm",
                             "data-[selected=true]:bg-accent/60",
-                            "transition-colors",
+                            "transition-none",
                           ])}
                         >
                           <FileTextIcon className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -391,7 +391,7 @@ export function OpenNoteDialog({
                             "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5",
                             "text-muted-foreground text-sm",
                             "data-[selected=true]:bg-accent/60",
-                            "transition-colors",
+                            "transition-none",
                           ])}
                         >
                           <FileTextIcon className="text-muted-foreground h-4 w-4 shrink-0" />

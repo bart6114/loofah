@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
   relocateVault: vi.fn(),
   setVaultBase: vi.fn(),
   classifyVaultDir: vi.fn(),
-  obsidianVaults: vi.fn(),
   selectFolder: vi.fn(),
   message: vi.fn(),
   openPath: vi.fn(),
@@ -29,7 +28,6 @@ vi.mock("@hypr/plugin-settings", () => ({
     vaultBase: mocks.vaultBase,
     setVaultBase: mocks.setVaultBase,
     classifyVaultDir: mocks.classifyVaultDir,
-    obsidianVaults: mocks.obsidianVaults,
   },
 }));
 
@@ -108,7 +106,6 @@ describe("ChangeLocationRow", () => {
       status: "ok",
       data: "empty_or_missing",
     });
-    mocks.obsidianVaults.mockResolvedValue({ status: "ok", data: [] });
     mocks.homeDir.mockResolvedValue("/Users/x");
     mocks.scheduleAutomaticRelaunch.mockResolvedValue("scheduled");
   });
@@ -121,6 +118,13 @@ describe("ChangeLocationRow", () => {
     renderRow();
     expect(await screen.findByText(/Drive\/vault/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /change/i })).toBeTruthy();
+  });
+
+  it("opens the current notes folder explicitly in Finder", async () => {
+    renderRow();
+    await screen.findByText(/Drive\/vault/);
+    fireEvent.click(screen.getByRole("button", { name: "Show in Finder" }));
+    expect(mocks.openPath).toHaveBeenCalledWith("/Users/x/Drive/vault", null);
   });
 
   it("moves the vault into an empty folder by default", async () => {
@@ -198,19 +202,6 @@ describe("ChangeLocationRow", () => {
     expect(mocks.relocateVault).not.toHaveBeenCalled();
   });
 
-  it("treats an Obsidian vault as a switch target", async () => {
-    mocks.classifyVaultDir.mockResolvedValue({
-      status: "ok",
-      data: "obsidian",
-    });
-    const dialog = await openDialogFor("/Users/x/Documents/ObsidianVault");
-
-    await within(dialog).findByText(/Switch to this vault/);
-    expect(
-      within(dialog).getByRole("button", { name: /^switch$/i }),
-    ).toBeTruthy();
-  });
-
   it("targets a fresh subfolder when the folder has unrelated files", async () => {
     mocks.classifyVaultDir.mockResolvedValue({ status: "ok", data: "other" });
     const dialog = await openDialogFor("/Users/x/Google Drive/My Drive");
@@ -271,28 +262,5 @@ describe("ChangeLocationRow", () => {
       "New location is a subdirectory of the current vault",
     );
     expect(mocks.scheduleAutomaticRelaunch).not.toHaveBeenCalled();
-  });
-
-  it("offers detected Obsidian vaults as quick picks", async () => {
-    mocks.obsidianVaults.mockResolvedValue({
-      status: "ok",
-      data: [{ path: "/Users/x/Documents/MyVault" }],
-    });
-    mocks.classifyVaultDir.mockResolvedValue({
-      status: "ok",
-      data: "obsidian",
-    });
-    renderRow();
-    await screen.findByText(/Drive\/vault/);
-
-    const quickPick = await screen.findByRole("button", {
-      name: /MyVault/,
-    });
-    fireEvent.click(quickPick);
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      await within(dialog).findByText(/Switch to this vault/),
-    ).toBeTruthy();
   });
 });

@@ -1,5 +1,6 @@
 mod appearance;
 mod autostart;
+mod chatgpt;
 mod commands;
 mod embedded_cli;
 mod ext;
@@ -185,7 +186,9 @@ pub async fn main() {
 
     legacy_db::retire_app_db(&context.config().identifier);
 
-    let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default()).manage(audio);
+    let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
+        .manage(audio)
+        .manage(chatgpt::ChatgptState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
     #[cfg(all(target_os = "macos", feature = "automation"))]
@@ -209,7 +212,6 @@ pub async fn main() {
 
     builder = builder
         .plugin(tauri_plugin_todo::init())
-        .plugin(tauri_plugin_hooks::init())
         .plugin(tauri_plugin_icon::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_sidecar2::init())
@@ -393,7 +395,6 @@ pub async fn main() {
                 let _ = permissions.reset(Permission::Microphone).await;
                 let _ = permissions.reset(Permission::SystemAudio).await;
                 let _ = permissions.reset(Permission::ScreenRecording).await;
-                let _ = permissions.reset(Permission::Reminders).await;
             });
         }
     }
@@ -442,6 +443,7 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<chatgpt::ChatgptState>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
             // nothing is dirty, so this can never double-write.
@@ -525,6 +527,13 @@ fn get_onboarding_flag() -> Option<bool> {
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
+            chatgpt::chatgpt_account::<tauri::Wry>,
+            chatgpt::chatgpt_login::<tauri::Wry>,
+            chatgpt::chatgpt_cancel_login::<tauri::Wry>,
+            chatgpt::chatgpt_logout::<tauri::Wry>,
+            chatgpt::chatgpt_models::<tauri::Wry>,
+            chatgpt::chatgpt_generate::<tauri::Wry>,
+            chatgpt::chatgpt_cancel_generation::<tauri::Wry>,
             commands::get_onboarding_needed::<tauri::Wry>,
             commands::set_onboarding_needed::<tauri::Wry>,
             commands::get_dismissed_toasts::<tauri::Wry>,
@@ -549,10 +558,6 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_write_enhanced_doc::<tauri::Wry>,
             session_store::commands::session_update_enhanced_doc::<tauri::Wry>,
             session_store::commands::session_delete_enhanced_doc::<tauri::Wry>,
-            session_store::commands::template_list::<tauri::Wry>,
-            session_store::commands::template_get::<tauri::Wry>,
-            session_store::commands::template_upsert::<tauri::Wry>,
-            session_store::commands::template_delete::<tauri::Wry>,
             session_store::commands::people_list::<tauri::Wry>,
             session_store::commands::people_ensure::<tauri::Wry>,
             session_store::commands::tags_list::<tauri::Wry>,

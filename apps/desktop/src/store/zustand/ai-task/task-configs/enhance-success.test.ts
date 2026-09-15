@@ -49,7 +49,6 @@ function createSnapshot(title = "") {
         markdown: "old content",
         content: "old content",
         contentFormat: "md",
-        templateId: "",
         position: 0,
       },
     ],
@@ -69,7 +68,6 @@ function createTransformedArgs(): EnhanceSuccessParams["transformedArgs"] {
       event: null,
     },
     participants: [],
-    template: null,
     preMeetingMemo: "",
     postMeetingMemo: "",
     transcripts: [],
@@ -87,7 +85,6 @@ function createParams(
     args: {
       sessionId: "session-1",
       enhancedNoteId: "note-1",
-      templateId: undefined,
     },
     transformedArgs: createTransformedArgs(),
     signal: new AbortController().signal,

@@ -6,7 +6,6 @@ const COMMANDS: &[&str] = &[
     "set_vault_base",
     "is_empty_or_missing_dir",
     "classify_vault_dir",
-    "obsidian_vaults",
     "path",
     "load",
     "save",

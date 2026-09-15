@@ -5,7 +5,6 @@ import { Button } from "@hypr/ui/components/ui/button";
 
 import { useAITask } from "~/ai/contexts";
 import { useLanguageModel } from "~/ai/hooks";
-import { useEnhancedNote } from "~/session/queries";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 
 export function EnhanceError({
@@ -19,7 +18,6 @@ export function EnhanceError({
 }) {
   const model = useLanguageModel();
   const generate = useAITask((state) => state.generate);
-  const templateId = useEnhancedNote(enhancedNoteId)?.templateId || undefined;
 
   const handleRetry = () => {
     if (!model) return;
@@ -28,7 +26,7 @@ export function EnhanceError({
     void generate(taskId, {
       model,
       taskType: "enhance",
-      args: { sessionId, enhancedNoteId, templateId },
+      args: { sessionId, enhancedNoteId },
     });
   };
 

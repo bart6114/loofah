@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { generateText } from "ai";
-import { useEffect } from "react";
 
 import { Spinner } from "@hypr/ui/components/ui/spinner";
 
-import { useLanguageModel } from "~/ai/hooks";
+import { CHATGPT_PROVIDER } from "~/ai/chatgpt-account";
+import { useLanguageModel, useLLMConnectionStatus } from "~/ai/hooks";
+import { useConfigValues } from "~/shared/config";
 
 export type LlmHealthStatus = {
   status: "pending" | "error" | "success" | null;
@@ -23,9 +24,14 @@ export function HealthStatusIndicator() {
 
 export function useConnectionHealth(): LlmHealthStatus {
   const model = useLanguageModel();
+  const connection = useLLMConnectionStatus();
+  const { current_llm_provider } = useConfigValues([
+    "current_llm_provider",
+  ] as const);
+  const isChatgpt = current_llm_provider === CHATGPT_PROVIDER;
 
   const text = useQuery({
-    enabled: !!model,
+    enabled: !!model && !isChatgpt,
     queryKey: ["llm-health-check", model],
     staleTime: 0,
     retry: 5,
@@ -40,15 +46,31 @@ export function useConnectionHealth(): LlmHealthStatus {
     },
   });
 
-  const { refetch } = text;
-  useEffect(() => {
-    if (model) {
-      void refetch();
-    }
-  }, [model, refetch]);
+  if (isChatgpt) {
+    return {
+      status: connection.status,
+      message:
+        connection.status === "error" && connection.reason === "chatgpt"
+          ? connection.message
+          : undefined,
+    };
+  }
 
   if (!model) {
+    if (connection.status === "error") {
+      return {
+        status: "error",
+        message:
+          connection.reason === "missing_config"
+            ? "Complete the API key and endpoint for this connection."
+            : "This provider is no longer available. Choose another connection.",
+      };
+    }
     return { status: null };
+  }
+
+  if (text.isFetching) {
+    return { status: "pending" };
   }
 
   if (text.status === "error") {

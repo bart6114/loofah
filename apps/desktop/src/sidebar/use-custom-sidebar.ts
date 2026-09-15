@@ -2,12 +2,9 @@ import { useEffect, useRef } from "react";
 
 import type { Tab } from "~/store/zustand/tabs";
 
-const CUSTOM_SIDEBAR_TYPES: Tab["type"][] = ["settings", "templates"];
+const CUSTOM_SIDEBAR_TYPES: Tab["type"][] = ["settings"];
 
-const LEFT_SURFACE_CUSTOM_SIDEBAR_TYPES: Tab["type"][] = [
-  "settings",
-  "templates",
-];
+const LEFT_SURFACE_CUSTOM_SIDEBAR_TYPES: Tab["type"][] = ["settings"];
 
 export function hasCustomSidebarTab(tab: Tab | null): boolean {
   return tab !== null && CUSTOM_SIDEBAR_TYPES.includes(tab.type);

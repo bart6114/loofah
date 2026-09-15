@@ -11,7 +11,12 @@ vi.mock("~/settings/queries", () => ({
   useStoredSettingValuesQuery: mocks.useStoredSettingValuesQuery,
 }));
 
-vi.mock("./app-settings", () => ({ AppSettingsView: () => null }));
+vi.mock("./app-settings", () => ({
+  AppSettingsView: ({ autostart }: { autostart: { value: boolean } }) => (
+    <span data-testid="autostart">{String(autostart.value)}</span>
+  ),
+  RecordingSettingsView: () => null,
+}));
 vi.mock("./main-language", () => ({
   MainLanguageView: ({ value }: { value: string }) => (
     <span data-testid="main-language">{value}</span>
@@ -48,10 +53,10 @@ describe("SettingsApp", () => {
     mocks.useStoredSettingValuesQuery.mockReturnValue({
       data: {
         values: {
-          ai_language: "ko",
+          autostart: true,
           spoken_languages: JSON.stringify(["en"]),
         },
-        hasValues: new Set(["ai_language", "spoken_languages"]),
+        hasValues: new Set(["autostart", "spoken_languages"]),
       },
       isLoading: false,
       error: null,
@@ -59,6 +64,6 @@ describe("SettingsApp", () => {
 
     render(<SettingsApp />);
 
-    expect(screen.getByTestId("main-language").textContent).toBe("ko");
+    expect(screen.getByTestId("autostart").textContent).toBe("true");
   });
 });

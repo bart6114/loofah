@@ -128,7 +128,7 @@ impl SessionStore {
     /// directory -> empty list, matching the "nothing recorded yet" state rather than an error.
     ///
     /// Nothing writes that directory any more -- recordings settle at `<session dir>/audio.<ext>`
-    /// (see `store_audio`). This and `delete_audio` stay so retention can still clear vaults
+    /// (see `store_audio`). This and `delete_audio` support explicitly deleting recordings from vaults
     /// written by the builds that did relocate recordings there.
     pub async fn list_audio(&self, session_id: &str) -> Result<Vec<String>, StoreError> {
         validate_session_id(session_id)?;
@@ -165,9 +165,8 @@ impl SessionStore {
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?
     }
 
-    /// Permanently deletes one audio file under `sessions/<id>/audio/` (retention cleanup --
-    /// unlike `delete_session`, this is not undo-able, matching the old retention behavior it
-    /// replaces). Missing file is a no-op, not an error.
+    /// Permanently deletes one legacy recording at the user's request.
+    /// Unlike `delete_session`, this is not undo-able. Missing file is a no-op.
     pub async fn delete_audio(&self, session_id: &str, filename: &str) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
         let session_dir = self.session_dir(session_id).await?;

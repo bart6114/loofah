@@ -27,7 +27,7 @@ describe("summary length policy", () => {
     ]);
 
     expect(policy).toEqual({
-      transcriptCharacters: 200,
+      sourceCharacters: 200,
       maxCharacters: 320,
       maxSections: 2,
       guidance: {
@@ -92,7 +92,7 @@ describe("summary length policy", () => {
     ]);
 
     expect(policy).toMatchObject({
-      transcriptCharacters: 10_000,
+      sourceCharacters: 10_000,
       maxCharacters: 10_000,
       maxSections: null,
     });
@@ -111,7 +111,7 @@ describe("summary length policy", () => {
 
 - ${"c".repeat(100)}`;
     const result = constrainSummaryLength(markdown, {
-      transcriptCharacters: 160,
+      sourceCharacters: 160,
       maxCharacters: 160,
       maxSections: 2,
     });

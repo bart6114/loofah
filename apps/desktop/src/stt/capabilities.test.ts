@@ -36,6 +36,68 @@ beforeEach(() => {
   });
 });
 
+test("an explicit after-recording choice overrides live capability without dropping languages", async () => {
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "soniqo-parakeet-streaming",
+      languages: ["en"],
+      timing: "batch",
+    }),
+  ).toEqual({ languages: ["en"], transcriptionMode: "batch" });
+});
+
+test("an explicit live choice still respects model and meeting language restrictions", async () => {
+  for (const [model, languages, mode] of [
+    ["soniqo-parakeet-streaming", ["en"], "live"],
+    ["soniqo-parakeet-streaming", ["en", "nl"], "batch"],
+    ["QuantizedSmallEn", ["en"], "live"],
+    ["QuantizedSmallEn", ["en", "nl"], "batch"],
+  ] as const) {
+    expect(
+      await getLiveTranscriptionConfig({
+        provider: "fmtr",
+        model,
+        languages,
+        timing: "live",
+      }),
+    ).toEqual({ languages: [...languages], transcriptionMode: mode });
+  }
+});
+
+test("Whisper Large V3 transcribes live and preserves Dutch and English", () => {
+  expect(isSupportedLocalSttModel("whisper-large-v3")).toBe(true);
+  expect(
+    getOnDeviceTranscriptionConfig("whisper-large-v3", ["nl", "en"]),
+  ).toEqual({
+    languages: ["nl", "en"],
+    transcriptionMode: "live",
+  });
+});
+
+test("Whisper preserves an explicit after-recording preference", async () => {
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "whisper-large-v3",
+      languages: ["nl", "en"],
+      timing: "batch",
+    }),
+  ).toEqual({ languages: ["nl", "en"], transcriptionMode: "batch" });
+});
+
+test("Whisper respects backend language coverage before starting live capture", async () => {
+  isSupportedLanguagesLiveMock.mockResolvedValue({ status: "ok", data: false });
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "QuantizedSmall",
+      languages: ["unsupported"],
+      timing: "live",
+    }),
+  ).toEqual({ languages: ["unsupported"], transcriptionMode: "batch" });
+});
+
 describe("getOnDeviceTranscriptionMode", () => {
   test("uses live mode for realtime local models", () => {
     expect(getOnDeviceTranscriptionMode("soniqo-parakeet-streaming")).toBe(
@@ -44,7 +106,7 @@ describe("getOnDeviceTranscriptionMode", () => {
   });
 
   test("uses batch mode for non-realtime local models", () => {
-    expect(getOnDeviceTranscriptionMode("soniqo-qwen3-small")).toBe("batch");
+    expect(getOnDeviceTranscriptionMode("soniqo-omnilingual")).toBe("batch");
   });
 
   test("demotes to batch when the realtime local model does not support a configured language", () => {
@@ -63,7 +125,7 @@ describe("getOnDeviceTranscriptionMode", () => {
 describe("isSupportedLocalSttModel", () => {
   test("accepts shipped local STT model families", () => {
     expect(isSupportedLocalSttModel("soniqo-parakeet-streaming")).toBe(true);
-    expect(isSupportedLocalSttModel("am-parakeet-v3")).toBe(true);
+    expect(isSupportedLocalSttModel("soniqo-parakeet-batch")).toBe(true);
     expect(isSupportedLocalSttModel("QuantizedSmallEn")).toBe(true);
   });
 
@@ -77,7 +139,7 @@ describe("isSupportedLocalSttModel", () => {
 describe("isConfiguredSttModel", () => {
   test("requires an on-device model id for the on-device provider — no cloud model exists anymore", () => {
     expect(isConfiguredSttModel("fmtr", "cloud")).toBe(false);
-    expect(isConfiguredSttModel("fmtr", "soniqo-qwen3-small")).toBe(true);
+    expect(isConfiguredSttModel("fmtr", "soniqo-omnilingual")).toBe(true);
     expect(isConfiguredSttModel("fmtr", "removed-local-model")).toBe(false);
   });
 
@@ -175,31 +237,42 @@ describe("getLiveTranscriptionConfig", () => {
   });
 
   test("passes the provider through untouched — STT is on-device only, no Deepgram-compatibility mapping left", async () => {
-    await isSupportedLanguagesLive("fmtr", "am-parakeet-v3", ["en"]);
+    await isSupportedLanguagesLive("fmtr", "soniqo-parakeet-batch", ["en"]);
 
     expect(isSupportedLanguagesLiveMock.mock.calls[0]).toEqual([
       "fmtr",
-      "am-parakeet-v3",
+      "soniqo-parakeet-batch",
       ["en"],
     ]);
 
-    await isSupportedLanguagesBatch("fmtr", "am-parakeet-v3", ["en"]);
+    await isSupportedLanguagesBatch("fmtr", "soniqo-parakeet-batch", ["en"]);
 
     expect(isSupportedLanguagesBatchMock.mock.calls[0]).toEqual([
       "fmtr",
-      "am-parakeet-v3",
+      "soniqo-parakeet-batch",
       ["en"],
     ]);
   });
 });
 
 describe("getTranscriptionLanguages", () => {
-  test("prefers the main language before additional spoken languages", () => {
-    expect(getTranscriptionLanguages("en", ["ko"])).toEqual(["en", "ko"]);
+  test.each([undefined, null])(
+    "defaults to English when meeting languages are %s",
+    (languages) => {
+      expect(getTranscriptionLanguages(languages)).toEqual(["en"]);
+    },
+  );
+
+  test("preserves explicit meeting languages", () => {
+    expect(getTranscriptionLanguages(["nl", "fr"])).toEqual(["nl", "fr"]);
+  });
+
+  test("preserves an explicit empty selection", () => {
+    expect(getTranscriptionLanguages([])).toEqual([]);
   });
 
   test("deduplicates regional variants by base language", () => {
-    expect(getTranscriptionLanguages("en-US", ["en", "ko"])).toEqual([
+    expect(getTranscriptionLanguages(["en-US", "en", "ko"])).toEqual([
       "en-US",
       "ko",
     ]);
@@ -217,4 +290,32 @@ test("supports Windows Parakeet and uses batch for non-English speech", () => {
   expect(getOnDeviceTranscriptionMode("onnx-parakeet-batch", ["en"])).toBe(
     "batch",
   );
+});
+
+test.each([
+  "am-parakeet-v2",
+  "am-parakeet-v3",
+  "am-whisper-large-v3",
+  "soniqo-qwen3-small",
+  "soniqo-qwen3-large",
+  "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+  "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+  "HyprLLM",
+  "soniqo-unknown",
+  "onnx-unknown",
+  "whisper-unknown",
+  "QuantizedUnknown",
+])("rejects unsupported model %s", (model) => {
+  expect(isSupportedLocalSttModel(model)).toBe(false);
+  expect(isConfiguredSttModel("fmtr", model)).toBe(false);
+});
+
+test.each(["am", "argmax"])("rejects retired provider %s", async (provider) => {
+  expect(isConfiguredSttModel(provider, "am-parakeet-v3")).toBe(false);
+  expect(
+    await isSupportedLanguagesLive(provider, "am-parakeet-v3", ["en"]),
+  ).toBe(false);
+  expect(
+    await isSupportedLanguagesBatch(provider, "am-parakeet-v3", ["en"]),
+  ).toBe(false);
 });

@@ -15,6 +15,7 @@ import { cn } from "@hypr/utils";
 
 import { Attachments } from "./attachments";
 import { Enhanced } from "./enhanced";
+import { EmptySummary } from "./enhanced/empty-summary";
 import { FileDropTarget } from "./file-drop-target";
 import { useNoteFileHandlerConfig } from "./file-handler";
 import { Header, useEditorTabs } from "./header";
@@ -201,7 +202,10 @@ const NoteInputContent = forwardRef<
           internalEditorRef.current?.commands.focusAtPixelWidth(px),
         insertAtStartAndFocus: (content) =>
           internalEditorRef.current?.commands.insertAtStartAndFocus(content),
-        prepareForTabChange: onBeforeTabChange,
+        prepareForTabChange: () => {
+          internalEditorRef.current?.flushPendingChanges();
+          onBeforeTabChange();
+        },
       }),
       [currentTab, onBeforeTabChange],
     );
@@ -215,6 +219,7 @@ const NoteInputContent = forwardRef<
           return;
         }
 
+        internalEditorRef.current?.flushPendingChanges();
         onBeforeTabChange();
         commitTabChange(tabView);
       },
@@ -430,6 +435,9 @@ const NoteInputContent = forwardRef<
               </div>
             )}
             {peopleTrailer.portal}
+            {renderedCurrentTab.type === "summary" && (
+              <EmptySummary sessionId={sessionId} sessionTitle={sessionTitle} />
+            )}
             {renderedCurrentTab.type === "enhanced" && (
               <Enhanced
                 ref={internalEditorRef}

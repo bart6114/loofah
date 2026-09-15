@@ -11,6 +11,22 @@ impl FmtrAdapter {
         languages: &[hypr_language::Language],
         model: Option<&str>,
     ) -> LanguageSupport {
+        if let Some(model) =
+            model.and_then(|model| model.parse::<hypr_whisper_local_model::WhisperModel>().ok())
+        {
+            let supported = model.supported_languages();
+            return if languages.iter().all(|language| {
+                supported
+                    .iter()
+                    .any(|candidate| candidate.iso639() == language.iso639())
+            }) {
+                LanguageSupport::Supported {
+                    quality: LanguageQuality::NoData,
+                }
+            } else {
+                LanguageSupport::NotSupported
+            };
+        }
         match soniqo_language_support(languages, model, true) {
             Some(support) => support,
             None => LanguageSupport::Supported {
@@ -30,6 +46,13 @@ impl FmtrAdapter {
         languages: &[hypr_language::Language],
         model: Option<&str>,
     ) -> LanguageSupport {
+        if model.is_some_and(|model| {
+            model
+                .parse::<hypr_whisper_local_model::WhisperModel>()
+                .is_ok()
+        }) {
+            return Self::language_support_live(languages, model);
+        }
         match soniqo_language_support(languages, model, false) {
             Some(support) => support,
             None => LanguageSupport::Supported {
@@ -64,14 +87,15 @@ fn soniqo_language_support(
         } else {
             parakeet_language_support(languages)
         }),
-        model if model.starts_with("soniqo-") => Some(if live {
+        "soniqo-omnilingual" => Some(if live {
             LanguageSupport::NotSupported
         } else {
             LanguageSupport::Supported {
                 quality: LanguageQuality::NoData,
             }
         }),
-        _ => None,
+        "cloud" => None,
+        _ => Some(LanguageSupport::NotSupported),
     }
 }
 

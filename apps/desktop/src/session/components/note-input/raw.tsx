@@ -25,6 +25,7 @@ import {
   extractFirstLineTitle,
   documentTitlePlaceholder,
 } from "~/session/title-content";
+import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import { commands } from "~/types/tauri.gen";
 
 const extraNodeViews = { appLink: AppLinkView, session: SessionNodeView };
@@ -79,13 +80,15 @@ export const RawEditor = forwardRef<
             : Promise.resolve();
 
         const markdown = json2md(portableInput);
-        const noteWrite = commands
-          .sessionWriteNote(sessionId, markdown)
-          .then((result) => {
+        const noteWrite = enqueueDatabaseWrite(
+          `session:${sessionId}:note`,
+          async () => {
+            const result = await commands.sessionWriteNote(sessionId, markdown);
             if (result.status === "error") {
               throw new Error(result.error);
             }
-          });
+          },
+        );
 
         await Promise.all([titleWrite, noteWrite]);
       },

@@ -17,10 +17,16 @@ export function relayShim() {
     name: "relay-shim",
     configureServer(server) {
       server.middlewares.use("/relay-shim.js", (_req, res) => {
-        const content = readFileSync(shimPath, "utf-8").replaceAll(
-          "__RELAY_PORT__",
-          String(getRelayPort()),
-        );
+        const content = readFileSync(shimPath, "utf-8")
+          .replaceAll("__RELAY_PORT__", String(getRelayPort()))
+          .replaceAll(
+            "__RELAY_ARCH__",
+            process.arch === "arm64"
+              ? "aarch64"
+              : process.arch === "x64"
+                ? "x86_64"
+                : process.arch,
+          );
         res.setHeader("Content-Type", "application/javascript");
         res.end(content);
       });

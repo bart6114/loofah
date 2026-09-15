@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { useLanguageModel } from "~/ai/hooks";
 import { takePendingWelcomeSession } from "~/onboarding/welcome-note";
 import { initEnhancerService } from "~/services/enhancer";
-import { useConfigValue } from "~/shared/config";
 import { useDesktopTabLifecycle } from "~/shared/desktop-tab-lifecycle";
 import { useTabs } from "~/store/zustand/tabs";
 import { MainListenerControlBridge } from "~/stt/window-control";
@@ -45,12 +44,9 @@ function EnhancerInit() {
   });
 
   const model = useLanguageModel();
-  const selectedTemplateId = useConfigValue("selected_template_id");
 
   const modelRef = useRef(model);
   modelRef.current = model;
-  const templateIdRef = useRef(selectedTemplateId);
-  templateIdRef.current = selectedTemplateId;
 
   useEffect(() => {
     if (!aiTaskStore) return;
@@ -58,7 +54,6 @@ function EnhancerInit() {
     const service = initEnhancerService({
       aiTaskStore,
       getModel: () => modelRef.current,
-      getSelectedTemplateId: () => templateIdRef.current || undefined,
     });
 
     return () => service.dispose();

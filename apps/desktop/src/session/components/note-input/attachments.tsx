@@ -278,7 +278,7 @@ export function Attachments({
       ref={dropTargetRef ? undefined : localTargetRef}
       data-allow-file-drop={dropTargetRef ? undefined : "true"}
       className={cn([
-        "relative min-h-full rounded-lg border border-transparent pb-6 transition-colors",
+        "relative min-h-full rounded-lg border border-transparent pb-6 transition-none",
       ])}
     >
       {children}

@@ -79,8 +79,6 @@ mod test {
         };
     }
 
-    // cargo test --package tauri-plugin-permissions --lib -- test::test_request_reminders --exact --nocapture
-    permission_request_test!(test_request_reminders, Reminders);
     // cargo test --package tauri-plugin-permissions --lib -- test::test_request_microphone --exact --nocapture
     permission_request_test!(test_request_microphone, Microphone);
     // cargo test --package tauri-plugin-permissions --lib -- test::test_request_system_audio --exact --nocapture
@@ -90,8 +88,6 @@ mod test {
     // cargo test --package tauri-plugin-permissions --lib -- test::test_request_accessibility --exact --nocapture
     permission_request_test!(test_request_accessibility, Accessibility);
 
-    // cargo test --package tauri-plugin-permissions --lib -- test::test_reset_reminders --exact --nocapture
-    permission_reset_test!(test_reset_reminders, Reminders);
     // cargo test --package tauri-plugin-permissions --lib -- test::test_reset_microphone --exact --nocapture
     permission_reset_test!(test_reset_microphone, Microphone);
     // cargo test --package tauri-plugin-permissions --lib -- test::test_reset_system_audio --exact --nocapture

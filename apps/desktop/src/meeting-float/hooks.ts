@@ -33,7 +33,7 @@ export async function subscribeMeetingFloatData(
     }
   };
 
-  const unsubscribe = subscribeIndexChanged("sessions", () => {
+  const unsubscribe = subscribeIndexChanged("session_headers", () => {
     void push();
   });
   await push();

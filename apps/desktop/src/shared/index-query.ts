@@ -1,5 +1,11 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
+
+import { measureLocalQuery } from "./performance";
 
 import { events, type IndexEntity } from "~/types/tauri.gen";
 
@@ -18,46 +24,106 @@ type IndexSubscription = {
 };
 
 const subscriptions = new Set<IndexSubscription>();
-let listenerStarted = false;
+let listenerPromise: Promise<unknown> | undefined;
+const queryCaches = new Map<QueryClient, () => void>();
 
 // One tauri event listener per webview (started lazily, never unlistened -- module
 // lifetime), fanning each coalesced `index-changed` event out to every mounted
 // subscriber. Each window is its own JS context, so every webview gets its own
 // singleton and the backend's emit-to-all reaches them all.
-function ensureIndexChangedListener() {
-  if (listenerStarted) {
-    return;
-  }
-  listenerStarted = true;
-  events.indexChanged
+function invalidateCachedQueries(
+  client: QueryClient,
+  entity?: IndexEntity,
+  ids: readonly string[] = [],
+) {
+  void client.invalidateQueries({
+    predicate: (query) => {
+      const scope = query.meta?.vaultIndex as
+        | { entities: readonly IndexEntity[]; ids?: readonly string[] }
+        | undefined;
+      return (
+        !!scope &&
+        (!entity || scope.entities.includes(entity)) &&
+        (!scope.ids ||
+          ids.length === 0 ||
+          ids.some((id) => scope.ids!.includes(id)))
+      );
+    },
+  });
+}
+
+function revalidateCachedQueries() {
+  for (const client of queryCaches.keys()) invalidateCachedQueries(client);
+}
+
+function ensureIndexChangedListener(): Promise<unknown> {
+  if (listenerPromise) return listenerPromise;
+  listenerPromise = events.indexChanged
     .listen(({ payload }) => {
+      for (const client of queryCaches.keys())
+        invalidateCachedQueries(client, payload.entity, payload.ids);
       const seenDedupeKeys = new Set<string>();
       for (const subscription of subscriptions) {
-        if (!subscription.entities.includes(payload.entity)) {
-          continue;
-        }
-        // Id-scoped skip only when both sides carry ids; an empty payload is
-        // treated as "anything may have changed".
+        if (!subscription.entities.includes(payload.entity)) continue;
         if (
           subscription.ids &&
           payload.ids.length > 0 &&
-          !payload.ids.some((id) => subscription.ids?.includes(id))
-        ) {
+          !payload.ids.some((id) => subscription.ids!.includes(id))
+        )
           continue;
-        }
         if (subscription.dedupeKey) {
-          if (seenDedupeKeys.has(subscription.dedupeKey)) {
-            continue;
-          }
+          if (seenDedupeKeys.has(subscription.dedupeKey)) continue;
           seenDedupeKeys.add(subscription.dedupeKey);
         }
         subscription.onChange(payload.ids);
       }
     })
+    .then(() => {
+      revalidateCachedQueries();
+    })
     .catch((error) => {
-      listenerStarted = false;
+      listenerPromise = undefined;
       console.error("[index-query] failed to listen for index changes", error);
+      if (subscriptions.size || queryCaches.size) {
+        setTimeout(() => {
+          void ensureIndexChangedListener().catch(() => {});
+        }, 1000);
+      }
+      throw error;
     });
+  return listenerPromise;
+}
+
+function trackQueryCache(client: QueryClient) {
+  if (queryCaches.has(client)) return;
+  if (queryCaches.size === 0) {
+    window.addEventListener("focus", revalidateCachedQueries);
+    document.addEventListener("visibilitychange", revalidateVisibleQueries);
+  }
+  const unsubscribe = client.getQueryCache().subscribe((event) => {
+    if (
+      event.type !== "removed" ||
+      client
+        .getQueryCache()
+        .getAll()
+        .some((query) => query.meta?.vaultIndex)
+    )
+      return;
+    unsubscribe();
+    queryCaches.delete(client);
+    if (queryCaches.size === 0) {
+      window.removeEventListener("focus", revalidateCachedQueries);
+      document.removeEventListener(
+        "visibilitychange",
+        revalidateVisibleQueries,
+      );
+    }
+  });
+  queryCaches.set(client, unsubscribe);
+}
+
+function revalidateVisibleQueries() {
+  if (document.visibilityState === "visible") revalidateCachedQueries();
 }
 
 /**
@@ -71,7 +137,7 @@ export function subscribeIndexChanged(
   ids?: readonly string[],
   dedupeKey?: string,
 ): () => void {
-  ensureIndexChangedListener();
+  void ensureIndexChangedListener().catch(() => {});
   const subscription: IndexSubscription = {
     entities: Array.isArray(entity) ? entity : [entity as IndexEntity],
     ids,
@@ -96,18 +162,29 @@ export function useIndexQuery<TData>({
   queryKey,
   queryFn,
   enabled = true,
+  refetchOnMount,
 }: {
   entity: IndexEntity | readonly IndexEntity[];
   ids?: readonly string[];
   queryKey: readonly unknown[];
   queryFn: () => Promise<TData>;
   enabled?: boolean;
+  refetchOnMount?: boolean | "always";
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: queryKey as unknown[],
-    queryFn,
+    queryFn: async () => {
+      await ensureIndexChangedListener();
+      return measureLocalQuery(queryFn);
+    },
     enabled,
+    staleTime: Infinity,
+    refetchOnMount,
+    refetchOnWindowFocus: false,
+    meta: {
+      vaultIndex: { entities: Array.isArray(entity) ? entity : [entity], ids },
+    },
     // These queries read local vault state over Tauri IPC, not the network.
     // The default "online" mode pauses (re)fetches whenever the webview
     // reports itself offline, leaving the mounted view stuck with stale data
@@ -115,25 +192,10 @@ export function useIndexQuery<TData>({
     networkMode: "always",
   });
 
-  // The stringified key stands in for the (per-render) array/object identities.
-  const subscriptionKey = JSON.stringify([entity, ids, queryKey]);
   useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-    return subscribeIndexChanged(
-      entity,
-      () => {
-        void queryClient.invalidateQueries({
-          queryKey: queryKey as unknown[],
-          exact: true,
-        });
-      },
-      ids,
-      subscriptionKey,
-    );
-    // queryKey/ids are captured via subscriptionKey, which already encodes them.
-  }, [enabled, queryClient, subscriptionKey]);
+    trackQueryCache(queryClient);
+    void ensureIndexChangedListener().catch(() => {});
+  }, [queryClient]);
 
   return query;
 }

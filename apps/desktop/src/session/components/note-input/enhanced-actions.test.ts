@@ -49,10 +49,10 @@ describe("useEnhancedNoteActions", () => {
       }),
     );
 
-    await act(() => result.current.onRegenerate(null));
+    await act(() => result.current.onRegenerate());
 
     expect(mocks.toastError).toHaveBeenCalledWith(
-      "Set up Intelligence in Settings before regenerating this summary.",
+      "Set up summaries in Settings before regenerating this summary.",
     );
     expect(mocks.start).not.toHaveBeenCalled();
     expect(result.current.isError).toBe(false);

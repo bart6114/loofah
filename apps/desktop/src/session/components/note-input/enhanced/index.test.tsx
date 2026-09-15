@@ -1,4 +1,25 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+function render(ui: ReactNode) {
+  const client = new QueryClient();
+  return renderUI(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
+
+vi.mock("~/session/hooks/useSummarySource", () => ({
+  useSummarySource: () => true,
+}));
+vi.mock("~/shared/config", () => ({ useConfigValue: () => "" }));
+vi.mock("~/services/enhancer", () => ({ getEnhancerService: vi.fn() }));
+vi.mock("~/ai/task-window-sync", () => ({
+  isMainAITaskHostWindow: () => true,
+  requestMainEnhance: vi.fn(),
+}));
+vi.mock("../header", () => ({ TemplatePickerPopover: () => null }));
+import { cleanup, render as renderUI, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,6 +52,8 @@ const hoisted = vi.hoisted(() => ({
   } as LLMConnectionStatus,
   content: "",
   noteExists: true,
+  awaitingGenerationRead: false,
+  generationReads: [] as string[],
   sessionTitle: "",
   enhancedEditorMountCount: 0,
 }));
@@ -60,8 +83,13 @@ vi.mock("~/ai/hooks", () => ({
 }));
 
 vi.mock("~/session/queries", () => ({
-  useEnhancedNote: () =>
-    hoisted.noteExists ? { content: hoisted.content } : null,
+  useEnhancedNote: (_id: string, generationId?: string) => {
+    if (generationId) {
+      hoisted.generationReads.push(generationId);
+      if (hoisted.awaitingGenerationRead) return null;
+    }
+    return hoisted.noteExists ? { content: hoisted.content } : null;
+  },
 }));
 
 vi.mock("./config-error", () => ({
@@ -140,14 +168,18 @@ describe("Enhanced", () => {
     };
     hoisted.content = "";
     hoisted.noteExists = true;
+    hoisted.awaitingGenerationRead = false;
+    hoisted.generationReads = [];
     hoisted.sessionTitle = "";
     hoisted.enhancedEditorMountCount = 0;
   });
 
-  it("renders an empty editor before the auto-enhance task is visible", () => {
+  it("offers generation before the auto-enhance task is visible", () => {
     render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
 
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Generate summary" }),
+    ).not.toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByText("Preparing summary...")).toBeNull();
     expect(screen.queryByTestId("spinner")).toBeNull();
@@ -210,6 +242,40 @@ describe("Enhanced", () => {
     expect(screen.getByTestId("enhanced-editor")).not.toBeNull();
     expect(screen.getByText("Stored summary")).not.toBeNull();
     expect(hoisted.enhancedEditorMountCount).toBe(1);
+  });
+
+  it("waits for a fresh stored read after every generation, even with identical output", () => {
+    hoisted.content = "Previously saved summary";
+    const view = render(
+      <Enhanced sessionId="session-1" enhancedNoteId="note-1" />,
+    );
+    const completeRun = () => {
+      hoisted.enhanceTask = {
+        status: "generating",
+        error: undefined,
+        streamedText: "Repeated generated text",
+        currentStep: undefined,
+        isGenerating: true,
+      };
+      view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
+      hoisted.awaitingGenerationRead = true;
+      hoisted.enhanceTask = {
+        ...hoisted.enhanceTask,
+        status: "success",
+        isGenerating: false,
+      };
+      view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
+      expect(screen.queryByTestId("enhanced-editor")).toBeNull();
+      expect(screen.getByText("Repeated generated text")).toBeTruthy();
+      hoisted.content = "Fresh persisted summary";
+      hoisted.awaitingGenerationRead = false;
+      view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
+      expect(screen.getByText("Fresh persisted summary")).toBeTruthy();
+      return hoisted.generationReads[hoisted.generationReads.length - 1];
+    };
+    const firstRead = completeRun();
+    hoisted.content = "User edited summary";
+    expect(completeRun()).not.toBe(firstRead);
   });
 
   it("remounts the editor with persisted content after generation", () => {
@@ -304,7 +370,7 @@ describe("Enhanced", () => {
     expect(screen.queryByText("Generating title...")).toBeNull();
   });
 
-  it("renders the editor after an empty enhance task returns idle", () => {
+  it("offers generation after an empty enhance task returns idle", () => {
     hoisted.enhanceTask = {
       status: "idle",
       error: undefined,
@@ -315,7 +381,9 @@ describe("Enhanced", () => {
 
     render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
 
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Generate summary" }),
+    ).not.toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -390,6 +458,8 @@ describe("Enhanced", () => {
     expect(screen.queryByText("Enhanced editor")).toBeNull();
 
     hoisted.noteExists = true;
+    hoisted.awaitingGenerationRead = false;
+    hoisted.generationReads = [];
     hoisted.content = "Stored summary";
     view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
 

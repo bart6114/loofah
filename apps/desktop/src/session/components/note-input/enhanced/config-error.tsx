@@ -41,17 +41,17 @@ export function ConfigError({
       </div>
       <div ref={mountTrailer} />
       <div
-        role="alert"
+        role="status"
         className="flex min-h-[400px] flex-1 flex-col items-center justify-center px-6"
       >
         <div className="mb-6 flex max-w-md flex-col gap-2 text-center">
           <p className="text-base font-medium">
-            <Trans>Set up AI summaries</Trans>
+            <Trans>Summaries are off</Trans>
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             <Trans>
-              Add your own LLM API key to generate a summary from this
-              transcript.
+              Recording and transcription still work. Set up summaries when you
+              want to turn your notes or transcript into a summary.
             </Trans>
           </p>
         </div>
@@ -62,7 +62,7 @@ export function ConfigError({
               openNew({ type: "settings", state: { tab: "intelligence" } })
             }
           >
-            <Trans>Add API key</Trans>
+            <Trans>Set up summaries</Trans>
           </Button>
         </div>
       </div>

@@ -10,17 +10,21 @@ import { collectEnhanceImageContext } from "./enhance-images";
 
 import { listPeople } from "~/people/queries";
 import {
+  EMPTY_SUMMARY_SOURCE_MESSAGE,
+  hasSummarySource,
+} from "~/services/enhancer/source";
+import {
   loadSessionContentSnapshot,
   type SessionContentSnapshot,
 } from "~/session/content-queries";
 import { modelSupportsImageInput } from "~/settings/ai/shared/model-capabilities";
 import type { SettingValues } from "~/settings/schema";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import {
   buildRenderTranscriptRequestFromRows,
   renderTranscriptSegments,
   type TranscriptRow,
 } from "~/stt/render-transcript";
-import { getTemplateById } from "~/templates/queries";
 
 type TranscriptMeta = {
   id: string;
@@ -45,23 +49,19 @@ async function transformArgs(
   args: TaskArgsMap["enhance"],
   settingsValues: SettingValues,
 ): Promise<TaskArgsMapTransformed["enhance"]> {
-  const { sessionId, templateId } = args;
+  const { sessionId } = args;
+  await flushDatabaseWrites([`session:${sessionId}:note`]);
   const snapshot = await loadSessionContentSnapshot(sessionId);
   if (!snapshot) {
     throw new Error(`Session ${sessionId} no longer exists`);
   }
 
+  if (!hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)) {
+    throw new Error(EMPTY_SUMMARY_SOURCE_MESSAGE);
+  }
   const sessionContext = getSessionContext(snapshot);
-  const templateRecord = await loadTemplate(templateId);
-  const template = templateRecord
-    ? {
-        title: templateRecord.title,
-        description: templateRecord.description ?? null,
-        sections: templateRecord.sections,
-      }
-    : null;
   const language = getLanguage(settingsValues);
-  const promptOverride = getPromptOverride(settingsValues, templateId);
+  const promptOverride = getPromptOverride(settingsValues);
   const segments = await getTranscriptSegments(snapshot);
   const imageContext = modelSupportsImageInput(
     getOptionalSettingsValue(settingsValues, "current_llm_provider"),
@@ -78,25 +78,11 @@ async function transformArgs(
     promptOverride,
     session: sessionContext.session,
     participants: sessionContext.participants,
-    template,
     preMeetingMemo: sessionContext.preMeetingMemo,
     postMeetingMemo: sessionContext.postMeetingMemo,
     transcripts: formatTranscripts(segments, sessionContext.transcriptsMeta),
     imageContext,
   };
-}
-
-async function loadTemplate(templateId: string | undefined) {
-  if (!templateId) {
-    return null;
-  }
-
-  try {
-    return await getTemplateById(templateId);
-  } catch (error) {
-    console.error("[enhance] failed to load template", error);
-    return null;
-  }
 }
 
 function formatTranscripts(
@@ -136,14 +122,7 @@ function getLanguage(settingsValues: SettingValues): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function getPromptOverride(
-  settingsValues: SettingValues,
-  templateId: string | undefined,
-): string {
-  if (templateId) {
-    return "";
-  }
-
+function getPromptOverride(settingsValues: SettingValues): string {
   const value = settingsValues.auto_summary_prompt;
   return typeof value === "string" && value.trim() ? value : "";
 }

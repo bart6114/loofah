@@ -3,13 +3,13 @@ import type {
   EditorView,
   SessionsState,
   TabInput as WindowsTabInput,
-  TemplatesState,
 } from "@hypr/plugin-windows";
 
-export type { ChangelogState, EditorView, SessionsState, TemplatesState };
+export type { ChangelogState, EditorView, SessionsState };
 
 export type SupportedWindowTabInput = Exclude<
   WindowsTabInput,
+  | { type: "templates" }
   | { type: "extension" }
   | { type: "extensions" }
   | { type: "folders" }
@@ -24,6 +24,7 @@ export const isTabInputSupported = (
   tab: WindowsTabInput,
 ): tab is SupportedWindowTabInput => {
   return (
+    tab.type !== "templates" &&
     tab.type !== "extension" &&
     tab.type !== "extensions" &&
     tab.type !== "folders" &&
@@ -35,29 +36,27 @@ export const isTabInputSupported = (
 
 export type SettingsTab =
   | "app"
+  | "storage"
   | "notifications"
   | "developers"
   | "permissions"
-  | "dictionary"
   | "transcription"
   | "intelligence"
-  | "todo";
+  | "summary-prompt";
 
 export const normalizeSettingsTab = (
   tab: string | null | undefined,
 ): SettingsTab => {
   switch (tab) {
     case "app":
+    case "storage":
     case "notifications":
     case "developers":
     case "permissions":
-    case "dictionary":
     case "transcription":
     case "intelligence":
-    case "todo":
+    case "summary-prompt":
       return tab;
-    case "personalization":
-      return "dictionary";
     default:
       return "app";
   }
@@ -90,10 +89,6 @@ export type Tab =
       type: "sessions";
       id: string;
       state: SessionsState;
-    })
-  | (BaseTab & {
-      type: "templates";
-      state: TemplatesState;
     })
   | (BaseTab & { type: "empty" })
   | (BaseTab & {
@@ -128,17 +123,6 @@ export const getDefaultState = (tab: TabInput): Tab => {
         id: tab.id,
         state: tab.state ?? { view: null, autoStart: null },
       };
-    case "templates":
-      return {
-        ...base,
-        type: "templates",
-        state: tab.state ?? {
-          showHomepage: false,
-          isWebMode: true,
-          selectedMineId: null,
-          selectedWebIndex: null,
-        },
-      };
     case "empty":
       return { ...base, type: "empty" };
     case "changelog":
@@ -169,8 +153,6 @@ export const uniqueIdfromTab = (tab: Tab): string => {
   switch (tab.type) {
     case "sessions":
       return `sessions-${tab.id}`;
-    case "templates":
-      return `templates`;
     case "empty":
       return `empty-${tab.slotId}`;
     case "changelog":

@@ -105,269 +105,256 @@ async function readStreamChunkWithTimeout<T>(
 export const createTasksSlice = <T extends TasksState & TasksActions>(
   set: StoreApi<T>["setState"],
   get: StoreApi<T>["getState"],
-): TasksState & TasksActions => ({
-  ...initialState,
-  getState: <Task extends TaskType>(
-    taskId: TaskId<Task>,
-  ): TaskState<Task> | undefined => {
-    const task = get().tasks[taskId];
-    return task as TaskState<Task> | undefined;
-  },
-  cancel: (taskId: string) => {
-    set((state) =>
-      mutate(state, (draft) => {
-        const task = draft.tasks[taskId];
-        if (!task) {
-          return;
-        }
+): TasksState & TasksActions => {
+  const streamFlushers = new Map<string, () => void>();
+  return {
+    ...initialState,
+    getState: <Task extends TaskType>(
+      taskId: TaskId<Task>,
+    ): TaskState<Task> | undefined => {
+      const task = get().tasks[taskId];
+      return task as TaskState<Task> | undefined;
+    },
+    cancel: (taskId: string) => {
+      streamFlushers.get(taskId)?.();
+      set((state) =>
+        mutate(state, (draft) => {
+          const task = draft.tasks[taskId];
+          if (!task) {
+            return;
+          }
 
-        task.abortController?.abort();
+          task.abortController?.abort();
 
-        draft.tasks[taskId] = {
-          taskType: task.taskType,
-          status: "idle",
-          streamedText: task.streamedText,
-          error: undefined,
-          abortController: null,
-          currentStep: undefined,
-          sessionId: task.sessionId,
-        };
-      }),
-    );
-  },
-  reset: (taskId: string) => {
-    const state = get().tasks[taskId];
-    if (state) {
-      set((currentState) =>
-        mutate(currentState, (draft) => {
-          draft.tasks[taskId]?.abortController?.abort();
           draft.tasks[taskId] = {
-            taskType: state.taskType,
+            taskType: task.taskType,
             status: "idle",
-            streamedText: "",
+            streamedText: task.streamedText,
             error: undefined,
             abortController: null,
             currentStep: undefined,
-            sessionId: state.sessionId,
+            sessionId: task.sessionId,
           };
         }),
       );
-    }
-  },
-  syncRemoteTask: <Task extends TaskType>(
-    taskId: TaskId<Task>,
-    task: RemoteTaskState<Task>,
-  ) => {
-    set((state) =>
-      mutate(state, (draft) => {
-        draft.tasks[taskId] = {
-          taskType: task.taskType,
-          status: task.status,
-          streamedText: task.streamedText,
-          error: task.error ? createSyncedTaskError(task.error) : undefined,
-          abortController: null,
-          currentStep: task.currentStep,
-          sessionId: task.sessionId,
-        };
-      }),
-    );
-  },
-  syncRemoteTasks: (tasks) => {
-    set((state) =>
-      mutate(state, (draft) => {
-        draft.tasks = Object.fromEntries(
-          Object.entries(tasks).map(([taskId, task]) => [
-            taskId,
-            {
-              taskType: task.taskType,
-              status: task.status,
-              streamedText: task.streamedText,
-              error: task.error ? createSyncedTaskError(task.error) : undefined,
-              abortController: null,
-              currentStep: task.currentStep,
-              sessionId: task.sessionId,
-            },
-          ]),
-        );
-      }),
-    );
-  },
-  generate: async <Task extends TaskType>(
-    taskId: TaskId<Task>,
-    config: {
-      model: LanguageModel;
-      taskType: Task;
-      args: TaskArgsMap[Task];
-      onComplete?: (text: string) => void;
     },
-  ) => {
-    const existingTask = get().tasks[taskId];
-    if (existingTask?.status === "generating") {
-      return;
-    }
-
-    const abortController = new AbortController();
-    const taskConfig = TASK_CONFIGS[config.taskType];
-    const sessionId = (config.args as { sessionId?: string }).sessionId;
-
-    try {
-      set((state) =>
-        mutate(state, (draft) => {
-          draft.tasks[taskId] = {
-            taskType: config.taskType,
-            status: "generating",
-            streamedText: "",
-            error: undefined,
-            abortController,
-            currentStep: undefined,
-            sessionId,
-          };
-        }),
-      );
-
-      const { values: settingsValues } = await getStoredSettingValues();
-      const enrichedArgs = await taskConfig.transformArgs(
-        config.args,
-        settingsValues,
-      );
-      let fullText = "";
-
-      const checkAbort = () => {
-        if (abortController.signal.aborted) {
-          const error = new Error("Aborted");
-          error.name = "AbortError";
-          throw error;
-        }
-      };
-
-      const onProgress = (step: TaskStepInfo<Task>) => {
-        set((state) =>
-          mutate(state, (draft) => {
-            const currentState = draft.tasks[taskId];
-            if (currentState?.taskType === config.taskType) {
-              (currentState as any).currentStep = step;
-            }
+    reset: (taskId: string) => {
+      const state = get().tasks[taskId];
+      if (state) {
+        set((currentState) =>
+          mutate(currentState, (draft) => {
+            draft.tasks[taskId]?.abortController?.abort();
+            draft.tasks[taskId] = {
+              taskType: state.taskType,
+              status: "idle",
+              streamedText: "",
+              error: undefined,
+              abortController: null,
+              currentStep: undefined,
+              sessionId: state.sessionId,
+            };
           }),
         );
-      };
-
-      const workflowAbortController = new AbortController();
-      const abortWorkflow = () => workflowAbortController.abort();
-      abortController.signal.addEventListener("abort", abortWorkflow, {
-        once: true,
-      });
-      let workflowCompleted = false;
-
-      try {
-        const workflowStream = taskConfig.executeWorkflow({
-          model: config.model,
-          args: enrichedArgs,
-          onProgress,
-          signal: workflowAbortController.signal,
-        });
-
-        const transforms = taskConfig.transforms ?? [];
-        const transformedStream = applyTransforms(workflowStream, transforms, {
-          stopStream: abortWorkflow,
-        });
-        const iterator = transformedStream[Symbol.asyncIterator]();
-
-        while (true) {
-          const result = await readStreamChunkWithTimeout(
-            iterator,
-            fullText.trim()
-              ? TASK_STREAM_IDLE_TIMEOUT_MS
-              : TASK_STREAM_START_TIMEOUT_MS,
-          );
-          checkAbort();
-
-          if (result === STREAM_TIMEOUT) {
-            workflowAbortController.abort();
-            if (fullText.trim()) {
-              break;
-            }
-            throw new Error("AI generation did not return any text.");
-          }
-
-          if (result.done) {
-            workflowCompleted = true;
-            break;
-          }
-
-          const chunk = result.value;
-
-          if (chunk.type === "error") {
-            throw chunk.error;
-          } else if (chunk.type === "text-delta") {
-            fullText += chunk.text;
-
-            set((state) =>
-              mutate(state, (draft) => {
-                const currentState = draft.tasks[taskId];
-                if (currentState) {
-                  currentState.streamedText = fullText;
-                }
-              }),
-            );
-          }
-        }
-      } finally {
-        if (!workflowCompleted) {
-          workflowAbortController.abort();
-        }
-        abortController.signal.removeEventListener("abort", abortWorkflow);
       }
-
-      await taskConfig.onSuccess?.({
-        taskId,
-        text: fullText,
-        model: config.model,
-        args: config.args,
-        transformedArgs: enrichedArgs,
-        signal: abortController.signal,
-        startTask: (nextTaskId, nextConfig) =>
-          get().generate(nextTaskId, nextConfig),
-        getTaskState: (nextTaskId) => getTaskState(get().tasks, nextTaskId),
-      });
-
-      checkAbort();
-
+    },
+    syncRemoteTask: <Task extends TaskType>(
+      taskId: TaskId<Task>,
+      task: RemoteTaskState<Task>,
+    ) => {
       set((state) =>
         mutate(state, (draft) => {
           draft.tasks[taskId] = {
-            taskType: config.taskType,
-            status: "success",
-            streamedText: fullText,
-            error: undefined,
+            taskType: task.taskType,
+            status: task.status,
+            streamedText: task.streamedText,
+            error: task.error ? createSyncedTaskError(task.error) : undefined,
             abortController: null,
-            currentStep: undefined,
-            sessionId,
+            currentStep: task.currentStep,
+            sessionId: task.sessionId,
           };
         }),
       );
-
-      try {
-        config.onComplete?.(fullText);
-      } catch (error) {
-        console.error("Task onComplete callback failed:", error);
-      }
-    } catch (err) {
-      // A reset/regenerate may already own this task id; a stale run must not
-      // clobber the replacement's state.
-      if (get().tasks[taskId]?.abortController !== abortController) {
+    },
+    syncRemoteTasks: (tasks) => {
+      set((state) =>
+        mutate(state, (draft) => {
+          draft.tasks = Object.fromEntries(
+            Object.entries(tasks).map(([taskId, task]) => [
+              taskId,
+              {
+                taskType: task.taskType,
+                status: task.status,
+                streamedText: task.streamedText,
+                error: task.error
+                  ? createSyncedTaskError(task.error)
+                  : undefined,
+                abortController: null,
+                currentStep: task.currentStep,
+                sessionId: task.sessionId,
+              },
+            ]),
+          );
+        }),
+      );
+    },
+    generate: async <Task extends TaskType>(
+      taskId: TaskId<Task>,
+      config: {
+        model: LanguageModel;
+        taskType: Task;
+        args: TaskArgsMap[Task];
+        onComplete?: (text: string) => void;
+      },
+    ) => {
+      const existingTask = get().tasks[taskId];
+      if (existingTask?.status === "generating") {
         return;
       }
 
-      if (
-        err instanceof Error &&
-        (err.name === "AbortError" || err.message === "Aborted")
-      ) {
+      const abortController = new AbortController();
+      const taskConfig = TASK_CONFIGS[config.taskType];
+      const sessionId = (config.args as { sessionId?: string }).sessionId;
+      let fullText = "";
+      let publishTimer: ReturnType<typeof setTimeout> | undefined;
+      const publishText = () => {
+        clearTimeout(publishTimer);
+        publishTimer = undefined;
+        if (get().tasks[taskId]?.abortController !== abortController) return;
+        set((state) =>
+          mutate(state, (draft) => {
+            const task = draft.tasks[taskId];
+            if (task && task.streamedText !== fullText)
+              task.streamedText = fullText;
+          }),
+        );
+      };
+      streamFlushers.set(taskId, publishText);
+
+      try {
         set((state) =>
           mutate(state, (draft) => {
             draft.tasks[taskId] = {
               taskType: config.taskType,
-              status: "idle",
+              status: "generating",
               streamedText: "",
+              error: undefined,
+              abortController,
+              currentStep: undefined,
+              sessionId,
+            };
+          }),
+        );
+
+        const { values: settingsValues } = await getStoredSettingValues();
+        const enrichedArgs = await taskConfig.transformArgs(
+          config.args,
+          settingsValues,
+        );
+
+        const checkAbort = () => {
+          if (abortController.signal.aborted) {
+            const error = new Error("Aborted");
+            error.name = "AbortError";
+            throw error;
+          }
+        };
+
+        const onProgress = (step: TaskStepInfo<Task>) => {
+          set((state) =>
+            mutate(state, (draft) => {
+              const currentState = draft.tasks[taskId];
+              if (currentState?.taskType === config.taskType) {
+                (currentState as any).currentStep = step;
+              }
+            }),
+          );
+        };
+
+        const workflowAbortController = new AbortController();
+        const abortWorkflow = () => workflowAbortController.abort();
+        abortController.signal.addEventListener("abort", abortWorkflow, {
+          once: true,
+        });
+        let workflowCompleted = false;
+
+        try {
+          const workflowStream = taskConfig.executeWorkflow({
+            model: config.model,
+            args: enrichedArgs,
+            onProgress,
+            signal: workflowAbortController.signal,
+          });
+
+          const transforms = taskConfig.transforms ?? [];
+          const transformedStream = applyTransforms(
+            workflowStream,
+            transforms,
+            {
+              stopStream: abortWorkflow,
+            },
+          );
+          const iterator = transformedStream[Symbol.asyncIterator]();
+
+          while (true) {
+            const result = await readStreamChunkWithTimeout(
+              iterator,
+              fullText.trim()
+                ? TASK_STREAM_IDLE_TIMEOUT_MS
+                : TASK_STREAM_START_TIMEOUT_MS,
+            );
+            checkAbort();
+
+            if (result === STREAM_TIMEOUT) {
+              workflowAbortController.abort();
+              if (fullText.trim()) {
+                break;
+              }
+              throw new Error("AI generation did not return any text.");
+            }
+
+            if (result.done) {
+              workflowCompleted = true;
+              break;
+            }
+
+            const chunk = result.value;
+
+            if (chunk.type === "error") {
+              throw chunk.error;
+            } else if (chunk.type === "text-delta") {
+              fullText += chunk.text;
+
+              publishTimer ??= setTimeout(publishText, 50);
+            }
+          }
+        } finally {
+          if (!workflowCompleted) {
+            workflowAbortController.abort();
+          }
+          abortController.signal.removeEventListener("abort", abortWorkflow);
+        }
+
+        publishText();
+        await taskConfig.onSuccess?.({
+          taskId,
+          text: fullText,
+          model: config.model,
+          args: config.args,
+          transformedArgs: enrichedArgs,
+          signal: abortController.signal,
+          startTask: (nextTaskId, nextConfig) =>
+            get().generate(nextTaskId, nextConfig),
+          getTaskState: (nextTaskId) => getTaskState(get().tasks, nextTaskId),
+        });
+
+        checkAbort();
+
+        set((state) =>
+          mutate(state, (draft) => {
+            draft.tasks[taskId] = {
+              taskType: config.taskType,
+              status: "success",
+              streamedText: fullText,
               error: undefined,
               abortController: null,
               currentStep: undefined,
@@ -375,25 +362,60 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
             };
           }),
         );
-      } else {
-        const error = extractUnderlyingError(err);
-        set((state) =>
-          mutate(state, (draft) => {
-            draft.tasks[taskId] = {
-              taskType: config.taskType,
-              status: "error",
-              streamedText: "",
-              error,
-              abortController: null,
-              currentStep: undefined,
-              sessionId,
-            };
-          }),
-        );
+
+        try {
+          config.onComplete?.(fullText);
+        } catch (error) {
+          console.error("Task onComplete callback failed:", error);
+        }
+      } catch (err) {
+        // A reset/regenerate may already own this task id; a stale run must not
+        // clobber the replacement's state.
+        if (get().tasks[taskId]?.abortController !== abortController) {
+          return;
+        }
+
+        if (
+          err instanceof Error &&
+          (err.name === "AbortError" || err.message === "Aborted")
+        ) {
+          set((state) =>
+            mutate(state, (draft) => {
+              draft.tasks[taskId] = {
+                taskType: config.taskType,
+                status: "idle",
+                streamedText: "",
+                error: undefined,
+                abortController: null,
+                currentStep: undefined,
+                sessionId,
+              };
+            }),
+          );
+        } else {
+          const error = extractUnderlyingError(err);
+          set((state) =>
+            mutate(state, (draft) => {
+              draft.tasks[taskId] = {
+                taskType: config.taskType,
+                status: "error",
+                streamedText: "",
+                error,
+                abortController: null,
+                currentStep: undefined,
+                sessionId,
+              };
+            }),
+          );
+        }
+      } finally {
+        clearTimeout(publishTimer);
+        if (streamFlushers.get(taskId) === publishText)
+          streamFlushers.delete(taskId);
       }
-    }
-  },
-});
+    },
+  };
+};
 
 function createSyncedTaskError(error: { name?: string; message: string }) {
   const synced = new Error(error.message);

@@ -88,49 +88,6 @@ export const mappingMentionSchema = z.object({
   target_type: mentionTargetTypeSchema,
 });
 
-export const templateSectionSchema = z.object({
-  title: z.string(),
-  description: z.string(),
-});
-
-export const templateSchema = z.object({
-  user_id: z.string(),
-  title: z.string(),
-  description: z.string(),
-  pinned: z.preprocess((val) => val ?? false, z.boolean()),
-  pin_order: z.preprocess((val) => val ?? undefined, z.number().optional()),
-  category: z.preprocess((val) => val ?? undefined, z.string().optional()),
-  targets: z.preprocess(
-    (val) => val ?? undefined,
-    jsonObject(z.array(z.string())).optional(),
-  ),
-  sections: jsonObject(z.array(templateSectionSchema)),
-});
-
-export const chatGroupSchema = z.object({
-  user_id: z.string(),
-  created_at: z.string(),
-  title: z.string(),
-});
-
-export const chatMessageStatusSchema = z.enum([
-  "streaming",
-  "ready",
-  "error",
-  "aborted",
-]);
-
-export const chatMessageSchema = z.object({
-  user_id: z.string(),
-  created_at: z.string(),
-  chat_group_id: z.string(),
-  role: z.string(),
-  content: z.string(),
-  metadata: jsonObject(z.any()),
-  parts: jsonObject(z.any()),
-  status: chatMessageStatusSchema.default("ready"),
-});
-
 export const dailyNoteSchema = z.object({
   user_id: z.string(),
   date: z.string(),
@@ -208,14 +165,11 @@ export const generalSchema = z.object({
   live_caption_minimized: z.boolean().default(true),
   show_app_in_dock: z.boolean().default(true),
   show_tray_icon: z.boolean().default(true),
-  save_recordings: z.boolean().default(true),
-  audio_retention: z.string().default("forever"),
   notification_detect: z.boolean().default(true),
   respect_dnd: z.boolean().default(false),
   quit_intercept: z.boolean().default(false),
   ai_language: z.string().default("en"),
   spoken_languages: jsonObject(z.array(z.string()).default(["en"])),
-  personalization_dictionary_terms: jsonObject(z.array(z.string()).default([])),
   ignored_platforms: jsonObject(z.array(z.string()).default([])),
   included_platforms: jsonObject(z.array(z.string()).default([])),
   current_llm_provider: z.string().optional(),
@@ -258,11 +212,6 @@ export type MappingSessionParticipant = z.infer<
 export type Tag = z.infer<typeof tagSchema>;
 export type MappingTagSession = z.infer<typeof mappingTagSessionSchema>;
 export type MappingMention = z.infer<typeof mappingMentionSchema>;
-export type Template = z.infer<typeof templateSchema>;
-export type TemplateSection = z.infer<typeof templateSectionSchema>;
-export type ChatGroup = z.infer<typeof chatGroupSchema>;
-export type ChatMessageStatus = z.infer<typeof chatMessageStatusSchema>;
-export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type DailyNote = z.infer<typeof dailyNoteSchema>;
 export type EnhancedNote = z.infer<typeof enhancedNoteSchema>;
 export type Task = z.infer<typeof taskSchema>;
@@ -273,7 +222,6 @@ export type SessionStorage = ToStorageType<typeof sessionSchema>;
 export type TranscriptStorage = ToStorageType<typeof transcriptSchema>;
 export type WordStorage = ToStorageType<typeof wordSchema>;
 export type SpeakerHintStorage = ToStorageType<typeof speakerHintSchema>;
-export type ChatMessageStorage = ToStorageType<typeof chatMessageSchema>;
 export type EnhancedNoteStorage = ToStorageType<typeof enhancedNoteSchema>;
 export type TaskStorage = ToStorageType<typeof taskSchema>;
 export type HumanStorage = ToStorageType<typeof humanSchema>;

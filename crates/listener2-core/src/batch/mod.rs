@@ -18,7 +18,6 @@ use simple::{run_direct_batch_for_adapter_kind, run_soniqo_batch};
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum BatchProvider {
-    Argmax,
     #[serde(rename = "whispercpp")]
     #[strum(serialize = "whispercpp")]
     WhisperLocal,
@@ -33,7 +32,6 @@ pub enum BatchProvider {
     DashScope,
     Mistral,
     Fmtr,
-    Am,
     Soniqo,
     AquaVoice,
     Cartesia,
@@ -42,7 +40,6 @@ pub enum BatchProvider {
 impl BatchProvider {
     pub fn to_adapter_kind(&self) -> Option<AdapterKind> {
         match self {
-            Self::Argmax => Some(AdapterKind::Argmax),
             Self::Deepgram => Some(AdapterKind::Deepgram),
             Self::Soniox => Some(AdapterKind::Soniox),
             Self::AssemblyAI => Some(AdapterKind::AssemblyAI),
@@ -55,7 +52,7 @@ impl BatchProvider {
             Self::Fmtr => Some(AdapterKind::Fmtr),
             Self::AquaVoice => Some(AdapterKind::AquaVoice),
             Self::Cartesia => Some(AdapterKind::Cartesia),
-            Self::Am | Self::WhisperLocal | Self::Soniqo | Self::DashScope => None,
+            Self::WhisperLocal | Self::Soniqo | Self::DashScope => None,
         }
     }
 }
@@ -138,18 +135,6 @@ pub async fn run_batch(
 
 pub fn expects_progressive_batch(params: &BatchParams) -> bool {
     match params.provider {
-        BatchProvider::Am => {
-            let listen_params = owhisper_interface::ListenParams {
-                model: params.model.clone(),
-                languages: params.languages.clone(),
-                ..Default::default()
-            };
-
-            supports_progressive_batch(
-                resolve_batch_adapter_kind(params, &listen_params),
-                listen_params.model.as_deref(),
-            )
-        }
         BatchProvider::WhisperLocal => true,
         BatchProvider::OpenAI => {
             OpenAIAdapter::supports_progressive_batch_model(params.model.as_deref())
@@ -162,6 +147,18 @@ async fn run_batch_inner(
     runtime: Arc<dyn BatchRuntime>,
     params: BatchParams,
 ) -> crate::Result<BatchRunOutput> {
+    if matches!(params.provider, BatchProvider::Fmtr)
+        && !crate::is_supported_languages_batch("fmtr", params.model.as_deref(), &params.languages)
+            .unwrap_or(false)
+    {
+        return Err(crate::BatchFailure::DirectRequestFailed {
+            provider: "fmtr".into(),
+            message:
+                "Unsupported on-device model; select a supported model in Settings → Transcription."
+                    .into(),
+        }
+        .into());
+    }
     let metadata_joined = tokio::task::spawn_blocking({
         let path = params.file_path.clone();
         move || hypr_audio_utils::audio_file_metadata(path)
@@ -198,15 +195,6 @@ async fn run_batch_inner(
     );
 
     match params.provider {
-        BatchProvider::Am => {
-            let adapter_kind = resolve_batch_adapter_kind(&params, &listen_params);
-            if supports_progressive_batch(adapter_kind, listen_params.model.as_deref()) {
-                run_progressive_batch_session(runtime, params, listen_params, diarization).await
-            } else {
-                run_direct_batch_for_adapter_kind(adapter_kind, params, listen_params, diarization)
-                    .await
-            }
-        }
         BatchProvider::WhisperLocal => {
             run_progressive_batch_session(runtime, params, listen_params, diarization).await
         }
@@ -237,25 +225,6 @@ async fn run_batch_inner(
             run_direct_batch_for_adapter_kind(adapter_kind, params, listen_params, diarization)
                 .await
         }
-    }
-}
-
-fn resolve_batch_adapter_kind(
-    params: &BatchParams,
-    listen_params: &owhisper_interface::ListenParams,
-) -> AdapterKind {
-    AdapterKind::from_url_and_languages(
-        &params.base_url,
-        &listen_params.languages,
-        listen_params.model.as_deref(),
-    )
-}
-
-fn supports_progressive_batch(adapter_kind: AdapterKind, model: Option<&str>) -> bool {
-    match adapter_kind {
-        AdapterKind::Argmax => true,
-        AdapterKind::OpenAI => OpenAIAdapter::supports_progressive_batch_model(model),
-        _ => false,
     }
 }
 
@@ -325,14 +294,6 @@ pub(super) fn format_user_friendly_error(error: &str) -> String {
 mod tests {
     use super::*;
 
-    fn listen_params(model: Option<&str>) -> owhisper_interface::ListenParams {
-        owhisper_interface::ListenParams {
-            model: model.map(ToOwned::to_owned),
-            languages: vec![hypr_language::ISO639::En.into()],
-            ..Default::default()
-        }
-    }
-
     fn batch_params(provider: BatchProvider, base_url: &str) -> BatchParams {
         BatchParams {
             session_id: "session".to_string(),
@@ -347,6 +308,41 @@ mod tests {
             min_speakers: None,
             max_speakers: None,
         }
+    }
+
+    #[test]
+    fn retired_batch_providers_cannot_be_parsed() {
+        for provider in ["am", "argmax"] {
+            assert!(provider.parse::<BatchProvider>().is_err());
+            assert!(serde_json::from_value::<BatchProvider>(serde_json::json!(provider)).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn retired_models_cannot_fall_through_to_fmtr_requests() {
+        struct Runtime;
+        impl BatchRuntime for Runtime {
+            fn emit(&self, _: BatchEvent) {}
+        }
+        for model in [
+            "am-parakeet-v3",
+            "soniqo-qwen3-small",
+            "soniqo-qwen3-large",
+            "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+            "HyprLLM",
+        ] {
+            let mut params = batch_params(BatchProvider::Fmtr, "http://127.0.0.1:1");
+            params.model = Some(model.into());
+            let error = run_batch(Arc::new(Runtime), params).await.unwrap_err();
+            assert!(error.to_string().contains("Unsupported on-device model"));
+        }
+    }
+
+    #[test]
+    fn whisper_batch_remains_progressive() {
+        let mut params = batch_params(BatchProvider::WhisperLocal, "http://127.0.0.1:54321/v1");
+        params.model = Some("QuantizedTiny".into());
+        assert!(expects_progressive_batch(&params));
     }
 
     #[test]
@@ -374,76 +370,9 @@ mod tests {
     }
 
     #[test]
-    fn am_routes_pyannote_to_direct_batch() {
-        let params = batch_params(BatchProvider::Am, "https://api.pyannote.ai");
-        let adapter_kind = resolve_batch_adapter_kind(&params, &listen_params(None));
-
-        assert_eq!(adapter_kind, AdapterKind::Pyannote);
-        assert!(!supports_progressive_batch(adapter_kind, None));
-    }
-
-    #[test]
-    fn am_routes_deepgram_to_direct_batch() {
-        let params = batch_params(BatchProvider::Am, "https://api.deepgram.com/v1");
-        let adapter_kind = resolve_batch_adapter_kind(&params, &listen_params(None));
-
-        assert_eq!(adapter_kind, AdapterKind::Deepgram);
-        assert!(!supports_progressive_batch(adapter_kind, None));
-    }
-
-    #[test]
-    fn am_routes_local_argmax_to_progressive_batch() {
-        let params = batch_params(BatchProvider::Am, "http://localhost:50060/v1");
-        let adapter_kind = resolve_batch_adapter_kind(&params, &listen_params(None));
-
-        assert_eq!(adapter_kind, AdapterKind::Argmax);
-        assert!(supports_progressive_batch(adapter_kind, None));
-    }
-
-    #[test]
-    fn am_routes_openai_gpt_batch_to_progressive_batch() {
-        let params = batch_params(BatchProvider::Am, "https://api.openai.com/v1");
-        let adapter_kind =
-            resolve_batch_adapter_kind(&params, &listen_params(Some("gpt-4o-transcribe")));
-
-        assert_eq!(adapter_kind, AdapterKind::OpenAI);
-        assert!(supports_progressive_batch(
-            adapter_kind,
-            Some("gpt-4o-transcribe"),
-        ));
-    }
-
-    #[test]
-    fn am_routes_openai_diarized_batch_to_direct_batch() {
-        let params = batch_params(BatchProvider::Am, "https://api.openai.com/v1");
-        let adapter_kind =
-            resolve_batch_adapter_kind(&params, &listen_params(Some("gpt-4o-transcribe-diarize")));
-
-        assert_eq!(adapter_kind, AdapterKind::OpenAI);
-        assert!(!supports_progressive_batch(
-            adapter_kind,
-            Some("gpt-4o-transcribe-diarize"),
-        ));
-    }
-
-    #[test]
     fn fmtr_batch_is_not_progressive() {
         let params = batch_params(BatchProvider::Fmtr, "http://localhost:8787/stt");
 
         assert!(!expects_progressive_batch(&params));
-    }
-
-    #[test]
-    fn remote_am_batch_is_not_progressive() {
-        let params = batch_params(BatchProvider::Am, "https://example.com/stt");
-
-        assert!(!expects_progressive_batch(&params));
-    }
-
-    #[test]
-    fn local_am_batch_is_progressive() {
-        let params = batch_params(BatchProvider::Am, "http://localhost:50060/v1");
-
-        assert!(expects_progressive_batch(&params));
     }
 }

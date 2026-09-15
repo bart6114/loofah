@@ -2,13 +2,13 @@ import type { LanguageModel } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EnhancerService } from ".";
+import { selectSummaryDocument } from "./storage";
+
+import { enqueueDatabaseWrite } from "~/shared/write-queue";
 
 const mocks = vi.hoisted(() => ({
   loadSessionContentSnapshot: vi.fn(),
   ensureSummaryDocument: vi.fn(),
-  replaceSummaryDocumentTemplate: vi.fn().mockResolvedValue(undefined),
-  updateSummaryDocumentTitleIfCurrent: vi.fn().mockResolvedValue(undefined),
-  getTemplateById: vi.fn().mockResolvedValue(null),
   listenerSubscribe: vi.fn(),
 }));
 
@@ -16,15 +16,9 @@ vi.mock("~/session/content-queries", () => ({
   loadSessionContentSnapshot: mocks.loadSessionContentSnapshot,
 }));
 
-vi.mock("./storage", () => ({
+vi.mock("./storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./storage")>()),
   ensureSummaryDocument: mocks.ensureSummaryDocument,
-  replaceSummaryDocumentTemplate: mocks.replaceSummaryDocumentTemplate,
-  updateSummaryDocumentTitleIfCurrent:
-    mocks.updateSummaryDocumentTitleIfCurrent,
-}));
-
-vi.mock("~/templates/queries", () => ({
-  getTemplateById: mocks.getTemplateById,
 }));
 
 vi.mock("~/store/zustand/listener/instance", () => ({
@@ -41,6 +35,7 @@ function createNote(overrides: Record<string, any> = {}): any {
     content: "",
     contentFormat: "prosemirror_json",
     templateId: "",
+    kind: "summary",
     position: 1,
     ...overrides,
   };
@@ -63,7 +58,7 @@ function createSnapshot({
     rawNoteId: "session-1",
     rawContent: "",
     rawContentFormat: "prosemirror_json",
-    rawMarkdown: "",
+    rawMarkdown: "Planning notes",
     enhancedNotes: notes,
     transcripts:
       wordCount > 0
@@ -116,7 +111,6 @@ function createDeps(
   return {
     aiTaskStore: createMockAITaskStore().store,
     getModel: () => ({}) as LanguageModel,
-    getSelectedTemplateId: () => undefined,
     ...overrides,
   };
 }
@@ -135,30 +129,60 @@ describe("EnhancerService", () => {
       return unsubscribe;
     });
     mocks.loadSessionContentSnapshot.mockImplementation(async () => snapshot);
-    mocks.ensureSummaryDocument.mockImplementation(
-      async (_sessionId: string, templateId?: string) => {
-        const normalizedTemplateId = templateId ?? "";
-        const existing = snapshot.enhancedNotes.find(
-          (note) => note.templateId === normalizedTemplateId,
-        );
-        if (existing) return existing;
+    mocks.ensureSummaryDocument.mockImplementation(async () => {
+      const existing = selectSummaryDocument(snapshot.enhancedNotes);
+      if (existing) return existing;
 
-        const note = createNote({
-          id: `note-${snapshot.enhancedNotes.length + 1}`,
-          templateId: normalizedTemplateId,
-          position: snapshot.enhancedNotes.length + 1,
-        });
-        snapshot.enhancedNotes.push(note);
-        return note;
-      },
-    );
-    mocks.replaceSummaryDocumentTemplate.mockResolvedValue(undefined);
-    mocks.updateSummaryDocumentTitleIfCurrent.mockResolvedValue(undefined);
-    mocks.getTemplateById.mockResolvedValue(null);
+      const note = createNote({
+        id: `note-${snapshot.enhancedNotes.length + 1}`,
+        position: snapshot.enhancedNotes.length + 1,
+      });
+      snapshot.enhancedNotes.push(note);
+      return note;
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("rejects empty input before creating or clearing a document", async () => {
+    const service = new EnhancerService(createDeps());
+    snapshot.rawMarkdown = "&nbsp;";
+    await expect(
+      service.enhance("session-1", { targetNoteId: "note-1" }),
+    ).rejects.toThrow("Add a note or transcript");
+    expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
+  });
+
+  it("waits for pending note writes before reading the source", async () => {
+    const service = new EnhancerService(createDeps());
+    snapshot.rawMarkdown = "";
+    let finishWrite!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    const write = enqueueDatabaseWrite("session:session-1:note", async () => {
+      await gate;
+      snapshot.rawMarkdown = "Ship Friday";
+    });
+    const generation = service.enhance("session-1");
+    await Promise.resolve();
+    expect(mocks.loadSessionContentSnapshot).not.toHaveBeenCalled();
+    finishWrite();
+    await write;
+    await expect(generation).resolves.toMatchObject({ type: "started" });
+  });
+
+  it("deduplicates simultaneous starts", async () => {
+    const ai = createMockAITaskStore();
+    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+    await Promise.all([
+      service.enhance("session-1"),
+      service.enhance("session-1"),
+    ]);
+    expect(mocks.ensureSummaryDocument).toHaveBeenCalledTimes(1);
+    expect(ai.generate).toHaveBeenCalledTimes(1);
   });
 
   it("returns no_model without touching session storage", async () => {
@@ -177,10 +201,7 @@ describe("EnhancerService", () => {
     const result = await service.enhance("session-1");
 
     expect(result).toEqual({ type: "started", noteId: "note-1" });
-    expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith(
-      "session-1",
-      undefined,
-    );
+    expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith("session-1");
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledBefore(ai.generate);
     expect(ai.generate).toHaveBeenCalledWith("note-1-enhance", {
       model: expect.any(Object),
@@ -188,12 +209,11 @@ describe("EnhancerService", () => {
       args: {
         sessionId: "session-1",
         enhancedNoteId: "note-1",
-        templateId: undefined,
       },
     });
   });
 
-  it("reuses a matching summary and its stored auto-enhance template", async () => {
+  it("reuses an existing legacy summary for automatic generation", async () => {
     snapshot = createSnapshot({
       notes: [createNote({ id: "existing", templateId: "one-on-one" })],
     });
@@ -207,7 +227,7 @@ describe("EnhancerService", () => {
     expect(ai.generate).toHaveBeenCalledWith(
       "existing-enhance",
       expect.objectContaining({
-        args: expect.objectContaining({ templateId: "one-on-one" }),
+        args: { sessionId: "session-1", enhancedNoteId: "existing" },
       }),
     );
   });
@@ -242,6 +262,20 @@ describe("EnhancerService", () => {
     expect(ai.generate).not.toHaveBeenCalled();
   });
 
+  it("refreshes the same successful summary after a resumed recording", async () => {
+    snapshot = createSnapshot({
+      notes: [createNote({ content: "Old recording" })],
+      wordCount: 50,
+    });
+    const ai = createMockAITaskStore(() => ({ status: "success" }));
+    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+    await expect(
+      service.enhance("session-1", { isAuto: true }),
+    ).resolves.toEqual({ type: "started", noteId: "note-1" });
+    expect(ai.generate).toHaveBeenCalledOnce();
+    expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
+  });
+
   it("reruns a successful task whose summary is still empty", async () => {
     snapshot = createSnapshot({ notes: [createNote()] });
     const ai = createMockAITaskStore(() => ({ status: "success" }));
@@ -253,43 +287,33 @@ describe("EnhancerService", () => {
     expect(ai.generate).toHaveBeenCalledOnce();
   });
 
-  it("replaces a target note before generating with the selected template", async () => {
-    snapshot = createSnapshot({ notes: [createNote({ content: "Old" })] });
-    const ai = createMockAITaskStore();
-    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
-
-    const result = await service.enhance("session-1", {
-      targetNoteId: "note-1",
-      templateId: "template-1",
-      templateTitle: "Customer review",
-    });
-
-    expect(result).toEqual({ type: "started", noteId: "note-1" });
-    expect(mocks.replaceSummaryDocumentTemplate).toHaveBeenCalledWith({
-      sessionId: "session-1",
-      noteId: "note-1",
-      templateId: "template-1",
+  it("regenerates the selected legacy document without replacing its metadata", async () => {
+    const note = createNote({
+      kind: "template_output",
+      templateId: "old",
       title: "Customer review",
+      content: "Saved",
     });
-    expect(mocks.replaceSummaryDocumentTemplate).toHaveBeenCalledBefore(
-      ai.generate,
-    );
-  });
-
-  it("lets an explicit null template override the selected default", async () => {
-    snapshot = createSnapshot({ notes: [createNote({ templateId: "old" })] });
-    const service = new EnhancerService(
-      createDeps({ getSelectedTemplateId: () => "default-template" }),
-    );
-
-    await service.enhance("session-1", {
-      targetNoteId: "note-1",
-      templateId: null,
+    snapshot = createSnapshot({
+      notes: [createNote({ id: "ordinary" }), note],
     });
-
-    expect(mocks.replaceSummaryDocumentTemplate).toHaveBeenCalledWith(
-      expect.objectContaining({ templateId: undefined }),
+    const ai = createMockAITaskStore(() => ({ status: "success" }));
+    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+    await expect(
+      service.enhance("session-1", { targetNoteId: note.id }),
+    ).resolves.toEqual({ type: "started", noteId: note.id });
+    expect(ai.generate).toHaveBeenCalledWith(
+      "note-1-enhance",
+      expect.objectContaining({
+        args: { sessionId: "session-1", enhancedNoteId: note.id },
+      }),
     );
+    expect(note).toMatchObject({
+      title: "Customer review",
+      templateId: "old",
+      content: "Saved",
+    });
+    expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
   });
 
   it("does not queue auto-enhance when a durable summary exists", async () => {
@@ -316,10 +340,7 @@ describe("EnhancerService", () => {
     await expect(
       service.queueAutoEnhanceIfSummaryEmpty("session-1"),
     ).resolves.toEqual({ type: "queued" });
-    expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith(
-      "session-1",
-      undefined,
-    );
+    expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith("session-1");
     expect(queueSpy).toHaveBeenCalledWith("session-1");
   });
 
@@ -436,25 +457,6 @@ describe("EnhancerService", () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(event).not.toHaveBeenCalled();
-  });
-
-  it("hydrates placeholder template titles without overwriting newer metadata", async () => {
-    snapshot = createSnapshot({
-      notes: [createNote({ templateId: "template-1", title: "Summary" })],
-    });
-    mocks.getTemplateById.mockResolvedValue({ title: "One-on-one" });
-    const service = new EnhancerService(createDeps());
-
-    await service.ensureNote("session-1", "template-1");
-
-    await vi.waitFor(() =>
-      expect(mocks.updateSummaryDocumentTitleIfCurrent).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        noteId: "note-1",
-        currentTitle: "Summary",
-        nextTitle: "One-on-one",
-      }),
-    );
   });
 
   it("disposes listener subscriptions and pending timers", async () => {

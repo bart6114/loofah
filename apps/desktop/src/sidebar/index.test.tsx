@@ -82,18 +82,18 @@ describe("LeftSidebar", () => {
     ).toBe("true");
   });
 
-  it.each([
-    ["settings", "settings-nav"],
-    ["templates", "templates-nav"],
-  ])("keeps %s below the window chrome", (type, testId) => {
-    mocks.currentTab = { type };
+  it.each([["settings", "settings-nav"]])(
+    "keeps %s below the window chrome",
+    (type, testId) => {
+      mocks.currentTab = { type };
 
-    const { container } = render(<LeftSidebar />);
-    const classList = container.firstElementChild?.className.split(" ") ?? [];
+      const { container } = render(<LeftSidebar />);
+      const classList = container.firstElementChild?.className.split(" ") ?? [];
 
-    expect(screen.getByTestId(testId)).toBeTruthy();
-    expect(classList).toContain("pt-11");
-    expect(classList).toContain("pr-1");
-    expect(classList).not.toContain("pt-0");
-  });
+      expect(screen.getByTestId(testId)).toBeTruthy();
+      expect(classList).toContain("pt-11");
+      expect(classList).toContain("pr-1");
+      expect(classList).not.toContain("pt-0");
+    },
+  );
 });
