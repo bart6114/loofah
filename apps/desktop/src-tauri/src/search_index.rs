@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use chrono::DateTime;
 use serde_json::Value;
+use tauri::Manager;
 use tauri_plugin_tantivy::{
     SearchDocument, SearchFilters, SearchOptions, SearchRequest, TantivyPluginExt,
 };
@@ -126,6 +127,14 @@ async fn run<R: tauri::Runtime>(
 ) {
     let queue = DirtyQueue::default();
 
+    if let Err(error) = app
+        .state::<crate::startup::StartupState>()
+        .wait_until_ready()
+        .await
+    {
+        tracing::warn!(%error, "search projection stopped because vault startup failed");
+        return;
+    }
     wait_for_tantivy(&app).await;
 
     loop {
@@ -197,26 +206,34 @@ async fn initialize<R: tauri::Runtime>(
     changes: &mut ChangeReceiver,
     index_dir: &Path,
 ) -> WorkerResult<()> {
+    app.state::<crate::startup::StartupState>()
+        .wait_until_ready()
+        .await?;
     if read_projection_version(index_dir) != PROJECTION_VERSION {
         return rebuild(app, store, queue, changes, index_dir).await;
     }
 
-    drain_queue(app, store, queue, changes).await?;
-
-    let session_count = store.session_count();
-    if queue.len() > 0 {
-        return Ok(());
-    }
-
-    let index_count_matches = wait_for_index_count(app, session_count).await?;
-    if !index_count_matches {
+    loop {
+        drain_queue(app, store, queue, changes).await?;
+        let session_count = store.session_count();
+        let index_count_matches = wait_for_index_count(app, session_count).await?;
         let index_count = index_document_count(app).await?;
-        tracing::info!(
-            session_count,
-            index_count,
-            "search index count does not match the vault index; rebuilding projection"
-        );
-        rebuild(app, store, queue, changes, index_dir).await?;
+
+        // Writes can land while Tantivy's reader settles. Reconcile those before
+        // interpreting a count mismatch as damage to the persisted projection.
+        absorb_pending_changes(queue, changes);
+        if store.session_count() != session_count || queue.len() > 0 {
+            continue;
+        }
+        if !index_count_matches && index_count != session_count {
+            tracing::info!(
+                session_count,
+                index_count,
+                "search index count does not match the vault index; rebuilding projection"
+            );
+            rebuild(app, store, queue, changes, index_dir).await?;
+        }
+        break;
     }
 
     Ok(())
@@ -623,6 +640,9 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
         app.manage(IndexState::default());
+        let startup = crate::startup::StartupState::new(Some(vault.path()));
+        startup.set_phase(crate::startup::StartupPhase::Ready);
+        app.manage(startup);
 
         let schema = build_schema();
         let index = tantivy::Index::create_in_ram(schema.clone());
@@ -777,6 +797,167 @@ mod tests {
         h.store.delete_session("s1").await.unwrap();
         drain_harness(&mut h).await;
         wait_for(&app, "s1 removed", |docs| docs.is_empty()).await;
+    }
+
+    fn mark_no_rebuild(h: &Harness) {
+        std::fs::write(
+            projection_version_path(&h.index_dir),
+            format!("{PROJECTION_VERSION}\n"),
+        )
+        .unwrap();
+    }
+
+    fn assert_no_rebuild(h: &Harness) {
+        assert_eq!(
+            std::fs::read_to_string(projection_version_path(&h.index_dir)).unwrap(),
+            format!("{PROJECTION_VERSION}\n")
+        );
+    }
+
+    #[tokio::test]
+    async fn populated_projection_waits_for_loading_and_preserves_offline_and_loading_edits() {
+        let mut h = harness().await;
+        h.store
+            .write_meta(&meta("s1", "Before restart"))
+            .await
+            .unwrap();
+        initialize_harness(&mut h).await;
+        wait_for(h.app.handle(), "existing projection", |docs| {
+            docs.len() == 1
+        })
+        .await;
+        mark_no_rebuild(&h);
+        h.store.write_note("s1", "offline edit").await.unwrap();
+        h.store = Arc::new(SessionStore::new(h.vault.path().to_path_buf()));
+        h.changes = h.store.subscribe_index_changes();
+        let store = h.store.clone();
+        let startup = h
+            .app
+            .state::<crate::startup::StartupState>()
+            .inner()
+            .clone();
+        startup.set_phase(crate::startup::StartupPhase::OpeningVault);
+        let app = h.app.handle().clone();
+        let version_path = projection_version_path(&h.index_dir);
+        let loading = async move {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            assert_eq!(all_documents(&app).await.len(), 1);
+            assert_eq!(
+                std::fs::read_to_string(version_path).unwrap(),
+                format!("{PROJECTION_VERSION}\n")
+            );
+            store.rebuild_index().await.unwrap();
+            store
+                .write_meta(&meta("s2", "Created during loading"))
+                .await
+                .unwrap();
+            startup.set_phase(crate::startup::StartupPhase::Ready);
+        };
+        tokio::join!(initialize_harness(&mut h), loading);
+        let docs = wait_for(h.app.handle(), "all startup edits searchable", |docs| {
+            docs.len() == 2
+        })
+        .await;
+        assert!(
+            docs.iter()
+                .any(|doc| doc.id == "s1" && doc.content.contains("offline edit"))
+        );
+        assert_no_rebuild(&h);
+    }
+
+    #[tokio::test]
+    async fn failed_startup_leaves_projection_and_version_untouched() {
+        let mut h = harness().await;
+        h.store.write_meta(&meta("s1", "Existing")).await.unwrap();
+        initialize_harness(&mut h).await;
+        wait_for(h.app.handle(), "existing projection", |docs| {
+            docs.len() == 1
+        })
+        .await;
+        std::fs::write(projection_version_path(&h.index_dir), "old version").unwrap();
+        h.app.state::<crate::startup::StartupState>().set_phase(
+            crate::startup::StartupPhase::Failed {
+                message: "failed".into(),
+            },
+        );
+        assert!(
+            initialize(
+                h.app.handle(),
+                &h.store,
+                &h.queue,
+                &mut h.changes,
+                &h.index_dir
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(all_documents(h.app.handle()).await.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(projection_version_path(&h.index_dir)).unwrap(),
+            "old version"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_ready_vault_does_not_rebuild_matching_projection() {
+        let mut h = harness().await;
+        initialize_harness(&mut h).await;
+        mark_no_rebuild(&h);
+        initialize_harness(&mut h).await;
+        assert_no_rebuild(&h);
+        assert!(all_documents(h.app.handle()).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn changes_during_count_settling_are_reconciled_before_rebuilding() {
+        for count_changes in [false, true] {
+            let mut h = harness().await;
+            h.store.write_meta(&meta("s1", "Alpha")).await.unwrap();
+            h.store.write_meta(&meta("s2", "Beta")).await.unwrap();
+            initialize_harness(&mut h).await;
+            wait_for(h.app.handle(), "two documents", |docs| docs.len() == 2).await;
+            h.app
+                .handle()
+                .tantivy()
+                .remove_document(None, "s2".into())
+                .await
+                .unwrap();
+            wait_for(h.app.handle(), "missing projection document", |docs| {
+                docs.len() == 1
+            })
+            .await;
+            mark_no_rebuild(&h);
+            let store = h.store.clone();
+            let edit = async move {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                if count_changes {
+                    store.delete_session("s2").await.unwrap();
+                } else {
+                    store
+                        .write_note("s2", "edit during settling")
+                        .await
+                        .unwrap();
+                }
+            };
+            tokio::join!(initialize_harness(&mut h), edit);
+            assert_no_rebuild(&h);
+            assert_eq!(
+                all_documents(h.app.handle()).await.len(),
+                if count_changes { 1 } else { 2 }
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn outdated_projection_version_rebuilds_even_when_counts_match() {
+        let mut h = harness().await;
+        h.store.write_meta(&meta("s1", "Alpha")).await.unwrap();
+        initialize_harness(&mut h).await;
+        wait_for(h.app.handle(), "one document", |docs| docs.len() == 1).await;
+        write_projection_version(&h.index_dir, PROJECTION_VERSION - 1).unwrap();
+        initialize_harness(&mut h).await;
+        assert_eq!(read_projection_version(&h.index_dir), PROJECTION_VERSION);
+        wait_for(h.app.handle(), "rebuilt document", |docs| docs.len() == 1).await;
     }
 
     #[tokio::test]
