@@ -10,6 +10,7 @@ tauri-events = ["dep:tauri-specta"]
 [dependencies]
 hypr-fs-format = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
+hypr-storage = { workspace = true }
 hypr-vault-read = { workspace = true }
 
 serde = { workspace = true, features = ["derive"] }
@@ -21,7 +22,6 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 
 chrono = { workspace = true }
 tracing = { workspace = true }
-unicode-normalization = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

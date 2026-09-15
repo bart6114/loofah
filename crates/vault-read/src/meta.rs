@@ -62,17 +62,12 @@ pub struct SessionMeta {
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
-/// Read one session's `_meta.json`, resolving the id to its physical directory via
-/// layout discovery (identity is `_meta.json.id`, never the directory basename).
-/// `Ok(None)` only when no directory claims the id -- a corrupt or ambiguous claim
-/// is an error, never "no session".
+/// Read only `sessions/<id>/_meta.json`. Missing files return `None`; unreadable,
+/// malformed, and mismatched metadata return errors.
 pub fn read_session_meta(vault: &Path, id: &str) -> Result<Option<SessionMeta>> {
     match layout::find_session(vault, id) {
         Ok(found) => Ok(found.map(|(_, meta)| meta)),
         Err(layout::SessionLookupError::Corrupt { reason, .. }) => Err(Error::Parse(reason)),
-        Err(error @ layout::SessionLookupError::Ambiguous { .. }) => {
-            Err(Error::Parse(error.to_string()))
-        }
         Err(layout::SessionLookupError::Io(reason)) => Err(Error::Io(reason)),
     }
 }
@@ -87,17 +82,19 @@ pub fn read_session_meta_in(vault: &Path, session_dir: &Path) -> Result<Option<S
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(Error::Io(format!("failed to read meta file: {e}"))),
     };
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|e| Error::Parse(format!("failed to deserialize meta: {e}")))
+    let meta: SessionMeta = serde_json::from_slice(&bytes)
+        .map_err(|e| Error::Parse(format!("failed to deserialize meta: {e}")))?;
+    if paths::validated_session_dir(&meta.id)? != session_dir {
+        return Err(Error::Parse(format!(
+            "metadata id {:?} does not match directory {}",
+            meta.id,
+            session_dir.display()
+        )));
+    }
+    Ok(Some(meta))
 }
 
-/// Every discovered session's parsed `_meta.json`, in both legacy UUID-named and
-/// readable directories, nested personal folders included. Corrupt or duplicated
-/// entries are skipped (read-only tolerance: one bad session must not hide the
-/// rest); a missing `sessions/` directory is an empty vault, not an error. Callers
-/// that need the physical locations or the skip diagnostics use
-/// `layout::discover_sessions` directly.
+/// List matching metadata in non-hidden, non-symlinked direct session directories.
 pub fn list_session_metas(vault: &Path) -> Result<Vec<SessionMeta>> {
     Ok(layout::discover_sessions(vault)?
         .sessions

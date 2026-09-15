@@ -89,22 +89,8 @@ import {
 } from "./general-shared";
 
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
-import {
-  commands as sessionCommands,
-  events as tauriEvents,
-} from "~/types/tauri.gen";
 
 let store: ReturnType<typeof createListenerStore>;
-
-// Captured from the persistent recording-meta-settled listener (registered once
-// per module lifetime, so it is grabbed at first registration and reused).
-let settleHandler:
-  | ((event: { payload: { sessionId: string; succeeded: boolean } }) => void)
-  | undefined;
-
-function fireRecordingMetaSettled(sessionId: string) {
-  settleHandler?.({ payload: { sessionId, succeeded: true } });
-}
 
 describe("General Listener Slice", () => {
   beforeEach(() => {
@@ -131,12 +117,6 @@ describe("General Listener Slice", () => {
     vaultBaseMock.mockResolvedValue({ status: "ok", data: "/tmp/fmtr" });
     audioPathMock.mockResolvedValue({ status: "ok", data: "/tmp/session.wav" });
     sessionDirMock.mockResolvedValue({ status: "error", error: "unmocked" });
-    (
-      tauriEvents.recordingMetaSettled.listen as ReturnType<typeof vi.fn>
-    ).mockImplementation((handler: typeof settleHandler) => {
-      settleHandler = handler;
-      return Promise.resolve(() => {});
-    });
   });
 
   describe("Initial State", () => {
@@ -815,7 +795,6 @@ describe("General Listener Slice", () => {
         },
       });
 
-      fireRecordingMetaSettled("session-a");
       await vi.waitFor(() =>
         expect(onStopped).toHaveBeenCalledWith(
           "session-a",
@@ -876,7 +855,6 @@ describe("General Listener Slice", () => {
         },
       });
 
-      fireRecordingMetaSettled("session-a");
       await vi.waitFor(() =>
         expect(onStopped).toHaveBeenCalledWith(
           "session-a",
@@ -1090,28 +1068,7 @@ describe("General Listener Slice", () => {
       expect(store.getState().live.sessionId).toBe("session-a");
     });
 
-    test("starts recording when the directory reservation fails", async () => {
-      vi.mocked(sessionCommands.sessionPrepareRecording).mockResolvedValueOnce({
-        status: "error",
-        error: "reservation unavailable",
-      });
-      await expect(
-        store.getState().start({
-          session_id: "session-a",
-          languages: [],
-          onboarding: false,
-          model: "test-model",
-          base_url: "http://localhost",
-          api_key: "test-key",
-        }),
-      ).resolves.toBe(true);
-      expect(startCaptureMock).toHaveBeenCalledOnce();
-      expect(
-        sessionCommands.sessionReleaseRecordingPrepare,
-      ).not.toHaveBeenCalled();
-    });
-
-    test("releases the directory reservation when capture startup fails", async () => {
+    test("reports capture startup failure", async () => {
       startCaptureMock.mockResolvedValueOnce({
         status: "error",
         error: "capture unavailable",
@@ -1126,9 +1083,7 @@ describe("General Listener Slice", () => {
           api_key: "test-key",
         }),
       ).resolves.toBe(false);
-      expect(
-        sessionCommands.sessionReleaseRecordingPrepare,
-      ).toHaveBeenCalledWith("session-a");
+      expect(startCaptureMock).toHaveBeenCalledOnce();
     });
 
     test("holds the session audio lock until capture startup finishes", async () => {

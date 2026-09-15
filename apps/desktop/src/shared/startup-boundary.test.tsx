@@ -1,12 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Toaster } from "@hypr/ui/components/ui/toast";
 
 import { StartupBoundary } from "./startup-boundary";
 
@@ -53,6 +56,16 @@ vi.mock("./relaunch", () => ({
 
 describe("StartupBoundary", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      })),
+    );
     mocks.startupHandler = null;
     mocks.getStartupStatus.mockResolvedValue(
       status(1, { kind: "scanning", sessions_found: 237 }),
@@ -70,7 +83,9 @@ describe("StartupBoundary", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -143,6 +158,25 @@ describe("StartupBoundary", () => {
     expect(mocks.relaunchNow).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps healthy notes available while displaying migration paths and reasons", async () => {
+    mocks.getStartupStatus.mockResolvedValue({
+      ...status(1, { kind: "ready" }),
+      migrationIssues: [
+        "sessions/Readable: destination sessions/s1 is occupied",
+      ],
+    });
+    renderBoundary();
+    expect(await screen.findByText("Application ready")).toBeTruthy();
+    expect(
+      await screen.findByText("Some notes could not be migrated"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "sessions/Readable: destination sessions/s1 is occupied",
+      ),
+    ).toBeTruthy();
+  });
+
   it("restarts the app when retrying a failed startup", async () => {
     mocks.getStartupStatus.mockResolvedValue(
       status(1, { kind: "failed", message: "Drive unavailable" }),
@@ -164,6 +198,7 @@ function renderBoundary() {
       <StartupBoundary>
         <div>Application ready</div>
       </StartupBoundary>
+      <Toaster />
     </QueryClientProvider>,
   );
 }

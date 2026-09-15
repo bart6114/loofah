@@ -27,6 +27,21 @@ For agents with shell access, use the `loof` CLI for both reading and writing. S
     attachments/         files embedded in the note
 ```
 
+Session directories are immutable: each session lives directly at `sessions/<id>/`,
+and `_meta.json.id` must match that ID. Title and date edits do not rename directories.
+Existing safe legacy IDs remain unchanged. The `folder` metadata field has no filesystem effect.
+
+The desktop app migrates top-level readable directory names at startup by moving each
+whole directory to its existing ID. Conflicts and unreadable metadata leave the source
+untouched and excluded from the app. The startup notice lists affected paths and reasons;
+fix the issue and restart the desktop app to retry. Nested directories are unsupported.
+CLI and MCP reads never migrate a vault; `loof doctor` reports noncanonical directories.
+
+Before migration, stop older desktop builds on **all devices sharing the vault** and
+upgrade them together. Older builds rename ID directories back to readable names.
+External bookmarks to readable directory paths may break; session IDs and relative
+attachment links stay valid.
+
 Ownership rules:
 
 - Inside a session directory the app owns exactly the names above. **Any other file is a user attachment: leave it alone**, and never claim unknown files as app content.

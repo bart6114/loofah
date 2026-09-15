@@ -31,14 +31,36 @@ pub fn scan_and_read(
     let mut files = HashMap::new();
     let mut dirs = Vec::new();
 
-    scan_directory_for_files(
-        relative_to,
-        scan_dir,
-        &patterns,
-        recursive,
-        &mut files,
-        &mut dirs,
-    );
+    let sessions_root = relative_to.join("sessions");
+    if scan_dir == sessions_root {
+        if let Ok(scan) = hypr_vault_read::discover_sessions(relative_to) {
+            for (location, _) in scan.sessions {
+                scan_session_files(
+                    relative_to,
+                    &relative_to.join(location.relative_dir),
+                    &patterns,
+                    &mut files,
+                );
+            }
+        }
+    } else if let Ok(relative) = scan_dir.strip_prefix(&sessions_root) {
+        let mut components = relative.components();
+        if let Some(id) = components.next().and_then(|c| c.as_os_str().to_str())
+            && components.next().is_none()
+            && hypr_vault_read::find_session(relative_to, id).is_ok_and(|found| found.is_some())
+        {
+            scan_session_files(relative_to, scan_dir, &patterns, &mut files);
+        }
+    } else {
+        scan_directory_for_files(
+            relative_to,
+            scan_dir,
+            &patterns,
+            recursive,
+            &mut files,
+            &mut dirs,
+        );
+    }
 
     let files: HashMap<String, String> = files
         .into_par_iter()
@@ -76,6 +98,25 @@ fn scan_directory_for_files(
             continue;
         };
 
+        if entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
+            continue;
+        }
+        if name.starts_with('.') {
+            continue;
+        }
+        if path == base_path.join("sessions") {
+            if let Ok(scan) = hypr_vault_read::discover_sessions(base_path) {
+                for (location, _) in scan.sessions {
+                    scan_session_files(
+                        base_path,
+                        &base_path.join(location.relative_dir),
+                        patterns,
+                        files,
+                    );
+                }
+            }
+            continue;
+        }
         if path.is_dir() {
             // Hidden directories are invisible to every layout reader.
             if name.starts_with('.') {
@@ -104,16 +145,8 @@ fn scan_session_files(
     patterns: &[Pattern],
     files: &mut HashMap<String, PathBuf>,
 ) {
-    let entries = match std::fs::read_dir(session_dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
+    for name in hypr_vault_read::SESSION_OWNED_FILES {
+        let path = session_dir.join(name);
         if path.is_file() && patterns.iter().any(|p| p.matches(name)) {
             files.insert(to_relative_path(&path, base_path), path);
         }
@@ -208,10 +241,7 @@ mod tests {
         let result = scan_and_read(env.path(), env.path(), &["*.txt".into()], false, None);
 
         assert!(!result.dirs.iter().any(|d| d.contains(UUID_1)));
-        assert_eq!(
-            result.files.get(&format!("{UUID_1}/note.txt")),
-            Some(&"inside uuid".into())
-        );
+        assert_eq!(result.files.get(&format!("{UUID_1}/note.txt")), None);
     }
 
     #[test]
@@ -230,10 +260,7 @@ mod tests {
         let result = scan_and_read(env.path(), env.path(), &["*.txt".into()], true, None);
 
         assert!(result.dirs.is_empty(), "{:?}", result.dirs);
-        assert_eq!(
-            result.files.get(&format!("{dir_name}/note.txt")),
-            Some(&"inside session".into())
-        );
+        assert_eq!(result.files.get(&format!("{dir_name}/note.txt")), None);
         assert!(
             !result
                 .files
@@ -265,7 +292,7 @@ mod tests {
     fn paths_relative_to_different_base() {
         let env = TestEnv::new()
             .folder(&format!("sessions/{UUID_1}"))
-            .file("_meta.json", "{}")
+            .file("_meta.json", &session_meta_json(UUID_1))
             .done()
             .build();
 
@@ -275,7 +302,7 @@ mod tests {
         assert_eq!(result.files.len(), 1);
         assert_eq!(
             result.files.get(&format!("sessions/{UUID_1}/_meta.json")),
-            Some(&"{}".into())
+            Some(&session_meta_json(UUID_1))
         );
     }
 }

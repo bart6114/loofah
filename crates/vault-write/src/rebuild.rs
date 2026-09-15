@@ -62,10 +62,6 @@ impl SessionStore {
     }
 
     async fn rebuild_index_once(&self) -> Result<RebuildReport, StoreError> {
-        // The scan and the catalog swap run under the store write lock: renames
-        // (provisional reconcile, migration) also hold it, so the swap can never
-        // revert the catalog to a directory a concurrent rename just moved away
-        // from -- which would make the next write recreate the old path.
         let guard = self.lock_writes().await;
         let scan = self.scan_session_locations().await?;
         self.rebuild_with_scan(guard, scan, None).await
@@ -91,11 +87,7 @@ impl SessionStore {
             .await
     }
 
-    /// Startup layout normalization from ONE discovery walk: legacy readable-name
-    /// migration, then provisional-title reconciliation (crash recovery), each
-    /// updating the snapshot's paths after a successful rename so the rebuild that
-    /// follows indexes the directories as they now are. Runs under the write lock;
-    /// no content is read here -- that stays in the rebuild, outside the lock.
+    /// Desktop startup shares one shallow metadata snapshot between migration and indexing.
     pub async fn normalize_startup_layout(&self) -> Result<super::StartupLayout, StoreError> {
         self.normalize_startup_layout_with_progress(|_| {}).await
     }
@@ -106,11 +98,12 @@ impl SessionStore {
     ) -> Result<super::StartupLayout, StoreError> {
         let guard = self.lock_writes().await;
         let mut scan = self
-            .scan_session_locations_with_progress(Some(std::sync::Arc::new(on_sessions_found)))
+            .scan_session_locations_with_progress(
+                Some(std::sync::Arc::new(on_sessions_found)),
+                true,
+            )
             .await?;
         let migration = self.migrate_from_scan(&guard, &mut scan).await;
-        self.reconcile_provisional_from_scan(&guard, &mut scan)
-            .await;
         drop(guard);
         Ok(super::StartupLayout { scan, migration })
     }
@@ -126,67 +119,19 @@ impl SessionStore {
     ) -> Result<RebuildReport, StoreError> {
         let mut report = RebuildReport::default();
 
-        // Ids the prune below must not touch: an id claimed by multiple directories
-        // is ambiguous (not gone), and an id whose known directory -- or any parent
-        // of it -- is now corrupt/unreadable is broken (not gone). Descendant
-        // matching matters for the unreadable case: a permission error on a personal
-        // folder must not make every session homed under it look deleted.
-        let protected: HashSet<String> = {
-            let catalog = self.locations.read().unwrap();
-            catalog
-                .iter()
-                .filter(|(_, dir)| {
+        let protected: HashSet<String> = scan
+            .prunable
+            .iter()
+            .filter(|id| {
+                paths::validated_session_dir(id).is_ok_and(|dir| {
                     scan.broken_dirs
                         .iter()
-                        .any(|broken| hypr_vault_read::layout::path_starts_with_nfc(dir, broken))
+                        .any(|broken| dir.starts_with(broken))
                 })
-                .map(|(id, _)| id.clone())
-                .chain(scan.duplicate_ids.iter().cloned())
-                .collect()
-        };
-
-        // Refresh the location catalog from discovery before reconciling any content, so
-        // every per-session read below resolves against the physical layout just scanned.
-        // Corrupt-protected ids keep their previous location (their directory is still
-        // there, just unreadable); duplicated ids are dropped so writes block instead of
-        // silently picking one claimant.
-        let location_changes: Vec<String> = {
-            let mut catalog = self.locations.write().unwrap();
-            let previous = std::mem::take(&mut *catalog);
-            for (location, _) in &scan.sessions {
-                catalog.insert(location.id.clone(), location.relative_dir.clone());
-            }
-            for id in &protected {
-                if scan.duplicate_ids.contains(id) {
-                    continue;
-                }
-                if let Some(dir) = previous.get(id) {
-                    catalog.entry(id.clone()).or_insert_with(|| dir.clone());
-                }
-            }
-            // Ids whose physical directory this swap changed, added, or removed --
-            // announced below as `Locations` so path caches invalidate off external
-            // renames/moves too, not just app-driven ones.
-            previous
-                .keys()
-                .chain(catalog.keys())
-                .filter(|id| match (previous.get(*id), catalog.get(*id)) {
-                    (Some(a), Some(b)) => !hypr_vault_read::layout::paths_eq_nfc(a, b),
-                    (None, None) => false,
-                    _ => true,
-                })
-                .cloned()
-                .collect::<HashSet<String>>()
-                .into_iter()
-                .collect()
-        };
-        // Duplicate claims persist past the rebuild so lazy per-id resolution can't
-        // sidestep them (find_session's legacy fast path would otherwise silently
-        // pick the canonical claimant and let writes diverge the copies).
-        *self.known_duplicates.write().unwrap() = scan.duplicate_ids.iter().cloned().collect();
+            })
+            .cloned()
+            .collect();
         drop(guard);
-
-        self.notify_index_changed(IndexEntity::Locations, location_changes);
 
         report.errors.extend(scan.errors.iter().cloned());
         report.ghost_sessions = scan.ghost_dirs.clone();
@@ -194,9 +139,8 @@ impl SessionStore {
         // Per-session refresh with bounded concurrency. Each task gets the meta the
         // discovery walk already parsed (skipping a re-read of `_meta.json`) and its
         // own sub-report; sub-reports are merged in scan order so `RebuildReport`
-        // stays deterministic regardless of completion order. A session deleted
-        // between scan and refresh is indexed from its scan-time meta until the next
-        // rescan -- the same brief-staleness window the serial loop had, just wider.
+        // stays deterministic regardless of completion order. Deletion tombstones
+        // prevent the snapshot from restoring sessions deleted during content loading.
         let mut slots: Vec<Option<(RebuildReport, Result<Option<StoreError>, StoreError>)>> =
             (0..scan.sessions.len()).map(|_| None).collect();
         let mut join_failure: Option<StoreError> = None;
@@ -262,7 +206,7 @@ impl SessionStore {
 
         // Sessions that vanished from disk are removed (the discovery scan succeeded and
         // came back without them -- the only certainty a prune is allowed to act on;
-        // ambiguous/corrupt ids are protected above).
+        // unreadable/corrupt paths are protected above).
         let present: HashSet<&str> = scan
             .sessions
             .iter()
@@ -278,6 +222,7 @@ impl SessionStore {
                 .chain(index.tasks.keys())
                 .filter(|id| {
                     *id != VAULT_TASKS_KEY
+                        && scan.prunable.contains(id.as_str())
                         && !present.contains(id.as_str())
                         && !protected.contains(id.as_str())
                 })
@@ -355,14 +300,18 @@ impl SessionStore {
 
         let read_meta = match known_meta {
             Some(meta) => Ok(Some(meta)),
-            None => self.read_meta(id).await,
+            None => {
+                let _guard = self.lock_writes().await;
+                let result = self.read_meta(id).await;
+                if matches!(&result, Ok(Some(_))) {
+                    self.deleted_sessions.lock().unwrap().remove(id);
+                }
+                result
+            }
         };
         let meta = match read_meta {
             Ok(None) => {
-                // The directory (or at least its identity) is gone: drop the catalog
-                // entry too, so a later write re-resolves instead of recreating the
-                // stale path.
-                self.catalog_remove(id);
+                // Missing identity is the only read outcome that removes a session.
                 self.index_remove_session_and_notify(id);
                 match self.session_has_content(id).await {
                     Ok(true) => report.ghost_sessions.push(id.to_string()),
@@ -480,7 +429,7 @@ impl SessionStore {
                 self.read_index_tasks(paths::session_tasks_path_in(&dir))
                     .await
             }
-            // Unresolvable (e.g. ambiguous) id: leave the existing tasks entry alone,
+            // Invalid id: leave the existing tasks entry alone,
             // same keep-on-failure contract as every other artifact here.
             Err(_) => None,
         };
@@ -488,6 +437,11 @@ impl SessionStore {
         let mut changes = Vec::new();
         {
             let mut index = self.index.write().unwrap();
+            // A scan-time snapshot cannot bring back a session deleted while its
+            // content was loading. Explicit restore clears this tombstone.
+            if self.deleted_sessions.lock().unwrap().contains(id) {
+                return Ok(first_error);
+            }
             let previous_header = index.session_header(id);
 
             if let Some(new_meta) = meta {
@@ -540,31 +494,43 @@ impl SessionStore {
 
     // -- filesystem reads (read-only; never writes to the vault) --
 
-    /// Discovery-backed layout scan: the healthy sessions (identity from
-    /// `_meta.json.id`, both legacy UUID-named and readable directories, with their
-    /// metadata), plus the diagnostics rebuild needs -- formatted layout errors, the
-    /// directories whose metadata is unreadable, the ids claimed by more than one
-    /// directory, and ghost directories (session-like content with no metadata). One
-    /// traversal: ghosts come out of the same discovery walk.
+    /// Shallow canonical discovery with diagnostics for conservative pruning.
     pub(super) async fn scan_session_locations(&self) -> Result<SessionLayoutScan, StoreError> {
-        self.scan_session_locations_with_progress(None).await
+        self.scan_session_locations_with_progress(None, false).await
     }
 
     async fn scan_session_locations_with_progress(
         &self,
         on_sessions_found: Option<DiscoveryProgress>,
+        for_migration: bool,
     ) -> Result<SessionLayoutScan, StoreError> {
+        let prunable: HashSet<String> = {
+            let index = self.index.read().unwrap();
+            index
+                .sessions
+                .keys()
+                .chain(index.docs.keys())
+                .chain(index.transcripts.keys())
+                .chain(index.tasks.keys())
+                .cloned()
+                .collect()
+        };
         let vault_base = self.vault_base.clone();
         tokio::task::spawn_blocking(move || -> Result<SessionLayoutScan, StoreError> {
             let started = std::time::Instant::now();
-            let discovery =
-                hypr_vault_read::discover_sessions_with_progress(&vault_base, |found| {
-                    if let Some(on_sessions_found) = &on_sessions_found {
-                        on_sessions_found(found);
-                    }
-                })?;
+            let progress = |found| {
+                if let Some(on_sessions_found) = &on_sessions_found {
+                    on_sessions_found(found);
+                }
+            };
+            let discovery = if for_migration {
+                hypr_vault_read::layout::scan_top_level_directories(&vault_base, progress)?
+            } else {
+                hypr_vault_read::discover_sessions_with_progress(&vault_base, progress)?
+            };
 
             let mut scan = SessionLayoutScan {
+                prunable,
                 ghost_dirs: discovery
                     .ghost_dirs
                     .iter()
@@ -582,9 +548,6 @@ impl SessionStore {
             for error in &discovery.errors {
                 scan.errors.push(error.to_string());
                 match error {
-                    hypr_vault_read::SessionDiscoveryError::DuplicateId { id, .. } => {
-                        scan.duplicate_ids.push(id.clone());
-                    }
                     hypr_vault_read::SessionDiscoveryError::CorruptMeta { dir, .. }
                     | hypr_vault_read::SessionDiscoveryError::Unreadable { dir, .. } => {
                         scan.broken_dirs.push(dir.clone());
@@ -596,7 +559,6 @@ impl SessionStore {
             tracing::debug!(
                 healthy = scan.sessions.len(),
                 broken = scan.broken_dirs.len(),
-                duplicates = scan.duplicate_ids.len(),
                 ghosts = scan.ghost_dirs.len(),
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "session layout discovery"
@@ -696,12 +658,11 @@ impl SessionStore {
 /// healthy sessions.
 #[derive(Debug, Default)]
 pub(super) struct SessionLayoutScan {
+    pub prunable: HashSet<String>,
     pub sessions: Vec<(hypr_vault_read::SessionLocation, super::SessionMeta)>,
-    /// Formatted layout diagnostics (duplicate ids, corrupt/unreadable metadata),
+    /// Formatted layout diagnostics (noncanonical paths, corrupt/unreadable metadata),
     /// carrying physical paths; surfaced through `RebuildReport.errors`.
     pub errors: Vec<String>,
-    /// Ids claimed by more than one directory -- ambiguous, never pruned or resolved.
-    pub duplicate_ids: Vec<String>,
     /// Vault-relative directories whose `_meta.json` exists but cannot be read/parsed.
     pub broken_dirs: Vec<PathBuf>,
     /// Directories (relative to `sessions/`) holding recognized session content (a
@@ -711,24 +672,9 @@ pub(super) struct SessionLayoutScan {
 }
 
 fn dir_has_session_content(dir: &std::path::Path) -> Result<bool, StoreError> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(_) => return Ok(false),
-    };
-    for entry in entries {
-        let Ok(entry) = entry else { continue };
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let is_md = path.extension().and_then(|e| e.to_str()) == Some("md");
-        let is_transcript = path.file_name().and_then(|n| n.to_str()) == Some("transcript.json");
-        if is_md || is_transcript {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    Ok(["notes.md", "_memo.md", "transcript.json"]
+        .iter()
+        .any(|name| dir.join(name).is_file()))
 }
 
 /// Pushes a human-readable line to `errors` and remembers the first raw `StoreError`
@@ -798,8 +744,6 @@ mod tests {
         (store, temp)
     }
 
-    /// Physical directory of a session: creation now picks a human-readable name, so
-    /// tests resolve it through the store instead of assuming `sessions/<id>`.
     async fn session_path(
         store: &SessionStore,
         vault: &tempfile::TempDir,
@@ -829,7 +773,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(*discovered.lock().unwrap(), vec![1, 2]);
+        assert_eq!(*discovered.lock().unwrap(), vec![2]);
 
         let indexed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let indexed_for_callback = indexed.clone();

@@ -180,7 +180,7 @@ mod tests {
         .await
         .unwrap();
 
-        // The directory name is human-readable; identity lives in _meta.json.id.
+        // The directory is named exactly for its persistent session ID.
         let sessions = std::fs::read_dir(vault.join("sessions"))
             .unwrap()
             .map(|entry| entry.unwrap())
@@ -191,6 +191,7 @@ mod tests {
         )
         .unwrap();
         let id = meta["id"].as_str().unwrap().to_string();
+        assert_eq!(sessions[0].file_name().to_str(), Some(id.as_str()));
         // Desktop id format: lowercase hyphenated UUID (crypto.randomUUID()).
         assert_eq!(id.len(), 36);
         assert_eq!(id.matches('-').count(), 4);
@@ -344,7 +345,7 @@ mod tests {
         .await
         .unwrap();
 
-        // The directory name is human-readable; identity lives in _meta.json.id.
+        // The directory is named exactly for its persistent session ID.
         let sessions = std::fs::read_dir(vault.join("sessions"))
             .unwrap()
             .map(|entry| entry.unwrap())
@@ -913,6 +914,38 @@ mod tests {
         assert_eq!(error.code(), "operation_failed");
         assert!(error.to_string().contains("tag name cannot be empty"));
         assert!(read_meta_tags(&vault, "meeting-1").is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn per_id_get_path_and_export_do_not_enumerate_sessions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("vault");
+        write_session(&vault, "target", Some("bounded lookup"));
+        let root = vault.join("sessions");
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o111)).unwrap();
+        assert!(std::fs::read_dir(&root).is_err());
+        for id in ["target", "missing"] {
+            for command in [
+                cli::MeetingCommand::Get { id: id.into() },
+                cli::MeetingCommand::Path { id: id.into() },
+                cli::MeetingCommand::Export {
+                    id: id.into(),
+                    format: cli::ExportFormat::Json,
+                    output: Some(dir.path().join(format!("{id}.json"))),
+                    force: false,
+                },
+            ] {
+                let result = run(meetings_args(&vault, command)).await;
+                if id == "target" {
+                    result.unwrap();
+                } else {
+                    assert_eq!(result.unwrap_err().code(), "not_found");
+                }
+            }
+        }
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     #[tokio::test]

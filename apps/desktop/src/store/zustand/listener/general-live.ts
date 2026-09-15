@@ -3,7 +3,6 @@ import { Effect, Exit } from "effect";
 import type { StoreApi } from "zustand";
 
 import { commands as detectCommands } from "@hypr/plugin-detect";
-import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 import { commands as iconCommands } from "@hypr/plugin-icon";
 import {
   commands as listenerCommands,
@@ -32,14 +31,9 @@ import {
   updateLiveAmplitude,
   updateLiveProgress,
 } from "./general-shared";
-import {
-  ensureRecordingMetaSettledListener,
-  waitForRecordingMetaSettled,
-} from "./recording-meta-settled";
 import type { TranscriptActions, TranscriptState } from "./transcript";
 
 import { fromResult } from "~/stt/fromResult";
-import { commands as sessionCommands } from "~/types/tauri.gen";
 
 type EventListeners = {
   lifecycle: (payload: CaptureLifecycleEvent) => void;
@@ -54,9 +48,6 @@ const listenToAllSessionEvents = (
 ): Effect.Effect<(() => void)[], unknown> =>
   Effect.tryPromise({
     try: async () => {
-      // Registered alongside the capture listeners so the settle listener's
-      // registration round-trip is long done before any stop could emit one.
-      ensureRecordingMetaSettledListener();
       const unlisteners = await Promise.all([
         listenerEvents.captureLifecycleEvent.listen(({ payload }) =>
           handlers.lifecycle(payload),
@@ -221,30 +212,13 @@ const createSessionEventHandlers = <T extends LiveStore>(
       get().resetTranscript();
     }
 
-    if (onStopped) {
-      // The Stopped payload's audio_path was resolved by listener-core BEFORE
-      // mark_recording_ended runs its deferred first-title directory rename.
-      // Wait for the settle event and re-resolve, so audio cataloging and batch
-      // repair never chase a path the rename just moved.
-      void waitForRecordingMetaSettled(targetSessionId).then(async () => {
-        let audioPath = payload.audio_path ?? null;
-        try {
-          const refreshed = await fsSyncCommands.audioPath(targetSessionId);
-          if (refreshed.status === "ok" && refreshed.data) {
-            audioPath = refreshed.data;
-          }
-        } catch {
-          // Keep the payload's path; the directory simply was not renamed.
-        }
-        onStopped(targetSessionId, {
-          durationSeconds: stoppedSeconds,
-          audioPath,
-          requestedLiveTranscription: payload.requested_live_transcription,
-          liveTranscriptionActive: payload.live_transcription_active,
-          needsBatchRepair,
-        });
-      });
-    }
+    onStopped?.(targetSessionId, {
+      durationSeconds: stoppedSeconds,
+      audioPath: payload.audio_path ?? null,
+      requestedLiveTranscription: payload.requested_live_transcription,
+      liveTranscriptionActive: payload.live_transcription_active,
+      needsBatchRepair,
+    });
   },
   progress: (payload) => {
     if (payload.session_id !== targetSessionId) {
@@ -323,14 +297,6 @@ export const startLiveSession = <T extends LiveStore>(
 
   const handlers = createSessionEventHandlers(set, get, targetSessionId);
 
-  // Whether this start's own path lease was taken. Only a held lease may be
-  // released on failure -- releasing without one could unprotect a concurrent
-  // recording of the same session. The promise is tracked too: a sibling
-  // failure can abort the start while the prepare call is still in flight, and
-  // its late-arriving lease must still be released.
-  let prepared = false;
-  let preparePromise: Promise<unknown> | null = null;
-
   const program = Effect.gen(function* () {
     const unlisteners = yield* listenToAllSessionEvents(handlers);
 
@@ -338,33 +304,16 @@ export const startLiveSession = <T extends LiveStore>(
       live.eventUnlistenersBySession[targetSessionId] = unlisteners;
     });
 
-    const [, micUsingApps, bundleId] = yield* Effect.tryPromise({
-      try: () => {
-        // Reserve the directory so a title change cannot move it mid-start.
-        // Capture also protects its directory; a failed lease must not block it.
-        const reservation = sessionCommands
-          .sessionPrepareRecording(targetSessionId)
-          .then((r) => {
-            if (r.status === "error") throw new Error(r.error);
-            prepared = true;
-          })
-          .catch((error) => {
-            console.warn(
-              "[record] recording preparation failed; starting without a path lease:",
-              error,
-            );
-          });
-        preparePromise = reservation;
-        return Promise.all([
-          reservation,
+    const [micUsingApps, bundleId] = yield* Effect.tryPromise({
+      try: () =>
+        Promise.all([
           detectCommands
             .listMicUsingApplications()
             .then((r) =>
               r.status === "ok" ? r.data.map((app) => app.id) : null,
             ),
           getIdentifier().catch(() => "io.loofah.stable"),
-        ]);
-      },
+        ]),
       catch: (error) => error,
     });
 
@@ -391,25 +340,6 @@ export const startLiveSession = <T extends LiveStore>(
     Exit.match(exit, {
       onFailure: (cause) => {
         console.error(JSON.stringify(cause));
-        // Capture never started; release this start's own lease so the
-        // deferred first-title rename is not blocked forever. Await the
-        // in-flight prepare first: a sibling failure can lose the race with
-        // it, and a lease granted after this handler ran would otherwise leak.
-        // A concurrent recording's leases are untouched (release is a no-op
-        // when this start's prepare never succeeded).
-        void (async () => {
-          await (preparePromise ?? Promise.resolve()).catch(() => {});
-          if (prepared) {
-            await sessionCommands
-              .sessionReleaseRecordingPrepare(targetSessionId)
-              .catch((error) => {
-                console.error(
-                  "Failed to release recording preparation:",
-                  error,
-                );
-              });
-          }
-        })();
         const currentLive = get().live;
         clearLiveInterval(currentLive.intervalId);
         clearLiveEventUnlisteners(
@@ -564,12 +494,6 @@ export const stopLiveSession = <T extends GeneralState>(
       markLiveFinalizing(live, sessionId);
     });
   }
-
-  // The settle listener must be live before the stop request: `stopCapture`
-  // returns after requesting shutdown, while `mark_recording_ended`'s rename
-  // runs later off the Stopped lifecycle. Transcript persistence must wait for
-  // that rename, including stop paths that never went through a start here.
-  ensureRecordingMetaSettledListener();
 
   const program = Effect.gen(function* () {
     yield* stopSessionEffect();

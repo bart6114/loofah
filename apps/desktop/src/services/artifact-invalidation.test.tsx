@@ -10,7 +10,7 @@ vi.mock("~/types/tauri.gen", () => ({
 vi.mock("@hypr/plugin-fs-sync", () => ({ commands: {} }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (p: string) => p }));
 
-import { LocationInvalidationSync } from "./location-invalidation";
+import { ArtifactInvalidationSync } from "./artifact-invalidation";
 
 type IndexChangedHandler = (event: {
   payload: { entity: string; ids: string[] };
@@ -27,7 +27,7 @@ function mountWithSeededCache() {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <LocationInvalidationSync />
+      <ArtifactInvalidationSync />
     </QueryClientProvider>,
   );
   const calls = listen.mock.calls as unknown[][];
@@ -39,10 +39,10 @@ afterEach(() => {
   cleanup();
 });
 
-it("invalidates exactly the moved session's path-backed queries on a locations event", () => {
+it("invalidates exactly the affected session's path-backed queries on a artifact event", () => {
   const { queryClient, handler } = mountWithSeededCache();
 
-  act(() => handler({ payload: { entity: "locations", ids: ["s1"] } }));
+  act(() => handler({ payload: { entity: "artifacts", ids: ["s1"] } }));
 
   for (const key of [
     ["audio", "s1", "url"],
@@ -62,12 +62,32 @@ it("invalidates exactly the moved session's path-backed queries on a locations e
   ).toBe(false);
 });
 
-it("ignores non-location index events", () => {
+it("ignores unrelated index events", () => {
   const { queryClient, handler } = mountWithSeededCache();
 
-  act(() => handler({ payload: { entity: "sessions", ids: ["s1"] } }));
+  act(() => handler({ payload: { entity: "tags", ids: ["s1"] } }));
 
   expect(queryClient.getQueryState(["audio", "s1", "url"])?.isInvalidated).toBe(
     false,
   );
+});
+
+it("invalidates deletion and restoration in every mounted window cache", () => {
+  const main = mountWithSeededCache();
+  const standalone = mountWithSeededCache();
+
+  for (const lifecycle of ["deleted", "restored"]) {
+    act(() => main.handler({ payload: { entity: "sessions", ids: ["s1"] } }));
+    for (const { queryClient } of [main, standalone]) {
+      for (const key of [
+        ["audio", "s1", "url"],
+        ["session", "s1", "attachment-paths"],
+      ]) {
+        expect(queryClient.getQueryState(key)?.isInvalidated, lifecycle).toBe(
+          true,
+        );
+        queryClient.setQueryData(key, lifecycle);
+      }
+    }
+  }
 });

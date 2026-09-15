@@ -8,11 +8,6 @@ Default permissions for the fs-sync plugin
 - `allow-write-json-batch`
 - `allow-write-document-batch`
 - `allow-read-document-batch`
-- `allow-list-folders`
-- `allow-move-session`
-- `allow-create-folder`
-- `allow-rename-folder`
-- `allow-delete-folder`
 - `allow-audio-exist`
 - `allow-audio-delete`
 - `allow-audio-metadata`
@@ -462,58 +457,6 @@ Denies the cleanup_orphan command without any pre-configured scope.
 <tr>
 <td>
 
-`fs-sync:allow-create-folder`
-
-</td>
-<td>
-
-Enables the create_folder command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-create-folder`
-
-</td>
-<td>
-
-Denies the create_folder command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:allow-delete-folder`
-
-</td>
-<td>
-
-Enables the delete_folder command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-delete-folder`
-
-</td>
-<td>
-
-Denies the delete_folder command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `fs-sync:allow-delete-session-folder`
 
 </td>
@@ -592,32 +535,6 @@ Denies the entity_dir command without any pre-configured scope.
 <tr>
 <td>
 
-`fs-sync:allow-list-folders`
-
-</td>
-<td>
-
-Enables the list_folders command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-list-folders`
-
-</td>
-<td>
-
-Denies the list_folders command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `fs-sync:allow-load-session-content`
 
 </td>
@@ -644,32 +561,6 @@ Denies the load_session_content command without any pre-configured scope.
 <tr>
 <td>
 
-`fs-sync:allow-move-session`
-
-</td>
-<td>
-
-Enables the move_session command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-move-session`
-
-</td>
-<td>
-
-Denies the move_session command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `fs-sync:allow-read-document-batch`
 
 </td>
@@ -689,32 +580,6 @@ Enables the read_document_batch command without any pre-configured scope.
 <td>
 
 Denies the read_document_batch command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:allow-rename-folder`
-
-</td>
-<td>
-
-Enables the rename_folder command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`fs-sync:deny-rename-folder`
-
-</td>
-<td>
-
-Denies the rename_folder command without any pre-configured scope.
 
 </td>
 </tr>
