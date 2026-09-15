@@ -330,7 +330,7 @@ async fn spawn_rx_task_single_with_adapter<A: RealtimeSttAdapter>(
                 session_id: args.session_id.clone(),
                 error: format!("listen_ws_connect_failed: {:?}", e),
             });
-            return Err(actor_error(format!("listen_ws_connect_failed: {:?}", e)));
+            return Err(Box::new(e));
         }
         Ok(res) => res,
     };
@@ -390,7 +390,7 @@ async fn spawn_rx_task_dual_with_adapter<A: RealtimeSttAdapter>(
                 session_id: args.session_id.clone(),
                 error: format!("listen_ws_connect_failed: {:?}", e),
             });
-            return Err(actor_error(format!("listen_ws_connect_failed: {:?}", e)));
+            return Err(Box::new(e));
         }
         Ok(res) => res,
     };

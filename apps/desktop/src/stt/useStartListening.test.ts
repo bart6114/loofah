@@ -290,6 +290,97 @@ describe("useStartListening", () => {
     });
   });
 
+  test.each([undefined, "live", "batch"])(
+    "preserves recording with an unavailable connection and timing %s",
+    async (timing) => {
+      useSTTConnectionMock.mockReturnValue({ conn: null });
+      canRunBatchTranscriptionMock.mockReturnValue(false);
+      useConfigValueMock.mockImplementation((key) => {
+        if (key === "meeting_languages") return ["en", "nl"];
+        if (key === "transcription_timing") return timing;
+      });
+      const { result } = renderHook(() => useStartListening("session-1"));
+      await act(async () => {
+        await result.current();
+      });
+      expect(startMock).toHaveBeenCalledTimes(1);
+      expect(startMock.mock.calls[0]?.[0]).toMatchObject({
+        session_id: "session-1",
+        model: "",
+        base_url: "",
+        api_key: "",
+        languages: ["en", "nl"],
+        transcription_mode: "batch",
+      });
+      expect(isSupportedLanguagesLiveMock).not.toHaveBeenCalled();
+      await act(async () => {
+        await startMock.mock.calls[0]?.[1].onStopped("session-1", {
+          audioPath: "/tmp/session.wav",
+          liveTranscriptionActive: false,
+          needsBatchRepair: false,
+        });
+      });
+      expect(catalogLocalSessionAudioMock).toHaveBeenCalledWith(
+        "session-1",
+        "/tmp/session.wav",
+      );
+      expect(runBatchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("uses the recovered local connection for post-recording transcription", async () => {
+    useSTTConnectionMock.mockReturnValue({ conn: null });
+    canRunBatchTranscriptionMock.mockReturnValue(false);
+    const { result, rerender } = renderHook(() =>
+      useStartListening("session-1"),
+    );
+    await act(async () => {
+      await result.current();
+    });
+    const onStopped = startMock.mock.calls[0]?.[1].onStopped;
+    useSTTConnectionMock.mockReturnValue({
+      conn: {
+        provider: "fmtr",
+        model: "soniqo-parakeet-batch",
+        baseUrl: "soniqo://local",
+        apiKey: "",
+      },
+    });
+    canRunBatchTranscriptionMock.mockReturnValue(true);
+    rerender();
+    await act(async () => {
+      await onStopped("session-1", {
+        audioPath: "/tmp/session.wav",
+        liveTranscriptionActive: false,
+        needsBatchRepair: false,
+      });
+    });
+    expect(runBatchMock).toHaveBeenCalledWith(
+      "/vault/sessions/session-1/audio.wav",
+    );
+  });
+
+  test.each(["", "   "])(
+    "records only when a local connection has an empty endpoint (%j)",
+    async (baseUrl) => {
+      useSTTConnectionMock.mockReturnValue({
+        conn: {
+          provider: "fmtr",
+          model: "soniqo-parakeet-streaming",
+          baseUrl,
+          apiKey: "",
+        },
+      });
+      const { result } = renderHook(() => useStartListening("session-1"));
+      await act(async () => {
+        await result.current();
+      });
+      expect(startMock.mock.calls[0]?.[0]).toMatchObject({
+        transcription_mode: "batch",
+      });
+    },
+  );
+
   test("collapses the left sidebar after listening starts", async () => {
     const { result } = renderHook(() => useStartListening("session-1"));
 

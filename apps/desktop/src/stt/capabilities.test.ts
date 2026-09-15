@@ -305,3 +305,26 @@ test.each(["am", "argmax"])("rejects retired provider %s", async (provider) => {
     await isSupportedLanguagesBatch(provider, "am-parakeet-v3", ["en"]),
   ).toBe(false);
 });
+
+test.each([undefined, "live", "batch"])(
+  "missing or unconfigured local providers record only with timing %s",
+  async (timing) => {
+    for (const [provider, model] of [
+      [undefined, undefined],
+      [null, null],
+      ["", ""],
+      ["fmtr", undefined],
+      ["fmtr", "unsupported-local-model"],
+    ]) {
+      expect(
+        await getLiveTranscriptionConfig({
+          provider,
+          model,
+          languages: ["en", "nl"],
+          timing,
+        }),
+      ).toEqual({ languages: ["en", "nl"], transcriptionMode: "batch" });
+    }
+    expect(isSupportedLanguagesLiveMock).not.toHaveBeenCalled();
+  },
+);
