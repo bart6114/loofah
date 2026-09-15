@@ -1,5 +1,9 @@
 # Plan: finish the session-layout work
 
+> Superseded by the flat, immutable `sessions/<id>/` cutover. This document records
+> the earlier readable-layout design; it is not current implementation guidance.
+
+
 Status: implemented (branch `refactor/session-layout-followups`)
 
 Implementation notes (deviations from the text below, found during verification):

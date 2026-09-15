@@ -11,9 +11,7 @@ use tauri_plugin_settings::SettingsPluginExt;
 use crate::FsSyncPluginExt;
 use crate::frontmatter::ParsedDocument;
 use crate::session_content::load_session_content as load_session_content_from_fs;
-use crate::types::{
-    ListFoldersResult, MoveSessionResult, RenameFolderResult, ScanResult, SessionContentData,
-};
+use crate::types::{ScanResult, SessionContentData};
 
 macro_rules! spawn_blocking {
     ($body:expr) => {
@@ -27,8 +25,12 @@ fn resolve_session_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     session_id: &str,
 ) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    if let Some(store) = app.try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>() {
+        store.ensure_ready().map_err(|e| e.to_string())?;
+    }
     let base = app.settings().vault_base().map_err(|e| e.to_string())?;
-    crate::ext::store_backed_core(app, base.into_std_path_buf())
+    hypr_fs_sync_core::FsSyncCore::new(base.into_std_path_buf())
         .resolve_session_dir(session_id)
         .map_err(|e| e.to_string())
 }
@@ -173,82 +175,6 @@ pub(crate) async fn read_document_batch(
 
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn list_folders<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-) -> Result<ListFoldersResult, String> {
-    app.fs_sync().list_folders().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub(crate) async fn move_session<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    session_id: String,
-    from_folder_path: String,
-    target_folder_path: String,
-) -> Result<MoveSessionResult, String> {
-    let result = app
-        .fs_sync()
-        .move_session(&session_id, &from_folder_path, &target_folder_path)
-        .map_err(|e| e.to_string())?;
-    refresh_session_catalog(&app).await;
-    Ok(result)
-}
-
-/// A physical session-directory move/rename happened outside the session store's
-/// write path, so its location catalog is stale until rediscovery. Waiting for the
-/// watcher's coalesced rebuild (~2s) leaves a window where a store write would
-/// recreate the old directory; rebuilding here closes it. Best-effort: the watcher
-/// still covers a failure.
-async fn refresh_session_catalog<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    use tauri::Manager;
-    let Some(store) = app.try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>() else {
-        return;
-    };
-    if let Err(error) = store.rebuild_index().await {
-        tracing::warn!(%error, "session catalog rebuild after folder move failed");
-    }
-}
-
-#[tauri::command]
-#[specta::specta]
-pub(crate) async fn create_folder<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    folder_path: String,
-) -> Result<(), String> {
-    app.fs_sync()
-        .create_folder(&folder_path)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub(crate) async fn rename_folder<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    old_path: String,
-    new_path: String,
-) -> Result<RenameFolderResult, String> {
-    let result = app
-        .fs_sync()
-        .rename_folder(&old_path, &new_path)
-        .map_err(|e| e.to_string())?;
-    refresh_session_catalog(&app).await;
-    Ok(result)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub(crate) async fn delete_folder<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    folder_path: String,
-) -> Result<(), String> {
-    app.fs_sync()
-        .delete_folder(&folder_path)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-#[specta::specta]
 pub(crate) async fn audio_exist<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
@@ -264,7 +190,12 @@ pub(crate) async fn audio_delete<R: tauri::Runtime>(
     session_id: String,
 ) -> Result<bool, String> {
     let session_dir = resolve_session_dir(&app, &session_id)?;
-    crate::audio::delete(&session_dir).map_err(|e| e.to_string())
+    let deleted = crate::audio::delete(&session_dir).map_err(|e| e.to_string())?;
+    use tauri::Manager;
+    if let Some(store) = app.try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>() {
+        store.notify_artifacts_changed(&session_id);
+    }
+    Ok(deleted)
 }
 
 #[tauri::command]

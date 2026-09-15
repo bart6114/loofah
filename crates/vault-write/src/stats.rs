@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use super::{SessionStore, StoreError};
+use super::{SessionStore, StoreError, paths};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
 pub struct VaultYearStats {
@@ -116,10 +116,7 @@ impl SessionStore {
 
         let mut dirs: Vec<Option<PathBuf>> = Vec::with_capacity(rows.len());
         for row in &rows {
-            let dir = match self.session_dir_cached(&row.id) {
-                Ok(Some(dir)) => Some(dir),
-                _ => self.session_dir(&row.id).await.ok(),
-            };
+            let dir = paths::validated_session_dir(&row.id).ok();
             dirs.push(dir);
         }
 

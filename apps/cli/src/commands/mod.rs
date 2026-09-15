@@ -35,17 +35,18 @@ pub(crate) async fn create_session(
     let mut session_id = None;
     for _ in 0..5 {
         let candidate = uuid::Uuid::new_v4().to_string();
-        // Only the legacy `sessions/<id>` path is probed (one stat, O(1) in
-        // vault size): a readable-named directory can only claim a just-minted
-        // v4 UUID via RNG collision, so the full logical-occupancy scan this
-        // used to pay made every creation O(vault) — minutes on a network
-        // mount — to defend against a ~2^-122 event. The store's creation path
-        // below still refuses occupied directory names.
-        let probe = vault
-            .join(hypr_vault_read::paths::sessions_root())
-            .join(&candidate);
-        let occupied = tokio::task::spawn_blocking(move || probe.exists())
+        let probe = vault.join(
+            hypr_vault_read::paths::validated_session_dir(&candidate)
+                .map_err(|error| Error::operation(action, error.to_string()))?,
+        );
+        let occupied =
+            tokio::task::spawn_blocking(move || match std::fs::symlink_metadata(probe) {
+                Ok(_) => Ok(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(error),
+            })
             .await
+            .map_err(|error| Error::operation(action, error.to_string()))?
             .map_err(|error| Error::operation(action, error.to_string()))?;
         if !occupied {
             session_id = Some(candidate);

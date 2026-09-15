@@ -39,7 +39,7 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Check the local CLI and vault access, restoring the vault's AGENTS.md if stale
+    /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
     Doctor,
     /// Browse, create, edit, and export sessions
     #[command(name = "sessions", alias = "meetings")]
@@ -326,8 +326,7 @@ pub enum ExportFormat {
 /// Validates timestamps at argument parsing, before any vault write, and
 /// normalizes them to millisecond UTC RFC 3339 — the desktop's
 /// `new Date().toISOString()` format that the vault stores everywhere. The
-/// session's human-readable directory name is derived from these values, so a
-/// silently-invalid one would fall back to today's date.
+/// stored timestamp remains independent of the immutable session directory.
 fn parse_rfc3339_utc(value: &str) -> Result<String, String> {
     chrono::DateTime::parse_from_rfc3339(value)
         .map(|timestamp| {

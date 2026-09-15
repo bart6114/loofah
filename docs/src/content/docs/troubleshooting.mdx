@@ -36,6 +36,22 @@ Audio imports accept WAV, MP3, OGG, MP4, M4A, FLAC, WebM, and AAC. Transcript im
 
 For audio, make sure a downloaded Transcription model is selected. See [Import audio or a transcript](/import-recordings).
 
+## Notes are missing after the directory-layout update
+
+Run `loof doctor` to inspect the vault. Sessions must live directly under `sessions/<id>/`.
+Open the updated desktop app to migrate older readable directory names. CLI and MCP
+access do not perform migration.
+
+If the desktop shows a migration notice, inspect its paths and reasons. A destination
+already in use, duplicate source IDs, unreadable metadata, or a failed move leaves the
+source untouched and excludes it from Loofah. Resolve the reported issue and restart
+the app to retry. Healthy canonical sessions remain available.
+
+Stop older desktop builds on every device sharing the vault before upgrading and
+opening the new build: older versions rename the directories back. The update preserves
+session IDs, contents, and internal attachment links. Saved Finder bookmarks to readable
+paths may need updating.
+
 ## Get more help
 
 [Open a GitHub issue](https://github.com/bart6114/loofah/issues) and include the app version, what you expected, and what happened.

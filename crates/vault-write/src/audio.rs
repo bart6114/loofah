@@ -59,25 +59,6 @@ fn canonical_audio_file_name(source: &Path) -> Result<String, StoreError> {
     Ok(format!("audio.{}", extension))
 }
 
-/// A recording that already sits in its session's resolved directory -- or in any
-/// directory named for its session, which covers a recorder writing into a location
-/// discovery doesn't know yet (no `_meta.json` written so far) -- stays where it is;
-/// only a file from outside (an import) is moved into the resolved session directory.
-fn canonical_audio_dir(resolved_dir_abs: &Path, session_id: &str, source: &Path) -> PathBuf {
-    let session_dir = source.parent().filter(|parent| {
-        is_same_file_path(parent, resolved_dir_abs)
-            || parent
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name == session_id)
-    });
-
-    match session_dir {
-        Some(dir) => dir.to_path_buf(),
-        None => resolved_dir_abs.to_path_buf(),
-    }
-}
-
 fn is_same_file_path(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
@@ -99,13 +80,15 @@ impl SessionStore {
         source_path: &str,
     ) -> Result<String, StoreError> {
         validate_session_id(session_id)?;
-        let resolved_dir_abs = self.vault_base.join(self.session_dir(session_id).await?);
-        let session_id = session_id.to_string();
+        let guard = self.lock_writes().await;
+        let resolved_dir_abs = self
+            .vault_base
+            .join(self.session_dir_locked(&guard, session_id).await?);
         let source_path = PathBuf::from(source_path);
 
-        tokio::task::spawn_blocking(move || -> Result<String, StoreError> {
+        let result = tokio::task::spawn_blocking(move || -> Result<String, StoreError> {
             let file_name = canonical_audio_file_name(&source_path)?;
-            let dest_dir = canonical_audio_dir(&resolved_dir_abs, &session_id, &source_path);
+            let dest_dir = resolved_dir_abs;
             let dest_abs = dest_dir.join(&file_name);
 
             if !is_same_file_path(&source_path, &dest_abs) {
@@ -121,7 +104,11 @@ impl SessionStore {
                 .ok_or_else(|| StoreError::Io("invalid destination path".to_string()))
         })
         .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?
+        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
+        if result.is_ok() {
+            self.notify_artifacts_changed(session_id);
+        }
+        result
     }
 
     /// Lists audio file names (not full paths) under `sessions/<id>/audio/`, sorted. Missing
@@ -173,7 +160,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let filename = filename.to_string();
 
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+        let result = tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
             // `filename` must be a bare file name: callers only ever pass one back from
             // `list_audio`, but reject path separators/traversal defensively so a bad
             // filename can't escape the audio directory via this command boundary.
@@ -197,7 +184,11 @@ impl SessionStore {
             }
         })
         .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?
+        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
+        if result.is_ok() {
+            self.notify_artifacts_changed(session_id);
+        }
+        result
     }
 }
 
@@ -266,11 +257,8 @@ mod tests {
         assert_eq!(std::fs::read(&source).unwrap(), b"mp3-bytes");
     }
 
-    /// A session stored under a user folder (`sessions/<folder>/<id>/`) keeps its recording in
-    /// its own directory -- hoisting it to `sessions/<id>/` would hide it from the readers,
-    /// which resolve the session directory by search rather than by the flat path.
     #[tokio::test]
-    async fn store_audio_keeps_a_foldered_session_recording_beside_its_session() {
+    async fn imported_audio_uses_the_canonical_path_even_when_source_parent_matches_id() {
         let (store, vault) = test_store().await;
         let session_dir = vault.path().join("sessions/Work/s1");
         std::fs::create_dir_all(&session_dir).unwrap();
@@ -282,8 +270,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(stored, source.to_str().unwrap());
-        assert!(hypr_fs_sync_core::audio::exists(&session_dir).unwrap());
+        assert_eq!(
+            stored,
+            vault.path().join("sessions/s1/audio.mp3").to_str().unwrap()
+        );
+        assert!(!source.exists());
     }
 
     /// Only extensions the readers know about are accepted -- silently storing `take.m4a`

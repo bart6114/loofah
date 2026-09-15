@@ -13,6 +13,14 @@ impl<R: tauri::Runtime> TauriAudioImportRuntime<R> {
 
 impl<R: tauri::Runtime> AudioImportRuntime for TauriAudioImportRuntime<R> {
     fn emit(&self, event: AudioImportEvent) {
+        use tauri::Manager;
+        if let AudioImportEvent::Completed { session_id, .. } = &event
+            && let Some(store) = self
+                .app
+                .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()
+        {
+            store.notify_artifacts_changed(session_id);
+        }
         let _ = event.emit(&self.app);
     }
 }

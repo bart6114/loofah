@@ -40,7 +40,7 @@ expression: canonicalize_json(contract)
   ],
   "subcommands": [
     {
-      "about": "Check the local CLI and vault access, restoring the vault's AGENTS.md if stale",
+      "about": "Check vault access and layout; refresh the vault guide. Open desktop to migrate",
       "name": "loof doctor",
       "options": [
         {

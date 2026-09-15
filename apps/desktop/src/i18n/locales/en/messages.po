@@ -398,10 +398,6 @@ msgstr "Copy my vault here"
 msgid "Copying…"
 msgstr "Copying…"
 
-#: src/sidebar/timeline/item.tsx
-msgid "Could not rename the folder"
-msgstr "Could not rename the folder"
-
 #: src/session/components/session-tags.tsx
 msgid "Could not update tags."
 msgstr "Could not update tags."
@@ -618,10 +614,6 @@ msgstr "Find a note..."
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Finish signing in in your browser…"
 msgstr "Finish signing in in your browser…"
-
-#: src/sidebar/timeline/item.tsx
-msgid "Folder renamed"
-msgstr "Folder renamed"
 
 #: src/sidebar/settings.tsx
 msgid "General"
@@ -1141,10 +1133,6 @@ msgstr "Remove tag {tag}"
 msgid "Removing…"
 msgstr "Removing…"
 
-#: src/sidebar/timeline/item.tsx
-msgid "Rename Folder to Match Title"
-msgstr "Rename Folder to Match Title"
-
 #: src/settings/ai/shared/index.tsx
 msgid "Repair Keychain Access"
 msgstr "Repair Keychain Access"
@@ -1382,6 +1370,10 @@ msgstr "Size"
 #: src/onboarding/shared.tsx
 msgid "Skip"
 msgstr "Skip"
+
+#: src/shared/startup-boundary.tsx
+msgid "Some notes could not be migrated"
+msgstr "Some notes could not be migrated"
 
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 msgid "Something went wrong while generating the summary."

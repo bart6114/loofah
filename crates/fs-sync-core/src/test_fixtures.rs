@@ -32,10 +32,8 @@ struct Note {
 
 struct Session {
     id: String,
-    dir_name: Option<String>,
     notes: Vec<Note>,
     memo: Option<String>,
-    has_meta: bool,
 }
 
 struct Folder {
@@ -57,10 +55,8 @@ impl TestEnvBuilder {
             parent: SessionParent::Root(self),
             session: Session {
                 id: id.to_string(),
-                dir_name: None,
                 notes: Vec::new(),
                 memo: None,
-                has_meta: true,
             },
         }
     }
@@ -121,7 +117,7 @@ impl TestEnvBuilder {
 }
 
 fn write_session(temp: &TempDir, folder_path: &str, session: &Session) {
-    let dir_name = session.dir_name.as_deref().unwrap_or(&session.id);
+    let dir_name = &session.id;
     let session_path = if folder_path.is_empty() {
         temp.child(dir_name)
     } else {
@@ -129,12 +125,10 @@ fn write_session(temp: &TempDir, folder_path: &str, session: &Session) {
     };
     session_path.create_dir_all().unwrap();
 
-    if session.has_meta {
-        session_path
-            .child("_meta.json")
-            .write_str(&session_meta_json(&session.id))
-            .unwrap();
-    }
+    session_path
+        .child("_meta.json")
+        .write_str(&session_meta_json(&session.id))
+        .unwrap();
 
     for note in &session.notes {
         let content = md_with_frontmatter(&format!("id: {}", note.id), &note.content);
@@ -160,11 +154,6 @@ pub struct SessionBuilder {
 }
 
 impl SessionBuilder {
-    pub fn dir_name(mut self, name: &str) -> Self {
-        self.session.dir_name = Some(name.to_string());
-        self
-    }
-
     // Kept for fixture completeness even while no current test seeds notes/memos.
     #[allow(dead_code)]
     pub fn note(mut self, id: &str, content: &str) -> Self {
@@ -178,11 +167,6 @@ impl SessionBuilder {
     #[allow(dead_code)]
     pub fn memo(mut self, content: &str) -> Self {
         self.session.memo = Some(content.to_string());
-        self
-    }
-
-    pub fn no_meta(mut self) -> Self {
-        self.session.has_meta = false;
         self
     }
 
@@ -219,10 +203,8 @@ impl FolderBuilder {
             parent: SessionParent::Folder(self),
             session: Session {
                 id: id.to_string(),
-                dir_name: None,
                 notes: Vec::new(),
                 memo: None,
-                has_meta: true,
             },
         }
     }

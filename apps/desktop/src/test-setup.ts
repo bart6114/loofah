@@ -159,12 +159,6 @@ vi.mock("./types/tauri.gen", () => ({
     sessionFindByTrackingId: vi
       .fn()
       .mockResolvedValue({ status: "ok", data: null }),
-    sessionPrepareRecording: vi
-      .fn()
-      .mockResolvedValue({ status: "ok", data: "/tmp/fmtr/sessions/session" }),
-    sessionReleaseRecordingPrepare: vi
-      .fn()
-      .mockResolvedValue({ status: "ok", data: null }),
     sessionQueueTagSuggestions: vi
       .fn()
       .mockResolvedValue({ status: "ok", data: null }),
@@ -177,9 +171,6 @@ vi.mock("./types/tauri.gen", () => ({
   },
   events: {
     indexChanged: {
-      listen: vi.fn().mockResolvedValue(() => {}),
-    },
-    recordingMetaSettled: {
       listen: vi.fn().mockResolvedValue(() => {}),
     },
   },

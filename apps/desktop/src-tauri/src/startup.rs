@@ -25,6 +25,7 @@ pub struct StartupStatus {
     pub vault_path: String,
     pub is_cloud_storage: bool,
     pub phase: StartupPhase,
+    pub migration_issues: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
@@ -47,6 +48,7 @@ impl StartupState {
                 vault_path: path.to_string_lossy().into_owned(),
                 is_cloud_storage: is_cloud_storage_path(&path),
                 phase: StartupPhase::OpeningVault,
+                migration_issues: Vec::new(),
             })),
         }
     }
@@ -111,12 +113,18 @@ async fn initialize(
         .await?;
 
     let migration = &layout.migration;
+    state.inner.lock().unwrap().migration_issues = migration
+        .skipped
+        .iter()
+        .chain(&migration.failed)
+        .cloned()
+        .collect();
     if !migration.renamed.is_empty() || !migration.failed.is_empty() {
         tracing::info!(
             renamed = migration.renamed.len(),
             skipped = migration.skipped.len(),
             failed = ?migration.failed,
-            "migrated legacy session directories to readable names"
+            "migrated session directories to canonical IDs"
         );
     }
 
@@ -175,6 +183,7 @@ async fn initialize(
 
     crate::vault_watch::spawn(app.clone());
     crate::recording_meta::spawn(app.clone());
+    store.set_startup_pending(false);
     state.update(&app, StartupPhase::Ready);
 
     tokio::task::spawn_blocking(move || {

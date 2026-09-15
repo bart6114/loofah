@@ -275,8 +275,6 @@ mod tests {
         (store, temp)
     }
 
-    /// Physical directory of a session: creation now picks a human-readable name, so
-    /// tests resolve it through the store instead of assuming `sessions/<id>`.
     async fn session_path(
         store: &SessionStore,
         vault: &tempfile::TempDir,

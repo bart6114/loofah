@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::locations::DeletedSession;
+use super::session_path::DeletedSession;
 use super::{SessionStore, StoreError, WriteGuard, paths, validate_session_id};
 
 // The `_meta.json` schema is shared with the read-only vault consumers (loof CLI/MCP);
@@ -42,18 +42,11 @@ impl SessionStore {
         self.write_meta_locked(&guard, meta).await
     }
 
-    /// `write_meta` for a session id the caller just generated (a fresh random
-    /// UUID, as `loof sessions new`/`import` mint): identical writes and naming
-    /// policy, but resolving where the meta lands costs an O(1) legacy-path
-    /// probe instead of the full-vault discovery scan a cold location catalog
-    /// would otherwise pay. Never call this with an id that may already have a
-    /// directory somewhere: the skipped scan is exactly the lookup that would
-    /// find it, and missing a claimant mints a duplicate directory that
-    /// quarantines both.
+    /// Creation and updates share the canonical path and identity checks.
     pub async fn create_session_meta(&self, meta: &SessionMeta) -> Result<(), StoreError> {
         validate_session_id(&meta.id)?;
         let guard = self.lock_writes().await;
-        let dir = self.creation_dir_fresh_locked(&guard, meta).await?;
+        let dir = self.session_dir(&meta.id).await?;
         self.finish_meta_write_locked(&guard, meta, dir).await
     }
 
@@ -62,7 +55,7 @@ impl SessionStore {
         guard: &WriteGuard<'_>,
         meta: &SessionMeta,
     ) -> Result<(), StoreError> {
-        let dir = self.creation_dir_locked(guard, meta).await?;
+        let dir = self.session_dir(&meta.id).await?;
         self.finish_meta_write_locked(guard, meta, dir).await
     }
 
@@ -72,24 +65,15 @@ impl SessionStore {
         meta: &SessionMeta,
         dir: std::path::PathBuf,
     ) -> Result<(), StoreError> {
+        self.read_meta(&meta.id).await?;
         let meta_json =
             serde_json::to_vec_pretty(meta).map_err(|e| StoreError::Serialize(e.to_string()))?;
 
         self.write_file_locked(guard, paths::meta_path_in(&dir), meta_json)
             .await?;
-        // The location becomes authoritative only after the meta write succeeds --
-        // a failed create must not leave a catalog entry pointing at nothing.
-        self.catalog_insert(&meta.id, dir.clone());
-
         // Index write-through directly after the file write (file truth).
         self.index_upsert_meta(meta);
         self.notify_index_changed(super::IndexEntity::Sessions, vec![meta.id.clone()]);
-
-        // A provisional `Untitled` directory whose session just gained a real title
-        // renames once to its final readable name (deferred while recording; a
-        // failure never rolls the title back -- see the reconcile's own doc).
-        self.reconcile_provisional_name_locked(guard, &meta.id, &meta.title, &dir)
-            .await;
 
         Ok(())
     }
@@ -307,7 +291,7 @@ impl SessionStore {
         let guard = self.lock_writes().await;
 
         // Tracked even if the stamp below fails: the recorder holds paths into the
-        // directory either way, so the provisional rename must stay deferred.
+        // directory either way, so whole-vault relocation must stay blocked.
         // Ensure-at-least-one (never stack): a `prepare_recording` lease for this
         // same recording may already be counted.
         self.active_recordings
@@ -332,9 +316,10 @@ impl SessionStore {
         validate_session_id(id)?;
         let guard = self.lock_writes().await;
 
-        // Cleared before the meta write so its write-through reconciles a rename the
-        // recording deferred (recorder finalization is done once this event fires).
-        self.active_recordings.lock().unwrap().remove(id);
+        // A resumed capture may already hold another reservation while this stamp
+        // waits in the ordered lifecycle queue.
+        self.release_recording_reservation(id);
+        self.notify_artifacts_changed(id);
 
         let mut meta = self
             .read_meta(id)
@@ -347,34 +332,13 @@ impl SessionStore {
 
     pub async fn read_meta(&self, id: &str) -> Result<Option<SessionMeta>, StoreError> {
         validate_session_id(id)?;
-        let dir = self.session_dir(id).await?;
-        let vault_base = self.vault_base.clone();
-
-        let result =
-            tokio::task::spawn_blocking(move || -> Result<Option<SessionMeta>, StoreError> {
-                let path = vault_base.join(paths::meta_path_in(&dir));
-
-                // Attempt-then-match, not exists()-then-read: `Path::exists()` swallows
-                // permission-denied/stat failures as `false`, which would misreport a
-                // transiently-unreadable file as "no session" to callers like rebuild.
-                let bytes = match std::fs::read(&path) {
-                    Ok(bytes) => bytes,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                    Err(e) => {
-                        return Err(StoreError::Io(format!("failed to read meta file: {}", e)));
-                    }
-                };
-
-                let meta: SessionMeta = serde_json::from_slice(&bytes).map_err(|e| {
-                    StoreError::Serialize(format!("failed to deserialize meta: {}", e))
-                })?;
-
-                Ok(Some(meta))
-            })
-            .await
-            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
-
-        Ok(result)
+        let vault = self.vault_base.clone();
+        let id = id.to_string();
+        tokio::task::spawn_blocking(move || {
+            hypr_vault_read::meta::read_session_meta(&vault, &id).map_err(StoreError::from)
+        })
+        .await
+        .map_err(|e| StoreError::Io(format!("task join error: {e}")))?
     }
 
     pub async fn write_note(&self, id: &str, markdown: &str) -> Result<(), StoreError> {
@@ -457,7 +421,7 @@ impl SessionStore {
     /// `restore_session`). The directory is resolved under the store write lock --
     /// never rebuilt from the id -- and the exact trash path `move_to_trash` returns
     /// is recorded in the recent-deletions map so undo can restore that directory to
-    /// its original (possibly readable, possibly nested) relative path.
+    /// `sessions/<id>/`, retaining the actual trash path for undo.
     ///
     /// The id is validated first: an empty id would resolve to `sessions/` itself, so
     /// an unguarded delete would trash the user's entire session tree in one call.
@@ -486,7 +450,6 @@ impl SessionStore {
         // this only drops buffers for a session that was just deleted.)
         let mut live = self.live.lock().await;
         live.remove(id);
-        self.active_recordings.lock().unwrap().remove(id);
 
         let vault_base = self.vault_base.clone();
         let dir_to_move = relative_dir.clone();
@@ -501,23 +464,20 @@ impl SessionStore {
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
 
         drop(live);
-        drop(guard);
 
         // `move_to_trash` returns None when the directory never existed -- nothing to
         // undo, and a stale recent-deletion record must not shadow an older real one.
         if let Some(trash_path) = trash_path {
-            self.recent_deletions.lock().unwrap().insert(
-                id.to_string(),
-                DeletedSession {
-                    original_relative_dir: relative_dir,
-                    trash_path,
-                },
-            );
+            self.recent_deletions
+                .lock()
+                .unwrap()
+                .insert(id.to_string(), DeletedSession { trash_path });
         }
 
-        // The folder is confirmed gone (trashed) -- clear the catalog and every index map.
-        self.catalog_remove(id);
+        self.deleted_sessions.lock().unwrap().insert(id.to_string());
+        // Only a successful trash operation makes the session unavailable.
         self.index_remove_session_and_notify(id);
+        drop(guard);
 
         Ok(())
     }
@@ -566,7 +526,7 @@ impl SessionStore {
                 )));
             }
 
-            let destination = vault_base.join(&deletion.original_relative_dir);
+            let destination = vault_base.join(paths::validated_session_dir(&id_owned)?);
             // Never merge onto an occupied destination -- fail safely and leave the
             // trash entry for manual recovery.
             if destination.exists() {
@@ -579,9 +539,9 @@ impl SessionStore {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| StoreError::Io(format!("failed to create parent dir: {}", e)))?;
             }
-            std::fs::rename(&deletion.trash_path, &destination).map_err(|e| {
-                StoreError::Io(format!("failed to restore session from trash: {}", e))
-            })?;
+            hypr_storage::fs::rename_no_replace(&deletion.trash_path, &destination).map_err(
+                |e| StoreError::Io(format!("failed to restore session from trash: {}", e)),
+            )?;
             Ok(true)
         })
         .await
@@ -589,7 +549,7 @@ impl SessionStore {
 
         self.recent_deletions.lock().unwrap().remove(id);
         if restored {
-            self.catalog_insert(id, record.original_relative_dir);
+            self.deleted_sessions.lock().unwrap().remove(id);
         }
         drop(guard);
 
@@ -629,8 +589,6 @@ mod tests {
         (store, temp)
     }
 
-    /// Physical directory of a session: creation now picks a human-readable name, so
-    /// tests resolve it through the store instead of assuming `sessions/<id>`.
     async fn session_path(
         store: &SessionStore,
         vault: &tempfile::TempDir,
@@ -823,7 +781,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_session_meta_writes_a_readable_dir_and_indexes_without_a_scan_hit() {
+    async fn create_session_meta_writes_a_canonical_dir_and_indexes_without_a_scan() {
         let (store, vault) = test_store().await;
         store
             .create_session_meta(&meta("s1", "Jury feedback"))
@@ -832,11 +790,7 @@ mod tests {
 
         let dir = session_path(&store, &vault, "s1").await;
         assert!(dir.join("_meta.json").is_file());
-        assert_ne!(
-            dir,
-            vault.path().join("sessions/s1"),
-            "a fresh id gets a readable directory name, not the legacy path"
-        );
+        assert_eq!(dir, vault.path().join("sessions/s1"));
         assert_eq!(store.session_get("s1").unwrap().meta.title, "Jury feedback");
         assert_eq!(
             store.read_meta("s1").await.unwrap().unwrap().title,
@@ -881,10 +835,12 @@ mod tests {
             .create_session_meta(&meta("s1", "Rewritten"))
             .await
             .unwrap();
-        store
-            .create_session_meta(&meta("s2", "Repaired"))
-            .await
-            .unwrap();
+        assert!(
+            store
+                .create_session_meta(&meta("s2", "Repaired"))
+                .await
+                .is_err()
+        );
 
         assert_eq!(session_path(&store, &vault, "s1").await, dir);
         assert_eq!(
@@ -893,8 +849,8 @@ mod tests {
         );
         assert_eq!(session_path(&store, &vault, "s2").await, corrupt);
         assert_eq!(
-            store.read_meta("s2").await.unwrap().unwrap().title,
-            "Repaired"
+            std::fs::read_to_string(corrupt.join("_meta.json")).unwrap(),
+            "{ invalid"
         );
     }
 
@@ -1616,9 +1572,9 @@ mod tests {
         let rel = store.session_dir("s1").await.unwrap();
         store.delete_session("s1").await.unwrap();
 
-        // Recreate under the same id (same title and created_at, so the readable name is
-        // identical too) and delete again the same day: move_to_trash finds the
-        // .trash/<date>/<name> slot already taken and disambiguates to <name>-1.
+        // A separate process explicitly recreated the same ID; its deletion must
+        // retain the actual collision-suffixed trash path returned for that copy.
+        let store = SessionStore::new(vault.path().to_path_buf());
         store
             .write_meta(&meta("s1", "Jury feedback"))
             .await

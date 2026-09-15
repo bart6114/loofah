@@ -398,10 +398,6 @@ msgstr ""
 msgid "Copying…"
 msgstr ""
 
-#: src/sidebar/timeline/item.tsx
-msgid "Could not rename the folder"
-msgstr ""
-
 #: src/session/components/session-tags.tsx
 msgid "Could not update tags."
 msgstr ""
@@ -617,10 +613,6 @@ msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Finish signing in in your browser…"
-msgstr ""
-
-#: src/sidebar/timeline/item.tsx
-msgid "Folder renamed"
 msgstr ""
 
 #: src/sidebar/settings.tsx
@@ -1141,10 +1133,6 @@ msgstr ""
 msgid "Removing…"
 msgstr ""
 
-#: src/sidebar/timeline/item.tsx
-msgid "Rename Folder to Match Title"
-msgstr ""
-
 #: src/settings/ai/shared/index.tsx
 msgid "Repair Keychain Access"
 msgstr ""
@@ -1381,6 +1369,10 @@ msgstr ""
 
 #: src/onboarding/shared.tsx
 msgid "Skip"
+msgstr ""
+
+#: src/shared/startup-boundary.tsx
+msgid "Some notes could not be migrated"
 msgstr ""
 
 #: src/session/components/note-input/enhanced/enhance-error.tsx

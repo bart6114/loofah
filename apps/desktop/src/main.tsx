@@ -21,8 +21,8 @@ import { AITaskWindowSyncBridge } from "./ai/task-window-sync";
 import { AppI18nProvider } from "./i18n/provider";
 import { FloatingMeetingWindowHost } from "./meeting-float/host";
 import { routeTree } from "./routeTree.gen";
+import { ArtifactInvalidationSync } from "./services/artifact-invalidation";
 import { EventListeners } from "./services/event-listeners";
-import { LocationInvalidationSync } from "./services/location-invalidation";
 import { RegenerateTranscriptConfirmDialog } from "./session/components/note-input/transcript/regenerate-confirm";
 import { useRemoteSessionDeletionUndoListener } from "./session/hooks/useDeleteSession";
 import { initializeApplicationSettings } from "./settings/queries";
@@ -81,7 +81,7 @@ function AppRoot() {
         <AppI18nProvider>
           <StartupBoundary>
             <App />
-            <LocationInvalidationSync />
+            <ArtifactInvalidationSync />
             {isMainWindow ? <FloatingMeetingWindowHost /> : null}
             {isMainWindow ? <EventListeners /> : null}
           </StartupBoundary>

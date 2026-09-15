@@ -298,9 +298,7 @@ fn discover_sessions(
         .sessions)
 }
 
-/// Resolve one meeting id to its physical location; identity is `_meta.json.id`,
-/// never the directory basename, so both legacy UUID-named and readable
-/// directories resolve identically.
+/// Resolve only the canonical directory and require matching metadata.
 fn find_meeting(
     vault: &Path,
     meeting_id: &str,
@@ -851,12 +849,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn readable_and_nested_directories_read_identically_by_full_id() {
+    async fn canonical_directories_support_listing_get_export_and_search() {
         let vault = tempfile::tempdir().unwrap();
         let readable_id = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
         let dir = vault
             .path()
-            .join("sessions/Work/2026-07-13 — Product planning — 6ba7b8");
+            .join("sessions/6ba7b810-9dad-11d1-80b4-00c04fd430c8");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("_meta.json"),
@@ -1125,5 +1123,35 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(error, Error::NotFound(_)));
+    }
+    #[tokio::test]
+    async fn readable_and_nested_sources_are_invisible_without_desktop_migration() {
+        let vault = tempfile::tempdir().unwrap();
+        seed_session(vault.path(), "ignored", "Only in readable directory", None);
+        std::fs::rename(
+            vault.path().join("sessions/ignored"),
+            vault.path().join("sessions/Readable name"),
+        )
+        .unwrap();
+        let page = list_meetings(vault.path(), ListMeetingsInput::default())
+            .await
+            .unwrap();
+        assert!(page.meetings.is_empty());
+        let error = get_meeting(
+            vault.path(),
+            GetMeetingInput {
+                meeting_id: "ignored".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, Error::NotFound(_)));
+        assert!(
+            vault
+                .path()
+                .join("sessions/Readable name/_meta.json")
+                .is_file()
+        );
+        assert!(!vault.path().join("sessions/ignored").exists());
     }
 }

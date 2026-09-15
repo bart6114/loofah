@@ -1,5 +1,9 @@
 # Plan: human-readable personal session folders
 
+> Superseded by the flat, immutable `sessions/<id>/` cutover. This document records
+> the earlier readable-layout design; it is not current implementation guidance.
+
+
 Status: implemented (all phases, 2026-08-16). Note: contrary to the two-release rollout
 sketched below, all phases shipped together — machines sharing an externally synchronized
 vault must all run a build with this change before any of them starts the app (startup

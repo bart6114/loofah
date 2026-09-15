@@ -15,10 +15,6 @@ pub struct SavedAttachment {
 }
 
 impl SessionStore {
-    /// Deliberately no index write-through, no index-changed notification, and no
-    /// write-journal entry: attachments are not indexed (the desktop resolves them by
-    /// listing the directory at runtime), and the shipped fs-sync plugin never journals
-    /// attachment writes either — the watcher treats them as ordinary external changes.
     pub async fn save_attachment(
         &self,
         id: &str,
@@ -41,6 +37,7 @@ impl SessionStore {
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
         drop(guard);
+        self.notify_artifacts_changed(id);
 
         Ok(SavedAttachment {
             relative_path: relative_dir.join(&final_filename),
@@ -210,9 +207,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolves_a_readable_named_session_directory() {
+    async fn resolves_a_canonical_legacy_id_session_directory() {
         let (store, vault) = test_store().await;
-        let dir = vault.path().join("sessions/2026-03-20 — Standup — abc123");
+        let dir = vault.path().join("sessions/abc123");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("_meta.json"),
@@ -227,13 +224,13 @@ mod tests {
 
         assert_eq!(
             saved.relative_path,
-            PathBuf::from("sessions/2026-03-20 — Standup — abc123/attachments/shot.png")
+            PathBuf::from("sessions/abc123/attachments/shot.png")
         );
         assert_eq!(
             std::fs::read(dir.join("attachments/shot.png")).unwrap(),
             b"png-bytes"
         );
-        assert!(!vault.path().join("sessions/abc123").exists());
+        assert!(vault.path().join("sessions/abc123").exists());
     }
 
     #[tokio::test]

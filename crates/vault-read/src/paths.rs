@@ -4,9 +4,42 @@ pub fn sessions_root() -> PathBuf {
     PathBuf::from("sessions")
 }
 
-// Artifact names are fixed; only the session directory itself varies. These helpers
-// build artifact paths from a resolved session directory (vault-relative or absolute),
-// never from the logical id — directory basenames are not guaranteed to equal ids.
+/// Validate a portable filename component without touching the filesystem.
+pub fn validate_session_id(id: &str) -> crate::Result<()> {
+    let stem = id
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    let reserved = matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "COM¹" | "COM²" | "COM³" | "LPT¹" | "LPT²" | "LPT³"
+    ) || (stem.len() == 4
+        && (stem.starts_with("COM") || stem.starts_with("LPT"))
+        && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+    if id.is_empty()
+        || id.starts_with('.')
+        || id.ends_with(['.', ' '])
+        || id
+            .chars()
+            .any(|c| c.is_control() || "/\\:<>\"|?*".contains(c))
+        || std::path::Path::new(id).is_absolute()
+        || reserved
+        || id.len() > 255
+    {
+        return Err(crate::Error::Parse(format!("invalid session id: {id:?}")));
+    }
+    Ok(())
+}
+
+pub fn validated_session_dir(id: &str) -> crate::Result<PathBuf> {
+    session_dir_under(&sessions_root(), id)
+}
+
+pub fn session_dir_under(sessions_root: &Path, id: &str) -> crate::Result<PathBuf> {
+    validate_session_id(id)?;
+    Ok(sessions_root.join(id))
+}
 
 pub fn meta_path_in(session_dir: &Path) -> PathBuf {
     session_dir.join("_meta.json")
@@ -42,55 +75,6 @@ pub fn audio_dir_in(session_dir: &Path) -> PathBuf {
     session_dir.join("audio")
 }
 
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use the *_in helpers"
-)]
-pub fn session_dir(id: &str) -> PathBuf {
-    sessions_root().join(id)
-}
-
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `meta_path_in`"
-)]
-pub fn meta_path(id: &str) -> PathBuf {
-    meta_path_in(&sessions_root().join(id))
-}
-
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `note_path_in`"
-)]
-pub fn note_path(id: &str) -> PathBuf {
-    note_path_in(&sessions_root().join(id))
-}
-
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `enhanced_dir_in`"
-)]
-pub fn enhanced_dir(id: &str) -> PathBuf {
-    enhanced_dir_in(&sessions_root().join(id))
-}
-
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `enhanced_doc_path_in`"
-)]
-pub fn enhanced_doc_path(id: &str, doc_id: &str) -> PathBuf {
-    enhanced_doc_path_in(&sessions_root().join(id), doc_id)
-}
-
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `transcript_path_in`"
-)]
-pub fn transcript_path(id: &str) -> PathBuf {
-    transcript_path_in(&sessions_root().join(id))
-}
-
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `session_tasks_path_in`"
-)]
-pub fn session_tasks_path(id: &str) -> PathBuf {
-    session_tasks_path_in(&sessions_root().join(id))
-}
-
 pub fn vault_tasks_path() -> PathBuf {
     PathBuf::from("tasks.json")
 }
@@ -103,42 +87,9 @@ pub fn tags_path() -> PathBuf {
     PathBuf::from("tags.json")
 }
 
-#[deprecated(
-    note = "directory basenames are not guaranteed to equal session ids; resolve the physical directory via `layout` and use `audio_dir_in`"
-)]
-pub fn audio_dir(id: &str) -> PathBuf {
-    audio_dir_in(&sessions_root().join(id))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[allow(deprecated)]
-    fn paths_are_relative_and_correct() {
-        assert_eq!(sessions_root(), PathBuf::from("sessions"));
-        assert_eq!(session_dir("s1"), PathBuf::from("sessions/s1"));
-        assert_eq!(meta_path("s1"), PathBuf::from("sessions/s1/_meta.json"));
-        assert_eq!(note_path("s1"), PathBuf::from("sessions/s1/notes.md"));
-        assert_eq!(enhanced_dir("s1"), PathBuf::from("sessions/s1/enhanced"));
-        assert_eq!(
-            enhanced_doc_path("s1", "doc-1"),
-            PathBuf::from("sessions/s1/enhanced/doc-1.md")
-        );
-        assert_eq!(
-            transcript_path("s1"),
-            PathBuf::from("sessions/s1/transcript.json")
-        );
-        assert_eq!(
-            session_tasks_path("s1"),
-            PathBuf::from("sessions/s1/tasks.json")
-        );
-        assert_eq!(vault_tasks_path(), PathBuf::from("tasks.json"));
-        assert_eq!(people_path(), PathBuf::from("people.json"));
-        assert_eq!(tags_path(), PathBuf::from("tags.json"));
-        assert_eq!(audio_dir("s1"), PathBuf::from("sessions/s1/audio"));
-    }
 
     #[test]
     fn in_helpers_join_fixed_artifact_names_onto_the_session_dir() {
