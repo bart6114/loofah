@@ -567,6 +567,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_get::<tauri::Wry>,
             session_store::commands::session_list_headers::<tauri::Wry>,
             session_store::commands::vault_stats::<tauri::Wry>,
+            session_store::commands::vault_storage_stats::<tauri::Wry>,
             session_store::commands::session_ids::<tauri::Wry>,
             session_store::commands::session_is_empty::<tauri::Wry>,
             session_store::commands::session_has_transcript::<tauri::Wry>,

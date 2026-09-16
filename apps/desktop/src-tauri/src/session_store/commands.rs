@@ -394,6 +394,18 @@ pub async fn vault_stats<R: tauri::Runtime>(app: AppHandle<R>) -> Result<VaultSt
 
 #[tauri::command]
 #[specta::specta]
+pub async fn vault_storage_stats<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    refresh: bool,
+) -> Result<super::VaultStorageStats, String> {
+    store(&app)?
+        .vault_storage_stats(refresh)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn session_ids<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<String>, String> {
     Ok(store(&app)?.session_ids())
 }

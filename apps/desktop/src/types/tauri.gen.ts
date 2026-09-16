@@ -649,6 +649,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async vaultStorageStats(
+    refresh: boolean,
+  ): Promise<Result<VaultStorageStats, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("vault_storage_stats", { refresh }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionIds(): Promise<Result<string[], string>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("session_ids") };
@@ -1096,6 +1109,30 @@ export type VaultStats = {
    * Ascending by year.
    */
   years: VaultYearStats[];
+};
+export type VaultStorageBucket = {
+  category: VaultStorageCategory;
+  bytes: number;
+  files: number;
+};
+export type VaultStorageCategory =
+  | "mp3"
+  | "wav"
+  | "images"
+  | "pdf"
+  | "json"
+  | "markdown"
+  | "other";
+export type VaultStorageStats = {
+  total_bytes: number;
+  files: number;
+  categories: VaultStorageBucket[];
+  trash_bytes: number;
+  trash_files: number;
+  unreadable_entries: number;
+  skipped_links: number;
+  scan_limited: boolean;
+  measured_at: string;
 };
 export type VaultYearStats = {
   year: number;

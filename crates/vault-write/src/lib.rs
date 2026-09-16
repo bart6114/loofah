@@ -18,6 +18,7 @@ pub mod people;
 pub mod rebuild;
 mod session_path;
 pub mod stats;
+pub mod storage_stats;
 pub mod tags;
 pub mod tasks;
 pub mod transcript;
@@ -32,6 +33,7 @@ pub use index::{IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, 
 pub use people::PersonItem;
 pub use rebuild::RebuildReport;
 pub use stats::{VaultStats, VaultYearStats};
+pub use storage_stats::{VaultStorageCategory, VaultStorageStats};
 pub use tags::TagItem;
 pub use tasks::{TaskInput, TaskItem};
 pub use transcript::TranscriptDelta;
@@ -62,6 +64,7 @@ pub struct SessionStore {
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
+    storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
 }
 
 /// Product of `normalize_startup_layout`: one discovery snapshot -- with paths
@@ -128,6 +131,7 @@ impl SessionStore {
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
