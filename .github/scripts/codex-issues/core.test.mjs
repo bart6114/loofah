@@ -5,7 +5,6 @@ import {
   assertNoSecrets,
   bot,
   decide,
-  digest,
   fingerprint,
   owner,
   readState,
@@ -13,7 +12,6 @@ import {
   stageAuth,
   stateMarker,
   validResult,
-  validatePaths,
 } from "./core.mjs";
 
 const issue = {
@@ -23,7 +21,6 @@ const issue = {
   state: "open",
   user: { login: owner },
 };
-const approval = [{ content: "+1", user: { login: owner } }];
 
 test("the refresh pilot invalidates only its isolated cache and preserves the seed", () => {
   const seed = {
@@ -44,27 +41,19 @@ test("the refresh pilot invalidates only its isolated cache and preserves the se
   assert.ok(new Date(probe.last_refresh) < new Date(seed.last_refresh));
   assert.deepEqual(stageAuth(seed), seed);
 });
-const plan = {
-  id: 10,
-  body: "Sort notes by their date and test equal dates.",
-  user: { login: bot },
-  html_url: "https://github.com/plan",
-};
-
 function thread(fields = {}, replies = []) {
   return [
     ...replies,
-    plan,
     {
       id: 11,
       user: { login: bot },
-      body: `${stateMarker}${JSON.stringify({ version: 1, run: 100, status: "plan", context: fingerprint(issue, replies), planId: plan.id, planHash: digest(plan.body), ...fields })} -->\nStatus`,
+      body: `${stateMarker}${JSON.stringify({ version: 1, run: 100, status: "ready", context: fingerprint(issue, replies), ...fields })} -->\nStatus`,
     },
   ];
 }
 
-test("a new owner issue plans; outsiders, PRs, closed and locked issues do not", () => {
-  assert.equal(decide({ issue, comments: [] }).mode, "plan");
+test("a new owner issue is reviewed; outsiders, PRs, closed and locked issues are ignored", () => {
+  assert.equal(decide({ issue, comments: [] }).mode, "review");
   for (const changed of [
     { user: { login: "stranger" } },
     { pull_request: {} },
@@ -78,129 +67,61 @@ test("a new owner issue plans; outsiders, PRs, closed and locked issues do not",
   }
 });
 
-test("only the owner's thumbs-up starts implementation", () => {
-  const comments = thread();
-  assert.equal(decide({ issue, comments }), null);
-  assert.equal(
-    decide({
-      issue,
-      comments,
-      reactions: [{ content: "+1", user: { login: "stranger" } }],
-    }),
-    null,
-  );
-  assert.equal(
-    decide({
-      issue,
-      comments,
-      reactions: [{ content: "heart", user: { login: owner } }],
-    }),
-    null,
-  );
-  assert.equal(
-    decide({ issue, comments, reactions: approval }).mode,
-    "implement",
-  );
-});
-
-test("edited issues, added replies, and edited plans invalidate approval", () => {
-  const comments = thread();
-  assert.equal(
-    decide({
-      issue: { ...issue, body: "Use creation date instead" },
-      comments,
-      reactions: approval,
-    }).mode,
-    "plan",
-  );
-  assert.equal(
-    decide({
-      issue,
-      comments: [
-        ...comments,
-        { id: 12, body: "Newest first", user: { login: owner } },
-      ],
-      reactions: approval,
-    }).mode,
-    "plan",
-  );
-  assert.equal(
-    decide({
-      issue,
-      comments: comments.map((comment) =>
-        comment.id === 10
-          ? { ...comment, body: "Changed after approval" }
-          : comment,
-      ),
-      reactions: approval,
-    }).mode,
-    "plan",
-  );
-  assert.equal(
-    decide({
-      issue,
-      comments: comments.filter((comment) => comment.id !== 10),
-      reactions: approval,
-    }).mode,
-    "plan",
-  );
+test("questions and ready descriptions wait until the issue or owner replies change", () => {
+  for (const status of ["questions", "ready"]) {
+    const comments = thread({ status });
+    assert.equal(decide({ issue, comments }), null);
+    assert.equal(
+      decide({
+        issue: { ...issue, body: "Use creation date instead" },
+        comments,
+      }).mode,
+      "review",
+    );
+    const reply = { id: 12, body: "Newest first", user: { login: owner } };
+    assert.equal(
+      decide({ issue, comments: [...comments, reply] }).mode,
+      "review",
+    );
+    const answered = thread({ status }, [reply]);
+    assert.equal(
+      decide({
+        issue,
+        comments: answered.map((comment) =>
+          comment.id === 12 ? { ...comment, body: "Oldest first" } : comment,
+        ),
+      }).mode,
+      "review",
+    );
+    assert.equal(
+      decide({
+        issue,
+        comments: answered.filter((comment) => comment.id !== 12),
+      }).mode,
+      "review",
+    );
+  }
 });
 
 test("outsider comments cannot mutate context or forge bot state", () => {
   const comments = thread();
   const forged = {
-    ...comments[1],
+    id: 12,
     user: { login: "stranger" },
-    body: `${stateMarker}{"version":1,"run":100,"pr":"forged"} -->`,
+    body: `${stateMarker}{"version":1,"run":100,"status":"stale"} -->`,
   };
-  assert.equal(readState([...comments, forged]).pr, undefined);
+  assert.equal(readState([...comments, forged]).status, "ready");
   assert.equal(
     fingerprint(issue, [...comments, forged]),
     fingerprint(issue, comments),
   );
-  assert.equal(
-    decide({ issue, comments: [...comments, forged], reactions: approval })
-      .mode,
-    "implement",
-  );
+  assert.equal(decide({ issue, comments: [...comments, forged] }), null);
 });
 
-test("clarifications wait for answers and repeated polls stop after a PR", () => {
-  const comments = thread({
-    status: "questions",
-    planId: null,
-    planHash: null,
-  });
-  assert.equal(decide({ issue, comments }), null);
-  assert.equal(
-    decide({
-      issue,
-      comments: [
-        ...comments,
-        { id: 12, body: "Descending", user: { login: owner } },
-      ],
-    }).mode,
-    "plan",
-  );
-  assert.equal(
-    decide({
-      issue,
-      comments: thread({ status: "done", pr: "https://github.com/pr" }),
-      reactions: approval,
-      retry: true,
-    }),
-    null,
-  );
-});
-
-test("failed implementation requires explicit retry and valid approval", () => {
+test("failed reviews require explicit retry; retry comments do not change the context", () => {
   const comments = thread({ status: "failed" });
-  assert.equal(decide({ issue, comments, reactions: approval }), null);
-  assert.equal(
-    decide({ issue, comments, reactions: approval, retry: true }).mode,
-    "implement",
-  );
-  assert.equal(decide({ issue, comments, retry: true }), null);
+  assert.equal(decide({ issue, comments }), null);
+  assert.equal(decide({ issue, comments, retry: true }).mode, "review");
   assert.equal(
     fingerprint(issue, [
       { id: 12, body: "/codex retry", user: { login: owner } },
@@ -209,7 +130,20 @@ test("failed implementation requires explicit retry and valid approval", () => {
   );
 });
 
-test("malformed state is ignored; stale state without a plan is replanned", () => {
+test("legacy plans are reviewed even with approval; completed reviews ignore reactions", () => {
+  const reactions = [{ content: "+1", user: { login: owner } }];
+  assert.equal(
+    decide({
+      issue,
+      comments: thread({ status: "plan", planId: 10, planHash: "old" }),
+      reactions,
+    }).mode,
+    "review",
+  );
+  assert.equal(decide({ issue, comments: thread(), reactions }), null);
+});
+
+test("malformed state is ignored; stale state schedules another review", () => {
   assert.equal(
     readState([
       { id: 1, body: `${stateMarker}broken -->`, user: { login: bot } },
@@ -217,28 +151,25 @@ test("malformed state is ignored; stale state without a plan is replanned", () =
     null,
   );
   assert.equal(
-    decide({
-      issue,
-      comments: thread({ status: "stale", planId: null, planHash: null }),
-    }).mode,
-    "plan",
+    decide({ issue, comments: thread({ status: "stale" }) }).mode,
+    "review",
   );
 });
 
-test("structured results enforce the phase and bounded publication", () => {
-  const value = {
-    kind: "plan",
-    title: "Sorting",
-    body: "Implementation",
-    validation: "Test equal dates",
-    checksPassed: false,
-  };
-  assert.equal(validResult(value, "plan"), value);
-  assert.throws(() => validResult(value, "implement"));
-  assert.throws(() =>
-    validResult({ ...value, body: "x".repeat(16001) }, "plan"),
-  );
-  assert.throws(() => validResult({ ...value, checksPassed: "yes" }, "plan"));
+test("structured results only allow bounded issue descriptions and questions", () => {
+  for (const kind of ["questions", "ready"]) {
+    const value = {
+      kind,
+      body: "Sort notes newest first using their note date.",
+    };
+    assert.deepEqual(validResult(value), value);
+    for (const body of [null, "", "   ", "x".repeat(16001)]) {
+      assert.throws(() => validResult({ ...value, body }));
+    }
+  }
+  for (const kind of ["plan", "implemented", "blocked", "no-change"]) {
+    assert.throws(() => validResult({ kind, body: "Old output" }));
+  }
 });
 
 test("output filtering catches original and refreshed credentials", () => {
@@ -260,23 +191,4 @@ test("output filtering catches original and refreshed credentials", () => {
     );
   }
   assert.doesNotThrow(() => assertNoSecrets("No credentials here", original));
-});
-
-test("credential and traversal paths cannot enter a PR", () => {
-  for (const path of [
-    "auth.json",
-    "tmp/auth.json",
-    ".codex/config.toml",
-    "../outside",
-    "/tmp/file",
-    ".git/config",
-    ".env",
-    "nested/.env.local",
-    "bad\npath",
-  ]) {
-    assert.throws(() => validatePaths([path]));
-  }
-  assert.doesNotThrow(() =>
-    validatePaths(["apps/desktop/src/app.tsx", ".github/workflows/ci.yaml"]),
-  );
 });

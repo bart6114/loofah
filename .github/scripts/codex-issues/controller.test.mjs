@@ -5,14 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-import {
-  bot,
-  digest,
-  fingerprint,
-  owner,
-  repository,
-  stateMarker,
-} from "./core.mjs";
+import { bot, fingerprint, owner, repository, stateMarker } from "./core.mjs";
 
 const controller = resolve(".github/scripts/codex-issues/controller.mjs");
 const issue = {
@@ -23,18 +16,11 @@ const issue = {
   created_at: "2026-09-16T00:00:00Z",
   user: { login: owner },
 };
-const plan = {
-  id: 10,
-  user: { login: bot },
-  body: "An approved plan",
-  html_url: "https://example.test/plan",
-};
-
 function status(fields = {}) {
   return {
     id: 11,
     user: { login: bot },
-    body: `${stateMarker}${JSON.stringify({ version: 1, run: 100, status: "running", context: fingerprint(issue, []), planId: null, planHash: null, ...fields })} -->`,
+    body: `${stateMarker}${JSON.stringify({ version: 1, run: 100, status: "running", context: fingerprint(issue, []), ...fields })} -->`,
   };
 }
 
@@ -148,13 +134,12 @@ test("a new issue claims work exactly once before agent execution", () => {
     routes: {
       "GET issues/42": issue,
       "GET issues/42/comments": [],
-      "GET pulls": [],
       "GET git/ref/heads/main": { object: { sha: "a".repeat(40) } },
       "POST issues/42/comments": "$comment",
     },
   });
   assert.equal(result.code, 0);
-  assert.match(result.outputs, /mode=plan/);
+  assert.match(result.outputs, /mode=review/);
   assert.equal(result.calls.filter((call) => call.method === "POST").length, 1);
   assert.match(result.calls.at(-1).body.body, /"status":"running"/);
 });
@@ -173,30 +158,12 @@ test("an interrupted prior run fails visibly instead of duplicating work", () =>
   assert.match(result.calls.at(-1).body.body, /"status":"failed"/);
 });
 
-test("a withdrawn reaction prevents the implementation job", () => {
-  const request = {
-    number: 42,
-    run: 100,
-    stateId: 11,
-    mode: "implement",
-    hash: fingerprint(issue, []),
-    planId: 10,
-    planHash: digest(plan.body),
-  };
-  const result = run("check", {
-    request,
-    routes: {
-      "GET issues/42": issue,
-      "GET issues/42/comments": [
-        plan,
-        status({ planId: 10, planHash: request.planHash }),
-      ],
-      "GET issues/comments/10/reactions": [],
-      "PATCH issues/comments/11": {},
-    },
-  });
-  assert.equal(result.code, 0);
-  assert.equal(result.outputs, "valid=false\n");
+test("legacy implementation requests are rejected before any API calls", () => {
+  for (const command of ["check", "publish"]) {
+    const result = run(command, { request: { mode: "implement", number: 42 } });
+    assert.equal(result.code, 1);
+    assert.deepEqual(result.calls, []);
+  }
 });
 
 test("a changed issue prevents publication of an old result", () => {
@@ -205,7 +172,7 @@ test("a changed issue prevents publication of an old result", () => {
       number: 42,
       run: 100,
       stateId: 11,
-      mode: "plan",
+      mode: "review",
       hash: fingerprint(issue, []),
     },
     routes: {
@@ -219,106 +186,86 @@ test("a changed issue prevents publication of an old result", () => {
   assert.match(result.calls.at(-1).body.body, /"status":"stale"/);
 });
 
-test("a completed plan creates an immutable approval comment and records its digest", () => {
-  const result = run("publish", {
-    request: {
-      number: 42,
-      run: 100,
-      stateId: 11,
-      mode: "plan",
-      hash: fingerprint(issue, []),
-    },
-    result: {
-      kind: "plan",
-      title: "Sorting",
-      body: "Sort descending and test ties.",
-      validation: "Unit tests",
-      checksPassed: false,
-    },
+for (const kind of ["questions", "ready"]) {
+  test(`a ${kind} result publishes only an issue comment and its review status`, () => {
+    const result = run("publish", {
+      request: {
+        number: 42,
+        run: 100,
+        stateId: 11,
+        mode: "review",
+        hash: fingerprint(issue, []),
+      },
+      result: {
+        kind,
+        body:
+          kind === "questions"
+            ? "Which date should determine the order?"
+            : "Sort notes newest first using the note date.",
+      },
+      routes: {
+        "GET issues/42": issue,
+        "GET issues/42/comments": [status()],
+        "POST issues/42/comments": "$comment",
+        "PATCH issues/comments/11": {},
+      },
+    });
+    assert.equal(result.code, 0);
+    const comment = result.calls.find((call) => call.method === "POST");
+    assert.match(
+      comment.body.body,
+      kind === "questions" ? /## Questions/ : /## Issue description/,
+    );
+    assert.doesNotMatch(
+      comment.body.body,
+      /approve|React|plan|implementation/i,
+    );
+    assert.equal(result.calls.length, 4);
+    assert.ok(result.calls.at(-1).body.body.includes(`"status":"${kind}"`));
+  });
+}
+
+test("a failed review records a retryable failure", () => {
+  const result = run("failed", {
+    request: { number: 42, run: 100, mode: "review" },
     routes: {
       "GET issues/42": issue,
       "GET issues/42/comments": [status()],
-      "POST issues/42/comments": "$comment",
-      "PATCH issues/comments/11": {},
-    },
-  });
-  assert.equal(result.code, 0);
-  const comment = result.calls.find((call) => call.method === "POST");
-  assert.match(comment.body.body, /React 👍/);
-  assert.ok(result.calls.at(-1).body.body.includes(digest(comment.body.body)));
-});
-
-test("failed publication preserves the approval for an explicit retry", () => {
-  const result = run("failed", {
-    request: { number: 42, run: 100, mode: "implement" },
-    routes: {
-      "GET issues/42": issue,
-      "GET issues/42/comments": [
-        plan,
-        status({ planId: 10, planHash: digest(plan.body) }),
-      ],
       "PATCH issues/comments/11": {},
     },
   });
   assert.equal(result.code, 0);
   assert.match(result.calls.at(-1).body.body, /"status":"failed"/);
-  assert.match(result.calls.at(-1).body.body, /"planId":10/);
 });
 
-test("deleting the plan schedules a replacement without fetching deleted reactions", () => {
+test("an existing plan is replaced by review without fetching reactions or PRs", () => {
   const result = run("select", {
     routes: {
       "GET issues/42": issue,
       "GET issues/42/comments": [
-        status({ status: "plan", planId: 10, planHash: digest(plan.body) }),
+        status({ status: "plan", planId: 10, planHash: "old" }),
       ],
-      "GET pulls": [],
       "GET git/ref/heads/main": { object: { sha: "a".repeat(40) } },
       "PATCH issues/comments/11": { id: 11 },
     },
   });
   assert.equal(result.code, 0);
-  assert.match(result.outputs, /mode=plan/);
+  assert.match(result.outputs, /mode=review/);
+  assert.doesNotMatch(result.calls.at(-1).body.body, /planId|planHash/);
 });
 
-test("withdrawing approval during implementation prevents publication", () => {
+test("rerunning a completed publication does not create a second description", () => {
   const result = run("publish", {
     request: {
       number: 42,
       run: 100,
       stateId: 11,
-      mode: "implement",
-      hash: fingerprint(issue, []),
-      planId: 10,
-      planHash: digest(plan.body),
-    },
-    routes: {
-      "GET issues/42": issue,
-      "GET issues/42/comments": [
-        plan,
-        status({ planId: 10, planHash: digest(plan.body) }),
-      ],
-      "GET issues/comments/10/reactions": [],
-      "PATCH issues/comments/11": {},
-    },
-  });
-  assert.equal(result.code, 0);
-  assert.match(result.calls.at(-1).body.body, /"status":"stale"/);
-  assert.equal(result.calls.filter((call) => call.method === "POST").length, 0);
-});
-
-test("rerunning a completed publication does not create a second plan", () => {
-  const result = run("publish", {
-    request: {
-      number: 42,
-      run: 100,
-      stateId: 11,
-      mode: "plan",
+      mode: "review",
       hash: fingerprint(issue, []),
     },
     routes: {
       "GET issues/42": issue,
-      "GET issues/42/comments": [status({ status: "plan", planId: 10 })],
+      "GET issues/42/comments": [status({ status: "ready" })],
     },
   });
   assert.equal(result.code, 0);

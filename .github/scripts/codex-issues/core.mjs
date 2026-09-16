@@ -45,7 +45,7 @@ export function readState(comments) {
   }
 }
 
-export function decide({ issue, comments, reactions = [], retry = false }) {
+export function decide({ issue, comments, retry = false }) {
   if (
     issue.pull_request ||
     issue.user.login !== owner ||
@@ -56,55 +56,25 @@ export function decide({ issue, comments, reactions = [], retry = false }) {
   }
   const hash = fingerprint(issue, comments);
   const state = readState(comments);
-  if (state?.pr) return null;
-  if (!state || state.context !== hash) return { mode: "plan", hash, state };
-  if (state.status === "failed" && !retry) return null;
-  if (state.status === "questions" && !retry) return null;
-  if (state.planId) {
-    const plan = comments.find(
-      (comment) => comment.id === state.planId && comment.user.login === bot,
-    );
-    if (!plan || digest(plan.body) !== state.planHash)
-      return { mode: "plan", hash, state };
-    if (
-      reactions.some(
-        (reaction) =>
-          reaction.content === "+1" && reaction.user.login === owner,
-      )
-    ) {
-      return {
-        mode: "implement",
-        hash,
-        state,
-        plan: plan.body,
-        planUrl: plan.html_url,
-      };
-    }
-    return null;
-  }
-  return retry || state.status === "stale"
-    ? { mode: "plan", hash, state }
-    : null;
+  if (!state || state.context !== hash) return { mode: "review", hash };
+  if (retry || ["stale", "plan"].includes(state.status))
+    return { mode: "review", hash };
+  return null;
 }
 
-export function validResult(value, mode) {
+export function validResult(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Missing result");
-  const kinds =
-    mode === "plan"
-      ? ["questions", "plan"]
-      : ["implemented", "blocked", "no-change"];
-  if (!kinds.includes(value.kind)) throw new Error("Invalid result kind");
-  for (const field of ["body", "title", "validation"]) {
-    if (typeof value[field] !== "string" || value[field].length > 16000) {
-      throw new Error(`Invalid result ${field}`);
-    }
+  if (!["questions", "ready"].includes(value.kind))
+    throw new Error("Invalid result kind");
+  if (
+    typeof value.body !== "string" ||
+    !value.body.trim() ||
+    value.body.length > 16000
+  ) {
+    throw new Error("Invalid result body");
   }
-  if (!value.body.trim() || value.title.length > 200)
-    throw new Error("Empty or oversized result");
-  if (typeof value.checksPassed !== "boolean")
-    throw new Error("Missing validation outcome");
-  return value;
+  return { kind: value.kind, body: value.body };
 }
 
 export function secretValues(auth) {
@@ -129,32 +99,12 @@ export function assertNoSecrets(value, secrets) {
     throw new Error("Credential found in output");
 }
 
-export function validatePaths(paths) {
-  for (const path of paths) {
-    if (
-      !path ||
-      path.startsWith("/") ||
-      /[\r\n\\]/.test(path) ||
-      path.split("/").some((part) => ["..", ".git", ".codex"].includes(part)) ||
-      /(^|\/)(auth\.json|\.env(?:\..*)?)$/.test(path)
-    ) {
-      throw new Error("Unsafe patch path");
-    }
-  }
-}
-
 export const resultSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["kind", "body", "title", "validation", "checksPassed"],
+  required: ["kind", "body"],
   properties: {
-    kind: {
-      type: "string",
-      enum: ["questions", "plan", "implemented", "blocked", "no-change"],
-    },
+    kind: { type: "string", enum: ["questions", "ready"] },
     body: { type: "string" },
-    title: { type: "string" },
-    validation: { type: "string" },
-    checksPassed: { type: "boolean" },
   },
 };

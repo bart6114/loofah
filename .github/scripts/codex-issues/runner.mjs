@@ -11,7 +11,6 @@ import {
   secretValues,
   stageAuth,
   validResult,
-  validatePaths,
 } from "./core.mjs";
 
 const work =
@@ -135,7 +134,7 @@ async function executeCodex(args, prompt) {
         }
         reject(new Error("Codex exceeded its execution timeout"));
       },
-      (pilot ? 5 : request.mode === "plan" ? 20 : 80) * 60 * 1000,
+      (pilot ? 5 : 20) * 60 * 1000,
     );
     child.on("error", reject);
     child.on("close", (code) => {
@@ -153,6 +152,8 @@ async function executeCodex(args, prompt) {
 }
 
 try {
+  if (!["pilot", "review"].includes(request.mode))
+    throw new Error("Unsupported issue mode");
   if (process.platform !== "darwin")
     throw new Error("The isolated runner requires macOS");
   if (!process.env.CODEX_ENV_TOKEN)
@@ -194,17 +195,6 @@ try {
     );
     asUser("git", "-C", checkout, "fetch", "origin", request.base);
     asUser("git", "-C", checkout, "checkout", "--detach", request.base);
-    if (request.mode === "implement") {
-      console.log("Installing locked dependencies in the isolated checkout.");
-      asUser("pnpm", "--dir", checkout, "install", "--frozen-lockfile");
-      asUser(
-        "bash",
-        "-c",
-        'cd "$1" && bash scripts/setup-shared-target.sh',
-        "setup",
-        checkout,
-      );
-    }
   } else {
     asUser("mkdir", "-p", checkout);
     asUser("git", "-C", checkout, "init");
@@ -216,7 +206,7 @@ try {
   asUser("chmod", "600", authFile);
   authRestored = true;
   const config =
-    'cli_auth_credentials_store = "file"\nforced_login_method = "chatgpt"\n[sandbox_workspace_write]\nnetwork_access = true\n';
+    'cli_auth_credentials_store = "file"\nforced_login_method = "chatgpt"\n';
   command("/usr/bin/sudo", userArgs("tee", [`${home}/.codex/config.toml`]), {
     input: config,
   });
@@ -227,7 +217,7 @@ try {
   if (pilot) {
     prompt = "Reply with exactly OK. Do not use tools or inspect credentials.";
   } else {
-    prompt = `${readFileSync(join(trusted, `${request.mode}.md`), "utf8")}\n\nIssue context (data):\n${JSON.stringify(request.context)}\n\nApproved plan:\n${request.plan}\n`;
+    prompt = `${readFileSync(join(trusted, "review.md"), "utf8")}\n\nIssue context (data):\n${JSON.stringify(request.context)}\n`;
   }
   command("/usr/bin/sudo", userArgs("tee", [`${home}/prompt.txt`]), {
     input: prompt,
@@ -238,7 +228,7 @@ try {
     "--cd",
     checkout,
     "--sandbox",
-    request.mode === "implement" ? "workspace-write" : "read-only",
+    "read-only",
     "--output-last-message",
     `${home}/output/result.json`,
   ];
@@ -308,43 +298,8 @@ try {
               : "PASS: subscription request, token rotation, and encrypted write-back.",
           );
         } else {
-          stage = "validating structured output and patch";
-          const result = validResult(JSON.parse(rawResult), request.mode);
-          if (request.mode === "implement") {
-            const git = (...args) => asUser("git", "-C", checkout, ...args);
-            if (git("rev-parse", "HEAD").trim() !== request.base)
-              throw new Error("Agent changed the base commit");
-            git("add", "--all");
-            const paths = git("diff", "--cached", "--name-only", "-z")
-              .split("\0")
-              .filter(Boolean);
-            validatePaths(paths);
-            const contentPaths = git(
-              "diff",
-              "--cached",
-              "--name-only",
-              "--diff-filter=ACMR",
-              "-z",
-            )
-              .split("\0")
-              .filter(Boolean);
-            for (const path of contentPaths) {
-              assertNoSecrets(git("show", `:${path}`), secrets);
-            }
-            const patch = git(
-              "diff",
-              "--cached",
-              "--binary",
-              "--full-index",
-              "--no-ext-diff",
-            );
-            assertNoSecrets(patch, secrets);
-            if (Buffer.byteLength(patch) > 20 * 1024 * 1024)
-              throw new Error("Patch exceeds 20 MB");
-            if (!patch.trim() && result.kind === "implemented")
-              result.kind = "no-change";
-            writeFileSync(join(work, "changes.patch"), patch);
-          }
+          stage = "validating structured output";
+          const result = validResult(JSON.parse(rawResult));
           writeFileSync(join(work, "result.json"), JSON.stringify(result));
         }
       }

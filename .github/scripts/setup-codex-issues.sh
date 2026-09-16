@@ -47,20 +47,14 @@ if ! gh api "repos/$codex_setup_repo/environments/$codex_setup_env/deployment-br
 fi
 
 existing_secrets="$(gh secret list --repo "$codex_setup_repo" --env "$codex_setup_env" --json name --jq '.[].name')"
-for token in CODEX_ENV_TOKEN CODEX_PUBLISH_TOKEN; do
-  if grep -qx "$token" <<< "$existing_secrets"; then
-    echo "Reusing $token from the environment."
-    continue
-  fi
+if grep -qx CODEX_ENV_TOKEN <<< "$existing_secrets"; then
+  echo "Reusing CODEX_ENV_TOKEN from the environment."
+else
   echo "Create a fine-grained GitHub token restricted to bart6114/loofah."
-  if [[ "$token" == "CODEX_ENV_TOKEN" ]]; then
-    echo "$token: Environments read/write."
-  else
-    echo "$token: Contents, Pull requests, and Workflows read/write."
-  fi
+  echo "CODEX_ENV_TOKEN: Environments read/write."
   echo "Enter it at the hidden gh prompt; never paste it into an issue or chat."
-  gh secret set "$token" --repo "$codex_setup_repo" --env "$codex_setup_env"
-done
+  gh secret set CODEX_ENV_TOKEN --repo "$codex_setup_repo" --env "$codex_setup_env"
+fi
 
 echo "Starting a separate subscription login for CI; your existing Codex login is untouched."
 env CODEX_HOME="$codex_setup_home" codex -c 'cli_auth_credentials_store="file"' login --device-auth
