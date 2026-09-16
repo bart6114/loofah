@@ -10,6 +10,7 @@ import {
   owner,
   readState,
   secretValues,
+  stageAuth,
   stateMarker,
   validResult,
   validatePaths,
@@ -23,6 +24,26 @@ const issue = {
   user: { login: owner },
 };
 const approval = [{ content: "+1", user: { login: owner } }];
+
+test("the refresh pilot invalidates only its isolated cache and preserves the seed", () => {
+  const seed = {
+    auth_mode: "chatgpt",
+    last_refresh: "2026-09-16T00:00:00Z",
+    tokens: {
+      access_token: "original-access-token",
+      refresh_token: "original-refresh-token",
+      account_id: "test-account",
+    },
+  };
+  const original = structuredClone(seed);
+  const probe = stageAuth(seed, true);
+  assert.deepEqual(seed, original);
+  assert.notEqual(probe.tokens.access_token, seed.tokens.access_token);
+  assert.equal(probe.tokens.refresh_token, seed.tokens.refresh_token);
+  assert.equal(probe.tokens.account_id, seed.tokens.account_id);
+  assert.ok(new Date(probe.last_refresh) < new Date(seed.last_refresh));
+  assert.deepEqual(stageAuth(seed), seed);
+});
 const plan = {
   id: 10,
   body: "Sort notes by their date and test equal dates.",

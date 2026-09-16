@@ -113,6 +113,17 @@ export function secretValues(auth) {
   );
 }
 
+export function stageAuth(auth, forceRefresh = false) {
+  const staged = structuredClone(auth);
+  if (forceRefresh) {
+    // Newer CLIs prefer the JWT expiry over last_refresh. An unusable cached
+    // access token exercises their stale-cache refresh path with the real refresh token.
+    staged.tokens.access_token = "codex-ci-refresh-probe";
+    staged.last_refresh = "2000-01-01T00:00:00Z";
+  }
+  return staged;
+}
+
 export function assertNoSecrets(value, secrets) {
   if (secrets.some((secret) => value.includes(secret)))
     throw new Error("Credential found in output");

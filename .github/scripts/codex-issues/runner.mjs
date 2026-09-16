@@ -9,6 +9,7 @@ import {
   repository,
   resultSchema,
   secretValues,
+  stageAuth,
   validResult,
   validatePaths,
 } from "./core.mjs";
@@ -208,8 +209,7 @@ try {
     asUser("mkdir", "-p", checkout);
     asUser("git", "-C", checkout, "init");
   }
-  const stagedAuth = structuredClone(auth);
-  if (pilot && !verify) stagedAuth.last_refresh = "2000-01-01T00:00:00Z";
+  const stagedAuth = stageAuth(auth, pilot && !verify);
   command("/usr/bin/sudo", userArgs("tee", [authFile]), {
     input: JSON.stringify(stagedAuth),
   });
@@ -269,14 +269,17 @@ try {
     /* The foreground CLI may already have exited. */
   }
   if (authRestored) {
+    let stage = "reading refreshed credentials";
     try {
       const refreshed = validateAuth(JSON.parse(sudo("cat", authFile)));
       mask(refreshed);
       if (refreshed.tokens.account_id !== auth.tokens.account_id)
         throw new Error("Authentication account changed");
+      stage = "persisting refreshed credentials";
       saveAuth(refreshed);
       persisted = true;
       if (!process.exitCode) {
+        stage = "reading final response";
         mkdirSync(work, { recursive: true });
         const rawResult = sudo("cat", `${home}/output/result.json`);
         const secrets = [
@@ -284,10 +287,13 @@ try {
           ...secretValues(refreshed),
           process.env.CODEX_ENV_TOKEN,
         ];
+        stage = "checking output for credentials";
         assertNoSecrets(rawResult, secrets);
         if (pilot) {
+          stage = "checking the pilot response is OK";
           if (rawResult.trim() !== "OK")
             throw new Error("Unexpected authentication pilot response");
+          stage = "checking refresh-token rotation";
           if (
             !verify &&
             refreshed.tokens.refresh_token === auth.tokens.refresh_token
@@ -302,6 +308,7 @@ try {
               : "PASS: subscription request, token rotation, and encrypted write-back.",
           );
         } else {
+          stage = "validating structured output and patch";
           const result = validResult(JSON.parse(rawResult), request.mode);
           if (request.mode === "implement") {
             const git = (...args) => asUser("git", "-C", checkout, ...args);
@@ -344,8 +351,8 @@ try {
     } catch {
       console.error(
         persisted
-          ? "Result validation failed; credentials were saved, but no result will be published."
-          : "Credential persistence failed. Reseed the environment secret before retrying.",
+          ? `Failed while ${stage}; credentials were saved, but no result will be published.`
+          : `Failed while ${stage}. Reseed the environment secret before retrying.`,
       );
       process.exitCode = 1;
     }
