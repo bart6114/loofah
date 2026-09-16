@@ -29,6 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - run: node --test .github/scripts/codex-issues/*.test.mjs
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - uses: ./.github/actions/rust_install
       - uses: actions/cache@v4

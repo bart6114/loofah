@@ -169,6 +169,7 @@ run_cli() {
 }
 
 run_workflows() {
+  run_step "Codex issue automation" node --test .github/scripts/codex-issues/*.test.mjs
   command -v uvx >/dev/null 2>&1 || {
     echo "uvx is required to run the zizmor workflow check" >&2
     return 1
