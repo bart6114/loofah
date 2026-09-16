@@ -53,6 +53,7 @@ impl SessionStore {
     }
 
     pub async fn list_tags(&self) -> Result<Vec<TagItem>, StoreError> {
+        let _guard = self.lock_reads().await?;
         let mut tags = self.read_tags().await?;
         tags.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
         Ok(tags)
@@ -67,7 +68,7 @@ impl SessionStore {
             return Err(StoreError::Io("tag name cannot be empty".to_string()));
         };
 
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         let mut tags = self.read_tags().await?;
         if let Some(existing) = tags.iter().find(|t| t.id == normalized) {

@@ -1,0 +1,389 @@
+import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { secureHeaders } from "hono/secure-headers";
+
+import { activateAccount, createAuth, type AuthEnvironment } from "./auth.ts";
+import {
+  boundDevice,
+  createChallenge,
+  EnrollmentError,
+  finishEnrollment,
+} from "./enrollment.ts";
+import { DurableJobs, openJob, sha256 } from "./jobs.ts";
+import { ObjectStorage } from "./objects.ts";
+import {
+  StorageError,
+  VaultSnapshots,
+  VaultStorage,
+  type VaultPrincipal,
+} from "./storage.ts";
+
+export type Environment = AuthEnvironment & {
+  TURNSTILE_SECRET: string;
+  EMAIL: SendEmail;
+  VAULT: R2Bucket;
+  RECOVERY: R2Bucket;
+  TURNSTILE_SITE_KEY: string;
+  ASSETS: Fetcher;
+};
+
+const app = new Hono<{
+  Bindings: Environment;
+  Variables: { principal: VaultPrincipal };
+}>();
+app.use("*", secureHeaders({ referrerPolicy: "no-referrer" }));
+app.use("/api/*", async (context, next) =>
+  bodyLimit({
+    maxSize: context.req.path.startsWith("/api/sync/")
+      ? 8 * 1024 * 1024
+      : 64 * 1024,
+  })(context, next),
+);
+app.use("/api/*", async (context, next) => {
+  context.header("Cache-Control", "no-store");
+  if (context.req.path !== "/api/health") {
+    const settings = await context.env.DB.prepare(
+      "SELECT writes_enabled FROM sync_beta_settings WHERE id = 1",
+    ).first<{ writes_enabled: number }>();
+    if (settings?.writes_enabled !== 1)
+      return context.json({ error: "maintenance" }, 503);
+  }
+  await next();
+});
+app.get("/api/health", (context) =>
+  context.json({ service: "loofah-sync", protocol: 1 }),
+);
+app.get("/api/config", (context) =>
+  context.json({
+    sitekey: context.env.TURNSTILE_SITE_KEY,
+    signupOpen: context.env.SIGNUP_OPEN === "true",
+  }),
+);
+
+const protectedFlows = new Set([
+  "/sign-up/email",
+  "/sign-in/email",
+  "/request-password-reset",
+  "/send-verification-email",
+]);
+app.on(["GET", "POST"], "/api/auth/*", async (context) => {
+  const path = context.req.path.slice("/api/auth".length);
+  if (context.req.method === "POST" && protectedFlows.has(path)) {
+    const ip = context.req.header("cf-connecting-ip");
+    if (!ip || context.req.header("origin") !== context.env.ACCOUNT_ORIGIN)
+      return context.json({ error: "forbidden" }, 403);
+    const now = Date.now();
+    const key = await sha256(
+      `${context.env.AUTH_SECRET}\n${ip}\n${Math.floor(now / 60_000)}`,
+    );
+    const rate =
+      await context.env.DB.prepare(`INSERT INTO sync_request_limits (key, count, expires_at) VALUES (?, 1, ?)
+      ON CONFLICT (key) DO UPDATE SET count = count + 1 RETURNING count`)
+        .bind(key, now + 120_000)
+        .first<{ count: number }>();
+    if (!rate || rate.count > 20)
+      return context.json({ error: "rate_limited" }, 429);
+    const token = context.req.header("x-turnstile-token");
+    if (!token || token.length > 2048)
+      return context.json({ error: "challenge_required" }, 403);
+    const result = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        body: new URLSearchParams({
+          secret: context.env.TURNSTILE_SECRET,
+          response: token,
+          remoteip: ip,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    const verification = (await result.json()) as {
+      success?: boolean;
+      hostname?: string;
+      action?: string;
+    };
+    if (
+      !result.ok ||
+      !verification.success ||
+      verification.hostname !== new URL(context.env.ACCOUNT_ORIGIN).hostname ||
+      verification.action !== "account"
+    )
+      return context.json({ error: "challenge_failed" }, 403);
+  }
+  const response = await createAuth(context.env).handler(context.req.raw);
+  context.executionCtx.waitUntil(processJobs(context.env));
+  return response;
+});
+
+app.get("/api/account", async (context) => {
+  const auth = createAuth(context.env);
+  const session = await auth.api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  await activateAccount(context.env.DB, session.user.id);
+  const account =
+    await context.env.DB.prepare(`SELECT vault_id, quota_bytes, used_bytes, recovery_generation, enrollment_authority
+    FROM sync_accounts WHERE user_id = ? AND active = 1`)
+      .bind(session.user.id)
+      .first();
+  if (!account) return context.json({ error: "unavailable" }, 503);
+  return context.json({
+    account,
+    identity: { user: session.user.id, session: session.session.id },
+  });
+});
+
+app.post("/api/enrollment/:action", async (context) => {
+  if (!context.req.header("authorization")?.startsWith("Bearer "))
+    return context.json({ error: "unauthorized" }, 401);
+  const session = await createAuth(context.env).api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  await activateAccount(context.env.DB, session.user.id);
+  const input = await context.req.json();
+  if (context.req.param("action") === "challenge") {
+    return context.json(
+      await createChallenge(
+        context.env.DB,
+        session.user.id,
+        session.session.id,
+        input,
+      ),
+    );
+  }
+  if (context.req.param("action") === "finish") {
+    return context.json(
+      await finishEnrollment(
+        context.env.DB,
+        session.user.id,
+        session.session.id,
+        input,
+      ),
+    );
+  }
+  return context.json({ error: "not_found" }, 404);
+});
+
+app.use("/api/sync/*", async (context, next) => {
+  if (!context.req.header("authorization")?.startsWith("Bearer "))
+    return context.json({ error: "unauthorized" }, 401);
+  const session = await createAuth(context.env).api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  const principal = await boundDevice(
+    context.env.DB,
+    session.user.id,
+    session.session.id,
+  );
+  if (!principal) return context.json({ error: "device_required" }, 403);
+  if (
+    context.req.header("x-loofah-recovery-generation") !== principal.generation
+  )
+    return context.json({ error: "recovery_required" }, 409);
+  context.set("principal", principal);
+  await next();
+});
+app.post("/api/sync/reservations", async (context) => {
+  await new VaultStorage(context.env.DB, context.get("principal")).reserve(
+    await context.req.json(),
+  );
+  return context.json({ reserved: true });
+});
+app.post("/api/sync/snapshots", async (context) =>
+  context.json(
+    await new VaultSnapshots(context.env.DB, context.get("principal")).begin(),
+  ),
+);
+app.get("/api/sync/snapshots/:id", async (context) =>
+  context.json(
+    await new VaultSnapshots(context.env.DB, context.get("principal")).page(
+      context.req.param("id"),
+      context.req.query("after"),
+    ),
+  ),
+);
+app.delete("/api/sync/snapshots/:id", async (context) => {
+  await new VaultSnapshots(context.env.DB, context.get("principal")).release(
+    context.req.param("id"),
+  );
+  return context.json({ released: true });
+});
+app.get("/api/sync/changes", async (context) => {
+  const after = Number(context.req.query("after") ?? 0);
+  if (!Number.isSafeInteger(after) || after < 0)
+    throw new StorageError("invalid");
+  const changes =
+    await context.env.DB.prepare(`SELECT sequence, entity, revision, operation, created_at FROM sync_changes
+    WHERE vault_id = ? AND sequence > ? ORDER BY sequence LIMIT 100`)
+      .bind(context.get("principal").vault, after)
+      .all();
+  return context.json({ changes: changes.results });
+});
+app.post("/api/sync/revisions", async (context) => {
+  const revision = await new VaultStorage(
+    context.env.DB,
+    context.get("principal"),
+  ).commit(await context.req.json());
+  return context.json({ revision });
+});
+app.get("/api/sync/history/:entity", async (context) => {
+  const cursor = context.req.query("before")
+    ? {
+        at: Number(context.req.query("before")),
+        id: context.req.query("id") ?? "",
+      }
+    : undefined;
+  return context.json(
+    await new VaultStorage(context.env.DB, context.get("principal")).history(
+      context.req.param("entity"),
+      cursor,
+    ),
+  );
+});
+app.post("/api/sync/history/purge", async (context) => {
+  await new VaultStorage(context.env.DB, context.get("principal")).purge(
+    await context.req.json(),
+  );
+  return context.json({ purged: true });
+});
+app.get("/api/sync/revisions/:id", async (context) => {
+  const principal = context.get("principal");
+  const revision = await context.env.DB.prepare(
+    "SELECT * FROM sync_revisions WHERE vault_id = ? AND id = ?",
+  )
+    .bind(principal.vault, context.req.param("id"))
+    .first();
+  if (!revision) return context.json({ error: "not_found" }, 404);
+  const objects =
+    await context.env.DB.prepare(`SELECT o.id, o.bytes, o.digest, o.kind FROM sync_membership m
+    JOIN sync_objects o ON o.vault_id = m.vault_id AND o.id = m.object WHERE m.vault_id = ? AND m.revision = ? ORDER BY o.id`)
+      .bind(principal.vault, context.req.param("id"))
+      .all();
+  return context.json({ revision, objects: objects.results });
+});
+app.put("/api/sync/objects/:id", async (context) => {
+  await new ObjectStorage(
+    context.env.DB,
+    context.env.VAULT,
+    context.get("principal"),
+  ).put(context.req.param("id"), await context.req.arrayBuffer());
+  return context.json({ uploaded: true });
+});
+app.get("/api/sync/objects/:id", (context) =>
+  new ObjectStorage(
+    context.env.DB,
+    context.env.VAULT,
+    context.get("principal"),
+  ).get(context.req.param("id")),
+);
+app.post("/api/sync/objects/:id/multipart", async (context) =>
+  context.json(
+    await new ObjectStorage(
+      context.env.DB,
+      context.env.VAULT,
+      context.get("principal"),
+    ).startMultipart(context.req.param("id")),
+  ),
+);
+app.put("/api/sync/objects/:id/parts/:number", async (context) => {
+  await new ObjectStorage(
+    context.env.DB,
+    context.env.VAULT,
+    context.get("principal"),
+  ).putPart(
+    context.req.param("id"),
+    Number(context.req.param("number")),
+    context.req.header("x-loofah-sha256") ?? "",
+    await context.req.arrayBuffer(),
+  );
+  return context.json({ uploaded: true });
+});
+app.post("/api/sync/objects/:id/complete", async (context) => {
+  await new ObjectStorage(
+    context.env.DB,
+    context.env.VAULT,
+    context.get("principal"),
+  ).completeMultipart(context.req.param("id"));
+  return context.json({ uploaded: true });
+});
+
+app.onError((error, context) => {
+  if (error instanceof EnrollmentError)
+    return context.json({ error: "enrollment_failed" }, 403);
+  if (error instanceof StorageError)
+    return context.json(
+      { error: error.code },
+      error.code === "invalid"
+        ? 400
+        : error.code === "quota"
+          ? 507
+          : error.code === "unavailable"
+            ? 503
+            : 409,
+    );
+  return context.json({ error: "unavailable" }, 503);
+});
+app.notFound((context) =>
+  context.req.path.startsWith("/api/")
+    ? context.json({ error: "not_found" }, 404)
+    : context.env.ASSETS.fetch(context.req.raw),
+);
+
+async function processJobs(env: Environment) {
+  await new DurableJobs(env.DB).run({
+    account_email: async (payload) => {
+      const value = await openJob(env.EMAIL_JOB_KEY, payload);
+      if (
+        !value ||
+        typeof value !== "object" ||
+        !("kind" in value) ||
+        !("to" in value) ||
+        !("url" in value) ||
+        !["verify", "reset"].includes(String(value.kind)) ||
+        typeof value.to !== "string" ||
+        typeof value.url !== "string" ||
+        new URL(value.url).origin !== env.ACCOUNT_ORIGIN
+      )
+        throw new Error("invalid account email");
+      await env.EMAIL.send({
+        from: "accounts@notify.loofah.io",
+        to: value.to,
+        subject:
+          value.kind === "verify"
+            ? "Verify your Loofah email"
+            : "Reset your Loofah password",
+        text: `${value.kind === "verify" ? "Verify your email to finish setting up your Loofah account" : "Reset your Loofah account password"}:\n\n${value.url}\n\nIf you did not request this, you can ignore this email.`,
+      });
+    },
+  });
+}
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_controller: ScheduledController, env: Environment) {
+    const settings = await env.DB.prepare(
+      "SELECT writes_enabled FROM sync_beta_settings WHERE id = 1",
+    ).first<{ writes_enabled: number }>();
+    if (settings?.writes_enabled !== 1) return;
+    await processJobs(env);
+    await env.DB.prepare("DELETE FROM sync_snapshots WHERE expires_at < ?")
+      .bind(Date.now())
+      .run();
+    await env.DB.prepare(
+      "DELETE FROM sync_enrollment_challenges WHERE expires_at < ?",
+    )
+      .bind(Date.now())
+      .run();
+    await env.DB.prepare(`DELETE FROM sync_request_limits WHERE key IN (
+      SELECT key FROM sync_request_limits WHERE expires_at < ? ORDER BY expires_at LIMIT 1000)`)
+      .bind(Date.now())
+      .run();
+  },
+} satisfies ExportedHandler<Environment>;

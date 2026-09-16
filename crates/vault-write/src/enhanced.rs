@@ -76,10 +76,10 @@ impl SessionStore {
 
         // Held across the read-modify-write so a concurrent patch of the same doc can't be
         // computed from bytes this call is about to replace.
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         let mut doc = self
-            .read_enhanced_doc(session_id, doc_id)
+            .read_enhanced_doc_in_transaction(session_id, doc_id)
             .await?
             .ok_or_else(|| {
                 StoreError::Io(format!(
@@ -138,6 +138,16 @@ impl SessionStore {
         session_id: &str,
         doc_id: &str,
     ) -> Result<Option<EnhancedDoc>, StoreError> {
+        let _guard = self.lock_reads().await?;
+        self.read_enhanced_doc_in_transaction(session_id, doc_id)
+            .await
+    }
+
+    async fn read_enhanced_doc_in_transaction(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+    ) -> Result<Option<EnhancedDoc>, StoreError> {
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
         let vault_base = self.vault_base.clone();
@@ -178,12 +188,14 @@ impl SessionStore {
 
         // The trash-move is a write: resolve the session's directory under the write
         // lock so a concurrent rename can't strand the delete at a stale path.
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let session_dir = self.session_dir_locked(&guard, session_id).await?;
         let vault_base = self.vault_base.clone();
         let relative = paths::enhanced_doc_path_in(&session_dir, doc_id);
 
+        let lease = guard.clone();
         tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+            let _lease = lease;
             let abs = vault_base.join(relative);
             hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs).map_err(|e| {
                 StoreError::Io(format!("failed to move enhanced doc to trash: {e}"))
@@ -201,13 +213,13 @@ impl SessionStore {
     }
 
     async fn persist_enhanced_doc(&self, doc: &EnhancedDoc) -> Result<(), StoreError> {
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         self.persist_enhanced_doc_locked(&guard, doc).await
     }
 
     async fn persist_enhanced_doc_locked(
         &self,
-        guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         doc: &EnhancedDoc,
     ) -> Result<(), StoreError> {
         let rendered = render_enhanced_file(doc)?;

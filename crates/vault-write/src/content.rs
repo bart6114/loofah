@@ -38,21 +38,21 @@ pub struct SessionMetaPatch {
 impl SessionStore {
     pub async fn write_meta(&self, meta: &SessionMeta) -> Result<(), StoreError> {
         validate_session_id(&meta.id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         self.write_meta_locked(&guard, meta).await
     }
 
     /// Creation and updates share the canonical path and identity checks.
     pub async fn create_session_meta(&self, meta: &SessionMeta) -> Result<(), StoreError> {
         validate_session_id(&meta.id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let dir = self.session_dir(&meta.id).await?;
         self.finish_meta_write_locked(&guard, meta, dir).await
     }
 
     async fn write_meta_locked(
         &self,
-        guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         meta: &SessionMeta,
     ) -> Result<(), StoreError> {
         let dir = self.session_dir(&meta.id).await?;
@@ -61,11 +61,11 @@ impl SessionStore {
 
     async fn finish_meta_write_locked(
         &self,
-        guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         meta: &SessionMeta,
         dir: std::path::PathBuf,
     ) -> Result<(), StoreError> {
-        self.read_meta(&meta.id).await?;
+        self.read_meta_in_transaction(&meta.id).await?;
         let meta_json =
             serde_json::to_vec_pretty(meta).map_err(|e| StoreError::Serialize(e.to_string()))?;
 
@@ -88,10 +88,10 @@ impl SessionStore {
     /// loser's fields would vanish.
     pub async fn update_meta(&self, id: &str, patch: SessionMetaPatch) -> Result<(), StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
 
@@ -146,9 +146,9 @@ impl SessionStore {
         algorithm_version: u32,
     ) -> Result<bool, StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
 
@@ -184,9 +184,9 @@ impl SessionStore {
         auto_accept_threshold: Option<f32>,
     ) -> Result<bool, StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
 
@@ -233,9 +233,9 @@ impl SessionStore {
         let Some(name) = hypr_vault_read::normalize_tag_name(name) else {
             return Err(StoreError::Io("tag name cannot be empty".to_string()));
         };
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
         let Some(state) = &mut meta.tag_suggestions else {
@@ -259,9 +259,9 @@ impl SessionStore {
         let Some(name) = hypr_vault_read::normalize_tag_name(name) else {
             return Err(StoreError::Io("tag name cannot be empty".to_string()));
         };
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
         let Some(state) = &mut meta.tag_suggestions else {
@@ -288,20 +288,16 @@ impl SessionStore {
     /// racing a delete must not resurrect the session folder.
     pub async fn mark_recording_started(&self, id: &str, at: &str) -> Result<(), StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         // Tracked even if the stamp below fails: the recorder holds paths into the
         // directory either way, so whole-vault relocation must stay blocked.
         // Ensure-at-least-one (never stack): a `prepare_recording` lease for this
         // same recording may already be counted.
-        self.active_recordings
-            .lock()
-            .unwrap()
-            .entry(id.to_string())
-            .or_insert(1);
+        self.note_recording_active(id)?;
 
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
 
@@ -314,7 +310,7 @@ impl SessionStore {
 
     pub async fn mark_recording_ended(&self, id: &str, at: &str) -> Result<(), StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         // A resumed capture may already hold another reservation while this stamp
         // waits in the ordered lifecycle queue.
@@ -322,7 +318,7 @@ impl SessionStore {
         self.notify_artifacts_changed(id);
 
         let mut meta = self
-            .read_meta(id)
+            .read_meta_in_transaction(id)
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
 
@@ -331,6 +327,14 @@ impl SessionStore {
     }
 
     pub async fn read_meta(&self, id: &str) -> Result<Option<SessionMeta>, StoreError> {
+        let _guard = self.lock_reads().await?;
+        self.read_meta_in_transaction(id).await
+    }
+
+    pub(crate) async fn read_meta_in_transaction(
+        &self,
+        id: &str,
+    ) -> Result<Option<SessionMeta>, StoreError> {
         validate_session_id(id)?;
         let vault = self.vault_base.clone();
         let id = id.to_string();
@@ -344,7 +348,10 @@ impl SessionStore {
     pub async fn write_note(&self, id: &str, markdown: &str) -> Result<(), StoreError> {
         validate_session_id(id)?;
         let note_bytes = markdown.as_bytes().to_vec();
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
+        if self.read_meta_in_transaction(id).await?.is_none() {
+            return Err(StoreError::Conflict("session no longer exists".into()));
+        }
         let dir = self.session_dir_locked(&guard, id).await?;
         self.write_file_locked(&guard, paths::note_path_in(&dir), note_bytes)
             .await?;
@@ -360,7 +367,9 @@ impl SessionStore {
         let legacy_abs = self.vault_base.join(paths::legacy_note_path_in(&dir));
         if legacy_abs.is_file() {
             let vault_base = self.vault_base.clone();
+            let lease = guard.clone();
             let moved = tokio::task::spawn_blocking(move || {
+                let _lease = lease;
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &legacy_abs)
             })
             .await;
@@ -374,8 +383,6 @@ impl SessionStore {
                 }
             }
         }
-        drop(guard);
-
         // Store what `read_note` would return, not the raw bytes: a body that starts with an
         // exporter-shaped frontmatter block would otherwise sit un-stripped in the index and
         // change under the user on the next rescan.
@@ -389,6 +396,14 @@ impl SessionStore {
     }
 
     pub async fn read_note(&self, id: &str) -> Result<Option<String>, StoreError> {
+        let _guard = self.lock_reads().await?;
+        self.read_note_in_transaction(id).await
+    }
+
+    pub(crate) async fn read_note_in_transaction(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, StoreError> {
         validate_session_id(id)?;
         let dir = self.session_dir(id).await?;
         let vault_base = self.vault_base.clone();
@@ -432,7 +447,7 @@ impl SessionStore {
         // assign_transcript_speaker, so the two can never deadlock. Holding the write
         // lock across the trash keeps a concurrent session-scoped write from resolving
         // the directory mid-move and recreating it.
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         // Resolve before touching any in-memory state: a failed resolution
         // (ambiguous id, I/O error) must leave the live buffer and the
@@ -453,8 +468,10 @@ impl SessionStore {
 
         let vault_base = self.vault_base.clone();
         let dir_to_move = relative_dir.clone();
+        let lease = guard.clone();
         let trash_path = tokio::task::spawn_blocking(
             move || -> Result<Option<std::path::PathBuf>, StoreError> {
+                let _lease = lease;
                 let session_path = vault_base.join(&dir_to_move);
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
                     .map_err(|e| StoreError::Io(format!("failed to move session to trash: {}", e)))
@@ -494,11 +511,13 @@ impl SessionStore {
             return Ok(false);
         };
 
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let vault_base = self.vault_base.clone();
         let id_owned = id.to_string();
         let deletion = record.clone();
+        let lease = guard.clone();
         let restored = tokio::task::spawn_blocking(move || -> Result<bool, StoreError> {
+            let _lease = lease;
             // The trash entry must still be this session: a parseable `_meta.json`
             // claiming the requested full id. A vanished entry is an expired undo; a
             // tampered one fails loudly rather than restoring someone else's bytes.

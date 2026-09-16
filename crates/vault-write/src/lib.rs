@@ -62,6 +62,8 @@ pub struct SessionStore {
     recent_deletions: Arc<std::sync::Mutex<HashMap<String, session_path::DeletedSession>>>,
     /// Backend recording reservations also protect whole-vault relocation.
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
+    recording_leases:
+        Arc<std::sync::Mutex<HashMap<String, hypr_vault_read::transaction::VaultTransaction>>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
@@ -129,6 +131,7 @@ impl SessionStore {
             index_change_taps: Arc::new(std::sync::Mutex::new(Vec::new())),
             recent_deletions: Arc::new(std::sync::Mutex::new(HashMap::new())),
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            recording_leases: Arc::new(std::sync::Mutex::new(HashMap::new())),
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
@@ -169,12 +172,53 @@ impl SessionStore {
     /// caller can hold it across its own read and the matching `write_file_locked`. Without
     /// this, `write_file`'s internal lock only spans the write, and two callers computing a
     /// new whole-file value from the same starting bytes silently drop one of the updates.
-    pub(crate) async fn lock_writes(&self) -> WriteGuard<'_> {
-        self.write_lock.lock().await
+    pub(crate) async fn lock_writes(&self) -> Result<WriteGuard, StoreError> {
+        let local = self.write_lock.clone().lock_owned().await;
+        let transaction = self.lock_transaction(true).await?;
+        Ok(WriteGuard {
+            _lease: Arc::new(WriteLease {
+                _local: local,
+                _transaction: transaction,
+            }),
+        })
+    }
+
+    pub(crate) async fn lock_reads(
+        &self,
+    ) -> Result<Arc<hypr_vault_read::transaction::VaultTransaction>, StoreError> {
+        self.lock_transaction(false).await.map(Arc::new)
+    }
+
+    async fn lock_transaction(
+        &self,
+        exclusive: bool,
+    ) -> Result<hypr_vault_read::transaction::VaultTransaction, StoreError> {
+        loop {
+            let vault = self.vault_base.clone();
+            let transaction = tokio::task::spawn_blocking(move || {
+                if exclusive {
+                    std::fs::create_dir_all(&vault)?;
+                }
+                let transaction =
+                    hypr_vault_read::transaction::VaultTransaction::try_acquire(&vault, exclusive)?;
+                if transaction.is_some() {
+                    hypr_vault_read::transaction::VaultTransaction::ensure_ready(&vault)?;
+                }
+                Ok::<_, std::io::Error>(transaction)
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("vault transaction task: {e}")))?
+            .map_err(|e| StoreError::Io(format!("vault transaction: {e}")))?;
+            if let Some(transaction) = transaction {
+                return Ok(transaction);
+            }
+            // Waiting on flock inside the blocking pool can starve the writer's I/O.
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
     }
 
     pub async fn write_file(&self, relative: PathBuf, bytes: Vec<u8>) -> Result<(), StoreError> {
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         self.write_file_locked(&guard, relative, bytes).await
     }
 
@@ -182,7 +226,7 @@ impl SessionStore {
     /// guard is a proof token only -- taking the lock again here would deadlock.
     pub(crate) async fn write_file_locked(
         &self,
-        _guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         relative: PathBuf,
         bytes: Vec<u8>,
     ) -> Result<(), StoreError> {
@@ -211,7 +255,9 @@ impl SessionStore {
         let journal = self.journal.clone();
         let journal_relative = relative_str.clone();
 
+        let lease = guard.clone();
         let hash = tokio::task::spawn_blocking(move || {
+            let _lease = lease;
             std::fs::create_dir_all(&parent_path)
                 .map_err(|e| StoreError::Io(format!("failed to create parent directory: {}", e)))?;
 
@@ -251,12 +297,24 @@ impl SessionStore {
     /// old location mid-copy. Holding the store-wide write lock for the relocation's
     /// duration also blocks `prepare_recording`, so no new lease can appear once this
     /// returns.
-    pub async fn freeze_for_vault_move(&self) -> Result<VaultMoveGuard<'_>, StoreError> {
+    pub async fn freeze_for_vault_move(&self) -> Result<VaultMoveGuard, StoreError> {
         self.flush_all().await?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         if !self.active_recordings.lock().unwrap().is_empty() {
             return Err(StoreError::Conflict(
                 "a recording is in progress; stop it before moving the vault".to_string(),
+            ));
+        }
+        let vault = self.vault_base.clone();
+        if tokio::task::spawn_blocking(move || {
+            hypr_vault_read::transaction::VaultTransaction::any_recording(&vault)
+        })
+        .await
+        .map_err(|e| StoreError::Io(e.to_string()))?
+        .map_err(|e| StoreError::Io(e.to_string()))?
+        {
+            return Err(StoreError::Conflict(
+                "another process is recording into this vault".into(),
             ));
         }
         // A dirty buffer here means an append raced in between the flush above and taking
@@ -272,12 +330,20 @@ impl SessionStore {
 
 /// Blocks all store writes and new recording-path leases while a vault relocation copies
 /// files out from under the store. Dropping it unblocks writers.
-pub struct VaultMoveGuard<'a> {
-    _guard: WriteGuard<'a>,
+pub struct VaultMoveGuard {
+    _guard: WriteGuard,
 }
 
 /// Proof that the caller holds the store-wide write lock.
-pub(crate) type WriteGuard<'a> = tokio::sync::MutexGuard<'a, ()>;
+#[derive(Clone)]
+pub(crate) struct WriteGuard {
+    _lease: Arc<WriteLease>,
+}
+
+struct WriteLease {
+    _local: tokio::sync::OwnedMutexGuard<()>,
+    _transaction: hypr_vault_read::transaction::VaultTransaction,
+}
 
 /// Preserves bytes at `abs` that this store did not write, before they are overwritten.
 ///
@@ -423,7 +489,7 @@ mod tests {
     #[tokio::test]
     async fn freeze_for_vault_move_refuses_while_a_recording_lease_is_held() {
         let (store, _temp) = test_store().await;
-        store.note_recording_active("s1");
+        store.note_recording_active("s1").unwrap();
 
         let err = store
             .freeze_for_vault_move()

@@ -65,6 +65,7 @@ impl SessionStore {
         source_type: &str,
         source_id: &str,
     ) -> Result<Vec<TaskItem>, StoreError> {
+        let _guard = self.lock_reads().await?;
         let scope = self.resolve_task_scope(source_type, source_id).await?;
         let mut tasks: Vec<TaskItem> = self
             .read_tasks_at(&scope)
@@ -88,12 +89,12 @@ impl SessionStore {
         inputs: Vec<TaskInput>,
     ) -> Result<(), StoreError> {
         let scope = self.resolve_task_scope(source_type, source_id).await?;
-        self.ensure_task_scope_writable(&scope).await?;
 
         // One guard across read-modify-write: a `tasks.json` holds every source's tasks, so
         // two concurrent replaces that each read the same starting file and write a whole new
         // one back would silently drop the loser's changes.
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
+        self.ensure_task_scope_writable(&guard, &scope).await?;
 
         let existing = self.read_tasks_at(&scope).await?;
         let prior_by_id: HashMap<&str, &TaskItem> =
@@ -154,7 +155,7 @@ impl SessionStore {
             return Ok(());
         }
         let scope = self.resolve_task_scope(source_type, source_id).await?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let existing = self.read_tasks_at(&scope).await?;
         let ids: std::collections::HashSet<&str> = task_ids.iter().map(|s| s.as_str()).collect();
         let next: Vec<TaskItem> = existing
@@ -189,7 +190,8 @@ impl SessionStore {
         let dest_scope = self
             .resolve_task_scope(next_source_type, next_source_id)
             .await?;
-        self.ensure_task_scope_writable(&dest_scope).await?;
+        let guard = self.lock_writes().await?;
+        self.ensure_task_scope_writable(&guard, &dest_scope).await?;
 
         let mut scopes = vec![dest_scope.clone()];
         for scope in self.scan_task_scopes().await? {
@@ -200,8 +202,6 @@ impl SessionStore {
 
         // Same read-modify-write guard as `replace_tasks`, spanning every file this move
         // touches (a move rewrites both the source and the destination `tasks.json`).
-        let guard = self.lock_writes().await;
-
         let mut files: Vec<(TaskScope, Vec<TaskItem>, bool)> = Vec::new();
         for scope in scopes {
             let tasks = self.read_tasks_at(&scope).await?;
@@ -307,9 +307,13 @@ impl SessionStore {
     /// Same rule as `write_enhanced_doc`: a session-scoped write must never resurrect a
     /// session folder that a racing delete just trashed, so the session's `_meta.json` has
     /// to exist before we create or grow its `tasks.json`.
-    async fn ensure_task_scope_writable(&self, scope: &TaskScope) -> Result<(), StoreError> {
+    async fn ensure_task_scope_writable(
+        &self,
+        _guard: &WriteGuard,
+        scope: &TaskScope,
+    ) -> Result<(), StoreError> {
         if let TaskScope::Session(session_id) = scope {
-            if self.read_meta(session_id).await?.is_none() {
+            if self.read_meta_in_transaction(session_id).await?.is_none() {
                 return Err(StoreError::Io(format!(
                     "session {session_id} has no _meta.json; refusing to write tasks"
                 )));
@@ -347,10 +351,11 @@ impl SessionStore {
 
     async fn write_tasks_at_locked(
         &self,
-        guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         scope: &TaskScope,
         tasks: &[TaskItem],
     ) -> Result<(), StoreError> {
+        self.ensure_task_scope_writable(guard, scope).await?;
         let file = TasksFile {
             tasks: tasks.to_vec(),
         };

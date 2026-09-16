@@ -83,6 +83,7 @@ impl SessionStore {
     }
 
     pub async fn list_people(&self) -> Result<Vec<PersonItem>, StoreError> {
+        let _guard = self.lock_reads().await?;
         let mut people = self.read_people().await?;
         people.sort_by(|a, b| {
             a.name
@@ -104,7 +105,7 @@ impl SessionStore {
             return Err(StoreError::Io("person name cannot be empty".to_string()));
         }
 
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         let mut people = self.read_people().await?;
         let name_lower = name.to_lowercase();

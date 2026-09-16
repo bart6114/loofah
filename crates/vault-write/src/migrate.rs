@@ -12,12 +12,14 @@ pub struct MigrationReport {
 impl SessionStore {
     pub(super) async fn migrate_from_scan(
         &self,
-        _guard: &super::WriteGuard<'_>,
+        _guard: &super::WriteGuard,
         scan: &mut super::rebuild::SessionLayoutScan,
     ) -> MigrationReport {
         let vault = self.vault_base.clone();
         let mut snapshot = std::mem::take(scan);
+        let lease = _guard.clone();
         let result = tokio::task::spawn_blocking(move || {
+            let _lease = lease;
             let report = migrate_snapshot(&vault, &mut snapshot);
             (snapshot, report)
         })

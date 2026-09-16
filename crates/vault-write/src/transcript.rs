@@ -311,7 +311,7 @@ impl SessionStore {
 
         // One guard spans the "what's in the file today" read, the supersede-trash and the
         // rewrite, so a concurrent transcript write can't slip between them.
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         let previous = self.read_transcript_json(session_id).await?;
         let loses_content = previous
@@ -322,7 +322,9 @@ impl SessionStore {
             let vault_base = self.vault_base.clone();
             let session_dir = self.session_dir_locked(&guard, session_id).await?;
             let relative = paths::transcript_path_in(&session_dir);
+            let lease = guard.clone();
             tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+                let _lease = lease;
                 let abs = vault_base.join(relative);
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs)
                     .map(|_| ())
@@ -390,7 +392,7 @@ impl SessionStore {
             ))
         })?;
 
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
         // Land any still-dirty live buffer first (same snapshot/re-dirty contract as
         // flush_transcript, but under this guard): the rename must apply on top of every
@@ -537,7 +539,7 @@ impl SessionStore {
         // The lock spans the read *and* the write: `transcript.json` holds every transcript
         // of the session, so two concurrent persists that each read the file and write a
         // whole new one back would drop the loser's entry entirely.
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         self.persist_transcript_locked(
             &guard,
             session_id,
@@ -551,7 +553,7 @@ impl SessionStore {
 
     async fn persist_transcript_locked(
         &self,
-        guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         session_id: &str,
         transcript_id: &str,
         started_at_ms: f64,
@@ -591,7 +593,7 @@ impl SessionStore {
     /// and republish the full transcript list to the index.
     async fn write_transcript_json_locked(
         &self,
-        guard: &WriteGuard<'_>,
+        guard: &WriteGuard,
         session_id: &str,
         file: TranscriptJson,
     ) -> Result<(), StoreError> {

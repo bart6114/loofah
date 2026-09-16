@@ -166,7 +166,7 @@ async fn restore_returns_false_after_a_restart() {
 }
 
 #[tokio::test]
-async fn migration_preserves_every_byte_and_reuses_its_metadata_snapshot() {
+async fn migration_preserves_every_byte_and_rebuild_observes_later_metadata() {
     let (store, vault) = test_store().await;
     for (source, id, title) in [
         ("2026-09-15 — Planning — abcdef", ID, "Planning"),
@@ -209,8 +209,7 @@ async fn migration_preserves_every_byte_and_reuses_its_metadata_snapshot() {
     assert_eq!(startup.migration.renamed.len(), 2);
     assert!(startup.migration.failed.is_empty());
     assert_eq!(snapshot(&vault.path().join(CANONICAL_DIR)), before);
-    // Metadata is deliberately changed after the scan: the first rebuild consumes
-    // the original snapshot, while the next normal refresh sees the change.
+    // Metadata discovered before acquiring a session's read transaction may be stale.
     let mut changed = meta(ID, "changed after scan");
     changed.folder = Some("retain this metadata".into());
     std::fs::write(
@@ -222,7 +221,10 @@ async fn migration_preserves_every_byte_and_reuses_its_metadata_snapshot() {
         .rebuild_index_from_startup_layout(startup)
         .await
         .unwrap();
-    assert_eq!(store.session_get(ID).unwrap().meta.title, "Planning");
+    assert_eq!(
+        store.session_get(ID).unwrap().meta.title,
+        "changed after scan"
+    );
     assert_eq!(
         store.session_get(ID).unwrap().meta.folder.as_deref(),
         Some("retain this metadata")
@@ -580,11 +582,12 @@ async fn flat_layout_scale_measurement() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn startup_index_reuses_metadata_without_reading_it_again() {
+async fn startup_index_preserves_existing_metadata_when_a_fresh_read_fails() {
     use std::os::unix::fs::PermissionsExt;
     let (store, vault) = test_store().await;
     seed_session_at(vault.path(), "sessions/Readable", ID, "snapshot");
     let layout = store.normalize_startup_layout().await.unwrap();
+    store.refresh_session(ID).await.unwrap();
     let path = vault.path().join(CANONICAL_DIR).join("_meta.json");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0)).unwrap();
     let report = store
@@ -592,7 +595,8 @@ async fn startup_index_reuses_metadata_without_reading_it_again() {
         .await
         .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-    assert!(report.errors.is_empty(), "{:?}", report.errors);
-    assert_eq!(report.sessions, 1);
+    assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+    assert!(report.errors[0].contains("_meta.json"));
+    assert_eq!(report.sessions, 0);
     assert_eq!(store.session_get(ID).unwrap().meta.title, "snapshot");
 }

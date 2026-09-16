@@ -1,0 +1,19 @@
+{
+  "challenge": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "vault_id": "00000000-0000-4000-8000-000000000002",
+    "session_id": "session/quoted\"\\é",
+    "user_id": "user\n東京",
+    "kind": "enroll",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "public_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+    "authority": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+    "generation": "00000000-0000-4000-8000-000000000004",
+    "nonce": "abababababababababababababababababababababababababababababababab",
+    "expires_at": 1800000000000,
+    "consumed_at": null
+  },
+  "seed": "0707070707070707070707070707070707070707070707070707070707070707",
+  "payload_sha256": "cce048c7c314b5cd1fbccdec7f4e7c64fd097fc8f7b4af26e3923bb0af9fc470",
+  "signature": "1b89e87e18b25767673aa1cba03f4a96e0273197d554c25a4b1bad73a4be953c78b2505797b706811ae8355abc2c3edde99817f6290c91416d4a3f63fa5a0007"
+}

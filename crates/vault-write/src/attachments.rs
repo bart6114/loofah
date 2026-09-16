@@ -22,13 +22,15 @@ impl SessionStore {
         bytes: Vec<u8>,
     ) -> Result<SavedAttachment, StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let dir = self.session_dir_locked(&guard, id).await?;
 
         let relative_dir = dir.join("attachments");
         let abs_dir = self.vault_base.join(&relative_dir);
         let filename = filename.to_string();
+        let lease = guard.clone();
         let final_filename = tokio::task::spawn_blocking(move || {
+            let _lease = lease;
             std::fs::create_dir_all(&abs_dir)
                 .map_err(|e| StoreError::Io(format!("failed to create attachments dir: {e}")))?;
             let safe_filename = sanitize_filename(&filename)?;

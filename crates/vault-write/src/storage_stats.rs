@@ -149,6 +149,15 @@ fn scan(
             continue;
         };
         let path = entry.path();
+        if depth == 1
+            && (entry.file_name() == ".loofah-lock"
+                || entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".loofah-recording-"))
+        {
+            continue;
+        }
         let Ok(metadata) = fs::symlink_metadata(&path) else {
             stats.unreadable_entries += 1;
             continue;
@@ -337,7 +346,7 @@ mod tests {
                 .unwrap();
         }
         let store = SessionStore::new(vault.path().into());
-        let _write_guard = store.lock_writes().await;
+        let _write_guard = store.lock_writes().await.unwrap();
         let measured =
             tokio::time::timeout(Duration::from_secs(5), store.vault_storage_stats(false))
                 .await

@@ -13,7 +13,7 @@ impl SessionStore {
 
     pub(crate) async fn session_dir_locked(
         &self,
-        _guard: &WriteGuard<'_>,
+        _guard: &WriteGuard,
         id: &str,
     ) -> Result<PathBuf, StoreError> {
         if self.deleted_sessions.lock().unwrap().contains(id) {
@@ -33,24 +33,38 @@ impl SessionStore {
         self.active_recordings.lock().unwrap().contains_key(id)
     }
 
-    pub fn note_recording_active(&self, id: &str) {
+    pub fn note_recording_active(&self, id: &str) -> Result<(), StoreError> {
+        self.acquire_recording_lease(id)?;
         self.active_recordings
             .lock()
             .unwrap()
             .entry(id.to_string())
             .or_insert(1);
+        Ok(())
+    }
+
+    fn acquire_recording_lease(&self, id: &str) -> Result<(), StoreError> {
+        let mut leases = self.recording_leases.lock().unwrap();
+        if !leases.contains_key(id) {
+            let lease =
+                hypr_vault_read::transaction::VaultTransaction::recording(&self.vault_base, id)
+                    .map_err(|e| StoreError::Conflict(format!("cannot reserve recording: {e}")))?;
+            leases.insert(id.to_owned(), lease);
+        }
+        Ok(())
     }
 
     /// Count reservations so a failed duplicate start releases only its own attempt.
     /// The write lock also serializes acquisition with whole-vault relocation.
     pub async fn prepare_recording(&self, id: &str) -> Result<PathBuf, StoreError> {
         let dir = self.session_dir(id).await?;
-        let _guard = self.lock_writes().await;
+        let _guard = self.lock_writes().await?;
         self.ensure_ready()?;
-        self.read_meta(id).await?;
+        self.read_meta_in_transaction(id).await?;
         if self.deleted_sessions.lock().unwrap().contains(id) {
             return Err(StoreError::Io(format!("session {id} was deleted")));
         }
+        self.acquire_recording_lease(id)?;
         *self
             .active_recordings
             .lock()
@@ -62,7 +76,7 @@ impl SessionStore {
 
     pub async fn release_recording_prepare(&self, id: &str) -> Result<(), StoreError> {
         validate_session_id(id)?;
-        let _guard = self.lock_writes().await;
+        let _guard = self.lock_writes().await?;
         self.release_recording_reservation(id);
         Ok(())
     }
@@ -73,6 +87,7 @@ impl SessionStore {
             Some(count) if *count > 1 => *count -= 1,
             Some(_) => {
                 reservations.remove(id);
+                self.recording_leases.lock().unwrap().remove(id);
             }
             None => {}
         }
