@@ -490,7 +490,7 @@ const useHandleDetectEvents = (store: ListenerStore) => {
                 key: payload.key,
                 title: "Are you in a meeting?",
                 message: "",
-                timeout: { secs: 15, nanos: 0 },
+                timeout: { secs: 30, nanos: 0 },
                 source: {
                   type: "mic_detected",
                   app_names: payload.apps.map((app) =>

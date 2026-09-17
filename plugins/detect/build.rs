@@ -6,7 +6,6 @@ const COMMANDS: &[&str] = &[
     "list_default_ignored_bundle_ids",
     "get_preferred_languages",
     "get_current_locale_identifier",
-    "set_mic_active_threshold",
 ];
 
 fn main() {

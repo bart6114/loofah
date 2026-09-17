@@ -46,7 +46,6 @@ pub struct AppConfig {
     pub auto_summary_prompt: String,
     pub ignored_platforms: Vec<String>,
     pub included_platforms: Vec<String>,
-    pub mic_active_threshold: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_llm_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,7 +89,6 @@ impl Default for AppConfig {
             auto_summary_prompt: String::new(),
             ignored_platforms: Vec::new(),
             included_platforms: Vec::new(),
-            mic_active_threshold: 5.0,
             current_llm_provider: None,
             current_llm_model: None,
             current_stt_provider: None,
@@ -260,7 +258,6 @@ mod tests {
         let state = ConfigState::load_or_default(temp.path());
 
         assert_eq!(state.snapshot(), AppConfig::default());
-        assert_eq!(state.snapshot().mic_active_threshold, 5.0);
         assert_eq!(state.snapshot().transcription_timing, "live");
     }
 
@@ -273,7 +270,6 @@ mod tests {
             .set_values(values(&[
                 ("theme", json!("dark")),
                 ("transcription_timing", json!("batch")),
-                ("mic_active_threshold", json!(30)),
                 ("spoken_languages", json!(["en", "ko"])),
                 ("current_llm_provider", json!("openai")),
                 (
@@ -288,7 +284,6 @@ mod tests {
         assert_eq!(reloaded.snapshot(), state.snapshot());
         assert_eq!(reloaded.snapshot().theme, "dark");
         assert_eq!(reloaded.snapshot().transcription_timing, "batch");
-        assert_eq!(reloaded.snapshot().mic_active_threshold, 30.0);
         assert_eq!(reloaded.snapshot().spoken_languages, vec!["en", "ko"]);
         assert_eq!(
             reloaded.snapshot().current_llm_provider.as_deref(),
@@ -297,6 +292,33 @@ mod tests {
         assert_eq!(
             reloaded.snapshot().ai_providers["llm:openai"].base_url,
             "https://api.openai.com/v1"
+        );
+    }
+
+    #[tokio::test]
+    async fn retired_reminder_delay_is_preserved_as_unknown_config() {
+        let temp = tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("config.json"),
+            r#"{"mic_active_threshold":15,"theme":"dark"}"#,
+        )
+        .unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert_eq!(state.snapshot().extra["mic_active_threshold"], json!(15));
+        assert_eq!(state.snapshot().theme, "dark");
+        state
+            .set_values(values(&[("respect_dnd", json!(true))]))
+            .await
+            .unwrap();
+        let reloaded = ConfigState::load_or_default(temp.path());
+        assert_eq!(reloaded.snapshot().extra["mic_active_threshold"], json!(15));
+        assert!(reloaded.snapshot().respect_dnd);
+        assert!(
+            !serde_json::to_value(AppConfig::default())
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("mic_active_threshold")
         );
     }
 

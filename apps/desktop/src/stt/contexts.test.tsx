@@ -559,13 +559,14 @@ describe("ListenerProvider detect events", () => {
           { id: "pid:42", name: "Zoom" },
           { id: "us.zoom.xos", name: "Zoom" },
         ],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
     await vi.waitFor(() =>
       expect(showNotificationMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          timeout: { secs: 30, nanos: 0 },
           source: {
             type: "mic_detected",
             app_names: ["Zoom", "Zoom"],
@@ -607,7 +608,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "us.zoom.xos", name: "Zoom" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -635,7 +636,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "pid:42", name: "AV Capture" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -673,7 +674,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "/usr/libexec/avconferenced", name: "avconferenced" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -732,7 +733,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "com.microsoft.teams", name: "Microsoft Teams" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -782,7 +783,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "com.slack.Slack", name: "Slack" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -793,7 +794,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-2",
         apps: [{ id: "com.slack.Slack", name: "Slack" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -836,7 +837,7 @@ describe("ListenerProvider detect events", () => {
           { id: "pid:42", name: "Chrome Helper" },
           { id: "com.google.Chrome", name: "Google Chrome" },
         ],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -875,7 +876,7 @@ describe("ListenerProvider detect events", () => {
           { id: "pid:42", name: "Chrome Helper" },
           { id: "com.google.Chrome", name: "Google Chrome" },
         ],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -909,7 +910,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "us.zoom.xos", name: "Zoom" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 
@@ -1002,7 +1003,7 @@ describe("ListenerProvider detect events", () => {
         type: "micDetected",
         key: "mic-1",
         apps: [{ id: "com.google.Chrome", name: "Google Chrome" }],
-        duration_secs: 15,
+        duration_secs: 0,
       },
     });
 

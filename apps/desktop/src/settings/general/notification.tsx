@@ -26,13 +26,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@hypr/ui/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@hypr/ui/components/ui/select";
 import { Switch } from "@hypr/ui/components/ui/switch";
 import { cn } from "@hypr/utils";
 
@@ -56,7 +49,6 @@ export function NotificationSettingsView() {
     "respect_dnd",
     "ignored_platforms",
     "included_platforms",
-    "mic_active_threshold",
   ] as const);
 
   useMountEffect(() => {
@@ -104,7 +96,6 @@ export function NotificationSettingsView() {
       respect_dnd: configs.respect_dnd,
       ignored_platforms: configs.ignored_platforms,
       included_platforms: configs.included_platforms,
-      mic_active_threshold: configs.mic_active_threshold,
     },
     listeners: {
       onChange: async ({ formApi }) => {
@@ -117,7 +108,6 @@ export function NotificationSettingsView() {
         respect_dnd: value.respect_dnd,
         ignored_platforms: JSON.stringify(value.ignored_platforms),
         included_platforms: JSON.stringify(value.included_platforms),
-        mic_active_threshold: value.mic_active_threshold,
       });
     },
   });
@@ -187,42 +177,6 @@ export function NotificationSettingsView() {
 
             {field.state.value && (
               <div className="pt-2 pl-6">
-                <form.Field name="mic_active_threshold">
-                  {(thresholdField) => (
-                    <div className="mb-4 flex items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium">
-                          <Trans>Show reminder after</Trans>
-                        </h4>
-                        <p className="text-muted-foreground text-xs">
-                          <Trans>
-                            How long another app must use the microphone before
-                            showing a reminder
-                          </Trans>
-                        </p>
-                      </div>
-                      <Select
-                        value={String(thresholdField.state.value)}
-                        onValueChange={(v) =>
-                          thresholdField.handleChange(Number(v))
-                        }
-                      >
-                        <SelectTrigger className="w-[100px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="end">
-                          <SelectItem value="5">5 sec</SelectItem>
-                          <SelectItem value="10">10 sec</SelectItem>
-                          <SelectItem value="15">15 sec</SelectItem>
-                          <SelectItem value="30">30 sec</SelectItem>
-                          <SelectItem value="60">1 min</SelectItem>
-                          <SelectItem value="120">2 min</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </form.Field>
-
                 <div className="mb-3 flex flex-col gap-1">
                   <h4 className="text-sm font-medium">
                     <Trans>Don’t remind me for these apps</Trans>

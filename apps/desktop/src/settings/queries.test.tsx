@@ -52,7 +52,6 @@ function appConfig(overrides: Record<string, unknown> = {}) {
     auto_summary_prompt: "",
     ignored_platforms: [],
     included_platforms: [],
-    mic_active_threshold: 5,
     ai_providers: {},
     ...overrides,
   };
@@ -124,14 +123,14 @@ describe("config-backed settings", () => {
     });
   });
 
-  it("preserves a saved 15-second reminder delay after the default changes", async () => {
+  it("ignores a retired reminder delay from an existing vault", async () => {
     mocks.getConfig.mockResolvedValue({
       status: "ok",
       data: appConfig({ mic_active_threshold: 15 }),
     });
     const stored = await getStoredSettingValues();
-    expect(stored.values.mic_active_threshold).toBe(15);
-    expect(stored.hasValues.has("mic_active_threshold")).toBe(true);
+    expect(stored.values).not.toHaveProperty("mic_active_threshold");
+    expect([...stored.hasValues]).not.toContain("mic_active_threshold");
   });
 
   it("writes schema-typed JSON values in a single config call", async () => {
