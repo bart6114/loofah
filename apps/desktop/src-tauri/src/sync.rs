@@ -695,6 +695,7 @@ impl Runtime {
             None
         };
         remote.post::<serde_json::Value>("/enrollment/finish", &serde_json::json!({ "challenge": challenge.id(), "deviceSignature": challenge.sign_device(&pair).map_err(|e| e.to_string())?, "authoritySignature": approval })).await.map_err(|e| e.to_string())?;
+        self.account.as_mut().unwrap().account.enrollment_authority = Some(authority);
         let _ = tokio::fs::remove_file(self.root.join("pending-enrollment.json")).await;
         let connection = self.connection.as_ref().unwrap();
         let paused = connection.paused;
