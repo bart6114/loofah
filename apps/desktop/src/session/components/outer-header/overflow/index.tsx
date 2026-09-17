@@ -45,11 +45,15 @@ export function OverflowButton({
   standaloneWindow = false,
   sessionId,
   currentView,
+  beforeRestore,
+  afterRestore,
 }: {
   allowListening?: boolean;
   standaloneWindow?: boolean;
   sessionId: string;
   currentView: EditorView;
+  beforeRestore?: () => Promise<void>;
+  afterRestore?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -120,6 +124,8 @@ export function OverflowButton({
           entity={{ kind: "session", id: sessionId }}
           open={historyOpen}
           onOpenChange={setHistoryOpen}
+          beforeRestore={beforeRestore}
+          afterRestore={afterRestore}
         />
       )}
       <DropdownMenu open={open} onOpenChange={setOpen}>

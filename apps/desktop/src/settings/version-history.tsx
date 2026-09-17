@@ -24,10 +24,14 @@ export function VersionHistory({
   entity,
   open,
   onOpenChange,
+  beforeRestore,
+  afterRestore,
 }: {
   entity: SyncEntity;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  beforeRestore?: () => Promise<void>;
+  afterRestore?: () => Promise<void>;
 }) {
   const client = useQueryClient();
   const history = useInfiniteQuery({
@@ -48,9 +52,18 @@ export function VersionHistory({
       perform({ preview: { entity, revision } }),
   });
   const action = useMutation({
-    mutationFn: perform,
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: ["sync-history", entity] }),
+    mutationFn: async (value: SyncAction) => {
+      if (typeof value === "object" && "restore" in value) {
+        await beforeRestore?.();
+      }
+      return perform(value);
+    },
+    onSuccess: async (_, value) => {
+      await client.invalidateQueries({ queryKey: ["sync-history", entity] });
+      if (typeof value === "object" && "restore" in value) {
+        await afterRestore?.();
+      }
+    },
   });
   const versions =
     history.data?.pages.flatMap((page) => page?.versions ?? []) ?? [];

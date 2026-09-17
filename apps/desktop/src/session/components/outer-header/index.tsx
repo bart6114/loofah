@@ -24,12 +24,16 @@ export function OuterHeader({
   standaloneWindow = false,
   title,
   centerTitle = false,
+  beforeRestore,
+  afterRestore,
 }: {
   sessionId: string;
   currentView: EditorView;
   standaloneWindow?: boolean;
   title?: React.ReactNode;
   centerTitle?: boolean;
+  beforeRestore?: () => Promise<void>;
+  afterRestore?: () => Promise<void>;
 }) {
   const { leftsidebar } = useShell();
   const sessionMode = useListener((state) => state.getSessionMode(sessionId));
@@ -83,6 +87,8 @@ export function OuterHeader({
           standaloneWindow={standaloneWindow}
           sessionId={sessionId}
           currentView={currentView}
+          beforeRestore={beforeRestore}
+          afterRestore={afterRestore}
         />
       </div>
     </div>

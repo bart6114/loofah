@@ -35,14 +35,14 @@ Unchecked items are unverified, not completed.
 - [x] Concurrent signup cannot reuse invitations or exceed capacity.
 - [ ] Real staging browser signup, verification, login, resend and reset.
 - [ ] Both enrollment methods across two Macs, including cancellation, expiry, restart and Keychain failure.
-- [ ] Note edits reuse recordings; concurrent edits preserve both revisions; restore creates a new head.
+- [x] Note edits reuse recordings; concurrent edits preserve both revisions; restore creates a new head (two authenticated staging clients on this Mac).
 - [ ] Desktop/CLI creation, explicit deletion, global registry changes and excluded-file preservation.
 - [ ] Lost events, missing metadata, interrupted uploads/applies, disk exhaustion and changed recovery generations preserve content.
 - [ ] Full-quota deletion and metadata-only restore; logical purge frees quota without physical deletion.
 - [ ] Tampered ciphertext, unsafe paths, cross-account requests, replayed enrollment and revoked sessions are rejected.
-- [ ] Formatting, applicable TypeScript/Rust checks, cloud/runtime and integration tests.
-- [ ] Repeat representative 7.6 GB / 9,000-file restore fixture.
-- [ ] Recording, transcription and search responsiveness in the signed staging build.
+- [x] Formatting, applicable TypeScript/Rust checks, cloud/runtime and integration tests.
+- [x] Repeat representative 7.6 GB / 9,000-file restore fixture.
+- [x] Recording, transcription and search responsiveness in the signed staging build (synthetic 1,000-session vault; see evidence below).
 - [ ] Staging artifact, private invitation delivery and two-Mac walkthrough.
 
 ## Deferred gates
@@ -74,20 +74,29 @@ Production deployment, external invitations, account deletion, physical garbage 
 ### Verification evidence
 
 - Cloud TypeScript, account frontend production build, all 23 cloud tests and the Worker runtime test passed. Coverage includes invitation/cap concurrency, replay and revocation, activation retries, exact pairing approvals, bounded mailbox attempts, quota control operations, history pins and ciphertext retention.
-- All 1,357 existing desktop frontend tests passed. Four additional sync UI tests passed for explicit consent, cancellation during pending authorization, recovery choices and explicit global-conflict resolution.
-- CLI tests and the existing vault-write suite passed. Both staging and stable desktop Rust checks passed, as did desktop TypeScript and lint (warnings only). The desktop Rust suite passed 98 tests initially; two existing five-second Codex-version probes failed during heavy disk contention, then both passed isolated reruns (100 passed in total, one pre-existing ignored test). All 225 vault-write tests passed (one pre-existing ignored test), including unknown-field preservation and refusal to overwrite corrupt registries. All seven local-consistency tests passed. The representative restore fixture is still running; macOS loader and shared-cache filesystem delays are substantial. GitHub CI will provide an independent check before the signed staging build.
+- All 1,363 desktop frontend tests passed after the native QA fixes, including four sync UI tests and two restore-ordering/failure tests. Desktop TypeScript and both staging/stable Rust checks passed again for these fixes.
+- CLI tests and the existing vault-write suite passed. Both staging and stable desktop Rust checks passed, as did desktop TypeScript and lint (warnings only). The desktop Rust suite passed 98 tests initially; two existing five-second Codex-version probes failed during heavy disk contention, then both passed isolated reruns (100 passed in total, one pre-existing ignored test). All 225 vault-write tests passed (one pre-existing ignored test), including unknown-field preservation and refusal to overwrite corrupt registries. All seven local-consistency tests passed. The representative 7.6 GB / 9,000-file restore fixture passed, including excluded-file preservation. It took 3,528 seconds with deliberate pauses and substantial external-drive contention; this is correctness evidence, not a signed-app responsiveness result. GitHub CI passed for implementation commit `4676c6cf3`: formatting/lint, security workflow checks, CLI, desktop frontend and desktop/workspace Rust suites.
 - Two authenticated staging clients completed the real Magic Wormhole transport exchange on this Mac, including wrong-code rejection. All 23 final vault-sync unit tests passed, including persisted ciphertext/snapshot state across restart. The final two-replica staging integration passed creation, note editing with recording reuse, simultaneous edit preservation, resolution, preview, restore to a new head, explicit deletion, restoration after deletion and excluded-file preservation.
-- Physical Keychain failure/restart paths and recording/transcription/search responsiveness in the signed staging app are not yet accepted. Bart confirmed that a second Mac is unavailable; separate synthetic vaults and authenticated clients are integration evidence, not physical two-Mac acceptance.
+- Physical Keychain failure, disk exhaustion and two-Mac acceptance remain pending. Bart confirmed that a second Mac is unavailable; separate synthetic vaults and authenticated clients are integration evidence, not physical two-Mac acceptance. Native Keychain enrollment and restart succeeded in the signed build as detailed below.
+
+### Signed native QA — 17 September 2026
+
+The signed/notarized staging build from `4676c6cf3` was installed alongside normal Loofah. Checks used a disposable verified staging account and a separate synthetic 1,000-session vault; normal Loofah’s vault was untouched.
+
+- Native note creation, editing, search and restart persistence passed. Live recording and transcription passed while editing; a second recording remained usable during encrypted uploads with two transfers active. Importing a 25-second speech fixture produced a transcript, and transcript search found the expected phrase. Intelligence was disabled for this test.
+- Browser-code cancellation and API approval of the disposable account worked. Saving and reimporting the same recovery kit completed enrollment through native dialogs and Keychain. Pause, quit, restart and resume retained the account, enrolled device and pending work. This does not replace Bart’s real browser signup/login acceptance.
+- Native history preview and export passed. Restoring an earlier note preserved its unsynced edit as a separate version, committed a new head, and restored the original file. Exporting the preserved version recovered the unsynced marker. Global registries and excluded attachments were unchanged.
+- QA found and fixed a stale authorization code after cancellation, a missing cached authority immediately after first enrollment, a stale open editor after restore, and a Tantivy related-document panic when term counts included unmerged deletions. The latter has a regression test that failed before the fix; all 20 Tantivy unit tests and its integration test passed afterward. Restore now flushes pending editor writes and reloads the session/editor/audio player; focused tests cover the ordering and failed-write behavior. The corrected signed build still needs its targeted native recheck.
 
 ### Installation and two-Mac walkthrough
 
-The signed staging artifact link will be recorded after the branch workflow completes. This remains a draft staging milestone until the outstanding acceptance checks pass. Bart’s private invitation link was supplied in the conversation and expires on 24 September; it is not stored in git.
+The initial signed staging build completed at [workflow 35202201416](https://github.com/bart6114/loofah/actions/runs/35202201416), from implementation commit `4676c6cf3`. SHA-256, strict code-signature, Gatekeeper notarization and stapled-ticket checks passed for `io.loofah.staging`. A corrected artifact will replace it after the native QA fixes above. This remains a draft staging milestone until the outstanding acceptance checks pass. Bart’s private invitation link was supplied in the conversation and expires on 24 September; it is not stored in git.
 
 1. Install **Loofah Staging** alongside normal Loofah. Use a disposable vault or a copy of test data. Verify the selected vault path in Settings → Sync before connecting. Keep normal Loofah’s vault untouched.
 2. Open the private invitation, register `bartsmeets86@gmail.com`, verify the email and sign in. The Chrome signup handoff is waiting for Bart’s password entry. Verification resend and password reset should be tested through the browser; password reset does not restore encryption keys.
-3. On the first Mac, open Settings → Sync → Connect and approve its code in the browser. Save the recovery kit outside the vault, then reimport that exact file. Confirm enrollment and an initial successful sync.
+3. On the first Mac, open Settings → Sync → Connect and approve its code in the browser. Save the recovery kit outside the vault, then reimport that exact file. Confirm enrollment, click **Resume**, and wait for an initial successful sync.
 4. When a second Mac is available, install the same staging build and select a fresh disposable vault. Connect to the same account. Choose either **Import recovery kit…**, or **Pair with a trusted Mac** and enter the displayed code in the trusted Mac’s Sync settings. After pairing, resume synchronization where paused.
 5. Edit a note on each Mac while the other is paused, then resume both. Review and export both saved versions in the conflict controls, explicitly choose a version and verify both Macs converge. Confirm the recording object is reused for note-only edits.
 6. Open the session menu → Version history, preview an earlier version, export it, then restore it. Verify a new head appears, the old versions remain, global records are unchanged and missing references are visible. Deletion/restore currently has integration-test coverage; a deleted-session browser is not yet available in the desktop UI.
 7. Test pause/resume, cancellation, app restart, offline editing and reconnection. Delete only an explicitly selected test session; verify unknown attachments survive reconciliation. Revoke the second device and verify its session stops working.
-8. Keep the second-Mac, Keychain failure, disk exhaustion, lost-metadata and signed-build responsiveness checks unchecked until observed. Do not use this draft milestone for external invitations or production data.
+8. Keep the second-Mac, Keychain failure, disk exhaustion, lost-metadata checks unchecked until observed. Do not use this draft milestone for external invitations or production data.
