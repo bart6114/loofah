@@ -169,8 +169,15 @@ app.get("/api/account", async (context) => {
     return context.json({ error: "unauthorized" }, 401);
   await activateAccount(context.env.DB, session.user.id);
   const account =
-    await context.env.DB.prepare(`SELECT vault_id, quota_bytes, used_bytes, recovery_generation, enrollment_authority
-    FROM sync_accounts WHERE user_id = ? AND active = 1`)
+    await context.env.DB.prepare(`SELECT vault_id, quota_bytes, used_bytes, recovery_generation, enrollment_authority,
+      (SELECT COUNT(*) FROM sync_heads h JOIN sync_revisions r
+        ON r.vault_id = h.vault_id AND r.id = h.revision
+        WHERE h.vault_id = a.vault_id AND r.operation != 'delete') AS synced_items,
+      (SELECT COUNT(*) FROM sync_devices d
+        WHERE d.vault_id = a.vault_id AND d.revoked_at IS NULL) AS active_devices,
+      (SELECT created_at FROM sync_changes c WHERE c.vault_id = a.vault_id
+        ORDER BY sequence DESC LIMIT 1) AS last_change_at
+    FROM sync_accounts a WHERE user_id = ? AND active = 1`)
       .bind(session.user.id)
       .first();
   if (!account) return context.json({ error: "unavailable" }, 503);

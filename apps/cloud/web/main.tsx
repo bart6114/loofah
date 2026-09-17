@@ -354,7 +354,16 @@ function Account() {
   const account = useQuery({
     queryKey: ["account"],
     queryFn: () =>
-      api<{ account: { used_bytes: number; quota_bytes: number } }>("/account"),
+      api<{
+        account: {
+          used_bytes: number;
+          quota_bytes: number;
+          synced_items: number;
+          active_devices: number;
+          last_change_at: number | null;
+        };
+      }>("/account"),
+    refetchInterval: 30_000,
   });
   const sessions = useQuery({
     queryKey: ["sessions"],
@@ -389,7 +398,43 @@ function Account() {
         <h2>Sync storage</h2>
         <p className="usage">
           {(account.data.account.used_bytes / 1e9).toFixed(2)}{" "}
-          <small>/ 25 GB</small>
+          <small>
+            / {(account.data.account.quota_bytes / 1e9).toLocaleString()} GB
+          </small>
+        </p>
+        <progress
+          aria-label="Sync storage used"
+          max={account.data.account.quota_bytes}
+          value={account.data.account.used_bytes}
+        />
+        <dl className="sync-stats">
+          <div>
+            <dt>Synced items</dt>
+            <dd>{account.data.account.synced_items.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>Enrolled Macs</dt>
+            <dd>{account.data.account.active_devices.toLocaleString()}</dd>
+          </div>
+        </dl>
+        <p className="muted">
+          Items include sessions and shared people, tags and tasks records.
+          Deleted items are excluded. Your content stays encrypted.
+        </p>
+        <p>
+          <strong>Latest cloud update</strong>
+          <br />
+          {account.data.account.last_change_at === null ? (
+            "No changes uploaded yet"
+          ) : (
+            <time
+              dateTime={new Date(
+                account.data.account.last_change_at,
+              ).toISOString()}
+            >
+              {new Date(account.data.account.last_change_at).toLocaleString()}
+            </time>
+          )}
         </p>
         <p>
           Current content, retained history and unresolved conflicts share this
@@ -397,12 +442,12 @@ function Account() {
           deletion.
         </p>
         <p>
-          Mac sync is being prepared for the private beta. Account creation does
-          not upload content from your Mac.
+          Manage sync and your recovery kit in Loofah Staging → Settings → Sync.
+          This page updates every 30 seconds while open.
         </p>
       </section>
       <section>
-        <h2>Signed-in sessions</h2>
+        <h2>Account sign-ins</h2>
         {sessions.error && <p role="alert">Could not load sessions.</p>}
         <ul className="sessions">
           {sessions.data?.map(

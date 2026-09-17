@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, test } from "node:test";
 
 import worker from "../src/index.ts";
@@ -12,51 +10,14 @@ import {
   HISTORY_MS,
   RECOVERY_RETENTION_MS,
 } from "../src/storage.ts";
+import { database as createDatabase } from "./database.js";
 
 const databases = [];
 afterEach(() => databases.splice(0).forEach((db) => db.close()));
 
 function database() {
-  const sql = new DatabaseSync(":memory:");
+  const { sql, db } = createDatabase();
   databases.push(sql);
-  const directory = new URL("../migrations/", import.meta.url);
-  for (const file of readdirSync(directory)
-    .filter((name) => name.endsWith(".sql"))
-    .sort()) {
-    sql.exec(readFileSync(new URL(file, directory), "utf8"));
-  }
-  const db = {
-    prepare(query) {
-      const statement = (args = []) => ({
-        bind: (...values) => statement(values),
-        first: async () => sql.prepare(query).get(...args) ?? null,
-        all: async () => ({
-          results: sql.prepare(query).all(...args),
-          success: true,
-        }),
-        run: async () => ({
-          meta: sql.prepare(query).run(...args),
-          success: true,
-        }),
-        execute: () => ({
-          meta: sql.prepare(query).run(...args),
-          success: true,
-        }),
-      });
-      return statement();
-    },
-    async batch(statements) {
-      sql.exec("BEGIN IMMEDIATE");
-      try {
-        const result = statements.map((statement) => statement.execute());
-        sql.exec("COMMIT");
-        return result;
-      } catch (error) {
-        sql.exec("ROLLBACK");
-        throw error;
-      }
-    },
-  };
   const principal = {
     vault: randomUUID(),
     device: randomUUID(),
@@ -380,4 +341,107 @@ test("resolution preserves both versions for history and failed CAS cannot unpin
     f.sql.prepare("SELECT count(*) AS n FROM sync_changes").get().n,
     3,
   );
+});
+
+test("account summary counts current items and active devices only within the signed-in vault", async () => {
+  const f = database();
+  const other = {
+    vault: randomUUID(),
+    device: randomUUID(),
+    generation: randomUUID(),
+  };
+  const user = f.sql
+    .prepare("SELECT user_id FROM sync_accounts WHERE vault_id = ?")
+    .get(f.principal.vault).user_id;
+  const email = `${user}@example.test`;
+  f.sql
+    .prepare(
+      "INSERT INTO sync_invitations (id,email,expires_at) VALUES (?,?,?)",
+    )
+    .run("e".repeat(64), email, Date.now() + 60_000);
+  f.sql
+    .prepare(
+      "INSERT INTO user (id,name,email,emailVerified,createdAt,updatedAt,invitationHash) VALUES (?,'Test',?,1,?,?,?)",
+    )
+    .run(user, email, f.now, f.now, "e".repeat(64));
+  f.sql
+    .prepare(
+      "INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES (?,?,?,?,?,?)",
+    )
+    .run(
+      randomUUID(),
+      "account-summary-test",
+      user,
+      f.now + 60_000,
+      f.now,
+      f.now,
+    );
+  f.sql
+    .prepare(
+      "INSERT INTO sync_accounts (vault_id,user_id,recovery_generation) VALUES (?,?,?)",
+    )
+    .run(other.vault, randomUUID(), other.generation);
+  const env = {
+    DB: f.db,
+    AUTH_SECRET: "account-summary-only-000000000000000000000000",
+    EMAIL_JOB_KEY: "00".repeat(32),
+    ACCOUNT_ORIGIN: "https://account.example.com",
+    SIGNUP_OPEN: "false",
+  };
+  const request = (token = "account-summary-test") =>
+    worker.fetch(
+      new Request(`${env.ACCOUNT_ORIGIN}/api/account`, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      env,
+      { waitUntil() {} },
+    );
+  const summary = async () => {
+    const response = await request();
+    assert.equal(response.status, 200, await response.clone().text());
+    const { account } = await response.json();
+    return [
+      account.synced_items,
+      account.active_devices,
+      account.last_change_at,
+    ];
+  };
+  assert.equal((await request("invalid")).status, 401);
+  assert.deepEqual(await summary(), [0, 0, null]);
+  const first = await f.revision([]);
+  const edited = await f.revision([], first.id, "checkpoint", f.now + 1);
+  await f.revision([], edited.id, "conflict", f.now + 2);
+  for (const [vault, revoked] of [
+    [f.principal.vault, null],
+    [f.principal.vault, f.now],
+    [other.vault, null],
+  ]) {
+    f.sql
+      .prepare(
+        "INSERT INTO sync_devices (vault_id,id,public_key,enrolled_at,revoked_at) VALUES (?,?,?,?,?)",
+      )
+      .run(vault, randomUUID(), "a".repeat(64), f.now, revoked);
+  }
+  const globalManifest = await f.object("manifest", 10);
+  await f.store.commit(
+    {
+      id: randomUUID(),
+      entity: "c".repeat(64),
+      expected: null,
+      manifest: globalManifest.id,
+      operation: "checkpoint",
+      objects: [],
+    },
+    f.now + 3,
+  );
+  f.sql
+    .prepare(
+      "INSERT INTO sync_changes (vault_id,entity,revision,operation,created_at) VALUES (?,?,?,?,?)",
+    )
+    .run(other.vault, "d".repeat(64), randomUUID(), "checkpoint", f.now + 100);
+  assert.deepEqual(await summary(), [2, 1, f.now + 3]);
+  const deleted = await f.revision([], edited.id, "delete", f.now + 4);
+  assert.deepEqual(await summary(), [1, 1, f.now + 4]);
+  await f.revision([], deleted.id, "restore", f.now + 5);
+  assert.deepEqual(await summary(), [2, 1, f.now + 5]);
 });
