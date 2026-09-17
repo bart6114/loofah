@@ -4,9 +4,10 @@ import { test } from "node:test";
 
 import { activateAccount, createAuth } from "../src/auth.ts";
 import { openJob, sha256 } from "../src/jobs.ts";
+import { approveDevice } from "../web/api.ts";
 import { database } from "./database.js";
 
-test("native D1 auth requires an email-bound invitation, activates once after verification, and reset revokes sessions", async () => {
+test("native D1 auth requires an email-bound invitation, activates once, approves browser device login, and reset revokes sessions", async (t) => {
   const { sql, db } = database();
   try {
     const origin = "https://account.example.com";
@@ -83,6 +84,68 @@ test("native D1 auth requires an email-bound invitation, activates once after ve
     const login = await request("/sign-in/email", details);
     assert.equal(login.status, 200, await login.clone().text());
     assert.equal(sql.prepare("SELECT count(*) AS n FROM session").get().n, 1);
+    const cookie = login.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    assert.ok(cookie.includes("session_token="));
+    const device = await request("/device/code", { client_id: "loofah-macos" });
+    assert.equal(device.status, 200, await device.clone().text());
+    const code = await device.json();
+    const unclaimed = await request(
+      "/device/approve",
+      { userCode: code.user_code },
+      { cookie },
+    );
+    assert.equal(unclaimed.status, 400);
+    assert.match((await unclaimed.json()).error_description, /claim/i);
+    const browserFetch = t.mock.method(globalThis, "fetch", (path, options) => {
+      assert.equal(options.credentials, "same-origin");
+      return auth.handler(
+        new Request(`${origin}${path}`, {
+          ...options,
+          headers: { ...options.headers, cookie, origin },
+        }),
+      );
+    });
+    try {
+      assert.deepEqual(await approveDevice(code.user_code), { success: true });
+      const granted = await request("/device/token", {
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: "loofah-macos",
+        device_code: code.device_code,
+      });
+      assert.equal(granted.status, 200, await granted.clone().text());
+      const access = await granted.json();
+      assert.ok(access.access_token);
+      const connected = await auth.api.getSession({
+        headers: new Headers({
+          authorization: `Bearer ${access.access_token}`,
+        }),
+      });
+      assert.equal(connected.user.id, user.id);
+      await assert.rejects(approveDevice(code.user_code));
+      await assert.rejects(approveDevice("INVALID-CODE"), /invalid/i);
+      const expiring = await request("/device/code", {
+        client_id: "loofah-macos",
+      });
+      const expired = await expiring.json();
+      sql
+        .prepare("UPDATE deviceCode SET expiresAt = 0 WHERE userCode = ?")
+        .run(expired.user_code);
+      await assert.rejects(
+        approveDevice(expired.user_code),
+        /expired.*connect again/,
+      );
+      sql
+        .prepare(
+          "UPDATE deviceCode SET expiresAt = ?, userId = ? WHERE userCode = ?",
+        )
+        .run(Date.now() + 60_000, "another-account", expired.user_code);
+      await assert.rejects(approveDevice(expired.user_code), /another account/);
+    } finally {
+      browserFetch.mock.restore();
+    }
     const reset = await request("/request-password-reset", {
       email: details.email,
       redirectTo: `${origin}/reset-password`,

@@ -108,3 +108,11 @@ This remains a draft staging milestone until the outstanding acceptance checks p
 6. Open the session menu → Version history, preview an earlier version, export it, then restore it. Verify a new head appears, the old versions remain, global records are unchanged and missing references are visible. Deletion/restore currently has integration-test coverage; a deleted-session browser is not yet available in the desktop UI.
 7. Test pause/resume, cancellation, app restart, offline editing and reconnection. Delete only an explicitly selected test session; verify unknown attachments survive reconciliation. Revoke the second device and verify its session stops working.
 8. Keep the second-Mac, Keychain failure, disk exhaustion and lost-metadata checks unchecked until observed. Do not use this draft milestone for external invitations or production data.
+
+### Browser Mac approval correction — 17 September 2026
+
+- Bart completed invited signup and browser login. Gmail received the verification message from `accounts@notify.loofah.io` at 11:20 UTC, and the authenticated account page showed its 25 GB allocation. Browser resend and password reset remain unverified.
+- The browser approval form omitted Better Auth's required code claim before approval. It now claims the code with the signed-in browser session before submitting approval; expired and wrong-account codes have actionable messages, and OAuth error descriptions no longer become a generic failure.
+- The real Better Auth regression test reproduces the unclaimed-code rejection, exercises the browser helper with a signed session cookie through approval and desktop token issuance, and rejects reused, invalid, expired and other-account codes.
+- All 23 cloud tests, the Worker runtime test, workspace TypeScript checks, frontend build and formatting passed. Staging deployment `1beca219-f557-4e0c-9329-0d27fa8ad5d4` contains the fix; the installed DMG does not need updating.
+- Retried through the installed Loofah Staging app and Bart's logged-in browser. The browser displayed “Login approved. Return to Loofah on your Mac to finish device enrollment.” The desktop received the session and advanced to “Save your recovery kit,” showing 0.00 GB of 25 GB used. Recovery-kit saving/reimport and enrollment remain with Bart; no upload was started.

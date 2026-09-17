@@ -11,6 +11,8 @@ import {
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
+import { api, approveDevice } from "./api";
+
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
 });
@@ -20,50 +22,6 @@ const invitation =
   new URLSearchParams(location.hash.slice(1)).get("invitation") ?? "";
 if (resetToken || invitation)
   window.history.replaceState({}, "", location.pathname);
-
-async function api<T = unknown>(
-  path: string,
-  body?: unknown,
-  headers?: Record<string, string>,
-): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    credentials: "same-origin",
-    headers: {
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      ...headers,
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const value = await response.json();
-  if (!response.ok)
-    throw new Error(
-      value.message ??
-        (
-          {
-            signup_closed:
-              "Signup is paused. Existing accounts can still sign in.",
-            invitation_invalid:
-              "This invitation is invalid or has been revoked. Ask for a new invitation.",
-            invitation_expired:
-              "This invitation has expired. Ask for a new invitation.",
-            invitation_consumed:
-              "This invitation has already been used. Sign in or request another verification email below.",
-            invitation_email:
-              "Use the email address your invitation was issued to.",
-            capacity_reached:
-              "The private beta is full. Your invitation has not been consumed. Please try again later.",
-            challenge_required: "Complete the security check.",
-            challenge_failed: "The security check expired. Try again.",
-            rate_limited: "Too many attempts. Wait a minute and try again.",
-            unauthorized: "Sign in to continue.",
-            maintenance: "Account service is temporarily unavailable.",
-          } as Record<string, string>
-        )[value.error] ??
-        "This request could not be completed. Please try again.",
-    );
-  return value as T;
-}
 
 declare global {
   interface Window {
@@ -215,7 +173,7 @@ function AccountForm({
             revokeOtherSessions: true,
           });
         case "device":
-          return api("/auth/device/approve", { userCode: value.userCode });
+          return approveDevice(value.userCode);
       }
     },
     onSuccess: async () => {
