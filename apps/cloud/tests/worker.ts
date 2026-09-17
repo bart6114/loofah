@@ -1,11 +1,69 @@
+import cloud, { type Environment } from "../src/index.ts";
+export { PairingMailbox } from "../src/pairing.ts";
 import { createAuth } from "../src/auth.ts";
 import { ObjectStorage, PART_BYTES } from "../src/objects.ts";
 import { password } from "../src/password.ts";
 import { VaultStorage } from "../src/storage.ts";
 
 export default {
-  async fetch(request: Request, env: { DB: D1Database; VAULT: R2Bucket }) {
+  async fetch(
+    request: Request,
+    env: { DB: D1Database; VAULT: R2Bucket; PAIRING: DurableObjectNamespace },
+    context: ExecutionContext,
+  ) {
     const action = new URL(request.url).pathname;
+    if (action === "/pairing-health") {
+      const user = crypto.randomUUID(),
+        session = crypto.randomUUID(),
+        token = crypto.randomUUID();
+      const email = `${user}@example.test`,
+        invite = "f".repeat(64),
+        now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO sync_invitations (id,email,expires_at) VALUES (?,?,?)",
+        ).bind(invite, email, now + 60_000),
+        env.DB.prepare(
+          "INSERT INTO user (id,name,email,emailVerified,createdAt,updatedAt,invitationHash) VALUES (?,'Pairing runtime',?,1,?,?,?)",
+        ).bind(user, email, now, now, invite),
+        env.DB.prepare(
+          "INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES (?,?,?,?,?,?)",
+        ).bind(session, token, user, now + 60_000, now, now),
+        env.DB.prepare(
+          "INSERT INTO sync_accounts (vault_id,user_id,recovery_generation) VALUES (?,?,?)",
+        ).bind(crypto.randomUUID(), user, crypto.randomUUID()),
+      ]);
+      const response = await cloud.fetch(
+        new Request("https://staging-app.loofah.io/api/pairing/mailbox", {
+          headers: { authorization: `Bearer ${token}`, Upgrade: "websocket" },
+        }),
+        {
+          ...env,
+          PAIRING: new Proxy(env.PAIRING, {
+            get(target, property) {
+              if (property === "jurisdiction")
+                return (jurisdiction: string) => {
+                  if (jurisdiction !== "eu")
+                    throw new Error("Pairing must request EU jurisdiction");
+                  return target;
+                };
+              const value = Reflect.get(target, property, target);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          }),
+          AUTH_SECRET: "runtime-test-only-0000000000000000000000000",
+          EMAIL_JOB_KEY: "00".repeat(32),
+          ACCOUNT_ORIGIN: "https://staging-app.loofah.io",
+          SIGNUP_OPEN: "false",
+        } as Environment,
+        context,
+      );
+      if (response.status !== 101 || !response.webSocket)
+        throw new Error(`Pairing upgrade failed: ${response.status}`);
+      response.webSocket.accept();
+      response.webSocket.close(1000, "Test completed");
+      return Response.json({ upgraded: true });
+    }
     if (action === "/auth-health") {
       const auth = createAuth({
         DB: env.DB,
@@ -145,4 +203,8 @@ export default {
       rejected,
     });
   },
-} satisfies ExportedHandler<{ DB: D1Database; VAULT: R2Bucket }>;
+} satisfies ExportedHandler<{
+  DB: D1Database;
+  VAULT: R2Bucket;
+  PAIRING: DurableObjectNamespace;
+}>;

@@ -2,6 +2,7 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { bearer, deviceAuthorization } from "better-auth/plugins";
 
+import { invitationStatus } from "./invitations.ts";
 import { DurableJobs, sealJob, sha256 } from "./jobs.ts";
 import { password } from "./password.ts";
 
@@ -99,12 +100,8 @@ export function authOptions(env: AuthEnvironment) {
               });
             }
             const hash = await sha256(token);
-            const invitation =
-              await env.DB.prepare(`SELECT id FROM sync_invitations WHERE id = ?
-              AND email = ? AND consumed_user IS NULL AND expires_at > ?`)
-                .bind(hash, user.email.trim().toLowerCase(), Date.now())
-                .first();
-            if (!invitation)
+            const status = await invitationStatus(env.DB, token, user.email);
+            if (status)
               throw new APIError("FORBIDDEN", {
                 message: "A valid invitation is required.",
               });

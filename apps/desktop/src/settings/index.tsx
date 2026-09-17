@@ -6,6 +6,7 @@ import {
   SettingsPermissions,
   SettingsStorage,
 } from "./general";
+import { SettingsSync } from "./sync";
 
 import { SettingsHydrationBoundary } from "~/settings/hydration-boundary";
 import {
@@ -56,6 +57,8 @@ function SettingsView({ tab }: { tab: Extract<Tab, { type: "settings" }> }) {
     switch (activeTab) {
       case "app":
         return <SettingsApp />;
+      case "sync":
+        return <SettingsSync />;
       case "storage":
         return <SettingsStorage />;
       case "notifications":

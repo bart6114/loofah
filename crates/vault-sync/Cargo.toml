@@ -5,9 +5,12 @@ edition = "2024"
 
 [dependencies]
 fs2 = "0.4.3"
+futures-util = { workspace = true, features = ["sink"] }
 hypr-storage = { workspace = true }
 libsodium-rs = "=0.2.4"
+magic-wormhole = { version = "=0.8.1", default-features = false }
 reqwest = { workspace = true, features = ["json", "stream"] }
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 unicode-normalization = { workspace = true }
 zeroize = "1.8"
 
@@ -18,7 +21,7 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync", "macros", "time", "fs", "io-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros", "time", "fs", "io-util", "net"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

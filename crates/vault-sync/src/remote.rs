@@ -137,8 +137,43 @@ impl BrowserLogin {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct ProgressSnapshot {
+    pub active: usize,
+    pub completed: u64,
+    pub total: u64,
+}
+#[derive(Clone, Default)]
+pub struct TransferProgress(std::sync::Arc<std::sync::Mutex<ProgressSnapshot>>);
+impl TransferProgress {
+    pub fn snapshot(&self) -> ProgressSnapshot {
+        *self.0.lock().unwrap()
+    }
+    fn begin(&self, total: u64) -> ProgressGuard {
+        let mut progress = self.0.lock().unwrap();
+        if progress.active == 0 {
+            progress.completed = 0;
+            progress.total = 0;
+        }
+        progress.active += 1;
+        progress.total = progress.total.saturating_add(total);
+        ProgressGuard(self.clone())
+    }
+    fn advance(&self, bytes: u64) {
+        let mut progress = self.0.lock().unwrap();
+        progress.completed = progress.completed.saturating_add(bytes);
+    }
+}
+struct ProgressGuard(TransferProgress);
+impl Drop for ProgressGuard {
+    fn drop(&mut self) {
+        self.0.0.lock().unwrap().active -= 1;
+    }
+}
+
 #[derive(Clone)]
 pub struct RemoteClient {
+    progress: TransferProgress,
     client: Client,
     environment: Environment,
 }
@@ -166,6 +201,10 @@ pub enum Operation {
 }
 
 impl RemoteClient {
+    pub fn with_progress(mut self, progress: TransferProgress) -> Self {
+        self.progress = progress;
+        self
+    }
     pub fn new(
         environment: Environment,
         credential: &str,
@@ -185,6 +224,7 @@ impl RemoteClient {
         }
         Ok(Self {
             client: client(headers)?,
+            progress: TransferProgress::default(),
             environment,
         })
     }
@@ -195,6 +235,10 @@ impl RemoteClient {
 
     pub async fn post<T: DeserializeOwned>(&self, path: &str, body: &impl Serialize) -> Result<T> {
         json(self.client.post(self.url(path)?).json(body).send().await?).await
+    }
+
+    pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        json(self.client.delete(self.url(path)?).send().await?).await
     }
 
     pub async fn commit(&self, revision: &Revision) -> Result<()> {
@@ -267,6 +311,7 @@ impl RemoteClient {
         bytes: u64,
         mut reader: impl tokio::io::AsyncRead + Unpin,
     ) -> Result<()> {
+        let _progress = self.progress.begin(bytes);
         if bytes <= MULTIPART_BYTES as u64 {
             let mut body = vec![0; bytes as usize];
             reader.read_exact(&mut body).await?;
@@ -277,6 +322,7 @@ impl RemoteClient {
                 .send()
                 .await?;
             json::<serde_json::Value>(response).await?;
+            self.progress.advance(bytes);
             return Ok(());
         }
         #[derive(Deserialize)]
@@ -297,6 +343,7 @@ impl RemoteClient {
             )
             .await?;
         if state.complete {
+            self.progress.advance(bytes);
             return Ok(());
         }
         let count = bytes.div_ceil(MULTIPART_BYTES as u64);
@@ -310,6 +357,7 @@ impl RemoteClient {
                 if part.bytes != size as u64 || part.digest != digest {
                     return Err(Error::Authentication);
                 }
+                self.progress.advance(size as u64);
                 continue;
             }
             let response = self
@@ -320,6 +368,7 @@ impl RemoteClient {
                 .send()
                 .await?;
             json::<serde_json::Value>(response).await?;
+            self.progress.advance(size as u64);
         }
         self.post::<serde_json::Value>(
             &format!("/sync/objects/{id}/complete"),
@@ -335,6 +384,7 @@ impl RemoteClient {
         expected: &FileDigest,
         directory: &Path,
     ) -> Result<tempfile::TempPath> {
+        let _progress = self.progress.begin(expected.bytes);
         if fs2::available_space(directory)? < expected.bytes.saturating_add(16 * 1024 * 1024) {
             return Err(Error::DiskFull);
         }
@@ -363,6 +413,7 @@ impl RemoteClient {
             }
             hasher.update(&chunk);
             output.write_all(&chunk).await?;
+            self.progress.advance(chunk.len() as u64);
         }
         if length != expected.bytes || hex(&hasher.finalize()) != expected.sha256 {
             return Err(Error::Authentication);

@@ -12,9 +12,11 @@
   "limits": {
     "cpu_ms": 30000,
   },
+  "migrations": [{ "tag": "pairing-v1", "new_sqlite_classes": ["PairingMailbox"] }],
   "env": {
     "staging": {
       "name": "loofah-sync-staging",
+      "durable_objects": { "bindings": [{ "name": "PAIRING", "class_name": "PairingMailbox" }] },
       "routes": [
         {
           "pattern": "staging-app.loofah.io",
@@ -23,7 +25,7 @@
       ],
       "vars": {
         "ACCOUNT_ORIGIN": "https://staging-app.loofah.io",
-        "SIGNUP_OPEN": "false",
+        "SIGNUP_OPEN": "true",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAE5QuLmYs4lW0_n_",
       },
       "d1_databases": [

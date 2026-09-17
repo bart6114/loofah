@@ -41,6 +41,18 @@ async function api<T = unknown>(
       value.message ??
         (
           {
+            signup_closed:
+              "Signup is paused. Existing accounts can still sign in.",
+            invitation_invalid:
+              "This invitation is invalid or has been revoked. Ask for a new invitation.",
+            invitation_expired:
+              "This invitation has expired. Ask for a new invitation.",
+            invitation_consumed:
+              "This invitation has already been used. Sign in or request another verification email below.",
+            invitation_email:
+              "Use the email address your invitation was issued to.",
+            capacity_reached:
+              "The private beta is full. Your invitation has not been consumed. Please try again later.",
             challenge_required: "Complete the security check.",
             challenge_failed: "The security check expired. Try again.",
             rate_limited: "Too many attempts. Wait a minute and try again.",
@@ -296,7 +308,25 @@ function AccountForm({
             Password changed. <a href="/login">Sign in</a> to continue.
           </>
         ) : (
-          "Check your inbox. If this request is eligible, a link will arrive shortly."
+          <>
+            <p>
+              Check your inbox. If this request is eligible, a link will arrive
+              shortly.
+            </p>
+            <p>Delivery can take a few minutes. Check your spam folder too.</p>
+            <a
+              href={
+                kind === "forgot" ? "/forgot-password" : "/resend-verification"
+              }
+            >
+              Request another email
+            </a>
+            {kind !== "forgot" && (
+              <p>
+                <a href="/login">Already verified? Sign in</a>
+              </p>
+            )}
+          </>
         )}
       </div>
     );
@@ -560,10 +590,18 @@ function App() {
           </nav>
         )}
         {page[1] === "signup" && (
-          <p className="muted">
-            Sync is optional. You can continue using Loofah offline without an
-            account.
-          </p>
+          <>
+            <p className="muted">
+              Sync is optional. You can continue using Loofah offline without an
+              account.
+            </p>
+            <nav className="form-links">
+              <a href="/login">Already registered? Sign in</a>
+              <a href="/resend-verification">
+                Waiting for verification? Send another email
+              </a>
+            </nav>
+          </>
         )}
       </>
     ) : (

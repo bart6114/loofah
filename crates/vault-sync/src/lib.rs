@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 
 pub mod crypto;
+pub mod engine;
 pub mod enrollment;
 #[cfg(target_os = "macos")]
 pub mod keychain;
+pub mod pairing;
 pub mod remote;
 pub mod replica;
 pub mod scheduler;

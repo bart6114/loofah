@@ -45,6 +45,7 @@ export async function createChallenge(
     device: string;
     publicKey: string;
     authority: string;
+    pairing?: boolean;
   },
   now = Date.now(),
 ) {
@@ -100,8 +101,8 @@ export async function createChallenge(
   };
   await db
     .prepare(`INSERT INTO sync_enrollment_challenges
-    (id, vault_id, session_id, user_id, kind, device_id, public_key, authority, generation, nonce, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    (id, vault_id, session_id, user_id, kind, device_id, public_key, authority, generation, nonce, expires_at, pairing_required)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(
       challenge.id,
       challenge.vault_id,
@@ -114,6 +115,7 @@ export async function createChallenge(
       challenge.generation,
       nonce,
       challenge.expires_at,
+      input.pairing === true ? 1 : 0,
     )
     .run();
   return challenge;
@@ -214,4 +216,44 @@ async function verify(
   } catch {
     return false;
   }
+}
+
+export async function approvePairing(
+  db: D1Database,
+  user: string,
+  session: string,
+  input: { challenge: string; authoritySignature: string },
+  now = Date.now(),
+) {
+  const approver = await boundDevice(db, user, session);
+  const challenge = await db
+    .prepare(
+      "SELECT * FROM sync_enrollment_challenges WHERE id = ? AND user_id = ? AND pairing_required = 1 AND consumed_at IS NULL AND approver_session IS NULL",
+    )
+    .bind(input.challenge, user)
+    .first<EnrollmentChallenge>();
+  if (
+    !approver ||
+    !challenge ||
+    challenge.kind !== "enroll" ||
+    challenge.session_id === session ||
+    challenge.expires_at <= now ||
+    challenge.vault_id !== approver.vault ||
+    challenge.generation !== approver.generation ||
+    !(await verify(
+      challenge.authority,
+      input.authoritySignature,
+      enrollmentPayload(challenge),
+    ))
+  )
+    throw new EnrollmentError("pairing approval unavailable");
+  const result = await db
+    .prepare(
+      "UPDATE sync_enrollment_challenges SET approver_session = ? WHERE id = ? AND consumed_at IS NULL AND approver_session IS NULL",
+    )
+    .bind(session, challenge.id)
+    .run();
+  if (result.meta.changes !== 1)
+    throw new EnrollmentError("pairing approval unavailable");
+  return { approved: true };
 }

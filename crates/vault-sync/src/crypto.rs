@@ -37,6 +37,8 @@ pub struct FileObject {
 #[serde(deny_unknown_fields)]
 pub struct EncryptedManifest {
     pub vault: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captured_at: Option<u64>,
     pub manifest: Manifest,
     pub objects: BTreeMap<String, FileObject>,
 }
@@ -234,6 +236,10 @@ impl VaultKey {
                 return Err(Error::Authentication);
             }
         }
+        let captured_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         let mut objects = BTreeMap::new();
         let mut new_objects = BTreeMap::new();
         for (name, digest) in &snapshot.manifest().files {
@@ -252,6 +258,7 @@ impl VaultKey {
         }
         let manifest = EncryptedManifest {
             vault: self.vault,
+            captured_at: Some(captured_at),
             manifest: snapshot.manifest().clone(),
             objects,
         };

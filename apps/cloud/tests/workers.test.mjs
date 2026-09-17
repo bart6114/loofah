@@ -41,6 +41,9 @@ test(
       const auth = await worker.fetch("/auth-health");
       assert.equal(auth.status, 200, await auth.clone().text());
       assert.deepEqual(await auth.json(), { session: null });
+      const pairing = await worker.fetch("/pairing-health");
+      assert.equal(pairing.status, 200, await pairing.clone().text());
+      assert.deepEqual(await pairing.json(), { upgraded: true });
       const password = await worker.fetch("/password");
       assert.equal(password.status, 200, await password.clone().text());
       const benchmark = await password.json();

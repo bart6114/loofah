@@ -23,15 +23,23 @@ pub struct FileDigest {
 pub struct Manifest {
     pub version: u32,
     pub entity: Entity,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deleted: bool,
     pub files: BTreeMap<String, FileDigest>,
 }
 
 impl Manifest {
     pub fn validate(&self) -> Result<()> {
         self.entity.root()?;
-        if self.version != PROTOCOL_VERSION || self.files.is_empty() || self.files.len() > MAX_FILES
-        {
+        if self.version != PROTOCOL_VERSION || self.files.len() > MAX_FILES {
             return Err(Error::Invalid("unsupported or incomplete manifest".into()));
+        }
+        if self.deleted {
+            return if self.files.is_empty() {
+                Ok(())
+            } else {
+                Err(Error::Invalid("tombstone contains files".into()))
+            };
         }
         let mut names = std::collections::BTreeSet::new();
         for (path, digest) in &self.files {
@@ -87,6 +95,38 @@ impl Snapshot {
             stamps: BTreeMap::new(),
         })
     }
+    pub fn tombstone(entity: Entity, spool: &Path) -> Result<Self> {
+        let manifest = Manifest {
+            version: PROTOCOL_VERSION,
+            entity,
+            deleted: true,
+            files: BTreeMap::new(),
+        };
+        manifest.validate()?;
+        fs::create_dir_all(spool)?;
+        Ok(Self {
+            manifest,
+            directory: tempfile::tempdir_in(spool)?,
+            stamps: BTreeMap::new(),
+        })
+    }
+
+    pub(crate) fn capture_expected(
+        vault: &Path,
+        expected: &Manifest,
+        spool: &Path,
+    ) -> Result<Self> {
+        if !expected.deleted {
+            return Self::capture(vault, expected.entity.clone(), spool);
+        }
+        let _guard = VaultTransaction::shared(vault)?;
+        VaultTransaction::ensure_ready(vault)?;
+        if !inventory(vault, &expected.entity)?.is_empty() {
+            return Err(Error::Conflict);
+        }
+        Self::tombstone(expected.entity.clone(), spool)
+    }
+
     pub fn manifest(&self) -> &Manifest {
         &self.manifest
     }
@@ -157,6 +197,7 @@ impl Snapshot {
         let manifest = Manifest {
             version: PROTOCOL_VERSION,
             entity,
+            deleted: false,
             files,
         };
         manifest.validate()?;
@@ -195,6 +236,9 @@ impl Snapshot {
 }
 
 pub(crate) fn validate_content(directory: &Path, manifest: &Manifest) -> Result<()> {
+    if manifest.deleted {
+        return manifest.validate();
+    }
     let name = manifest.entity.registry_name().unwrap_or("_meta.json");
     let metadata = fs::metadata(directory.join(name))?;
     if metadata.len() > 32 * 1024 * 1024 {

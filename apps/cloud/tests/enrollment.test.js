@@ -145,6 +145,20 @@ test("enrollment requires both exact identity and authority proof, binds the ses
       .prepare("UPDATE sync_devices SET revoked_at = ? WHERE id = ?")
       .run(Date.now(), input.device);
     assert.equal(await boundDevice(db, owner.user, owner.session), null);
+    assert.equal(
+      sql
+        .prepare("SELECT count(*) AS n FROM session WHERE id = ?")
+        .get(owner.session).n,
+      0,
+    );
+    assert.equal(
+      sql
+        .prepare(
+          "SELECT count(*) AS n FROM sync_enrollment_challenges WHERE session_id = ?",
+        )
+        .get(owner.session).n,
+      0,
+    );
     await assert.rejects(
       finishEnrollment(db, owner.user, owner.session, proof),
     );
@@ -232,6 +246,68 @@ test("binding a new session needs an enrolled device key and a challenge fails a
         .get(obsolete.id).consumed_at,
       null,
     );
+  } finally {
+    sql.close();
+  }
+});
+
+test("pairing approvals are exact, single-use, same-account, and invalidated by approver revocation", async () => {
+  const { approvePairing } = await import("../src/enrollment.ts");
+  const { sql, db } = database();
+  try {
+    const owner = account(sql);
+    const other = account(sql);
+    const authority = await key();
+    const trusted = await key();
+    const device = randomUUID();
+    const first = await createChallenge(db, owner.user, owner.session, {
+      kind: "enroll",
+      device,
+      publicKey: trusted.public,
+      authority: authority.public,
+    });
+    await finishEnrollment(db, owner.user, owner.session, {
+      challenge: first.id,
+      deviceSignature: await trusted.sign(enrollmentPayload(first)),
+      authoritySignature: await authority.sign(enrollmentPayload(first)),
+    });
+    const second = randomUUID();
+    sql
+      .prepare(
+        "INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES (?,?,?,?,0,0)",
+      )
+      .run(second, randomUUID(), owner.user, Date.now() + 3_600_000);
+    const pending = await key();
+    const challenge = await createChallenge(db, owner.user, second, {
+      kind: "enroll",
+      device: randomUUID(),
+      publicKey: pending.public,
+      authority: authority.public,
+      pairing: true,
+    });
+    const proof = {
+      challenge: challenge.id,
+      deviceSignature: await pending.sign(enrollmentPayload(challenge)),
+      authoritySignature: await authority.sign(enrollmentPayload(challenge)),
+    };
+    await assert.rejects(finishEnrollment(db, owner.user, second, proof));
+    await assert.rejects(approvePairing(db, other.user, other.session, proof));
+    await assert.rejects(approvePairing(db, owner.user, second, proof));
+    await assert.rejects(
+      approvePairing(db, owner.user, owner.session, {
+        ...proof,
+        authoritySignature: await authority.sign(
+          enrollmentPayload({ ...challenge, device_id: randomUUID() }),
+        ),
+      }),
+    );
+    await approvePairing(db, owner.user, owner.session, proof);
+    await assert.rejects(approvePairing(db, owner.user, owner.session, proof));
+    sql
+      .prepare("UPDATE sync_devices SET revoked_at = ? WHERE id = ?")
+      .run(Date.now(), device);
+    await assert.rejects(finishEnrollment(db, owner.user, second, proof));
+    assert.equal(await boundDevice(db, owner.user, second), null);
   } finally {
     sql.close();
   }

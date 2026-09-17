@@ -2,6 +2,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("~/settings/sync", () => ({
+  useSyncEnabled: () => ({ data: false }),
+}));
+
 const mocks = vi.hoisted(() => ({
   currentTab: { type: "settings", state: { tab: "app" } } as {
     type: "settings";

@@ -24,6 +24,12 @@ struct Pending {
 }
 
 impl Checkpoints {
+    pub fn len(&self) -> usize {
+        self.pending.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.pending.is_empty()
+    }
     pub fn changed(&mut self, entity: Entity, now: Instant, immediate: bool) {
         self.generation = self
             .generation

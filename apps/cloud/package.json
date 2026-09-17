@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "node --experimental-transform-types --test tests/*.test.js",
     "test:workers": "node --test tests/workers.test.mjs",
-    "preflight": "node scripts/preflight.mjs"
+    "preflight": "node scripts/preflight.mjs",
+    "admin": "node scripts/admin.mjs"
   },
   "dependencies": {
     "@tanstack/react-form": "1.29.0",

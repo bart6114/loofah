@@ -69,6 +69,12 @@ impl SessionStore {
         let meta_json =
             serde_json::to_vec_pretty(meta).map_err(|e| StoreError::Serialize(e.to_string()))?;
 
+        let base = self.vault_base.clone();
+        let id = meta.id.clone();
+        tokio::task::spawn_blocking(move || crate::sync_deletions::clear(&base, &id))
+            .await
+            .map_err(|error| StoreError::Io(error.to_string()))?
+            .map_err(|error| StoreError::Io(error.to_string()))?;
         self.write_file_locked(guard, paths::meta_path_in(&dir), meta_json)
             .await?;
         // Index write-through directly after the file write (file truth).
@@ -468,13 +474,21 @@ impl SessionStore {
 
         let vault_base = self.vault_base.clone();
         let dir_to_move = relative_dir.clone();
+        let deletion_id = id.to_owned();
         let lease = guard.clone();
         let trash_path = tokio::task::spawn_blocking(
             move || -> Result<Option<std::path::PathBuf>, StoreError> {
                 let _lease = lease;
                 let session_path = vault_base.join(&dir_to_move);
-                hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
-                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {}", e)))
+                let trash = hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
+                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {}", e)))?;
+                if let Some(path) = &trash {
+                    // Failure to persist intent must never turn absence into a cloud deletion.
+                    if let Err(error) = crate::sync_deletions::record(&vault_base, &deletion_id, path) {
+                        tracing::warn!(%error, "explicit sync deletion could not be recorded; remote deletion is blocked");
+                    }
+                }
+                Ok(trash)
             },
         )
         .await

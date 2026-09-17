@@ -76,7 +76,11 @@ hypr-tauri-utils = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
+libsodium-rs = "=0.2.4"
 sha2 = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+vault-sync = { path = "../../../crates/vault-sync" }
+zeroize = "1.8"
 
 chrono = { workspace = true }
 dirs = { workspace = true }

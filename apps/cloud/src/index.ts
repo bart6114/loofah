@@ -6,9 +6,11 @@ import { activateAccount, createAuth, type AuthEnvironment } from "./auth.ts";
 import {
   boundDevice,
   createChallenge,
+  approvePairing,
   EnrollmentError,
   finishEnrollment,
 } from "./enrollment.ts";
+import { invitationStatus } from "./invitations.ts";
 import { DurableJobs, openJob, sha256 } from "./jobs.ts";
 import { ObjectStorage } from "./objects.ts";
 import {
@@ -18,7 +20,10 @@ import {
   type VaultPrincipal,
 } from "./storage.ts";
 
+export { PairingMailbox } from "./pairing.ts";
+
 export type Environment = AuthEnvironment & {
+  PAIRING: DurableObjectNamespace;
   TURNSTILE_SECRET: string;
   EMAIL: SendEmail;
   VAULT: R2Bucket;
@@ -31,7 +36,14 @@ const app = new Hono<{
   Bindings: Environment;
   Variables: { principal: VaultPrincipal };
 }>();
-app.use("*", secureHeaders({ referrerPolicy: "no-referrer" }));
+// WebSocket upgrade responses have immutable headers in workerd.
+const isPairingUpgrade = (path: string, upgrade: string | undefined) =>
+  path === "/api/pairing/mailbox" && upgrade?.toLowerCase() === "websocket";
+app.use("*", (context, next) =>
+  isPairingUpgrade(context.req.path, context.req.header("upgrade"))
+    ? next()
+    : secureHeaders({ referrerPolicy: "no-referrer" })(context, next),
+);
 app.use("/api/*", async (context, next) =>
   bodyLimit({
     maxSize: context.req.path.startsWith("/api/sync/")
@@ -40,7 +52,8 @@ app.use("/api/*", async (context, next) =>
   })(context, next),
 );
 app.use("/api/*", async (context, next) => {
-  context.header("Cache-Control", "no-store");
+  if (!isPairingUpgrade(context.req.path, context.req.header("upgrade")))
+    context.header("Cache-Control", "no-store");
   if (context.req.path !== "/api/health") {
     const settings = await context.env.DB.prepare(
       "SELECT writes_enabled FROM sync_beta_settings WHERE id = 1",
@@ -111,8 +124,38 @@ app.on(["GET", "POST"], "/api/auth/*", async (context) => {
     )
       return context.json({ error: "challenge_failed" }, 403);
   }
+  const signupInput: unknown =
+    context.req.method === "POST" && path === "/sign-up/email"
+      ? await context.req.raw
+          .clone()
+          .json()
+          .catch(() => null)
+      : null;
+  const signupEmail =
+    signupInput && typeof signupInput === "object" && "email" in signupInput
+      ? signupInput.email
+      : undefined;
+  if (context.req.method === "POST" && path === "/sign-up/email") {
+    if (context.env.SIGNUP_OPEN !== "true")
+      return context.json({ error: "signup_closed" }, 403);
+    const status = await invitationStatus(
+      context.env.DB,
+      context.req.header("x-loofah-invitation"),
+      signupEmail,
+    );
+    if (status) return context.json({ error: status }, 403);
+  }
   const response = await createAuth(context.env).handler(context.req.raw);
   context.executionCtx.waitUntil(processJobs(context.env));
+  if (context.req.method === "POST" && path === "/sign-up/email") {
+    const status = await invitationStatus(
+      context.env.DB,
+      context.req.header("x-loofah-invitation"),
+      signupEmail,
+    );
+    if (status === "capacity_reached")
+      return context.json({ error: status }, 403);
+  }
   return response;
 });
 
@@ -156,6 +199,16 @@ app.post("/api/enrollment/:action", async (context) => {
       ),
     );
   }
+  if (context.req.param("action") === "approve-pairing") {
+    return context.json(
+      await approvePairing(
+        context.env.DB,
+        session.user.id,
+        session.session.id,
+        input,
+      ),
+    );
+  }
   if (context.req.param("action") === "finish") {
     return context.json(
       await finishEnrollment(
@@ -167,6 +220,71 @@ app.post("/api/enrollment/:action", async (context) => {
     );
   }
   return context.json({ error: "not_found" }, 404);
+});
+
+app.get("/api/pairing/mailbox", async (context) => {
+  if (!context.req.header("authorization")?.startsWith("Bearer "))
+    return context.json({ error: "unauthorized" }, 401);
+  const session = await createAuth(context.env).api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  try {
+    const namespace = context.env.PAIRING.jurisdiction("eu");
+    return await namespace.get(namespace.idFromName(session.user.id)).fetch(
+      new Request("https://pairing/mailbox", {
+        headers: {
+          Upgrade: context.req.header("upgrade") ?? "",
+          "x-loofah-user": session.user.id,
+          "x-loofah-session": session.session.id,
+        },
+      }),
+    );
+  } catch (error) {
+    console.error(
+      "pairing mailbox unavailable",
+      error instanceof Error ? error.message.slice(0, 300) : "unknown",
+    );
+    return context.json({ error: "unavailable" }, 503);
+  }
+});
+
+app.get("/api/devices", async (context) => {
+  const session = await createAuth(context.env).api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  const devices =
+    await context.env.DB.prepare(`SELECT d.id, d.public_key, d.enrolled_at, d.revoked_at
+    FROM sync_devices d JOIN sync_accounts a ON a.vault_id = d.vault_id
+    WHERE a.user_id = ? AND a.active = 1 ORDER BY d.enrolled_at`)
+      .bind(session.user.id)
+      .all();
+  return context.json({ devices: devices.results });
+});
+
+app.post("/api/devices/:id/revoke", async (context) => {
+  if (!context.req.header("authorization")?.startsWith("Bearer "))
+    return context.json({ error: "unauthorized" }, 401);
+  const session = await createAuth(context.env).api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  const principal = await boundDevice(
+    context.env.DB,
+    session.user.id,
+    session.session.id,
+  );
+  if (!principal) return context.json({ error: "device_required" }, 403);
+  await context.env.DB.prepare(
+    "UPDATE sync_devices SET revoked_at = ? WHERE vault_id = ? AND id = ? AND revoked_at IS NULL",
+  )
+    .bind(Date.now(), principal.vault, context.req.param("id"))
+    .run();
+  return context.json({ revoked: true });
 });
 
 app.use("/api/sync/*", async (context, next) => {
@@ -214,6 +332,16 @@ app.delete("/api/sync/snapshots/:id", async (context) => {
     context.req.param("id"),
   );
   return context.json({ released: true });
+});
+app.get("/api/sync/heads/:entity", async (context) => {
+  const entity = context.req.param("entity");
+  if (!/^[a-f0-9]{64}$/.test(entity)) throw new StorageError("invalid");
+  const head = await context.env.DB.prepare(
+    "SELECT revision FROM sync_heads WHERE vault_id = ? AND entity = ?",
+  )
+    .bind(context.get("principal").vault, entity)
+    .first<{ revision: string }>();
+  return context.json({ revision: head?.revision ?? null });
 });
 app.get("/api/sync/changes", async (context) => {
   const after = Number(context.req.query("after") ?? 0);

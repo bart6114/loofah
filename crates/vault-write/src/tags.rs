@@ -70,7 +70,7 @@ impl SessionStore {
 
         let guard = self.lock_writes().await?;
 
-        let mut tags = self.read_tags().await?;
+        let tags = self.read_tags().await?;
         if let Some(existing) = tags.iter().find(|t| t.id == normalized) {
             return Ok(existing.clone());
         }
@@ -79,12 +79,13 @@ impl SessionStore {
             id: normalized.clone(),
             name: normalized,
         };
-        tags.push(tag.clone());
-
-        let bytes = serde_json::to_vec_pretty(&TagsFile { tags })
-            .map_err(|e| StoreError::Serialize(e.to_string()))?;
-        self.write_file_locked(&guard, paths::tags_path(), bytes)
-            .await?;
+        self.append_registry_locked(
+            &guard,
+            paths::tags_path(),
+            "tags",
+            serde_json::to_value(&tag).map_err(|error| StoreError::Serialize(error.to_string()))?,
+        )
+        .await?;
 
         self.index_upsert_tag(&tag);
         self.notify_index_changed(super::IndexEntity::Tags, vec![tag.id.clone()]);

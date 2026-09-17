@@ -15,6 +15,7 @@ const STAGING: &str = ".loofah-sync-stage";
 pub struct LocalReplica {
     vault: PathBuf,
     state: PathBuf,
+    applying: std::sync::Arc<tokio::sync::Semaphore>,
 }
 
 struct PreparedStage {
@@ -49,6 +50,14 @@ pub enum Recovery {
 }
 
 impl LocalReplica {
+    pub async fn wait_idle(&self) -> Result<()> {
+        let _permit = self
+            .applying
+            .acquire()
+            .await
+            .map_err(|_| Error::RecoveryRequired)?;
+        Ok(())
+    }
     pub async fn apply_to_store(
         &self,
         store: &hypr_vault_write::SessionStore,
@@ -59,12 +68,19 @@ impl LocalReplica {
             return Err(Error::Invalid("store belongs to another vault".into()));
         }
         store.flush_all().await?;
+        let permit = self
+            .applying
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::RecoveryRequired)?;
         let entity = expected.entity.clone();
         let replica = self.clone();
         let store = store.clone();
         // Cancelling a caller cannot cancel blocking installation; its index refresh
         // must therefore finish independently of the caller too.
         tokio::spawn(async move {
+            let _permit = permit;
             let operation =
                 tokio::task::spawn_blocking(move || replica.apply(&expected, &incoming))
                     .await
@@ -90,7 +106,11 @@ impl LocalReplica {
                 "sync state must be outside the vault".into(),
             ));
         }
-        Ok(Self { vault, state })
+        Ok(Self {
+            vault,
+            state,
+            applying: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+        })
     }
 
     /// The caller advances its remote cursor only after this returns successfully.
@@ -110,7 +130,7 @@ impl LocalReplica {
         if expected.entity != incoming.manifest().entity {
             return Err(Error::Invalid("apply identity mismatch".into()));
         }
-        let before = Snapshot::capture(&self.vault, expected.entity.clone(), &self.state)?;
+        let before = Snapshot::capture_expected(&self.vault, expected, &self.state)?;
         if before.manifest() != expected {
             return Err(Error::Conflict);
         }

@@ -253,3 +253,53 @@ fn note_edit_reuses_recording_object_and_manifest_is_bound_to_revision_and_vault
         .is_err()
     );
 }
+
+#[test]
+fn explicit_tombstones_and_guarded_creation_preserve_unknown_files() {
+    use vault_sync::{replica::LocalReplica, scope::Entity, snapshot::Snapshot};
+    let source = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let state = tempfile::tempdir().unwrap();
+    let entity = Entity::Session("created".into());
+    std::fs::create_dir_all(source.path().join("sessions/created")).unwrap();
+    std::fs::write(
+        source.path().join("sessions/created/_meta.json"),
+        br#"{"id":"created","title":"test","created_at":"2026-09-17","tags":[]}"#,
+    )
+    .unwrap();
+    std::fs::write(source.path().join("sessions/created/notes.md"), b"keep me").unwrap();
+    let incoming = Snapshot::capture(source.path(), entity.clone(), state.path()).unwrap();
+    let absent = Snapshot::tombstone(entity.clone(), state.path()).unwrap();
+    assert!(Snapshot::capture(target.path(), entity.clone(), state.path()).is_err());
+    let replica = LocalReplica::open(target.path(), state.path()).unwrap();
+    replica.apply(absent.manifest(), &incoming).unwrap();
+    assert!(replica.apply(absent.manifest(), &incoming).is_err());
+    std::fs::write(
+        target.path().join("sessions/created/private.pdf"),
+        b"excluded",
+    )
+    .unwrap();
+    replica.apply(incoming.manifest(), &absent).unwrap();
+    assert!(!target.path().join("sessions/created/_meta.json").exists());
+    assert_eq!(
+        std::fs::read(target.path().join("sessions/created/private.pdf")).unwrap(),
+        b"excluded"
+    );
+    replica.apply(absent.manifest(), &incoming).unwrap();
+    assert_eq!(
+        std::fs::read(target.path().join("sessions/created/notes.md")).unwrap(),
+        b"keep me"
+    );
+    let key = vault_sync::crypto::VaultKey::generate(uuid::Uuid::new_v4()).unwrap();
+    let prepared = key.prepare_version(&absent, None, state.path()).unwrap();
+    let restored = key
+        .restore_snapshot(
+            prepared.revision,
+            &prepared.encrypted_manifest,
+            &prepared.manifest.membership(),
+            state.path(),
+            |_| unreachable!(),
+        )
+        .unwrap();
+    assert!(restored.manifest().deleted);
+}

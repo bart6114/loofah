@@ -5,6 +5,22 @@
 /** user-defined commands **/
 
 export const commands = {
+  async syncStatus(): Promise<SyncStatus> {
+    return await TAURI_INVOKE("sync_status");
+  },
+  async syncAction(
+    action: SyncAction,
+  ): Promise<Result<SyncContent | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("sync_action", { action }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async chatgptAccount(): Promise<Result<ChatgptAccount | null, ChatgptError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
@@ -766,9 +782,11 @@ export const commands = {
 export const events = __makeEvents__<{
   indexChanged: IndexChanged;
   startupProgress: StartupProgress;
+  syncStatusChanged: SyncStatusChanged;
 }>({
   indexChanged: "index-changed",
   startupProgress: "startup-progress",
+  syncStatusChanged: "sync-status-changed",
 });
 
 /** user-defined constants **/
@@ -802,6 +820,12 @@ export type ChatgptModel = {
   displayName: string;
   isDefault: boolean;
   inputModalities?: string[];
+};
+export type Device = {
+  id: string;
+  public_key: string;
+  enrolled_at: number;
+  revoked_at: number | null;
 };
 export type EmbeddedCliState =
   | "installed"
@@ -988,6 +1012,53 @@ export type StartupStatus = {
   phase: StartupPhase;
   migrationIssues: string[];
 };
+export type SyncAction =
+  | "connect"
+  | "cancel"
+  | "pause"
+  | "resume"
+  | "reconcile_recovery"
+  | "disconnect"
+  | "save_recovery_kit"
+  | "import_recovery_kit"
+  | "refresh_devices"
+  | "pair_new_mac"
+  | { approve_mac: { code: string } }
+  | { revoke_device: { id: string } }
+  | { purge_version: { revision: string } }
+  | { history: { entity: SyncEntity; before: [number, string] | null } }
+  | { preview: { entity: SyncEntity; revision: string } }
+  | { restore: { entity: SyncEntity; revision: string } }
+  | { export: { entity: SyncEntity; revision: string } };
+export type SyncConflict = { entity: SyncEntity; local: string; cloud: string };
+export type SyncContent = {
+  versions: Version[];
+  preview: VersionPreview | null;
+};
+export type SyncEntity =
+  | { kind: "session"; id: string }
+  | { kind: "people" }
+  | { kind: "tags" }
+  | { kind: "tasks" };
+export type SyncStatus = {
+  enabled: boolean;
+  phase: string;
+  vaultPath: string;
+  browserUrl: string | null;
+  userCode: string | null;
+  pairingCode: string | null;
+  error: string | null;
+  lastSuccess: number | null;
+  pendingWork: number;
+  activeTransfers: number;
+  transferredBytes: number;
+  transferBytes: number;
+  usedBytes: number;
+  quotaBytes: number;
+  conflicts: SyncConflict[];
+  devices: Device[];
+};
+export type SyncStatusChanged = { status: SyncStatus };
 /**
  * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
  * (lowercased) name itself — unlike people's lossy slug, two names normalizing
@@ -1141,6 +1212,22 @@ export type VaultYearStats = {
   transcript_words: number;
   enhanced_docs: number;
   duration_seconds: number;
+};
+export type Version = {
+  id: string;
+  operation: string;
+  device_id: string;
+  created_at: number;
+  current: number | null;
+  pinned: number;
+};
+export type VersionPreview = {
+  text: string;
+  files: string[];
+  changed: string[];
+  captured_at: number | null;
+  missing_references: string[];
+  deleted: boolean;
 };
 
 /** tauri-specta globals **/

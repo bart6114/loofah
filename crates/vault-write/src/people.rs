@@ -107,7 +107,7 @@ impl SessionStore {
 
         let guard = self.lock_writes().await?;
 
-        let mut people = self.read_people().await?;
+        let people = self.read_people().await?;
         let name_lower = name.to_lowercase();
         if let Some(existing) = people.iter().find(|p| p.name.to_lowercase() == name_lower) {
             return Ok(existing.clone());
@@ -117,12 +117,14 @@ impl SessionStore {
             id: unique_person_id(&people, name),
             name: name.to_string(),
         };
-        people.push(person.clone());
-
-        let bytes = serde_json::to_vec_pretty(&PeopleFile { people })
-            .map_err(|e| StoreError::Serialize(e.to_string()))?;
-        self.write_file_locked(&guard, paths::people_path(), bytes)
-            .await?;
+        self.append_registry_locked(
+            &guard,
+            paths::people_path(),
+            "people",
+            serde_json::to_value(&person)
+                .map_err(|error| StoreError::Serialize(error.to_string()))?,
+        )
+        .await?;
 
         self.index_upsert_person(&person);
         self.notify_index_changed(super::IndexEntity::People, vec![person.id.clone()]);

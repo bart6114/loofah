@@ -14,6 +14,7 @@ mod session_store;
 mod startup;
 mod store;
 mod supervisor;
+mod sync;
 mod vault_watch;
 
 use ext::*;
@@ -327,6 +328,7 @@ pub async fn main() {
                             related_tags::spawn(app_handle.clone(), store.clone());
                         app_handle.manage(related_tag_queue);
                         session_store::spawn_dispatcher(app_handle.clone());
+                        sync::spawn(app_handle.clone(), store.clone());
                         startup::spawn(app_handle.clone(), store);
                     }
                     Err(error) => {
@@ -514,6 +516,8 @@ fn get_onboarding_flag() -> Option<bool> {
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
+            sync::sync_status::<tauri::Wry>,
+            sync::sync_action::<tauri::Wry>,
             chatgpt::chatgpt_account::<tauri::Wry>,
             chatgpt::chatgpt_login::<tauri::Wry>,
             chatgpt::chatgpt_cancel_login::<tauri::Wry>,
@@ -579,6 +583,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
         ])
         .events(tauri_specta::collect_events![
             session_store::IndexChanged,
+            sync::SyncStatusChanged,
             startup::StartupProgress
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)

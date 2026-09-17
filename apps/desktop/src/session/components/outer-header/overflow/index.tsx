@@ -33,6 +33,8 @@ import {
   useHasTranscript,
 } from "~/session/components/shared";
 import { openStandaloneNoteWindow } from "~/session/window";
+import { useSyncEnabled } from "~/settings/sync";
+import { VersionHistory } from "~/settings/version-history";
 import { useConfigValue } from "~/shared/config";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 import { useListener } from "~/stt/contexts";
@@ -50,6 +52,8 @@ export function OverflowButton({
   currentView: EditorView;
 }) {
   const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const sync = useSyncEnabled();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [hasOpenedExportModal, setHasOpenedExportModal] = useState(false);
   const hasTranscript = useHasTranscript(sessionId);
@@ -111,6 +115,13 @@ export function OverflowButton({
 
   return (
     <>
+      {historyOpen && (
+        <VersionHistory
+          entity={{ kind: "session", id: sessionId }}
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+        />
+      )}
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -133,6 +144,16 @@ export function OverflowButton({
                 <Trans>Export</Trans>
               </span>
             </DropdownMenuItem>
+            {sync.data && (
+              <DropdownMenuItem
+                onClick={() => {
+                  setOpen(false);
+                  setHistoryOpen(true);
+                }}
+              >
+                Version history
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             {showListeningAction && (
               <Listening
