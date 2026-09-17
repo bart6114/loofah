@@ -38,7 +38,7 @@ Unchecked items are unverified, not completed.
 - [x] Note edits reuse recordings; concurrent edits preserve both revisions; restore creates a new head (two authenticated staging clients on this Mac).
 - [ ] Desktop/CLI creation, explicit deletion, global registry changes and excluded-file preservation.
 - [ ] Lost events, missing metadata, interrupted uploads/applies, disk exhaustion and changed recovery generations preserve content.
-- [ ] Full-quota deletion and metadata-only restore; logical purge frees quota without physical deletion.
+- [x] Full-quota deletion and metadata-only restore; logical purge frees quota without physical deletion (automated cloud storage tests).
 - [ ] Tampered ciphertext, unsafe paths, cross-account requests, replayed enrollment and revoked sessions are rejected.
 - [x] Formatting, applicable TypeScript/Rust checks, cloud/runtime and integration tests.
 - [x] Repeat representative 7.6 GB / 9,000-file restore fixture.
@@ -84,9 +84,10 @@ Production deployment, external invitations, account deletion, physical garbage 
 The signed/notarized staging build from `4676c6cf3` was installed alongside normal Loofah. Checks used a disposable verified staging account and a separate synthetic 1,000-session vault; normal Loofah’s vault was untouched.
 
 - Native note creation, editing, search and restart persistence passed. Live recording and transcription passed while editing; a second recording remained usable during encrypted uploads with two transfers active. Importing a 25-second speech fixture produced a transcript, and transcript search found the expected phrase. Intelligence was disabled for this test.
-- Browser-code cancellation and API approval of the disposable account worked. Saving and reimporting the same recovery kit completed enrollment through native dialogs and Keychain. Pause, quit, restart and resume retained the account, enrolled device and pending work. This does not replace Bart’s real browser signup/login acceptance.
+- Browser-code cancellation and API approval of the disposable account worked. Saving and reimporting the same recovery kit completed enrollment through native dialogs and Keychain. Pause, quit, restart and resume retained the account, enrolled device and pending work. Disconnect returned to the disconnected UI, removed the account session from Keychain, retained the vault keys, and left all 2,008 snapshotted note/registry/excluded-attachment files unchanged. This does not replace Bart’s real browser signup/login acceptance.
 - Native history preview and export passed. Restoring an earlier note preserved its unsynced edit as a separate version, committed a new head, and restored the original file. Exporting the preserved version recovered the unsynced marker. Global registries and excluded attachments were unchanged.
 - QA found and fixed a stale authorization code after cancellation, a missing cached authority immediately after first enrollment, a stale open editor after restore, and a Tantivy related-document panic when term counts included unmerged deletions. The latter has a regression test that failed before the fix; all 20 Tantivy unit tests and its integration test passed afterward. Restore now flushes pending editor writes and reloads the session/editor/audio player; focused tests cover the ordering and failed-write behavior. The corrected signed build still needs its targeted native recheck.
+- Workspace CI exposed a race between the lock-release test and a concurrently spawning subprocess test. It reproduced locally on the third concurrent run. Serializing those two tests leaves production locking unchanged; all 29 vault-read tests and 100 repeated concurrent transaction-test runs then passed. The updated CI run is pending.
 
 ### Installation and two-Mac walkthrough
 

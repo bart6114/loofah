@@ -130,8 +130,13 @@ fn open_file(path: &Path) -> io::Result<File> {
 mod tests {
     use super::*;
 
+    // A concurrently spawned child can inherit another test's lock until exec,
+    // so dropping the parent's handle alone would not release that lock yet.
+    static PROCESS_LOCK_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn independent_handles_exclude_writers_and_release_on_drop() {
+        let _serial = PROCESS_LOCK_TEST.lock().unwrap();
         let temp = tempfile::tempdir().unwrap();
         let reader = VaultTransaction::shared(temp.path()).unwrap();
         let second_reader = VaultTransaction::shared(temp.path()).unwrap();
@@ -177,6 +182,7 @@ mod tests {
 
     #[test]
     fn lock_excludes_a_separate_process() {
+        let _serial = PROCESS_LOCK_TEST.lock().unwrap();
         let vault = tempfile::tempdir().unwrap();
         let _guard = VaultTransaction::exclusive(vault.path()).unwrap();
         let status = std::process::Command::new(std::env::current_exe().unwrap())
