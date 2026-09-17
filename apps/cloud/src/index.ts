@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { secureHeaders } from "hono/secure-headers";
 
 import { activateAccount, createAuth, type AuthEnvironment } from "./auth.ts";
@@ -146,6 +147,44 @@ app.on(["GET", "POST"], "/api/auth/*", async (context) => {
     );
     if (status) return context.json({ error: status }, 403);
   }
+  if (context.req.method === "GET" && path === "/verify-email") {
+    deleteCookie(context, "loofah.verification", {
+      path: "/api/verification-result",
+    });
+    const url = new URL(context.req.url);
+    const callback = new URL(
+      url.searchParams.get("callbackURL") || "/verify",
+      context.env.ACCOUNT_ORIGIN,
+    );
+    if (
+      callback.origin !== context.env.ACCOUNT_ORIGIN ||
+      callback.pathname !== "/verify"
+    )
+      return context.json({ error: "forbidden" }, 403);
+    url.searchParams.delete("callbackURL");
+    const result = await createAuth(context.env).handler(
+      new Request(url, context.req.raw),
+    );
+    const value = (await result.json().catch(() => null)) as {
+      status?: boolean;
+    } | null;
+    if (result.ok && value?.status === true) {
+      await setSignedCookie(
+        context,
+        "loofah.verification",
+        String(Date.now()),
+        context.env.AUTH_SECRET,
+        {
+          httpOnly: true,
+          secure: true,
+          sameSite: "Lax",
+          path: "/api/verification-result",
+          maxAge: 600,
+        },
+      );
+    } else callback.searchParams.set("error", "verification_failed");
+    return context.redirect(callback.toString());
+  }
   const response = await createAuth(context.env).handler(context.req.raw);
   context.executionCtx.waitUntil(processJobs(context.env));
   if (context.req.method === "POST" && path === "/sign-up/email") {
@@ -158,6 +197,21 @@ app.on(["GET", "POST"], "/api/auth/*", async (context) => {
       return context.json({ error: status }, 403);
   }
   return response;
+});
+
+app.get("/api/verification-result", async (context) => {
+  const receipt = await getSignedCookie(
+    context,
+    context.env.AUTH_SECRET,
+    "loofah.verification",
+  );
+  const issued = typeof receipt === "string" ? Number(receipt) : NaN;
+  return context.json({
+    verified:
+      Number.isFinite(issued) &&
+      issued <= Date.now() &&
+      issued > Date.now() - 600_000,
+  });
 });
 
 app.get("/api/account", async (context) => {
@@ -183,8 +237,42 @@ app.get("/api/account", async (context) => {
   if (!account) return context.json({ error: "unavailable" }, 503);
   return context.json({
     account,
-    identity: { user: session.user.id, session: session.session.id },
+    identity: {
+      user: session.user.id,
+      session: session.session.id,
+      email: session.user.email,
+    },
   });
+});
+
+app.get("/api/account/sign-ins", async (context) => {
+  const auth = createAuth(context.env);
+  const session = await auth.api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  const sessions = await auth.api.listSessions({
+    headers: context.req.raw.headers,
+  });
+  const bindings =
+    await context.env.DB.prepare(`SELECT ds.session_id, d.id, d.name
+    FROM sync_device_sessions ds JOIN sync_devices d ON ds.vault_id = d.vault_id AND ds.device_id = d.id
+    JOIN sync_accounts a ON a.vault_id = d.vault_id WHERE a.user_id = ?`)
+      .bind(session.user.id)
+      .all();
+  return context.json(
+    sessions.map((item) => {
+      const device = bindings.results.find(
+        (binding) => binding.session_id === item.id,
+      );
+      return {
+        ...item,
+        current: item.id === session.session.id,
+        device: device ? { id: device.id, name: device.name } : null,
+      };
+    }),
+  );
 });
 
 app.post("/api/enrollment/:action", async (context) => {
@@ -265,12 +353,45 @@ app.get("/api/devices", async (context) => {
   if (!session?.user.emailVerified)
     return context.json({ error: "unauthorized" }, 401);
   const devices =
-    await context.env.DB.prepare(`SELECT d.id, d.public_key, d.enrolled_at, d.revoked_at
+    await context.env.DB.prepare(`SELECT d.id, d.name, d.public_key, d.enrolled_at, d.revoked_at,
+      EXISTS (SELECT 1 FROM sync_device_sessions ds WHERE ds.session_id = ? AND ds.vault_id = d.vault_id AND ds.device_id = d.id) AS current
     FROM sync_devices d JOIN sync_accounts a ON a.vault_id = d.vault_id
     WHERE a.user_id = ? AND a.active = 1 ORDER BY d.enrolled_at`)
-      .bind(session.user.id)
+      .bind(session.session.id, session.user.id)
       .all();
-  return context.json({ devices: devices.results });
+  return context.json({
+    devices: devices.results.map((device) => ({
+      ...device,
+      current: Boolean(device.current),
+    })),
+  });
+});
+
+app.post("/api/devices/:id/name", async (context) => {
+  if (!context.req.header("authorization")?.startsWith("Bearer "))
+    return context.json({ error: "unauthorized" }, 401);
+  const session = await createAuth(context.env).api.getSession({
+    headers: context.req.raw.headers,
+  });
+  if (!session?.user.emailVerified)
+    return context.json({ error: "unauthorized" }, 401);
+  const principal = await boundDevice(
+    context.env.DB,
+    session.user.id,
+    session.session.id,
+  );
+  if (!principal) return context.json({ error: "device_required" }, 403);
+  const input = await context.req.json().catch(() => null);
+  const name = typeof input?.name === "string" ? input.name.trim() : "";
+  if (!name || name.length > 80 || /[\u0000-\u001f\u007f]/.test(name))
+    return context.json({ error: "invalid_device_name" }, 400);
+  const device = await context.env.DB.prepare(
+    "UPDATE sync_devices SET name = ? WHERE vault_id = ? AND id = ? AND revoked_at IS NULL RETURNING id",
+  )
+    .bind(name, principal.vault, context.req.param("id"))
+    .first();
+  if (!device) return context.json({ error: "not_found" }, 404);
+  return context.json({ renamed: true });
 });
 
 app.post("/api/devices/:id/revoke", async (context) => {

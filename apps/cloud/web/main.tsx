@@ -8,20 +8,60 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { api, approveDevice } from "./api";
+import { api, ApiError, approveDevice } from "./api";
+import {
+  clearFlow,
+  continuationUrl,
+  deviceCode,
+  readFlow,
+  signInLabel,
+} from "./flow";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
 });
 const location = new URL(window.location.href);
 const resetToken = location.searchParams.get("token") ?? "";
-const invitation =
-  new URLSearchParams(location.hash.slice(1)).get("invitation") ?? "";
-if (resetToken || invitation)
-  window.history.replaceState({}, "", location.pathname);
+const flowStorage = (() => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+})();
+const invitation = readFlow(
+  flowStorage,
+  "loofah.invitation",
+  new URLSearchParams(location.hash.slice(1)).get("invitation") ?? "",
+);
+const pendingDevice = deviceCode(
+  readFlow(
+    flowStorage,
+    "loofah.device",
+    deviceCode(location.searchParams.get("user_code")),
+  ),
+);
+const nextUrl = (path: string) => continuationUrl(path, pendingDevice);
+if (resetToken || location.hash)
+  window.history.replaceState({}, "", nextUrl(location.pathname));
+
+function Retry({ error, retry }: { error: Error; retry: () => void }) {
+  return (
+    <div role="alert">
+      <p>{error.message}</p>
+      {error instanceof ApiError && error.status === 401 ? (
+        <a href={nextUrl("/login")}>Sign in</a>
+      ) : (
+        <button className="secondary" onClick={retry}>
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}
 
 declare global {
   interface Window {
@@ -106,6 +146,7 @@ function AccountForm({
     | "device";
   sitekey: string;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
   const resetRef = useRef<(() => void) | null>(null);
   const queryClient = useQueryClient();
   const requiresChallenge = ["login", "signup", "forgot", "resend"].includes(
@@ -139,7 +180,7 @@ function AccountForm({
               email: value.email,
               password: value.password,
               name: value.name,
-              callbackURL: `${window.location.origin}/verify`,
+              callbackURL: `${window.location.origin}${nextUrl("/verify")}`,
             },
             headers,
           );
@@ -148,7 +189,7 @@ function AccountForm({
             "/auth/request-password-reset",
             {
               email: value.email,
-              redirectTo: `${window.location.origin}/reset-password`,
+              redirectTo: `${window.location.origin}${nextUrl("/reset-password")}`,
             },
             headers,
           );
@@ -157,7 +198,7 @@ function AccountForm({
             "/auth/send-verification-email",
             {
               email: value.email,
-              callbackURL: `${window.location.origin}/verify`,
+              callbackURL: `${window.location.origin}${nextUrl("/verify")}`,
             },
             headers,
           );
@@ -178,12 +219,10 @@ function AccountForm({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries();
+      if (kind === "signup") clearFlow(flowStorage, "loofah.invitation");
+      if (kind === "device") clearFlow(flowStorage, "loofah.device");
       if (kind === "login")
-        window.location.assign(
-          location.searchParams.get("next") === "device"
-            ? `/device?user_code=${encodeURIComponent(location.searchParams.get("user_code") ?? "")}`
-            : "/account",
-        );
+        window.location.assign(pendingDevice ? nextUrl("/device") : "/account");
     },
     onSettled: () => resetRef.current?.(),
   });
@@ -195,7 +234,7 @@ function AccountForm({
       invitation,
       challenge: "",
       newPassword: "",
-      userCode: location.searchParams.get("user_code") ?? "",
+      userCode: pendingDevice,
     },
     onSubmit: async ({ value }) => {
       await mutation.mutateAsync(value).catch(() => {});
@@ -221,10 +260,7 @@ function AccountForm({
       autocomplete: "email",
     });
   if (kind === "signup")
-    fields.push(
-      { name: "name", label: "Name", autocomplete: "name" },
-      { name: "invitation", label: "Invitation code", autocomplete: "off" },
-    );
+    fields.push({ name: "name", label: "Name", autocomplete: "name" });
   if (["login", "signup", "password"].includes(kind))
     fields.push({
       name: "password",
@@ -258,12 +294,25 @@ function AccountForm({
     return (
       <div className="notice" role="status">
         {kind === "device" ? (
-          "Login approved. Return to Loofah on your Mac to finish device enrollment."
+          <>
+            <strong>Signed in. Finish setting up sync on your Mac.</strong>
+            <p>
+              Return to Loofah Staging → Settings → Sync. On your first Mac,
+              save your recovery kit and choose the saved file to verify it. For
+              another Mac, use that kit or connect through a Mac you already set
+              up.
+            </p>
+            <p>
+              Then choose Start syncing. Signing in alone does not upload your
+              notes.
+            </p>
+          </>
         ) : kind === "password" ? (
           "Password changed. Other sessions have been signed out."
         ) : kind === "reset" ? (
           <>
-            Password changed. <a href="/login">Sign in</a> to continue.
+            Password changed. <a href={nextUrl("/login")}>Sign in</a> to
+            continue.
           </>
         ) : (
           <>
@@ -273,15 +322,15 @@ function AccountForm({
             </p>
             <p>Delivery can take a few minutes. Check your spam folder too.</p>
             <a
-              href={
-                kind === "forgot" ? "/forgot-password" : "/resend-verification"
-              }
+              href={nextUrl(
+                kind === "forgot" ? "/forgot-password" : "/resend-verification",
+              )}
             >
               Request another email
             </a>
             {kind !== "forgot" && (
               <p>
-                <a href="/login">Already verified? Sign in</a>
+                <a href={nextUrl("/login")}>Already verified? Sign in</a>
               </p>
             )}
           </>
@@ -302,7 +351,7 @@ function AccountForm({
               {label}
               <input
                 name={name}
-                type={type}
+                type={type === "password" && showPassword ? "text" : type}
                 autoComplete={autocomplete}
                 required
                 minLength={
@@ -319,6 +368,26 @@ function AccountForm({
           )}
         </form.Field>
       ))}
+      {fields.some((field) => field.type === "password") && (
+        <label className="password-toggle">
+          <input
+            type="checkbox"
+            checked={showPassword}
+            onChange={(event) => setShowPassword(event.target.checked)}
+          />
+          Show password{kind === "password" ? "s" : ""}
+        </label>
+      )}
+      {["signup", "reset", "password"].includes(kind) && (
+        <p className="muted">Use at least 12 characters.</p>
+      )}
+      {kind === "password" && (
+        <p>
+          Changing your password signs out your other browsers and Macs. You
+          will need to sign in again there. Your local notes and recovery kit
+          stay unchanged.
+        </p>
+      )}
       {requiresChallenge && (
         <Challenge
           sitekey={sitekey}
@@ -362,6 +431,7 @@ function Account() {
           active_devices: number;
           last_change_at: number | null;
         };
+        identity: { email: string; session: string };
       }>("/account"),
     refetchInterval: 30_000,
   });
@@ -369,31 +439,55 @@ function Account() {
     queryKey: ["sessions"],
     queryFn: () =>
       api<
-        { id: string; token: string; userAgent?: string; createdAt: string }[]
-      >("/auth/list-sessions"),
+        {
+          id: string;
+          token: string;
+          userAgent?: string;
+          createdAt: string;
+          current: boolean;
+          device: { name?: string | null } | null;
+        }[]
+      >("/account/sign-ins"),
     enabled: account.isSuccess,
   });
   const revoke = useMutation({
     mutationFn: (token: string) => api("/auth/revoke-session", { token }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sessions"] }),
+    onSuccess: (_, token) => {
+      if (
+        sessions.data?.some(
+          (session) => session.current && session.token === token,
+        )
+      )
+        window.location.assign(nextUrl("/login"));
+      else void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
   });
   const logout = useMutation({
     mutationFn: () => api("/auth/sign-out", {}),
     onSuccess: () => {
       queryClient.clear();
-      window.location.assign("/login");
+      window.location.assign(nextUrl("/login"));
     },
   });
   if (account.isPending) return <p role="status">Loading your account…</p>;
   if (account.error)
-    return (
-      <p>
-        {account.error.message} <a href="/login">Sign in</a>
-      </p>
-    );
+    return <Retry error={account.error} retry={() => void account.refetch()} />;
   return (
     <>
       <h1>Your account</h1>
+      <p>
+        Signed in as <strong>{account.data.identity.email}</strong>
+      </p>
+      {account.data.account.active_devices === 0 && (
+        <div className="notice">
+          <strong>Your account is ready. Set up sync on your Mac next.</strong>
+          <p>
+            Open Loofah Staging → Settings → Sync. Sign in, save and verify your
+            recovery kit, then choose Start syncing. For a vault you already set
+            up, use your kit or another connected Mac.
+          </p>
+        </div>
+      )}
       <section>
         <h2>Sync storage</h2>
         <p className="usage">
@@ -413,13 +507,14 @@ function Account() {
             <dd>{account.data.account.synced_items.toLocaleString()}</dd>
           </div>
           <div>
-            <dt>Enrolled Macs</dt>
+            <dt>Macs with access</dt>
             <dd>{account.data.account.active_devices.toLocaleString()}</dd>
           </div>
         </dl>
         <p className="muted">
-          Items include sessions and shared people, tags and tasks records.
-          Deleted items are excluded. Your content stays encrypted.
+          Items include sessions and your vault-wide people, tags and task
+          lists. Deleted items are excluded. Sync connects your own Macs; it
+          does not share content with other people.
         </p>
         <p>
           <strong>Latest cloud update</strong>
@@ -448,36 +543,35 @@ function Account() {
       </section>
       <section>
         <h2>Account sign-ins</h2>
-        {sessions.error && <p role="alert">Could not load sessions.</p>}
+        <p>
+          Signing out stops access to your account from that browser or app.
+          Local notes stay on the Mac.
+        </p>
+        {sessions.isPending && <p role="status">Loading sign-ins…</p>}
+        {sessions.error && (
+          <Retry error={sessions.error} retry={() => void sessions.refetch()} />
+        )}
         <ul className="sessions">
-          {sessions.data?.map(
-            (session: {
-              id: string;
-              token: string;
-              userAgent?: string;
-              createdAt: string;
-            }) => (
-              <li key={session.id}>
-                <div>
-                  <strong>
-                    {session.userAgent?.includes("Mac")
-                      ? "Mac"
-                      : "Browser or app session"}
-                  </strong>
-                  <small>
-                    Signed in {new Date(session.createdAt).toLocaleDateString()}
-                  </small>
-                </div>
-                <button
-                  className="secondary"
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate(session.token)}
-                >
-                  Sign out
-                </button>
-              </li>
-            ),
-          )}
+          {sessions.data?.map((session) => (
+            <li key={session.id}>
+              <div>
+                <strong>
+                  {signInLabel(session.userAgent, session.device)}
+                  {session.current ? " · This browser" : ""}
+                </strong>
+                <small>
+                  Signed in {new Date(session.createdAt).toLocaleString()}
+                </small>
+              </div>
+              <button
+                className="secondary"
+                disabled={revoke.isPending}
+                onClick={() => revoke.mutate(session.token)}
+              >
+                Sign out
+              </button>
+            </li>
+          ))}
         </ul>
         {revoke.error && (
           <p role="alert" className="error">
@@ -488,7 +582,7 @@ function Account() {
       <section>
         <h2>Account security</h2>
         <p>
-          <a href="/change-password">Change password</a>
+          <a href={nextUrl("/change-password")}>Change password</a>
         </p>
         <p>
           Your account password cannot decrypt your vault. Keep your recovery
@@ -507,6 +601,60 @@ function Account() {
   );
 }
 
+function SwitchAccount() {
+  const change = useMutation({
+    mutationFn: () => api("/auth/sign-out", {}),
+    onSuccess: () => window.location.assign(nextUrl("/login")),
+  });
+  return (
+    <>
+      <button
+        className="link-button"
+        disabled={change.isPending}
+        onClick={() => change.mutate()}
+      >
+        Use another account
+      </button>
+      {change.error && <span role="alert">{change.error.message}</span>}
+    </>
+  );
+}
+
+function Verification() {
+  const result = useQuery({
+    queryKey: ["verification-result"],
+    queryFn: () => api<{ verified: boolean }>("/verification-result"),
+    retry: false,
+  });
+  if (result.isPending)
+    return <p role="status">Checking email verification…</p>;
+  if (result.error)
+    return <Retry error={result.error} retry={() => void result.refetch()} />;
+  const verified = result.data.verified && !location.searchParams.has("error");
+  return (
+    <>
+      <h1>{verified ? "Email verified" : "Email verification"}</h1>
+      <p>
+        {verified
+          ? "Your account is ready. Sign in to continue setting up sync."
+          : "We could not confirm verification from this page. Open the link in your verification email, or request a new one."}
+      </p>
+      <p>
+        <a href={nextUrl("/login")}>Sign in to continue</a>
+        {!verified && (
+          <>
+            {" "}
+            ·{" "}
+            <a href={nextUrl("/resend-verification")}>
+              Request a new verification link
+            </a>
+          </>
+        )}
+      </p>
+    </>
+  );
+}
+
 function App() {
   const config = useQuery({
     queryKey: ["config"],
@@ -515,31 +663,26 @@ function App() {
   const current = location.pathname;
   const deviceSession = useQuery({
     queryKey: ["account"],
-    queryFn: () => api("/account"),
+    queryFn: () => api<{ identity: { email: string } }>("/account"),
     enabled: current === "/device",
   });
   let content;
   if (config.isPending) content = <p role="status">Loading…</p>;
   else if (config.error)
     content = (
-      <p role="alert">
-        Account service is temporarily unavailable. Please try again.
-      </p>
+      <Retry error={config.error} retry={() => void config.refetch()} />
     );
   else if (current === "/account" || current === "/") content = <Account />;
-  else if (current === "/verify")
+  else if (current === "/verify") content = <Verification />;
+  else if (
+    current === "/reset-password" &&
+    (!resetToken || location.searchParams.has("error"))
+  )
     content = (
       <>
-        <h1>Email verification</h1>
-        <p>
-          {location.searchParams.has("error")
-            ? "This verification link could not be used. Request a new link below."
-            : "Sign in to check your account’s verification status."}
-        </p>
-        <p>
-          <a href="/login">Sign in</a> ·{" "}
-          <a href="/resend-verification">Request a new link</a>
-        </p>
+        <h1>Request a new password link</h1>
+        <p>This password reset link is missing, expired or invalid.</p>
+        <a href={nextUrl("/forgot-password")}>Send a new reset link</a>
       </>
     );
   else if (current === "/signup" && !config.data.signupOpen)
@@ -548,25 +691,37 @@ function App() {
         <h1>Sync beta</h1>
         <p>Signup is currently closed while we finish testing.</p>
         <p>Loofah on your Mac works offline without an account.</p>
-        <a href="/login">Already have an account? Sign in</a>
+        <a href={nextUrl("/login")}>Already have an account? Sign in</a>
       </>
     );
-  else if (current === "/device" && !deviceSession.isSuccess)
+  else if (current === "/signup" && !invitation)
+    content = (
+      <>
+        <h1>You need an invitation</h1>
+        <p>
+          Sync is currently invitation-only. Open the invitation link you
+          received to create your account. If you refreshed or returned later,
+          reopen that link.
+        </p>
+        <a href={nextUrl("/login")}>Already have an account? Sign in</a>
+      </>
+    );
+  else if (current === "/device" && deviceSession.isPending)
+    content = <p role="status">Checking your sign-in…</p>;
+  else if (current === "/device" && deviceSession.error)
     content = (
       <>
         <h1>Connect your Mac</h1>
-        <p>Sign in to approve the code displayed in Loofah.</p>
-        <a
-          href={`/login?next=device&user_code=${encodeURIComponent(location.searchParams.get("user_code") ?? "")}`}
-        >
-          Sign in
-        </a>
+        <Retry
+          error={deviceSession.error}
+          retry={() => void deviceSession.refetch()}
+        />
       </>
     );
   else {
     const pages = {
       "/login": ["Sign in", "login"],
-      "/signup": ["Create your account", "signup"],
+      "/signup": ["Create your invited account", "signup"],
       "/forgot-password": ["Reset your password", "forgot"],
       "/resend-verification": ["Verify your email", "resend"],
       "/reset-password": ["Choose a new password", "reset"],
@@ -578,18 +733,24 @@ function App() {
       <>
         <h1>{page[0]}</h1>
         {page[1] === "device" && (
-          <p>
-            Only approve a code shown in Loofah on the Mac you are connecting.
-            Your vault keys are transferred separately from a trusted Mac or
-            your recovery kit.
-          </p>
+          <>
+            <p>
+              Signed in as <strong>{deviceSession.data?.identity.email}</strong>
+              . <SwitchAccount />
+            </p>
+            <p>
+              Approve only the code shown in Loofah Staging on the Mac you are
+              connecting. Next, the app will guide you through securing this Mac
+              before syncing starts.
+            </p>
+          </>
         )}
         <AccountForm kind={page[1]} sitekey={config.data.sitekey} />
         {page[1] === "login" && (
           <nav className="form-links">
-            <a href="/forgot-password">Forgot password?</a>
-            <a href="/resend-verification">Resend verification</a>
-            <a href="/signup">Create account</a>
+            <a href={nextUrl("/forgot-password")}>Forgot password?</a>
+            <a href={nextUrl("/resend-verification")}>Resend verification</a>
+            <a href={nextUrl("/signup")}>Have an invitation?</a>
           </nav>
         )}
         {page[1] === "signup" && (
@@ -599,8 +760,8 @@ function App() {
               account.
             </p>
             <nav className="form-links">
-              <a href="/login">Already registered? Sign in</a>
-              <a href="/resend-verification">
+              <a href={nextUrl("/login")}>Already registered? Sign in</a>
+              <a href={nextUrl("/resend-verification")}>
                 Waiting for verification? Send another email
               </a>
             </nav>

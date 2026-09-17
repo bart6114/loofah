@@ -177,6 +177,9 @@ async fn two_replicas_create_conflict_resolve_and_restore() {
     let preview = a.preview(&entity, first_revision).await.unwrap();
     assert_eq!(preview.text, "original");
     assert!(preview.captured_at.is_some());
+    assert_eq!(preview.title.as_deref(), Some("engine test"));
+    assert!(preview.created_at > 0);
+    assert!(!preview.device_id.is_nil());
     let receipts = hypr_vault_write::sync_deletions::directory(first.path()).unwrap();
     assert!(!receipts.exists());
     fs::create_dir_all(&receipts).unwrap();

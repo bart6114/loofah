@@ -74,6 +74,9 @@ struct State {
 }
 
 pub struct Preview {
+    pub title: Option<String>,
+    pub device_id: Uuid,
+    pub created_at: u64,
     pub manifest: Manifest,
     pub text: String,
     pub changed: Vec<String>,
@@ -91,6 +94,7 @@ pub struct Engine {
     checkpoints: Checkpoints,
     observed: BTreeMap<Entity, BTreeMap<String, Stamp>>,
     reconciled: Option<Instant>,
+    last_poll_succeeded: bool,
 }
 
 #[derive(Deserialize)]
@@ -101,6 +105,8 @@ struct StoredRevision {
 
 #[derive(Deserialize)]
 struct StoredHead {
+    device_id: Uuid,
+    created_at: u64,
     entity: String,
     #[serde(rename = "manifest_object")]
     manifest: Uuid,
@@ -196,6 +202,7 @@ impl Engine {
             checkpoints: Checkpoints::default(),
             observed: BTreeMap::new(),
             reconciled: None,
+            last_poll_succeeded: false,
         };
         engine.save()?;
         Ok(engine)
@@ -372,6 +379,15 @@ impl Engine {
             }
             result => result,
         }
+    }
+
+    pub fn up_to_date(&self) -> bool {
+        self.last_poll_succeeded
+            && self.state.initialized
+            && self.state.snapshot.is_none()
+            && self.reconciled.is_some()
+            && self.pending_work() == 0
+            && self.state.conflicts.is_empty()
     }
 
     pub fn pending_work(&self) -> usize {
@@ -644,6 +660,7 @@ impl Engine {
     }
 
     pub async fn tick(&mut self, store: &hypr_vault_write::SessionStore) -> Result<()> {
+        self.last_poll_succeeded = false;
         if store.vault_base().canonicalize()? != self.state.binding.local {
             return Err(Error::RecoveryRequired);
         }
@@ -771,7 +788,9 @@ impl Engine {
             });
         }
         self.state.last_success = Some(now_ms());
-        self.save()
+        self.save()?;
+        self.last_poll_succeeded = true;
+        Ok(())
     }
 
     async fn finish_apply(&mut self, store: &hypr_vault_write::SessionStore) -> Result<()> {
@@ -943,6 +962,7 @@ impl Engine {
                     != encrypted.manifest.files.get(name)
             })
             .collect();
+        let mut title = None;
         let mut missing_references = BTreeSet::new();
         if matches!(entity, Entity::Session(_)) {
             let registries = blocking(|| -> Result<_> {
@@ -990,6 +1010,7 @@ impl Engine {
                         .map_err(|_| Error::Authentication)
                 })?;
                 if name == "_meta.json" {
+                    title = value["title"].as_str().map(str::to_owned);
                     for tag in value["tags"]
                         .as_array()
                         .into_iter()
@@ -1020,6 +1041,9 @@ impl Engine {
             }
         }
         Ok(Preview {
+            title,
+            device_id: stored.revision.device_id,
+            created_at: stored.revision.created_at,
             manifest: encrypted.manifest,
             text,
             changed,
@@ -1307,5 +1331,54 @@ mod tests {
             fs::read(vault.path().join("people.json")).unwrap(),
             br#"{"people":[],"future":true}"#
         );
+    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn up_to_date_requires_this_run_to_reconcile_and_all_work_to_finish() {
+        let vault = tempfile::tempdir().unwrap();
+        let state = tempfile::tempdir().unwrap();
+        let id = Uuid::new_v4();
+        let key = VaultKey::generate(id).unwrap();
+        let kit = key.recovery_kit();
+        let binding = Binding {
+            account: "one".into(),
+            vault: id,
+            generation: Uuid::new_v4(),
+            local: vault.path().canonicalize().unwrap(),
+        };
+        let remote =
+            || RemoteClient::new(Environment::Staging, "test", Some(binding.generation)).unwrap();
+        let mut engine = Engine::open(state.path(), binding.clone(), key, remote()).unwrap();
+        assert!(!engine.up_to_date());
+        engine.state.initialized = true;
+        engine.state.last_success = Some(now_ms());
+        assert!(!engine.up_to_date());
+        engine.reconciled = Some(Instant::now());
+        assert!(!engine.up_to_date());
+        engine.last_poll_succeeded = true;
+        assert!(engine.up_to_date());
+        engine.changed(Entity::People);
+        assert!(!engine.up_to_date());
+        engine.checkpoints = Checkpoints::default();
+        engine.state.conflicts.insert(
+            "conflict".into(),
+            Conflict {
+                entity: Entity::People,
+                local: Uuid::new_v4(),
+                cloud: Uuid::new_v4(),
+            },
+        );
+        assert!(!engine.up_to_date());
+        engine.state.conflicts.clear();
+        assert!(engine.up_to_date());
+        engine.save().unwrap();
+        drop(engine);
+        let reopened = Engine::open(
+            state.path(),
+            binding.clone(),
+            VaultKey::from_recovery_kit(&kit, id).unwrap(),
+            remote(),
+        )
+        .unwrap();
+        assert!(!reopened.up_to_date());
     }
 }

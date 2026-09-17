@@ -823,6 +823,7 @@ export type ChatgptModel = {
 };
 export type Device = {
   id: string;
+  name: string | null;
   public_key: string;
   enrolled_at: number;
   revoked_at: number | null;
@@ -1014,6 +1015,9 @@ export type StartupStatus = {
 };
 export type SyncAction =
   | "connect"
+  | "reopen_browser"
+  | "copy_code"
+  | { rename_device: { id: string; name: string } }
   | "cancel"
   | "pause"
   | "resume"
@@ -1032,6 +1036,7 @@ export type SyncAction =
   | { export: { entity: SyncEntity; revision: string } };
 export type SyncConflict = { entity: SyncEntity; local: string; cloud: string };
 export type SyncContent = {
+  cancelled: boolean;
   versions: Version[];
   preview: VersionPreview | null;
 };
@@ -1047,6 +1052,12 @@ export type SyncStatus = {
   browserUrl: string | null;
   userCode: string | null;
   pairingCode: string | null;
+  pairingRole: string | null;
+  accountEmail: string | null;
+  currentDeviceId: string | null;
+  hasStarted: boolean;
+  upToDate: boolean;
+  notice: string | null;
   error: string | null;
   lastSuccess: number | null;
   pendingWork: number;
@@ -1222,6 +1233,9 @@ export type Version = {
   pinned: number;
 };
 export type VersionPreview = {
+  title: string | null;
+  device_id: string;
+  created_at: number;
   text: string;
   files: string[];
   changed: string[];

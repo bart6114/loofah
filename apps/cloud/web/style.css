@@ -215,3 +215,24 @@ progress {
   font-size: 28px;
   overflow-wrap: anywhere;
 }
+
+.password-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.password-toggle input {
+  width: auto;
+}
+.link-button {
+  display: inline;
+  color: #2f6848;
+  background: none;
+  padding: 0;
+  border: 0;
+  text-decoration: underline;
+  font: inherit;
+}
+.link-button:hover {
+  background: none;
+}

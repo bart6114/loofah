@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 
 import { activateAccount, createAuth } from "../src/auth.ts";
+import worker from "../src/index.ts";
 import { openJob, sha256 } from "../src/jobs.ts";
 import { approveDevice } from "../web/api.ts";
 import { database } from "./database.js";
@@ -70,8 +71,52 @@ test("native D1 auth requires an email-bound invitation, activates once, approve
     const verification = await openJob(env.EMAIL_JOB_KEY, job.payload);
     assert.equal(verification.to, details.email);
     assert.equal(verification.kind, "verify");
-    const verified = await auth.handler(new Request(verification.url));
-    assert.ok(verified.status < 400, await verified.text());
+    const verificationRequest = new URL(verification.url);
+    verificationRequest.searchParams.set(
+      "callbackURL",
+      `${origin}/verify?next=device&user_code=ABCD1234`,
+    );
+    const verified = await worker.fetch(new Request(verificationRequest), env, {
+      waitUntil() {},
+    });
+    assert.equal(verified.status, 302);
+    assert.equal(
+      verified.headers.get("location"),
+      `${origin}/verify?next=device&user_code=ABCD1234`,
+    );
+    const receipt = verified.headers
+      .getSetCookie()
+      .filter((value) => !value.includes("Max-Age=0"))
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    const receiptResult = (cookie) =>
+      worker.fetch(
+        new Request(`${origin}/api/verification-result`, {
+          headers: { cookie },
+        }),
+        env,
+        { waitUntil() {} },
+      );
+    assert.deepEqual(await (await receiptResult(receipt)).json(), {
+      verified: true,
+    });
+    assert.deepEqual(
+      await (await receiptResult("loofah.verification=verified")).json(),
+      { verified: false },
+    );
+    assert.deepEqual(await (await receiptResult("")).json(), {
+      verified: false,
+    });
+    verificationRequest.searchParams.set("token", "invalid");
+    const invalid = await worker.fetch(new Request(verificationRequest), env, {
+      waitUntil() {},
+    });
+    assert.match(invalid.headers.get("location"), /error=verification_failed/);
+    assert.ok(
+      invalid.headers
+        .getSetCookie()
+        .every((value) => value.includes("Max-Age=0")),
+    );
     await activateAccount(db, user.id);
     await activateAccount(db, user.id);
     const vault = sql.prepare("SELECT * FROM sync_accounts").get();

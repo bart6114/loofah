@@ -39,6 +39,8 @@ impl Runtime {
         })
         .map_err(|e| e.to_string())?;
         self.phase("pairing");
+        self.status.write().unwrap().pairing_role =
+            Some(if code.is_some() { "approver" } else { "new" }.into());
         let pending = tokio::time::timeout(
             Duration::from_secs(20),
             PendingPairing::begin(
@@ -48,15 +50,20 @@ impl Runtime {
             ),
         )
         .await
-        .map_err(|_| "Pairing server timed out.")?
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| "Could not reach the pairing service. Try again.".to_owned())
+        .and_then(|result| result.map_err(sync_error));
+        let pending = match pending {
+            Ok(pending) => pending,
+            Err(error) => {
+                self.status.write().unwrap().pairing_role = None;
+                self.phase(self.connected_phase());
+                return Err(error);
+            }
+        };
         if code.is_none() {
             self.status.write().unwrap().pairing_code = Some(pending.code());
         }
-        if let Some(connection) = self.connection.as_mut() {
-            connection.paused = true;
-        }
-        self.save()?;
+        // The scheduler waits for pairing without changing the user's saved pause preference.
         let checkpoint = self
             .engine
             .as_ref()

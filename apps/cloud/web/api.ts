@@ -1,3 +1,12 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function api<T = unknown>(
   path: string,
   body?: unknown,
@@ -11,10 +20,16 @@ export async function api<T = unknown>(
       ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+  }).catch(() => {
+    throw new ApiError(
+      "Could not reach Loofah. Check your connection and try again.",
+      0,
+    );
   });
-  const value = await response.json();
+  const parsed = await response.json().catch(() => null);
+  const value = parsed && typeof parsed === "object" ? parsed : {};
   if (!response.ok)
-    throw new Error(
+    throw new ApiError(
       value.message ??
         (
           {
@@ -43,6 +58,7 @@ export async function api<T = unknown>(
         )[value.error] ??
         value.error_description ??
         "This request could not be completed. Please try again.",
+      response.status,
     );
   return value as T;
 }

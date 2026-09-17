@@ -5,6 +5,7 @@ use std::time::Duration;
 use libsodium_rs::crypto_sign::KeyPair;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_specta::Event;
@@ -28,6 +29,12 @@ pub struct SyncStatus {
     browser_url: Option<String>,
     user_code: Option<String>,
     pairing_code: Option<String>,
+    pairing_role: Option<String>,
+    account_email: Option<String>,
+    current_device_id: Option<String>,
+    has_started: bool,
+    up_to_date: bool,
+    notice: Option<String>,
     error: Option<String>,
     last_success: Option<u64>,
     pending_work: usize,
@@ -43,6 +50,7 @@ pub struct SyncStatus {
 #[derive(Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Device {
     id: String,
+    name: Option<String>,
     public_key: String,
     enrolled_at: u64,
     revoked_at: Option<u64>,
@@ -93,6 +101,12 @@ pub struct SyncConflict {
 #[serde(rename_all = "snake_case")]
 pub enum SyncAction {
     Connect,
+    ReopenBrowser,
+    CopyCode,
+    RenameDevice {
+        id: String,
+        name: String,
+    },
     Cancel,
     Pause,
     Resume,
@@ -140,6 +154,9 @@ pub struct Version {
 }
 #[derive(Clone, Serialize, Deserialize, specta::Type)]
 pub struct VersionPreview {
+    pub title: Option<String>,
+    pub device_id: String,
+    pub created_at: u64,
     pub text: String,
     pub files: Vec<String>,
     pub changed: Vec<String>,
@@ -149,6 +166,7 @@ pub struct VersionPreview {
 }
 #[derive(Clone, Serialize, Deserialize, specta::Type)]
 pub struct SyncContent {
+    pub cancelled: bool,
     pub versions: Vec<Version>,
     pub preview: Option<VersionPreview>,
 }
@@ -169,6 +187,8 @@ struct Connection {
     version: u32,
     binding: Binding,
     paused: bool,
+    #[serde(default)]
+    has_started: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -186,6 +206,7 @@ struct Account {
 }
 #[derive(Clone, Deserialize)]
 struct Identity {
+    email: String,
     user: String,
     session: String,
 }
@@ -210,6 +231,22 @@ struct Runtime {
     kit: Option<VaultKey>,
     pairing: Option<tokio::task::JoinHandle<Result<Option<(VaultKey, Uuid, KeyPair)>, String>>>,
     progress: TransferProgress,
+    refreshed_at: std::time::Instant,
+    refresh_error: Option<String>,
+}
+
+fn sync_error(error: vault_sync::Error) -> String {
+    match error {
+        vault_sync::Error::Cloud { code, .. } if code == "quota" => "Cloud storage is full. Changes stay queued on this Mac. You can download or restore versions, or delete older versions from history to free space.".into(),
+        vault_sync::Error::Cloud { status: 401, .. } => "Your sign-in expired or this Mac's access was removed. Sign in again to continue. Your local files are safe.".into(),
+        vault_sync::Error::Cloud { code, .. } if code == "conflict" => "This content changed while you were reviewing it. Reload the versions and try again; both versions are preserved.".into(),
+        vault_sync::Error::Cloud { status: 429, .. } => "Too many requests. Sync will retry shortly; your changes are saved on this Mac.".into(),
+        vault_sync::Error::Network(_) => "Cannot reach Loofah. Check your connection; sync will retry automatically. Your changes are saved on this Mac.".into(),
+        vault_sync::Error::DiskFull => "This Mac needs more free disk space to sync. Free some space, then try again. Your existing files are safe.".into(),
+        vault_sync::Error::Conflict => "This content changed while you were reviewing it. Reload the versions and try again; both versions are preserved.".into(),
+        vault_sync::Error::Authentication => "This content could not be verified. Sync stopped to protect your files. Try again or use your recovery kit on a trusted Mac.".into(),
+        error => error.to_string(),
+    }
 }
 
 fn enabled<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
@@ -271,6 +308,8 @@ pub fn spawn(app: AppHandle, store: Arc<crate::session_store::SessionStore>) {
             kit: None,
             pairing: None,
             progress: progress.clone(),
+            refreshed_at: std::time::Instant::now(),
+            refresh_error: None,
         },
         Err(error) => {
             app.state::<SyncState>().status.write().unwrap().error = Some(error);
@@ -321,6 +360,7 @@ pub fn spawn(app: AppHandle, store: Arc<crate::session_store::SessionStore>) {
                 Login(vault_sync::Result<Option<Zeroizing<String>>>),
                 Tick(vault_sync::Result<()>),
                 Pairing(Result<Option<(VaultKey, Uuid, KeyPair)>, String>),
+                Refresh(Result<(), String>),
                 Idle,
             }
             let accept_changes = tokio::time::Instant::now() < next || runtime.engine.is_none();
@@ -337,6 +377,11 @@ pub fn spawn(app: AppHandle, store: Arc<crate::session_store::SessionStore>) {
                         );
                     }
                     tokio::time::sleep_until(next).await;
+                    if runtime.remote.is_some()
+                        && runtime.refreshed_at.elapsed() >= Duration::from_secs(60)
+                    {
+                        return Outcome::Refresh(runtime.refresh_account().await);
+                    }
                     if runtime
                         .connection
                         .as_ref()
@@ -396,12 +441,22 @@ pub fn spawn(app: AppHandle, store: Arc<crate::session_store::SessionStore>) {
                 Outcome::Request(None) => break,
                 Outcome::Login(Ok(Some(credential))) => {
                     runtime.login = None;
+                    runtime.phase("authorization_required");
+                    {
+                        let mut status = runtime.status.write().unwrap();
+                        status.browser_url = None;
+                        status.user_code = None;
+                    }
                     runtime.accept_login(&credential).await
                 }
                 Outcome::Login(Ok(None)) => Ok(()),
-                Outcome::Login(Err(error)) => {
+                Outcome::Login(Err(_error)) => {
                     runtime.login = None;
-                    Err(error.to_string())
+                    runtime.phase("authorization_required");
+                    let mut status = runtime.status.write().unwrap();
+                    status.browser_url = None;
+                    status.user_code = None;
+                    Err("Browser sign-in could not finish or the code expired. Connect again to get a new code.".into())
                 }
                 Outcome::Tick(result) => {
                     if matches!(&result, Err(vault_sync::Error::Cloud { code, .. }) if code == "recovery_required")
@@ -430,37 +485,34 @@ pub fn spawn(app: AppHandle, store: Arc<crate::session_store::SessionStore>) {
                     if result.is_ok() {
                         runtime.status.write().unwrap().error = None;
                     }
-                    result.map_err(|error| match error {
-                        vault_sync::Error::Cloud { code, .. } if code == "quota" => "Storage is full. Uploads remain queued on this Mac. You can preview, export or restore cloud versions, or purge old history to free space.".into(),
-                        vault_sync::Error::Cloud { status: 401, .. } => "Your account session expired or this device was revoked. Connect again to continue.".into(),
-                        error => error.to_string(),
-                    })
+                    result.map_err(sync_error)
                 }
                 Outcome::Pairing(result) => {
                     runtime.pairing = None;
-                    runtime.status.write().unwrap().pairing_code = None;
+                    {
+                        let mut status = runtime.status.write().unwrap();
+                        status.pairing_code = None;
+                        status.pairing_role = None;
+                    }
                     match result {
-                        Ok(Some((key, device, pair))) => runtime.enroll(key, device, pair).await,
+                        Ok(Some((key, device, pair))) => {
+                            runtime.phase("import_recovery_kit");
+                            runtime.enroll(key, device, pair).await
+                        }
                         Ok(None) => {
-                            runtime.phase(
-                                if runtime.connection.as_ref().is_some_and(|c| !c.paused) {
-                                    "connected"
-                                } else {
-                                    "paused"
-                                },
-                            );
+                            runtime.phase(runtime.connected_phase());
+                            runtime.status.write().unwrap().notice =
+                                Some("Your new Mac has access. Finish setup on that Mac.".into());
+                            runtime.refresh_after_change().await;
                             Ok(())
                         }
                         Err(error) => {
-                            runtime.phase(if runtime.engine.is_some() {
-                                "paused"
-                            } else {
-                                "import_recovery_kit"
-                            });
+                            runtime.phase(runtime.connected_phase());
                             Err(error)
                         }
                     }
                 }
+                Outcome::Refresh(result) => result,
                 Outcome::Idle => {
                     next = tokio::time::Instant::now() + Duration::from_secs(10);
                     Ok(())
@@ -477,6 +529,10 @@ impl Runtime {
         if let Err(error) = result {
             status.error = Some(error);
         }
+        status.has_started = self.connection.as_ref().is_some_and(|c| c.has_started);
+        status.up_to_date = status.phase == "connected"
+            && status.error.is_none()
+            && self.engine.as_ref().is_some_and(Engine::up_to_date);
         if let Some(engine) = &self.engine {
             status.last_success = engine.last_success();
             status.pending_work = engine.pending_work();
@@ -490,6 +546,84 @@ impl Runtime {
                 })
                 .collect();
         }
+    }
+    fn connected_phase(&self) -> &'static str {
+        if self.engine.is_none() {
+            "import_recovery_kit"
+        } else if self.connection.as_ref().is_some_and(|c| !c.paused) {
+            "connected"
+        } else {
+            "paused"
+        }
+    }
+    async fn refresh_account(&mut self) -> Result<(), String> {
+        self.refreshed_at = std::time::Instant::now();
+        let remote = self.remote.as_ref().ok_or("Sign in to continue.")?;
+        #[derive(Deserialize)]
+        struct Devices {
+            devices: Vec<Device>,
+        }
+        let result: vault_sync::Result<(Devices, AccountResponse)> = async {
+            let devices = remote.get("/devices").await?;
+            let account = remote.get("/account").await?;
+            Ok((devices, account))
+        }
+        .await;
+        let (devices, account) = match result {
+            Ok(value) => value,
+            Err(error) => {
+                if matches!(&error, vault_sync::Error::Cloud { status: 401, .. }) {
+                    if let Some(engine) = &self.engine {
+                        let _ = engine.wait_idle().await;
+                    }
+                    if let Some(connection) = self.connection.as_mut() {
+                        connection.paused = true;
+                    }
+                    self.save()?;
+                    self.phase("authorization_required");
+                }
+                let message = sync_error(error);
+                self.refresh_error = Some(message.clone());
+                return Err(message);
+            }
+        };
+        if self.connection.as_ref().is_some_and(|connection| {
+            connection.binding.generation != account.account.recovery_generation
+        }) {
+            if let Some(engine) = &self.engine {
+                let _ = engine.wait_idle().await;
+            }
+            if let Some(connection) = self.connection.as_mut() {
+                connection.paused = true;
+            }
+            self.save()?;
+            self.phase("recovery_required");
+            return Err("Cloud sync has changed. Compare this Mac with the cloud before continuing. Your local files are safe.".into());
+        }
+        let mut status = self.status.write().unwrap();
+        if self.refresh_error.take().as_ref() == status.error.as_ref() {
+            status.error = None;
+        }
+        status.used_bytes = account.account.used_bytes;
+        status.quota_bytes = account.account.quota_bytes;
+        status.account_email = Some(account.identity.email);
+        status.devices = devices.devices;
+        Ok(())
+    }
+    async fn refresh_after_change(&mut self) {
+        if let Err(error) = self.refresh_account().await {
+            self.status.write().unwrap().error = Some(error);
+        }
+    }
+    fn cancelled(&self, message: &str) -> Option<SyncContent> {
+        let mut status = self.status.write().unwrap();
+        status.notice = Some(message.into());
+        status.error = None;
+        Some(SyncContent {
+            cancelled: true,
+            versions: vec![],
+            preview: None,
+        })
     }
     fn phase(&self, phase: &str) {
         let mut status = self.status.write().unwrap();
@@ -550,6 +684,7 @@ impl Runtime {
         self.connection = Some(Connection {
             version: 1,
             paused: true,
+            has_started: self.connection.as_ref().is_some_and(|c| c.has_started),
             binding: Binding {
                 account: account.identity.user.clone(),
                 vault: account.account.vault_id,
@@ -578,12 +713,13 @@ impl Runtime {
         {
             self.phase("recovery_required");
             return Err(
-                "Account or recovery generation changed. Explicit reconciliation is required."
+                "Cloud sync has changed. Compare this Mac with the cloud before continuing. Your local files are safe."
                     .into(),
             );
         }
         {
             let mut status = self.status.write().unwrap();
+            status.account_email = Some(account.identity.email.clone());
             status.used_bytes = account.account.used_bytes;
             status.quota_bytes = account.account.quota_bytes;
             status.browser_url = None;
@@ -711,11 +847,20 @@ impl Runtime {
             Ok(engine) => engine,
             Err(vault_sync::Error::RecoveryRequired) => {
                 self.phase("recovery_required");
-                return Err("Sync state belongs to an earlier account or recovery generation. Reconcile explicitly to continue; previous state will be retained.".into());
+                return Err("Cloud sync has changed. Compare this Mac with the cloud to continue. Your previous sync state will be kept.".into());
             }
             Err(error) => return Err(error.to_string()),
         });
+        let previously_started = !paused
+            || self
+                .engine
+                .as_ref()
+                .is_some_and(|engine| engine.last_success().is_some());
+        self.connection.as_mut().unwrap().has_started |= previously_started;
+        self.status.write().unwrap().current_device_id = Some(device.to_string());
+        self.save()?;
         self.phase(if paused { "paused" } else { "connected" });
+        self.refresh_after_change().await;
         Ok(())
     }
     async fn reconcile_recovery(&mut self) -> Result<(), String> {
@@ -799,15 +944,65 @@ impl Runtime {
     }
 
     async fn action(&mut self, action: SyncAction) -> Result<Option<SyncContent>, String> {
+        {
+            let mut status = self.status.write().unwrap();
+            status.notice = None;
+            status.error = None;
+        }
         match action {
+            SyncAction::CopyCode => {
+                let code = {
+                    let status = self.status.read().unwrap();
+                    status
+                        .pairing_code
+                        .as_ref()
+                        .or(status.user_code.as_ref())
+                        .cloned()
+                }
+                .ok_or("No active code to copy. Start connecting again.")?;
+                self.app.clipboard().write_text(code).map_err(|_| {
+                    "Could not copy the code. Select it and copy manually.".to_owned()
+                })?;
+                self.status.write().unwrap().notice = Some("Code copied.".into());
+            }
+            SyncAction::ReopenBrowser => {
+                let url = self
+                    .login
+                    .as_ref()
+                    .ok_or("Connect again to get a new browser code.")?
+                    .browser_url();
+                self.app
+                    .opener()
+                    .open_url(url, None::<&str>)
+                    .map_err(|_| "Could not open your browser. Try again.".to_owned())?;
+            }
+            SyncAction::RenameDevice { id, name } => {
+                let id = Uuid::parse_str(&id).map_err(|_| "Invalid Mac.")?;
+                self.remote
+                    .as_ref()
+                    .ok_or("Sign in first.")?
+                    .post::<serde_json::Value>(
+                        &format!("/devices/{id}/name"),
+                        &serde_json::json!({ "name": name }),
+                    )
+                    .await
+                    .map_err(sync_error)?;
+                for device in &mut self.status.write().unwrap().devices {
+                    if device.id == id.to_string() {
+                        device.name = Some(name.trim().into());
+                    }
+                }
+                self.refresh_after_change().await;
+            }
             SyncAction::PurgeVersion { revision } => {
                 let revision = Uuid::parse_str(&revision).map_err(|_| "Invalid revision.")?;
                 self.engine
                     .as_ref()
-                    .ok_or("Finish enrollment first.")?
+                    .ok_or("Finish setting up this Mac in Settings → Sync first.")?
                     .purge(&[revision])
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(sync_error)?;
+                self.refresh_after_change().await;
             }
             SyncAction::History { entity, before } => {
                 let entity: vault_sync::scope::Entity = entity.into();
@@ -815,7 +1010,7 @@ impl Runtime {
                 let value = self
                     .engine
                     .as_ref()
-                    .ok_or("Finish enrollment first.")?
+                    .ok_or("Finish setting up this Mac in Settings → Sync first.")?
                     .history_page(
                         &entity,
                         before
@@ -828,6 +1023,7 @@ impl Runtime {
                 let versions: Vec<Version> = serde_json::from_value(value["results"].clone())
                     .map_err(|_| "Invalid version history.")?;
                 return Ok(Some(SyncContent {
+                    cancelled: false,
                     versions,
                     preview: None,
                 }));
@@ -838,13 +1034,17 @@ impl Runtime {
                 let preview = self
                     .engine
                     .as_ref()
-                    .ok_or("Finish enrollment first.")?
+                    .ok_or("Finish setting up this Mac in Settings → Sync first.")?
                     .preview(&entity, revision)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(sync_error)?;
                 return Ok(Some(SyncContent {
+                    cancelled: false,
                     versions: vec![],
                     preview: Some(VersionPreview {
+                        title: preview.title,
+                        device_id: preview.device_id.to_string(),
+                        created_at: preview.created_at,
                         text: preview.text,
                         files: preview.manifest.files.keys().cloned().collect(),
                         deleted: preview.manifest.deleted,
@@ -859,22 +1059,23 @@ impl Runtime {
                 let revision = Uuid::parse_str(&revision).map_err(|_| "Invalid revision.")?;
                 self.engine
                     .as_mut()
-                    .ok_or("Finish enrollment first.")?
+                    .ok_or("Finish setting up this Mac in Settings → Sync first.")?
                     .restore(&self.store, entity, revision)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(sync_error)?;
             }
             SyncAction::Export { entity, revision } => {
                 let entity: vault_sync::scope::Entity = entity.into();
                 let revision = Uuid::parse_str(&revision).map_err(|_| "Invalid revision.")?;
-                let path =
+                let Some(path) =
                     tokio::task::block_in_place(|| self.app.dialog().file().blocking_pick_folder())
-                        .ok_or("Export cancelled.")?
-                        .into_path()
-                        .map_err(|e| e.to_string())?;
+                else {
+                    return Ok(self.cancelled("Export cancelled."));
+                };
+                let path = path.into_path().map_err(|e| e.to_string())?;
                 self.engine
                     .as_ref()
-                    .ok_or("Finish enrollment first.")?
+                    .ok_or("Finish setting up this Mac in Settings → Sync first.")?
                     .export(
                         &entity,
                         revision,
@@ -925,9 +1126,13 @@ impl Runtime {
                 if let Some(pairing) = self.pairing.take() {
                     pairing.abort();
                 }
-                self.status.write().unwrap().pairing_code = None;
+                {
+                    let mut status = self.status.write().unwrap();
+                    status.pairing_code = None;
+                    status.pairing_role = None;
+                }
                 self.phase(if self.engine.is_some() {
-                    "paused"
+                    self.connected_phase()
                 } else if was_pairing && self.account.is_some() {
                     "import_recovery_kit"
                 } else {
@@ -945,9 +1150,11 @@ impl Runtime {
             }
             SyncAction::Resume => {
                 if self.engine.is_none() {
-                    return Err("Finish device enrollment first.".into());
+                    return Err("Finish setting up this Mac in Settings → Sync first.".into());
                 }
-                self.connection.as_mut().ok_or("Connect first.")?.paused = false;
+                let connection = self.connection.as_mut().ok_or("Connect first.")?;
+                connection.paused = false;
+                connection.has_started = true;
                 self.save()?;
                 self.engine.as_mut().unwrap().reconcile();
                 self.phase("connected");
@@ -979,6 +1186,18 @@ impl Runtime {
                 self.account = None;
                 self.save()?;
                 self.phase("disconnected");
+                {
+                    let mut status = self.status.write().unwrap();
+                    status.account_email = None;
+                    status.current_device_id = None;
+                    status.pairing_role = None;
+                    status.last_success = None;
+                    status.pending_work = 0;
+                    status.conflicts.clear();
+                    status.devices.clear();
+                    status.used_bytes = 0;
+                    status.quota_bytes = 0;
+                }
                 if let Some(remote) = remote {
                     remote.post::<serde_json::Value>("/auth/sign-out", &serde_json::json!({})).await.map_err(|_| "This Mac is disconnected. The server could not confirm session revocation; revoke this device from another signed-in Mac.".to_owned())?;
                 }
@@ -993,16 +1212,16 @@ impl Runtime {
                         VaultKey::generate(account.account.vault_id).map_err(|e| e.to_string())?,
                     );
                 }
-                let path = tokio::task::block_in_place(|| {
+                let Some(path) = tokio::task::block_in_place(|| {
                     self.app
                         .dialog()
                         .file()
                         .set_file_name("Loofah Staging Recovery.loofah-key")
                         .blocking_save_file()
-                })
-                .ok_or("Recovery kit save cancelled.")?
-                .into_path()
-                .map_err(|e| e.to_string())?;
+                }) else {
+                    return Ok(self.cancelled("Recovery kit save cancelled. Save it when you are ready to continue setup."));
+                };
+                let path = path.into_path().map_err(|e| e.to_string())?;
                 if path
                     .parent()
                     .ok_or("Invalid recovery kit location.")?
@@ -1034,11 +1253,14 @@ impl Runtime {
             }
             SyncAction::ImportRecoveryKit => {
                 let account = self.account.as_ref().ok_or("Connect first.")?;
-                let path =
+                let Some(path) =
                     tokio::task::block_in_place(|| self.app.dialog().file().blocking_pick_file())
-                        .ok_or("Recovery kit import cancelled.")?
-                        .into_path()
-                        .map_err(|e| e.to_string())?;
+                else {
+                    return Ok(self.cancelled(
+                        "Recovery kit import cancelled. Select your saved kit when you are ready.",
+                    ));
+                };
+                let path = path.into_path().map_err(|e| e.to_string())?;
                 if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 4096 {
                     return Err("Invalid recovery kit.".into());
                 }
@@ -1084,31 +1306,11 @@ impl Runtime {
             }
             SyncAction::PairNewMac => self.start_pairing(None).await?,
             SyncAction::ApproveMac { code } => self.start_pairing(Some(code)).await?,
-            SyncAction::RefreshDevices => {
-                #[derive(Deserialize)]
-                struct Devices {
-                    devices: Vec<Device>,
-                }
-                let devices: Devices = self
-                    .remote
-                    .as_ref()
-                    .ok_or("Connect first.")?
-                    .get("/devices")
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let account: AccountResponse = self
-                    .remote
-                    .as_ref()
-                    .unwrap()
-                    .get("/account")
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let mut status = self.status.write().unwrap();
-                status.used_bytes = account.account.used_bytes;
-                status.quota_bytes = account.account.quota_bytes;
-                status.devices = devices.devices;
-            }
+            SyncAction::RefreshDevices => self.refresh_account().await?,
             SyncAction::RevokeDevice { id } => {
+                if let Some(engine) = &self.engine {
+                    engine.wait_idle().await.map_err(sync_error)?;
+                }
                 let id = Uuid::parse_str(&id).map_err(|_| "Invalid device.")?;
                 self.remote
                     .as_ref()
@@ -1118,7 +1320,30 @@ impl Runtime {
                         &serde_json::json!({}),
                     )
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(sync_error)?;
+                for device in &mut self.status.write().unwrap().devices {
+                    if device.id == id.to_string() {
+                        device.revoked_at = Some(now_ms());
+                    }
+                }
+                if self.status.read().unwrap().current_device_id.as_deref() == Some(&id.to_string())
+                {
+                    self.engine = None;
+                    self.connection.as_mut().unwrap().paused = true;
+                    self.save()?;
+                    self.phase("authorization_required");
+                    let mut status = self.status.write().unwrap();
+                    status.notice = Some(
+                        "This Mac's access was removed. Your local files are still here.".into(),
+                    );
+                    for device in &mut status.devices {
+                        if device.id == id.to_string() {
+                            device.revoked_at = Some(now_ms());
+                        }
+                    }
+                } else {
+                    self.refresh_after_change().await;
+                }
             }
         }
         Ok(None)
@@ -1153,3 +1378,26 @@ pub async fn sync_action<R: tauri::Runtime>(
 }
 
 mod pairing;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_connection_keeps_pause_preference_and_start_consent_survives_restart() {
+        let legacy = serde_json::json!({
+            "version": 1,
+            "paused": true,
+            "binding": { "account": "account", "vault": Uuid::new_v4(), "generation": Uuid::new_v4(), "local": "/tmp/test-vault" }
+        });
+        let mut connection: Connection = serde_json::from_value(legacy).unwrap();
+        assert!(connection.paused);
+        assert!(!connection.has_started);
+        connection.has_started = true;
+        connection.paused = false;
+        let restored: Connection =
+            serde_json::from_slice(&serde_json::to_vec(&connection).unwrap()).unwrap();
+        assert!(restored.has_started);
+        assert!(!restored.paused);
+    }
+}

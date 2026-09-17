@@ -1,6 +1,7 @@
 import { Trans } from "@lingui/react/macro";
 import {
   AudioLinesIcon,
+  CloudIcon,
   FileDownIcon,
   FileTextIcon,
   MoreHorizontalIcon,
@@ -33,9 +34,10 @@ import {
   useHasTranscript,
 } from "~/session/components/shared";
 import { openStandaloneNoteWindow } from "~/session/window";
-import { useSyncEnabled } from "~/settings/sync";
+import { useSyncEnabled, useSyncStatus } from "~/settings/sync";
 import { VersionHistory } from "~/settings/version-history";
 import { useConfigValue } from "~/shared/config";
+import { useTabs } from "~/store/zustand/tabs";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 import { useListener } from "~/stt/contexts";
 import { useUploadFile } from "~/stt/useUploadFile";
@@ -160,6 +162,7 @@ export function OverflowButton({
                 Version history
               </DropdownMenuItem>
             )}
+            {sync.data && <SyncMenuItem closeMenu={() => setOpen(false)} />}
             <DropdownMenuSeparator />
             {showListeningAction && (
               <Listening
@@ -235,5 +238,34 @@ export function OverflowButton({
         />
       )}
     </>
+  );
+}
+
+function SyncMenuItem({ closeMenu }: { closeMenu: () => void }) {
+  const { data } = useSyncStatus();
+  const openNew = useTabs((state) => state.openNew);
+  const label = !data
+    ? "Sync settings"
+    : data.error
+      ? "Sync needs attention"
+      : data.conflicts.length
+        ? "Review sync conflicts"
+        : data.phase === "connected"
+          ? data.upToDate
+            ? "Sync: up to date"
+            : "Syncing…"
+          : data.phase === "paused" && data.hasStarted
+            ? "Sync paused"
+            : "Set up Sync";
+  return (
+    <DropdownMenuItem
+      onClick={() => {
+        closeMenu();
+        openNew({ type: "settings", state: { tab: "sync" } });
+      }}
+    >
+      <CloudIcon />
+      <span>{label}</span>
+    </DropdownMenuItem>
   );
 }
