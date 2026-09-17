@@ -15,6 +15,7 @@ import { DurableJobs, openJob, sha256 } from "./jobs.ts";
 import { ObjectStorage } from "./objects.ts";
 import {
   StorageError,
+  expireHistory,
   VaultSnapshots,
   VaultStorage,
   type VaultPrincipal,
@@ -501,6 +502,7 @@ export default {
     ).first<{ writes_enabled: number }>();
     if (settings?.writes_enabled !== 1) return;
     await processJobs(env);
+    await expireHistory(env.DB);
     await env.DB.prepare("DELETE FROM sync_snapshots WHERE expires_at < ?")
       .bind(Date.now())
       .run();

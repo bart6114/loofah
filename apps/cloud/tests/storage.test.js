@@ -4,10 +4,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, test } from "node:test";
 
+import worker from "../src/index.ts";
 import {
   VaultStorage,
   VaultSnapshots,
-  expireHistory,
   markGarbage,
   HISTORY_MS,
   RECOVERY_RETENTION_MS,
@@ -239,7 +239,17 @@ test("expiry preserves current and unresolved conflicts; purge releases quota bu
     "conflict",
     f.now - HISTORY_MS - 1,
   );
-  await expireHistory(f.db, f.now);
+  await worker.scheduled(
+    {},
+    {
+      DB: f.db,
+      VAULT: {
+        delete() {
+          throw new Error("Physical deletion must remain disabled");
+        },
+      },
+    },
+  );
   assert.deepEqual(
     f.sql
       .prepare("SELECT id FROM sync_revisions ORDER BY id")
