@@ -142,9 +142,14 @@ export function SettingsSync() {
             button("Connect", "connect")}
           {value.phase === "authorizing" && (
             <>
-              <p>
-                Approve code <strong>{value.userCode}</strong> in your browser.
-              </p>
+              {value.userCode ? (
+                <p>
+                  Approve code <strong>{value.userCode}</strong> in your
+                  browser.
+                </p>
+              ) : (
+                <p>Requesting a browser approval code…</p>
+              )}
               {button("Cancel", "cancel")}
             </>
           )}

@@ -892,6 +892,11 @@ impl Runtime {
                     connection.paused = true;
                 }
                 self.save()?;
+                {
+                    let mut status = self.status.write().unwrap();
+                    status.browser_url = None;
+                    status.user_code = None;
+                }
                 self.phase("authorizing");
                 let login = BrowserLogin::begin(Environment::Staging)
                     .await
@@ -912,6 +917,11 @@ impl Runtime {
             SyncAction::Cancel => {
                 let was_pairing = self.status.read().unwrap().phase == "pairing";
                 self.login = None;
+                {
+                    let mut status = self.status.write().unwrap();
+                    status.browser_url = None;
+                    status.user_code = None;
+                }
                 if let Some(pairing) = self.pairing.take() {
                     pairing.abort();
                 }

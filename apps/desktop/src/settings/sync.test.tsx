@@ -84,8 +84,15 @@ describe("sync consent and recovery controls", () => {
     client.setQueryData(["sync-status"], {
       ...disconnected,
       phase: "authorizing",
+    });
+    await screen.findByText("Requesting a browser approval code…");
+    expect(screen.queryByText(/Approve code/)).toBeNull();
+    client.setQueryData(["sync-status"], {
+      ...disconnected,
+      phase: "authorizing",
       userCode: "ABCD-EFGH",
     });
+    await screen.findByText("ABCD-EFGH");
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(commands.syncAction).toHaveBeenCalledWith("cancel"),
