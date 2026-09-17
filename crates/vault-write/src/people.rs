@@ -218,16 +218,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unparseable_people_file_is_treated_as_empty() {
+    async fn unparseable_people_file_reads_as_empty_but_is_not_overwritten() {
         let vault = tempfile::tempdir().unwrap();
         std::fs::write(vault.path().join("people.json"), b"{not json").unwrap();
         let store = SessionStore::new(vault.path().to_path_buf());
 
         assert_eq!(store.list_people().await.unwrap(), vec![]);
 
-        let created = store.ensure_person("Kim").await.unwrap();
-        assert_eq!(created.id, "kim");
-        assert_eq!(store.list_people().await.unwrap(), vec![created]);
+        assert!(store.ensure_person("Kim").await.is_err());
+        assert_eq!(
+            std::fs::read(vault.path().join("people.json")).unwrap(),
+            b"{not json"
+        );
+        assert_eq!(store.list_people().await.unwrap(), vec![]);
     }
 
     #[tokio::test]

@@ -148,16 +148,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unparseable_tags_file_is_treated_as_empty() {
+    async fn unparseable_tags_file_reads_as_empty_but_is_not_overwritten() {
         let vault = tempfile::tempdir().unwrap();
         std::fs::write(vault.path().join("tags.json"), b"{not json").unwrap();
         let store = SessionStore::new(vault.path().to_path_buf());
 
         assert_eq!(store.list_tags().await.unwrap(), vec![]);
 
-        let created = store.ensure_tag("standup").await.unwrap();
-        assert_eq!(created.id, "standup");
-        assert_eq!(store.list_tags().await.unwrap(), vec![created]);
+        assert!(store.ensure_tag("standup").await.is_err());
+        assert_eq!(
+            std::fs::read(vault.path().join("tags.json")).unwrap(),
+            b"{not json"
+        );
+        assert_eq!(store.list_tags().await.unwrap(), vec![]);
     }
 
     #[tokio::test]
