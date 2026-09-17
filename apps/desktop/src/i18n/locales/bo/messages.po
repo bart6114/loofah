@@ -676,10 +676,6 @@ msgstr ""
 msgid "Help Loofah listen to you"
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "How long another app must use the microphone before showing a reminder"
-msgstr ""
-
 #: src/main/about-storage.tsx
 msgid "How storage is measured"
 msgstr ""
@@ -1415,10 +1411,6 @@ msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show Loofah in the Dock and app switcher."
-msgstr ""
-
-#: src/settings/general/notification.tsx
-msgid "Show reminder after"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx

@@ -131,11 +131,6 @@ export const SETTING_DEFINITIONS = {
     path: ["notification", "included_platforms"],
     default: "[]" as string,
   },
-  mic_active_threshold: {
-    type: "number",
-    path: ["notification", "mic_active_threshold"],
-    default: 5 as number,
-  },
   current_llm_provider: {
     type: "string",
     path: ["ai", "current_llm_provider"],
