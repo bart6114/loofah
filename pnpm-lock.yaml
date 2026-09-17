@@ -415,7 +415,7 @@ importers:
         specifier: ^0.25.2
         version: 0.25.2(@astrojs/starlight@0.41.7(@astrojs/markdown-remark@7.2.2)(astro@7.2.0(@astrojs/markdown-remark@7.2.2)(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.3)(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.1))(typescript@5.9.3))(astro@7.2.0(@astrojs/markdown-remark@7.2.2)(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.3)(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.1))
       wrangler:
-        specifier: ^4.120.0
+        specifier: ^4.131.2
         version: 4.131.2(@cloudflare/workers-types@5.20260916.1)(@types/node@24.12.2)
 
   e2e/blackbox:

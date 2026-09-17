@@ -6,6 +6,8 @@ Secrets*.toml
 .env
 .env.*
 !.env.sample
+.dev.vars
+.dev.vars.*
 .venv
 **/__pycache__/
 .supabase/
