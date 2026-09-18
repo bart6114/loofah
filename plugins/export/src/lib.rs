@@ -2,7 +2,8 @@ mod commands;
 mod ext;
 pub use ext::*;
 pub use hypr_export_core::{
-    Error, ExportAttachment, ExportInput, ExportMetadata, Result, Transcript, TranscriptItem,
+    Error, ExportAttachment, ExportInput, ExportLabels, ExportMetadata, Result, TextFormat,
+    Transcript, TranscriptItem,
 };
 
 const PLUGIN_NAME: &str = "export";
@@ -12,6 +13,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
         .plugin_name(PLUGIN_NAME)
         .commands(tauri_specta::collect_commands![
             commands::export::<tauri::Wry>,
+            commands::export_text,
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)
 }
@@ -43,6 +45,25 @@ mod test {
 
         let content = std::fs::read_to_string(OUTPUT_FILE).unwrap();
         std::fs::write(OUTPUT_FILE, format!("// @ts-nocheck\n{content}")).unwrap();
+    }
+
+    #[tokio::test]
+    async fn desktop_text_command_uses_the_headless_parity_fixture() {
+        let input: ExportInput = serde_json::from_str(include_str!(
+            "../../../crates/export-core/tests/fixtures/desktop-export.json"
+        ))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        for format in [TextFormat::Md, TextFormat::Txt, TextFormat::Org] {
+            let path = dir.path().join("export");
+            commands::export_text(path.clone(), input.clone(), format, ExportLabels::default())
+                .await
+                .unwrap();
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                hypr_export_core::render_text(&input, format, &ExportLabels::default())
+            );
+        }
     }
 
     fn create_app<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::App<R> {

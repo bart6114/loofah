@@ -13,6 +13,14 @@ async export(path: string, input: ExportInput) : Promise<Result<null, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async exportText(path: string, input: ExportInput, format: TextFormat, labels: ExportLabels) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:export|export_text", { path, input, format, labels }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -28,7 +36,9 @@ async export(path: string, input: ExportInput) : Promise<Result<null, string>> {
 
 export type ExportAttachment = { src: string; path: string }
 export type ExportInput = { enhancedMd: string; noteMd: string | null; transcript: Transcript | null; metadata: ExportMetadata | null; attachments?: ExportAttachment[] }
+export type ExportLabels = { untitled: string; created: string; participants: string; duration: string; metadata: string; note: string; summary: string; transcript: string }
 export type ExportMetadata = { title: string; createdAt: string; participants: string[]; duration: string | null }
+export type TextFormat = "md" | "txt" | "org"
 export type Transcript = { items: TranscriptItem[] }
 export type TranscriptItem = { speaker: string | null; text: string }
 

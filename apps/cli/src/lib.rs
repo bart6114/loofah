@@ -933,6 +933,8 @@ mod tests {
                 cli::MeetingCommand::Export {
                     id: id.into(),
                     format: cli::ExportFormat::Json,
+                    include: vec![],
+                    summary_id: None,
                     output: Some(dir.path().join(format!("{id}.json"))),
                     force: false,
                 },
@@ -1046,6 +1048,8 @@ mod tests {
                 command: cli::MeetingCommand::Export {
                     id: "meeting-1".to_string(),
                     format: cli::ExportFormat::Markdown,
+                    include: vec![],
+                    summary_id: None,
                     output: Some(output_path.clone()),
                     force: false,
                 },

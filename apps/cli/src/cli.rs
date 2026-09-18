@@ -266,11 +266,26 @@ pub enum MeetingCommand {
         )]
         name: Option<String>,
     },
-    /// Export a meeting to Markdown or JSON
+    /// Export a session as PDF, TXT, Markdown, Org, or JSON
+    ///
+    /// PDF/TXT/Org default to note,summary. --include selects desktop-style
+    /// content (missing sections are skipped); summaries use first (sort_order, id).
+    /// Markdown/JSON without --include retain the legacy full-session export.
+    /// Text goes to stdout unless --output is set; PDF requires --output.
+    /// With --include or a new format, --json reports separately from the file.
     Export {
         id: String,
         #[arg(long, value_enum, default_value_t = ExportFormat::Markdown)]
         format: ExportFormat,
+        #[arg(long, value_enum, value_delimiter = ',', num_args = 1.., help = "Content to export: note,summary,transcript")]
+        include: Vec<ExportContent>,
+        #[arg(
+            long,
+            value_name = "ID",
+            requires = "include",
+            help = "Select a summary by id; requires --include summary"
+        )]
+        summary_id: Option<String>,
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
         #[arg(long, requires = "output", help = "Replace an existing output file")]
@@ -324,8 +339,19 @@ pub enum DocumentKind {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum ExportFormat {
     #[default]
+    #[value(alias = "md")]
     Markdown,
     Json,
+    Pdf,
+    Txt,
+    Org,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ExportContent {
+    Note,
+    Summary,
+    Transcript,
 }
 
 /// Validates timestamps at argument parsing, before any vault write, and
