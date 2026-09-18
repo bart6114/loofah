@@ -18,8 +18,10 @@ import {
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
 import { queueTagSuggestions } from "~/tags/suggestions";
+import { commands } from "~/types/tauri.gen";
 
 type RunOptions = {
+  imported?: boolean;
   handlePersist?: BatchPersistCallback;
   model?: string;
   baseUrl?: string;
@@ -182,6 +184,32 @@ export const useRunBatch = (sessionId: string) => {
         });
       }
 
+      const priorTranscripts =
+        options?.imported === undefined
+          ? await commands.sessionTranscripts(sessionId)
+          : null;
+      if (priorTranscripts?.status === "error") {
+        throw new Error(priorTranscripts.error);
+      }
+      const previousWords =
+        priorTranscripts?.data.flatMap(
+          (transcript) => transcript.words ?? [],
+        ) ?? [];
+      let captureSource = "unknown";
+      if (options?.imported !== undefined) {
+        captureSource = options.imported ? "import" : "recording";
+      } else if (
+        previousWords.some((word) => word.metadata?.capture_source === "import")
+      ) {
+        captureSource = "import";
+      } else if (
+        previousWords.length > 0 &&
+        previousWords.every(
+          (word) => word.metadata?.capture_source === "recording",
+        )
+      ) {
+        captureSource = "recording";
+      }
       const createdAt = new Date().toISOString();
       const memoMd = session?.raw_md ?? "";
       let transcriptId: string | null = null;
@@ -222,9 +250,10 @@ export const useRunBatch = (sessionId: string) => {
               start_ms: word.start_ms,
               end_ms: word.end_ms,
               channel: word.channel,
-              metadata: word.metadata
-                ? JSON.stringify(word.metadata)
-                : undefined,
+              metadata: JSON.stringify({
+                ...word.metadata,
+                capture_source: captureSource,
+              }),
             });
 
             newWordIds.push(wordId);

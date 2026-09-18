@@ -844,6 +844,7 @@ export type EnhancedDoc = {
  * of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
  */
 export type EnhancedDocPatch = {
+  reconcile_tasks?: boolean | null;
   kind?: string | null;
   title?: string | null;
   template_id?: string | null;

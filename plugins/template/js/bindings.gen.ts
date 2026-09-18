@@ -173,7 +173,11 @@ export type ModelInfo = {
   sttModel?: string | null;
 };
 export type Participant = { name: string; jobTitle: string | null };
-export type Segment = { text: string; speaker: string };
+export type Segment = {
+  isCurrentUser?: boolean | null;
+  text: string;
+  speaker: string;
+};
 export type Session = {
   title: string | null;
   startedAt: string | null;

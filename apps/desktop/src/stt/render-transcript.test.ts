@@ -162,39 +162,45 @@ describe("buildRenderTranscriptRequestFromRows", () => {
     ).toEqual([true, undefined]);
   });
 
-  it("flags metadata-less channel-grouped words via non-chronological start_ms", () => {
-    const request = buildRenderTranscriptRequestFromRows([
-      {
-        started_at: 1_000,
-        words: [
-          {
-            id: "ch0-word-1",
-            text: " hello",
-            start_ms: 0,
-            end_ms: 4_000,
-            channel: 0,
-          },
-          {
-            id: "ch0-word-2",
-            text: " there",
-            start_ms: 20_000,
-            end_ms: 24_000,
-            channel: 0,
-          },
-          {
-            id: "ch1-word-1",
-            text: " hi",
-            start_ms: 100,
-            end_ms: 4_100,
-            channel: 1,
-          },
-        ],
-        speaker_hints: [],
-      },
-    ]);
+  it.each([undefined, "import", "unknown"])(
+    "preserves channel-grouped timing fallback for %s capture",
+    (captureSource) => {
+      const request = buildRenderTranscriptRequestFromRows([
+        {
+          started_at: 1_000,
+          words: [
+            {
+              id: "ch0-word-1",
+              text: " hello",
+              start_ms: 0,
+              end_ms: 4_000,
+              channel: 0,
+              metadata: { capture_source: captureSource },
+            },
+            {
+              id: "ch0-word-2",
+              text: " there",
+              start_ms: 20_000,
+              end_ms: 24_000,
+              channel: 0,
+              metadata: { capture_source: captureSource },
+            },
+            {
+              id: "ch1-word-1",
+              text: " hi",
+              start_ms: 100,
+              end_ms: 4_100,
+              channel: 1,
+              metadata: { capture_source: captureSource },
+            },
+          ],
+          speaker_hints: [],
+        },
+      ]);
 
-    expect(request?.transcripts[0]?.synthetic_timing).toBe(true);
-  });
+      expect(request?.transcripts[0]?.synthetic_timing).toBe(true);
+    },
+  );
 
   it("does not flag chronological metadata-less words", () => {
     const request = buildRenderTranscriptRequestFromRows([
@@ -668,3 +674,43 @@ describe("getRenderTranscriptRequestKey", () => {
     );
   });
 });
+
+it.each(["import", "unknown"])(
+  "does not infer self from %s channel zero and preserves separate clusters",
+  (captureSource) => {
+    const request = buildRenderTranscriptRequestFromRows(
+      [
+        {
+          words: [0, 1].map((channel) => ({
+            id: `w${channel}`,
+            text: "I will follow up.",
+            start_ms: channel * 100,
+            end_ms: channel * 100 + 50,
+            channel,
+            metadata: { capture_source: captureSource },
+          })),
+          speaker_hints: [
+            { word_id: "w1", type: "speaker_label", value: "self" },
+          ],
+        },
+      ],
+      { selfHumanId: "self", humans: [] },
+    );
+    expect(request!.transcripts[0].words.map((word) => word.channel)).toEqual([
+      2, 2,
+    ]);
+    expect(
+      request!.transcripts[0].words.map((word) => word.speaker_index),
+    ).toEqual([0, 1]);
+    expect(request!.transcripts[0].assignments).toEqual([
+      {
+        human_id: "self",
+        scope: {
+          kind: "channel_speaker",
+          channel: "MixedCapture",
+          speaker_index: 1,
+        },
+      },
+    ]);
+  },
+);

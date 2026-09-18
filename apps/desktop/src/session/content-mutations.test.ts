@@ -81,6 +81,7 @@ describe("session content corrections", () => {
       "summary-1",
       {
         markdown: "# New summary",
+        reconcile_tasks: true,
         expected_markdown: "old summary",
       },
     );

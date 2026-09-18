@@ -1076,3 +1076,21 @@ describe("attachment-backed nodes persist portably", () => {
     expect(attachments[0].attrs?.src).toBeNull();
   });
 });
+
+test("mixed lists preserve ordinary bullets beside and around nested checkboxes", () => {
+  const json = md2json(
+    "- Bob sends the invoice\n- [ ] Send proposal\n  - Supporting detail\n  - [x] Check figures\n- Discussion only",
+  );
+  expect(json.content!.map((node) => node.type)).toEqual([
+    "bulletList",
+    "taskList",
+    "bulletList",
+  ]);
+  const task = json.content![1].content![0];
+  expect(task.content!.map((node) => node.type)).toEqual([
+    "paragraph",
+    "bulletList",
+    "taskList",
+  ]);
+  expect(task.content![2].content![0].attrs?.checked).toBe(true);
+});

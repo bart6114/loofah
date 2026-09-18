@@ -34,6 +34,7 @@ export function persistGeneratedEnhancedNote({
       note.id,
       {
         markdown: note.nextMarkdown,
+        reconcile_tasks: true,
         expected_markdown: note.currentMarkdown,
       },
     );

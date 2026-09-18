@@ -1,7 +1,7 @@
 import MarkdownIt from "markdown-it";
 import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import type StateInline from "markdown-it/lib/rules_inline/state_inline.mjs";
-import type Token from "markdown-it/lib/token.mjs";
+import Token from "markdown-it/lib/token.mjs";
 import {
   MarkdownParser,
   MarkdownSerializer,
@@ -581,80 +581,79 @@ function hardBreakTagPlugin(md: MarkdownIt) {
 
 function taskListPlugin(md: MarkdownIt) {
   md.core.ruler.after("inline", "task_lists", (state) => {
-    const tokens = state.tokens;
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type !== "bullet_list_open") continue;
-
-      let hasTask = false;
-      let j = i + 1;
-      while (j < tokens.length && tokens[j].type !== "bullet_list_close") {
-        if (tokens[j].type === "list_item_open") {
-          const inlineIdx = findInlineToken(tokens, j);
-          if (
-            inlineIdx !== -1 &&
-            isTaskItemContent(tokens[inlineIdx].content)
-          ) {
-            hasTask = true;
-            break;
-          }
+    const transform = (tokens: Token[]): Token[] => {
+      const output: Token[] = [];
+      for (let i = 0; i < tokens.length; i++) {
+        const open = tokens[i];
+        if (open.type !== "bullet_list_open") {
+          output.push(open);
+          continue;
         }
-        j++;
-      }
-
-      if (!hasTask) continue;
-
-      const closeIdx = findMatchingClose(
-        tokens,
-        i,
-        "bullet_list_open",
-        "bullet_list_close",
-      );
-      if (closeIdx === -1) continue;
-
-      tokens[i].type = "task_list_open";
-      tokens[i].tag = "ul";
-      tokens[closeIdx].type = "task_list_close";
-      tokens[closeIdx].tag = "ul";
-
-      for (let k = i + 1; k < closeIdx; k++) {
-        if (tokens[k].type === "list_item_open") {
-          const inlineIdx = findInlineToken(tokens, k);
-          if (inlineIdx !== -1) {
-            const content = tokens[inlineIdx].content;
-            const taskMatch = content.match(/^\[([ xX])\]\s*/);
-            if (taskMatch) {
-              const checked = taskMatch[1].toLowerCase() === "x";
-              tokens[k].type = "task_item_open";
-              tokens[k].attrSet("checked", checked ? "true" : "false");
-
-              tokens[inlineIdx].content = content.slice(taskMatch[0].length);
-              if (tokens[inlineIdx].children) {
-                stripTaskPrefix(
-                  tokens[inlineIdx].children!,
-                  taskMatch[0].length,
-                );
-              }
-            } else {
-              tokens[k].type = "task_item_open";
-              tokens[k].attrSet("checked", "false");
-            }
-          }
-
-          const itemCloseIdx = findMatchingClose(
+        const closeIndex = findMatchingClose(
+          tokens,
+          i,
+          "bullet_list_open",
+          "bullet_list_close",
+        );
+        if (closeIndex === -1) {
+          output.push(open);
+          continue;
+        }
+        const close = tokens[closeIndex];
+        let currentKind: boolean | undefined;
+        const boundary = (token: Token, task: boolean, opening: boolean) => {
+          const type = `${task ? "task" : "bullet"}_list_${opening ? "open" : "close"}`;
+          return Object.assign(new Token(type, "ul", opening ? 1 : -1), token, {
+            type,
+          });
+        };
+        for (let itemIndex = i + 1; itemIndex < closeIndex; ) {
+          const itemEnd = findMatchingClose(
             tokens,
-            k,
+            itemIndex,
             "list_item_open",
             "list_item_close",
           );
-          if (
-            itemCloseIdx !== -1 &&
-            tokens[itemCloseIdx].type === "list_item_close"
-          ) {
-            tokens[itemCloseIdx].type = "task_item_close";
+          if (itemEnd === -1) {
+            output.push(tokens[itemIndex++]);
+            continue;
           }
+          const item = tokens.slice(itemIndex, itemEnd + 1);
+          const inlineIndex = findInlineToken(item, 0);
+          const match =
+            inlineIndex === -1
+              ? null
+              : item[inlineIndex].content.match(/^\[([ xX])\]\s*/);
+          const task = Boolean(match);
+          if (currentKind !== task) {
+            if (currentKind !== undefined)
+              output.push(boundary(close, currentKind, false));
+            output.push(boundary(open, task, true));
+            currentKind = task;
+          }
+          if (match) {
+            item[0].type = "task_item_open";
+            item[0].attrSet(
+              "checked",
+              match[1].toLowerCase() === "x" ? "true" : "false",
+            );
+            item[item.length - 1].type = "task_item_close";
+            item[inlineIndex].content = item[inlineIndex].content.slice(
+              match[0].length,
+            );
+            if (item[inlineIndex].children)
+              stripTaskPrefix(item[inlineIndex].children!, match[0].length);
+          }
+          output.push(...transform(item));
+          itemIndex = itemEnd + 1;
         }
+        if (currentKind !== undefined)
+          output.push(boundary(close, currentKind, false));
+        i = closeIndex;
       }
-    }
+      return output;
+    };
+    state.tokens = transform(state.tokens);
   });
 }
 
@@ -695,6 +694,8 @@ function findInlineToken(tokens: Token[], fromIdx: number): number {
   for (let i = fromIdx + 1; i < tokens.length; i++) {
     if (tokens[i].type === "inline") return i;
     if (
+      tokens[i].type === "bullet_list_open" ||
+      tokens[i].type === "ordered_list_open" ||
       tokens[i].type === "list_item_close" ||
       tokens[i].type === "task_item_close" ||
       tokens[i].type === "bullet_list_close"
@@ -720,10 +721,6 @@ function findMatchingClose(
     }
   }
   return -1;
-}
-
-function isTaskItemContent(content: string): boolean {
-  return /^\[([ xX])\]\s/.test(content);
 }
 
 function stripTaskPrefix(children: Token[], prefixLen: number) {

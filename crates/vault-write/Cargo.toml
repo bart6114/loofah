@@ -11,7 +11,9 @@ tauri-events = ["dep:tauri-specta"]
 hypr-fs-format = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-storage = { workspace = true }
+hypr-tiptap = { workspace = true }
 hypr-vault-read = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

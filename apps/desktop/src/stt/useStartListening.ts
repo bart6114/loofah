@@ -133,7 +133,7 @@ export function useStartListening(sessionId: string) {
       let batchCompleted = false;
       if (postCaptureAction === "batch_then_enhance") {
         try {
-          await runBatchRef.current(storedAudioPath!);
+          await runBatchRef.current(storedAudioPath!, { imported: false });
           batchCompleted = true;
         } catch (error) {
           if (isStoppedTranscriptionError(error)) {
@@ -183,7 +183,10 @@ export function useStartListening(sessionId: string) {
         commands
           .sessionAppendTranscript(sessionId, {
             transcript_id: transcriptId,
-            new_words: delta.new_words,
+            new_words: delta.new_words.map((word) => ({
+              ...word,
+              metadata: { capture_source: "recording" },
+            })),
             replaced_ids: delta.replaced_ids,
             // Live deltas from the transcription plugin carry no speaker-hint data (that's
             // produced by the separate batch/assignment paths) -- nothing to forward here.

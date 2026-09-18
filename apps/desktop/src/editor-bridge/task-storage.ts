@@ -170,6 +170,14 @@ export function createStoreBackedTaskStorage(
   };
 
   return {
+    async loadSource(source) {
+      const items = await dependencies.listTasks(source.type, source.id);
+      if (updateSourceSnapshot(source, items)) {
+        sourceListeners
+          .get(createTaskSourceKey(source))
+          ?.forEach((notify) => notify());
+      }
+    },
     getTasksForSource(source) {
       return sourceSnapshots.get(createTaskSourceKey(source)) ?? emptyTasks;
     },

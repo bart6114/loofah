@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 
 import { json2md, md2json } from "@hypr/editor/markdown";
+import { useTaskStorageOptional } from "@hypr/editor/task-storage";
+import { hydrateTaskContent } from "@hypr/editor/tasks";
 
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
 import { useIndexQuery } from "~/shared/index-query";
@@ -192,6 +194,7 @@ export function useEnhancedNote(
   generationId?: string,
   sessionId?: string,
 ): EnhancedNoteRecord | null {
+  const taskStorage = useTaskStorageOptional();
   const { data = null } = useIndexQuery({
     entity: "docs",
     ids: sessionId ? [sessionId] : undefined,
@@ -204,7 +207,20 @@ export function useEnhancedNote(
       if (result.status === "error") {
         throw new Error(result.error);
       }
-      return result.data ? mapEnhancedDoc(result.data) : null;
+      if (!result.data) return null;
+      const source = { type: "enhanced_note", id: enhancedNoteId };
+      await taskStorage?.loadSource?.(source);
+      const note = mapEnhancedDoc(result.data);
+      if (taskStorage && note.content) {
+        note.content = JSON.stringify(
+          hydrateTaskContent({
+            content: JSON.parse(note.content),
+            sourceTasks: taskStorage.getTasksForSource(source),
+            getTask: taskStorage.getTask,
+          }),
+        );
+      }
+      return note;
     },
     enabled: Boolean(enhancedNoteId),
   });

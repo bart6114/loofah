@@ -9,6 +9,7 @@ import {
 import { useRunBatch } from "./useRunBatch";
 
 const {
+  sessionTranscriptsMock,
   startTranscriptionMock,
   useListenerMock,
   useSessionMock,
@@ -21,6 +22,7 @@ const {
   queueTagSuggestionsMock,
   idMock,
 } = vi.hoisted(() => ({
+  sessionTranscriptsMock: vi.fn(),
   startTranscriptionMock: vi.fn(),
   useListenerMock: vi.fn(),
   useSessionMock: vi.fn(),
@@ -32,6 +34,10 @@ const {
   appendTranscriptWordsAndHintsMock: vi.fn(),
   queueTagSuggestionsMock: vi.fn(),
   idMock: vi.fn(),
+}));
+
+vi.mock("~/types/tauri.gen", () => ({
+  commands: { sessionTranscripts: sessionTranscriptsMock },
 }));
 
 vi.mock("./contexts", () => ({
@@ -146,8 +152,32 @@ describe("canRunBatchTranscription", () => {
 });
 
 describe("useRunBatch", () => {
+  test.each([true, undefined])(
+    "preserves imported provenance through batch and re-transcription (%s)",
+    async (imported) => {
+      sessionTranscriptsMock.mockResolvedValue({
+        status: "ok",
+        data: [{ words: [{ metadata: { capture_source: "import" } }] }],
+      });
+      startTranscriptionMock.mockImplementation(async (_params, options) => {
+        options.handlePersist(
+          [{ text: "I will send it", start_ms: 0, end_ms: 100, channel: 0 }],
+          [],
+        );
+      });
+      const { result } = renderHook(() => useRunBatch("session-1"));
+      await act(async () => {
+        await result.current("/tmp/import.wav", { imported });
+      });
+      expect(
+        JSON.parse(createTranscriptMock.mock.calls[0][0].words[0].metadata),
+      ).toMatchObject({ capture_source: "import" });
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionTranscriptsMock.mockResolvedValue({ status: "ok", data: [] });
 
     let nextId = 0;
     idMock.mockImplementation(() => `generated-${++nextId}`);

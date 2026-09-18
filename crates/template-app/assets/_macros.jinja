@@ -1,13 +1,13 @@
 {%- macro transcript(transcript) -%}
 {%- for segment in transcript.segments %}
-{{ segment.speaker }}: {{ segment.text }}
+{{ segment.speaker }}{% if segment.is_current_user == Some(true) %} [current user]{% endif %}: {{ segment.text }}
 {%- endfor -%}
 {%- endmacro -%}
 
 {%- macro transcripts(transcripts) -%}
 {%- for transcript in transcripts %}
 {%- for segment in transcript.segments %}
-{{ segment.speaker }}: {{ segment.text }}
+{{ segment.speaker }}{% if segment.is_current_user == Some(true) %} [current user]{% endif %}: {{ segment.text }}
 {%- endfor -%}
 {%- endfor -%}
 {%- endmacro -%}

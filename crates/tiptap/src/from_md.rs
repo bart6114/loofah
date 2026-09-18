@@ -10,11 +10,7 @@ pub fn md_to_tiptap_json(md: &str) -> Result<Value, String> {
 fn mdast_to_tiptap(node: &mdast::Node) -> Value {
     match node {
         mdast::Node::Root(root) => {
-            let content: Vec<Value> = root
-                .children
-                .iter()
-                .filter_map(convert_block_node)
-                .collect();
+            let content: Vec<Value> = root.children.iter().flat_map(convert_block_nodes).collect();
             json!({
                 "type": "doc",
                 "content": content
@@ -25,6 +21,28 @@ fn mdast_to_tiptap(node: &mdast::Node) -> Value {
             "content": []
         }),
     }
+}
+
+fn convert_block_nodes(node: &mdast::Node) -> Vec<Value> {
+    let mdast::Node::List(list) = node else {
+        return convert_block_node(node).into_iter().collect();
+    };
+    let mut groups: Vec<mdast::List> = Vec::new();
+    let mut previous_checked = None;
+    for (index, child) in list.children.iter().enumerate() {
+        let checked = matches!(child, mdast::Node::ListItem(item) if item.checked.is_some());
+        if previous_checked != Some(checked) {
+            let mut group = list.clone();
+            group.children.clear();
+            if let Some(start) = group.start.as_mut() {
+                *start += index as u32;
+            }
+            groups.push(group);
+            previous_checked = Some(checked);
+        }
+        groups.last_mut().unwrap().children.push(child.clone());
+    }
+    groups.iter().map(convert_list).collect()
 }
 
 fn convert_block_node(node: &mdast::Node) -> Option<Value> {
@@ -148,11 +166,7 @@ fn ensure_starts_with_paragraph(content: Vec<Value>) -> Vec<Value> {
 }
 
 fn convert_list_item(item: &mdast::ListItem) -> Value {
-    let content: Vec<Value> = item
-        .children
-        .iter()
-        .filter_map(convert_block_node)
-        .collect();
+    let content: Vec<Value> = item.children.iter().flat_map(convert_block_nodes).collect();
 
     let content = ensure_starts_with_paragraph(content);
 
@@ -163,11 +177,7 @@ fn convert_list_item(item: &mdast::ListItem) -> Value {
 }
 
 fn convert_task_item(item: &mdast::ListItem) -> Value {
-    let content: Vec<Value> = item
-        .children
-        .iter()
-        .filter_map(convert_block_node)
-        .collect();
+    let content: Vec<Value> = item.children.iter().flat_map(convert_block_nodes).collect();
 
     let content = ensure_starts_with_paragraph(content);
 
@@ -192,7 +202,7 @@ fn convert_code_block(c: &mdast::Code) -> Value {
 }
 
 fn convert_blockquote(b: &mdast::Blockquote) -> Value {
-    let content: Vec<Value> = b.children.iter().filter_map(convert_block_node).collect();
+    let content: Vec<Value> = b.children.iter().flat_map(convert_block_nodes).collect();
     json!({
         "type": "blockquote",
         "content": content
@@ -348,4 +358,25 @@ fn extract_attr(html: &str, attr_name: &str) -> String {
     let rest = &html[value_start..];
     let end = rest.find('"').unwrap_or(rest.len());
     rest[..end].to_string()
+}
+
+#[cfg(test)]
+mod mixed_task_tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_bullets_are_not_tasks_in_mixed_or_nested_lists() {
+        let doc = md_to_tiptap_json("- Bob sends invoice\n- [ ] Send proposal\n  - Supporting detail\n  - [x] Check figures\n- Discussion").unwrap();
+        let nodes = doc["content"].as_array().unwrap();
+        assert_eq!(
+            nodes
+                .iter()
+                .map(|node| node["type"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["bulletList", "taskList", "bulletList"]
+        );
+        let task = &nodes[1]["content"][0];
+        assert_eq!(task["content"][1]["type"], "bulletList");
+        assert_eq!(task["content"][2]["content"][0]["attrs"]["checked"], true);
+    }
 }
