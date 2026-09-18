@@ -39,6 +39,8 @@ hypr-tcc = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wasapi = { workspace = true }
+hypr-device-monitor = { workspace = true }
+hypr-detect = { workspace = true, features = ["sleep"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libpulse-binding = "2.30.1"

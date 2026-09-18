@@ -10,6 +10,12 @@ i18n.activate("en");
 
 Object.defineProperty(globalThis.crypto, "randomUUID", { value: randomUUID });
 
+Object.defineProperty(globalThis.window, "__TAURI_OS_PLUGIN_INTERNALS__", {
+  value: { platform: "macos", arch: "aarch64", eol: "\n" },
+  writable: true,
+  configurable: true,
+});
+
 Object.defineProperty(globalThis.window, "__TAURI_INTERNALS__", {
   value: {
     metadata: {

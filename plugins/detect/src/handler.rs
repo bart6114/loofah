@@ -42,7 +42,7 @@ pub fn handle_detect_event<E: Env>(
         hypr_detect::DetectEvent::MicStopped(apps) => {
             env.emit(DetectEvent::MicStopped { apps });
         }
-        #[cfg(all(target_os = "macos", feature = "sleep"))]
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
         hypr_detect::DetectEvent::SleepStateChanged { value } => {
             env.emit(DetectEvent::SleepStateChanged { value });
         }

@@ -54,7 +54,7 @@ pub(crate) async fn set_respect_do_not_disturb<R: tauri::Runtime>(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn get_preferred_languages<R: tauri::Runtime>(
@@ -66,7 +66,7 @@ pub(crate) async fn get_preferred_languages<R: tauri::Runtime>(
         .collect())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn get_preferred_languages<R: tauri::Runtime>(
@@ -75,7 +75,7 @@ pub(crate) async fn get_preferred_languages<R: tauri::Runtime>(
     Ok(Vec::new())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn get_current_locale_identifier<R: tauri::Runtime>(
@@ -84,7 +84,7 @@ pub(crate) async fn get_current_locale_identifier<R: tauri::Runtime>(
     Ok(hypr_detect::get_current_locale_identifier())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn get_current_locale_identifier<R: tauri::Runtime>(

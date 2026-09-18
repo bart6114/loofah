@@ -240,7 +240,15 @@ impl Actor for BatchActor {
                 // Words must carry speaker indexes before the chunk reaches the
                 // frontend: it persists each chunk incrementally, so a pass
                 // after the run completes would be too late.
-                stamp_stream_event(&mut event, &*state.diarization.segments().await);
+                let segments = match state.diarization.segments().await {
+                    Ok(segments) => segments,
+                    Err(error) => {
+                        state.final_result = Some(Err(error.into()));
+                        myself.stop(None);
+                        return Ok(());
+                    }
+                };
+                stamp_stream_event(&mut event, &segments);
                 state.accumulator.observe(&event);
                 state.emit_streamed(*event);
             }
@@ -256,6 +264,11 @@ impl Actor for BatchActor {
             }
             BatchMsg::StreamEnded => {
                 tracing::info!("batch_stream_ended");
+                if let Err(error) = state.diarization.segments().await {
+                    state.final_result = Some(Err(error.into()));
+                    myself.stop(None);
+                    return Ok(());
+                }
                 let output = std::mem::take(&mut state.accumulator).finish(&state.session_id);
                 state.final_result = Some(Ok(output));
                 myself.stop(None);

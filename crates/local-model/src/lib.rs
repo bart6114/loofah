@@ -27,12 +27,14 @@ impl DiarizerModel {
 
     pub fn size_bytes(&self) -> u64 {
         match self {
+            DiarizerModel::FluidCommunity if cfg!(target_os = "windows") => 49769506,
             DiarizerModel::FluidCommunity => 104857600,
         }
     }
 
     pub fn description(&self) -> &'static str {
         match self {
+            DiarizerModel::FluidCommunity if cfg!(target_os = "windows") => "48 MB",
             DiarizerModel::FluidCommunity => "100 MB",
         }
     }
@@ -150,7 +152,7 @@ impl LocalModel {
         match self {
             LocalModel::Soniqo(model) => model.is_available_on_current_platform(),
             LocalModel::Whisper(_) => is_apple_silicon,
-            LocalModel::Diarizer(_) => is_apple_silicon,
+            LocalModel::Diarizer(_) => is_apple_silicon || cfg!(target_os = "windows"),
         }
     }
 }

@@ -51,7 +51,23 @@ impl AppWindow {
             })
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            let Some(window) = self.get(app) else {
+                return Ok(None);
+            };
+            let scale = window.scale_factor()?;
+            let position = window.outer_position()?.to_logical::<f64>(scale);
+            let size = window.inner_size()?.to_logical::<f64>(scale);
+            Ok(Some(SavedFrame {
+                x: position.x,
+                y: position.y,
+                w: size.width,
+                h: size.height,
+            }))
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = app;
             Ok(None)
@@ -83,7 +99,27 @@ impl AppWindow {
             .map(|frame| frame.flatten())
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            let Some(window) = self.get(app) else {
+                return Ok(None);
+            };
+            let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) else {
+                return Ok(None);
+            };
+            let scale = monitor.scale_factor();
+            let area = monitor.work_area();
+            let position = area.position.to_logical::<f64>(scale);
+            let size = area.size.to_logical::<f64>(scale);
+            Ok(Some(SavedFrame {
+                x: position.x,
+                y: position.y,
+                w: size.width,
+                h: size.height,
+            }))
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = app;
             Ok(None)
@@ -118,7 +154,18 @@ impl AppWindow {
                 .unwrap_or(false))
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            let Some(window) = self.get(app) else {
+                return Ok(true);
+            };
+            if !window.is_visible()? || window.is_minimized()? {
+                return Ok(true);
+            }
+            Ok(crate::window::windows_native::mostly_covered(&window))
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = app;
             Ok(false)
@@ -145,7 +192,16 @@ impl AppWindow {
             Ok(())
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(window) = self.get(app) {
+                window.set_position(tauri::LogicalPosition::new(frame.x, frame.y))?;
+                window.set_size(tauri::LogicalSize::new(frame.w, frame.h))?;
+            }
+            Ok(())
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = app;
             let _ = frame;
@@ -626,9 +682,11 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Windows<'a, tauri::Wry, M> {
             app.set_activation_policy(policy)?;
         }
 
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = app;
+        #[cfg(target_os = "windows")]
+        for (label, window) in app.webview_windows() {
+            if label == "main" || label.starts_with("note-") {
+                window.set_skip_taskbar(!show)?;
+            }
         }
 
         Ok(())

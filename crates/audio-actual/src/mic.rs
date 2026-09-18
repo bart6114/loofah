@@ -93,12 +93,24 @@ impl MicInput {
                 .ok_or(crate::Error::NoInputDevice)?,
             Some(name) => input_devices
                 .into_iter()
-                .find(|d| get_device_name(d) == name)
-                .or(default_input_device)
+                .find(|d| {
+                    get_device_name(d) == name
+                        || d.id()
+                            .is_ok_and(|id| id.to_string() == name || id.1 == name)
+                })
                 .or_else(|| {
-                    host.input_devices().ok().and_then(|mut devices| {
-                        devices.find(|d| !is_tap_device(&get_device_name(d)))
-                    })
+                    #[cfg(target_os = "windows")]
+                    {
+                        None
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        default_input_device.or_else(|| {
+                            host.input_devices().ok().and_then(|mut devices| {
+                                devices.find(|d| !is_tap_device(&get_device_name(d)))
+                            })
+                        })
+                    }
                 })
                 .ok_or(crate::Error::NoInputDevice)?,
         };
@@ -119,6 +131,30 @@ impl MicInput {
             device,
             config,
         })
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn probe(&self) -> Result<(), crate::Error> {
+        fn build<S: SizedSample>(input: &MicInput) -> Result<cpal::Stream, cpal::BuildStreamError> {
+            input
+                .device
+                .build_input_stream(&input.config.config(), |_: &[S], _| {}, |_| {}, None)
+        }
+        let stream = match self.config.sample_format() {
+            cpal::SampleFormat::I8 => build::<i8>(self),
+            cpal::SampleFormat::I16 => build::<i16>(self),
+            cpal::SampleFormat::I32 => build::<i32>(self),
+            cpal::SampleFormat::F32 => build::<f32>(self),
+            _ => return Err(crate::Error::MicStreamSetupFailed),
+        }
+        .map_err(|error| {
+            tracing::debug!(%error, "microphone_probe_failed");
+            crate::Error::MicStreamSetupFailed
+        })?;
+        stream
+            .play()
+            .map_err(|_| crate::Error::MicStreamSetupFailed)?;
+        Ok(())
     }
 
     pub fn sample_rate(&self) -> u32 {

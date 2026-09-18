@@ -20,7 +20,8 @@
   );
 }
 
-:root[data-fullscreen] {
+:root[data-fullscreen],
+:root[data-platform="windows"] {
   --traffic-lights-inset: 12px;
   --sidebar-chrome-center-y: 20.375px;
 }

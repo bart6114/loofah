@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/bart6114/loofah/releases/download/updater/latest-windows.json"]
+    }
+  },
+  "bundle": { "createUpdaterArtifacts": true }
+}

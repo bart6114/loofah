@@ -1,5 +1,6 @@
 pub use hypr_local_model::{LocalModel, SoniqoModel, WhisperModel};
 
+#[cfg(not(target_os = "windows"))]
 pub static SUPPORTED_MODELS: &[LocalModel] = &[
     LocalModel::Soniqo(SoniqoModel::ParakeetStreaming),
     LocalModel::Soniqo(SoniqoModel::ParakeetBatch),
@@ -11,11 +12,18 @@ pub static SUPPORTED_MODELS: &[LocalModel] = &[
     LocalModel::Whisper(WhisperModel::QuantizedBaseEn),
 ];
 
+#[cfg(target_os = "windows")]
+pub static SUPPORTED_MODELS: &[LocalModel] = &[
+    LocalModel::Soniqo(SoniqoModel::OnnxParakeetStreaming),
+    LocalModel::Soniqo(SoniqoModel::OnnxParakeetBatch),
+];
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub enum SttModelType {
     Soniqo,
+    Onnx,
     Whispercpp,
 }
 
@@ -36,7 +44,14 @@ pub fn stt_model_info(model: &LocalModel) -> SttModelInfo {
             display_name: value.display_name().to_string(),
             description: value.description().to_string(),
             size_bytes: Some(value.size_bytes()),
-            model_type: SttModelType::Soniqo,
+            model_type: if matches!(
+                value,
+                SoniqoModel::OnnxParakeetStreaming | SoniqoModel::OnnxParakeetBatch
+            ) {
+                SttModelType::Onnx
+            } else {
+                SttModelType::Soniqo
+            },
         },
         LocalModel::Whisper(value) => SttModelInfo {
             key: model.clone(),
@@ -54,9 +69,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn whisper_large_v3_is_selectable_with_full_model_metadata() {
+    fn whisper_large_v3_has_platform_specific_availability_and_full_metadata() {
         let model = LocalModel::Whisper(WhisperModel::LargeV3);
-        assert!(SUPPORTED_MODELS.contains(&model));
+        assert_eq!(
+            SUPPORTED_MODELS.contains(&model),
+            !cfg!(target_os = "windows")
+        );
         let info = stt_model_info(&model);
         assert!(matches!(info.model_type, SttModelType::Whispercpp));
         assert_eq!(info.size_bytes, Some(3095033483));
@@ -85,7 +103,10 @@ mod tests {
             assert_eq!(info.display_name, model.display_name());
             assert_eq!(info.description, model.description());
             assert_eq!(info.size_bytes, Some(model.size_bytes()));
-            assert!(matches!(info.model_type, SttModelType::Soniqo));
+            assert!(matches!(
+                info.model_type,
+                SttModelType::Soniqo | SttModelType::Onnx
+            ));
         }
     }
 }

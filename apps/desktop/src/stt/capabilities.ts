@@ -19,6 +19,8 @@ export function isSupportedLocalSttModel(
     typeof model === "string" &&
     (model === "soniqo-parakeet-streaming" ||
       model === "soniqo-parakeet-batch" ||
+      model === "onnx-parakeet-streaming" ||
+      model === "onnx-parakeet-batch" ||
       model === "soniqo-omnilingual" ||
       model === "whisper-large-v3" ||
       /^Quantized(Tiny|Base|Small)(En)?$/.test(model) ||
@@ -51,6 +53,7 @@ export function isConfiguredSttModel(
 export function isRealtimeLocalModel(model?: string | null) {
   return (
     model === "soniqo-parakeet-streaming" ||
+    model === "onnx-parakeet-streaming" ||
     model === "whisper-large-v3" ||
     /^Quantized(Tiny|Base|Small)(En)?$/.test(model ?? "") ||
     model === "QuantizedLargeTurbo"
@@ -141,7 +144,9 @@ export function getOnDeviceTranscriptionConfig(
 
   // Keep every language so the backend can validate coverage and select a fallback.
   const englishOnly =
-    model === "soniqo-parakeet-streaming" || model?.endsWith("En");
+    model === "soniqo-parakeet-streaming" ||
+    model === "onnx-parakeet-streaming" ||
+    model?.endsWith("En");
   const supportsAllLive =
     !englishOnly ||
     languages.every((language) =>

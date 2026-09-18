@@ -38,7 +38,18 @@ fn resolve_default_path(data_dir: &Path) -> PathBuf {
 }
 
 fn resolve_default_path_for_command(data_dir: &Path, command_name: Option<&OsStr>) -> PathBuf {
-    let (current, legacy) = match command_name.and_then(OsStr::to_str) {
+    let command_name = command_name.and_then(|name| {
+        let path = Path::new(name);
+        if path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        {
+            path.file_stem().and_then(OsStr::to_str)
+        } else {
+            name.to_str()
+        }
+    });
+    let (current, legacy) = match command_name {
         Some("loof-dev" | "loofah-dev" | "fmtr-dev") => (
             data_dir.join("io.loofah.dev"),
             data_dir.join("org.freemeetingtranscriber.dev"),
@@ -80,6 +91,21 @@ fn apply_vault_redirect(base: PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_channel_executables_find_the_matching_desktop_vault() {
+        let directory = tempfile::tempdir().unwrap();
+        for (command, folder) in [
+            ("loof.exe", "loofah"),
+            ("loof-staging.exe", "io.loofah.staging"),
+            ("loof-dev.EXE", "io.loofah.dev"),
+        ] {
+            assert_eq!(
+                resolve_default_path_for_command(directory.path(), Some(OsStr::new(command))),
+                directory.path().join(folder)
+            );
+        }
+    }
 
     #[test]
     fn default_path_targets_the_app_data_vault() {

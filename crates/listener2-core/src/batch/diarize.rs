@@ -28,14 +28,13 @@ impl Diarizer for SoniqoDiarizer {
 }
 
 // Runs alongside ASR; every stamp point awaits the same task once and then
-// reuses the memoized result. Any failure resolves to an empty map, which
-// makes stamping a no-op.
+// reuses the memoized result, including failures so a retry keeps its recording.
 #[derive(Clone)]
 pub(super) struct SharedDiarization(Arc<tokio::sync::Mutex<DiarizationState>>);
 
 enum DiarizationState {
-    Pending(tokio::task::JoinHandle<ChannelSegments>),
-    Ready(Arc<ChannelSegments>),
+    Pending(tokio::task::JoinHandle<Result<ChannelSegments, String>>),
+    Ready(Result<Arc<ChannelSegments>, String>),
 }
 
 impl SharedDiarization {
@@ -52,11 +51,11 @@ impl SharedDiarization {
 
     pub(super) fn disabled() -> Self {
         Self(Arc::new(tokio::sync::Mutex::new(DiarizationState::Ready(
-            Arc::new(ChannelSegments::new()),
+            Ok(Arc::new(ChannelSegments::new())),
         ))))
     }
 
-    pub(super) async fn segments(&self) -> Arc<ChannelSegments> {
+    pub(super) async fn segments(&self) -> Result<Arc<ChannelSegments>, crate::BatchFailure> {
         let mut state = self.0.lock().await;
 
         if let DiarizationState::Pending(handle) = &mut *state {
@@ -64,25 +63,29 @@ impl SharedDiarization {
                 Ok(segments) => segments,
                 Err(error) => {
                     tracing::warn!(error = %format!("{error:?}"), "diarization_task_join_failed");
-                    ChannelSegments::new()
+                    Err(format!("Speaker detection task failed: {error}"))
                 }
             };
-            *state = DiarizationState::Ready(Arc::new(segments));
+            *state = DiarizationState::Ready(segments.map(Arc::new));
         }
 
         match &*state {
-            DiarizationState::Ready(segments) => segments.clone(),
+            DiarizationState::Ready(segments) => segments
+                .clone()
+                .map_err(|message| crate::BatchFailure::DiarizationFailed { message }),
             DiarizationState::Pending(_) => unreachable!(),
         }
     }
 }
 
-fn file_diarization(diarizer: &dyn Diarizer, file_path: &str) -> ChannelSegments {
+fn file_diarization(diarizer: &dyn Diarizer, file_path: &str) -> Result<ChannelSegments, String> {
     let source = match hypr_audio_utils::source_from_path(file_path) {
         Ok(source) => source,
         Err(error) => {
             tracing::warn!(error = %error, "diarization_audio_decode_failed");
-            return ChannelSegments::new();
+            return Err(format!(
+                "Could not read audio for speaker detection: {error}"
+            ));
         }
     };
     let channel_count = u16::from(source.channels()).max(1) as usize;
@@ -91,7 +94,9 @@ fn file_diarization(diarizer: &dyn Diarizer, file_path: &str) -> ChannelSegments
         Ok(samples) => samples,
         Err(error) => {
             tracing::warn!(error = %error, "diarization_audio_resample_failed");
-            return ChannelSegments::new();
+            return Err(format!(
+                "Could not resample audio for speaker detection: {error}"
+            ));
         }
     };
 
@@ -99,7 +104,10 @@ fn file_diarization(diarizer: &dyn Diarizer, file_path: &str) -> ChannelSegments
     diarize_channels(diarizer, &channels)
 }
 
-fn diarize_channels(diarizer: &dyn Diarizer, channels: &[Vec<f32>]) -> ChannelSegments {
+fn diarize_channels(
+    diarizer: &dyn Diarizer,
+    channels: &[Vec<f32>],
+) -> Result<ChannelSegments, String> {
     let mut segments = ChannelSegments::new();
 
     for channel_index in channels_to_diarize(channels.len()) {
@@ -119,11 +127,12 @@ fn diarize_channels(diarizer: &dyn Diarizer, channels: &[Vec<f32>]) -> ChannelSe
                     error = %error,
                     "diarization_channel_failed"
                 );
+                return Err(error);
             }
         }
     }
 
-    segments
+    Ok(segments)
 }
 
 fn channels_to_diarize(channel_count: usize) -> Vec<usize> {
@@ -416,12 +425,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn decode_failure_is_preserved_for_every_consumer() {
+        let diarization = SharedDiarization::for_file(
+            Arc::new(FakeDiarizer::ready_with(Vec::new())),
+            "/nonexistent/audio.wav".to_string(),
+        );
+        for _ in 0..2 {
+            let error = diarization.segments().await.unwrap_err();
+            assert_eq!(error.code(), crate::BatchErrorCode::DiarizationFailed);
+            assert!(error.to_string().contains("available to retry"));
+        }
+    }
+
+    #[test]
+    fn inference_failure_does_not_become_an_empty_success() {
+        struct FailingDiarizer;
+        impl Diarizer for FailingDiarizer {
+            fn is_ready(&self) -> bool {
+                true
+            }
+            fn diarize(&self, _: &[f32], _: u32) -> Result<Vec<DiarizeSegment>, String> {
+                Err("model inference failed".to_string())
+            }
+        }
+        assert_eq!(
+            diarize_channels(&FailingDiarizer, &[vec![0.0; 16000]]).unwrap_err(),
+            "model inference failed"
+        );
+    }
+
+    #[tokio::test]
     async fn model_missing_yields_todays_output() {
         let diarization = SharedDiarization::for_file(
             Arc::new(FakeDiarizer::not_ready()),
             "/nonexistent/audio.wav".to_string(),
         );
-        let segments = diarization.segments().await;
+        let segments = diarization.segments().await.unwrap();
         assert!(segments.is_empty());
 
         let original = batch_response(vec![vec![batch_word(0.0, 1.0, 0)]]);
@@ -469,7 +508,7 @@ mod tests {
         let diarizer = FakeDiarizer::ready_with(vec![segment(0, 2000, 0)]);
         let channels = vec![vec![1.0f32; 16_000], vec![2.0f32; 16_000]];
 
-        let segments = diarize_channels(&diarizer, &channels);
+        let segments = diarize_channels(&diarizer, &channels).unwrap();
 
         assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![1]);
         assert_eq!(

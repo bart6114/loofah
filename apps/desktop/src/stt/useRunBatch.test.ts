@@ -82,8 +82,12 @@ test("routes Whisper Large V3 through progressive local batch transcription", ()
 });
 
 describe("getBatchProvider", () => {
-  test("maps local soniqo models to the soniqo batch provider", () => {
-    expect(getBatchProvider("fmtr", "soniqo-parakeet-batch")).toBe("soniqo");
+  test.each([
+    "soniqo-parakeet-batch",
+    "onnx-parakeet-streaming",
+    "onnx-parakeet-batch",
+  ])("routes %s through the native Parakeet batch engine", (model) => {
+    expect(getBatchProvider("fmtr", model)).toBe("soniqo");
   });
 
   test("rejects retired models", () => {
@@ -409,6 +413,7 @@ test.each([
   "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
   "HyprLLM",
   "soniqo-unknown",
+  "onnx-unknown",
   "whisper-unknown",
   "QuantizedUnknown",
 ])("rejects unsupported model %s", (model) => {

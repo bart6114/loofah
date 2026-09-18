@@ -197,7 +197,7 @@ fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
         return Err(Error::operation(
             ACTION,
             format!(
-                "speech-to-text model '{model}' is not supported by the CLI yet; open the desktop app to select a supported Soniqo model under Settings → Transcription"
+                "speech-to-text model '{model}' is not supported by the CLI yet; open the desktop app to select a supported on-device Parakeet model under Settings → Transcription"
             ),
         ));
     }

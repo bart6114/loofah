@@ -56,6 +56,10 @@ pub fn local_model_from_request(base_url: &str, model: &str) -> Option<SoniqoMod
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, Eq, Hash, PartialEq,
 )]
 pub enum SoniqoModel {
+    #[serde(rename = "onnx-parakeet-streaming")]
+    OnnxParakeetStreaming,
+    #[serde(rename = "onnx-parakeet-batch")]
+    OnnxParakeetBatch,
     #[serde(rename = "soniqo-parakeet-streaming")]
     ParakeetStreaming,
     #[serde(rename = "soniqo-parakeet-batch")]
@@ -71,19 +75,37 @@ impl SoniqoModel {
         Self::Omnilingual,
     ];
 
+    const KNOWN: &'static [Self] = &[
+        Self::OnnxParakeetStreaming,
+        Self::OnnxParakeetBatch,
+        Self::ParakeetStreaming,
+        Self::ParakeetBatch,
+        Self::Omnilingual,
+    ];
+
     const SELECTABLE: &'static [Self] = &[Self::ParakeetStreaming, Self::ParakeetBatch];
 
     pub const fn all() -> &'static [Self] {
-        Self::ALL
+        if cfg!(target_os = "windows") {
+            Self::selectable()
+        } else {
+            Self::ALL
+        }
     }
 
     pub const fn selectable() -> &'static [Self] {
-        Self::SELECTABLE
+        if cfg!(target_os = "windows") {
+            &[Self::OnnxParakeetStreaming, Self::OnnxParakeetBatch]
+        } else {
+            Self::SELECTABLE
+        }
     }
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ParakeetStreaming => "soniqo-parakeet-streaming",
+            Self::OnnxParakeetStreaming => "onnx-parakeet-streaming",
+            Self::OnnxParakeetBatch => "onnx-parakeet-batch",
             Self::ParakeetBatch => "soniqo-parakeet-batch",
             Self::Omnilingual => "soniqo-omnilingual",
         }
@@ -92,6 +114,8 @@ impl SoniqoModel {
     pub const fn repo(self) -> &'static str {
         match self {
             Self::ParakeetStreaming => "aufklarer/Parakeet-EOU-120M-CoreML-INT8",
+            Self::OnnxParakeetStreaming => "altunenes/parakeet-rs",
+            Self::OnnxParakeetBatch => "istupakov/parakeet-tdt-0.6b-v3-onnx",
             Self::ParakeetBatch => "aufklarer/Parakeet-TDT-v3-CoreML-INT8",
             Self::Omnilingual => "aufklarer/Omnilingual-ASR-CTC-300M-CoreML-INT8-10s",
         }
@@ -100,6 +124,8 @@ impl SoniqoModel {
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::ParakeetStreaming => "Soniqo Parakeet Streaming",
+            Self::OnnxParakeetStreaming => "Parakeet Streaming",
+            Self::OnnxParakeetBatch => "Parakeet Batch",
             Self::ParakeetBatch => "Soniqo Parakeet Batch",
             Self::Omnilingual => "Soniqo Omnilingual",
         }
@@ -107,8 +133,12 @@ impl SoniqoModel {
 
     pub const fn description(self) -> &'static str {
         match self {
-            Self::ParakeetStreaming => "Realtime English transcription.",
-            Self::ParakeetBatch => "Batch transcription for 25 European languages.",
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => {
+                "Realtime English transcription."
+            }
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => {
+                "Batch transcription for 25 European languages."
+            }
             Self::Omnilingual => "Multilingual batch transcription.",
         }
     }
@@ -116,17 +146,49 @@ impl SoniqoModel {
     pub const fn size_bytes(self) -> u64 {
         match self {
             Self::ParakeetStreaming => 120 * 1024 * 1024,
+            Self::OnnxParakeetStreaming => 480708981,
+            Self::OnnxParakeetBatch => 670479942,
             Self::ParakeetBatch => 600 * 1024 * 1024,
             Self::Omnilingual => 300 * 1024 * 1024,
         }
     }
 
     pub const fn supports_live(self) -> bool {
-        matches!(self, Self::ParakeetStreaming)
+        matches!(self, Self::ParakeetStreaming | Self::OnnxParakeetStreaming)
     }
 
     pub const fn is_available_on_current_platform(self) -> bool {
         cfg!(all(target_os = "macos", target_arch = "aarch64"))
+            || (cfg!(all(
+                target_os = "windows",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )) && matches!(
+                self,
+                Self::ParakeetStreaming
+                    | Self::ParakeetBatch
+                    | Self::OnnxParakeetStreaming
+                    | Self::OnnxParakeetBatch
+            ))
+    }
+
+    pub const fn resolved(self) -> Self {
+        match self {
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => {
+                if cfg!(target_os = "windows") {
+                    Self::OnnxParakeetStreaming
+                } else {
+                    Self::ParakeetStreaming
+                }
+            }
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => {
+                if cfg!(target_os = "windows") {
+                    Self::OnnxParakeetBatch
+                } else {
+                    Self::ParakeetBatch
+                }
+            }
+            model => model,
+        }
     }
 
     pub const fn supports_live_on_current_platform(self) -> bool {
@@ -136,6 +198,7 @@ impl SoniqoModel {
     pub const fn batch_model(self) -> Self {
         match self {
             Self::ParakeetStreaming => Self::ParakeetBatch,
+            Self::OnnxParakeetStreaming => Self::OnnxParakeetBatch,
             model => model,
         }
     }
@@ -144,8 +207,12 @@ impl SoniqoModel {
         match self {
             // Parakeet-EOU-120M uses an English-only BPE vocabulary; it decodes
             // other languages into English-shaped gibberish or nothing at all.
-            Self::ParakeetStreaming => hypr_language::is_parakeet_eou_language(language),
-            Self::ParakeetBatch => hypr_language::is_parakeet_tdt_v3_language(language),
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => {
+                hypr_language::is_parakeet_eou_language(language)
+            }
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => {
+                hypr_language::is_parakeet_tdt_v3_language(language)
+            }
             Self::Omnilingual => true,
         }
     }
@@ -167,7 +234,7 @@ impl FromStr for SoniqoModel {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
-        Self::ALL
+        Self::KNOWN
             .iter()
             .copied()
             .find(|model| value == model.as_str() || value == model.repo())
@@ -242,7 +309,6 @@ pub enum TranscriptSource {
 }
 
 impl TranscriptSource {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     const fn as_str(self) -> &'static str {
         match self {
             Self::Microphone => "microphone",
@@ -296,7 +362,7 @@ impl LivePartial {
 pub enum Error {
     #[error("unsupported Soniqo model: {0}")]
     UnsupportedModel(String),
-    #[error("Soniqo is only available on macOS Apple Silicon")]
+    #[error("On-device speech requires macOS Apple Silicon or Windows x64/ARM64")]
     UnsupportedPlatform,
     #[error("Soniqo bridge failed: {0}")]
     Bridge(String),
@@ -308,8 +374,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn ensure_supported_platform(_model: SoniqoModel) -> Result<()> {
-    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+fn ensure_supported_platform(model: SoniqoModel) -> Result<()> {
+    if !model.is_available_on_current_platform() {
         return Err(Error::UnsupportedPlatform);
     }
 
@@ -318,22 +384,22 @@ fn ensure_supported_platform(_model: SoniqoModel) -> Result<()> {
 
 pub fn model_cache_dir(model: SoniqoModel) -> Result<PathBuf> {
     ensure_supported_platform(model)?;
-    platform::model_cache_dir(model)
+    platform::model_cache_dir(model.resolved())
 }
 
 pub fn model_download_state(model: SoniqoModel) -> Result<ModelDownloadState> {
     ensure_supported_platform(model)?;
-    platform::model_download_state(model)
+    platform::model_download_state(model.resolved())
 }
 
 pub fn start_model_download(model: SoniqoModel) -> Result<()> {
     ensure_supported_platform(model)?;
-    platform::start_model_download(model)
+    platform::start_model_download(model.resolved())
 }
 
 pub fn reset_model(model: SoniqoModel) -> Result<()> {
     ensure_supported_platform(model)?;
-    platform::reset_model(model)
+    platform::reset_model(model.resolved())
 }
 
 pub fn is_model_downloaded(model: SoniqoModel) -> Result<bool> {
@@ -344,6 +410,13 @@ pub fn is_model_downloading(model: SoniqoModel) -> Result<bool> {
     Ok(model_download_state(model)?.status == "downloading")
 }
 
+#[cfg(target_os = "windows")]
+pub fn delete_model(model: SoniqoModel) -> Result<()> {
+    ensure_supported_platform(model)?;
+    platform::delete_model(model.resolved())
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn delete_model(model: SoniqoModel) -> Result<()> {
     reset_model(model)?;
 
@@ -383,7 +456,7 @@ pub fn transcribe_file(
         "soniqo_native_file_transcription_start"
     );
 
-    let result = platform::transcribe_file(model, path, language);
+    let result = platform::transcribe_file(model.resolved(), path, language);
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
 
     match &result {
@@ -427,7 +500,7 @@ impl LiveTranscriptionSession {
             )));
         }
 
-        platform::live_start(model)?;
+        platform::live_start(model.resolved())?;
         Ok(Self {
             model,
             stopped: false,
@@ -960,7 +1033,14 @@ mod platform {
     }
 }
 
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+#[cfg(target_os = "windows")]
+#[path = "windows.rs"]
+mod platform;
+
+#[cfg(not(any(
+    target_os = "windows",
+    all(target_os = "macos", target_arch = "aarch64")
+)))]
 mod platform {
     use super::*;
 
@@ -1039,6 +1119,10 @@ mod tests {
 
     #[test]
     fn all_includes_available_model_variants() {
+        if cfg!(target_os = "windows") {
+            assert_eq!(SoniqoModel::all(), SoniqoModel::selectable());
+            return;
+        }
         assert_eq!(
             SoniqoModel::all(),
             &[
@@ -1053,8 +1137,22 @@ mod tests {
     fn selectable_includes_advertised_models() {
         assert_eq!(
             SoniqoModel::selectable(),
-            &[SoniqoModel::ParakeetStreaming, SoniqoModel::ParakeetBatch]
+            &[
+                SoniqoModel::ParakeetStreaming.resolved(),
+                SoniqoModel::ParakeetBatch.resolved()
+            ]
         );
+    }
+
+    #[test]
+    fn saved_models_resolve_without_changing_their_serialized_ids() {
+        let mac = "soniqo-parakeet-batch".parse::<SoniqoModel>().unwrap();
+        let windows = "onnx-parakeet-batch".parse::<SoniqoModel>().unwrap();
+        assert_eq!(mac.resolved(), windows.resolved());
+        assert_eq!(mac.as_str(), "soniqo-parakeet-batch");
+        assert_eq!(windows.as_str(), "onnx-parakeet-batch");
+        assert!(windows.supports_language(&"nl".parse().unwrap()));
+        assert!(!windows.supports_language(&"ko".parse().unwrap()));
     }
 
     #[test]
@@ -1103,7 +1201,10 @@ mod tests {
     fn live_support_is_gated_by_platform() {
         assert_eq!(
             SoniqoModel::ParakeetStreaming.supports_live_on_current_platform(),
-            cfg!(all(target_os = "macos", target_arch = "aarch64")),
+            cfg!(any(
+                target_os = "windows",
+                all(target_os = "macos", target_arch = "aarch64")
+            )),
         );
         assert!(!SoniqoModel::ParakeetBatch.supports_live_on_current_platform());
     }

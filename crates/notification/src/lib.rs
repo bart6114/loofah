@@ -1,3 +1,8 @@
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::{set_app_id, shutdown as shutdown_windows, uninstall as uninstall_windows};
+
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -56,6 +61,8 @@ fn get_context(key: &str) -> NotificationContext {
 }
 
 fn show_inner(notification: &hypr_notification_interface::Notification) {
+    #[cfg(target_os = "windows")]
+    windows::show(notification);
     #[cfg(all(feature = "legacy", target_os = "macos"))]
     hypr_notification_macos::show(notification);
 
@@ -97,6 +104,8 @@ pub fn show(notification: &hypr_notification_interface::Notification) {
 }
 
 pub fn clear() {
+    #[cfg(target_os = "windows")]
+    windows::clear();
     #[cfg(all(feature = "legacy", target_os = "macos"))]
     hypr_notification_macos::dismiss_all();
 
@@ -126,6 +135,13 @@ where
         });
     }
 
+    #[cfg(target_os = "windows")]
+    windows::set_handler(
+        windows::Action::Dismiss,
+        std::sync::Arc::new(move |key, _| f(get_context(&key))),
+    );
+
+    #[cfg(not(target_os = "windows"))]
     let _ = f;
 }
 
@@ -151,6 +167,13 @@ where
         });
     }
 
+    #[cfg(target_os = "windows")]
+    windows::set_handler(
+        windows::Action::Confirm,
+        std::sync::Arc::new(move |key, _| f(get_context(&key))),
+    );
+
+    #[cfg(not(target_os = "windows"))]
     let _ = f;
 }
 
@@ -176,6 +199,13 @@ where
         });
     }
 
+    #[cfg(target_os = "windows")]
+    windows::set_handler(
+        windows::Action::Accept,
+        std::sync::Arc::new(move |key, _| f(get_context(&key))),
+    );
+
+    #[cfg(not(target_os = "windows"))]
     let _ = f;
 }
 
@@ -201,6 +231,13 @@ where
         });
     }
 
+    #[cfg(target_os = "windows")]
+    windows::set_handler(
+        windows::Action::Timeout,
+        std::sync::Arc::new(move |key, _| f(get_context(&key))),
+    );
+
+    #[cfg(not(target_os = "windows"))]
     let _ = f;
 }
 
@@ -218,6 +255,13 @@ where
         });
     }
 
+    #[cfg(target_os = "windows")]
+    windows::set_handler(
+        windows::Action::Option,
+        std::sync::Arc::new(move |key, option| f(get_context(&key), option)),
+    );
+
+    #[cfg(not(target_os = "windows"))]
     let _ = f;
 }
 
@@ -235,5 +279,12 @@ where
         });
     }
 
+    #[cfg(target_os = "windows")]
+    windows::set_handler(
+        windows::Action::Footer,
+        std::sync::Arc::new(move |key, _| f(get_context(&key))),
+    );
+
+    #[cfg(not(target_os = "windows"))]
     let _ = f;
 }
