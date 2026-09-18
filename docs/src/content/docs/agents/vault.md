@@ -23,7 +23,8 @@ For agents with shell access, use the `loof` CLI for both reading and writing. S
     transcript.json      speaker-labeled transcript
     tasks.json           session tasks
     audio.mp3|wav|ogg    the recording, with audio.peaks.json waveform cache
-    enhanced/<uuid>.md   AI-generated documents (summaries)
+    summary.md           the session summary (plain Markdown)
+    enhanced/<uuid>.md   template outputs and unmigrated legacy summaries
     attachments/         files embedded in the note
 ```
 
@@ -41,6 +42,17 @@ Before migration, stop older desktop builds on **all devices sharing the vault**
 upgrade them together. Older builds rename ID directories back to readable names.
 External bookmarks to readable directory paths may break; session IDs and relative
 attachment links stay valid.
+
+Each session has one summary. Its identity is the session ID; `summary.md` has no
+frontmatter or separate document ID. Summary checkbox tasks in `tasks.json` use
+`source_type: "session_summary"` and the session ID as `source_id`.
+
+The desktop app migrates legacy summaries from `enhanced/`, preserving task IDs
+and completion state and keeping the original document in `.trash/`. If a
+`summary.md` already occupies the destination, migration leaves both files in
+place and displays a warning. Move the conflicting file to another filename and
+restart to retry. Attachments added through the app live inside `attachments/`
+and do not collide with the summary.
 
 Ownership rules:
 

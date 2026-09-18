@@ -47,16 +47,22 @@ const mocks = vi.hoisted(() => ({
       { status: "ok"; data: null } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
   ),
+  sessionUpdateSummary: vi.fn(async () => ({ status: "ok", data: null })),
+  sessionDeleteSummary: vi.fn(async () => ({ status: "ok", data: null })),
   waitForPendingSoftDelete: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("~/session/pending-soft-deletes", () => ({
+  sessionUpdateSummary: vi.fn(async () => ({ status: "ok", data: null })),
+  sessionDeleteSummary: vi.fn(async () => ({ status: "ok", data: null })),
   waitForPendingSoftDelete: mocks.waitForPendingSoftDelete,
 }));
 
 vi.mock("~/types/tauri.gen", () => ({
   commands: {
     sessionGet: mocks.sessionGet,
+    sessionUpdateSummary: mocks.sessionUpdateSummary,
+    sessionDeleteSummary: mocks.sessionDeleteSummary,
     sessionIsEmpty: mocks.sessionIsEmpty,
     sessionWriteMeta: mocks.sessionWriteMeta,
     sessionUpdateMeta: mocks.sessionUpdateMeta,
@@ -341,4 +347,15 @@ describe("session store operations", () => {
       }),
     ).rejects.toThrow("boom");
   });
+});
+
+it("writes and deletes the summary using only the session ID", async () => {
+  await updateEnhancedNoteContent("session-1", "session-1", "# Plain summary");
+  expect(mocks.sessionUpdateSummary).toHaveBeenCalledWith(
+    "session-1",
+    "# Plain summary",
+    null,
+  );
+  await deleteEnhancedNote("session-1", "session-1");
+  expect(mocks.sessionDeleteSummary).toHaveBeenCalledWith("session-1");
 });

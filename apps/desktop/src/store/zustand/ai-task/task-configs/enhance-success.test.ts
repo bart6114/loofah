@@ -44,7 +44,8 @@ function createSnapshot(title = "") {
     rawMarkdown: "",
     enhancedNotes: [
       {
-        id: "note-1",
+        id: "session-1",
+        kind: "summary",
         title: "",
         markdown: "old content",
         content: "old content",
@@ -72,6 +73,7 @@ function createTransformedArgs(): EnhanceSuccessParams["transformedArgs"] {
     postMeetingMemo: "",
     transcripts: [],
     imageContext: [],
+    expectedMarkdown: "old content",
   };
 }
 
@@ -79,12 +81,11 @@ function createParams(
   overrides: Partial<EnhanceSuccessParams> = {},
 ): EnhanceSuccessParams {
   return {
-    taskId: "note-1-enhance",
+    taskId: "session-1-enhance",
     text: "# Summary\n\n- Point",
     model: {} as LanguageModel,
     args: {
       sessionId: "session-1",
-      enhancedNoteId: "note-1",
     },
     transformedArgs: createTransformedArgs(),
     signal: new AbortController().signal,
@@ -120,7 +121,7 @@ describe("enhanceSuccess.onSuccess", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "note-1",
+        id: "session-1",
         currentMarkdown: "old content",
         nextMarkdown: expect.any(String),
       },
@@ -256,7 +257,7 @@ describe("enhanceSuccess.onSuccess", () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
 
     await expect(enhanceSuccess.onSuccess?.(createParams())).rejects.toThrow(
-      "Summary note-1 no longer exists",
+      "Summary session-1 no longer exists",
     );
   });
 
@@ -269,4 +270,20 @@ describe("enhanceSuccess.onSuccess", () => {
     expect(params.startTask).not.toHaveBeenCalled();
     expect(mocks.persistGeneratedTitle).not.toHaveBeenCalled();
   });
+});
+
+it("keeps the generation-start body as the CAS guard after a concurrent edit", async () => {
+  const snapshot = createSnapshot("Existing title");
+  snapshot.enhancedNotes[0].markdown = "user edited while generating";
+  mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
+  const params = createParams();
+  params.transformedArgs.expectedMarkdown = "body when generation started";
+  await enhanceSuccess.onSuccess?.(params);
+  expect(mocks.persistGeneratedEnhancedNote).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      note: expect.objectContaining({
+        currentMarkdown: "body when generation started",
+      }),
+    }),
+  );
 });

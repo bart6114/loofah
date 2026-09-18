@@ -66,9 +66,12 @@ impl SessionStore {
         source_id: &str,
     ) -> Result<Vec<TaskItem>, StoreError> {
         let scope = self.resolve_task_scope(source_type, source_id).await?;
-        let mut tasks: Vec<TaskItem> = self
-            .read_tasks_at(&scope)
-            .await?
+        let mut tasks = self.read_tasks_at(&scope).await?;
+        if source_type == "session_summary" {
+            self.normalize_summary_tasks(source_id, &mut tasks, None)
+                .await?;
+        }
+        let mut tasks: Vec<TaskItem> = tasks
             .into_iter()
             .filter(|t| t.source_type == source_type && t.source_id == source_id)
             .collect();
@@ -95,6 +98,10 @@ impl SessionStore {
         // one back would silently drop the loser's changes.
         let guard = self.lock_writes().await;
 
+        if source_type == "session_summary" {
+            self.remap_summary_tasks_locked(&guard, source_id, None)
+                .await?;
+        }
         let existing = self.read_tasks_at(&scope).await?;
         let prior_by_id: HashMap<&str, &TaskItem> =
             existing.iter().map(|t| (t.id.as_str(), t)).collect();
@@ -155,6 +162,10 @@ impl SessionStore {
         }
         let scope = self.resolve_task_scope(source_type, source_id).await?;
         let guard = self.lock_writes().await;
+        if source_type == "session_summary" {
+            self.remap_summary_tasks_locked(&guard, source_id, None)
+                .await?;
+        }
         let existing = self.read_tasks_at(&scope).await?;
         let ids: std::collections::HashSet<&str> = task_ids.iter().map(|s| s.as_str()).collect();
         let next: Vec<TaskItem> = existing
@@ -202,6 +213,10 @@ impl SessionStore {
         // touches (a move rewrites both the source and the destination `tasks.json`).
         let guard = self.lock_writes().await;
 
+        if next_source_type == "session_summary" {
+            self.remap_summary_tasks_locked(&guard, next_source_id, None)
+                .await?;
+        }
         let mut files: Vec<(TaskScope, Vec<TaskItem>, bool)> = Vec::new();
         for scope in scopes {
             let tasks = self.read_tasks_at(&scope).await?;
@@ -260,7 +275,7 @@ impl SessionStore {
         source_id: &str,
     ) -> Result<TaskScope, StoreError> {
         match source_type {
-            "session_raw_note" => {
+            "session_raw_note" | "session_summary" => {
                 validate_session_id(source_id)?;
                 Ok(TaskScope::Session(source_id.to_string()))
             }
@@ -327,6 +342,56 @@ impl SessionStore {
             }
             TaskScope::Vault => Ok(paths::vault_tasks_path()),
         }
+    }
+
+    async fn normalize_summary_tasks(
+        &self,
+        id: &str,
+        tasks: &mut [TaskItem],
+        legacy_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        if !tasks.iter().any(|task| task.source_type == "enhanced_note") {
+            return Ok(());
+        }
+        let legacy_id = if let Some(id) = legacy_id {
+            Some(id.to_owned())
+        } else {
+            let vault = self.vault_base.clone();
+            let dir = self.session_dir(id).await?;
+            let session_id = id.to_owned();
+            tokio::task::spawn_blocking(move || {
+                hypr_vault_read::summary::locate_in(&vault, &dir, &session_id)
+                    .map(|summary| summary.and_then(|s| s.legacy_id))
+            })
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))??
+        };
+        if let Some(legacy_id) = legacy_id {
+            for task in tasks {
+                if task.source_type == "enhanced_note" && task.source_id == legacy_id {
+                    task.source_type = "session_summary".into();
+                    task.source_id = id.to_owned();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) async fn remap_summary_tasks_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        legacy_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let scope = TaskScope::Session(id.to_owned());
+        let existing = self.read_tasks_at(&scope).await?;
+        let mut tasks = existing.clone();
+        self.normalize_summary_tasks(id, &mut tasks, legacy_id)
+            .await?;
+        if tasks != existing {
+            self.write_tasks_at_locked(guard, &scope, &tasks).await?;
+        }
+        Ok(())
     }
 
     async fn read_tasks_at(&self, scope: &TaskScope) -> Result<Vec<TaskItem>, StoreError> {

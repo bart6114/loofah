@@ -682,8 +682,8 @@ mod tests {
         );
         assert_eq!(page.hits[0].snippet, "Budget planning");
         assert_eq!(page.hits[1].snippet, "We reviewed the budget baseline.");
-        assert_eq!(page.hits[2].document_id.as_deref(), Some("doc-1"));
-        assert_eq!(page.hits[2].document_title.as_deref(), Some("Recap"));
+        assert_eq!(page.hits[2].document_id.as_deref(), Some("m1"));
+        assert_eq!(page.hits[2].document_title.as_deref(), Some("Summary"));
         assert_eq!(page.hits[3].start_ms, Some(1000));
         assert!(page.pagination.next_offset.is_none());
 
@@ -703,6 +703,23 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["note"],
         );
+    }
+
+    #[tokio::test]
+    async fn canonical_summary_is_searchable_without_indexing_attachments() {
+        let vault = tempfile::tempdir().unwrap();
+        seed_session(vault.path(), "m1", "Sync", "2026-07-13");
+        let dir = vault.path().join("sessions/m1");
+        std::fs::create_dir_all(dir.join("attachments")).unwrap();
+        std::fs::write(dir.join("summary.md"), "Budget approved.").unwrap();
+        std::fs::write(dir.join("attachments/summary.md"), "Budget attachment.").unwrap();
+        std::fs::write(dir.join("minutes.md"), "Budget attachment.").unwrap();
+
+        let page = search(vault.path(), query("budget")).await;
+        assert_eq!(page.hits.len(), 1);
+        assert_eq!(page.hits[0].kind, "summary");
+        assert_eq!(page.hits[0].document_id.as_deref(), Some("m1"));
+        assert_eq!(page.hits[0].snippet, "Summary Budget approved.");
     }
 
     #[tokio::test]
