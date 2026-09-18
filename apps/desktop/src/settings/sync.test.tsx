@@ -113,7 +113,7 @@ describe("sync consent and recovery controls", () => {
     show({ ...disconnected, phase: "import_recovery_kit" });
     await screen.findByRole("button", { name: "Import recovery kit…" });
     expect(
-      screen.getByRole("button", { name: "Pair with a trusted Mac" }),
+      screen.getByRole("button", { name: "Pair with a trusted device" }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Save recovery kit…" }),
@@ -147,6 +147,18 @@ describe("sync consent and recovery controls", () => {
     await waitFor(() =>
       expect(commands.syncAction).toHaveBeenCalledWith("resume"),
     );
+  });
+
+  it("retries a locked store without creating a new browser login", async () => {
+    show({ ...disconnected, phase: "needs_unlock", hasStarted: true });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Resume after unlocking" }),
+    );
+    await waitFor(() =>
+      expect(commands.syncAction).toHaveBeenCalledWith("resume"),
+    );
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(commands.syncAction).not.toHaveBeenCalledWith("connect");
   });
 
   it("can reopen browser approval without creating another connection", async () => {
@@ -192,8 +204,8 @@ describe("sync consent and recovery controls", () => {
       pairingRole: "approver",
       hasStarted: true,
     });
-    await screen.findByText(/Approving your new Mac/);
-    expect(screen.queryByText(/On your trusted Mac/)).toBeNull();
+    await screen.findByText(/Approving your new device/);
+    expect(screen.queryByText(/On your trusted device/)).toBeNull();
     expect(screen.queryByText("Connecting…")).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy code" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Cancel pairing" }));

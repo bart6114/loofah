@@ -23,6 +23,12 @@ pub enum Environment {
 }
 
 impl Environment {
+    pub fn credential_service(self) -> &'static str {
+        match self {
+            Self::Staging => "io.loofah.sync.staging.v1",
+            Self::Production => "io.loofah.sync.production.v1",
+        }
+    }
     pub fn origin(self) -> &'static str {
         match self {
             Self::Staging => "https://staging-app.loofah.io",
@@ -46,7 +52,22 @@ impl Drop for DeviceCode {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum AuthorizationClient {
+    Desktop,
+    Cli,
+}
+impl AuthorizationClient {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Desktop => "loofah-macos",
+            Self::Cli => "loofah-cli",
+        }
+    }
+}
+
 pub struct BrowserLogin {
+    authorization_client: AuthorizationClient,
     client: Client,
     environment: Environment,
     code: DeviceCode,
@@ -56,10 +77,17 @@ pub struct BrowserLogin {
 
 impl BrowserLogin {
     pub async fn begin(environment: Environment) -> Result<Self> {
+        Self::begin_with_client(environment, AuthorizationClient::Desktop).await
+    }
+
+    pub async fn begin_with_client(
+        environment: Environment,
+        authorization_client: AuthorizationClient,
+    ) -> Result<Self> {
         let client = client(HeaderMap::new())?;
         let response = client
             .post(format!("{}/api/auth/device/code", environment.origin()))
-            .json(&serde_json::json!({ "client_id": "loofah-macos" }))
+            .json(&serde_json::json!({ "client_id": authorization_client.id() }))
             .send()
             .await?;
         let code: DeviceCode = json(response).await?;
@@ -78,6 +106,7 @@ impl BrowserLogin {
         }
         let now = Instant::now();
         Ok(Self {
+            authorization_client,
             client,
             environment,
             expires: now + Duration::from_secs(code.expires_in),
@@ -104,7 +133,7 @@ impl BrowserLogin {
         }
         tokio::time::sleep_until(self.next_poll.into()).await;
         let response = self.client.post(format!("{}/api/auth/device/token", self.environment.origin()))
-            .json(&serde_json::json!({ "client_id": "loofah-macos", "device_code": self.code.device_code,
+            .json(&serde_json::json!({ "client_id": self.authorization_client.id(), "device_code": self.code.device_code,
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code" })).send().await?;
         self.next_poll = Instant::now() + Duration::from_secs(self.code.interval);
         if !response.status().is_success() {

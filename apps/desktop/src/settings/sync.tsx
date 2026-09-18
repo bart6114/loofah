@@ -85,7 +85,9 @@ export function SettingsSync() {
   const ready = ["paused", "connected"].includes(value.phase);
   const setup =
     !value.hasStarted &&
-    !["recovery_required", "authorization_required"].includes(value.phase);
+    !["recovery_required", "authorization_required", "needs_unlock"].includes(
+      value.phase,
+    );
   const setupStep = ["disconnected", "authorizing"].includes(value.phase)
     ? 0
     : ready
@@ -113,8 +115,9 @@ export function SettingsSync() {
               confirm_recovery_kit: "Confirm your recovery kit",
               import_recovery_kit: "Unlock this vault on your Mac",
               paused: "Sync paused",
-              pairing: "Connecting your Macs",
+              pairing: "Connecting your devices",
               recovery_required: "Compare this Mac with the cloud",
+              needs_unlock: "Unlock the credential store to continue",
             } as Record<string, string>
           )[value.phase] ?? value.phase);
   const button = (label: string, command: SyncAction) => (
@@ -137,8 +140,8 @@ export function SettingsSync() {
       <div>
         <h1 className="text-xl font-semibold">Sync</h1>
         <p className="text-muted-foreground mt-2">
-          Keep this vault in sync across your own Macs. Use a copied test vault
-          during staging. This does not share files with other people.
+          Keep this vault in sync across your own devices. Use a copied test
+          vault during staging. This does not share files with other people.
         </p>
       </div>
       {setup && (
@@ -184,6 +187,16 @@ export function SettingsSync() {
           </p>
         )}
         <div className="flex flex-wrap gap-2">
+          {value.phase === "needs_unlock" && (
+            <>
+              <p>
+                Unlock the selected credential store, then resume. For an
+                encrypted-file store, use the CLI with an unlock file. Your
+                existing keys are preserved.
+              </p>
+              {button("Resume after unlocking", "resume")}
+            </>
+          )}
           {value.phase === "recovery_required" && (
             <>
               <p>
@@ -216,7 +229,7 @@ export function SettingsSync() {
             <div className="flex flex-col gap-3">
               <p>
                 Save your recovery kit outside this vault, somewhere safe. It
-                unlocks your encrypted files if you lose access to your Macs.
+                unlocks your encrypted files if you lose access to your devices.
                 Resetting your password cannot replace it.
               </p>
               {button("Save recovery kit…", "save_recovery_kit")}
@@ -231,11 +244,11 @@ export function SettingsSync() {
                 choose either method:
               </p>
               <div className="flex flex-wrap gap-2">
-                {button("Pair with a trusted Mac", "pair_new_mac")}
+                {button("Pair with a trusted device", "pair_new_mac")}
                 {button("Import recovery kit…", "import_recovery_kit")}
               </div>
               <p className="text-muted-foreground text-sm">
-                Pairing needs another Mac already connected to this account.
+                Pairing needs another device already connected to this account.
                 Otherwise select your saved .loofah-key file.
               </p>
             </div>
@@ -244,16 +257,17 @@ export function SettingsSync() {
             <>
               {value.pairingRole === "approver" ? (
                 <p>
-                  Approving your new Mac. Keep both Macs open while the keys
-                  transfer securely.
+                  Approving your new device. Keep both clients open while the
+                  keys transfer securely.
                 </p>
               ) : (
                 <p>
-                  On your trusted Mac, open Settings → Sync → Approve a new Mac
-                  and enter{" "}
-                  <strong>{value.pairingCode ?? "Connecting…"}</strong>. Both
-                  Macs must use the same account. The code expires after ten
-                  minutes.
+                  On your trusted device, open Settings → Sync → Approve a new
+                  device, and enter{" "}
+                  <strong>{value.pairingCode ?? "Connecting…"}</strong>. You can
+                  also run loof-staging sync pair approve with this code on a
+                  trusted CLI. Both devices must use the same account. The code
+                  expires after ten minutes.
                 </p>
               )}
               {value.pairingRole !== "approver" &&
@@ -332,10 +346,10 @@ export function SettingsSync() {
             void pairingForm.handleSubmit();
           }}
         >
-          <h2 className="font-semibold">Approve a new Mac</h2>
+          <h2 className="font-semibold">Approve a new device</h2>
           <p>
-            Enter the code shown in Sync settings on your new Mac. This shares
-            this vault’s encryption keys with that Mac.
+            Enter the code shown in Sync settings or the CLI on your new device.
+            This shares this vault’s encryption keys with that device.
           </p>
           <pairingForm.Field name="code">
             {(field) => (
@@ -354,7 +368,7 @@ export function SettingsSync() {
             )}
           </pairingForm.Field>
           <Button type="submit" variant="outline" disabled={action.isPending}>
-            Approve Mac
+            Approve device
           </Button>
         </form>
       )}
@@ -365,7 +379,7 @@ export function SettingsSync() {
           {value.devices.length === 0 && (
             <p>
               {ready
-                ? "No Macs are listed yet. Refresh to check your connected devices."
+                ? "No devices are listed yet. Refresh to check your connected devices."
                 : "Finish securing this Mac to add it to your devices."}
             </p>
           )}
@@ -402,9 +416,9 @@ export function SettingsSync() {
           }
         >
           <p>
-            This signs that Mac out and stops its sync. Its local files stay on
-            that Mac. Connecting it again will require your recovery kit or
-            approval from a trusted Mac.
+            This signs that device out and stops its sync. Its local files stay
+            on that device. Connecting it again will require your recovery kit
+            or approval from a trusted device.
           </p>
           {action.error && <p role="alert">{action.error.message}</p>}
         </SyncConfirmation>
@@ -452,7 +466,7 @@ function DeviceRow({
             <form.Field name="name">
               {(field) => (
                 <label className="flex flex-col gap-1">
-                  Mac name
+                  Device name
                   <input
                     className="rounded border p-2"
                     value={field.state.value}

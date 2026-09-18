@@ -49,7 +49,7 @@ export async function api<T = unknown>(
             challenge_failed: "The security check expired. Try again.",
             rate_limited: "Too many attempts. Wait a minute and try again.",
             expired_token:
-              "This Mac login code has expired. Cancel the connection in Loofah and connect again for a new code.",
+              "This device login code has expired. Cancel the connection in Loofah and connect again for a new code.",
             access_denied:
               "This code belongs to another account. Cancel the connection in Loofah and connect again with the correct account.",
             unauthorized: "Sign in to continue.",

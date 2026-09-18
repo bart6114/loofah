@@ -12,6 +12,9 @@ pub use error::{Error, Result};
 pub use output::JSON_SCHEMA_VERSION;
 
 pub async fn run(args: Args) -> Result<u8> {
+    if let cli::Command::Sync(sync) = &args.command {
+        return commands::sync::run(&args, sync).await;
+    }
     if matches!(&args.command, cli::Command::Doctor) {
         let ready = commands::doctor::run(&args, args.json)?;
         return Ok(if ready { 0 } else { 1 });
@@ -19,7 +22,18 @@ pub async fn run(args: Args) -> Result<u8> {
 
     let vault = vault::open(&args)?;
 
+    let mutates = matches!(
+        &args.command,
+        cli::Command::Import { .. }
+            | cli::Command::Transcribe { .. }
+            | cli::Command::Sessions {
+                command: cli::MeetingCommand::New { .. }
+                    | cli::MeetingCommand::Tag { .. }
+                    | cli::MeetingCommand::Attach { .. }
+            }
+    ) || matches!(&args.command, cli::Command::Sessions { command: cli::MeetingCommand::Note { set, append, .. } } if set.is_some() || append.is_some());
     match args.command {
+        cli::Command::Sync(_) => unreachable!("sync is handled before ordinary vault access"),
         cli::Command::Doctor => unreachable!("doctor returns before opening the vault"),
         cli::Command::Sessions { command } => {
             commands::meetings::run(&vault, command, args.json).await?
@@ -43,18 +57,22 @@ pub async fn run(args: Args) -> Result<u8> {
                 author,
                 skill,
             };
-            return commands::import::run(
-                &vault, file, title, into, transcribe, timestamps, args.json,
-            )
-            .await;
+            let result =
+                commands::import::run(&vault, file, title, into, transcribe, timestamps, args.json)
+                    .await;
+            commands::sync::notify_committed(&vault).await;
+            return result;
         }
         cli::Command::Transcribe { id } => {
             commands::transcribe::run(&vault, &id, args.json).await?
         }
-        cli::Command::Mcp => mcp::serve(vault).await?,
+        cli::Command::Mcp => mcp::serve(vault.clone()).await?,
         cli::Command::Tags { command } => commands::tags::run(&vault, command, args.json).await?,
     }
 
+    if mutates {
+        commands::sync::notify_committed(&vault).await;
+    }
     Ok(0)
 }
 

@@ -39,6 +39,8 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Manage invitation-only staging synchronization
+    Sync(crate::commands::sync::Args),
     /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
     Doctor,
     /// Browse, create, edit, and export sessions

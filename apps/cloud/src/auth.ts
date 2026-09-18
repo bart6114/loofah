@@ -113,7 +113,8 @@ export function authOptions(env: AuthEnvironment) {
     plugins: [
       bearer(),
       deviceAuthorization({
-        validateClient: (client) => client === "loofah-macos",
+        validateClient: (client) =>
+          client === "loofah-macos" || client === "loofah-cli",
         verificationUri: `${env.ACCOUNT_ORIGIN}/device`,
         expiresIn: "10m",
         interval: "5s",

@@ -110,3 +110,30 @@ Global vault overrides:
 loof --vault-path /path/to/vault --json sessions list
 loof --base /path/to/vault --json sessions list
 ```
+
+
+## Invitation-only staging Sync
+
+The separate `loof-staging` build supports CLI-only enrollment and synchronization
+on macOS ARM64/Intel and Linux ARM64/x86_64 with glibc 2.35+. Stable `loof` keeps
+Sync disabled. Use an explicit `--vault-path` for `sync connect`. Approval can
+happen in a browser on another machine. Setup stays paused until `sync start`,
+`sync resume`, or `sync once`. First-device setup requires `sync recovery create`
+outside the vault followed by `sync recovery import` of that kit.
+
+Commands: `sync connect`, `sync disconnect`, `sync status`, `sync recovery create`,
+`sync recovery import`, `sync pair receive`, `sync pair approve`, `sync once`,
+`sync watch`, `sync start`, `sync stop`, `sync pause`, `sync resume`,
+`sync devices list`, `sync devices rename`, `sync devices revoke`,
+`sync conflicts list`, `sync conflicts show`, `sync conflicts resolve`,
+`sync history list`, `sync history show`, `sync history export`,
+`sync history restore`, `sync history purge`, and `sync reconcile`.
+
+Use `sync --help` and each subcommand's help for arguments. Review both conflict
+revisions and supply their IDs before resolution. Destructive automation requires
+`--yes`. Never read credentials from the vault or put secrets into arguments.
+The encrypted-file backend uses a separate local unlock secret; protected
+`--unlock-file` inputs support services and SSH-only clients. Existing backend
+choices do not silently change. `watch` supports an external supervisor when no
+per-user service manager is available. MCP remains read-only and ordinary local
+writes never enable Sync. Use `doctor` to diagnose blocked recovery.

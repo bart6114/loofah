@@ -15,7 +15,7 @@ export function deviceLabel(id: string, status?: SyncStatus) {
   const name = status?.devices.find((device) => device.id === id)?.name;
   if (id === status?.currentDeviceId)
     return name ? `${name} (This Mac)` : "This Mac";
-  return name || `Mac ${id.slice(0, 8)}`;
+  return name || `Device ${id.slice(0, 8)}`;
 }
 
 export function componentLabels(files: string[]) {

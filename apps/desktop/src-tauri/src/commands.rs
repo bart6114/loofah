@@ -68,6 +68,9 @@ pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         tracing::error!(error = %err, "session_store flush_all failed while completing app exit");
     }
 
+    if let Err(error) = crate::sync::quiesce(&app).await {
+        tracing::error!(%error, "sync handoff failed while completing app exit");
+    }
     crate::mark_exit_flush_complete();
     app.exit(0);
 }

@@ -136,3 +136,51 @@ This remains a draft staging milestone until the outstanding acceptance checks p
 - Conflicts load both versions sequentially, with title, source, timestamps, content summaries and readable vault-wide lists. Updated conflict revisions invalidate old previews before resolution, preventing a choice of content the user has not reviewed. The session menu exposes sync status and a direct route to Sync settings.
 - Browser staging version `064d071e-bbe5-4119-a42c-8687c9468818` is deployed. Browser checks confirmed account identity, accurate browser/app labels, vault-wide wording and the missing-reset-link recovery screen. All 28 cloud tests, the Worker runtime test and browser build/typecheck passed. Desktop frontend tests passed (1,379 tests including 22 focused sync/history/conflict cases). Workspace TypeScript, staging and stable desktop Rust checks, generated bindings, formatting and focused lint passed. All 24 vault-sync unit tests, seven local-consistency tests and the desktop start-consent regression passed. The real staging two-replica conflict/resolution/restore test passed, including historical title/device/time fields. All GitHub checks passed on `000afaa21`, including desktop frontend and full workspace Rust tests. The signed staging artifact was installed and verified; two physical Macs remain unavailable.
 - Signed native QA confirmed preserved sign-in, selected vault and keys after replacement; automatic device loading and “This Mac”; account email and “Up to date”; Pause → Resume → Checking for changes → Up to date; and the revoke confirmation’s Cancel path. The session menu displays sync status. History displayed the correct old title, originating Mac, capture/sync timestamps and readable changed components; native export cancellation returned neutral feedback, and history deletion required confirmation. Both destructive confirmations were cancelled, leaving Bart’s local notes and cloud history unchanged. No new setup or conflict was manufactured in his account; those flows retain focused UI, cloud and disposable two-replica integration coverage. The earlier large-fixture and recording/transcription checks were not rerun for this UX-only build.
+
+
+### CLI-only staging implementation — 17 September 2026
+
+The shared crate now owns connection/enrollment/pairing orchestration, credential
+storage and the versioned per-user Unix-socket owner. The desktop keeps native
+UI integration; the staging CLI exposes setup, foreground/background control,
+devices, conflicts and history. Existing Keychain account names, connection
+version, canonical path hashes, replica baselines and checkpoints remain intact.
+First-device pending kits and new pairing approvals use the selected credential
+store. Interrupted legacy pairing approval files migrate on use.
+
+Staging CLI artifacts have a separate manual four-target workflow. Stable CLI
+release assets and production activation are unchanged. Local verification uses
+disposable vaults. Authenticated clean-machine enrollment, real Linux Secret
+Service, cross-platform pairing, native service-manager behavior, desktop editor
+refresh under concurrent recording, and physical-device acceptance remain
+required before broader staging distribution. No checks use Bart's vault or
+production credentials. External-beta and physical-deletion gates are unchanged.
+
+Local checks cover encrypted-store tampering, wrong unlock secrets, permissions,
+restart and concurrent handles; durable first-device kits; attached-owner
+credential setup; canonical bindings, exclusive ownership, stale sockets and
+protocol mismatch; and CLI-process recovery guards and headless status. The 32
+shared unit tests pass, with the separate disposable native macOS Keychain
+round-trip also passing. Cloud tests pass (28), desktop TypeScript passes, and
+the updated desktop Sync UI tests pass. CLI and local-consistency suites,
+workspace TypeScript, documentation build and workflow security checks also ran
+locally. These checks do not establish production-build responsiveness.
+
+A separate CLI-process check used an empty temporary vault and no account: two
+watchers shared the same owner, a replacement acquired ownership after a forced
+owner crash, the attached client observed the replacement, and no credential
+backend was created. The final CLI library and command-entry suites pass (77 + 2
+tests), and CLI/shared-runtime Clippy passes with warnings denied.
+The final `cargo check --locked -p desktop -p loof-cli -p vault-sync` and formatting
+checks pass as well.
+
+Before running `cli-sync-acceptance`, configure protected GitHub environments
+`sync-cli-staging-<target>` for each of the four target triples. Each needs a fresh
+`DISPOSABLE_STAGING_FIXTURE` secret containing `disposable: true`, `user`, `vault`
+and a browser-approved staging session `token`. The test validates that identity
+and requires an unenrolled account, then exercises CLI recovery enrollment,
+upload and history against a temporary vault. The fixture seeds the approved
+session, so separate browser/SSH authorization and pairing acceptance are still
+required. These environments and credentials have not been provisioned, the
+protected jobs have not run, and no staging artifacts have been published by this
+implementation session.

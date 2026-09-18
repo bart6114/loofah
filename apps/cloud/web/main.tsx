@@ -278,7 +278,7 @@ function AccountForm({
   if (kind === "device")
     fields.push({
       name: "userCode",
-      label: "Code shown in Loofah on your Mac",
+      label: "Code shown in Loofah on your device",
       autocomplete: "off",
     });
   const labels = {
@@ -288,23 +288,23 @@ function AccountForm({
     resend: "Send verification link",
     reset: "Set new password",
     password: "Change password",
-    device: "Approve this Mac’s login",
+    device: "Approve this device’s login",
   };
   if (mutation.isSuccess && kind !== "login")
     return (
       <div className="notice" role="status">
         {kind === "device" ? (
           <>
-            <strong>Signed in. Finish setting up sync on your Mac.</strong>
+            <strong>Signed in. Finish setting up sync on your device.</strong>
             <p>
-              Return to Loofah Staging → Settings → Sync. On your first Mac,
-              save your recovery kit and choose the saved file to verify it. For
-              another Mac, use that kit or connect through a Mac you already set
-              up.
+              Return to Loofah Staging or your CLI. On your first device, save
+              your recovery kit and choose the saved file to verify it. For
+              another device, use that kit or connect through a device you
+              already set up.
             </p>
             <p>
-              Then choose Start syncing. Signing in alone does not upload your
-              notes.
+              Then choose Start syncing, or run sync start or sync once in the
+              CLI. Signing in alone does not upload your notes.
             </p>
           </>
         ) : kind === "password" ? (
@@ -383,7 +383,7 @@ function AccountForm({
       )}
       {kind === "password" && (
         <p>
-          Changing your password signs out your other browsers and Macs. You
+          Changing your password signs out your other browsers and devices. You
           will need to sign in again there. Your local notes and recovery kit
           stay unchanged.
         </p>
@@ -480,11 +480,14 @@ function Account() {
       </p>
       {account.data.account.active_devices === 0 && (
         <div className="notice">
-          <strong>Your account is ready. Set up sync on your Mac next.</strong>
+          <strong>
+            Your account is ready. Set up sync on your device next.
+          </strong>
           <p>
-            Open Loofah Staging → Settings → Sync. Sign in, save and verify your
-            recovery kit, then choose Start syncing. For a vault you already set
-            up, use your kit or another connected Mac.
+            Open Loofah Staging → Settings → Sync, or run loof-staging sync
+            connect with an explicit --vault-path. Sign in, save and reimport
+            your recovery kit, then start syncing. For an existing vault, use
+            your kit or another connected device.
           </p>
         </div>
       )}
@@ -507,13 +510,13 @@ function Account() {
             <dd>{account.data.account.synced_items.toLocaleString()}</dd>
           </div>
           <div>
-            <dt>Macs with access</dt>
+            <dt>devices with access</dt>
             <dd>{account.data.account.active_devices.toLocaleString()}</dd>
           </div>
         </dl>
         <p className="muted">
           Items include sessions and your vault-wide people, tags and task
-          lists. Deleted items are excluded. Sync connects your own Macs; it
+          lists. Deleted items are excluded. Sync connects your own devices; it
           does not share content with other people.
         </p>
         <p>
@@ -545,7 +548,7 @@ function Account() {
         <h2>Account sign-ins</h2>
         <p>
           Signing out stops access to your account from that browser or app.
-          Local notes stay on the Mac.
+          Local notes stay on the device.
         </p>
         {sessions.isPending && <p role="status">Loading sign-ins…</p>}
         {sessions.error && (
@@ -690,7 +693,7 @@ function App() {
       <>
         <h1>Sync beta</h1>
         <p>Signup is currently closed while we finish testing.</p>
-        <p>Loofah on your Mac works offline without an account.</p>
+        <p>Loofah on your device works offline without an account.</p>
         <a href={nextUrl("/login")}>Already have an account? Sign in</a>
       </>
     );
@@ -711,7 +714,7 @@ function App() {
   else if (current === "/device" && deviceSession.error)
     content = (
       <>
-        <h1>Connect your Mac</h1>
+        <h1>Connect your device</h1>
         <Retry
           error={deviceSession.error}
           retry={() => void deviceSession.refetch()}
@@ -726,7 +729,7 @@ function App() {
       "/resend-verification": ["Verify your email", "resend"],
       "/reset-password": ["Choose a new password", "reset"],
       "/change-password": ["Change your password", "password"],
-      "/device": ["Approve a Mac login", "device"],
+      "/device": ["Approve a device login", "device"],
     } as const;
     const page = pages[current as keyof typeof pages];
     content = page ? (
@@ -739,9 +742,9 @@ function App() {
               . <SwitchAccount />
             </p>
             <p>
-              Approve only the code shown in Loofah Staging on the Mac you are
-              connecting. Next, the app will guide you through securing this Mac
-              before syncing starts.
+              Approve only the code shown in Loofah Staging or its CLI on the
+              device you are connecting. Next, finish recovery-kit enrollment or
+              trusted-device pairing before syncing starts.
             </p>
           </>
         )}

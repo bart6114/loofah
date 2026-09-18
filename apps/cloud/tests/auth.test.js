@@ -134,6 +134,14 @@ test("native D1 auth requires an email-bound invitation, activates once, approve
       .map((value) => value.split(";")[0])
       .join("; ");
     assert.ok(cookie.includes("session_token="));
+    const cliDevice = await request("/device/code", {
+      client_id: "loofah-cli",
+    });
+    assert.equal(cliDevice.status, 200);
+    const rejectedClient = await request("/device/code", {
+      client_id: "unknown-client",
+    });
+    assert.notEqual(rejectedClient.status, 200);
     const device = await request("/device/code", { client_id: "loofah-macos" });
     assert.equal(device.status, 200, await device.clone().text());
     const code = await device.json();

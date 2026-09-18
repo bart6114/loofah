@@ -14,6 +14,11 @@ on:
       - crates/agent-access/**
       - crates/cli-docs/**
       - crates/tiptap/**
+      - crates/vault-sync/**
+      - crates/vault-read/**
+      - crates/vault-write/**
+      - crates/storage/**
+      - crates/fs-sync-core/**
       - docs/**
       - skills/**
       - Cargo.lock
@@ -31,6 +36,11 @@ on:
       - crates/agent-access/**
       - crates/cli-docs/**
       - crates/tiptap/**
+      - crates/vault-sync/**
+      - crates/vault-read/**
+      - crates/vault-write/**
+      - crates/storage/**
+      - crates/fs-sync-core/**
       - docs/**
       - skills/**
       - Cargo.lock
@@ -48,7 +58,11 @@ concurrency:
 
 jobs:
   cli-ci:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,12 +76,14 @@ jobs:
       - uses: ./.github/actions/rust_install
       - run: |
           cargo test --locked -p agent-access
-          cargo test --locked -p loof-cli
+          cargo test --locked -p loof-cli --features staging
+          cargo test --locked -p vault-sync
           cargo test --locked -p tiptap
       - run: |
           cargo clippy --locked \
             -p agent-access \
             -p loof-cli \
+            -p vault-sync \
             -p tiptap \
             --all-targets \
             --no-deps \

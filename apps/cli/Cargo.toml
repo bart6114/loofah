@@ -17,6 +17,9 @@ hypr-listener2-core = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
+rpassword = "7"
+vault-sync = { path = "../../crates/vault-sync" }
+zeroize = "1.8"
 
 owhisper-interface = { workspace = true }
 
@@ -27,7 +30,7 @@ rmcp = { workspace = true, features = ["server", "transport-io"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread", "signal"] }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
@@ -37,3 +40,6 @@ hound = { workspace = true }
 insta = { workspace = true, features = ["json"] }
 rmcp = { workspace = true, features = ["client"] }
 tempfile = { workspace = true }
+
+[features]
+staging = []

@@ -704,11 +704,11 @@ impl Engine {
             );
             for entity in entities {
                 let current = blocking(|| inventory(&self.state.binding.local, &entity));
-                if let Ok(current) = current {
-                    if self.observed.get(&entity) != Some(&current) {
-                        self.observed.insert(entity.clone(), current);
-                        self.changed(entity);
-                    }
+                if let Ok(current) = current
+                    && self.observed.get(&entity) != Some(&current)
+                {
+                    self.observed.insert(entity.clone(), current);
+                    self.changed(entity);
                 }
             }
             self.reconciled = Some(now);
@@ -1026,14 +1026,12 @@ impl Engine {
                 } else {
                     for transcript in value["transcripts"].as_array().into_iter().flatten() {
                         for hint in transcript["speaker_hints"].as_array().into_iter().flatten() {
-                            if hint["type"] == "speaker_label" {
-                                if let Some(person) = hint["value"].as_str() {
-                                    if !registries.0.contains(person) {
-                                        missing_references.insert(format!(
-                                            "Person or legacy speaker label: {person}"
-                                        ));
-                                    }
-                                }
+                            if hint["type"] == "speaker_label"
+                                && let Some(person) = hint["value"].as_str()
+                                && !registries.0.contains(person)
+                            {
+                                missing_references
+                                    .insert(format!("Person or legacy speaker label: {person}"));
                             }
                         }
                     }
@@ -1124,10 +1122,10 @@ impl Engine {
             .get(&identity)
             .map(|value| vec![value.local])
             .unwrap_or_default();
-        if let Some(previous) = previous_conflict {
-            if !conflicts.contains(&previous) {
-                conflicts.push(previous);
-            }
+        if let Some(previous) = previous_conflict
+            && !conflicts.contains(&previous)
+        {
+            conflicts.push(previous);
         }
         let operation = if conflicts.is_empty() {
             Operation::Restore

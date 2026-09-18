@@ -64,6 +64,7 @@ impl PendingPairing {
         let task = tokio::spawn(async move {
             let _ = tokio::time::timeout(Duration::from_secs(600), async move {
                 let (stream, _) = listener.accept().await.map_err(failed)?;
+                #[allow(clippy::result_large_err)] // Required by tungstenite's handshake callback signature.
                 let mut local = accept_hdr_async(stream, |request: &Request, response: Response| {
                     if request.uri().path() == path && request.headers().get("origin").is_none() { Ok(response) }
                     else { Err(tokio_tungstenite::tungstenite::http::Response::builder().status(403).body(None).unwrap()) }

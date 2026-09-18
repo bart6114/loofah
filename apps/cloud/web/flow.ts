@@ -40,7 +40,7 @@ export function signInLabel(
   userAgent: string | undefined,
   device: { name?: string | null } | null,
 ) {
-  if (device) return device.name ? `Loofah · ${device.name}` : "Loofah on Mac";
+  if (device) return device.name ? `Loofah · ${device.name}` : "Loofah device";
   const browser = userAgent?.includes("Edg/")
     ? "Edge"
     : userAgent?.includes("Firefox/")
