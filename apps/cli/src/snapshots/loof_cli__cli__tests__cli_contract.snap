@@ -451,7 +451,7 @@ expression: canonicalize_json(contract)
           "synopsis": "loof sessions attach [--name] [-h] <file> <id>"
         },
         {
-          "about": "Export a session as PDF, TXT, Markdown, Org, or JSON\n\nPDF/TXT/Org default to note,summary. --include selects desktop-style content (missing sections are skipped); summaries use first (sort_order, id). Markdown/JSON without --include retain the legacy full-session export. Text goes to stdout unless --output is set; PDF requires --output. With --include or a new format, --json reports separately from the file.",
+          "about": "Export a session as PDF, TXT, Markdown, Org, or JSON\n\nPDF/TXT/Org default to note,summary. --include selects desktop-style content, including the session summary (missing sections are skipped). Markdown/JSON without --include retain the legacy full-session export. Text goes to stdout unless --output is set; PDF requires --output. With --include or a new format, --json reports separately from the file.",
           "arguments": [
             {
               "name": "ID",
@@ -487,13 +487,6 @@ expression: canonicalize_json(contract)
               "value_name": "INCLUDE"
             },
             {
-              "flags": "--summary-id",
-              "help": "Select a summary by id; requires --include summary",
-              "is_flag": false,
-              "required": false,
-              "value_name": "ID"
-            },
-            {
               "flags": "-o, --output",
               "is_flag": false,
               "required": false,
@@ -512,7 +505,7 @@ expression: canonicalize_json(contract)
               "required": false
             }
           ],
-          "synopsis": "loof sessions export [--format] [--include] [--summary-id] [-o] [--force] [-h] <id>"
+          "synopsis": "loof sessions export [--format] [--include] [-o] [--force] [-h] <id>"
         }
       ],
       "synopsis": "loof sessions [-h] <command>"

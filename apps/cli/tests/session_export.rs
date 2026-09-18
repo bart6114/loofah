@@ -5,9 +5,6 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-const SUMMARY_A: &str = "00000000-0000-4000-8000-000000000001";
-const SUMMARY_B: &str = "00000000-0000-4000-8000-000000000002";
-
 fn run(vault: &Path, args: &[&str]) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_loof"));
     for key in [
@@ -54,16 +51,11 @@ fn seed(vault: &Path) -> PathBuf {
         "## Café\n\n- **naïve** [link](https://example.com)\n- 你好 👋",
     )
     .unwrap();
-    for (id, body) in [
-        (SUMMARY_B, "Second summary"),
-        (SUMMARY_A, "**Décision**: ship `v2`."),
-    ] {
-        std::fs::write(
-            session.join(format!("enhanced/{id}.md")),
-            format!("---\nkind: summary\nsort_order: 1\n---\n\n{body}"),
-        )
-        .unwrap();
-    }
+    std::fs::write(
+        session.join("enhanced/00000000-0000-4000-8000-000000000001.md"),
+        "---\nkind: summary\n---\n\n**Décision**: ship `v2`.",
+    )
+    .unwrap();
     std::fs::write(
         vault.join("people.json"),
         json!({"people":[{"id":"zoe", "name":"Zoë"}]}).to_string(),
@@ -150,7 +142,6 @@ fn selection_defaults_json_reporting_and_legacy_compatibility() {
         &["sessions", "export", "demo", "--format", "txt"],
     ));
     assert!(txt.contains("Décision"));
-    assert!(!txt.contains("Second summary"));
     assert!(!txt.contains("Bonjour"));
     let transcript = success(run(
         vault.path(),
@@ -173,20 +164,12 @@ fn selection_defaults_json_reporting_and_legacy_compatibility() {
     assert!(!text.contains("Café"));
     let summary = success(run(
         vault.path(),
-        &[
-            "sessions",
-            "export",
-            "demo",
-            "--include",
-            "summary",
-            "--summary-id",
-            SUMMARY_B,
-        ],
+        &["sessions", "export", "demo", "--include", "summary"],
     ));
-    assert!(summary.contains("Second summary"));
-    assert!(!summary.contains("Décision"));
+    assert!(summary.contains("Décision"));
+    assert!(!summary.contains("Café"));
+    assert!(!summary.contains("Bonjour"));
     let legacy = success(run(vault.path(), &["sessions", "export", "demo"]));
-    assert!(legacy.contains("Second summary"));
     assert!(legacy.contains("Décision"));
     assert!(legacy.contains("Bonjour"));
     let raw = success(run(
@@ -194,7 +177,7 @@ fn selection_defaults_json_reporting_and_legacy_compatibility() {
         &["sessions", "export", "demo", "--format", "json"],
     ));
     let raw: Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(raw["summaries"].as_array().unwrap().len(), 2);
+    assert_eq!(raw["summaries"].as_array().unwrap().len(), 1);
     assert_eq!(raw["transcripts"].as_array().unwrap().len(), 2);
     assert!(raw.get("schema_version").is_none());
     let selected = success(run(
@@ -265,11 +248,9 @@ fn file_output_is_atomic_protected_and_reporting_is_separate() {
                 "--json",
                 "sessions",
                 "export",
-                "demo",
+                "missing",
                 "--include",
                 "summary",
-                "--summary-id",
-                "missing",
                 "--output",
                 path,
                 "--force",
@@ -388,23 +369,6 @@ fn missing_empty_and_failure_contracts() {
             vault.path(),
             &[
                 "--json", "sessions", "export", "demo", "--format", "pdf", "--output", "-",
-            ],
-        ),
-        1,
-        "operation_failed",
-    );
-    error(
-        run(
-            vault.path(),
-            &[
-                "--json",
-                "sessions",
-                "export",
-                "demo",
-                "--include",
-                "note",
-                "--summary-id",
-                SUMMARY_A,
             ],
         ),
         1,

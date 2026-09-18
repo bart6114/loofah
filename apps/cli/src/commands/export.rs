@@ -13,7 +13,6 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
         id,
         format,
         include,
-        summary_id,
         output: path,
         force,
     } = command
@@ -24,12 +23,6 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
         return Err(Error::operation(
             "export session",
             "PDF requires --output FILE (not stdout)",
-        ));
-    }
-    if summary_id.is_some() && !include.contains(&ExportContent::Summary) {
-        return Err(Error::operation(
-            "export session",
-            "--summary-id requires --include summary",
         ));
     }
     if let Some(path) = &path {
@@ -84,13 +77,6 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
     }
     if !include.contains(&ExportContent::Summary) {
         meeting.meeting.summaries.clear();
-    } else if let Some(id) = summary_id.as_deref() {
-        meeting.meeting.summaries.retain(|s| s.id == id);
-        if meeting.meeting.summaries.is_empty() {
-            return Err(Error::NotFound(format!("summary '{id}'")));
-        }
-    } else {
-        meeting.meeting.summaries.truncate(1);
     }
     let duration = meeting
         .transcripts
