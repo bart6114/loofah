@@ -401,6 +401,25 @@ expression: canonicalize_json(contract)
           "synopsis": "loof sessions path [-h] <id>"
         },
         {
+          "about": "Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge.",
+          "arguments": [
+            {
+              "name": "ID",
+              "required": true
+            }
+          ],
+          "name": "loof sessions delete",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help (see a summary with '-h')",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sessions delete [-h] <id>"
+        },
+        {
           "about": "Store a file as a note attachment of a meeting and print its attachment id",
           "arguments": [
             {

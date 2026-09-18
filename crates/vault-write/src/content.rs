@@ -417,69 +417,64 @@ impl SessionStore {
         Ok(result)
     }
 
-    /// Moves the session's whole physical directory to trash (undo-able via
-    /// `restore_session`). The directory is resolved under the store write lock --
-    /// never rebuilt from the id -- and the exact trash path `move_to_trash` returns
-    /// is recorded in the recent-deletions map so undo can restore that directory to
-    /// `sessions/<id>/`, retaining the actual trash path for undo.
-    ///
-    /// The id is validated first: an empty id would resolve to `sessions/` itself, so
-    /// an unguarded delete would trash the user's entire session tree in one call.
-    pub async fn delete_session(&self, id: &str) -> Result<(), StoreError> {
+    /// Move a validated session directory to recoverable trash and return its exact
+    /// destination. A missing session returns `None`; invalid metadata or a failed
+    /// move leaves the source and in-memory state intact. Undo remains process-local.
+    pub async fn delete_session(&self, id: &str) -> Result<Option<std::path::PathBuf>, StoreError> {
         validate_session_id(id)?;
-
-        // Write lock first, then the live lock -- the same order as
-        // assign_transcript_speaker, so the two can never deadlock. Holding the write
-        // lock across the trash keeps a concurrent session-scoped write from resolving
-        // the directory mid-move and recreating it.
         let guard = self.lock_writes().await;
-
-        // Resolve before touching any in-memory state: a failed resolution
-        // (ambiguous id, I/O error) must leave the live buffer and the
-        // recording-deferral guard intact -- the session survives the failed delete.
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
-        // Drop the session's live transcript buffer *before* trashing the folder, and keep
-        // the `live` lock held across the trash. A debounced flush still holding words for
-        // this session would otherwise fire afterwards, and `persist_transcript` ->
-        // `write_file` -> `create_dir_all` would recreate the session directory --
-        // resurrecting a ghost session and, worse, making `restore_session` fail with
-        // ENOTEMPTY because the destination it renames onto now exists. Any flusher that
-        // wakes up during the delete blocks here, then finds no buffer and no-ops.
-        // (Recording into a session with no `_meta.json` still persists, deliberately:
-        // this only drops buffers for a session that was just deleted.)
+        // Keep flushers blocked until the move succeeds, then drop their buffer so
+        // a pending flush cannot recreate the deleted directory. Failures keep it.
         let mut live = self.live.lock().await;
-        live.remove(id);
-
         let vault_base = self.vault_base.clone();
-        let dir_to_move = relative_dir.clone();
         let trash_path = tokio::task::spawn_blocking(
             move || -> Result<Option<std::path::PathBuf>, StoreError> {
-                let session_path = vault_base.join(&dir_to_move);
+                let session_path = vault_base.join(&relative_dir);
+                for path in [
+                    vault_base.join("sessions"),
+                    session_path.clone(),
+                    session_path.join("_meta.json"),
+                ] {
+                    match std::fs::symlink_metadata(&path) {
+                        Ok(meta) if meta.file_type().is_symlink() => {
+                            return Err(StoreError::Io(format!(
+                                "refusing to delete a symlinked session: {}",
+                                path.display()
+                            )));
+                        }
+                        Ok(_) => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(None);
+                        }
+                        Err(error) => return Err(StoreError::Io(error.to_string())),
+                    }
+                }
+                if hypr_vault_read::meta::read_session_meta_in(&vault_base, &relative_dir)?
+                    .is_none()
+                {
+                    return Ok(None);
+                }
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
-                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {}", e)))
+                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {e}")))
             },
         )
         .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
+        .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
 
-        drop(live);
-
-        // `move_to_trash` returns None when the directory never existed -- nothing to
-        // undo, and a stale recent-deletion record must not shadow an older real one.
-        if let Some(trash_path) = trash_path {
-            self.recent_deletions
-                .lock()
-                .unwrap()
-                .insert(id.to_string(), DeletedSession { trash_path });
+        if let Some(trash_path) = &trash_path {
+            live.remove(id);
+            self.recent_deletions.lock().unwrap().insert(
+                id.to_string(),
+                DeletedSession {
+                    trash_path: trash_path.clone(),
+                },
+            );
+            self.deleted_sessions.lock().unwrap().insert(id.to_string());
+            self.index_remove_session_and_notify(id);
         }
-
-        self.deleted_sessions.lock().unwrap().insert(id.to_string());
-        // Only a successful trash operation makes the session unavailable.
-        self.index_remove_session_and_notify(id);
-        drop(guard);
-
-        Ok(())
+        Ok(trash_path)
     }
 
     /// Undoes a `delete_session` from this process: renames the exact trashed directory
@@ -1195,7 +1190,8 @@ mod tests {
         let rel = store.session_dir("s1").await.unwrap();
         let dir = vault.path().join(&rel);
         assert!(dir.is_dir());
-        store.delete_session("s1").await.unwrap();
+        let trash = store.delete_session("s1").await.unwrap().unwrap();
+        assert!(trash.join("_meta.json").is_file());
 
         assert!(!dir.is_dir());
 
@@ -1216,6 +1212,33 @@ mod tests {
             "trashed session's _meta.json should exist under .trash/<date>/{}",
             rel.display()
         );
+    }
+
+    #[tokio::test]
+    async fn failed_delete_keeps_live_buffer_index_and_recording_reservation() {
+        let (store, vault) = test_store().await;
+        store
+            .write_meta(&meta("s1", "Keep recording"))
+            .await
+            .unwrap();
+        store.note_recording_active("s1");
+        store.live.lock().await.insert(
+            "s1".to_string(),
+            super::super::transcript::LiveTranscriptBuffer {
+                transcript_id: "pending".to_string(),
+                dirty: true,
+                ..Default::default()
+            },
+        );
+        std::fs::write(vault.path().join(".trash"), b"obstruction").unwrap();
+
+        assert!(store.delete_session("s1").await.is_err());
+        assert!(store.session_get("s1").is_some());
+        assert!(store.is_recording("s1"));
+        assert!(store.live.lock().await.get("s1").unwrap().dirty);
+        assert!(!store.deleted_sessions.lock().unwrap().contains("s1"));
+        assert!(!store.recent_deletions.lock().unwrap().contains_key("s1"));
+        assert!(store.read_meta("s1").await.unwrap().is_some());
     }
 
     /// `sessions/<id>` for an empty id is `sessions/` itself, so an unguarded delete would
@@ -1520,10 +1543,7 @@ mod tests {
     #[tokio::test]
     async fn delete_session_on_nonexistent_session_succeeds() {
         let (store, _vault) = test_store().await;
-        // delete_session on a session that doesn't exist should succeed
-        // (trash no-ops since path doesn't exist, deletes affect 0 rows)
-        let result = store.delete_session("nonexistent").await;
-        assert!(result.is_ok());
+        assert_eq!(store.delete_session("nonexistent").await.unwrap(), None);
     }
 
     #[tokio::test]

@@ -66,6 +66,16 @@ Only store content when the user asks. Respect the permissions and privacy bound
 On-device transcription requires macOS on Apple Silicon and the on-device Soniqo model configured in the desktop app. The CLI never downloads models, so open the desktop app once to download it.
 :::
 
+## Remove a session when asked
+
+Verify the redundant session's exact ID with `sessions get` before deleting it:
+
+```bash
+loof --json sessions delete SESSION_ID
+```
+
+This moves the complete session to recoverable vault trash. There is no prompt or confirmation flag, so only invoke it after the user authorizes removal. Keep the response's original `path`, `trash_path`, and `deleted_at` for recovery. A missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](/reference/cli#delete-and-recover-a-session) for failure behavior and recovery steps to give the user. MCP remains read-only.
+
 ## Export only when asked
 
 ```bash

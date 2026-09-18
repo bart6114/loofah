@@ -217,6 +217,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             TagCommand::Add { id, tags } => edit_tags(vault, &id, tags, true, json).await,
             TagCommand::Remove { id, tags } => edit_tags(vault, &id, tags, false, json).await,
         },
+        MeetingCommand::Delete { id } => delete_session(vault, &id, json).await,
         MeetingCommand::Path { id } => {
             let path = session_path(vault, &id).await?;
             let rendered = if json {
@@ -446,6 +447,41 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
         format!("Tags for meeting {id}: (none)")
     } else {
         format!("Tags for meeting {id}: {}", finalized.join(", "))
+    };
+    output::emit(&rendered);
+    Ok(())
+}
+
+async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
+    let relative = hypr_vault_read::paths::validated_session_dir(id)
+        .map_err(|error| Error::operation("delete session", error.to_string()))?;
+    let vault = std::fs::canonicalize(vault)
+        .map_err(|error| Error::operation("resolve vault path", error.to_string()))?;
+    let path = vault.join(relative);
+    let trash_path = SessionStore::new(vault)
+        .delete_session(id)
+        .await
+        .map_err(|error| Error::operation("delete session", error.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("session '{id}' (missing or already deleted)")))?;
+    let deleted_at = chrono::Utc::now().to_rfc3339();
+    let rendered = if json {
+        output::json(
+            "sessions.delete",
+            &serde_json::json!({
+                "id": id,
+                "status": "deleted",
+                "mode": "soft",
+                "path": path,
+                "trash_path": trash_path,
+                "deleted_at": deleted_at,
+            }),
+            None,
+        )?
+    } else {
+        format!(
+            "Deleted session {id}; recover from {}",
+            trash_path.display()
+        )
     };
     output::emit(&rendered);
     Ok(())

@@ -112,6 +112,7 @@ output.
 | `sessions transcript` | The full speaker-labeled transcript. |
 | `sessions tag add` | Add tags to a session, registering new ones in the vault. |
 | `sessions tag remove` | Remove tags from a session. |
+| `sessions delete` | Soft-delete one exact ID to recoverable trash, without prompting. |
 | `sessions path` | Print the absolute path of a session directory. |
 | `sessions attach` | Store a file as a note attachment and print its id. |
 | `sessions export` | Export a session to Markdown or JSON. |
@@ -122,3 +123,13 @@ output.
 
 Per-command flags are documented at
 https://loofah.io/reference/cli/.
+
+## Delete and recover
+
+Only remove a session when the user authorizes it. Verify its exact ID with `loof --json sessions get SESSION_ID`, then use `loof --json sessions delete SESSION_ID`. There is no confirmation flag or prompt, including in JSON mode. The response has `command: "sessions.delete"` and `data` fields `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and UTC RFC 3339 `deleted_at` observed after the move. Retain the response for recovery. Deletion validates the exact `_meta.json` identity without scanning the vault. MCP remains read-only.
+
+The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
+
+There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
+
+A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
