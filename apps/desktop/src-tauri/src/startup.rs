@@ -121,6 +121,9 @@ async fn initialize(
     store: Arc<SessionStore>,
     state: StartupState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    crate::sync::recover(&app, store.vault_base())
+        .await
+        .map_err(std::io::Error::other)?;
     state.update(&app, StartupPhase::Scanning { sessions_found: 0 });
 
     let scan_app = app.clone();

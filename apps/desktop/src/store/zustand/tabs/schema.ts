@@ -36,6 +36,7 @@ export const isTabInputSupported = (
 
 export type SettingsTab =
   | "app"
+  | "sync"
   | "storage"
   | "notifications"
   | "developers"
@@ -49,6 +50,7 @@ export const normalizeSettingsTab = (
 ): SettingsTab => {
   switch (tab) {
     case "app":
+    case "sync":
     case "storage":
     case "notifications":
     case "developers":

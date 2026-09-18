@@ -3,6 +3,8 @@
   "version": "0.38.1",
   "private": true,
   "scripts": {
+    "cloudflare:login": "pnpm -F @hypr/docs exec wrangler login --scopes account:read user:read workers:write workers_routes:write workers_scripts:write workers_tail:read d1:write zone:read queues:write email_sending:write challenge-widgets.write",
+    "cloudflare:whoami": "pnpm -F @hypr/docs exec wrangler whoami",
     "fmt:check": "dprint check",
     "fmt": "dprint fmt",
     "lint": "pnpm lint:oxlint && pnpm lint:eslint",

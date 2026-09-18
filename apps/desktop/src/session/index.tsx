@@ -31,6 +31,7 @@ import {
   useSession,
   useSessionRawMd,
 } from "~/session/queries";
+import { flushDatabaseWrites } from "~/shared/write-queue";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { useListener } from "~/stt/contexts";
 import { consumePendingUpload } from "~/stt/pending-upload";
@@ -48,6 +49,14 @@ export function TabContentNote({
   const sessionMode = useListener((state) => state.getSessionMode(tab.id));
   const audioExists = AudioPlayer.useAudioExists(tab.id);
   const queryClient = useQueryClient();
+  const [restoreRevision, setRestoreRevision] = React.useState(0);
+  const afterRestore = React.useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["session", tab.id] }),
+      queryClient.invalidateQueries({ queryKey: ["audio", tab.id] }),
+    ]);
+    setRestoreRevision((revision) => revision + 1);
+  }, [queryClient, tab.id]);
   const isCapturing = sessionMode === "active" || sessionMode === "finalizing";
 
   const audioUrlQuery = useQuery({
@@ -82,12 +91,17 @@ export function TabContentNote({
         <AutoStartListening tab={tab} />
       ) : null}
       <SearchProvider>
-        <AudioPlayer.Provider sessionId={tab.id} url={audioUrl ?? ""}>
+        <AudioPlayer.Provider
+          key={`${tab.id}:${restoreRevision}`}
+          sessionId={tab.id}
+          url={audioUrl ?? ""}
+        >
           <TabContentNoteInner
             tab={tab}
             standaloneWindow={standaloneWindow}
             audioUrlReady={Boolean(audioUrl)}
             audioExists={audioExists}
+            afterRestore={afterRestore}
           />
         </AudioPlayer.Provider>
       </SearchProvider>
@@ -141,13 +155,19 @@ function TabContentNoteInner({
   standaloneWindow,
   audioUrlReady,
   audioExists,
+  afterRestore,
 }: {
   tab: Extract<Tab, { type: "sessions" }>;
   standaloneWindow: boolean;
   audioUrlReady: boolean;
   audioExists: boolean;
+  afterRestore: () => Promise<void>;
 }) {
   const noteInputRef = React.useRef<NoteInputHandle>(null);
+  const beforeRestore = React.useCallback(async () => {
+    noteInputRef.current?.prepareForTabChange();
+    await flushDatabaseWrites();
+  }, []);
 
   const sessionId = tab.id;
   usePendingUpload(sessionId);
@@ -230,6 +250,8 @@ function TabContentNoteInner({
             sessionId={sessionId}
             currentView={currentView}
             standaloneWindow={standaloneWindow}
+            beforeRestore={beforeRestore}
+            afterRestore={afterRestore}
             title={
               <div className="flex min-w-0 items-center gap-3">
                 <div className="min-w-0 shrink">

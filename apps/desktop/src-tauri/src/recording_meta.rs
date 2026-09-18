@@ -61,7 +61,9 @@ pub fn spawn(app: AppHandle) {
 
         // Protect whole-vault relocation before the asynchronous stamp is queued.
         if !is_end && let Some(store) = handle.try_state::<Arc<SessionStore>>() {
-            store.note_recording_active(&session_id);
+            if let Err(error) = store.note_recording_active(&session_id) {
+                tracing::error!(%error, "failed to reserve active recording");
+            }
         }
 
         // Stamped here rather than inside the worker: the event marks the actual

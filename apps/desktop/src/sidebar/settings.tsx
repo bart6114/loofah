@@ -4,6 +4,7 @@ import {
   AudioLinesIcon,
   MicIcon,
   FolderIcon,
+  CloudIcon,
   Code2Icon,
   CogIcon,
   LockIcon,
@@ -16,6 +17,7 @@ import { cn } from "@hypr/utils";
 
 import { CustomSidebarHeader } from "./custom-sidebar-header";
 
+import { useSyncEnabled } from "~/settings/sync";
 import { type SettingsTab, useTabs } from "~/store/zustand/tabs";
 
 type SettingsNavItem = { id: SettingsTab; label: string; icon: LucideIcon };
@@ -24,6 +26,7 @@ type SettingsNavGroup = { label: string; items: SettingsNavItem[] };
 
 export function SettingsNav() {
   const { t } = useLingui();
+  const sync = useSyncEnabled();
   const currentTab = useTabs((state) => state.currentTab);
   const updateSettingsTabState = useTabs(
     (state) => state.updateSettingsTabState,
@@ -62,6 +65,8 @@ export function SettingsNav() {
       ],
     },
   ];
+  if (sync.data)
+    groups[0].items.push({ id: "sync", label: "Sync", icon: CloudIcon });
   groups.push({
     label: t`Advanced`,
     items: [{ id: "developers", label: t`Agents`, icon: Code2Icon }],

@@ -12,6 +12,7 @@ pub mod reserved;
 pub mod strip;
 pub mod tags;
 pub mod tasks;
+pub mod transaction;
 pub mod transcript;
 
 pub use enhanced::{ENHANCED_KINDS, EnhancedDoc, parse_enhanced_file, render_enhanced_file};

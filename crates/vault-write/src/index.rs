@@ -336,6 +336,7 @@ impl SessionStore {
         &self,
         session_id: &str,
     ) -> Result<Vec<TranscriptWithData>, StoreError> {
+        let _guard = self.lock_reads().await?;
         let mut transcripts = self.read_transcript_json(session_id).await?.transcripts;
         // `(started_at, created_at, id)` -- the SQL this replaced ordered by all three, and the
         // tiebreaker is load-bearing: soft-deleted transcripts are written without a
@@ -976,7 +977,7 @@ mod tests {
     #[tokio::test]
     async fn concurrent_rebuild_requests_share_a_followup_pass() {
         let (store, _vault) = test_store().await;
-        let write_guard = store.lock_writes().await;
+        let write_guard = store.lock_writes().await.unwrap();
         let running = {
             let store = store.clone();
             tokio::spawn(async move { store.rebuild_index().await })

@@ -109,3 +109,87 @@ loof sessions --help
 loof sessions list --help
 loof --version
 ```
+
+## Staging Sync
+
+Sync is invitation-only and requires the separate `loof-staging` build. Stable
+`loof` does not enable Sync. Staging artifacts for macOS Apple Silicon/Intel and
+Linux ARM64/x86_64 (glibc 2.35+) are produced by the `cli-staging` workflow. Download
+the artifact for your architecture, verify its `.sha256`, extract it, and place
+`loof-staging` on your PATH. It does not require the desktop app.
+
+For SSH enrollment, run:
+
+```sh
+loof-staging --vault-path /absolute/path/to/vault sync --credentials encrypted-file connect
+loof-staging --vault-path /absolute/path/to/vault sync recovery create /safe/place/recovery.loofah-key
+loof-staging --vault-path /absolute/path/to/vault sync recovery import /safe/place/recovery.loofah-key
+loof-staging --vault-path /absolute/path/to/vault sync once
+```
+
+Open the displayed authorization URL on any machine and enter the displayed user
+code. Setup stays paused. The recovery kit must be saved outside the vault and
+reimported before first-device enrollment completes. Keep it safe. Your local
+credential-store unlock secret, account password, and recovery kit are separate.
+
+`--credentials` chooses `keychain`, `secret-service`, or `encrypted-file` for a new
+connection. Existing choices are preserved. When a keyring is unavailable on a new
+connection, the encrypted store prompts without echo. A locked existing keyring
+never causes credentials to be replaced. For unattended use, pass `--unlock-file`
+with an owner-only file containing the exact unlock-secret bytes (no added
+newline), or `--unlock-fd` with an inherited descriptor when owning the foreground
+runtime. These options precede the Sync subcommand. Never put secret values in
+arguments. A protected service-manager credential file can be used as the unlock
+file; its path must remain available to the service.
+
+| Command | Purpose |
+| --- | --- |
+| `sync connect` | Connect an account; requires `--vault-path`, initializes a missing/empty destination, rejects unrelated folders. |
+| `sync disconnect` | Disconnect the account while preserving local files and recovery material. |
+| `sync status` | Show the shared connection and actionable errors. |
+| `sync recovery create PATH` | Save the first-device recovery kit outside the vault. |
+| `sync recovery import PATH` | Reimport a saved kit or enroll with an existing kit. |
+| `sync pair receive` | Display a ten-minute pairing code for a trusted device. |
+| `sync pair approve CODE` | Approve a CLI or desktop device from an enrolled device. |
+| `sync once` | Reconcile and drain current work; `--timeout` defaults to 300 seconds. |
+| `sync watch` | Run the foreground owner or attach to an existing owner. |
+| `sync start` | Resume and install a per-user launchd/systemd service using a managed executable. |
+| `sync stop` | Pause and disable the managed service. |
+| `sync pause` | Persist pause while leaving the service available. |
+| `sync resume` | Resume the shared connection. |
+| `sync devices list` | List enrolled devices. |
+| `sync devices rename ID NAME` | Rename a device. |
+| `sync devices revoke ID` | Revoke access. |
+| `sync conflicts list` | List unresolved local/cloud revision pairs. |
+| `sync conflicts show ENTITY` | Preview both revisions. |
+| `sync conflicts resolve ENTITY` | Require reviewed `--local`, `--cloud`, and `--retain` revision IDs; stale choices fail. |
+| `sync history list ENTITY` | List history; paginate with `--before-time` and `--before-revision`. |
+| `sync history show ENTITY REVISION` | Preview a historical version. |
+| `sync history export ENTITY REVISION DIRECTORY` | Export into a new directory; use this for either conflict revision. |
+| `sync history restore ENTITY REVISION` | Preserve unsynced work and conditionally commit a new head. |
+| `sync history purge REVISION` | Logically remove a historical revision. |
+| `sync reconcile` | Reconcile a recovery-generation change and retain previous state. |
+
+An entity is `session:ID`, `people`, `tags`, or `tasks`. Session restore leaves
+vault-wide records unchanged. Destructive operations prompt for confirmation;
+`--yes` is required for noninteractive callers. `once` returns an error if work
+remains, including unresolved conflicts or recording deferrals. Ordinary CLI
+mutations do not enable Sync. MCP remains read-only.
+
+For encrypted-store background operation, supply `--unlock-file` when starting.
+`watch` respects the shared pause state; run `sync resume` before foreground
+`watch` when you want continuous synchronization. Services run as your user without root. Linux operation after logout may require
+an administrator to enable user lingering; Loofah does not change it. If no user
+service manager works, run `sync watch` under your own supervisor. A managed
+service restarts and acquires ownership when an embedded desktop owner exits.
+`doctor` reports the binding, selected backend, ownership, service installation,
+and recovery-metadata presence. Missing recovery metadata blocks vault access;
+restore the original Sync state directory before retrying.
+
+Finite commands retain the standard JSON envelope. `sync watch --json` emits one
+JSON object per line with numeric `schema_version: 1`, `event: "status"`, and
+`data` containing `protocol`, `owner`, `generation`, `status`, `content`, and
+`error`. Human authorization/pairing instructions go to stderr. Sync failures
+have stable codes including `sync_needs_unlock`, `sync_protocol_incompatible`,
+`sync_quota`, `sync_timeout`, `sync_conflict`, `sync_recording_deferred`,
+`sync_recovery_required`, and `sync_failed`.

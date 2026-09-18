@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::index::{
     IndexEntity, SessionEntry, VAULT_TASKS_KEY, apply_map_value, apply_transcript_summary,
 };
-use super::{SessionMeta, SessionStore, StoreError, paths};
+use super::{SessionStore, StoreError, paths};
 
 type DiscoveryProgress = std::sync::Arc<dyn Fn(usize) + Send + Sync>;
 type RebuildProgress = std::sync::Arc<dyn Fn(usize, usize) + Send + Sync>;
@@ -62,18 +62,17 @@ impl SessionStore {
     }
 
     async fn rebuild_index_once(&self) -> Result<RebuildReport, StoreError> {
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let scan = self.scan_session_locations().await?;
         self.rebuild_with_scan(guard, scan, None).await
     }
 
-    /// Startup entry point: rebuild from the layout snapshot
-    /// `normalize_startup_layout` already paid for, instead of scanning again.
+    /// Reuse startup's directory discovery; refresh content under each read transaction.
     pub async fn rebuild_index_from_startup_layout(
         &self,
         layout: super::StartupLayout,
     ) -> Result<RebuildReport, StoreError> {
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         self.rebuild_with_scan(guard, layout.scan, None).await
     }
 
@@ -82,12 +81,12 @@ impl SessionStore {
         layout: super::StartupLayout,
         on_progress: impl Fn(usize, usize) + Send + Sync + 'static,
     ) -> Result<RebuildReport, StoreError> {
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         self.rebuild_with_scan(guard, layout.scan, Some(std::sync::Arc::new(on_progress)))
             .await
     }
 
-    /// Desktop startup shares one shallow metadata snapshot between migration and indexing.
+    /// Desktop startup shares directory discovery between migration and indexing.
     pub async fn normalize_startup_layout(&self) -> Result<super::StartupLayout, StoreError> {
         self.normalize_startup_layout_with_progress(|_| {}).await
     }
@@ -96,7 +95,7 @@ impl SessionStore {
         &self,
         on_sessions_found: impl Fn(usize) + Send + Sync + 'static,
     ) -> Result<super::StartupLayout, StoreError> {
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let mut scan = self
             .scan_session_locations_with_progress(
                 Some(std::sync::Arc::new(on_sessions_found)),
@@ -113,7 +112,7 @@ impl SessionStore {
     /// (reading every note/transcript/doc must not block writers).
     async fn rebuild_with_scan(
         &self,
-        guard: super::WriteGuard<'_>,
+        guard: super::WriteGuard,
         scan: SessionLayoutScan,
         on_progress: Option<RebuildProgress>,
     ) -> Result<RebuildReport, StoreError> {
@@ -136,11 +135,8 @@ impl SessionStore {
         report.errors.extend(scan.errors.iter().cloned());
         report.ghost_sessions = scan.ghost_dirs.clone();
 
-        // Per-session refresh with bounded concurrency. Each task gets the meta the
-        // discovery walk already parsed (skipping a re-read of `_meta.json`) and its
-        // own sub-report; sub-reports are merged in scan order so `RebuildReport`
-        // stays deterministic regardless of completion order. Deletion tombstones
-        // prevent the snapshot from restoring sessions deleted during content loading.
+        // Each session is read under a shared transaction so an inbound apply cannot
+        // mix old metadata with new content. Reports retain discovery order.
         let mut slots: Vec<Option<(RebuildReport, Result<Option<StoreError>, StoreError>)>> =
             (0..scan.sessions.len()).map(|_| None).collect();
         let mut join_failure: Option<StoreError> = None;
@@ -151,14 +147,13 @@ impl SessionStore {
             let mut next = 0usize;
             while next < scan.sessions.len() || !join_set.is_empty() {
                 while next < scan.sessions.len() && join_set.len() < REBUILD_CONCURRENCY {
-                    let (location, meta) = &scan.sessions[next];
+                    let (location, _) = &scan.sessions[next];
                     let store = self.clone();
                     let id = location.id.clone();
-                    let meta = meta.clone();
                     let pos = next;
                     join_set.spawn(async move {
                         let mut sub = RebuildReport::default();
-                        let outcome = store.refresh_one(&id, Some(meta), &mut sub).await;
+                        let outcome = store.refresh_one(&id, &mut sub).await;
                         (pos, sub, outcome)
                     });
                     next += 1;
@@ -235,13 +230,19 @@ impl SessionStore {
             self.index_remove_session_and_notify(&id);
         }
 
-        if let Some(tasks) = self.read_index_tasks(paths::vault_tasks_path()).await {
-            let changed = {
-                let mut index = self.index.write().unwrap();
-                apply_map_value(&mut index.tasks, VAULT_TASKS_KEY, tasks)
-            };
-            if changed {
-                self.notify_index_changed(IndexEntity::Tasks, vec![VAULT_TASKS_KEY.to_string()]);
+        {
+            let _guard = self.lock_reads().await?;
+            if let Some(tasks) = self.read_index_tasks(paths::vault_tasks_path()).await {
+                let changed = {
+                    let mut index = self.index.write().unwrap();
+                    apply_map_value(&mut index.tasks, VAULT_TASKS_KEY, tasks)
+                };
+                if changed {
+                    self.notify_index_changed(
+                        IndexEntity::Tasks,
+                        vec![VAULT_TASKS_KEY.to_string()],
+                    );
+                }
             }
         }
 
@@ -263,7 +264,7 @@ impl SessionStore {
     /// double-applying anything.
     pub async fn refresh_session(&self, session_id: &str) -> Result<(), StoreError> {
         let mut report = RebuildReport::default();
-        let first_error = self.refresh_one(session_id, None, &mut report).await?;
+        let first_error = self.refresh_one(session_id, &mut report).await?;
 
         if let Some(first_error) = first_error {
             // Propagate the original variant (Io/Serialize) rather than relabeling every
@@ -284,31 +285,18 @@ impl SessionStore {
     /// also logged into `report.errors` as a formatted string) so `refresh_session` can hand
     /// its caller the real error variant. The outer `Result` is reserved for failures that
     /// must abort this session's refresh entirely (task-join failures).
-    /// `known_meta`: a meta the caller already parsed (the discovery walk's) -- trusted
-    /// as-is, skipping the `_meta.json` re-read *and* the missing-meta removal path.
-    /// The scan-time snapshot is safe to trust: layout normalization only renames
-    /// directories (never rewrites meta content), and a meta write racing in between
-    /// is the same brief-staleness window the re-read had, resolved by the next
-    /// rescan. Pass `None` (refresh_session) to derive everything from the files.
     async fn refresh_one(
         &self,
         id: &str,
-        known_meta: Option<SessionMeta>,
         report: &mut RebuildReport,
     ) -> Result<Option<StoreError>, StoreError> {
         let mut first_error: Option<StoreError> = None;
 
-        let read_meta = match known_meta {
-            Some(meta) => Ok(Some(meta)),
-            None => {
-                let _guard = self.lock_writes().await;
-                let result = self.read_meta(id).await;
-                if matches!(&result, Ok(Some(_))) {
-                    self.deleted_sessions.lock().unwrap().remove(id);
-                }
-                result
-            }
-        };
+        let _guard = self.lock_reads().await?;
+        let read_meta = self.read_meta_in_transaction(id).await;
+        if matches!(&read_meta, Ok(Some(_))) {
+            self.deleted_sessions.lock().unwrap().remove(id);
+        }
         let meta = match read_meta {
             Ok(None) => {
                 // Missing identity is the only read outcome that removes a session.
@@ -341,7 +329,7 @@ impl SessionStore {
             }
         };
 
-        let note = match self.read_note(id).await {
+        let note = match self.read_note_in_transaction(id).await {
             Ok(note) => {
                 if note.is_some() {
                     report.notes += 1;

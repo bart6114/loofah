@@ -1,0 +1,32 @@
+{
+  "name": "@loofah/cloud",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "node --experimental-transform-types --test tests/*.test.js",
+    "test:workers": "node --test tests/workers.test.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "admin": "node scripts/admin.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-form": "1.29.0",
+    "@tanstack/react-query": "5.99.0",
+    "better-auth": "1.7.5",
+    "hono": "4.13.8",
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260916.1",
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.8",
+    "wrangler": "4.131.2"
+  }
+}

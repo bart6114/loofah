@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "loofah-docs",
+  "account_id": "6adc50875d0ccd569fe6b0558742e7a0",
   "compatibility_date": "2026-08-01",
   // Static-assets-only Worker: no script, Cloudflare serves ./dist directly.
   "assets": {

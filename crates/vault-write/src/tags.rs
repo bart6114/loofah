@@ -53,6 +53,7 @@ impl SessionStore {
     }
 
     pub async fn list_tags(&self) -> Result<Vec<TagItem>, StoreError> {
+        let _guard = self.lock_reads().await?;
         let mut tags = self.read_tags().await?;
         tags.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
         Ok(tags)
@@ -67,9 +68,9 @@ impl SessionStore {
             return Err(StoreError::Io("tag name cannot be empty".to_string()));
         };
 
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
-        let mut tags = self.read_tags().await?;
+        let tags = self.read_tags().await?;
         if let Some(existing) = tags.iter().find(|t| t.id == normalized) {
             return Ok(existing.clone());
         }
@@ -78,12 +79,13 @@ impl SessionStore {
             id: normalized.clone(),
             name: normalized,
         };
-        tags.push(tag.clone());
-
-        let bytes = serde_json::to_vec_pretty(&TagsFile { tags })
-            .map_err(|e| StoreError::Serialize(e.to_string()))?;
-        self.write_file_locked(&guard, paths::tags_path(), bytes)
-            .await?;
+        self.append_registry_locked(
+            &guard,
+            paths::tags_path(),
+            "tags",
+            serde_json::to_value(&tag).map_err(|error| StoreError::Serialize(error.to_string()))?,
+        )
+        .await?;
 
         self.index_upsert_tag(&tag);
         self.notify_index_changed(super::IndexEntity::Tags, vec![tag.id.clone()]);
@@ -146,16 +148,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unparseable_tags_file_is_treated_as_empty() {
+    async fn unparseable_tags_file_reads_as_empty_but_is_not_overwritten() {
         let vault = tempfile::tempdir().unwrap();
         std::fs::write(vault.path().join("tags.json"), b"{not json").unwrap();
         let store = SessionStore::new(vault.path().to_path_buf());
 
         assert_eq!(store.list_tags().await.unwrap(), vec![]);
 
-        let created = store.ensure_tag("standup").await.unwrap();
-        assert_eq!(created.id, "standup");
-        assert_eq!(store.list_tags().await.unwrap(), vec![created]);
+        assert!(store.ensure_tag("standup").await.is_err());
+        assert_eq!(
+            std::fs::read(vault.path().join("tags.json")).unwrap(),
+            b"{not json"
+        );
+        assert_eq!(store.list_tags().await.unwrap(), vec![]);
     }
 
     #[tokio::test]

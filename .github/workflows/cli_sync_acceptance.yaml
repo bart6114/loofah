@@ -1,0 +1,55 @@
+name: cli-sync-acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-sync-acceptance
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    environment: sync-cli-staging-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust_install
+      - name: Prepare protected disposable fixture
+        env:
+          FIXTURE: ${{ secrets.DISPOSABLE_STAGING_FIXTURE }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          value = json.loads(os.environ["FIXTURE"])
+          if value.get("disposable") is not True:
+              raise SystemExit("A fresh disposable staging fixture is required")
+          path = Path(os.environ["RUNNER_TEMP"]) / "loofah-staging-fixture.json"
+          fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(fd, "w") as stream:
+              json.dump(value, stream)
+          PY
+      - name: Verify CLI-only staging enrollment and history
+        env:
+          LOOFAH_SYNC_STAGING_FIXTURE: ${{ runner.temp }}/loofah-staging-fixture.json
+        run: cargo test --locked -p loof-cli --features staging --test sync disposable_staging_cli_enrollment_upload_and_history -- --ignored --exact
+      - name: Remove local fixture
+        if: always()
+        run: rm -f "$RUNNER_TEMP/loofah-staging-fixture.json"

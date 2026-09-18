@@ -1,5 +1,7 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("{reason}")]
+    Sync { code: &'static str, reason: String },
     #[error("{0} not found")]
     NotFound(String),
     #[error("Loofah vault not found at {0}; start Loofah once or pass --vault-path")]
@@ -40,7 +42,7 @@ impl Error {
             Self::NotFound(_) => 2,
             Self::VaultNotFound(_) => 3,
             Self::OutputExists(_) => 4,
-            Self::Operation { .. } => 1,
+            Self::Operation { .. } | Self::Sync { .. } => 1,
         }
     }
 
@@ -50,6 +52,7 @@ impl Error {
             Self::VaultNotFound(_) => "vault_not_found",
             Self::OutputExists(_) => "output_exists",
             Self::Operation { .. } => "operation_failed",
+            Self::Sync { code, .. } => code,
         }
     }
 

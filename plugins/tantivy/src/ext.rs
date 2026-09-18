@@ -165,6 +165,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
         let searcher = collection.reader.searcher();
         let similar = MoreLikeThisQuery::builder()
             .with_min_doc_frequency(1)
+            // Tantivy's MLT scores against live documents, but term counts include
+            // unmerged deletions. Such terms would otherwise panic in BM25.
+            .with_max_doc_frequency(searcher.num_docs())
             .with_min_term_frequency(1)
             .with_max_query_terms(40)
             .with_min_word_length(3)
@@ -769,7 +772,7 @@ mod tests {
             .reload_policy(ReloadPolicy::Manual)
             .try_into()
             .unwrap();
-        let writer = index.writer(50_000_000).unwrap();
+        let writer = index.writer_with_num_threads(1, 50_000_000).unwrap();
         app.state::<IndexState>()
             .inner
             .write()
@@ -886,6 +889,54 @@ mod tests {
 
         // A trailing space means the word is finished: no prefix matching.
         assert_eq!(search(&app, "dav ").await.count, 0);
+    }
+
+    #[tokio::test]
+    async fn related_documents_survive_unmerged_deletions() {
+        let app = harness().await;
+        {
+            let state = app.state::<IndexState>();
+            let guard = state.inner.read().await;
+            guard.collections["default"]
+                .writer
+                .set_merge_policy(Box::new(tantivy::merge_policy::NoMergePolicy));
+        }
+        app.tantivy()
+            .update_documents(
+                None,
+                vec![
+                    doc("keep", "Keep", "common retained"),
+                    doc("other", "Other", "common unrelated"),
+                    doc("remove", "Remove", "common deleted"),
+                ],
+            )
+            .await
+            .unwrap();
+        app.tantivy()
+            .remove_document(None, "remove".into())
+            .await
+            .unwrap();
+        {
+            let state = app.state::<IndexState>();
+            let guard = state.inner.read().await;
+            let collection = &guard.collections["default"];
+            collection.reader.reload().unwrap();
+            let searcher = collection.reader.searcher();
+            let fields = get_fields(&collection.schema);
+            assert!(
+                searcher
+                    .doc_freq(&Term::from_field_text(fields.related_content, "common"))
+                    .unwrap()
+                    > searcher.num_docs()
+            );
+        }
+        let related = app
+            .tantivy()
+            .related_documents("common retained", "current", 10)
+            .await
+            .unwrap();
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].id, "keep");
     }
 
     #[tokio::test]

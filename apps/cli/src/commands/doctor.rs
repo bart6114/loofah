@@ -9,6 +9,7 @@ struct DoctorReport {
     cli_version: &'static str,
     ready: bool,
     vault: VaultReport,
+    sync: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,7 +51,22 @@ fn inspect(args: &Args) -> Result<DoctorReport> {
         report.error = Some("vault path is not a directory".to_string());
     } else {
         report.is_directory = true;
-        match hypr_vault_read::discover_sessions(&path) {
+        let recovered = vault_sync::owner::recover(&path);
+        if let Err(error) = recovered {
+            report.error = Some(format!(
+                "sync recovery blocks vault access: {error}; restore the original sync state directory before retrying"
+            ));
+        }
+        match if report.error.is_none() {
+            hypr_vault_read::discover_sessions(&path)
+        } else {
+            return Ok(DoctorReport {
+                cli_version: env!("LOOFAH_VERSION"),
+                ready: false,
+                sync: vault_sync::owner::diagnostics(&path),
+                vault: report,
+            });
+        } {
             Ok(scan) => {
                 report.sessions = Some(scan.sessions.len());
                 if !scan.errors.is_empty() {
@@ -83,6 +99,7 @@ fn inspect(args: &Args) -> Result<DoctorReport> {
     Ok(DoctorReport {
         cli_version: env!("LOOFAH_VERSION"),
         ready: report.is_directory && report.sessions.is_some(),
+        sync: vault_sync::owner::diagnostics(&path),
         vault: report,
     })
 }
@@ -105,6 +122,7 @@ fn render(report: &DoctorReport) -> String {
     if let Some(error) = &report.vault.error {
         lines.push(format!("Issue: {error}"));
     }
+    lines.push(format!("Sync: {}", report.sync));
     lines.join("\n")
 }
 

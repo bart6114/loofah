@@ -211,12 +211,40 @@ where
     F: FnOnce(&Path) -> Result<T> + Send + 'static,
 {
     let vault: PathBuf = vault.to_path_buf();
-    tokio::task::spawn_blocking(move || operation(&vault))
+    let transaction = loop {
+        let path = vault.clone();
+        let transaction = tokio::task::spawn_blocking(move || {
+            hypr_vault_read::transaction::VaultTransaction::try_acquire(&path, false)
+        })
         .await
         .map_err(|error| Error::Vault {
             action,
-            reason: format!("task join error: {error}"),
+            reason: error.to_string(),
         })?
+        .map_err(|error| Error::Vault {
+            action,
+            reason: error.to_string(),
+        })?;
+        if let Some(transaction) = transaction {
+            break transaction;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    };
+    tokio::task::spawn_blocking(move || {
+        let _transaction = transaction;
+        hypr_vault_read::transaction::VaultTransaction::ensure_ready(&vault).map_err(|error| {
+            Error::Vault {
+                action,
+                reason: error.to_string(),
+            }
+        })?;
+        operation(&vault)
+    })
+    .await
+    .map_err(|error| Error::Vault {
+        action,
+        reason: format!("task join error: {error}"),
+    })?
 }
 
 fn vault_error(action: &'static str) -> impl Fn(hypr_vault_read::Error) -> Error {

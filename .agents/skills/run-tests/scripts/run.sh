@@ -114,11 +114,13 @@ run_rust() {
 
 run_cli() {
   run_step "agent-access tests" cargo test --locked -p agent-access
-  run_step "CLI tests" cargo test --locked -p loof-cli
+  run_step "CLI tests" cargo test --locked -p loof-cli --features staging
+  run_step "Sync tests" cargo test --locked -p vault-sync
   run_step "TipTap tests" cargo test --locked -p tiptap
   run_step "CLI clippy" cargo clippy --locked \
     -p agent-access \
     -p loof-cli \
+    -p vault-sync \
     -p tiptap \
     --all-targets \
     --no-deps \

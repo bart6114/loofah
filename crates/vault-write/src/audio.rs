@@ -80,13 +80,15 @@ impl SessionStore {
         source_path: &str,
     ) -> Result<String, StoreError> {
         validate_session_id(session_id)?;
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
         let resolved_dir_abs = self
             .vault_base
             .join(self.session_dir_locked(&guard, session_id).await?);
         let source_path = PathBuf::from(source_path);
 
+        let lease = guard.clone();
         let result = tokio::task::spawn_blocking(move || -> Result<String, StoreError> {
+            let _lease = lease;
             let file_name = canonical_audio_file_name(&source_path)?;
             let dest_dir = resolved_dir_abs;
             let dest_abs = dest_dir.join(&file_name);
@@ -118,6 +120,7 @@ impl SessionStore {
     /// (see `store_audio`). This and `delete_audio` support explicitly deleting recordings from vaults
     /// written by the builds that did relocate recordings there.
     pub async fn list_audio(&self, session_id: &str) -> Result<Vec<String>, StoreError> {
+        let _guard = self.lock_reads().await?;
         validate_session_id(session_id)?;
         let session_dir = self.session_dir(session_id).await?;
         let vault_base = self.vault_base.clone();
@@ -156,11 +159,13 @@ impl SessionStore {
     /// Unlike `delete_session`, this is not undo-able. Missing file is a no-op.
     pub async fn delete_audio(&self, session_id: &str, filename: &str) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
+        let guard = self.lock_writes().await?;
         let session_dir = self.session_dir(session_id).await?;
         let vault_base = self.vault_base.clone();
         let filename = filename.to_string();
 
         let result = tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+            let _guard = guard;
             // `filename` must be a bare file name: callers only ever pass one back from
             // `list_audio`, but reject path separators/traversal defensively so a bad
             // filename can't escape the audio directory via this command boundary.

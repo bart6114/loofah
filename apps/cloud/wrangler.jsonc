@@ -1,0 +1,121 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "loofah-sync-unconfigured",
+  "account_id": "6adc50875d0ccd569fe6b0558742e7a0",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": [
+    "nodejs_compat",
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "limits": {
+    "cpu_ms": 30000,
+  },
+  "migrations": [{ "tag": "pairing-v1", "new_sqlite_classes": ["PairingMailbox"] }],
+  "env": {
+    "staging": {
+      "name": "loofah-sync-staging",
+      "durable_objects": { "bindings": [{ "name": "PAIRING", "class_name": "PairingMailbox" }] },
+      "routes": [
+        {
+          "pattern": "staging-app.loofah.io",
+          "custom_domain": true,
+        },
+      ],
+      "vars": {
+        "ACCOUNT_ORIGIN": "https://staging-app.loofah.io",
+        "SIGNUP_OPEN": "true",
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAE5QuLmYs4lW0_n_",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "loofah-sync-staging",
+          "database_id": "eb418b01-504f-4a45-b29c-4002a47b560a",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "VAULT",
+          "bucket_name": "loofah-sync-staging-vault",
+          "jurisdiction": "eu",
+        },
+        {
+          "binding": "RECOVERY",
+          "bucket_name": "loofah-sync-staging-recovery",
+          "jurisdiction": "eu",
+        },
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "allowed_sender_addresses": [
+            "accounts@notify.loofah.io",
+          ],
+        },
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *",
+        ],
+      },
+    },
+    "production": {
+      "name": "loofah-sync-production",
+      "routes": [
+        {
+          "pattern": "app.loofah.io",
+          "custom_domain": true,
+        },
+      ],
+      "vars": {
+        "ACCOUNT_ORIGIN": "https://app.loofah.io",
+        "SIGNUP_OPEN": "false",
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAE5QuRfb66v_lE0c",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "loofah-sync-production",
+          "database_id": "1a040675-6baa-44a6-ba92-1c496bbf02b1",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "VAULT",
+          "bucket_name": "loofah-sync-production-vault",
+          "jurisdiction": "eu",
+        },
+        {
+          "binding": "RECOVERY",
+          "bucket_name": "loofah-sync-production-recovery",
+          "jurisdiction": "eu",
+        },
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "allowed_sender_addresses": [
+            "accounts@notify.loofah.io",
+          ],
+        },
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *",
+        ],
+      },
+    },
+  },
+  "assets": {
+    "directory": "dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+    ],
+  },
+}

@@ -40,6 +40,584 @@ expression: canonicalize_json(contract)
   ],
   "subcommands": [
     {
+      "about": "Manage invitation-only staging synchronization",
+      "name": "loof sync",
+      "options": [
+        {
+          "flags": "--credentials",
+          "help": "Credential backend for a new connection; persisted and never silently changed",
+          "is_flag": false,
+          "possible_values": [
+            "keychain",
+            "secret-service",
+            "encrypted-file"
+          ],
+          "required": false,
+          "value_name": "CREDENTIALS"
+        },
+        {
+          "flags": "--unlock-file",
+          "help": "Owner-only file containing the local credential-store unlock secret",
+          "is_flag": false,
+          "required": false,
+          "value_name": "UNLOCK_FILE"
+        },
+        {
+          "flags": "--unlock-fd",
+          "help": "Inherited file descriptor containing the local unlock secret",
+          "is_flag": false,
+          "required": false,
+          "value_name": "UNLOCK_FD"
+        },
+        {
+          "flags": "-h, --help",
+          "help": "Print help",
+          "is_flag": false,
+          "required": false
+        }
+      ],
+      "subcommands": [
+        {
+          "about": "Display a browser authorization URL and user code; setup stays paused",
+          "name": "loof sync connect",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync connect [-h]"
+        },
+        {
+          "about": "Disconnect this account, preserving local files and recovery material",
+          "name": "loof sync disconnect",
+          "options": [
+            {
+              "flags": "--yes",
+              "is_flag": true,
+              "required": false
+            },
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync disconnect [--yes] [-h]"
+        },
+        {
+          "name": "loof sync status",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync status [-h]"
+        },
+        {
+          "name": "loof sync recovery",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "subcommands": [
+            {
+              "arguments": [
+                {
+                  "name": "PATH",
+                  "required": true
+                }
+              ],
+              "name": "loof sync recovery create",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync recovery create [-h] <path>"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "PATH",
+                  "required": true
+                }
+              ],
+              "name": "loof sync recovery import",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync recovery import [-h] <path>"
+            }
+          ],
+          "synopsis": "loof sync recovery [-h] <command>"
+        },
+        {
+          "name": "loof sync pair",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "subcommands": [
+            {
+              "name": "loof sync pair receive",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync pair receive [-h]"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "CODE",
+                  "required": true
+                }
+              ],
+              "name": "loof sync pair approve",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync pair approve [-h] <code>"
+            }
+          ],
+          "synopsis": "loof sync pair [-h] <command>"
+        },
+        {
+          "about": "Reconcile and drain current work without changing the saved pause preference",
+          "name": "loof sync once",
+          "options": [
+            {
+              "default": "300",
+              "flags": "--timeout",
+              "is_flag": false,
+              "required": false,
+              "value_name": "TIMEOUT"
+            },
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync once [--timeout] [-h]"
+        },
+        {
+          "about": "Run foreground synchronization under a terminal or external supervisor",
+          "name": "loof sync watch",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync watch [-h]"
+        },
+        {
+          "about": "Enable a managed per-user background service and resume sync",
+          "name": "loof sync start",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync start [-h]"
+        },
+        {
+          "about": "Pause synchronization and disable the managed background service",
+          "name": "loof sync stop",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync stop [-h]"
+        },
+        {
+          "name": "loof sync pause",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync pause [-h]"
+        },
+        {
+          "name": "loof sync resume",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync resume [-h]"
+        },
+        {
+          "name": "loof sync devices",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "subcommands": [
+            {
+              "name": "loof sync devices list",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync devices list [-h]"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "ID",
+                  "required": true
+                },
+                {
+                  "name": "NAME",
+                  "required": true
+                }
+              ],
+              "name": "loof sync devices rename",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync devices rename [-h] <id> <name>"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "ID",
+                  "required": true
+                }
+              ],
+              "name": "loof sync devices revoke",
+              "options": [
+                {
+                  "flags": "--yes",
+                  "is_flag": true,
+                  "required": false
+                },
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync devices revoke [--yes] [-h] <id>"
+            }
+          ],
+          "synopsis": "loof sync devices [-h] <command>"
+        },
+        {
+          "name": "loof sync conflicts",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "subcommands": [
+            {
+              "name": "loof sync conflicts list",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync conflicts list [-h]"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "ENTITY",
+                  "required": true
+                }
+              ],
+              "name": "loof sync conflicts show",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync conflicts show [-h] <entity>"
+            },
+            {
+              "about": "Resolve only the two reviewed revisions; stale choices are rejected",
+              "arguments": [
+                {
+                  "name": "ENTITY",
+                  "required": true
+                }
+              ],
+              "name": "loof sync conflicts resolve",
+              "options": [
+                {
+                  "flags": "--local",
+                  "is_flag": false,
+                  "required": true,
+                  "value_name": "LOCAL"
+                },
+                {
+                  "flags": "--cloud",
+                  "is_flag": false,
+                  "required": true,
+                  "value_name": "CLOUD"
+                },
+                {
+                  "flags": "--retain",
+                  "is_flag": false,
+                  "required": true,
+                  "value_name": "RETAIN"
+                },
+                {
+                  "flags": "--yes",
+                  "is_flag": true,
+                  "required": false
+                },
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync conflicts resolve <--local> <--cloud> <--retain> [--yes] [-h] <entity>"
+            }
+          ],
+          "synopsis": "loof sync conflicts [-h] <command>"
+        },
+        {
+          "name": "loof sync history",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "subcommands": [
+            {
+              "arguments": [
+                {
+                  "name": "ENTITY",
+                  "required": true
+                }
+              ],
+              "name": "loof sync history list",
+              "options": [
+                {
+                  "flags": "--before-time",
+                  "is_flag": false,
+                  "required": false,
+                  "value_name": "BEFORE_TIME"
+                },
+                {
+                  "flags": "--before-revision",
+                  "is_flag": false,
+                  "required": false,
+                  "value_name": "BEFORE_REVISION"
+                },
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync history list [--before-time] [--before-revision] [-h] <entity>"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "ENTITY",
+                  "required": true
+                },
+                {
+                  "name": "REVISION",
+                  "required": true
+                }
+              ],
+              "name": "loof sync history show",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync history show [-h] <entity> <revision>"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "DESTINATION",
+                  "required": true
+                },
+                {
+                  "name": "ENTITY",
+                  "required": true
+                },
+                {
+                  "name": "REVISION",
+                  "required": true
+                }
+              ],
+              "name": "loof sync history export",
+              "options": [
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync history export [-h] <destination> <entity> <revision>"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "ENTITY",
+                  "required": true
+                },
+                {
+                  "name": "REVISION",
+                  "required": true
+                }
+              ],
+              "name": "loof sync history restore",
+              "options": [
+                {
+                  "flags": "--yes",
+                  "is_flag": true,
+                  "required": false
+                },
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync history restore [--yes] [-h] <entity> <revision>"
+            },
+            {
+              "arguments": [
+                {
+                  "name": "REVISION",
+                  "required": true
+                }
+              ],
+              "name": "loof sync history purge",
+              "options": [
+                {
+                  "flags": "--yes",
+                  "is_flag": true,
+                  "required": false
+                },
+                {
+                  "flags": "-h, --help",
+                  "help": "Print help",
+                  "is_flag": false,
+                  "required": false
+                }
+              ],
+              "synopsis": "loof sync history purge [--yes] [-h] <revision>"
+            }
+          ],
+          "synopsis": "loof sync history [-h] <command>"
+        },
+        {
+          "about": "Reconcile a changed recovery generation, preserving previous state",
+          "name": "loof sync reconcile",
+          "options": [
+            {
+              "flags": "--yes",
+              "is_flag": true,
+              "required": false
+            },
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sync reconcile [--yes] [-h]"
+        }
+      ],
+      "synopsis": "loof sync [--credentials] [--unlock-file] [--unlock-fd] [-h] <command>"
+    },
+    {
       "about": "Check vault access and layout; refresh the vault guide. Open desktop to migrate",
       "name": "loof doctor",
       "options": [

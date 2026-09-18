@@ -83,6 +83,7 @@ impl SessionStore {
     }
 
     pub async fn list_people(&self) -> Result<Vec<PersonItem>, StoreError> {
+        let _guard = self.lock_reads().await?;
         let mut people = self.read_people().await?;
         people.sort_by(|a, b| {
             a.name
@@ -104,9 +105,9 @@ impl SessionStore {
             return Err(StoreError::Io("person name cannot be empty".to_string()));
         }
 
-        let guard = self.lock_writes().await;
+        let guard = self.lock_writes().await?;
 
-        let mut people = self.read_people().await?;
+        let people = self.read_people().await?;
         let name_lower = name.to_lowercase();
         if let Some(existing) = people.iter().find(|p| p.name.to_lowercase() == name_lower) {
             return Ok(existing.clone());
@@ -116,12 +117,14 @@ impl SessionStore {
             id: unique_person_id(&people, name),
             name: name.to_string(),
         };
-        people.push(person.clone());
-
-        let bytes = serde_json::to_vec_pretty(&PeopleFile { people })
-            .map_err(|e| StoreError::Serialize(e.to_string()))?;
-        self.write_file_locked(&guard, paths::people_path(), bytes)
-            .await?;
+        self.append_registry_locked(
+            &guard,
+            paths::people_path(),
+            "people",
+            serde_json::to_value(&person)
+                .map_err(|error| StoreError::Serialize(error.to_string()))?,
+        )
+        .await?;
 
         self.index_upsert_person(&person);
         self.notify_index_changed(super::IndexEntity::People, vec![person.id.clone()]);
@@ -215,16 +218,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unparseable_people_file_is_treated_as_empty() {
+    async fn unparseable_people_file_reads_as_empty_but_is_not_overwritten() {
         let vault = tempfile::tempdir().unwrap();
         std::fs::write(vault.path().join("people.json"), b"{not json").unwrap();
         let store = SessionStore::new(vault.path().to_path_buf());
 
         assert_eq!(store.list_people().await.unwrap(), vec![]);
 
-        let created = store.ensure_person("Kim").await.unwrap();
-        assert_eq!(created.id, "kim");
-        assert_eq!(store.list_people().await.unwrap(), vec![created]);
+        assert!(store.ensure_person("Kim").await.is_err());
+        assert_eq!(
+            std::fs::read(vault.path().join("people.json")).unwrap(),
+            b"{not json"
+        );
+        assert_eq!(store.list_people().await.unwrap(), vec![]);
     }
 
     #[tokio::test]

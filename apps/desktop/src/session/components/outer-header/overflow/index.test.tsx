@@ -1,3 +1,6 @@
+vi.mock("~/settings/sync", () => ({
+  useSyncEnabled: () => ({ data: false }),
+}));
 import {
   cleanup,
   fireEvent,

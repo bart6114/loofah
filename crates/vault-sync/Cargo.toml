@@ -1,0 +1,39 @@
+[package]
+name = "vault-sync"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dirs = { workspace = true }
+fs2 = "0.4.3"
+futures-util = { workspace = true, features = ["sink"] }
+hypr-storage = { workspace = true }
+libsodium-rs = "=0.2.4"
+magic-wormhole = { version = "=0.8.1", default-features = false }
+reqwest = { workspace = true, features = ["json", "stream"] }
+rustix = { version = "1", features = ["process"] }
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
+unicode-normalization = { workspace = true }
+zeroize = "1.8"
+
+hypr-vault-read = { workspace = true }
+hypr-vault-write = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros", "time", "fs", "io-util", "net"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+hypr-agent-access = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { workspace = true }

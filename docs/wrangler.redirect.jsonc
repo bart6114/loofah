@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "loofah-docs-redirect",
+  "account_id": "6adc50875d0ccd569fe6b0558742e7a0",
   "main": "redirect-worker.ts",
   "compatibility_date": "2026-08-01",
   "workers_dev": false,

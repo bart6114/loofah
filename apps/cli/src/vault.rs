@@ -8,6 +8,8 @@ pub fn open(args: &Args) -> Result<PathBuf> {
     if !path.is_dir() {
         return Err(Error::VaultNotFound(path));
     }
+    vault_sync::owner::recover(&path)
+        .map_err(|error| Error::operation("recover sync before vault access", error.to_string()))?;
     Ok(path)
 }
 
@@ -31,6 +33,9 @@ pub(crate) fn resolve_path(args: &Args) -> Result<PathBuf> {
 }
 
 fn resolve_default_path(data_dir: &Path) -> PathBuf {
+    if cfg!(feature = "staging") {
+        return resolve_default_path_for_command(data_dir, Some(OsStr::new("loof-staging")));
+    }
     let command_name = std::env::args_os()
         .next()
         .and_then(|path| Path::new(&path).file_name().map(|name| name.to_owned()));
