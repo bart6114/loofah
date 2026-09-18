@@ -192,7 +192,6 @@ export type AppConfig = Partial<{
   auto_summary_prompt: string;
   ignored_platforms: string[];
   included_platforms: string[];
-  mic_active_threshold: number;
   current_llm_provider?: string | null;
   current_llm_model?: string | null;
   current_stt_provider?: string | null;

@@ -46,11 +46,8 @@ pub enum IndexEntity {
     /// The vault-root `tags.json` registry changed (not a session's `_meta.json`
     /// tags -- those ride `Sessions`).
     Tags,
-    /// A session's *physical directory* changed (rename, move, delete/restore,
-    /// external relocation caught by a rebuild) -- content-free, so the search
-    /// projection ignores it; the frontend uses it to invalidate every cache
-    /// holding an absolute session path.
-    Locations,
+    /// Audio or embedded attachment bytes changed independently of indexed text.
+    Artifacts,
 }
 
 /// Emitted (coalesced) to every webview as the `index-changed` event.
@@ -103,7 +100,7 @@ pub struct SessionListHeader {
 }
 
 /// Key for the vault-root `tasks.json` in the tasks map (sessions can never claim it:
-/// folder names are non-empty path segments).
+/// session IDs are non-empty path segments).
 pub(super) const VAULT_TASKS_KEY: &str = "";
 
 /// What the index keeps per `transcript.json` instead of the words themselves --
@@ -466,6 +463,22 @@ impl SessionStore {
     /// writes happen; a store without a spawned dispatcher (tests) just accumulates.
     /// Every tap (`subscribe_index_changes`) gets its own copy; a tap whose receiver
     /// was dropped is pruned here.
+    pub fn notify_all_artifacts_changed(&self) {
+        let ids = self
+            .index
+            .read()
+            .unwrap()
+            .sessions
+            .keys()
+            .cloned()
+            .collect();
+        self.notify_index_changed(IndexEntity::Artifacts, ids);
+    }
+
+    pub fn notify_artifacts_changed(&self, session_id: &str) {
+        self.notify_index_changed(IndexEntity::Artifacts, vec![session_id.to_string()]);
+    }
+
     pub(super) fn notify_index_changed(&self, entity: IndexEntity, ids: Vec<String>) {
         if ids.is_empty() {
             return;
@@ -595,6 +608,10 @@ impl SessionStore {
         let mut index = self.index.write().unwrap();
         let mut changes = Vec::new();
         if index.sessions.remove(session_id).is_some() {
+            self.deleted_sessions
+                .lock()
+                .unwrap()
+                .insert(session_id.to_string());
             changes.push((IndexEntity::Sessions, session_id.to_string()));
             changes.push((IndexEntity::SessionHeaders, session_id.to_string()));
         }
@@ -776,8 +793,8 @@ const ENTITY_ORDER: [IndexEntity; 8] = [
     IndexEntity::Tasks,
     IndexEntity::People,
     IndexEntity::Tags,
-    IndexEntity::Locations,
     IndexEntity::SessionHeaders,
+    IndexEntity::Artifacts,
 ];
 
 /// One coalesced flush: group a drained batch by entity, dedupe ids preserving
@@ -896,35 +913,6 @@ mod tests {
         (store, temp)
     }
 
-    /// `Locations` rides the same coalescing bus as every other entity: a burst of
-    /// location changes collapses to one deduped event, emitted in the stable order.
-    #[test]
-    fn coalesce_groups_and_dedupes_locations_changes() {
-        let events = coalesce(vec![
-            (IndexEntity::Locations, vec!["s1".to_string()]),
-            (IndexEntity::Sessions, vec!["s1".to_string()]),
-            (
-                IndexEntity::Locations,
-                vec!["s2".to_string(), "s1".to_string()],
-            ),
-        ]);
-        assert_eq!(
-            events,
-            vec![
-                IndexChanged {
-                    entity: IndexEntity::Sessions,
-                    ids: vec!["s1".to_string()],
-                },
-                IndexChanged {
-                    entity: IndexEntity::Locations,
-                    ids: vec!["s1".to_string(), "s2".to_string()],
-                },
-            ]
-        );
-    }
-
-    /// Physical directory of a session: creation now picks a human-readable name, so
-    /// tests resolve it through the store instead of assuming `sessions/<id>`.
     async fn session_path(
         store: &SessionStore,
         vault: &tempfile::TempDir,

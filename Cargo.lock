@@ -13707,6 +13707,7 @@ name = "storage"
 version = "0.1.0"
 dependencies = [
  "dirs 6.0.0",
+ "libc",
  "serde",
  "serde_json",
  "shellexpand",
@@ -14749,7 +14750,6 @@ dependencies = [
  "tauri-specta",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tracing",
  "uuid",
  "windows 0.62.2",
@@ -17703,7 +17703,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "unicode-normalization",
  "vault-read",
 ]
 

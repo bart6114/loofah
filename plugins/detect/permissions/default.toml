@@ -8,5 +8,4 @@ permissions = [
     "allow-list-default-ignored-bundle-ids",
     "allow-get-preferred-languages",
     "allow-get-current-locale-identifier",
-    "allow-set-mic-active-threshold",
 ]

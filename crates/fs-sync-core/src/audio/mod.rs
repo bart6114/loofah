@@ -294,11 +294,6 @@ fn delete_with(
     Ok(true)
 }
 
-/// Deletes expired audio artifacts from orphaned session directories and returns
-/// the affected session ids. A directory holding a parseable `_meta.json` is a
-/// session identified by `_meta.json.id`; one holding an unreadable meta is left
-/// untouched; session content is never recursed into. Meta-less uuid-named
-/// directories are legacy recorder-fallback orphans, identified by basename.
 pub fn source_metadata(source_path: &Path) -> std::io::Result<AudioSourceMetadata> {
     use hypr_audio_utils::Source;
 

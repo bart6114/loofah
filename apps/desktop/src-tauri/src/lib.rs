@@ -333,6 +333,7 @@ pub async fn main() {
                         let store = std::sync::Arc::new(session_store::SessionStore::new(
                             base.as_std_path().to_path_buf(),
                         ));
+                        store.set_startup_pending(true);
                         app_handle.manage(store.clone());
 
                         search_index::spawn(app_handle.clone(), store.clone());
@@ -580,6 +581,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_get::<tauri::Wry>,
             session_store::commands::session_list_headers::<tauri::Wry>,
             session_store::commands::vault_stats::<tauri::Wry>,
+            session_store::commands::vault_storage_stats::<tauri::Wry>,
             session_store::commands::session_ids::<tauri::Wry>,
             session_store::commands::session_is_empty::<tauri::Wry>,
             session_store::commands::session_has_transcript::<tauri::Wry>,
@@ -588,13 +590,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_transcripts::<tauri::Wry>,
             session_store::commands::transcript_get::<tauri::Wry>,
             session_store::commands::session_find_by_tracking_id::<tauri::Wry>,
-            session_store::commands::session_prepare_recording::<tauri::Wry>,
-            session_store::commands::session_release_recording_prepare::<tauri::Wry>,
-            session_store::commands::session_rename_dir_to_title::<tauri::Wry>,
         ])
         .events(tauri_specta::collect_events![
             session_store::IndexChanged,
-            crate::recording_meta::RecordingMetaSettled,
             startup::StartupProgress
         ])
         .error_handling(tauri_specta::ErrorHandlingMode::Result)

@@ -193,11 +193,6 @@ function applySettingSideEffects(values: SettingValues): void {
       .setIncludedBundleIds(parseStringArray(values.included_platforms))
       .catch(console.error);
   }
-  if (values.mic_active_threshold !== undefined) {
-    void detectCommands
-      .setMicActiveThreshold(values.mic_active_threshold)
-      .catch(console.error);
-  }
   if (values.show_app_in_dock !== undefined) {
     void windowsCommands
       .setShowAppInDock(values.show_app_in_dock)

@@ -354,7 +354,7 @@ const toggle = document.querySelector<HTMLButtonElement>(
 
 if (video && toggle) {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let wantsPlayback = false;
+  let wantsPlayback = !reducedMotion.matches;
 
   const syncToggle = () => {
     toggle.textContent = video.paused
@@ -393,5 +393,7 @@ if (video && toggle) {
     if (document.hidden) video.pause();
     else if (wantsPlayback) void play();
   });
+
+  if (wantsPlayback && !document.hidden) void play();
 }
 </script>

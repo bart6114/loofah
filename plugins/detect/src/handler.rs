@@ -1,10 +1,8 @@
 use tauri::{AppHandle, Manager, Runtime};
-use tokio_util::sync::CancellationToken;
 
 use crate::{
     DetectEvent, ProcessorState,
     env::{Env, TauriEnv},
-    mic_usage_tracker,
 };
 
 pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +40,7 @@ pub fn handle_detect_event<E: Env>(
             handle_mic_started(env, state, apps);
         }
         hypr_detect::DetectEvent::MicStopped(apps) => {
-            handle_mic_stopped(env, state, apps);
+            env.emit(DetectEvent::MicStopped { apps });
         }
         #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
         hypr_detect::DetectEvent::SleepStateChanged { value } => {
@@ -56,48 +54,27 @@ fn handle_mic_started<E: Env>(
     state: &ProcessorState,
     apps: Vec<hypr_detect::InstalledApp>,
 ) {
-    let mut guard = state.lock().unwrap_or_else(|e| e.into_inner());
-
-    let to_track: Vec<_> = apps
-        .iter()
-        .filter(|app| {
-            guard.policy.should_track_app(&app.id)
-                && !guard.mic_usage_tracker.is_tracking(&app.id)
-                && !guard.mic_usage_tracker.is_in_cooldown(&app.id)
-        })
-        .cloned()
-        .collect();
-
-    let threshold_secs = guard.mic_active_threshold_secs;
-
-    for app in &to_track {
-        let token = CancellationToken::new();
-        let generation = guard
-            .mic_usage_tracker
-            .start_tracking(app.id.clone(), token.clone());
-        mic_usage_tracker::spawn_timer(
-            env.clone(),
-            state.clone(),
-            app.clone(),
-            generation,
-            token,
-            threshold_secs,
-        );
-    }
-}
-
-fn handle_mic_stopped<E: Env>(
-    env: &E,
-    state: &ProcessorState,
-    apps: Vec<hypr_detect::InstalledApp>,
-) {
-    {
+    let events = {
         let mut guard = state.lock().unwrap_or_else(|e| e.into_inner());
-
-        for app in &apps {
-            guard.mic_usage_tracker.cancel_app(&app.id);
+        let mut events = Vec::new();
+        for app in apps {
+            if !guard.policy.should_track_app(&app.id) || !guard.mic_usage_tracker.claim(&app.id) {
+                continue;
+            }
+            if guard.policy.respect_dnd && env.is_do_not_disturb() {
+                continue;
+            }
+            tracing::info!(app_id = %app.id, "mic_detected");
+            events.push(DetectEvent::MicDetected {
+                key: uuid::Uuid::new_v4().to_string(),
+                apps: vec![app],
+                duration_secs: 0,
+            });
         }
-    }
+        events
+    };
 
-    env.emit(DetectEvent::MicStopped { apps });
+    for event in events {
+        env.emit(event);
+    }
 }

@@ -193,7 +193,7 @@ mod tests {
         for (_, to_suffix) in SUFFIXES {
             let name = format!("{RETIRED_BASENAME}{to_suffix}");
             assert_eq!(
-                crate::vault_watch::classify_event(&name, false, None),
+                crate::vault_watch::classify_event(&name, false),
                 crate::vault_watch::WatchAction::Ignore,
                 "{name} must be ignored by the vault watcher"
             );

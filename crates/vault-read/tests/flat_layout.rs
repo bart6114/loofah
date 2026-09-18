@@ -1,14 +1,10 @@
-//! Every id-based reader must behave identically whether a session lives in a
-//! legacy UUID-named directory or a human-readable (possibly nested, possibly
-//! manually renamed) one — the full id from `_meta.json` is the only identity.
-
 use std::path::Path;
 
 use vault_read::{enhanced, meta, tasks, transcript};
 
 const LEGACY_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
-const READABLE_ID: &str = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
-const READABLE_DIR: &str = "sessions/Work/2026-03-20 — Product planning — 6ba7b8";
+const CANONICAL_ID: &str = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+const CANONICAL_DIR: &str = "sessions/6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
 fn seed_full_session(vault: &Path, relative_dir: &str, id: &str, title: &str) {
     let dir = vault.join(relative_dir);
@@ -71,7 +67,7 @@ fn seed_full_session(vault: &Path, relative_dir: &str, id: &str, title: &str) {
 }
 
 #[test]
-fn all_readers_resolve_both_layouts_identically_by_full_id() {
+fn all_readers_resolve_canonical_sessions_by_full_id() {
     let vault = tempfile::tempdir().unwrap();
     seed_full_session(
         vault.path(),
@@ -79,7 +75,7 @@ fn all_readers_resolve_both_layouts_identically_by_full_id() {
         LEGACY_ID,
         "Legacy",
     );
-    seed_full_session(vault.path(), READABLE_DIR, READABLE_ID, "Readable");
+    seed_full_session(vault.path(), CANONICAL_DIR, CANONICAL_ID, "Readable");
 
     let mut ids: Vec<String> = meta::list_session_metas(vault.path())
         .unwrap()
@@ -87,11 +83,11 @@ fn all_readers_resolve_both_layouts_identically_by_full_id() {
         .map(|m| m.id)
         .collect();
     ids.sort();
-    let mut expected = vec![LEGACY_ID.to_string(), READABLE_ID.to_string()];
+    let mut expected = vec![LEGACY_ID.to_string(), CANONICAL_ID.to_string()];
     expected.sort();
     assert_eq!(ids, expected);
 
-    for (id, title) in [(LEGACY_ID, "Legacy"), (READABLE_ID, "Readable")] {
+    for (id, title) in [(LEGACY_ID, "Legacy"), (CANONICAL_ID, "Readable")] {
         let session_meta = meta::read_session_meta(vault.path(), id).unwrap().unwrap();
         assert_eq!(session_meta.id, id);
         assert_eq!(session_meta.title, title);
@@ -117,8 +113,6 @@ fn all_readers_resolve_both_layouts_identically_by_full_id() {
         assert_eq!(task_items[0].text, format!("task for {title}"));
     }
 
-    // Looking a readable-layout session up by its directory basename must fail:
-    // names are presentation, not identity.
     assert!(
         meta::read_session_meta(vault.path(), "2026-03-20 — Product planning — 6ba7b8")
             .unwrap()
@@ -127,11 +121,11 @@ fn all_readers_resolve_both_layouts_identically_by_full_id() {
 }
 
 #[test]
-fn note_fallback_reads_pre_rename_memo_file_in_both_layouts() {
+fn note_fallback_reads_pre_rename_memo_file() {
     let vault = tempfile::tempdir().unwrap();
     for (relative_dir, id, title) in [
         (format!("sessions/{LEGACY_ID}"), LEGACY_ID, "Legacy"),
-        (READABLE_DIR.to_string(), READABLE_ID, "Readable"),
+        (CANONICAL_DIR.to_string(), CANONICAL_ID, "Readable"),
     ] {
         let dir = vault.path().join(&relative_dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -155,4 +149,135 @@ fn note_fallback_reads_pre_rename_memo_file_in_both_layouts() {
             format!("legacy note for {title}")
         );
     }
+}
+
+#[test]
+fn safe_legacy_ids_are_preserved_and_unsafe_components_are_rejected() {
+    for id in ["legacy-1", "note 2024", "会議", LEGACY_ID] {
+        assert_eq!(
+            vault_read::paths::validated_session_dir(id).unwrap(),
+            Path::new("sessions").join(id)
+        );
+    }
+    for id in [
+        "",
+        ".",
+        "..",
+        ".hidden",
+        "../escape",
+        "/absolute",
+        "a/b",
+        "a\\b",
+        "C:drive",
+        "NUL",
+        "com1.txt",
+        "COM¹",
+        "com².txt",
+        "COM³",
+        "LPT¹",
+        "lpt².txt",
+        "LPT³",
+        "trailing.",
+        "trailing ",
+        "a\0b",
+        "a\nb",
+    ] {
+        assert!(
+            vault_read::paths::validated_session_dir(id).is_err(),
+            "{id:?}"
+        );
+    }
+}
+
+#[test]
+fn shallow_discovery_keeps_canonical_copy_and_skips_ignored_sources() {
+    let vault = tempfile::tempdir().unwrap();
+    seed_full_session(
+        vault.path(),
+        &format!("sessions/{LEGACY_ID}"),
+        LEGACY_ID,
+        "canonical",
+    );
+    seed_full_session(vault.path(), "sessions/Readable copy", LEGACY_ID, "copy");
+    seed_full_session(vault.path(), "sessions/Work/nested", CANONICAL_ID, "nested");
+    seed_full_session(vault.path(), "sessions/.hidden", "hidden", "hidden");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        vault.path().join(format!("sessions/{LEGACY_ID}")),
+        vault.path().join("sessions/link"),
+    )
+    .unwrap();
+    let scan = vault_read::discover_sessions(vault.path()).unwrap();
+    assert_eq!(scan.sessions.len(), 1);
+    assert_eq!(scan.sessions[0].1.title, "canonical");
+    assert!(
+        vault_read::find_session(vault.path(), CANONICAL_ID)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        meta::read_note(vault.path(), CANONICAL_ID)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        enhanced::list_enhanced_docs(vault.path(), CANONICAL_ID)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        tasks::read_session_tasks(vault.path(), CANONICAL_ID)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        transcript::read_transcript_json(vault.path(), CANONICAL_ID)
+            .unwrap()
+            .transcripts
+            .is_empty()
+    );
+    assert!(meta::read_session_meta(vault.path(), "Readable copy").is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn per_id_reads_and_misses_work_without_permission_to_enumerate_sessions() {
+    use std::os::unix::fs::PermissionsExt;
+    let vault = tempfile::tempdir().unwrap();
+    seed_full_session(
+        vault.path(),
+        &format!("sessions/{LEGACY_ID}"),
+        LEGACY_ID,
+        "target",
+    );
+    seed_full_session(vault.path(), "sessions/unrelated", "unrelated", "unrelated");
+    let root = vault.path().join("sessions");
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o111)).unwrap();
+    // Search permission allows known paths; directory enumeration is denied.
+    assert!(std::fs::read_dir(&root).is_err());
+    assert!(
+        meta::read_session_meta(vault.path(), LEGACY_ID)
+            .unwrap()
+            .is_some()
+    );
+    assert!(meta::read_note(vault.path(), LEGACY_ID).unwrap().is_some());
+    assert_eq!(
+        enhanced::list_enhanced_docs(vault.path(), LEGACY_ID)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        tasks::read_session_tasks(vault.path(), LEGACY_ID)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        meta::read_session_meta(vault.path(), "missing")
+            .unwrap()
+            .is_none()
+    );
+    assert!(meta::read_note(vault.path(), "missing").unwrap().is_none());
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
 }

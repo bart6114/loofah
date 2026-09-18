@@ -6,19 +6,19 @@ pub mod agents_doc;
 pub mod attachments;
 pub mod audio;
 pub mod content;
-#[cfg(test)]
-mod dual_layout_tests;
 pub mod enhanced;
+#[cfg(test)]
+mod flat_layout_tests;
 pub mod index;
 pub mod journal;
-pub mod layout_name;
 pub mod legacy_templates;
-pub mod locations;
 pub mod migrate;
 pub mod paths;
 pub mod people;
 pub mod rebuild;
+mod session_path;
 pub mod stats;
+pub mod storage_stats;
 pub mod tags;
 pub mod tasks;
 pub mod transcript;
@@ -33,6 +33,7 @@ pub use index::{IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, 
 pub use people::PersonItem;
 pub use rebuild::RebuildReport;
 pub use stats::{VaultStats, VaultYearStats};
+pub use storage_stats::{VaultStorageCategory, VaultStorageStats};
 pub use tags::TagItem;
 pub use tasks::{TaskInput, TaskItem};
 pub use transcript::TranscriptDelta;
@@ -56,33 +57,14 @@ pub struct SessionStore {
     /// Extra change-stream consumers (`subscribe_index_changes`) -- Phase F: the
     /// Tantivy search projection rides one of these instead of SQL triggers.
     index_change_taps: Arc<std::sync::Mutex<Vec<index::IndexChangeSender>>>,
-    /// Session-location catalog: logical id -> vault-relative physical directory
-    /// (see `locations.rs`). Refreshed wholesale by `rebuild_index`, maintained
-    /// incrementally by writes/deletes/restores, warmed lazily on cache misses.
-    locations: Arc<std::sync::RwLock<HashMap<String, PathBuf>>>,
     /// Recent `delete_session` records backing the process-local undo toast
-    /// (see `locations::DeletedSession`).
-    recent_deletions: Arc<std::sync::Mutex<HashMap<String, locations::DeletedSession>>>,
-    /// Per-session recording path leases. The provisional-to-final directory rename
-    /// is deferred while a session holds any lease: `listener-core`'s DiskSink holds
-    /// absolute paths into the directory and uses them during finalization, so
-    /// renaming mid-recording is unsafe. A count (not a set) because both the
-    /// frontend's `prepare_recording` and the transcription command reserve the path
-    /// independently -- a failed duplicate start must release only its own
-    /// reservation, never unprotect an already-active recording. The `Stopped`
-    /// lifecycle (`mark_recording_ended`) clears every lease for the session.
+    /// (see `session_path::DeletedSession`).
+    recent_deletions: Arc<std::sync::Mutex<HashMap<String, session_path::DeletedSession>>>,
+    /// Backend recording reservations also protect whole-vault relocation.
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
-    /// Ids the last rebuild scan found claimed by more than one directory. Resolution
-    /// checks this before `find_session`, whose legacy fast path would otherwise
-    /// silently pick the canonical claimant and let reads/writes diverge the copies
-    /// while rebuild keeps the id unindexed.
-    known_duplicates: Arc<std::sync::RwLock<std::collections::HashSet<String>>>,
-    /// Bumped on every `catalog_remove`. A cold-miss discovery scan runs without the
-    /// store write lock; its catalog warming is valid only if no entry was removed
-    /// while the walk ran -- otherwise the scan's snapshot could resurrect a just-
-    /// deleted session's location and let a late write recreate the trashed
-    /// directory (breaking restore, whose rename refuses an occupied destination).
-    catalog_removals: Arc<std::sync::atomic::AtomicU64>,
+    deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    startup_pending: Arc<std::sync::atomic::AtomicBool>,
+    storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
 }
 
 /// Product of `normalize_startup_layout`: one discovery snapshot -- with paths
@@ -145,12 +127,27 @@ impl SessionStore {
             index_changes_tx,
             index_changes_rx: Arc::new(std::sync::Mutex::new(Some(index_changes_rx))),
             index_change_taps: Arc::new(std::sync::Mutex::new(Vec::new())),
-            locations: Arc::new(std::sync::RwLock::new(HashMap::new())),
             recent_deletions: Arc::new(std::sync::Mutex::new(HashMap::new())),
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
-            known_duplicates: Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-            catalog_removals: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
+            startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub fn set_startup_pending(&self, pending: bool) {
+        self.startup_pending
+            .store(pending, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn ensure_ready(&self) -> Result<(), StoreError> {
+        if self
+            .startup_pending
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(StoreError::Io("vault startup is still in progress".into()));
+        }
+        Ok(())
     }
 
     pub fn vault_base(&self) -> &std::path::Path {
@@ -190,6 +187,13 @@ impl SessionStore {
         bytes: Vec<u8>,
     ) -> Result<(), StoreError> {
         validate_relative_path(&relative)?;
+        if let Some(id) = self.session_id_for_relative_path(&relative)
+            && self.deleted_sessions.lock().unwrap().contains(&id)
+        {
+            return Err(StoreError::Io(format!(
+                "session {id} was deleted; restore it before writing"
+            )));
+        }
 
         let relative_str = relative
             .to_str()
@@ -333,7 +337,7 @@ fn validate_relative_path(relative: &std::path::Path) -> Result<(), StoreError> 
 /// an absolute id escapes the vault outright, because `Path::join` with an absolute path
 /// replaces rather than appends.
 pub(crate) fn validate_session_id(id: &str) -> Result<(), StoreError> {
-    validate_path_segment("session id", id)
+    hypr_vault_read::paths::validate_session_id(id).map_err(StoreError::from)
 }
 
 /// Enhanced doc ids become `enhanced/<id>.md`; same rule as session ids.

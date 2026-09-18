@@ -40,7 +40,6 @@ thiserror = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

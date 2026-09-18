@@ -61,11 +61,10 @@ scope.
 
 ### 3. Meeting reminder and automatic controls
 
-- In **Settings → Notifications**, enable **Microphone detection**, select a
-  short detection delay, and start microphone use in a non-excluded meeting
-  app.
-- PASS when the **Are you in a meeting?** notification appears and **Start
-  recording** creates a note and begins recording. Loofah must never begin
+- In **Settings → Notifications**, enable **Remind me to record meetings**
+  and start microphone use in a non-excluded meeting app.
+- PASS when the **Are you in a meeting?** notification appears immediately,
+  dismisses after 30 seconds (pausing while hovered), and **Start recording** creates a note and begins recording. Loofah must never begin
   recording before the user accepts the notification.
 - Use **Always ignore** or the excluded-app control and verify the same app no
   longer prompts. Re-enable it and verify the setting persists.

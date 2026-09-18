@@ -22,7 +22,6 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 
 chrono = { workspace = true }
 tracing = { workspace = true }
-unicode-normalization = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

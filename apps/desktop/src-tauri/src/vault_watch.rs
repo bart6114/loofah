@@ -45,14 +45,9 @@
 //!
 //! # What "external" means for a path outside `sessions/`
 //!
-//! Only paths under a *cataloged* session directory (or the directory
-//! itself, e.g. a rename's old endpoint) ever produce a `Refresh` -- the
-//! session directory is no longer assumed to be named after the id, so
-//! ownership comes from `SessionStore::session_id_for_relative_path`
-//! (longest-prefix, NFC-normalized). Any other path under `sessions/` --
-//! a new/copied/renamed directory, a rename's new endpoint, or the bare
-//! `sessions` root -- is structural and produces one coalesced
-//! `RebuildSessions` instead of a guessed id.
+//! The component immediately after `sessions/` supplies the session ID. Owned
+//! artifact changes and directory changes refresh that ID; only the bare root
+//! or an event without a usable ID needs a shallow rebuild.
 //! Everything else -- `.trash/`, this app's own index/export bookkeeping
 //! (`app.db*`, `search_index/`, `AGENTS.md`, the export marker file), and
 //! any in-flight `.tmp-`-prefixed atomic-write temp file -- is `Ignore`d
@@ -70,8 +65,7 @@
 //! `RefreshPlan` (distinct session ids plus one structural-rebuild flag)
 //! before any store call is made -- one refresh per session per burst, not
 //! one per raw path, and at most one `rebuild_index` per burst, which then
-//! subsumes the per-id refreshes (a rename's old endpoint would otherwise
-//! be refreshed as "gone" before rediscovery re-homed it).
+//! subsumes the per-id refreshes.
 //!
 //! # Startup ordering
 //!
@@ -82,7 +76,6 @@
 //! account for vault state from here on).
 
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -112,11 +105,7 @@ const COALESCE_WINDOW: Duration = Duration::from_secs(2);
 pub enum WatchAction {
     Ignore,
     Refresh(String),
-    /// A structural change under `sessions/`: a path no cataloged session
-    /// directory owns (new/copied/renamed directory, a rename endpoint, an
-    /// unknown nested dir) or the bare `sessions` root. Identity lives in
-    /// `_meta.json`, so the only safe response is one read-only rediscovery
-    /// pass (`rebuild_index`) rather than an id guessed from the path.
+    /// The sessions root changed without a usable session ID.
     RebuildSessions,
     /// An external edit of the vault-root `people.json` -- rescans the in-memory
     /// people index (file-canonical, no per-id granularity).
@@ -126,35 +115,14 @@ pub enum WatchAction {
     RefreshTags,
 }
 
-/// Pure routing decision: given a vault-relative path, whether its current
-/// on-disk bytes match this store's own last write there, and which logical
-/// session (if any) the store's location catalog says owns the path, decide
-/// what the watcher should do.
-///
-/// `journal_match` is checked first and unconditionally wins -- an own
-/// write is ignored no matter how the path would otherwise classify. Only
-/// after that does path shape matter: a path under `sessions/` that the
-/// catalog attributes to a session (`catalog_session_id`, resolved by the
-/// caller via `SessionStore::session_id_for_relative_path` so this function
-/// stays pure) is a `Refresh` for that logical id, whether the change is an
-/// edit, a create, or a delete (this function never inspects the
-/// filesystem, so "deleted" and "edited" look identical to it --
-/// `refresh_session` is what tells them apart). A `sessions/` path no
-/// cataloged directory owns -- including the bare `sessions` root -- is
-/// structural: `RebuildSessions`. Everything else -- non-session paths,
-/// `.trash/`, this app's own bookkeeping files, in-flight atomic-write temp
-/// files -- is `Ignore`.
-pub fn classify_event(
-    relative: &str,
-    journal_match: bool,
-    catalog_session_id: Option<&str>,
-) -> WatchAction {
-    let relative = hypr_storage::fs::relative_path_key(relative);
-    let relative = relative.as_ref();
+/// Route by the component immediately below `sessions/`; no filesystem lookup.
+pub fn classify_event(relative: &str, journal_match: bool) -> WatchAction {
     if journal_match {
         return WatchAction::Ignore;
     }
 
+    let normalized = relative.replace('\\', "/");
+    let relative = normalized.as_str();
     if is_ignored_relative_path(relative) {
         return WatchAction::Ignore;
     }
@@ -175,8 +143,22 @@ pub fn classify_event(
         if has_hidden_session_component(relative) {
             return WatchAction::Ignore;
         }
-        return match catalog_session_id {
-            Some(id) => WatchAction::Refresh(id.to_string()),
+        let session_id = relative
+            .split('/')
+            .nth(1)
+            .filter(|id| hypr_vault_read::paths::validate_session_id(id).is_ok());
+        return match session_id {
+            Some(id) => {
+                let artifact = relative.split(['/', '\\']).nth(2);
+                if artifact.is_some_and(|name| {
+                    !hypr_vault_read::is_session_owned_name(name)
+                        || hypr_vault_read::SESSION_TRANSIENT_FILES.contains(&name)
+                }) {
+                    WatchAction::Ignore
+                } else {
+                    WatchAction::Refresh(id.to_string())
+                }
+            }
             None => WatchAction::RebuildSessions,
         };
     }
@@ -284,10 +266,18 @@ async fn ids_to_refresh(store: &SessionStore, changed: &HashSet<String>) -> Refr
     let mut plan = RefreshPlan::default();
     for relative in changed {
         let journal_match = store.journal_matches_current_file(relative);
-        let catalog_session_id = store.session_id_for_relative_path(Path::new(relative));
-        match classify_event(relative, journal_match, catalog_session_id.as_deref()) {
+        match classify_event(relative, journal_match) {
             WatchAction::Refresh(id) => {
-                plan.session_ids.insert(id);
+                let artifact = relative.split(['/', '\\']).nth(2);
+                if artifact.is_some_and(|name| {
+                    name == "attachments" || name == "audio" || name.starts_with("audio.")
+                }) {
+                    if !store.is_recording(&id) {
+                        store.notify_artifacts_changed(&id);
+                    }
+                } else {
+                    plan.session_ids.insert(id);
+                }
             }
             WatchAction::RebuildSessions => plan.rebuild_sessions = true,
             WatchAction::RefreshPeople => plan.people = true,
@@ -330,11 +320,8 @@ async fn refresh_ids(store: &SessionStore, ids: HashSet<String>) {
 async fn handle_batch(store: &SessionStore, changed: &HashSet<String>) {
     let plan = ids_to_refresh(store, changed).await;
     if plan.rebuild_sessions {
-        // One rebuild for the whole batch, and it subsumes every per-id
-        // refresh: a rename burst delivers the old endpoint (cataloged ->
-        // Refresh) and the new endpoint (unknown -> RebuildSessions)
-        // together, and refreshing the old id alone would drop its index
-        // rows before rediscovery re-homed the directory.
+        store.notify_all_artifacts_changed();
+        // A full shallow rebuild also covers the batch's per-session refreshes.
         match store.rebuild_index().await {
             Ok(report) => {
                 tracing::info!(
@@ -418,7 +405,7 @@ mod tests {
     #[test]
     fn own_write_is_ignored_even_if_late() {
         assert!(matches!(
-            classify_event("sessions/s1/notes.md", true, Some("s1")),
+            classify_event("sessions/s1/notes.md", true),
             WatchAction::Ignore
         ));
     }
@@ -426,7 +413,7 @@ mod tests {
     #[test]
     fn external_session_edit_refreshes() {
         assert!(matches!(
-            classify_event("sessions/s1/_meta.json", false, Some("s1")),
+            classify_event("sessions/s1/_meta.json", false),
             WatchAction::Refresh(id) if id == "s1"
         ));
     }
@@ -435,7 +422,7 @@ mod tests {
     fn deleted_meta_is_still_only_a_refresh() {
         // refresh_session handles absence by removing index rows; watcher has no delete verb
         assert!(matches!(
-            classify_event("sessions/s1/_meta.json", false, Some("s1")),
+            classify_event("sessions/s1/_meta.json", false),
             WatchAction::Refresh(_)
         ));
     }
@@ -443,11 +430,11 @@ mod tests {
     #[test]
     fn non_session_paths_ignored() {
         assert!(matches!(
-            classify_event("AGENTS.md", false, None),
+            classify_event("AGENTS.md", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event(".trash/2026-07-24/sessions/s1", false, None),
+            classify_event(".trash/2026-07-24/sessions/s1", false),
             WatchAction::Ignore
         ));
     }
@@ -461,93 +448,80 @@ mod tests {
     #[test]
     fn nested_enhanced_doc_paths_refresh_their_session() {
         assert!(matches!(
-            classify_event("sessions/s1/enhanced/doc-1.md", false, Some("s1")),
+            classify_event("sessions/s1/enhanced/doc-1.md", false),
             WatchAction::Refresh(id) if id == "s1"
         ));
         assert!(matches!(
-            classify_event(
-                ".trash/2026-07-26/sessions/s1/enhanced/doc-1.md",
-                false,
-                None
-            ),
+            classify_event(".trash/2026-07-26/sessions/s1/enhanced/doc-1.md", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event(
-                "sessions/s1/enhanced/.tmp-1234-5678-doc-1.md",
-                false,
-                Some("s1")
-            ),
+            classify_event("sessions/s1/enhanced/.tmp-1234-5678-doc-1.md", false),
             WatchAction::Ignore
         ));
+    }
+
+    #[test]
+    fn windows_paths_refresh_the_same_session_id() {
+        assert_eq!(
+            classify_event(r"sessions\s1\notes.md", false),
+            WatchAction::Refresh("s1".into())
+        );
+        assert_eq!(
+            classify_event(r"sessions\s1\audio.wav", false),
+            WatchAction::Refresh("s1".into())
+        );
+        assert_eq!(
+            classify_event(r"sessions\s1\.tmp-note", false),
+            WatchAction::Ignore
+        );
+        assert_eq!(
+            classify_event(r".trash\sessions\s1", false),
+            WatchAction::Ignore
+        );
     }
 
     #[test]
     fn bare_session_folder_path_refreshes() {
-        // e.g. a rename's old endpoint: the catalog still owns the exact
-        // directory path, so it refreshes as that logical id.
         assert!(matches!(
-            classify_event("sessions/s1", false, Some("s1")),
+            classify_event("sessions/s1", false),
             WatchAction::Refresh(id) if id == "s1"
         ));
     }
 
-    /// The `Refresh` id is whatever the catalog says owns the path -- with
-    /// readable directory names the basename is presentation only, and the
-    /// logical id (a full UUID) never comes from parsing the path.
     #[test]
-    fn readable_dir_refreshes_under_its_catalog_id_not_its_basename() {
-        let full_id = "550e8400-e29b-41d4-a716-446655440000";
-        assert!(matches!(
-            classify_event(
-                "sessions/2026-03-20 — Planning — 550e84/notes.md",
-                false,
-                Some(full_id)
-            ),
-            WatchAction::Refresh(id) if id == full_id
-        ));
-    }
-
-    /// Structural paths under `sessions/`: an unknown directory (new, copied,
-    /// or a rename's new endpoint) and anything nested in it rebuild instead
-    /// of guessing an id from the path.
-    #[test]
-    fn unknown_session_paths_trigger_rebuild() {
-        assert!(matches!(
-            classify_event("sessions/2026-03-21 — Copied in — abc123", false, None),
-            WatchAction::RebuildSessions
-        ));
-        assert!(matches!(
-            classify_event(
-                "sessions/2026-03-21 — Copied in — abc123/_meta.json",
-                false,
-                None
-            ),
-            WatchAction::RebuildSessions
-        ));
-        assert!(matches!(
-            classify_event("sessions/Work/unknown dir/nested.md", false, None),
-            WatchAction::RebuildSessions
-        ));
+    fn new_and_ignored_directories_never_redirect_identity() {
+        assert_eq!(
+            classify_event("sessions/new-id/_meta.json", false),
+            WatchAction::Refresh("new-id".into())
+        );
+        assert_eq!(
+            classify_event("sessions/Readable name/notes.md", false),
+            WatchAction::Refresh("Readable name".into())
+        );
+        assert_eq!(
+            classify_event("sessions/Work/nested/notes.md", false),
+            WatchAction::Ignore
+        );
     }
 
     /// Retired templates and their trash copies never enter the index.
     #[test]
     fn retired_template_paths_are_ignored() {
         assert!(matches!(
-            classify_event("templates/t-1.json", false, None),
+            classify_event("templates/t-1.json", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event("templates/.deleted-defaults.json", false, None),
+            classify_event("templates/.deleted-defaults.json", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event("templates/t-1.json", true, None),
+            classify_event("templates/t-1.json", true),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event(".trash/2026-07-26/templates/t-1.json", false, None),
+            classify_event(".trash/2026-07-26/templates/t-1.json", false),
             WatchAction::Ignore
         ));
     }
@@ -558,20 +532,20 @@ mod tests {
     #[test]
     fn people_path_refreshes_people_unless_own_write_or_trash() {
         assert!(matches!(
-            classify_event("people.json", false, None),
+            classify_event("people.json", false),
             WatchAction::RefreshPeople
         ));
         assert!(matches!(
-            classify_event("people.json", true, None),
+            classify_event("people.json", true),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event(".trash/2026-08-06/people.json", false, None),
+            classify_event(".trash/2026-08-06/people.json", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event("sessions/s1/people.json", false, Some("s1")),
-            WatchAction::Refresh(id) if id == "s1"
+            classify_event("sessions/s1/people.json", false),
+            WatchAction::Ignore
         ));
     }
 
@@ -579,20 +553,20 @@ mod tests {
     #[test]
     fn tags_path_refreshes_tags_unless_own_write_or_trash() {
         assert!(matches!(
-            classify_event("tags.json", false, None),
+            classify_event("tags.json", false),
             WatchAction::RefreshTags
         ));
         assert!(matches!(
-            classify_event("tags.json", true, None),
+            classify_event("tags.json", true),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event(".trash/2026-08-06/tags.json", false, None),
+            classify_event(".trash/2026-08-06/tags.json", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event("sessions/s1/tags.json", false, Some("s1")),
-            WatchAction::Refresh(id) if id == "s1"
+            classify_event("sessions/s1/tags.json", false),
+            WatchAction::Ignore
         ));
     }
 
@@ -601,7 +575,7 @@ mod tests {
     #[test]
     fn bare_sessions_root_triggers_rebuild() {
         assert!(matches!(
-            classify_event("sessions", false, None),
+            classify_event("sessions", false),
             WatchAction::RebuildSessions
         ));
     }
@@ -609,11 +583,11 @@ mod tests {
     #[test]
     fn app_db_paths_are_ignored() {
         assert!(matches!(
-            classify_event("app.db", false, None),
+            classify_event("app.db", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event("app.db-wal", false, None),
+            classify_event("app.db-wal", false),
             WatchAction::Ignore
         ));
         for retired in [
@@ -622,7 +596,7 @@ mod tests {
             "app.db.pre-files-backup-shm",
         ] {
             assert!(
-                matches!(classify_event(retired, false, None), WatchAction::Ignore),
+                matches!(classify_event(retired, false), WatchAction::Ignore),
                 "{retired} must be ignored"
             );
         }
@@ -635,7 +609,7 @@ mod tests {
     #[test]
     fn the_retired_store_migration_marker_is_inert() {
         assert!(matches!(
-            classify_event(".store-migrated-v1", false, None),
+            classify_event(".store-migrated-v1", false),
             WatchAction::Ignore
         ));
     }
@@ -643,7 +617,7 @@ mod tests {
     #[test]
     fn search_index_paths_are_ignored() {
         assert!(matches!(
-            classify_event("search_index/abc.term", false, None),
+            classify_event("search_index/abc.term", false),
             WatchAction::Ignore
         ));
     }
@@ -651,22 +625,19 @@ mod tests {
     #[test]
     fn export_marker_path_is_ignored() {
         assert!(matches!(
-            classify_event(LEGACY_EXPORT_MARKER_FILENAME, false, None),
+            classify_event(LEGACY_EXPORT_MARKER_FILENAME, false),
             WatchAction::Ignore
         ));
     }
 
-    /// Tmp/trash rules keep precedence over session classification whether or
-    /// not the catalog knows the enclosing directory -- an atomic-write temp
-    /// file inside a brand-new session dir must not trigger a rebuild.
     #[test]
     fn tmp_write_paths_under_a_session_are_ignored() {
         assert!(matches!(
-            classify_event("sessions/s1/.tmp-1234-5678-notes.md", false, Some("s1")),
+            classify_event("sessions/s1/.tmp-1234-5678-notes.md", false),
             WatchAction::Ignore
         ));
         assert!(matches!(
-            classify_event("sessions/unknown dir/.tmp-1234-5678-notes.md", false, None),
+            classify_event("sessions/unknown dir/.tmp-1234-5678-notes.md", false),
             WatchAction::Ignore
         ));
     }
@@ -685,22 +656,22 @@ mod tests {
             "sessions/s1/.hidden-file",
         ] {
             assert!(
-                matches!(classify_event(path, false, None), WatchAction::Ignore),
+                matches!(classify_event(path, false), WatchAction::Ignore),
                 "{path}"
             );
         }
         // The bare root itself stays structural.
         assert!(matches!(
-            classify_event("sessions", false, None),
+            classify_event("sessions", false),
             WatchAction::RebuildSessions
         ));
     }
 
     #[test]
-    fn a_user_file_merely_containing_tmp_dash_still_refreshes() {
+    fn unknown_user_files_are_ignored() {
         assert!(matches!(
-            classify_event("sessions/s1/notes.tmp-ideas.md", false, Some("s1")),
-            WatchAction::Refresh(id) if id == "s1"
+            classify_event("sessions/s1/notes.tmp-ideas.md", false),
+            WatchAction::Ignore
         ));
     }
 
@@ -708,12 +679,12 @@ mod tests {
     fn journal_match_wins_over_an_otherwise_refreshable_path() {
         // Same path as external_session_edit_refreshes, but own-write this time.
         assert!(matches!(
-            classify_event("sessions/s1/_meta.json", true, Some("s1")),
+            classify_event("sessions/s1/_meta.json", true),
             WatchAction::Ignore
         ));
         // An own write also wins over an otherwise-structural unknown path.
         assert!(matches!(
-            classify_event("sessions/unknown dir/_meta.json", true, None),
+            classify_event("sessions/unknown dir/_meta.json", true),
             WatchAction::Ignore
         ));
     }
@@ -764,8 +735,6 @@ mod tests {
     async fn real_journal_end_to_end_external_edit_is_queued_for_refresh() {
         let (store, vault) = test_store().await;
         store.write_meta(&meta("s1", "One")).await.unwrap();
-        // The created directory has a readable name; the simulated FileChanged path
-        // must be the real vault-relative path, resolved through the store.
         let rel = store.session_dir("s1").await.unwrap();
 
         // Bypass write_meta entirely -- an external editor/sync client would too.
@@ -830,9 +799,7 @@ mod tests {
         assert!(!plan.rebuild_sessions);
     }
 
-    // -- readable directory names: catalog-backed classification --
-
-    const READABLE_DIR: &str = "sessions/2026-03-20 — Planning — 6ba7b8";
+    const CANONICAL_DIR: &str = "sessions/6ba7b8aa-1111-2222-3333-444455556666";
 
     fn seed_session_dir(vault: &std::path::Path, relative: &str, meta: &SessionMeta) {
         let dir = vault.join(relative);
@@ -845,21 +812,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn artifact_edit_under_readable_cataloged_dir_refreshes_its_logical_id() {
+    async fn artifact_edit_under_canonical_dir_refreshes_its_id() {
         let (store, vault) = test_store().await;
         let id = "6ba7b8aa-1111-2222-3333-444455556666";
-        seed_session_dir(vault.path(), READABLE_DIR, &meta(id, "Planning"));
+        seed_session_dir(vault.path(), CANONICAL_DIR, &meta(id, "Planning"));
         store.rebuild_index().await.unwrap();
 
-        std::fs::write(vault.path().join(READABLE_DIR).join("_memo.md"), b"edited").unwrap();
+        std::fs::write(vault.path().join(CANONICAL_DIR).join("_memo.md"), b"edited").unwrap();
 
-        let changed = HashSet::from([format!("{READABLE_DIR}/_memo.md")]);
+        let changed = HashSet::from([format!("{CANONICAL_DIR}/_memo.md")]);
         let plan = ids_to_refresh(&store, &changed).await;
 
         assert_eq!(
             plan.session_ids,
             HashSet::from([id.to_string()]),
-            "the refresh must carry the full logical id from the catalog, never the basename"
+            "the refresh must carry the directory ID"
         );
         assert!(!plan.rebuild_sessions);
 
@@ -868,12 +835,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_new_session_dir_burst_plans_exactly_one_rebuild_and_indexes_it() {
+    async fn new_session_dir_burst_plans_one_refresh_and_indexes_it() {
         let (store, vault) = test_store().await;
         store.rebuild_index().await.unwrap();
 
         let id = "7ba7b8aa-1111-2222-3333-444455556666";
-        let new_dir = "sessions/2026-03-21 — Copied in — 7ba7b8";
+        let new_dir = "sessions/7ba7b8aa-1111-2222-3333-444455556666";
         seed_session_dir(vault.path(), new_dir, &meta(id, "Copied in"));
         std::fs::write(vault.path().join(new_dir).join("notes.md"), b"note").unwrap();
 
@@ -886,8 +853,8 @@ mod tests {
 
         // One flag for the whole burst == exactly one rebuild_index call in
         // handle_batch, and no per-id refreshes guessed from the paths.
-        assert!(plan.rebuild_sessions);
-        assert!(plan.session_ids.is_empty());
+        assert!(!plan.rebuild_sessions);
+        assert_eq!(plan.session_ids, HashSet::from([id.to_string()]));
 
         handle_batch(&store, &changed).await;
         assert!(
@@ -904,36 +871,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn external_rename_endpoints_keep_the_session_indexed_under_its_full_id() {
+    async fn external_rename_hides_the_noncanonical_source_until_next_startup() {
         let (store, vault) = test_store().await;
-        let id = "8ba7b8aa-1111-2222-3333-444455556666";
         store
-            .write_meta(&meta(id, "Renamed outside"))
+            .write_meta(&meta("s1", "external rename"))
             .await
             .unwrap();
-        store.write_note(id, "keep me").await.unwrap();
-        let old_rel = store.session_dir(id).await.unwrap();
-
-        let new_rel = "sessions/2026-03-22 — Renamed by hand — 8ba7b8";
-        std::fs::rename(vault.path().join(&old_rel), vault.path().join(new_rel)).unwrap();
-
-        // The watcher sees both rename endpoints: the old one is still
-        // cataloged (Refresh), the new one is unknown (RebuildSessions).
-        let changed = HashSet::from([old_rel.to_str().unwrap().to_string(), new_rel.to_string()]);
+        std::fs::rename(
+            vault.path().join("sessions/s1"),
+            vault.path().join("sessions/Readable"),
+        )
+        .unwrap();
+        let changed = HashSet::from(["sessions/s1".to_string(), "sessions/Readable".to_string()]);
         let plan = ids_to_refresh(&store, &changed).await;
-        assert!(plan.rebuild_sessions);
-
+        assert!(!plan.rebuild_sessions);
         handle_batch(&store, &changed).await;
-
-        assert!(
-            store.session_get(id).is_some(),
-            "the rebuild subsumes the old-endpoint refresh -- refreshing the old id alone \
-             would have dropped its index rows"
-        );
+        assert!(store.session_get("s1").is_none());
+        assert!(vault.path().join("sessions/Readable/_meta.json").is_file());
         assert_eq!(
-            store.session_dir(id).await.unwrap(),
-            std::path::PathBuf::from(new_rel),
-            "the catalog must now home the id in the renamed directory"
+            store.session_dir("s1").await.unwrap(),
+            std::path::PathBuf::from("sessions/s1")
         );
+    }
+
+    #[tokio::test]
+    async fn external_audio_and_attachment_changes_invalidate_without_loading_content() {
+        let (store, _vault) = test_store().await;
+        let mut changes = store.subscribe_index_changes();
+        for path in [
+            "sessions/s1/audio.wav",
+            "sessions/s1/audio.peaks.json",
+            "sessions/s1/attachments/image.png",
+        ] {
+            let plan = ids_to_refresh(&store, &HashSet::from([path.to_string()])).await;
+            assert!(plan.session_ids.is_empty());
+            assert!(!plan.rebuild_sessions);
+            assert_eq!(
+                changes.try_recv().unwrap(),
+                (
+                    hypr_vault_write::IndexEntity::Artifacts,
+                    vec!["s1".to_string()]
+                )
+            );
+        }
     }
 }

@@ -649,6 +649,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async vaultStorageStats(
+    refresh: boolean,
+  ): Promise<Result<VaultStorageStats, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("vault_storage_stats", { refresh }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionIds(): Promise<Result<string[], string>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("session_ids") };
@@ -746,69 +759,15 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  /**
-   * Reserves the session's directory for an imminent recording and returns its
-   * absolute path -- the stable value the pre-start hook receives. Paired with
-   * `session_release_recording_prepare` on start failure; a successful start's
-   * lease is cleared by the `Stopped` capture lifecycle.
-   */
-  async sessionPrepareRecording(
-    sessionId: string,
-  ): Promise<Result<string, string>> {
-    try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("session_prepare_recording", { sessionId }),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async sessionReleaseRecordingPrepare(
-    sessionId: string,
-  ): Promise<Result<null, string>> {
-    try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("session_release_recording_prepare", {
-          sessionId,
-        }),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  /**
-   * User-invoked "rename folder to match title": renames the session's physical
-   * directory to the readable name derived from its current title. Refused while the
-   * session holds a recording path lease; returns the resulting directory basename.
-   */
-  async sessionRenameDirToTitle(
-    sessionId: string,
-  ): Promise<Result<string, string>> {
-    try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("session_rename_dir_to_title", { sessionId }),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
 };
 
 /** user-defined events **/
 
 export const events = __makeEvents__<{
   indexChanged: IndexChanged;
-  recordingMetaSettled: RecordingMetaSettled;
   startupProgress: StartupProgress;
 }>({
   indexChanged: "index-changed",
-  recordingMetaSettled: "recording-meta-settled",
   startupProgress: "startup-progress",
 });
 
@@ -914,12 +873,9 @@ export type IndexEntity =
    */
   | "tags"
   /**
-   * A session's *physical directory* changed (rename, move, delete/restore,
-   * external relocation caught by a rebuild) -- content-free, so the search
-   * projection ignores it; the frontend uses it to invalidate every cache
-   * holding an absolute session path.
+   * Audio or embedded attachment bytes changed independently of indexed text.
    */
-  | "locations";
+  | "artifacts";
 export type JsonValue =
   | null
   | boolean
@@ -954,15 +910,6 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
-/**
- * Emitted after every `Stopped`-driven metadata attempt has finished -- including
- * the missing-store and failed-write branches. It means "the end-of-recording
- * meta stamp (and any provisional directory rename it triggered) is no longer in
- * flight", not that it succeeded: the frontend waits for it before resolving
- * `resource_dir` for the post-stop hook, so the hook can never receive a path the
- * pending rename is about to move.
- */
-export type RecordingMetaSettled = { sessionId: string; succeeded: boolean };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
  * subscribers (timeline, summaries, tags, float) consume.
@@ -1039,6 +986,7 @@ export type StartupStatus = {
   vaultPath: string;
   isCloudStorage: boolean;
   phase: StartupPhase;
+  migrationIssues: string[];
 };
 /**
  * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
@@ -1161,6 +1109,30 @@ export type VaultStats = {
    * Ascending by year.
    */
   years: VaultYearStats[];
+};
+export type VaultStorageBucket = {
+  category: VaultStorageCategory;
+  bytes: number;
+  files: number;
+};
+export type VaultStorageCategory =
+  | "mp3"
+  | "wav"
+  | "images"
+  | "pdf"
+  | "json"
+  | "markdown"
+  | "other";
+export type VaultStorageStats = {
+  total_bytes: number;
+  files: number;
+  categories: VaultStorageBucket[];
+  trash_bytes: number;
+  trash_files: number;
+  unreadable_entries: number;
+  skipped_links: number;
+  scan_limited: boolean;
+  measured_at: string;
 };
 export type VaultYearStats = {
   year: number;

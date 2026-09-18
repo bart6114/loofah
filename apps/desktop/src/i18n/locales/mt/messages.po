@@ -33,6 +33,9 @@ msgid "{0} AI summaries"
 msgstr ""
 
 #. placeholder {0}: attachments.length + uploadStates.states.length
+#. placeholder {0}: i18n.number(bucket.files)
+#. placeholder {0}: i18n.number(data.files)
+#: src/main/about-storage.tsx
 #: src/session/components/note-input/attachments.tsx
 msgid "{0} files"
 msgstr ""
@@ -79,6 +82,7 @@ msgstr ""
 msgid "+ Add tag"
 msgstr ""
 
+#: src/main/about-storage.tsx
 #: src/session/components/note-input/attachments.tsx
 msgid "1 file"
 msgstr ""
@@ -209,6 +213,10 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "By tag"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Calculating storage…"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
@@ -402,10 +410,6 @@ msgstr ""
 msgid "Copying…"
 msgstr ""
 
-#: src/sidebar/timeline/item.tsx
-msgid "Could not rename the folder"
-msgstr ""
-
 #: src/session/components/session-tags.tsx
 msgid "Could not update tags."
 msgstr ""
@@ -416,6 +420,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t add 1 attachment"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Couldn’t calculate vault storage."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -441,6 +449,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -611,6 +623,10 @@ msgstr ""
 msgid "File format"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "File type"
+msgstr ""
+
 #: src/session/components/outer-header/index.tsx
 msgid "Finalizing"
 msgstr ""
@@ -625,10 +641,6 @@ msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Finish signing in in your browser…"
-msgstr ""
-
-#: src/sidebar/timeline/item.tsx
-msgid "Folder renamed"
 msgstr ""
 
 #: src/sidebar/settings.tsx
@@ -672,8 +684,12 @@ msgstr ""
 msgid "Help Loofah listen to you"
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "How long another app must use the microphone before showing a reminder"
+#: src/main/about-storage.tsx
+msgid "How storage is measured"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Images"
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
@@ -733,6 +749,10 @@ msgstr ""
 
 #: src/onboarding/final.tsx
 msgid "Join our community and stay updated:"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "JSON & transcripts"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
@@ -833,12 +853,29 @@ msgstr ""
 msgid "macOS cannot access your login Keychain. Repairing briefly locks it and asks for your Mac password before Loofah retries this API key."
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Markdown"
+msgstr ""
+
 #: src/session/components/note-input/search/bar.tsx
 msgid "Match case"
 msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Match whole word"
+msgstr ""
+
+#. placeholder {0}: i18n.date(new Date(data.measured_at), { timeStyle: "short", })
+#: src/main/about-storage.tsx
+msgid "Measured {0}"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Measured vault size"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Measurement stopped before all files could be counted. Shares show measured files only."
 msgstr ""
 
 #: src/sidebar/timeline/index.tsx
@@ -890,6 +927,10 @@ msgstr ""
 msgid "Move to Trash"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "MP3 audio"
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Name"
 msgstr ""
@@ -920,6 +961,10 @@ msgstr ""
 
 #: src/task/resource-view.tsx
 msgid "No description provided."
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "No files in this vault yet."
 msgstr ""
 
 #: src/sidebar/timeline/index.tsx
@@ -1026,12 +1071,24 @@ msgstr ""
 msgid "Opening your vault…"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Other files"
+msgstr ""
+
 #: src/settings/general/timezone.tsx
 msgid "Override the timezone used for the sidebar timeline"
 msgstr ""
 
+#: src/main/about-dialog.tsx
+msgid "Overview"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Participants"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "PDFs"
 msgstr ""
 
 #. placeholder {0}: peak.year
@@ -1106,6 +1163,10 @@ msgstr ""
 msgid "Recordings"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Refresh"
+msgstr ""
+
 #: src/settings/general/storage/rebuild-index.tsx
 msgid "Refresh notes from disk"
 msgstr ""
@@ -1152,10 +1213,6 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Removing…"
-msgstr ""
-
-#: src/sidebar/timeline/item.tsx
-msgid "Rename Folder to Match Title"
 msgstr ""
 
 #: src/settings/ai/shared/index.tsx
@@ -1211,6 +1268,7 @@ msgstr ""
 msgid "Resume listening"
 msgstr ""
 
+#: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
@@ -1333,6 +1391,10 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Share"
+msgstr ""
+
 #: src/settings/general/notification.tsx
 msgid "Show a reminder when another app uses the microphone. Recording starts only when you accept."
 msgstr ""
@@ -1378,10 +1440,6 @@ msgstr ""
 msgid "Show Loofah in the taskbar and app switcher."
 msgstr ""
 
-#: src/settings/general/notification.tsx
-msgid "Show reminder after"
-msgstr ""
-
 #: src/settings/ai/stt/timing.tsx
 msgid "Show the transcript as you speak."
 msgstr ""
@@ -1406,12 +1464,21 @@ msgstr ""
 msgid "since {since}"
 msgstr ""
 
+#: src/main/about-storage.tsx
 #: src/session/components/note-input/attachments.tsx
 msgid "Size"
 msgstr ""
 
 #: src/onboarding/shared.tsx
 msgid "Skip"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Some files couldn’t be measured. Shares show measured files only."
+msgstr ""
+
+#: src/shared/startup-boundary.tsx
+msgid "Some notes could not be migrated"
 msgstr ""
 
 #: src/session/components/note-input/enhanced/enhance-error.tsx
@@ -1472,6 +1539,7 @@ msgstr ""
 msgid "Stop transcription"
 msgstr ""
 
+#: src/main/about-dialog.tsx
 #: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
@@ -1545,6 +1613,10 @@ msgstr ""
 msgid "Switching…"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Symbolic links and their targets are excluded."
+msgstr ""
+
 #: src/settings/general/theme.tsx
 msgid "System"
 msgstr ""
@@ -1611,6 +1683,10 @@ msgstr ""
 msgid "Timezone"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Total file sizes, including attachments and hidden files. Space used on this Mac may differ for cloud files."
+msgstr ""
+
 #: src/settings/ai/stt/timing.tsx
 msgid "Transcribe when the recording ends."
 msgstr ""
@@ -1658,6 +1734,10 @@ msgstr ""
 msgid "Transcription timing"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Trash (included)"
+msgstr ""
+
 #: src/settings/general/storage/index.tsx
 msgid "Troubleshooting"
 msgstr ""
@@ -1702,6 +1782,10 @@ msgstr ""
 msgid "Update Codex CLI"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Updating…"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload audio"
 msgstr ""
@@ -1734,9 +1818,21 @@ msgstr ""
 msgid "Variables"
 msgstr ""
 
+#: src/main/about-storage.tsx
+msgid "Vault size by file type"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "Vault storage"
+msgstr ""
+
 #. placeholder {0}: info.data.appVersion
 #: src/main/about-dialog.tsx
 msgid "Version {0}"
+msgstr ""
+
+#: src/main/about-storage.tsx
+msgid "WAV audio"
 msgstr ""
 
 #: src/shared/startup-boundary.tsx

@@ -19,26 +19,32 @@ pub fn load_session_content(session_id: &str, session_dir: &std::path::Path) -> 
         notes: vec![],
     };
 
-    let entries = match std::fs::read_dir(session_dir) {
-        Ok(entries) => entries,
-        Err(_) => return content,
-    };
-
-    // read_dir order is arbitrary, so track where the memo came from: `notes.md`
-    // must win over a leftover legacy `_memo.md` regardless of iteration order.
+    let mut files = vec![
+        session_dir.join(SESSION_META_FILE),
+        session_dir.join(SESSION_TRANSCRIPT_FILE),
+        session_dir.join(SESSION_LEGACY_MEMO_FILE),
+        session_dir.join(SESSION_NOTES_FILE),
+    ];
+    if let Ok(entries) = std::fs::read_dir(session_dir.join("enhanced")) {
+        files.extend(
+            entries
+                .flatten()
+                .filter(|entry| {
+                    entry.file_type().is_ok_and(|kind| kind.is_file())
+                        && !entry.file_name().to_string_lossy().starts_with('.')
+                        && entry
+                            .path()
+                            .extension()
+                            .is_some_and(|extension| extension == "md")
+                })
+                .map(|entry| entry.path()),
+        );
+    }
     let mut memo_from_notes_file = false;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
+    for path in files {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
-        }
-
-        let name = match path.file_name().and_then(|v| v.to_str()) {
-            Some(name) => name,
-            None => continue,
         };
-
         let file_content = match std::fs::read_to_string(&path) {
             Ok(value) => value,
             Err(_) => continue,
@@ -46,7 +52,9 @@ pub fn load_session_content(session_id: &str, session_dir: &std::path::Path) -> 
 
         if name == SESSION_META_FILE {
             if let Ok(meta) = serde_json::from_str::<SessionMetaData>(&file_content) {
-                content.meta = Some(meta);
+                if meta.id == session_id {
+                    content.meta = Some(meta);
+                }
             }
             continue;
         }
@@ -76,12 +84,13 @@ pub fn load_session_content(session_id: &str, session_dir: &std::path::Path) -> 
         let id = frontmatter
             .get("id")
             .and_then(|v| v.as_str())
+            .or_else(|| path.file_stem().and_then(|stem| stem.to_str()))
             .unwrap_or("")
             .to_string();
         let frontmatter_session_id = frontmatter
             .get("session_id")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
+            .unwrap_or(session_id)
             .to_string();
 
         if frontmatter_session_id != session_id {

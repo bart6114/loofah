@@ -50,8 +50,19 @@ fn inspect(args: &Args) -> Result<DoctorReport> {
         report.error = Some("vault path is not a directory".to_string());
     } else {
         report.is_directory = true;
-        match hypr_vault_read::meta::list_session_metas(&path) {
-            Ok(metas) => report.sessions = Some(metas.len()),
+        match hypr_vault_read::discover_sessions(&path) {
+            Ok(scan) => {
+                report.sessions = Some(scan.sessions.len());
+                if !scan.errors.is_empty() {
+                    report.error = Some(
+                        scan.errors
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    );
+                }
+            }
             Err(error) => report.error = Some(format!("vault scan failed: {error}")),
         }
         // Only repair AGENTS.md inside a directory that already is a vault
@@ -188,5 +199,33 @@ mod tests {
 
         let report = inspect(&args(dir.path().to_path_buf())).unwrap();
         assert_eq!(report.vault.agents_md.as_deref(), Some("up-to-date"));
+    }
+    #[test]
+    fn reports_noncanonical_sources_without_migrating_or_hiding_healthy_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, id) in [("healthy", "healthy"), ("Readable note", "old-id")] {
+            let session = dir.path().join("sessions").join(name);
+            std::fs::create_dir_all(&session).unwrap();
+            std::fs::write(
+                session.join("_meta.json"),
+                serde_json::json!({
+                    "id": id, "title": name, "started_at": null, "ended_at": null,
+                    "created_at": "2026-09-15T00:00:00Z", "tags": [],
+                })
+                .to_string(),
+            )
+            .unwrap();
+        }
+        let report = inspect(&args(dir.path().to_path_buf())).unwrap();
+        assert_eq!(report.vault.sessions, Some(1));
+        let issue = report.vault.error.unwrap();
+        assert!(issue.contains("Readable note"));
+        assert!(issue.contains("updated desktop app"));
+        assert!(
+            dir.path()
+                .join("sessions/Readable note/_meta.json")
+                .is_file()
+        );
+        assert!(!dir.path().join("sessions/old-id").exists());
     }
 }

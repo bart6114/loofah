@@ -7,38 +7,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct FolderInfo {
-    pub name: String,
-    pub parent_folder_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct ListFoldersResult {
-    pub folders: HashMap<String, FolderInfo>,
-    pub session_folder_map: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderSessionUpdate {
-    pub session_id: String,
-    pub folder_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct MoveSessionResult {
-    pub session_id: String,
-    pub folder_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct RenameFolderResult {
-    pub updates: Vec<FolderSessionUpdate>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ScanResult {
     pub files: HashMap<String, String>,
     pub dirs: Vec<String>,
@@ -94,6 +62,7 @@ pub struct SessionMetaData {
 #[serde(rename_all = "camelCase")]
 struct SessionMetaDataSerde {
     id: String,
+    #[serde(default)]
     user_id: String,
     created_at: Option<String>,
     title: Option<String>,

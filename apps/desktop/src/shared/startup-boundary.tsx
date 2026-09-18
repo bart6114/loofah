@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { commands as settingsCommands } from "@hypr/plugin-settings";
 import { Button } from "@hypr/ui/components/ui/button";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { relaunchNow } from "./relaunch";
 
@@ -56,6 +57,7 @@ export function StartupBoundary({ children }: { children: ReactNode }) {
           revision: Number.MAX_SAFE_INTEGER,
           vaultPath: "",
           isCloudStorage: false,
+          migrationIssues: [],
           phase: { kind: "failed", message: String(error) },
         });
       });
@@ -67,10 +69,32 @@ export function StartupBoundary({ children }: { children: ReactNode }) {
   }, []);
 
   if (status?.phase.kind === "ready") {
-    return children;
+    return (
+      <>
+        {children}
+        <MigrationNotice issues={status.migrationIssues ?? []} />
+      </>
+    );
   }
 
   return <StartupScreen status={status} />;
+}
+
+function MigrationNotice({ issues }: { issues: string[] }) {
+  const { t } = useLingui();
+  useEffect(() => {
+    if (!issues.length) return;
+    sonnerToast.warning(t`Some notes could not be migrated`, {
+      id: "session-migration-issues",
+      duration: Infinity,
+      description: (
+        <div className="max-h-48 overflow-y-auto whitespace-pre-wrap">
+          {issues.join("\n")}
+        </div>
+      ),
+    });
+  }, [issues, t]);
+  return null;
 }
 
 function StartupScreen({ status }: { status: StartupStatus | null }) {

@@ -2,7 +2,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { useQuery } from "@tanstack/react-query";
 import { getIdentifier } from "@tauri-apps/api/app";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { commands as miscCommands } from "@hypr/plugin-misc";
 import { Button } from "@hypr/ui/components/ui/button";
@@ -11,6 +11,9 @@ import {
   DialogContent,
   DialogTitle,
 } from "@hypr/ui/components/ui/dialog";
+import { cn } from "@hypr/utils";
+
+import { StorageSection } from "./about-storage";
 
 import { useAboutDialog } from "~/store/zustand/about-dialog";
 import { commands, type VaultStats } from "~/types/tauri.gen";
@@ -21,7 +24,7 @@ export function AboutDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-sm gap-0 p-0">
+      <DialogContent className="flex max-h-[calc(100dvh-48px)] w-[calc(100vw-32px)] max-w-[460px] flex-col gap-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">
           <Trans>About Loofah</Trans>
         </DialogTitle>
@@ -32,6 +35,9 @@ export function AboutDialog() {
 }
 
 function AboutContent() {
+  const { t } = useLingui();
+  const [tab, setTab] = useState("overview");
+  const tabId = useId();
   const info = useQuery({
     queryKey: ["about", "device-info"],
     staleTime: Infinity,
@@ -65,12 +71,12 @@ function AboutContent() {
       : null;
 
   return (
-    <div className="flex flex-col">
-      <div className="flex flex-col items-center gap-1 px-6 pt-8 pb-6">
+    <div className="flex min-h-0 flex-col">
+      <div className="flex shrink-0 flex-col items-center gap-1 px-6 pt-6 pb-4">
         <img
           src="/assets/app-icon.png"
           alt=""
-          className="mb-2 size-16 rounded-2xl shadow-sm"
+          className="mb-1 size-12 rounded-xl shadow-sm"
           draggable={false}
         />
         <h2 className="text-base font-semibold">Loofah</h2>
@@ -98,7 +104,65 @@ function AboutContent() {
         )}
       </div>
 
-      <VaultSection stats={stats.data} loading={stats.isPending} />
+      <div
+        role="tablist"
+        aria-label={t`About Loofah`}
+        className="bg-muted mx-6 mb-4 flex shrink-0 gap-1 rounded-lg p-1"
+      >
+        {(["overview", "storage"] as const).map((value) => (
+          <button
+            key={value}
+            role="tab"
+            id={`${tabId}-${value}-tab`}
+            aria-controls={`${tabId}-${value}-panel`}
+            aria-selected={tab === value}
+            tabIndex={tab === value ? 0 : -1}
+            className={cn([
+              "focus-visible:ring-ring flex-1 rounded-md px-3 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:outline-none",
+              tab === value
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-accent",
+            ])}
+            onClick={() => setTab(value)}
+            onKeyDown={(event) => {
+              if (
+                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+              )
+                return;
+              event.preventDefault();
+              const next =
+                event.key === "Home"
+                  ? "overview"
+                  : event.key === "End"
+                    ? "storage"
+                    : value === "overview"
+                      ? "storage"
+                      : "overview";
+              setTab(next);
+              document.getElementById(`${tabId}-${next}-tab`)?.focus();
+            }}
+          >
+            {value === "overview" ? (
+              <Trans>Overview</Trans>
+            ) : (
+              <Trans>Storage</Trans>
+            )}
+          </button>
+        ))}
+      </div>
+      <div key={tab} className="min-h-0 overflow-y-auto">
+        <div
+          role="tabpanel"
+          id={`${tabId}-${tab}-panel`}
+          aria-labelledby={`${tabId}-${tab}-tab`}
+        >
+          {tab === "overview" ? (
+            <VaultSection stats={stats.data} loading={stats.isPending} />
+          ) : (
+            <StorageSection />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -181,9 +245,6 @@ function VaultSection({
       <Trans key="words">
         {formatCount(stats.transcript_words)} words transcribed
       </Trans>
-    ),
-    stats.recording_bytes > 0 && (
-      <span key="bytes">{formatBytes(stats.recording_bytes)}</span>
     ),
   ].filter(Boolean);
 
@@ -350,14 +411,4 @@ function formatDuration(seconds: number) {
     return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   }
   return `${Math.max(minutes, seconds > 0 ? 1 : 0)}m`;
-}
-
-function formatBytes(bytes: number) {
-  if (bytes >= 1_000_000_000) {
-    return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-  }
-  if (bytes >= 1_000_000) {
-    return `${Math.round(bytes / 1_000_000)} MB`;
-  }
-  return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
 }

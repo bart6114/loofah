@@ -430,10 +430,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn audio_resolution_follows_a_readable_session_directory() {
+    async fn audio_resolution_uses_the_canonical_session_directory() {
         let dir = tempfile::tempdir().unwrap();
         let id = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
-        let session_dir = dir.path().join("sessions/2026-03-20 — Planning — 6ba7b8");
+        let session_dir = dir
+            .path()
+            .join("sessions/6ba7b810-9dad-11d1-80b4-00c04fd430c8");
         std::fs::create_dir_all(&session_dir).unwrap();
         std::fs::write(
             session_dir.join("_meta.json"),
@@ -450,8 +452,6 @@ mod tests {
         .unwrap();
         std::fs::write(session_dir.join("audio.mp3"), b"mp3").unwrap();
 
-        // The exact resolution import/transcribe perform: the store maps the
-        // id to the readable directory, and audio lookup runs inside it.
         let store = SessionStore::new(dir.path().to_path_buf());
         let resolved = dir.path().join(store.session_dir(id).await.unwrap());
         assert_eq!(

@@ -19,8 +19,11 @@ use crate::related_tags::RelatedTagQueue;
 fn store<R: tauri::Runtime>(
     app: &AppHandle<R>,
 ) -> Result<tauri::State<'_, Arc<SessionStore>>, String> {
-    app.try_state::<Arc<SessionStore>>()
-        .ok_or_else(|| "session store is not initialized".to_string())
+    let store = app
+        .try_state::<Arc<SessionStore>>()
+        .ok_or_else(|| "session store is not initialized".to_string())?;
+    store.ensure_ready().map_err(|e| e.to_string())?;
+    Ok(store)
 }
 
 #[tauri::command]
@@ -391,6 +394,18 @@ pub async fn vault_stats<R: tauri::Runtime>(app: AppHandle<R>) -> Result<VaultSt
 
 #[tauri::command]
 #[specta::specta]
+pub async fn vault_storage_stats<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    refresh: bool,
+) -> Result<super::VaultStorageStats, String> {
+    store(&app)?
+        .vault_storage_stats(refresh)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn session_ids<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<String>, String> {
     Ok(store(&app)?.session_ids())
 }
@@ -465,55 +480,6 @@ pub async fn session_find_by_tracking_id<R: tauri::Runtime>(
     tracking_id: String,
 ) -> Result<Option<SessionMeta>, String> {
     Ok(store(&app)?.session_find_by_tracking_id(&tracking_id))
-}
-
-/// Reserves the session's directory for an imminent recording and returns its
-/// absolute path -- the stable value the pre-start hook receives. Paired with
-/// `session_release_recording_prepare` on start failure; a successful start's
-/// lease is cleared by the `Stopped` capture lifecycle.
-#[tauri::command]
-#[specta::specta]
-pub async fn session_prepare_recording<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    session_id: String,
-) -> Result<String, String> {
-    let store = store(&app)?;
-    let relative = store
-        .prepare_recording(&session_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(store
-        .vault_base()
-        .join(relative)
-        .to_string_lossy()
-        .into_owned())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn session_release_recording_prepare<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    session_id: String,
-) -> Result<(), String> {
-    store(&app)?
-        .release_recording_prepare(&session_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// User-invoked "rename folder to match title": renames the session's physical
-/// directory to the readable name derived from its current title. Refused while the
-/// session holds a recording path lease; returns the resulting directory basename.
-#[tauri::command]
-#[specta::specta]
-pub async fn session_rename_dir_to_title<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    session_id: String,
-) -> Result<String, String> {
-    store(&app)?
-        .rename_session_dir_to_title(&session_id)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

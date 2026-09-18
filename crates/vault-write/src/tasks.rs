@@ -319,7 +319,7 @@ impl SessionStore {
     }
 
     /// Vault-relative path of this scope's `tasks.json`; session scopes resolve their
-    /// physical directory through the location catalog.
+    /// canonical directory directly from its validated ID.
     async fn task_scope_path(&self, scope: &TaskScope) -> Result<PathBuf, StoreError> {
         match scope {
             TaskScope::Session(id) => {
@@ -435,8 +435,6 @@ mod tests {
         (store, temp)
     }
 
-    /// Physical directory of a session: creation now picks a human-readable name, so
-    /// tests resolve it through the store instead of assuming `sessions/<id>`.
     async fn session_path(
         store: &SessionStore,
         vault: &tempfile::TempDir,

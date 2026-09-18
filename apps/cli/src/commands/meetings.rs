@@ -451,8 +451,7 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
     Ok(())
 }
 
-/// Resolve a meeting id to its session directory's absolute path. Identity is
-/// `_meta.json.id`, never the directory basename.
+/// Resolve only `sessions/<id>`, verifying its metadata without discovery.
 async fn session_path(vault: &Path, id: &str) -> Result<std::path::PathBuf> {
     let scan_vault = vault.to_path_buf();
     let scan_id = id.to_string();

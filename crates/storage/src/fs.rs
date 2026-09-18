@@ -330,3 +330,75 @@ mod tests {
         assert!(!dst.join("skip.txt").exists());
     }
 }
+
+/// Atomically move a directory without replacing a destination that appeared
+/// after preflight. Cross-device moves fail; there is no copy/delete fallback.
+pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+        let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+        #[cfg(target_os = "macos")]
+        let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) };
+        #[cfg(target_os = "linux")]
+        let result = unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                from.as_ptr(),
+                libc::AT_FDCWD,
+                to.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "exclusive rename unsupported",
+        ));
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn MoveFileW(from: *const u16, to: *const u16) -> i32;
+        }
+        let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+        if unsafe { MoveFileW(from.as_ptr(), to.as_ptr()) } != 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+}
+
+#[cfg(test)]
+mod exclusive_rename_tests {
+    use super::*;
+
+    #[test]
+    fn destination_appearing_after_preflight_is_never_replaced() {
+        let temp = tempfile::tempdir().unwrap();
+        let from = temp.path().join("source");
+        let to = temp.path().join("target");
+        std::fs::create_dir(&from).unwrap();
+        std::fs::write(from.join("payload"), b"keep source").unwrap();
+        assert!(!to.exists());
+        std::fs::create_dir(&to).unwrap();
+        assert!(rename_no_replace(&from, &to).is_err());
+        assert_eq!(std::fs::read(from.join("payload")).unwrap(), b"keep source");
+        assert_eq!(std::fs::read_dir(&to).unwrap().count(), 0);
+        std::fs::remove_dir(&to).unwrap();
+        rename_no_replace(&from, &to).unwrap();
+        assert!(!from.exists());
+        assert_eq!(std::fs::read(to.join("payload")).unwrap(), b"keep source");
+    }
+}

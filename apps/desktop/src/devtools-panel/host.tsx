@@ -166,7 +166,7 @@ function useDevtoolsPanelActions() {
       key: `devtool-mic-${crypto.randomUUID()}`,
       title: "Are you in a meeting?",
       message: "",
-      timeout: { secs: 15, nanos: 0 },
+      timeout: { secs: 30, nanos: 0 },
       source: {
         type: "mic_detected",
         app_names: ["Zoom"],
@@ -187,7 +187,7 @@ function useDevtoolsPanelActions() {
       key: `devtool-mic-options-${crypto.randomUUID()}`,
       title: "Are you in a meeting?",
       message: "",
-      timeout: { secs: 15, nanos: 0 },
+      timeout: { secs: 30, nanos: 0 },
       source: {
         type: "mic_detected",
         app_names: ["Zoom", "Google Chrome"],

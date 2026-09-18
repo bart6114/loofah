@@ -36,7 +36,11 @@ pub fn should_skip_path(relative_path: &str, path: &Path) -> bool {
         .extension()
         .is_some_and(|ext| ext == "wav" || ext == "ogg" || ext == "tmp")
     {
-        return true;
+        let parts: Vec<_> = relative_path.split(['/', '\\']).collect();
+        let canonical_recording = parts.len() == 3
+            && parts[0] == "sessions"
+            && matches!(parts[2], "audio.wav" | "audio.ogg");
+        return !canonical_recording;
     }
 
     false
@@ -109,6 +113,21 @@ mod tests {
     fn test_skip_ogg_extension() {
         let path = PathBuf::from("/vault/audio/recording.ogg");
         assert!(should_skip_path("audio/recording.ogg", &path));
+    }
+
+    #[test]
+    fn canonical_recordings_are_visible_on_both_platforms() {
+        for relative in [
+            "sessions/s1/audio.wav",
+            "sessions/s1/audio.ogg",
+            r"sessions\s1\audio.wav",
+        ] {
+            assert!(!should_skip_path(relative, Path::new("audio.wav")));
+        }
+        assert!(should_skip_path(
+            "sessions/s1/audio_mic.wav",
+            Path::new("audio_mic.wav")
+        ));
     }
 
     #[test]
