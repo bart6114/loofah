@@ -110,3 +110,20 @@ Global vault overrides:
 loof --vault-path /path/to/vault --json sessions list
 loof --base /path/to/vault --json sessions list
 ```
+
+## Delete and recover
+
+After the user authorizes removal, verify the exact session with `sessions get`, then run:
+
+```bash
+loof --json sessions delete SESSION_ID
+loof --vault-path /absolute/vault --json sessions delete SESSION_ID
+```
+
+No confirmation flag is required and the command never prompts, including with `--json`. Deletion validates the exact `_meta.json` identity; it never matches a title or scans the vault. JSON uses `command: "sessions.delete"` with `data.id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and UTC RFC 3339 `deleted_at` observed after the move. Keep these paths for recovery.
+
+The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
+
+There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
+
+A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.

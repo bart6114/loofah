@@ -31,9 +31,26 @@ loof [--base DIR] [--vault-path DIR] [--json] <command>
 | `sessions transcript ID` | None | The full transcript as `[HH:MM:SS] Speaker: ...` lines, one per speaker turn. |
 | `sessions tag add ID TAG...` | None | Adds one or more tags to the meeting and registers new ones in the vault's tag registry. Tags are normalized (trimmed, `#` stripped, lowercased) and stored deduplicated and sorted; adding a tag the meeting already has is a no-op. Prints the meeting's resulting tag list. |
 | `sessions tag remove ID TAG...` | None | Removes one or more tags from the meeting. Removing an absent tag is a no-op, and removed tags stay in the vault's tag registry. Prints the meeting's resulting tag list. |
+| `sessions delete ID` | None | Soft-delete one exact session into recoverable vault trash. No prompt or confirmation flag; the invocation authorizes the move. |
 | `sessions path ID` | None | Prints the absolute path of the meeting's session directory. |
 | `sessions attach ID FILE` | `--name NAME` | Stores `FILE` as a note attachment of the meeting and prints the resulting attachment id. `--name` overrides the stored filename (defaults to the file's name). Notes reference attachments as `![alt](attachments/<id>)` with the id URL-encoded. The printed attachment id is authoritative and may differ from the input name when an existing attachment of the same name forces a deduplicated one. |
 | `sessions export ID` | `--format markdown\|json`, `--output FILE`, `--force` | A complete meeting export, including transcripts. Defaults to Markdown on stdout. Existing files require `--force`, which is only valid together with `--output`. |
+
+## Delete and recover a session
+
+```bash
+loof --vault-path /absolute/vault --json sessions delete SESSION_ID
+```
+
+The exact ID is the confirmation in both human and JSON modes; this command never reads stdin or prompts. Resolve and verify the ID first. It validates `sessions/<ID>/_meta.json` directly without scanning the vault or matching titles. Directories without session metadata are refused. MCP remains read-only.
+
+The JSON envelope uses `command: "sessions.delete"` (also through the `meetings` alias). `data` contains `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and `deleted_at` (UTC RFC 3339 timestamp observed after the move).
+
+The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
+
+There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
+
+A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
 
 ## Tags command
 

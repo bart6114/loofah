@@ -249,6 +249,11 @@ pub enum MeetingCommand {
     },
     /// Print the absolute path of a meeting's session directory
     Path { id: String },
+    /// Soft-delete one exact session ID into recoverable vault trash. Never prompts.
+    #[command(
+        long_about = "Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge."
+    )]
+    Delete { id: String },
     /// Store a file as a note attachment of a meeting and print its attachment id
     Attach {
         id: String,
@@ -863,6 +868,21 @@ mod tests {
             );
         }
         assert_options_are_documented(&command, docs);
+    }
+
+    #[test]
+    fn session_delete_help_matches_snapshot() {
+        let help = Args::command()
+            .try_get_matches_from(["loof", "sessions", "delete", "--help"])
+            .unwrap_err();
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+        let help = help.to_string();
+        let help = help
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!("session_delete_help", help);
     }
 
     #[test]

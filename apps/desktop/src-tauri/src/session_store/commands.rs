@@ -339,6 +339,7 @@ pub async fn session_delete<R: tauri::Runtime>(
     store(&app)?
         .delete_session(&session_id)
         .await
+        .map(|_| ())
         .map_err(|e| e.to_string())
 }
 
