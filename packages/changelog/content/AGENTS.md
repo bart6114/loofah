@@ -1,7 +1,7 @@
 # Instruction
 
-- Read through the commits, and most of the diffs, but only keep the desktop-related thing to the changelog.
-- All changelogs should "worth reading" for app users. No internal changes or infra updates.
+- Read through the commits and most of the diffs. Include user-facing changes to both the desktop app and the CLI.
+- All changelogs should be worth reading for desktop and CLI users. Include new CLI commands and changes to their behavior, and label CLI-specific entries clearly. No internal changes or infra updates.
 - Each changelog must include `date` and `summary` frontmatter. `summary` is shown on the web changelog index, so keep it to one concise, plain-text, user-facing sentence with no markdown or custom tags.
 
 ```md

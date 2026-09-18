@@ -88,7 +88,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           show_full_output: true
           prompt: |
-            Write the desktop release notes for version ${{ steps.meta.outputs.version }} of this app.
+            Write the release notes for version ${{ steps.meta.outputs.version }} of Loofah, covering both the desktop app and the CLI.
 
             Create exactly one new file: packages/changelog/content/${{ steps.meta.outputs.version }}.md
             Do not modify any other file. Do not run git commit or git push — a
@@ -109,8 +109,9 @@ jobs:
                  date: "${{ steps.meta.outputs.today }}"
                  summary: "Version ${{ steps.meta.outputs.version }} <one concise, plain-text, user-facing sentence>."
                  ---
-               - Desktop-user-facing content only: skip chore/ci/infra/internal/release-bot
-                 commits entirely. If a change only makes sense to a developer, leave it out.
+               - Include user-facing desktop and CLI changes, including new CLI commands
+                 and changes to their behavior. Label CLI-specific entries clearly.
+                 Omit internal maintenance, CI, infrastructure, and automatic version bumps.
                - Never use em dashes (—) anywhere in the file; rephrase or use a
                  comma, period, or parentheses instead.
                - Use "## New" / "## Fixes" style sections like the existing files.
