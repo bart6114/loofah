@@ -451,7 +451,7 @@ expression: canonicalize_json(contract)
           "synopsis": "loof sessions attach [--name] [-h] <file> <id>"
         },
         {
-          "about": "Export a meeting to Markdown or JSON",
+          "about": "Export a session as PDF, TXT, Markdown, Org, or JSON\n\nPDF/TXT/Org default to note,summary. --include selects desktop-style content, including the session summary (missing sections are skipped). Markdown/JSON without --include retain the legacy full-session export. Text goes to stdout unless --output is set; PDF requires --output. With --include or a new format, --json reports separately from the file.",
           "arguments": [
             {
               "name": "ID",
@@ -466,10 +466,25 @@ expression: canonicalize_json(contract)
               "is_flag": false,
               "possible_values": [
                 "markdown",
-                "json"
+                "json",
+                "pdf",
+                "txt",
+                "org"
               ],
               "required": false,
               "value_name": "FORMAT"
+            },
+            {
+              "flags": "--include",
+              "help": "Content to export: note,summary,transcript",
+              "is_flag": false,
+              "possible_values": [
+                "note",
+                "summary",
+                "transcript"
+              ],
+              "required": false,
+              "value_name": "INCLUDE"
             },
             {
               "flags": "-o, --output",
@@ -485,12 +500,12 @@ expression: canonicalize_json(contract)
             },
             {
               "flags": "-h, --help",
-              "help": "Print help",
+              "help": "Print help (see a summary with '-h')",
               "is_flag": false,
               "required": false
             }
           ],
-          "synopsis": "loof sessions export [--format] [-o] [--force] [-h] <id>"
+          "synopsis": "loof sessions export [--format] [--include] [-o] [--force] [-h] <id>"
         }
       ],
       "synopsis": "loof sessions [-h] <command>"

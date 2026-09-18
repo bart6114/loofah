@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use crate::cli::{DocumentKind, ExportFormat, MeetingCommand, TagCommand};
+use crate::cli::{DocumentKind, MeetingCommand, TagCommand};
 use crate::{Error, Result, output};
 use hypr_agent_access::{
     Document, GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, MeetingListItem,
-    SearchHit, SearchMeetingsInput, get_meeting, get_meeting_export, get_meeting_transcript,
-    list_meetings, search_meetings,
+    SearchHit, SearchMeetingsInput, get_meeting, get_meeting_transcript, list_meetings,
+    search_meetings,
 };
 use hypr_vault_write::SessionStore;
 
@@ -254,28 +254,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             output::emit(&rendered);
             Ok(())
         }
-        MeetingCommand::Export {
-            id,
-            format,
-            output: path,
-            force,
-        } => {
-            let meeting = get_meeting_export(vault, id).await?;
-            let content = match (format, json) {
-                (ExportFormat::Markdown, false) => meeting.to_markdown(),
-                (ExportFormat::Json, false) => output::raw_json(&meeting)?,
-                (ExportFormat::Markdown, true) => output::json(
-                    "meetings.export",
-                    &serde_json::json!({
-                        "format": "markdown",
-                        "content": meeting.to_markdown(),
-                    }),
-                    None,
-                )?,
-                (ExportFormat::Json, true) => output::json("meetings.export", &meeting, None)?,
-            };
-            output::write_or_emit(&content, path.as_deref(), force)
-        }
+        command @ MeetingCommand::Export { .. } => super::export::run(vault, command, json).await,
     }
 }
 
@@ -488,7 +467,7 @@ async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
 }
 
 /// Resolve only `sessions/<id>`, verifying its metadata without discovery.
-async fn session_path(vault: &Path, id: &str) -> Result<std::path::PathBuf> {
+pub(super) async fn session_path(vault: &Path, id: &str) -> Result<std::path::PathBuf> {
     let scan_vault = vault.to_path_buf();
     let scan_id = id.to_string();
     let location =
@@ -547,7 +526,7 @@ async fn attach_file(
 /// (`packages/editor/src/note/portable-attachments.ts`): JavaScript
 /// `encodeURIComponent` over the attachment id, with parens additionally
 /// encoded so the src never breaks markdown link syntax.
-fn to_portable_attachment_src(attachment_id: &str) -> String {
+pub(super) fn to_portable_attachment_src(attachment_id: &str) -> String {
     use std::fmt::Write;
 
     let mut src = String::from("attachments/");

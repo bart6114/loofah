@@ -192,6 +192,18 @@ pub async fn get_meeting_transcript(
     .await
 }
 
+pub async fn get_meeting_export_segments(
+    vault: &Path,
+    meeting_id: String,
+) -> Result<Vec<hypr_transcript::RenderedTranscriptSegment>> {
+    run_blocking("export transcript", vault, move |vault| {
+        let (location, _) = find_meeting(vault, &meeting_id)?;
+        let transcripts = load_raw_transcripts_sync(vault, &location)?;
+        Ok(render::meeting_transcript_segments(vault, &transcripts))
+    })
+    .await
+}
+
 pub async fn get_meeting_export(vault: &Path, meeting_id: String) -> Result<MeetingExport> {
     run_blocking("export meeting", vault, move |vault| {
         let (location, meta) = find_meeting(vault, &meeting_id)?;

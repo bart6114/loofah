@@ -127,3 +127,13 @@ The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a
 There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
 
 A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
+
+### Selected session exports
+
+Use `sessions export ID --format txt --include transcript` for transcript-only stdout, or `--format pdf --include note,summary,transcript --output session.pdf` for a shareable PDF. Formats are `markdown` (alias `md`), `json`, `pdf`, `txt`, and `org`. PDF requires a file destination; it cannot use stdout or `--output -`.
+
+PDF/TXT/Org default to note and summary. `--include` selects exactly note, summary, and/or transcript; missing sections are skipped. `summary` includes the session’s single summary. Sections always appear note, summary, transcript. Dates use local time and CLI labels are English. PDFs embed referenced managed images; text exports do not copy attachments.
+
+Markdown/JSON without `--include` preserve the legacy complete-session export and `--json` envelope-in-file behavior. With `--include` or PDF/TXT/Org, `--json --output FILE` writes the artifact to FILE and reports `{format, output, bytes}` in stdout's `data`; without a file, text is reported as `{format, content}`. JSON artifacts with `--include` filter the content fields while retaining metadata and action items.
+
+Export is headless and read-only with respect to the vault; output must be outside it. Writes are atomic. Existing destinations require `--force` (exit 4 otherwise); only pass it after approval for that exact file. Missing session ids return exit 2, and rendering/I/O failures return exit 1. With `--json`, errors go to stderr. Text `--output -` creates a literal file named `-`; omit `--output` for stdout.

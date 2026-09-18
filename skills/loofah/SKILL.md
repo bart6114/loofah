@@ -50,7 +50,7 @@ See [CLI commands](references/cli.md) for writing notes, tagging, attachments, a
 - `sessions delete ID` removes one exact session into recoverable vault trash without prompting. Run it only when the user authorizes removal and after verifying the ID. Retain the returned `path` and `trash_path`; missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](references/cli.md#delete-and-recover); give the user the recovery steps instead of modifying vault files directly.
 - `sessions note --set` replaces the whole note body. Prefer `--append`, and pass `--set` only when the user explicitly wants the note replaced.
 - Pass `--author <agent-name>` (one stable name, e.g. `claude-code`) when creating a meeting with `sessions new` or `import`; leave it unset only when entering a note on the owner's dictation. When a specific skill produced the note, also record it with `--skill <skill-name>` (requires `--author`). Never add, change, or remove the authorship of an existing meeting.
-- CLI export may create a separate file. Never pass `--force` unless the user explicitly approves overwriting that exact path.
+- CLI export supports PDF, TXT, Markdown, Org, and JSON. Use `--include transcript` for transcript-only output; PDF requires `--output FILE`. See [export defaults and JSON compatibility](references/cli.md#selected-session-exports). CLI export may create a separate file. Never pass `--force` unless the user explicitly approves overwriting that exact path.
 - Preserve uncertainty when search results are ambiguous. Ask the user to choose between likely meetings.
 
 For setup and failures, see [setup](references/setup.md) and [errors](references/errors.md).

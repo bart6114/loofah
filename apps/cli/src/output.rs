@@ -41,30 +41,36 @@ pub fn emit(text: &str) {
 
 pub fn write_or_emit(text: &str, path: Option<&Path>, force: bool) -> Result<()> {
     match path {
-        Some(path) => {
-            if force {
-                return std::fs::write(path, text)
-                    .map_err(|error| Error::operation("write export", error.to_string()));
-            }
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(path)
-                .map_err(|error| {
-                    if error.kind() == std::io::ErrorKind::AlreadyExists {
-                        Error::OutputExists(path.to_path_buf())
-                    } else {
-                        Error::operation("write export", error.to_string())
-                    }
-                })?;
-            file.write_all(text.as_bytes())
-                .map_err(|error| Error::operation("write export", error.to_string()))
-        }
+        Some(path) => write_bytes(text.as_bytes(), path, force),
         None => {
             emit(text);
             Ok(())
         }
     }
+}
+
+pub fn write_bytes(bytes: &[u8], path: &Path, force: bool) -> Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut file = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| Error::operation("write export", e.to_string()))?;
+    file.write_all(bytes)
+        .and_then(|_| file.as_file().sync_all())
+        .map_err(|e| Error::operation("write export", e.to_string()))?;
+    let result = if force {
+        file.persist(path)
+    } else {
+        file.persist_noclobber(path)
+    };
+    result.map(|_| ()).map_err(|e| {
+        if e.error.kind() == std::io::ErrorKind::AlreadyExists {
+            Error::OutputExists(path.to_path_buf())
+        } else {
+            Error::operation("write export", e.to_string())
+        }
+    })
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ on:
       - .agents/skills/**
       - apps/cli/**
       - crates/agent-access/**
+      - crates/export-core/**
       - crates/cli-docs/**
       - crates/tiptap/**
       - docs/**
@@ -29,6 +30,7 @@ on:
       - .agents/skills/**
       - apps/cli/**
       - crates/agent-access/**
+      - crates/export-core/**
       - crates/cli-docs/**
       - crates/tiptap/**
       - docs/**
@@ -61,12 +63,14 @@ jobs:
           node-version: "22"
       - uses: ./.github/actions/rust_install
       - run: |
+          cargo test --locked -p export-core
           cargo test --locked -p agent-access
           cargo test --locked -p loof-cli
           cargo test --locked -p tiptap
       - run: |
           cargo clippy --locked \
             -p agent-access \
+            -p export-core \
             -p loof-cli \
             -p tiptap \
             --all-targets \

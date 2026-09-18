@@ -34,7 +34,7 @@ loof [--base DIR] [--vault-path DIR] [--json] <command>
 | `sessions delete ID` | None | Soft-delete one exact session into recoverable vault trash. No prompt or confirmation flag; the invocation authorizes the move. |
 | `sessions path ID` | None | Prints the absolute path of the meeting's session directory. |
 | `sessions attach ID FILE` | `--name NAME` | Stores `FILE` as a note attachment of the meeting and prints the resulting attachment id. `--name` overrides the stored filename (defaults to the file's name). Notes reference attachments as `![alt](attachments/<id>)` with the id URL-encoded. The printed attachment id is authoritative and may differ from the input name when an existing attachment of the same name forces a deduplicated one. |
-| `sessions export ID` | `--format markdown\|json`, `--output FILE`, `--force` | A complete meeting export, including transcripts. Defaults to Markdown on stdout. Existing files require `--force`, which is only valid together with `--output`. |
+| `sessions export ID` | `--format markdown\|md\|json\|pdf\|txt\|org`, `--include note,summary,transcript`, `--output FILE`, `--force` | Export selected content or a legacy complete meeting. Text defaults to stdout; PDF requires a file. See [export behavior](#export-behavior). |
 
 ## Delete and recover a session
 
@@ -126,3 +126,28 @@ loof sessions --help
 loof sessions list --help
 loof --version
 ```
+
+## Export behavior
+
+Export runs headlessly and reads sessions without changing the vault. Write exports outside the source vault.
+
+```bash
+loof sessions export ID --format txt --include transcript --output transcript.txt
+loof sessions export ID --format pdf --include note,summary,transcript --output session.pdf
+loof sessions export ID --format org --include summary
+loof --json sessions export ID --format md --include note,summary --output session.md
+```
+
+PDF, TXT, and Org default to `note,summary`. `--include` replaces the selection; it accepts comma-separated values or repeated flags. Sections appear in Note, Summary, Transcript order, regardless of flag order. Missing or blank sections are skipped. `summary` includes the session’s single summary.
+
+Markdown accepts `markdown` and `md`. Text formats use stdout when `--output` is omitted. PDF requires `--output FILE`; `--output -` is rejected for PDF. Text `--output -` names a literal file. Existing files require `--force`, which requires `--output`; refusal returns `output_exists` (exit 4). File exports are written atomically. Source vault destinations are rejected, even with `--force`.
+
+Desktop and CLI share text conversion and PDF rendering. Transcript exports preserve speaker turns, names, unknown-speaker labels, and the order across recording parts. Dates use the local timezone; CLI section labels are English. PDFs embed referenced, readable images from the session's managed attachments. Text exports retain attachment references where supported; they do not copy files. Empty sessions still export title and metadata.
+
+### JSON reporting and compatibility
+
+Existing Markdown and JSON calls **without `--include`** keep their complete-session artifact: the note, summary, transcripts, and existing metadata and layout. Their `--json` envelope behavior also stays unchanged, including writing that envelope to `--output` when both flags are used.
+
+For PDF/TXT/Org or any export with `--include`, `--json` reports separately from the artifact. With `--output`, the file contains only the requested format and stdout contains a versioned `meetings.export` response with `data.format`, `data.output`, and `data.bytes`. Without a file, text appears in `data.content` alongside `data.format`. `--format json --include ...` retains the existing session JSON schema but filters note, summary, and transcript content; session metadata and action items remain.
+
+Usage parsing errors return exit 2. Missing sessions return exit 2; existing destinations return exit 4. Rendering, invalid PDF destinations, unreadable source content, and other I/O failures return exit 1. With `--json`, errors go to stderr as the existing structured error response. Failed rendering leaves an existing destination intact.

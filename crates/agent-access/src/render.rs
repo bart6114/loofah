@@ -18,6 +18,24 @@ pub(crate) fn render_meeting_transcript(
     vault: &Path,
     transcripts: &[TranscriptWithData],
 ) -> String {
+    meeting_transcript_segments(vault, transcripts)
+        .iter()
+        .map(|segment| {
+            format!(
+                "[{}] {}: {}",
+                timestamp(segment.start_ms),
+                segment.speaker_label,
+                segment.text
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub(crate) fn meeting_transcript_segments(
+    vault: &Path,
+    transcripts: &[TranscriptWithData],
+) -> Vec<hypr_transcript::RenderedTranscriptSegment> {
     let humans = hypr_vault_read::read_people(vault)
         .into_iter()
         .filter(|person| !person.name.trim().is_empty())
@@ -32,25 +50,12 @@ pub(crate) fn render_meeting_transcript(
         .find(|user_id| !user_id.is_empty())
         .map(str::to_string);
 
-    let segments = render_transcript_segments(RenderTranscriptRequest {
+    render_transcript_segments(RenderTranscriptRequest {
         transcripts: transcripts.iter().map(render_input).collect(),
         participant_human_ids: Vec::new(),
         self_human_id,
         humans,
-    });
-
-    segments
-        .iter()
-        .map(|segment| {
-            format!(
-                "[{}] {}: {}",
-                timestamp(segment.start_ms),
-                segment.speaker_label,
-                segment.text
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    })
 }
 
 /// Mirrors the desktop's two-pass hint normalization (`render-transcript.ts`):

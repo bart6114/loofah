@@ -81,8 +81,10 @@ This moves the complete session to recoverable vault trash. There is no prompt o
 ```bash
 loof sessions export SESSION_ID --format markdown --output session.md
 loof sessions export SESSION_ID --format json --output session.json
+loof sessions export SESSION_ID --format txt --include transcript
+loof sessions export SESSION_ID --format pdf --include note,summary,transcript --output session.pdf
 ```
 
-Export refuses to replace an existing file. Pass `--force` only when the user has approved overwriting that exact path.
+PDF/TXT/Org default to note and summary; `--include` selects specific content. Read the [export behavior and JSON compatibility policy](/reference/cli#export-behavior) before combining `--json` with file output. Export refuses to replace an existing file. Pass `--force` only when the user has approved overwriting that exact path.
 
 See the [CLI reference](/reference/cli) for the full command contract.
