@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useSyncExternalStore,
@@ -16,7 +17,7 @@ import {
 type Listener = () => void;
 
 export interface TaskStorage {
-  loadSource?: (source: TaskSource) => Promise<void>;
+  loadSource?: (source: TaskSource) => Promise<TaskRecord[] | void>;
   getTasksForSource: (source: TaskSource) => TaskRecord[];
   subscribeSource: (source: TaskSource, listener: Listener) => () => void;
   getTask: (taskId: string) => TaskRecord | null;
@@ -231,13 +232,23 @@ export function useTaskRecords(
 ): TaskRecord[] {
   const storage = useTaskStorageOptional();
 
-  return useSyncExternalStore(
-    source && storage
-      ? (listener) => storage.subscribeSource(source, listener)
-      : subscribeNoop,
-    source && storage ? () => storage.getTasksForSource(source) : getEmptyTasks,
-    getEmptyTasks,
+  const type = source?.type;
+  const id = source?.id;
+  const subscribe = useCallback(
+    (listener: Listener) =>
+      storage && type && id
+        ? storage.subscribeSource({ type, id }, listener)
+        : subscribeNoop(),
+    [storage, type, id],
   );
+  const getSnapshot = useCallback(
+    () =>
+      storage && type && id
+        ? storage.getTasksForSource({ type, id })
+        : emptyTasks,
+    [storage, type, id],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getEmptyTasks);
 }
 
 export function useTaskRecord(
@@ -245,16 +256,20 @@ export function useTaskRecord(
   taskId: string | null | undefined,
 ): TaskRecord | null {
   const storage = useTaskStorageOptional();
-
-  return useSyncExternalStore(
-    source && storage
-      ? (listener) => storage.subscribeSource(source, listener)
-      : subscribeNoop,
-    source && taskId && storage
-      ? () => storage.getTask(taskId)
-      : getNullTaskRecord,
-    getNullTaskRecord,
+  const type = source?.type;
+  const id = source?.id;
+  const subscribe = useCallback(
+    (listener: Listener) =>
+      storage && type && id
+        ? storage.subscribeSource({ type, id }, listener)
+        : subscribeNoop(),
+    [storage, type, id],
   );
+  const getSnapshot = useCallback(
+    () => (storage && type && id && taskId ? storage.getTask(taskId) : null),
+    [storage, type, id, taskId],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getNullTaskRecord);
 }
 
 function subscribeNoop() {

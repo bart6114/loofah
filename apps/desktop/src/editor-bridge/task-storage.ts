@@ -101,6 +101,7 @@ export function createStoreBackedTaskStorage(
   const sourceSnapshots = new Map<string, TaskRecord[]>();
   const taskSnapshots = new Map<string, TaskRecord>();
   const sourceListeners = new Map<string, Set<() => void>>();
+  const sourceRequests = new Map<string, number>();
   const sourceBusUnsubscribes = new Map<string, () => void>();
 
   const updateSourceSnapshot = (
@@ -140,9 +141,19 @@ export function createStoreBackedTaskStorage(
 
   const refreshSource = (source: TaskSource): Promise<void> => {
     const sourceKey = createTaskSourceKey(source);
+    const lifetime = sourceListeners.get(sourceKey);
+    if (!lifetime?.size) return Promise.resolve();
+    const request = (sourceRequests.get(sourceKey) ?? 0) + 1;
+    sourceRequests.set(sourceKey, request);
     return dependencies
       .listTasks(source.type, source.id)
       .then((items) => {
+        if (
+          sourceListeners.get(sourceKey) !== lifetime ||
+          !lifetime.size ||
+          sourceRequests.get(sourceKey) !== request
+        )
+          return;
         if (updateSourceSnapshot(source, items)) {
           sourceListeners.get(sourceKey)?.forEach((notify) => notify());
         }
@@ -168,12 +179,22 @@ export function createStoreBackedTaskStorage(
 
   return {
     async loadSource(source) {
+      const key = createTaskSourceKey(source);
+      const lifetime = sourceListeners.get(key);
+      const request = (sourceRequests.get(key) ?? 0) + 1;
+      if (lifetime?.size) sourceRequests.set(key, request);
       const items = await dependencies.listTasks(source.type, source.id);
-      if (updateSourceSnapshot(source, items)) {
-        sourceListeners
-          .get(createTaskSourceKey(source))
-          ?.forEach((notify) => notify());
+      if (
+        lifetime?.size &&
+        sourceListeners.get(key) === lifetime &&
+        sourceRequests.get(key) === request &&
+        updateSourceSnapshot(source, items)
+      ) {
+        lifetime.forEach((notify) => notify());
       }
+      return items
+        .map(taskItemToRecord)
+        .filter((task): task is TaskRecord => task !== null);
     },
     getTasksForSource(source) {
       return sourceSnapshots.get(createTaskSourceKey(source)) ?? emptyTasks;
@@ -184,13 +205,15 @@ export function createStoreBackedTaskStorage(
       if (!listeners) {
         listeners = new Set();
         sourceListeners.set(sourceKey, listeners);
+        listeners.add(listener);
         // A bus refresh can only ever *read*: it lands in `updateSourceSnapshot`, which
         // notifies listeners solely when the data actually differs, so our own writes
         // (which echo back as `tasks` events) settle instead of looping.
         sourceBusUnsubscribes.set(
           sourceKey,
           dependencies.subscribeTasksChanged(source, () => {
-            void refreshSource(source);
+            if (sourceListeners.get(sourceKey) === listeners)
+              void refreshSource(source);
           }),
         );
         void refreshSource(source);
@@ -200,35 +223,60 @@ export function createStoreBackedTaskStorage(
       const currentListeners = listeners;
       return () => {
         currentListeners.delete(listener);
-        if (
-          currentListeners.size === 0 &&
-          sourceListeners.get(sourceKey) === currentListeners
-        ) {
+        queueMicrotask(() => {
+          if (
+            currentListeners.size ||
+            sourceListeners.get(sourceKey) !== currentListeners
+          )
+            return;
           sourceListeners.delete(sourceKey);
+          sourceRequests.delete(sourceKey);
           sourceBusUnsubscribes.get(sourceKey)?.();
           sourceBusUnsubscribes.delete(sourceKey);
-        }
+          for (const task of sourceSnapshots.get(sourceKey) ?? []) {
+            const cached = taskSnapshots.get(task.taskId);
+            if (
+              cached?.sourceType === source.type &&
+              cached.sourceId === source.id
+            ) {
+              taskSnapshots.delete(task.taskId);
+            }
+          }
+          sourceSnapshots.delete(sourceKey);
+        });
       };
     },
     getTask(taskId) {
       return taskSnapshots.get(taskId) ?? null;
     },
     upsertTasksForSource(source, tasks) {
-      const currentTasks =
-        sourceSnapshots.get(createTaskSourceKey(source)) ?? emptyTasks;
-      if (areSameTaskSets(currentTasks, tasks)) {
-        return;
-      }
+      const cached = sourceSnapshots.get(createTaskSourceKey(source));
+      if (cached && areSameTaskSets(cached, tasks)) return;
 
-      persist(
-        () =>
-          dependencies.replaceTasks(
-            source.type,
-            source.id,
-            tasks.map(taskRecordToInput),
-          ),
-        [source],
-      );
+      persist(async () => {
+        // An editor can mount before its subscription's read settles. Keep metadata
+        // absent from Markdown (such as due dates) when that first sync writes tasks.
+        const previous =
+          cached ??
+          (await dependencies.listTasks(source.type, source.id))
+            .map(taskItemToRecord)
+            .filter((task): task is TaskRecord => task !== null);
+        const previousById = new Map(
+          previous.map((task) => [task.taskId, task]),
+        );
+        const next = cached
+          ? tasks
+          : tasks.map((task) => ({
+              ...task,
+              dueDate: task.dueDate ?? previousById.get(task.taskId)?.dueDate,
+            }));
+        if (areSameTaskSets(previous, next)) return;
+        await dependencies.replaceTasks(
+          source.type,
+          source.id,
+          next.map(taskRecordToInput),
+        );
+      }, [source]);
     },
     removeTasksForSource(source, taskIds) {
       if (taskIds.length === 0) {

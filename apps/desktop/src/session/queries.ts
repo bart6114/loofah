@@ -228,13 +228,15 @@ export function useEnhancedNote(
         type: note.id === note.sessionId ? "session_summary" : "enhanced_note",
         id: enhancedNoteId,
       };
-      await taskStorage?.loadSource?.(source);
+      const loadedTasks = await taskStorage?.loadSource?.(source);
       if (taskStorage && note.content) {
         note.content = JSON.stringify(
           hydrateTaskContent({
             content: JSON.parse(note.content),
-            sourceTasks: taskStorage.getTasksForSource(source),
-            getTask: taskStorage.getTask,
+            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
+            getTask: (id) =>
+              loadedTasks?.find((task) => task.taskId === id) ??
+              taskStorage.getTask(id),
           }),
         );
       }

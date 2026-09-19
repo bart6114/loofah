@@ -250,6 +250,8 @@ describe("store-backed task storage", () => {
     const listener = vi.fn();
     storage.subscribeSource(sessionSource, listener);
     await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
+    storage.subscribeSource({ type: "enhanced_note", id: "note-1" }, vi.fn());
+    await Promise.resolve();
     harness.listTasks.mockClear();
 
     storage.moveTasksToSource(
@@ -299,6 +301,7 @@ describe("store-backed task storage", () => {
     expect(harness.busSubscribers.size).toBe(1);
 
     unsubscribe();
+    await Promise.resolve();
     expect(harness.busSubscribers.size).toBe(0);
 
     // A late event after teardown must not resurrect the source.
@@ -390,6 +393,7 @@ it("loads background-generated task IDs and metadata before the first editor syn
   });
   const harness = createHarness([saved]);
   const storage = createStoreBackedTaskStorage(harness.dependencies);
+  const close = storage.subscribeSource(source, vi.fn());
   await storage.loadSource!(source);
   const previous = storage.getTasksForSource(source);
   const reopened = normalizeTaskContent(
@@ -413,4 +417,147 @@ it("loads background-generated task IDs and metadata before the first editor syn
     status: "done",
     dueDate: "2026-07-12",
   });
+  close();
+});
+
+describe("task source lifetimes", () => {
+  it("evicts all snapshots after closing 100 sources", async () => {
+    const h = createHarness();
+    const storage = createStoreBackedTaskStorage(h.dependencies);
+    for (let i = 0; i < 100; i++) {
+      const source = { type: sessionSource.type, id: `session-${i}` };
+      h.listTasks.mockResolvedValue([
+        taskItem({ id: `task-${i}`, source_id: source.id }),
+      ]);
+      const close = storage.subscribeSource(source, vi.fn());
+      await Promise.resolve();
+      expect(storage.getTask(`task-${i}`)).not.toBeNull();
+      close();
+      await Promise.resolve();
+      expect(storage.getTasksForSource(source)).toEqual([]);
+      expect(storage.getTask(`task-${i}`)).toBeNull();
+    }
+    expect(h.busSubscribers.size).toBe(0);
+  });
+
+  it("keeps a shared subscription and tolerates immediate resubscription", async () => {
+    const h = createHarness([taskItem()]);
+    const storage = createStoreBackedTaskStorage(h.dependencies);
+    const close = storage.subscribeSource(sessionSource, vi.fn());
+    const closeOther = storage.subscribeSource(sessionSource, vi.fn());
+    await Promise.resolve();
+    const snapshot = storage.getTasksForSource(sessionSource);
+    close();
+    await Promise.resolve();
+    expect(storage.getTasksForSource(sessionSource)).toBe(snapshot);
+    closeOther();
+    const closeAgain = storage.subscribeSource(sessionSource, vi.fn());
+    await Promise.resolve();
+    expect(storage.getTasksForSource(sessionSource)).toBe(snapshot);
+    expect(h.listTasks).toHaveBeenCalledOnce();
+    closeAgain();
+    await Promise.resolve();
+    expect(storage.getTask("task-1")).toBeNull();
+  });
+
+  it("rejects late events, reads, and writes after closing", async () => {
+    const h = createHarness();
+    let resolve!: (items: TaskItem[]) => void;
+    h.listTasks.mockReturnValue(
+      new Promise<TaskItem[]>((r) => {
+        resolve = r;
+      }),
+    );
+    const storage = createStoreBackedTaskStorage(h.dependencies);
+    const close = storage.subscribeSource(sessionSource, vi.fn());
+    const lateEvent = h.busSubscribers.values().next().value!;
+    storage.removeTasksForSource(sessionSource, ["task-1"]);
+    close();
+    await Promise.resolve();
+    lateEvent();
+    resolve([taskItem()]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(storage.getTasksForSource(sessionSource)).toEqual([]);
+    expect(storage.getTask("task-1")).toBeNull();
+    expect(h.listTasks).toHaveBeenCalledOnce();
+  });
+
+  it("rejects out-of-order reads and results from a previous lifetime", async () => {
+    const h = createHarness();
+    const reads: ((items: TaskItem[]) => void)[] = [];
+    h.listTasks.mockImplementation(
+      () => new Promise<TaskItem[]>((r) => reads.push(r)),
+    );
+    const storage = createStoreBackedTaskStorage(h.dependencies);
+    const close = storage.subscribeSource(sessionSource, vi.fn());
+    h.emitTasksChanged(sessionSource);
+    reads[1]([taskItem({ text: "new" })]);
+    await Promise.resolve();
+    reads[0]([taskItem({ text: "old" })]);
+    await Promise.resolve();
+    expect(storage.getTask("task-1")?.textPreview).toBe("new");
+    h.emitTasksChanged(sessionSource);
+    close();
+    await Promise.resolve();
+    storage.subscribeSource(sessionSource, vi.fn());
+    reads[3]([taskItem({ text: "new lifetime" })]);
+    await Promise.resolve();
+    reads[2]([taskItem({ text: "old lifetime" })]);
+    await Promise.resolve();
+    expect(storage.getTask("task-1")?.textPreview).toBe("new lifetime");
+  });
+
+  it("does not evict a task that moved to an open source", async () => {
+    const h = createHarness([taskItem()]);
+    const storage = createStoreBackedTaskStorage(h.dependencies);
+    const close = storage.subscribeSource(sessionSource, vi.fn());
+    await Promise.resolve();
+    const destination = { ...sessionSource, id: "destination" };
+    h.listTasks.mockResolvedValue([taskItem({ source_id: destination.id })]);
+    storage.subscribeSource(destination, vi.fn());
+    await Promise.resolve();
+    close();
+    await Promise.resolve();
+    expect(storage.getTask("task-1")?.sourceId).toBe("destination");
+  });
+});
+
+it("returns task hydration data without caching unobserved sources or late loads", async () => {
+  const h = createHarness([taskItem()]);
+  const storage = createStoreBackedTaskStorage(h.dependencies);
+  for (let i = 0; i < 100; i++) {
+    const source = { ...sessionSource, id: `prefetch-${i}` };
+    h.listTasks.mockResolvedValue([taskItem({ source_id: source.id })]);
+    expect(await storage.loadSource!(source)).toHaveLength(1);
+    expect(storage.getTasksForSource(source)).toEqual([]);
+    expect(storage.getTask("task-1")).toBeNull();
+  }
+  const close = storage.subscribeSource(sessionSource, vi.fn());
+  let resolve!: (items: TaskItem[]) => void;
+  h.listTasks.mockReturnValueOnce(
+    new Promise<TaskItem[]>((r) => {
+      resolve = r;
+    }),
+  );
+  const loading = storage.loadSource!(sessionSource);
+  close();
+  await Promise.resolve();
+  resolve([taskItem()]);
+  expect(await loading).toHaveLength(1);
+  expect(storage.getTask("task-1")).toBeNull();
+  expect(h.busSubscribers.size).toBe(0);
+});
+
+it("preserves task metadata when an editor first syncs before its source subscription has loaded", async () => {
+  const saved = taskItem({ due_at: "2026-10-01" });
+  const h = createHarness([saved]);
+  const storage = createStoreBackedTaskStorage(h.dependencies);
+  await storage.loadSource!(sessionSource);
+  storage.upsertTasksForSource(sessionSource, [
+    { ...task, dueDate: undefined, textPreview: "Edited" },
+  ]);
+  await vi.waitFor(() => expect(h.replaceTasks).toHaveBeenCalledOnce());
+  expect(h.replaceTasks.mock.calls[0][2][0].due_at).toBe("2026-10-01");
+  expect(storage.getTask("task-1")).toBeNull();
 });
