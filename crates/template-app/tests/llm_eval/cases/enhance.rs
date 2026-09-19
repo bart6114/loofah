@@ -39,11 +39,11 @@ pub fn structured_summary(samples: usize) -> Result<EvalCase, Failed> {
                     transcripts: vec![Transcript {
                         segments: vec![
                             Segment {
-                                speaker: "Alice".to_string(),
+                                is_current_user: None, speaker: "Alice".to_string(),
                                 text: "Shipped the feature and started rollout.".to_string(),
                             },
                             Segment {
-                                speaker: "Bob".to_string(),
+                                is_current_user: None, speaker: "Bob".to_string(),
                                 text: "Need to check CI before release and follow up on the PR review."
                                     .to_string(),
                             },
@@ -86,7 +86,7 @@ pub fn structured_summary(samples: usize) -> Result<EvalCase, Failed> {
 - Bob called out that CI must be checked before release.
 - The team aligned on priorities and rollout risks.
 
-# Action Items
+# Follow-up discussion
 
 - Check CI before release.
 - Follow up on the PR review.
@@ -98,16 +98,56 @@ pub fn structured_summary(samples: usize) -> Result<EvalCase, Failed> {
             Expectation::NotContains("```".to_string()),
             Expectation::MarkdownAtLeastHeadings(2),
             Expectation::MarkdownAllHeadingsAreH1,
-            Expectation::MarkdownHasHeadings(vec![
-                "Summary".to_string(),
-                "Action Items".to_string(),
-            ]),
+            Expectation::MarkdownTasks { count: 0, required_terms: vec![] },
             Expectation::MarkdownHasUnorderedList,
-            Expectation::MarkdownWordCountAtMost(220),
         ],
         required_pass_rate: 0.8,
         samples,
         max_tokens: 400,
         response_format: None,
     })
+}
+
+pub fn personal_actions(samples: usize, identified: bool) -> Result<EvalCase, Failed> {
+    let mut case = structured_summary(samples)?;
+    case.name = if identified {
+        "enhance_personal_actions"
+    } else {
+        "enhance_unidentified_user"
+    }
+    .into();
+    case.messages[1].content = render(Template::EnhanceUser(Box::new(EnhanceUser {
+        session: Session { title: Some("Launch planning".into()), started_at: None, ended_at: None, event: None },
+        participants: vec![], pre_meeting_memo: String::new(), post_meeting_memo: String::new(),
+        transcripts: vec![Transcript { started_at: None, ended_at: None, segments: vec![
+            Segment { speaker: "Alice".into(), is_current_user: Some(identified), text: "I will send the revised proposal by Friday. I already finished the budget review.".into() },
+            Segment { speaker: "Bob".into(), is_current_user: Some(false), text: "I will send the invoice tomorrow. We should consider refreshing the website sometime.".into() },
+        ] }],
+    }))).map_err(render_failed)?;
+    case.prompt_fragments = vec![PromptFragment {
+        role: "user".into(),
+        needle: if identified {
+            "Alice [current user]:"
+        } else {
+            "Alice:"
+        }
+        .into(),
+    }];
+    case.expectations = vec![
+        Expectation::MarkdownTasks {
+            count: usize::from(identified),
+            required_terms: if identified {
+                vec!["proposal".into()]
+            } else {
+                vec![]
+            },
+        },
+        Expectation::MarkdownAllHeadingsAreH1,
+    ];
+    case.smoke_outputs = vec![if identified {
+        "# Discussion\n- Budget review is complete. Bob will send the invoice tomorrow. A website refresh was suggested.\n\n# Action items\n- [ ] Send the revised proposal by Friday."
+    } else {
+        "# Discussion\n- Alice will send the proposal by Friday and has finished the budget review. Bob will send the invoice tomorrow. A website refresh was suggested."
+    }.into()];
+    Ok(case)
 }

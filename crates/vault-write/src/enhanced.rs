@@ -13,6 +13,8 @@ pub use hypr_vault_read::{ENHANCED_KINDS, EnhancedDoc};
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Default, PartialEq)]
 pub struct EnhancedDocPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reconcile_tasks: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -74,6 +76,20 @@ impl SessionStore {
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
 
+        let task_content = if patch.reconcile_tasks == Some(true) {
+            let markdown = patch.markdown.clone().ok_or_else(|| {
+                StoreError::Serialize("task reconciliation requires Markdown".into())
+            })?;
+            Some(
+                tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                    .await
+                    .map_err(|error| StoreError::Io(format!("task parse failed: {error}")))?
+                    .map_err(StoreError::Serialize)?,
+            )
+        } else {
+            None
+        };
+
         // Held across the read-modify-write so a concurrent patch of the same doc can't be
         // computed from bytes this call is about to replace.
         let guard = self.lock_writes().await;
@@ -96,7 +112,10 @@ impl SessionStore {
             }
         }
         if let Some(expected) = &patch.expected_markdown {
-            if &doc.markdown != expected {
+            if &doc.markdown != expected
+                && !(patch.reconcile_tasks == Some(true)
+                    && patch.markdown.as_ref() == Some(&doc.markdown))
+            {
                 return Err(StoreError::Conflict(format!(
                     "enhanced doc {doc_id} body changed since it was read"
                 )));
@@ -104,6 +123,7 @@ impl SessionStore {
         }
 
         let EnhancedDocPatch {
+            reconcile_tasks: _,
             kind,
             title,
             template_id,
@@ -130,7 +150,16 @@ impl SessionStore {
             doc.markdown = markdown;
         }
 
-        self.persist_enhanced_doc_locked(&guard, &doc).await
+        let tasks = if let Some(content) = task_content {
+            Some(
+                self.prepare_generated_tasks(session_id, "enhanced_note", doc_id, &content)
+                    .await?,
+            )
+        } else {
+            None
+        };
+        self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
+            .await
     }
 
     pub async fn read_enhanced_doc(
@@ -202,13 +231,14 @@ impl SessionStore {
 
     async fn persist_enhanced_doc(&self, doc: &EnhancedDoc) -> Result<(), StoreError> {
         let guard = self.lock_writes().await;
-        self.persist_enhanced_doc_locked(&guard, doc).await
+        self.persist_enhanced_doc_locked(&guard, doc, None).await
     }
 
     async fn persist_enhanced_doc_locked(
         &self,
         guard: &WriteGuard<'_>,
         doc: &EnhancedDoc,
+        tasks: Option<&[super::TaskItem]>,
     ) -> Result<(), StoreError> {
         let rendered = render_enhanced_file(doc)?;
         let session_dir = self.session_dir_locked(guard, &doc.session_id).await?;
@@ -218,9 +248,20 @@ impl SessionStore {
             rendered.into_bytes(),
         )
         .await?;
+        let task_result = if let Some(tasks) = tasks {
+            self.persist_generated_tasks(guard, &doc.session_id, tasks)
+                .await
+                .map_err(|error| {
+                    StoreError::Io(format!(
+                        "Summary saved but task synchronization failed; retry to finish: {error}"
+                    ))
+                })
+        } else {
+            Ok(())
+        };
         self.index_upsert_doc(doc);
         self.notify_index_changed(super::IndexEntity::Docs, vec![doc.session_id.clone()]);
-        Ok(())
+        task_result
     }
 }
 
@@ -281,6 +322,236 @@ mod tests {
         id: &str,
     ) -> std::path::PathBuf {
         vault.path().join(store.session_dir(id).await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn generated_summary_persists_and_reconciles_tasks_without_an_editor() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        let original = doc("s1", "doc-1");
+        store.write_enhanced_doc(&original).await.unwrap();
+        store
+            .replace_tasks(
+                "session_raw_note",
+                "s1",
+                vec![super::super::TaskInput {
+                    id: "raw-task".into(),
+                    source_order: 0,
+                    status: "todo".into(),
+                    text: "Keep raw task".into(),
+                    body: serde_json::json!([]),
+                    due_at: String::new(),
+                }],
+            )
+            .await
+            .unwrap();
+        let markdown = "# Actions\n- Bob sends invoice\n- [ ] Send proposal\n- [ ] Send proposal\n- [ ] Obsolete action";
+        let patch = EnhancedDocPatch {
+            markdown: Some(markdown.into()),
+            expected_markdown: Some(original.markdown.clone()),
+            reconcile_tasks: Some(true),
+            ..Default::default()
+        };
+        store
+            .update_enhanced_doc("s1", "doc-1", patch.clone())
+            .await
+            .unwrap();
+        let tasks = store.list_tasks("enhanced_note", "doc-1").await.unwrap();
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].text, "Send proposal");
+        assert_ne!(tasks[0].id, tasks[1].id);
+        assert!(
+            session_path(&store, &vault, "s1")
+                .await
+                .join("tasks.json")
+                .is_file()
+        );
+        // A retry after the Markdown write must reuse IDs and timestamps.
+        store
+            .update_enhanced_doc("s1", "doc-1", patch)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.list_tasks("enhanced_note", "doc-1").await.unwrap(),
+            tasks
+        );
+        store
+            .replace_tasks(
+                "enhanced_note",
+                "doc-1",
+                tasks
+                    .iter()
+                    .enumerate()
+                    .map(|(index, task)| super::super::TaskInput {
+                        id: task.id.clone(),
+                        source_order: task.source_order,
+                        status: if index == 0 { "done" } else { "in_progress" }.into(),
+                        text: task.text.clone(),
+                        body: task.body.clone(),
+                        due_at: "2026-10-01".into(),
+                    })
+                    .collect(),
+            )
+            .await
+            .unwrap();
+        store
+            .update_enhanced_doc(
+                "s1",
+                "doc-1",
+                EnhancedDocPatch {
+                    markdown: Some(
+                        "# Actions\n- [ ] Send proposal\n- [ ] New action\n- [ ] Send proposal"
+                            .into(),
+                    ),
+                    expected_markdown: Some(markdown.into()),
+                    reconcile_tasks: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let updated = store.list_tasks("enhanced_note", "doc-1").await.unwrap();
+        assert_eq!(updated.len(), 3);
+        assert_eq!(updated[0].id, tasks[0].id);
+        assert_eq!(updated[0].status, "done");
+        assert_eq!(updated[0].due_at, "2026-10-01");
+        assert_eq!(updated[0].created_at, tasks[0].created_at);
+        assert_eq!(updated[2].id, tasks[1].id);
+        assert_eq!(updated[2].status, "in_progress");
+        assert!(!updated.iter().any(|task| task.id == tasks[2].id));
+        assert_eq!(
+            store
+                .list_tasks("session_raw_note", "s1")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        let stale = store
+            .update_enhanced_doc(
+                "s1",
+                "doc-1",
+                EnhancedDocPatch {
+                    markdown: Some("- [ ] Stale".into()),
+                    expected_markdown: Some(original.markdown),
+                    reconcile_tasks: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await;
+        assert!(matches!(stale, Err(StoreError::Conflict(_))));
+        assert_eq!(
+            store.list_tasks("enhanced_note", "doc-1").await.unwrap(),
+            updated
+        );
+        store
+            .update_enhanced_doc(
+                "s1",
+                "doc-1",
+                EnhancedDocPatch {
+                    markdown: Some("# Discussion\n- No personal actions.".into()),
+                    reconcile_tasks: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            store
+                .list_tasks("enhanced_note", "doc-1")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .list_tasks("session_raw_note", "s1")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn partial_task_write_failure_is_reported_and_retryable() {
+        use std::os::unix::fs::PermissionsExt;
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        let original = doc("s1", "doc-1");
+        store.write_enhanced_doc(&original).await.unwrap();
+        let dir = session_path(&store, &vault, "s1").await;
+        let permissions = std::fs::metadata(&dir).unwrap().permissions();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let patch = EnhancedDocPatch {
+            markdown: Some("# Actions\n- [ ] Send proposal".into()),
+            expected_markdown: Some(original.markdown),
+            reconcile_tasks: Some(true),
+            ..Default::default()
+        };
+        let result = store
+            .update_enhanced_doc("s1", "doc-1", patch.clone())
+            .await;
+        std::fs::set_permissions(&dir, permissions).unwrap();
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("task synchronization failed")
+        );
+        assert_eq!(
+            store
+                .read_enhanced_doc("s1", "doc-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .markdown,
+            patch.markdown.clone().unwrap()
+        );
+        store
+            .update_enhanced_doc("s1", "doc-1", patch)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .list_tasks("enhanced_note", "doc-1")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_tasks_file_does_not_partially_replace_a_summary() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        let original = doc("s1", "doc-1");
+        store.write_enhanced_doc(&original).await.unwrap();
+        std::fs::write(
+            session_path(&store, &vault, "s1").await.join("tasks.json"),
+            "invalid",
+        )
+        .unwrap();
+        assert!(
+            store
+                .update_enhanced_doc(
+                    "s1",
+                    "doc-1",
+                    EnhancedDocPatch {
+                        markdown: Some("- [ ] Send proposal".into()),
+                        reconcile_tasks: Some(true),
+                        ..Default::default()
+                    }
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            store.read_enhanced_doc("s1", "doc-1").await.unwrap(),
+            Some(original)
+        );
     }
 
     #[tokio::test]

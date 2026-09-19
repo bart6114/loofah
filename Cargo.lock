@@ -17432,8 +17432,10 @@ dependencies = [
  "storage",
  "tauri-specta",
  "tempfile",
+ "tiptap",
  "tokio",
  "tracing",
+ "uuid",
  "vault-read",
 ]
 

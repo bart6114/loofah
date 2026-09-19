@@ -16,6 +16,7 @@ import {
 type Listener = () => void;
 
 export interface TaskStorage {
+  loadSource?: (source: TaskSource) => Promise<void>;
   getTasksForSource: (source: TaskSource) => TaskRecord[];
   subscribeSource: (source: TaskSource, listener: Listener) => () => void;
   getTask: (taskId: string) => TaskRecord | null;

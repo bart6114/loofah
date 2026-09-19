@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskConfig } from ".";
 import { enhanceSuccess } from "./enhance-success";
 
-import { MIN_SUMMARY_CHARACTERS } from "~/services/enhancer/summary-length";
 import { useLiveTitle } from "~/store/zustand/live-title";
 
 const mocks = vi.hoisted(() => ({
@@ -175,7 +174,7 @@ describe("enhanceSuccess.onSuccess", () => {
     expect(markdown.trim()).toBe("# Existing title\n\n# Summary\n\n- Point");
   });
 
-  it("persists a short summary and tags within the transcript length and section cap", async () => {
+  it("preserves all generated sections and tasks even when longer than the source", async () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue(
       createSnapshot("Meeting title"),
     );
@@ -199,9 +198,9 @@ describe("enhanceSuccess.onSuccess", () => {
 
 - ${"b".repeat(100)}
 
-# Third
+# Action items
 
-- ${"c".repeat(100)}`,
+- [ ] ${"c".repeat(400)}`,
         transformedArgs,
       }),
     );
@@ -210,11 +209,12 @@ describe("enhanceSuccess.onSuccess", () => {
       mocks.persistGeneratedEnhancedNote.mock.calls[0][0].note.nextMarkdown.trim();
     expect(markdown).toContain("# First");
     expect(markdown).toContain("# Second");
-    expect(markdown).not.toContain("# Third");
+    expect(markdown).toContain("# Action items");
+    expect(markdown).toContain(`- [ ] ${"c".repeat(400)}`);
     expect(markdown).toContain("#launch");
-    expect(
-      Array.from(markdown.replace(/\s+/gu, " ")).length,
-    ).toBeLessThanOrEqual(MIN_SUMMARY_CHARACTERS);
+    expect(Array.from(markdown.replace(/\s+/gu, " ")).length).toBeGreaterThan(
+      320,
+    );
   });
 
   it("does not claim success when the guarded store write fails", async () => {

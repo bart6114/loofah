@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 
 import { json2md, md2json } from "@hypr/editor/markdown";
+import { useTaskStorageOptional } from "@hypr/editor/task-storage";
+import { hydrateTaskContent } from "@hypr/editor/tasks";
 
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
 import { useIndexQuery } from "~/shared/index-query";
@@ -192,6 +194,7 @@ export function useEnhancedNote(
   generationId?: string,
   sessionId?: string,
 ): EnhancedNoteRecord | null {
+  const taskStorage = useTaskStorageOptional();
   const { data = null } = useIndexQuery({
     entity: "docs",
     ids: sessionId ? [sessionId] : undefined,
@@ -200,26 +203,42 @@ export function useEnhancedNote(
       ? ["enhanced-doc", enhancedNoteId, generationId]
       : ["enhanced-doc", enhancedNoteId],
     queryFn: async () => {
-      if (sessionId && enhancedNoteId === sessionId) {
+      const isSummary = sessionId !== undefined && enhancedNoteId === sessionId;
+      let note: EnhancedNoteRecord;
+      if (isSummary) {
         const result = await commands.sessionSummaryGet(sessionId);
         if (result.status === "error") throw new Error(result.error);
-        return result.data === null
-          ? null
-          : mapEnhancedDoc({
-              id: sessionId,
-              session_id: sessionId,
-              kind: "summary",
-              title: "Summary",
-              template_id: "",
-              sort_order: 0,
-              markdown: result.data,
-            });
+        if (result.data === null) return null;
+        note = mapEnhancedDoc({
+          id: sessionId,
+          session_id: sessionId,
+          kind: "summary",
+          title: "Summary",
+          template_id: "",
+          sort_order: 0,
+          markdown: result.data,
+        });
+      } else {
+        const result = await commands.enhancedDocGet(enhancedNoteId);
+        if (result.status === "error") throw new Error(result.error);
+        if (!result.data) return null;
+        note = mapEnhancedDoc(result.data);
       }
-      const result = await commands.enhancedDocGet(enhancedNoteId);
-      if (result.status === "error") {
-        throw new Error(result.error);
+      const source = {
+        type: note.id === note.sessionId ? "session_summary" : "enhanced_note",
+        id: enhancedNoteId,
+      };
+      await taskStorage?.loadSource?.(source);
+      if (taskStorage && note.content) {
+        note.content = JSON.stringify(
+          hydrateTaskContent({
+            content: JSON.parse(note.content),
+            sourceTasks: taskStorage.getTasksForSource(source),
+            getTask: taskStorage.getTask,
+          }),
+        );
       }
-      return result.data ? mapEnhancedDoc(result.data) : null;
+      return note;
     },
     enabled: Boolean(enhancedNoteId),
   });
@@ -261,7 +280,7 @@ export function updateEnhancedNoteContent(
 
     const docWrite =
       enhancedNoteId === sessionId
-        ? await commands.sessionUpdateSummary(sessionId, markdown, null)
+        ? await commands.sessionUpdateSummary(sessionId, markdown, null, false)
         : await commands.sessionUpdateEnhancedDoc(sessionId, enhancedNoteId, {
             markdown,
           });

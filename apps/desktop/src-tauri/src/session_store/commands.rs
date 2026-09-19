@@ -141,11 +141,19 @@ pub async fn session_update_summary<R: tauri::Runtime>(
     session_id: String,
     markdown: String,
     expected_markdown: Option<String>,
+    reconcile_tasks: Option<bool>,
 ) -> Result<(), String> {
-    store(&app)?
-        .update_summary(&session_id, &markdown, expected_markdown.as_deref())
-        .await
-        .map_err(|e| e.to_string())?;
+    let store = store(&app)?;
+    let result = if reconcile_tasks == Some(true) {
+        store
+            .update_generated_summary(&session_id, &markdown, expected_markdown.as_deref())
+            .await
+    } else {
+        store
+            .update_summary(&session_id, &markdown, expected_markdown.as_deref())
+            .await
+    };
+    result.map_err(|e| e.to_string())?;
     if let Some(queue) = app.try_state::<RelatedTagQueue>() {
         queue.enqueue(session_id);
     }

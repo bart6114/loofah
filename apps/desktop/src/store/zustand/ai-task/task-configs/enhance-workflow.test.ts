@@ -94,6 +94,12 @@ describe("shared summary generation", () => {
         image: "image-bytes",
         mediaType: "image/png",
       });
+      expect(request.messages[0].content[0].text).toContain(
+        "Keep the summary concise and proportional",
+      );
+      expect(request.messages[0].content[0].text).not.toContain(
+        "characters overall",
+      );
       expect(request.maxOutputTokens).toBe(8192);
     },
   );

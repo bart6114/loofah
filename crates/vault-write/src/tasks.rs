@@ -59,7 +59,146 @@ fn same_content(existing: &TaskItem, next: &TaskItem) -> bool {
         && existing.due_at == next.due_at
 }
 
+fn normalize_task_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn task_node_text(node: &serde_json::Value) -> String {
+    if let Some(text) = node["text"].as_str() {
+        return normalize_task_text(text);
+    }
+    normalize_task_text(
+        &node["content"]
+            .as_array()
+            .map(|children| {
+                children
+                    .iter()
+                    .map(task_node_text)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default(),
+    )
+}
+
+fn collect_task_nodes<'a>(node: &'a serde_json::Value, tasks: &mut Vec<&'a serde_json::Value>) {
+    if node["type"] == "taskItem" {
+        tasks.push(node);
+    }
+    if let Some(children) = node["content"].as_array() {
+        for child in children {
+            collect_task_nodes(child, tasks);
+        }
+    }
+}
+
 impl SessionStore {
+    pub(super) async fn prepare_generated_tasks(
+        &self,
+        session_id: &str,
+        source_type: &str,
+        source_id: &str,
+        content: &serde_json::Value,
+    ) -> Result<Vec<TaskItem>, StoreError> {
+        let mut existing = self
+            .read_tasks_at(&TaskScope::Session(session_id.to_string()))
+            .await?;
+        if source_type == "session_summary" {
+            self.normalize_summary_tasks(session_id, &mut existing, None)
+                .await?;
+        }
+        let mut previous: Vec<_> = existing
+            .iter()
+            .filter(|task| task.source_type == source_type && task.source_id == source_id)
+            .cloned()
+            .collect();
+        previous.sort_by_key(|task| task.source_order);
+        let mut next: Vec<_> = existing
+            .into_iter()
+            .filter(|task| task.source_type != source_type || task.source_id != source_id)
+            .collect();
+        let mut nodes = Vec::new();
+        collect_task_nodes(content, &mut nodes);
+        let now = now_iso();
+        for (order, node) in nodes.into_iter().enumerate() {
+            let body = node
+                .get("content")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!([]));
+            let text = body
+                .as_array()
+                .and_then(|nodes| nodes.iter().find(|node| node["type"] == "paragraph"))
+                .map(task_node_text)
+                .unwrap_or_default();
+            if text.is_empty() {
+                continue;
+            }
+            let prior = previous
+                .iter()
+                .position(|task| normalize_task_text(&task.text) == text)
+                .map(|index| previous.remove(index));
+            let mut task = TaskItem {
+                id: prior
+                    .as_ref()
+                    .map(|task| task.id.clone())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                source_type: source_type.into(),
+                source_id: source_id.into(),
+                source_order: order as i32,
+                status: prior
+                    .as_ref()
+                    .map(|task| task.status.clone())
+                    .unwrap_or_else(|| {
+                        if node["attrs"]["checked"] == true {
+                            "done"
+                        } else {
+                            "todo"
+                        }
+                        .into()
+                    }),
+                text,
+                body,
+                due_at: prior
+                    .as_ref()
+                    .map(|task| task.due_at.clone())
+                    .unwrap_or_default(),
+                assignee: prior
+                    .as_ref()
+                    .map(|task| task.assignee.clone())
+                    .unwrap_or_default(),
+                created_at: prior
+                    .as_ref()
+                    .map(|task| task.created_at.clone())
+                    .unwrap_or_else(|| now.clone()),
+                updated_at: now.clone(),
+            };
+            if let Some(prior) = prior {
+                if same_content(&prior, &task) {
+                    task.updated_at = prior.updated_at;
+                }
+            }
+            next.push(task);
+        }
+        serde_json::to_vec(&TasksFile {
+            tasks: next.clone(),
+        })
+        .map_err(|error| StoreError::Serialize(error.to_string()))?;
+        Ok(next)
+    }
+
+    pub(super) async fn persist_generated_tasks(
+        &self,
+        guard: &WriteGuard<'_>,
+        session_id: &str,
+        tasks: &[TaskItem],
+    ) -> Result<(), StoreError> {
+        let scope = TaskScope::Session(session_id.to_string());
+        if self.read_tasks_at(&scope).await? == tasks {
+            return Ok(());
+        }
+        self.write_tasks_at_locked(guard, &scope, tasks).await
+    }
+
     pub async fn list_tasks(
         &self,
         source_type: &str,

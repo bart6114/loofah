@@ -80,6 +80,42 @@ mod tests {
     }
 
     #[test]
+    fn current_user_marker_requires_structured_identity() {
+        use askama::Template;
+        let input = EnhanceUser {
+            session: Session {
+                title: None,
+                started_at: None,
+                ended_at: None,
+                event: None,
+            },
+            participants: vec![],
+            pre_meeting_memo: String::new(),
+            post_meeting_memo: String::new(),
+            transcripts: vec![Transcript {
+                started_at: None,
+                ended_at: None,
+                segments: vec![
+                    Segment {
+                        speaker: "self-id".into(),
+                        text: "I will send the proposal.".into(),
+                        is_current_user: Some(true),
+                    },
+                    Segment {
+                        speaker: "You".into(),
+                        text: "I will send the invoice.".into(),
+                        is_current_user: Some(false),
+                    },
+                ],
+            }],
+        };
+        let rendered = input.render().unwrap();
+        assert!(rendered.contains("self-id [current user]: I will send the proposal."));
+        assert!(rendered.contains("You: I will send the invoice."));
+        assert!(!rendered.contains("You [current user]"));
+    }
+
+    #[test]
     fn test_language_as_specified() {
         let rendered = render_enhance_system(&EnhanceSystem {
             language: Some("ko".to_string()),
@@ -138,6 +174,15 @@ mod tests {
     - Preserve essential details; avoid excessive abstraction. Ensure content remains concrete and specific.
     - Pay close attention to emphasized text in notes. Users highlight information using four styles: bold(**text**), italic(_text_), underline(<u>text</u>), strikethrough(~~text~~).
     - Recognize H3 headers (### Header) in notes—these indicate highly important topics that the user wants to retain no matter what.
+
+    # Action items
+
+    - Create an # Action items section only for outstanding actions explicitly committed to or clearly assigned to the current user identified in the transcript context.
+    - Write each of those actions as an unchecked Markdown task: `- [ ] Send the revised proposal by Friday.` Include deadlines only when stated.
+    - Keep other people's actions as ordinary summary bullets outside the action-item list.
+    - Do not turn suggestions, completed work, or ambiguous collective statements such as "we should" into personal tasks.
+    - If the current user or an action's ownership is unclear, omit that task. If there are no qualifying actions, omit the section. Notes alone do not identify a transcript speaker as the current user.
+    - Keep the summary concise and proportional to the source while preserving concrete decisions and explicit actions.
     "#);
     }
 
@@ -217,7 +262,7 @@ mod tests {
             ],
             transcripts: vec![Transcript {
                 segments: vec![Segment {
-                    text: "Hello".to_string(),
+                    is_current_user: None, text: "Hello".to_string(),
                     speaker: "John Doe".to_string(),
                 }],
                 started_at: Some(1719859200),
@@ -227,6 +272,8 @@ mod tests {
             post_meeting_memo: String::new(),
         }, @"
     # Context
+
+    Only speakers marked [current user] are identified as the person using Loofah. A speaker name, ID, or first-person statement alone does not establish that identity. If no speaker is marked, the current user is unidentified.
 
 
     Session: Meeting
@@ -255,7 +302,7 @@ mod tests {
             participants: vec![],
             transcripts: vec![Transcript {
                 segments: vec![Segment {
-                    text: "Shipped the feature".to_string(),
+                    is_current_user: None, text: "Shipped the feature".to_string(),
                     speaker: "Alice".to_string(),
                 }],
                 started_at: None,
@@ -265,6 +312,8 @@ mod tests {
             post_meeting_memo: "- check CI\n- ship before EOD".to_string(),
         }, @"
     # Context
+
+    Only speakers marked [current user] are identified as the person using Loofah. A speaker name, ID, or first-person statement alone does not establish that identity. If no speaker is marked, the current user is unidentified.
 
 
     Session: Standup

@@ -357,6 +357,7 @@ describe("useStartListening", () => {
     });
     expect(runBatchMock).toHaveBeenCalledWith(
       "/vault/sessions/session-1/audio.wav",
+      { imported: false },
     );
   });
 
@@ -454,6 +455,7 @@ describe("useStartListening", () => {
     ).toBeLessThan(runBatchMock.mock.invocationCallOrder[0]!);
     expect(runBatchMock).toHaveBeenCalledWith(
       "/vault/sessions/session-1/audio.wav",
+      { imported: false },
     );
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
@@ -544,6 +546,7 @@ describe("useStartListening", () => {
 
     expect(runBatchMock).toHaveBeenCalledWith(
       "/vault/sessions/session-1/audio.wav",
+      { imported: false },
     );
     expect(queueAutoEnhanceIfSummaryEmptyMock).toHaveBeenCalledWith(
       "session-1",
@@ -602,7 +605,9 @@ describe("useStartListening", () => {
       });
     });
 
-    expect(runBatchMock).toHaveBeenCalledWith("/tmp/session.wav");
+    expect(runBatchMock).toHaveBeenCalledWith("/tmp/session.wav", {
+      imported: false,
+    });
     consoleError.mockRestore();
   });
 
@@ -970,6 +975,7 @@ describe("useStartListening", () => {
 
     expect(runBatchMock).toHaveBeenCalledWith(
       "/vault/sessions/session-1/audio.wav",
+      { imported: false },
     );
     expect(resetEnhanceTasksMock).toHaveBeenCalledWith("session-1");
     expect(queueAutoEnhanceMock).toHaveBeenCalledWith("session-1");

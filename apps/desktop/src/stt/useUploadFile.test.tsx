@@ -214,6 +214,7 @@ describe("useUploadFile", () => {
     expect(audioImportMock).not.toHaveBeenCalled();
     expect(runBatchMock).toHaveBeenCalledWith(
       "/vault/sessions/session-1/audio.wav",
+      { imported: true },
     );
     expect(handleBatchFailedMock).not.toHaveBeenCalled();
   });

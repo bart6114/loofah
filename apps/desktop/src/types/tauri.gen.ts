@@ -322,6 +322,7 @@ export const commands = {
     sessionId: string,
     markdown: string,
     expectedMarkdown: string | null,
+    reconcileTasks: boolean | null,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -330,6 +331,7 @@ export const commands = {
           sessionId,
           markdown,
           expectedMarkdown,
+          reconcileTasks,
         }),
       };
     } catch (e) {
@@ -898,6 +900,7 @@ export type EnhancedDoc = {
  * of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
  */
 export type EnhancedDocPatch = {
+  reconcile_tasks?: boolean | null;
   kind?: string | null;
   title?: string | null;
   template_id?: string | null;

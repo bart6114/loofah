@@ -34,6 +34,7 @@ type TranscriptMeta = {
 };
 
 type SegmentPayload = {
+  is_current_user: boolean;
   speaker_label: string;
   start_ms: number;
   end_ms: number;
@@ -111,6 +112,7 @@ function formatTranscripts(
         segments: segments.map(
           (segment): Segment => ({
             speaker: segment.speaker_label,
+            isCurrentUser: segment.is_current_user,
             text: segment.text,
           }),
         ),
@@ -181,7 +183,30 @@ async function getTranscriptSegments(
   const transcriptRows: TranscriptRow[] = snapshot.transcripts.map(
     (transcript) => ({
       started_at: transcript.started_at,
-      words: transcript.words,
+      words: transcript.words.map((word) => {
+        let metadata: Record<string, unknown> = {};
+        try {
+          const value =
+            typeof word.metadata === "string"
+              ? JSON.parse(word.metadata)
+              : word.metadata;
+          if (value && typeof value === "object" && !Array.isArray(value))
+            metadata = value;
+        } catch {
+          /* Legacy metadata cannot establish microphone identity. */
+        }
+        return {
+          ...word,
+          metadata: {
+            ...metadata,
+            capture_source:
+              metadata.capture_source === "recording" ||
+              metadata.capture_source === "import"
+                ? metadata.capture_source
+                : "unknown",
+          },
+        };
+      }),
       speaker_hints: transcript.speaker_hints,
     }),
   );
@@ -214,6 +239,7 @@ function toSegmentPayload(
 ): SegmentPayload {
   return {
     speaker_label: segment.speaker_label,
+    is_current_user: segment.is_current_user === true,
     start_ms: segment.start_ms,
     end_ms: segment.end_ms,
     text: segment.text,

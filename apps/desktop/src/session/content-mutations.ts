@@ -33,9 +33,11 @@ export function persistGeneratedEnhancedNote({
             sessionId,
             note.nextMarkdown,
             note.currentMarkdown,
+            true,
           )
         : await commands.sessionUpdateEnhancedDoc(sessionId, note.id, {
             markdown: note.nextMarkdown,
+            reconcile_tasks: true,
             expected_markdown: note.currentMarkdown,
           });
     if (docWrite.status === "error") {
@@ -128,6 +130,7 @@ export function applyGeneratedSessionTitle({
               sessionId,
               document.nextMarkdown,
               document.currentMarkdown,
+              false,
             )
           : await commands.sessionUpdateEnhancedDoc(sessionId, document.id, {
               markdown: document.nextMarkdown,

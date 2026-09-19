@@ -247,17 +247,6 @@ function buildRenderTranscriptRequest(
       normalizeSpeakerHint(hint, words, wordIndexById);
     }
 
-    for (const hint of transcript.speaker_hints ?? []) {
-      if (hint.type === "provider_speaker_index") {
-        continue;
-      }
-
-      const normalized = normalizeSpeakerHint(hint, words, wordIndexById);
-      if (normalized) {
-        assignments.push(normalized);
-      }
-    }
-
     if (words.length === 0) {
       continue;
     }
@@ -304,6 +293,39 @@ function buildRenderTranscriptRequest(
     }
     const syntheticTiming =
       metadataSynthetic || (channelPartitioned && boundaryRegression);
+
+    // Imported channel zero is not the user's microphone. Keep channel/speaker
+    // clusters distinct when mapping arbitrary source channels to mixed capture.
+    const importedSpeakers = new Map<string, number>();
+    for (const word of words) {
+      const metadata = normalizeWordMetadata(
+        (word as { metadata?: unknown }).metadata,
+      );
+      if (
+        metadata?.capture_source !== "import" &&
+        metadata?.capture_source !== "unknown"
+      )
+        continue;
+      const key = `${word.channel}:${word.speaker_index ?? "unknown"}`;
+      let speakerIndex = importedSpeakers.get(key);
+      if (speakerIndex === undefined) {
+        speakerIndex = importedSpeakers.size;
+        importedSpeakers.set(key, speakerIndex);
+      }
+      word.channel = 2;
+      word.speaker_index = speakerIndex;
+    }
+
+    for (const hint of transcript.speaker_hints ?? []) {
+      if (hint.type === "provider_speaker_index") {
+        continue;
+      }
+
+      const normalized = normalizeSpeakerHint(hint, words, wordIndexById);
+      if (normalized) {
+        assignments.push(normalized);
+      }
+    }
 
     normalizedTranscripts.push({
       started_at:

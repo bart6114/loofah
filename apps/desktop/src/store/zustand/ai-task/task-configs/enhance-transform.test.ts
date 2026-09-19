@@ -181,3 +181,45 @@ describe("enhanceTransform.transformArgs", () => {
     ).rejects.toThrow("Session missing no longer exists");
   });
 });
+
+it("passes structured current-user identity to the prompt without guessing from speaker labels", async () => {
+  mocks.loadSessionContentSnapshot.mockResolvedValue(createSnapshot());
+  mocks.buildRenderTranscriptRequestFromRows.mockReturnValue({
+    transcripts: [],
+  });
+  mocks.renderTranscriptSegments.mockResolvedValue([
+    {
+      speaker_label: "00000000-0000-0000-0000-000000000000",
+      is_current_user: true,
+      start_ms: 0,
+      end_ms: 1,
+      words: [{ text: "I will send the proposal.", start_ms: 0, end_ms: 1 }],
+    },
+    {
+      speaker_label: "You",
+      is_current_user: false,
+      start_ms: 2,
+      end_ms: 3,
+      words: [{ text: "I will send the invoice.", start_ms: 2, end_ms: 3 }],
+    },
+  ]);
+  const result = await enhanceTransform.transformArgs(
+    { sessionId: "session-1" },
+    settingsValues,
+  );
+  expect(
+    result.transcripts[0].segments.map((segment) => segment.isCurrentUser),
+  ).toEqual([true, false]);
+});
+
+it("marks legacy transcript provenance unknown instead of assuming channel zero belongs to the user", async () => {
+  const snapshot = createSnapshot();
+  mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
+  mocks.buildRenderTranscriptRequestFromRows.mockReturnValue(null);
+  await enhanceTransform.transformArgs(
+    { sessionId: "session-1" },
+    settingsValues,
+  );
+  const [rows] = mocks.buildRenderTranscriptRequestFromRows.mock.lastCall!;
+  expect(rows[0].words[0].metadata.capture_source).toBe("unknown");
+});

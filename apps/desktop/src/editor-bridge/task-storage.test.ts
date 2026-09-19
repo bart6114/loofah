@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { md2json } from "@hypr/editor/markdown";
+import {
+  normalizeTaskContent,
+  hydrateTaskContent,
+  extractTasksFromContent,
+} from "@hypr/editor/tasks";
 import type { TaskRecord, TaskSource } from "@hypr/editor/tasks";
 
 const mocks = vi.hoisted(() => ({
@@ -372,5 +378,39 @@ describe("store-backed task storage: default index-bus wiring", () => {
       expect.any(Function),
       undefined,
     );
+  });
+});
+
+it("loads background-generated task IDs and metadata before the first editor sync", async () => {
+  const source = { type: "enhanced_note", id: "summary" };
+  const saved = taskItem({
+    source_type: source.type,
+    source_id: source.id,
+    status: "done",
+  });
+  const harness = createHarness([saved]);
+  const storage = createStoreBackedTaskStorage(harness.dependencies);
+  await storage.loadSource!(source);
+  const previous = storage.getTasksForSource(source);
+  const reopened = normalizeTaskContent(
+    hydrateTaskContent({
+      content: md2json("- [ ] Follow up"),
+      sourceTasks: previous,
+      getTask: storage.getTask,
+    }),
+  )!;
+  storage.upsertTasksForSource(
+    source,
+    extractTasksFromContent(
+      reopened,
+      source,
+      new Map(previous.map((task) => [task.taskId, task])),
+    ),
+  );
+  expect(harness.replaceTasks).not.toHaveBeenCalled();
+  expect(storage.getTasksForSource(source)[0]).toMatchObject({
+    taskId: "task-1",
+    status: "done",
+    dueDate: "2026-07-12",
   });
 });

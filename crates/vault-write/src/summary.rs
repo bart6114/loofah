@@ -56,6 +56,38 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
+        self.update_summary_impl(session_id, markdown, expected, false)
+            .await
+    }
+
+    pub async fn update_generated_summary(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.update_summary_impl(session_id, markdown, expected, true)
+            .await
+    }
+
+    async fn update_summary_impl(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        reconcile_tasks: bool,
+    ) -> Result<(), StoreError> {
+        let task_content = if reconcile_tasks {
+            let markdown = markdown.to_owned();
+            Some(
+                tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                    .await
+                    .map_err(join_error)?
+                    .map_err(StoreError::Serialize)?,
+            )
+        } else {
+            None
+        };
         let guard = self.lock_writes().await;
         let dir = self.writable_summary_dir(&guard, session_id).await?;
         self.try_migrate_summary_locked(&guard, session_id, &dir)
@@ -69,11 +101,21 @@ impl SessionStore {
         .await
         .map_err(join_error)??
         .ok_or_else(|| StoreError::Conflict("summary was deleted".into()))?;
-        if expected.is_some_and(|expected| expected != summary.markdown) {
+        if expected.is_some_and(|expected| expected != summary.markdown)
+            && !(reconcile_tasks && markdown == summary.markdown)
+        {
             return Err(StoreError::Conflict(
                 "summary changed since it was read".into(),
             ));
         }
+        let tasks = if let Some(content) = task_content {
+            Some(
+                self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
+                    .await?,
+            )
+        } else {
+            None
+        };
         let bytes = if let Some(legacy_id) = summary.legacy_id {
             let mut doc = self
                 .read_enhanced_doc(session_id, &legacy_id)
@@ -86,8 +128,19 @@ impl SessionStore {
         };
         self.write_file_locked(&guard, summary.relative_path, bytes)
             .await?;
+        let task_result = if let Some(tasks) = tasks {
+            self.persist_generated_tasks(&guard, session_id, &tasks)
+                .await
+                .map_err(|error| {
+                    StoreError::Io(format!(
+                        "Summary saved but task synchronization failed; retry to finish: {error}"
+                    ))
+                })
+        } else {
+            Ok(())
+        };
         self.index_set_summary(session_id, Some(markdown.to_owned()));
-        Ok(())
+        task_result
     }
 
     pub async fn delete_summary(&self, session_id: &str) -> Result<(), StoreError> {
@@ -411,6 +464,157 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn generated_summary_tasks_survive_migration_regeneration_and_restart() {
+        for layout in ["canonical", "legacy", "collision"] {
+            let (vault, store) = setup().await;
+            let original = "# Actions\n- [ ] Keep action";
+            if layout == "canonical" {
+                store.ensure_summary("s1").await.unwrap();
+                store
+                    .update_summary("s1", original, Some(""))
+                    .await
+                    .unwrap();
+            } else {
+                legacy(&store, original).await;
+                if layout == "collision" {
+                    std::fs::write(
+                        vault.path().join("sessions/s1/summary.md"),
+                        "user attachment",
+                    )
+                    .unwrap();
+                }
+            }
+            let (source_type, source_id) = if layout == "canonical" {
+                ("session_summary", "s1")
+            } else {
+                ("enhanced_note", "old-summary")
+            };
+            store
+                .replace_tasks(
+                    source_type,
+                    source_id,
+                    vec![TaskInput {
+                        id: "keep-id".into(),
+                        source_order: 0,
+                        status: "done".into(),
+                        text: "Keep action".into(),
+                        body: serde_json::json!([]),
+                        due_at: "2026-10-01".into(),
+                    }],
+                )
+                .await
+                .unwrap();
+            let before = store
+                .list_tasks(source_type, source_id)
+                .await
+                .unwrap()
+                .remove(0);
+            store
+                .replace_tasks(
+                    "session_raw_note",
+                    "s1",
+                    vec![TaskInput {
+                        id: "raw-id".into(),
+                        source_order: 0,
+                        status: "todo".into(),
+                        text: "Raw task".into(),
+                        body: serde_json::json!([]),
+                        due_at: String::new(),
+                    }],
+                )
+                .await
+                .unwrap();
+            let generated =
+                "# Actions\n- Bob sends the invoice\n- [ ] Keep action\n- [ ] New action";
+            store
+                .update_generated_summary("s1", generated, Some(original))
+                .await
+                .unwrap();
+            let tasks = store.list_tasks("session_summary", "s1").await.unwrap();
+            assert_eq!(tasks.len(), 2, "{layout}");
+            assert_eq!(tasks[0].id, before.id);
+            assert_eq!(tasks[0].status, "done");
+            assert_eq!(tasks[0].due_at, before.due_at);
+            assert_eq!(tasks[0].created_at, before.created_at);
+            assert_eq!(tasks[1].status, "todo");
+            store
+                .update_generated_summary("s1", generated, Some(original))
+                .await
+                .unwrap();
+            assert_eq!(
+                store.list_tasks("session_summary", "s1").await.unwrap(),
+                tasks
+            );
+            assert!(matches!(
+                store
+                    .update_generated_summary("s1", "stale", Some(original))
+                    .await,
+                Err(StoreError::Conflict(_))
+            ));
+            let restarted = SessionStore::new(vault.path().to_owned());
+            restarted.rebuild_index().await.unwrap();
+            assert_eq!(
+                restarted.read_summary("s1").await.unwrap().as_deref(),
+                Some(generated)
+            );
+            assert_eq!(
+                restarted.list_tasks("session_summary", "s1").await.unwrap(),
+                tasks
+            );
+            let path = vault.path().join("sessions/s1/summary.md");
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                if layout == "collision" {
+                    "user attachment"
+                } else {
+                    generated
+                }
+            );
+            restarted
+                .update_generated_summary(
+                    "s1",
+                    "# Discussion\nNo personal actions.",
+                    Some(generated),
+                )
+                .await
+                .unwrap();
+            assert!(
+                restarted
+                    .list_tasks("session_summary", "s1")
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(
+                restarted
+                    .list_tasks("session_raw_note", "s1")
+                    .await
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn corrupt_tasks_do_not_replace_generated_summary() {
+        let (vault, store) = setup().await;
+        store.ensure_summary("s1").await.unwrap();
+        store.update_summary("s1", "original", None).await.unwrap();
+        std::fs::write(vault.path().join("sessions/s1/tasks.json"), "invalid").unwrap();
+        assert!(
+            store
+                .update_generated_summary("s1", "- [ ] Send proposal", Some("original"))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            store.read_summary("s1").await.unwrap().as_deref(),
+            Some("original")
+        );
     }
 
     #[tokio::test]

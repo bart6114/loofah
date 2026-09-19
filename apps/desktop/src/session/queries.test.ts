@@ -355,6 +355,7 @@ it("writes and deletes the summary using only the session ID", async () => {
     "session-1",
     "# Plain summary",
     null,
+    false,
   );
   await deleteEnhancedNote("session-1", "session-1");
   expect(mocks.sessionDeleteSummary).toHaveBeenCalledWith("session-1");

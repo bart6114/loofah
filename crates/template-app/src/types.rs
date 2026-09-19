@@ -10,6 +10,8 @@ common_derives! {
 
 common_derives! {
     pub struct Segment {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub is_current_user: Option<bool>,
         pub text: String,
         pub speaker: String,
     }
@@ -57,12 +59,12 @@ mod tests {
         TestTranscripts {
             transcripts: vec![
                 Transcript {
-                    segments: vec![Segment { speaker: "Alice".to_string(), text: "First meeting".to_string() }],
+                    segments: vec![Segment { is_current_user: None, speaker: "Alice".to_string(), text: "First meeting".to_string() }],
                     started_at: None,
                     ended_at: None,
                 },
                 Transcript {
-                    segments: vec![Segment { speaker: "Bob".to_string(), text: "Second meeting".to_string() }],
+                    segments: vec![Segment { is_current_user: None, speaker: "Bob".to_string(), text: "Second meeting".to_string() }],
                     started_at: None,
                     ended_at: None,
                 },

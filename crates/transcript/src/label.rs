@@ -64,6 +64,13 @@ impl SpeakerLabeler {
 }
 
 impl SegmentKey {
+    pub fn is_current_user(&self, ctx: &SpeakerLabelContext) -> bool {
+        match self.speaker_human_id.as_ref() {
+            Some(id) => ctx.self_human_id.as_ref() == Some(id),
+            None => self.is_heuristic_self(ctx),
+        }
+    }
+
     pub fn is_known_speaker(&self, ctx: Option<&SpeakerLabelContext>) -> bool {
         if self.speaker_human_id.is_some() {
             return true;
@@ -127,6 +134,26 @@ pub fn render_speaker_label(
 mod tests {
     use super::*;
     use crate::ChannelProfile;
+
+    #[test]
+    fn current_user_identity_respects_explicit_assignments_and_ambiguity() {
+        let mut ctx = SpeakerLabelContext {
+            self_human_id: Some("self".into()),
+            ..Default::default()
+        };
+        let mut key = direct_mic_key();
+        assert!(key.is_current_user(&ctx));
+        key.speaker_human_id = Some("other".into());
+        assert!(!key.is_current_user(&ctx));
+        key.speaker_human_id = None;
+        key.speaker_index = Some(0);
+        ctx.diarized_channels.insert(ChannelProfile::DirectMic);
+        assert!(!key.is_current_user(&ctx));
+        key.channel = ChannelProfile::MixedCapture;
+        assert!(!key.is_current_user(&ctx));
+        key.speaker_human_id = Some("self".into());
+        assert!(key.is_current_user(&ctx));
+    }
 
     fn direct_mic_key() -> SegmentKey {
         SegmentKey {
