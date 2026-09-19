@@ -80,3 +80,37 @@ impl Detector {
         self.sleep_detector.stop();
     }
 }
+
+#[cfg(feature = "mic")]
+impl Drop for Detector {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+#[cfg(all(test, target_os = "macos", feature = "mic", feature = "sleep"))]
+mod lifecycle_tests {
+    use super::*;
+    #[tokio::test]
+    async fn public_detector_releases_callbacks_across_ten_cycles() {
+        let callback = new_callback(|_| {});
+        let mut detector = Detector::default();
+        for _ in 0..10 {
+            detector.start(callback.clone());
+            detector.start(callback.clone());
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            detector.stop();
+            detector.stop();
+            assert_eq!(std::sync::Arc::strong_count(&callback), 1);
+        }
+    }
+    #[tokio::test]
+    async fn dropping_public_detector_releases_callbacks() {
+        let callback = new_callback(|_| {});
+        let mut detector = Detector::default();
+        detector.start(callback.clone());
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        drop(detector);
+        assert_eq!(std::sync::Arc::strong_count(&callback), 1);
+    }
+}
