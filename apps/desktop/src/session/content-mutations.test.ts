@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  sessionUpdateEnhancedDoc: vi.fn(async () => ({ status: "ok", data: null })),
   sessionGet: vi.fn(
     (): Promise<
       | { status: "ok"; data: Record<string, unknown> | null }
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
       { status: "ok"; data: null } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
   ),
-  sessionUpdateEnhancedDoc: vi.fn(
+  sessionUpdateSummary: vi.fn(
     (): Promise<
       { status: "ok"; data: null } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
@@ -23,6 +24,7 @@ vi.mock("~/types/tauri.gen", () => ({
   commands: {
     sessionGet: mocks.sessionGet,
     sessionUpdateMeta: mocks.sessionUpdateMeta,
+    sessionUpdateSummary: mocks.sessionUpdateSummary,
     sessionUpdateEnhancedDoc: mocks.sessionUpdateEnhancedDoc,
   },
 }));
@@ -56,7 +58,7 @@ describe("session content corrections", () => {
       data: sessionRecord(),
     });
     mocks.sessionUpdateMeta.mockResolvedValue({ status: "ok", data: null });
-    mocks.sessionUpdateEnhancedDoc.mockResolvedValue({
+    mocks.sessionUpdateSummary.mockResolvedValue({
       status: "ok",
       data: null,
     });
@@ -67,7 +69,7 @@ describe("session content corrections", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "summary-1",
+        id: "session-1",
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
@@ -76,14 +78,11 @@ describe("session content corrections", () => {
 
     // The doc body goes file-first through the store, guarded by the file's current
     // markdown -- never a raw session_documents UPDATE.
-    expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
+    expect(mocks.sessionUpdateSummary).toHaveBeenCalledWith(
       "session-1",
-      "summary-1",
-      {
-        markdown: "# New summary",
-        reconcile_tasks: true,
-        expected_markdown: "old summary",
-      },
+      "# New summary",
+      "old summary",
+      true,
     );
 
     // `_meta.json` is the only tag store: deduped generated tags land there, sorted.
@@ -92,8 +91,31 @@ describe("session content corrections", () => {
     });
   });
 
+  it("also reconciles generated template document tasks", async () => {
+    await persistGeneratedEnhancedNote({
+      sessionId: "session-1",
+      ownerUserId: "user-1",
+      note: {
+        id: "template-1",
+        currentMarkdown: "old",
+        nextMarkdown: "- [ ] Send proposal",
+      },
+      tagNames: [],
+    });
+    expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
+      "session-1",
+      "template-1",
+      {
+        markdown: "- [ ] Send proposal",
+        expected_markdown: "old",
+        reconcile_tasks: true,
+      },
+    );
+    expect(mocks.sessionUpdateSummary).not.toHaveBeenCalled();
+  });
+
   it("rejects (and skips the tag write) when the store CAS finds a stale summary", async () => {
-    mocks.sessionUpdateEnhancedDoc.mockResolvedValueOnce({
+    mocks.sessionUpdateSummary.mockResolvedValueOnce({
       status: "error",
       error: "conflict: enhanced doc summary-1 body changed since it was read",
     });
@@ -103,7 +125,7 @@ describe("session content corrections", () => {
         sessionId: "session-1",
         ownerUserId: "user-1",
         note: {
-          id: "summary-1",
+          id: "session-1",
           currentMarkdown: "stale summary",
           nextMarkdown: "# New summary",
         },
@@ -125,7 +147,7 @@ describe("session content corrections", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "summary-1",
+        id: "session-1",
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
@@ -148,7 +170,7 @@ describe("session content corrections", () => {
         sessionId: "session-1",
         ownerUserId: "user-1",
         note: {
-          id: "summary-1",
+          id: "session-1",
           currentMarkdown: "old summary",
           nextMarkdown: "# New summary",
         },
@@ -162,7 +184,7 @@ describe("session content corrections", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "summary-1",
+        id: "session-1",
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
@@ -185,7 +207,7 @@ describe("session content corrections", () => {
       nextTitle: "Planning",
       documents: [
         {
-          id: "summary-1",
+          id: "session-1",
           currentMarkdown: "old summary",
           nextMarkdown: "# Planning\n\nold summary",
         },
@@ -195,13 +217,11 @@ describe("session content corrections", () => {
     // Each summary is stamped file-first through the store's markdown CAS -- never raw
     // session_documents SQL, and never the raw note (which title-success stamps
     // separately through session_read_note/session_write_note).
-    expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
+    expect(mocks.sessionUpdateSummary).toHaveBeenCalledWith(
       "session-1",
-      "summary-1",
-      {
-        markdown: "# Planning\n\nold summary",
-        expected_markdown: "old summary",
-      },
+      "# Planning\n\nold summary",
+      "old summary",
+      false,
     );
     // The title itself is store-canonical, never a raw `UPDATE sessions`.
     expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {
@@ -224,7 +244,7 @@ describe("session content corrections", () => {
       }),
     ).rejects.toThrow("title changed while generating");
 
-    expect(mocks.sessionUpdateEnhancedDoc).not.toHaveBeenCalled();
+    expect(mocks.sessionUpdateSummary).not.toHaveBeenCalled();
     expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
@@ -247,7 +267,7 @@ describe("session content corrections", () => {
       status: "ok",
       data: sessionRecord({ title: "" }),
     });
-    mocks.sessionUpdateEnhancedDoc.mockResolvedValueOnce({
+    mocks.sessionUpdateSummary.mockResolvedValueOnce({
       status: "error",
       error: "conflict: enhanced doc summary-1 body changed since it was read",
     });
@@ -259,7 +279,7 @@ describe("session content corrections", () => {
         nextTitle: "Planning",
         documents: [
           {
-            id: "summary-1",
+            id: "session-1",
             currentMarkdown: "old summary",
             nextMarkdown: "# Planning\n\nold summary",
           },

@@ -203,12 +203,11 @@ describe("EnhancerService", () => {
     expect(result).toEqual({ type: "started", noteId: "note-1" });
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith("session-1");
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledBefore(ai.generate);
-    expect(ai.generate).toHaveBeenCalledWith("note-1-enhance", {
+    expect(ai.generate).toHaveBeenCalledWith("session-1-enhance", {
       model: expect.any(Object),
       taskType: "enhance",
       args: {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
     });
   });
@@ -225,9 +224,9 @@ describe("EnhancerService", () => {
     expect(result).toEqual({ type: "started", noteId: "existing" });
     expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
     expect(ai.generate).toHaveBeenCalledWith(
-      "existing-enhance",
+      "session-1-enhance",
       expect.objectContaining({
-        args: { sessionId: "session-1", enhancedNoteId: "existing" },
+        args: { sessionId: "session-1" },
       }),
     );
   });
@@ -305,7 +304,7 @@ describe("EnhancerService", () => {
     expect(ai.generate).toHaveBeenCalledWith(
       "note-1-enhance",
       expect.objectContaining({
-        args: { sessionId: "session-1", enhancedNoteId: note.id },
+        args: { sessionId: "session-1", templateDocumentId: note.id },
       }),
     );
     expect(note).toMatchObject({
@@ -372,7 +371,7 @@ describe("EnhancerService", () => {
     });
   });
 
-  it("resets every canonical summary task", async () => {
+  it("resets the session summary task once", async () => {
     snapshot = createSnapshot({
       notes: [createNote({ id: "one" }), createNote({ id: "two" })],
     });
@@ -381,8 +380,7 @@ describe("EnhancerService", () => {
 
     await service.resetEnhanceTasks("session-1");
 
-    expect(ai.reset).toHaveBeenCalledWith("one-enhance");
-    expect(ai.reset).toHaveBeenCalledWith("two-enhance");
+    expect(ai.reset).toHaveBeenCalledExactlyOnceWith("session-1-enhance");
   });
 
   it("deduplicates eligible auto-enhance requests", async () => {

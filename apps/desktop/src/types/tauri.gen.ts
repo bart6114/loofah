@@ -292,6 +292,64 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionSummaryGet(
+    sessionId: string,
+  ): Promise<Result<string | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_summary_get", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionEnsureSummary(
+    sessionId: string,
+  ): Promise<Result<string, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_ensure_summary", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionUpdateSummary(
+    sessionId: string,
+    markdown: string,
+    expectedMarkdown: string | null,
+    reconcileTasks: boolean | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_update_summary", {
+          sessionId,
+          markdown,
+          expectedMarkdown,
+          reconcileTasks,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionDeleteSummary(sessionId: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_delete_summary", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionWriteEnhancedDoc(
     doc: EnhancedDoc,
   ): Promise<Result<null, string>> {
@@ -817,10 +875,8 @@ export type EmbeddedCliStatus = {
   details: string | null;
 };
 /**
- * One AI-generated document (`summary` or `template_output`), file-canonical at
- * `sessions/<session_id>/enhanced/<id>.md`. `id` is the same UUID the `session_documents`
- * index row uses, and the frontmatter carries every metadata column that row mirrors --
- * there is deliberately no sidecar file.
+ * Shared document response for session summaries and UUID-backed template outputs.
+ * A summary uses its session ID; only legacy/template files carry frontmatter.
  */
 export type EnhancedDoc = {
   id: string;
@@ -900,7 +956,7 @@ export type RebuildReport = {
   sessions: number;
   /**
    * Documents read this pass -- the note (`notes.md`, or the pre-rename `_memo.md`)
-   * and every `enhanced/<doc_id>.md` doc, not just the note.
+   * the plain summary, and every template output.
    */
   notes: number;
   transcripts: number;
@@ -1029,7 +1085,7 @@ export type TaskInput = {
 export type TaskItem = {
   id: string;
   /**
-   * "session_raw_note" (source_id is the session id) or "enhanced_note" (source_id is
+   * "session_raw_note" / "session_summary" (source_id is the session id), or "enhanced_note" (source_id is
    * the enhanced doc id). Stored verbatim for any other value.
    */
   source_type: string;

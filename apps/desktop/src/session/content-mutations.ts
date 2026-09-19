@@ -2,9 +2,7 @@ import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import { ensureTag } from "~/tags/queries";
 import { commands } from "~/types/tauri.gen";
 
-// Markdown-based since D-3: `enhanced/<doc-id>.md` is the doc's canonical home, so the
-// compare-and-swap runs against the file's markdown body (the store rejects with a
-// "conflict:" error when `currentMarkdown` is stale), not against the SQL row.
+// Compare-and-swap rejects generated content if the summary changed while AI was running.
 export type SessionDocumentContentUpdate = {
   id: string;
   currentMarkdown: string;
@@ -29,15 +27,19 @@ export function persistGeneratedEnhancedNote({
     // `currentMarkdown` (reset/regenerate replaced the summary meanwhile) rejects and
     // nothing below runs. A missing doc file (session or doc deleted) rejects too,
     // replacing the old `expectedRowsAffected`/`EXISTS(sessions)` guards.
-    const docWrite = await commands.sessionUpdateEnhancedDoc(
-      sessionId,
-      note.id,
-      {
-        markdown: note.nextMarkdown,
-        reconcile_tasks: true,
-        expected_markdown: note.currentMarkdown,
-      },
-    );
+    const docWrite =
+      note.id === sessionId
+        ? await commands.sessionUpdateSummary(
+            sessionId,
+            note.nextMarkdown,
+            note.currentMarkdown,
+            true,
+          )
+        : await commands.sessionUpdateEnhancedDoc(sessionId, note.id, {
+            markdown: note.nextMarkdown,
+            reconcile_tasks: true,
+            expected_markdown: note.currentMarkdown,
+          });
     if (docWrite.status === "error") {
       throw new Error(
         `Failed to persist generated summary ${note.id}: ${docWrite.error}`,
@@ -122,14 +124,18 @@ export function applyGeneratedSessionTitle({
     // file-era equivalent of the old expectedRowsAffected rollback) throws here and the
     // store-canonical title write below never happens.
     for (const document of documents) {
-      const docWrite = await commands.sessionUpdateEnhancedDoc(
-        sessionId,
-        document.id,
-        {
-          markdown: document.nextMarkdown,
-          expected_markdown: document.currentMarkdown,
-        },
-      );
+      const docWrite =
+        document.id === sessionId
+          ? await commands.sessionUpdateSummary(
+              sessionId,
+              document.nextMarkdown,
+              document.currentMarkdown,
+              false,
+            )
+          : await commands.sessionUpdateEnhancedDoc(sessionId, document.id, {
+              markdown: document.nextMarkdown,
+              expected_markdown: document.currentMarkdown,
+            });
       if (docWrite.status === "error") {
         throw new Error(
           `Failed to stamp title into summary ${document.id}: ${docWrite.error}`,

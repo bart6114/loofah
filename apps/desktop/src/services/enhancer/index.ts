@@ -244,9 +244,11 @@ export class EnhancerService {
 
   async resetEnhanceTasks(sessionId: string): Promise<void> {
     const snapshot = await this.loadSession(sessionId);
-    const { aiTaskStore } = this.deps;
-    for (const note of snapshot.enhancedNotes) {
-      aiTaskStore.getState().reset(createTaskId(note.id, "enhance"));
+    const tasks = this.deps.aiTaskStore.getState();
+    tasks.reset(createTaskId(sessionId, "enhance"));
+    for (const document of snapshot.enhancedNotes) {
+      if (document.kind !== "summary")
+        tasks.reset(createTaskId(document.id, "enhance"));
     }
   }
 
@@ -287,7 +289,10 @@ export class EnhancerService {
       targetNote ??
       selectSummaryDocument(snapshot.enhancedNotes) ??
       (await ensureSummaryDocument(sessionId));
-    const enhanceTaskId = createTaskId(note.id, "enhance");
+    const enhanceTaskId = createTaskId(
+      note.kind === "summary" ? sessionId : note.id,
+      "enhance",
+    );
     const existingTask = aiTaskStore.getState().getState(enhanceTaskId);
     if (existingTask?.status === "generating") {
       return { type: "already_active", noteId: note.id };
@@ -305,7 +310,10 @@ export class EnhancerService {
     void aiTaskStore.getState().generate(enhanceTaskId, {
       model,
       taskType: "enhance",
-      args: { sessionId, enhancedNoteId: note.id },
+      args: {
+        sessionId,
+        ...(note.kind === "summary" ? {} : { templateDocumentId: note.id }),
+      },
     });
 
     return { type: "started", noteId: note.id };

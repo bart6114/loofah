@@ -50,7 +50,7 @@ async function transformArgs(
   args: TaskArgsMap["enhance"],
   settingsValues: SettingValues,
 ): Promise<TaskArgsMapTransformed["enhance"]> {
-  const { sessionId } = args;
+  const { sessionId, templateDocumentId } = args;
   await flushDatabaseWrites([`session:${sessionId}:note`]);
   const snapshot = await loadSessionContentSnapshot(sessionId);
   if (!snapshot) {
@@ -74,7 +74,13 @@ async function transformArgs(
       ])
     : [];
 
+  const target = snapshot.enhancedNotes.find((note) =>
+    templateDocumentId
+      ? note.id === templateDocumentId
+      : note.kind === "summary",
+  );
   return {
+    expectedMarkdown: target?.markdown ?? null,
     language,
     promptOverride,
     session: sessionContext.session,

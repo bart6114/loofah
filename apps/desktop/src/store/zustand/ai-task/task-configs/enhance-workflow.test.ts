@@ -57,6 +57,7 @@ describe("shared summary generation", () => {
               endedAt: null,
             },
           ],
+          expectedMarkdown: "",
           imageContext: [{ base64: "image-bytes", mimeType: "image/png" }],
         },
         onProgress: vi.fn(),

@@ -22,6 +22,7 @@ function createEnhanceArgs(
     postMeetingMemo: "",
     transcripts: [],
     imageContext: [],
+    expectedMarkdown: "",
     ...overrides,
   };
 }

@@ -10,6 +10,7 @@ pub mod paths;
 pub mod people;
 pub mod reserved;
 pub mod strip;
+pub mod summary;
 pub mod tags;
 pub mod tasks;
 pub mod transcript;

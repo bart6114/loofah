@@ -12,7 +12,7 @@ use crate::{Error, Result, layout, paths};
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
 pub struct TaskItem {
     pub id: String,
-    /// "session_raw_note" (source_id is the session id) or "enhanced_note" (source_id is
+    /// "session_raw_note" / "session_summary" (source_id is the session id), or "enhanced_note" (source_id is
     /// the enhanced doc id). Stored verbatim for any other value.
     pub source_type: String,
     pub source_id: String,

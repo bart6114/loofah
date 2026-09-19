@@ -45,14 +45,11 @@ export type TaskStorageDependencies = {
   ) => () => void;
 };
 
-// The Rust index keys `tasks` events by the owning *session* id: `session_raw_note` sources
-// use their own id, `enhanced_note` sources are resolved server-side to the session that owns
-// the doc (not knowable from the doc id here), and every other source type collapses onto the
-// vault-root key. Only the first case can be scoped from the source alone; the rest subscribe
-// to the whole entity and rely on the snapshot diff in `updateSourceSnapshot` to drop refreshes
-// that changed nothing.
+// Notes and summaries carry their session ID; template document sources need a wider subscription.
 function taskEventIds(source: TaskSource): readonly string[] | undefined {
-  return source.type === "session_raw_note" ? [source.id] : undefined;
+  return ["session_raw_note", "session_summary"].includes(source.type)
+    ? [source.id]
+    : undefined;
 }
 
 const emptyTasks: TaskRecord[] = [];

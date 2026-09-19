@@ -152,7 +152,7 @@ impl SessionStore {
 
         let tasks = if let Some(content) = task_content {
             Some(
-                self.prepare_generated_tasks(session_id, doc_id, &content)
+                self.prepare_generated_tasks(session_id, "enhanced_note", doc_id, &content)
                     .await?,
             )
         } else {

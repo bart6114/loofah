@@ -19,6 +19,7 @@ pub mod rebuild;
 mod session_path;
 pub mod stats;
 pub mod storage_stats;
+pub mod summary;
 pub mod tags;
 pub mod tasks;
 pub mod transcript;

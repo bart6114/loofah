@@ -23,7 +23,7 @@ const REBUILD_CONCURRENCY: usize = 8;
 pub struct RebuildReport {
     pub sessions: usize,
     /// Documents read this pass -- the note (`notes.md`, or the pre-rename `_memo.md`)
-    /// and every `enhanced/<doc_id>.md` doc, not just the note.
+    /// the plain summary, and every template output.
     pub notes: usize,
     pub transcripts: usize,
     /// Folder ids that have at least one recognized content file (a `<kind>.md` document or
@@ -103,8 +103,13 @@ impl SessionStore {
                 true,
             )
             .await?;
-        let migration = self.migrate_from_scan(&guard, &mut scan).await;
+        let mut migration = self.migrate_from_scan(&guard, &mut scan).await;
         drop(guard);
+        for (location, _) in &scan.sessions {
+            if let Err(error) = self.migrate_summary(&location.id).await {
+                migration.failed.push(format!("{}: {error}", location.id));
+            }
+        }
         Ok(super::StartupLayout { scan, migration })
     }
 
@@ -218,6 +223,7 @@ impl SessionStore {
                 .sessions
                 .keys()
                 .chain(index.docs.keys())
+                .chain(index.summaries.keys())
                 .chain(index.transcripts.keys())
                 .chain(index.tasks.keys())
                 .filter(|id| {
@@ -382,8 +388,10 @@ impl SessionStore {
                 for (doc_id, parsed) in enhanced_files {
                     match parsed {
                         Ok(doc) => {
-                            collected_docs.push(doc);
-                            report.notes += 1;
+                            if doc.kind != "summary" {
+                                collected_docs.push(doc);
+                                report.notes += 1;
+                            }
                         }
                         Err(e) => {
                             record_error(
@@ -405,6 +413,24 @@ impl SessionStore {
             }
         }
         let docs = document_scans_succeeded.then_some(collected_docs);
+
+        let summary = match self.read_summary(id).await {
+            Ok(value) => {
+                if value.is_some() {
+                    report.notes += 1;
+                }
+                Some(value)
+            }
+            Err(error) => {
+                record_error(
+                    &mut report.errors,
+                    &mut first_error,
+                    &format!("{id}: summary.md"),
+                    error,
+                );
+                None
+            }
+        };
 
         let transcripts = match self.read_transcript_summary(id).await {
             Ok(summary) => {
@@ -468,6 +494,19 @@ impl SessionStore {
                 }
             }
 
+            if let Some(summary) = summary {
+                if index.summaries.get(id) != summary.as_ref() {
+                    match summary {
+                        Some(markdown) => {
+                            index.summaries.insert(id.to_owned(), markdown);
+                        }
+                        None => {
+                            index.summaries.remove(id);
+                        }
+                    }
+                    changes.push((IndexEntity::Docs, id.to_string()));
+                }
+            }
             if let Some(new_docs) = docs {
                 if apply_map_value(&mut index.docs, id, new_docs) {
                     changes.push((IndexEntity::Docs, id.to_string()));
@@ -510,6 +549,7 @@ impl SessionStore {
                 .sessions
                 .keys()
                 .chain(index.docs.keys())
+                .chain(index.summaries.keys())
                 .chain(index.transcripts.keys())
                 .chain(index.tasks.keys())
                 .cloned()
@@ -577,10 +617,7 @@ impl SessionStore {
     /// vanished). A missing `enhanced/` dir is simply "no docs" -- most sessions never
     /// get one.
     ///
-    /// Nothing scans the session directory itself for documents anymore: the legacy
-    /// single-slot `<kind>.md` layout is retired, and any other file directly in the
-    /// session dir is a user attachment the app must ignore (see
-    /// `hypr_vault_read::reserved`).
+    /// The canonical summary is read separately by exact name.
     pub(super) async fn scan_enhanced_doc_files(
         &self,
         id: &str,
@@ -672,7 +709,7 @@ pub(super) struct SessionLayoutScan {
 }
 
 fn dir_has_session_content(dir: &std::path::Path) -> Result<bool, StoreError> {
-    Ok(["notes.md", "_memo.md", "transcript.json"]
+    Ok(["notes.md", "_memo.md", "summary.md", "transcript.json"]
         .iter()
         .any(|name| dir.join(name).is_file()))
 }

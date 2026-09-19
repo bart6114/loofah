@@ -76,7 +76,7 @@ describe("enhanceTransform.transformArgs", () => {
     };
     mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
     const result = await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       settingsValues,
     );
     expect(result.postMeetingMemo).toBe("Ship Friday");
@@ -92,7 +92,7 @@ describe("enhanceTransform.transformArgs", () => {
     });
     await expect(
       enhanceTransform.transformArgs(
-        { sessionId: "session-1", enhancedNoteId: "note-1" },
+        { sessionId: "session-1" },
         settingsValues,
       ),
     ).rejects.toThrow("Add a note or transcript");
@@ -100,7 +100,7 @@ describe("enhanceTransform.transformArgs", () => {
 
   it("uses the saved prompt override for summaries", async () => {
     const result = await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       {
         ...settingsValues,
         auto_summary_prompt: "  Start with decisions.  ",
@@ -120,7 +120,6 @@ describe("enhanceTransform.transformArgs", () => {
     const result = await enhanceTransform.transformArgs(
       {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
       {
         ...settingsValues,
@@ -134,7 +133,7 @@ describe("enhanceTransform.transformArgs", () => {
 
   it("uses the built-in prompt when no override is saved", async () => {
     const result = await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       settingsValues,
     );
 
@@ -145,7 +144,6 @@ describe("enhanceTransform.transformArgs", () => {
     await enhanceTransform.transformArgs(
       {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
       {
         current_llm_provider: "openai",
@@ -162,7 +160,7 @@ describe("enhanceTransform.transformArgs", () => {
 
   it("builds the render request straight from the transcript's own owner, without a humans lookup", async () => {
     await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       settingsValues,
     );
 
@@ -179,10 +177,7 @@ describe("enhanceTransform.transformArgs", () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue(null);
 
     await expect(
-      enhanceTransform.transformArgs(
-        { sessionId: "missing", enhancedNoteId: "note-1" },
-        settingsValues,
-      ),
+      enhanceTransform.transformArgs({ sessionId: "missing" }, settingsValues),
     ).rejects.toThrow("Session missing no longer exists");
   });
 });
@@ -209,7 +204,7 @@ it("passes structured current-user identity to the prompt without guessing from 
     },
   ]);
   const result = await enhanceTransform.transformArgs(
-    { sessionId: "session-1", enhancedNoteId: "note-1" },
+    { sessionId: "session-1" },
     settingsValues,
   );
   expect(
@@ -222,7 +217,7 @@ it("marks legacy transcript provenance unknown instead of assuming channel zero 
   mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
   mocks.buildRenderTranscriptRequestFromRows.mockReturnValue(null);
   await enhanceTransform.transformArgs(
-    { sessionId: "session-1", enhancedNoteId: "note-1" },
+    { sessionId: "session-1" },
     settingsValues,
   );
   const [rows] = mocks.buildRenderTranscriptRequestFromRows.mock.lastCall!;
