@@ -31,7 +31,10 @@ export const TRANSCRIPTION_FINAL_STALL_AUDIBLE_SECONDS = 90;
 
 export type GeneralState = {
   live: {
-    eventUnlistenersBySession: Record<string, (() => void)[]>;
+    eventUnlistenersBySession: Record<
+      string,
+      { token: number; dispose: () => void }
+    >;
     loading: boolean;
     loadingPhase: LoadingPhase;
     status: LiveSessionStatus;
