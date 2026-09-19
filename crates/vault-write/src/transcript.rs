@@ -94,6 +94,7 @@ pub struct LiveTranscriptBuffer {
     pub words: Vec<TranscriptWord>,
     pub hints: Vec<TranscriptSpeakerHint>,
     pub dirty: bool,
+    pub release_requested: bool,
 }
 
 const DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(1);
@@ -108,6 +109,26 @@ fn next_retry_delay(current: std::time::Duration) -> std::time::Duration {
 }
 
 impl SessionStore {
+    pub async fn finish_transcript(
+        &self,
+        session_id: &str,
+        transcript_id: &str,
+    ) -> Result<(), StoreError> {
+        validate_session_id(session_id)?;
+        let _operation = self.transcript_operations.lock(session_id).await;
+        {
+            let mut live = self.live.lock().await;
+            let Some(buffer) = live.get_mut(session_id) else {
+                return Ok(());
+            };
+            if buffer.transcript_id != transcript_id {
+                return Ok(());
+            }
+            buffer.release_requested = true;
+        }
+        self.flush_transcript_under_operation(session_id).await
+    }
+
     /// Buffers the delta and schedules a flush ~1s later. Has no session/index preconditions,
     /// so it can never silently no-op. Usually touches only the in-memory buffer; the one
     /// exception is switching `transcript_id` while the outgoing buffer is dirty, which flushes
@@ -126,32 +147,46 @@ impl SessionStore {
             return Ok(());
         }
 
-        // A session moving on to a new transcript_id (new recording segment) must not carry
-        // the previous transcript's words into the new one's file entry. If the outgoing
-        // buffer still has unflushed changes, persist them first -- clearing an unflushed
-        // buffer would silently drop words that never made it to disk.
-        let mut live = self.live.lock().await;
-        let needs_flush_before_switch = live.get(session_id).is_some_and(|buffer| {
-            buffer.dirty
-                && !buffer.transcript_id.is_empty()
-                && buffer.transcript_id != delta.transcript_id
-        });
-        if needs_flush_before_switch {
-            // flush_transcript takes this same lock internally, so the guard must be
-            // released across the call; flush_transcript re-checks state under its own
-            // guard, so the gap can't flush stale or already-clean content.
-            drop(live);
-            self.flush_transcript(session_id).await?;
-            live = self.live.lock().await;
+        let _operation = self.transcript_operations.lock(session_id).await;
+        if self.deleted_sessions.lock().unwrap().contains(session_id) {
+            return Err(StoreError::Io(format!("session {session_id} was deleted")));
         }
+        let switching = self
+            .live
+            .lock()
+            .await
+            .get(session_id)
+            .is_some_and(|buffer| buffer.transcript_id != delta.transcript_id);
+        if switching {
+            self.flush_transcript_under_operation(session_id).await?;
+            self.live.lock().await.remove(session_id);
+        }
+        let needs_seed = !self.live.lock().await.contains_key(session_id)
+            && self.transcript_session_id(&delta.transcript_id).as_deref() == Some(session_id);
+        if needs_seed {
+            if let Some(previous) = self
+                .read_transcript_json(session_id)
+                .await?
+                .transcripts
+                .into_iter()
+                .find(|t| t.id == delta.transcript_id)
+            {
+                self.live.lock().await.insert(
+                    session_id.to_owned(),
+                    LiveTranscriptBuffer {
+                        transcript_id: previous.id,
+                        started_at_ms: previous.started_at,
+                        words: previous.words,
+                        hints: previous.speaker_hints,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        let mut live = self.live.lock().await;
 
         let needs_spawn = {
             let buffer = live.entry(session_id.to_string()).or_default();
-
-            if !buffer.transcript_id.is_empty() && buffer.transcript_id != delta.transcript_id {
-                buffer.words.clear();
-                buffer.hints.clear();
-            }
 
             if !delta.replaced_ids.is_empty() {
                 buffer.words.retain(|word| {
@@ -210,24 +245,23 @@ impl SessionStore {
     /// Writes transcript.json from the buffer (or re-reads existing file and merges), updates
     /// the transcripts index row. No-op if there is nothing buffered for this session.
     pub async fn flush_transcript(&self, session_id: &str) -> Result<(), StoreError> {
+        validate_session_id(session_id)?;
+        let _operation = self.transcript_operations.lock(session_id).await;
+        self.flush_transcript_under_operation(session_id).await
+    }
+
+    async fn flush_transcript_under_operation(&self, session_id: &str) -> Result<(), StoreError> {
         let snapshot = {
             let mut live = self.live.lock().await;
-            let Some(buffer) = live.get_mut(session_id) else {
+            let Some(buffer) = live.get(session_id) else {
                 return Ok(());
             };
             if !buffer.dirty {
-                // Nothing buffered since the last successful flush -- including right after
-                // write_transcript's batch-supersedes-buffer guard cleared this entry. Flushing
-                // clean state is a no-op by contract; persisting the (now-empty) snapshot
-                // anyway would zero out a batch write that just landed via write_transcript.
+                if buffer.release_requested {
+                    live.remove(session_id);
+                }
                 return Ok(());
             }
-            // Clear dirty *before* doing I/O: if an append races in while we're writing, it
-            // will see a clean buffer, flip it dirty again, and schedule its own flusher --
-            // so nothing gets lost even though this in-flight flush won't see that append.
-            buffer.dirty = false;
-            // Cloning the full word/hint list on every flush is O(n) in transcript length;
-            // fine at meeting scale (thousands of words, not millions).
             (
                 buffer.transcript_id.clone(),
                 buffer.started_at_ms,
@@ -235,23 +269,18 @@ impl SessionStore {
                 buffer.hints.clone(),
             )
         };
-
         let (transcript_id, started_at_ms, words, hints) = snapshot;
-        let result = self
-            .persist_transcript(session_id, &transcript_id, started_at_ms, words, hints)
-            .await;
-
-        if result.is_err() {
-            // Persist failed: the words only exist in memory. Re-dirty so flush_all() and
-            // the debounce retry loop pick this session back up -- a failed flush must never
-            // look "clean" (that's the exact silent-loss shape this store exists to prevent).
-            let mut live = self.live.lock().await;
-            if let Some(buffer) = live.get_mut(session_id) {
-                buffer.dirty = true;
+        self.persist_transcript(session_id, &transcript_id, started_at_ms, words, hints)
+            .await?;
+        let mut live = self.live.lock().await;
+        if let Some(buffer) = live.get_mut(session_id) {
+            if buffer.release_requested {
+                live.remove(session_id);
+            } else {
+                buffer.dirty = false;
             }
         }
-
-        result
+        Ok(())
     }
 
     /// App-exit hook: flush every dirty buffer. A failure on one session must not skip the
@@ -280,13 +309,7 @@ impl SessionStore {
         }
     }
 
-    /// Replace a whole transcript (batch/upload path) — writes file + index in one call.
-    ///
-    /// Clears any live (debounce-buffered) state for this transcript_id first: a batch
-    /// overwrite supersedes whatever was buffered, and a still-pending debounced flush from
-    /// `append_transcript` must not fire afterward and clobber this call's words with
-    /// older, now-stale buffered content. Clearing (not just marking clean) also stops
-    /// `append_transcript`'s dirty check from seeing anything left to flush.
+    /// Replace a whole transcript, releasing superseded live data only after persistence.
     pub async fn write_transcript(
         &self,
         session_id: &str,
@@ -294,19 +317,9 @@ impl SessionStore {
     ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
 
+        let _operation = self.transcript_operations.lock(session_id).await;
         let transcript_id = t.id.clone();
         let started_at_ms = t.started_at;
-
-        {
-            let mut live = self.live.lock().await;
-            if let Some(buffer) = live.get_mut(session_id) {
-                if buffer.transcript_id == transcript_id {
-                    buffer.words.clear();
-                    buffer.hints.clear();
-                    buffer.dirty = false;
-                }
-            }
-        }
 
         self.persist_transcript(
             session_id,
@@ -315,7 +328,15 @@ impl SessionStore {
             t.words,
             t.speaker_hints,
         )
-        .await
+        .await?;
+        let mut live = self.live.lock().await;
+        if live
+            .get(session_id)
+            .is_some_and(|buffer| buffer.transcript_id == transcript_id)
+        {
+            live.remove(session_id);
+        }
+        Ok(())
     }
 
     /// Supersede primitive (E3): the incoming transcript REPLACES the session's whole
@@ -326,9 +347,7 @@ impl SessionStore {
     /// besides the incoming transcript id, then the file is rewritten to just the incoming
     /// transcript.
     ///
-    /// Clears the session's whole live buffer first (not just a matching transcript_id,
-    /// unlike `write_transcript`): every buffered transcript is superseded by definition,
-    /// and a pending debounced flush must not resurrect one afterward.
+    /// Drops superseded live data after successful persistence, preserving failed writes for retry.
     pub async fn replace_session_transcripts(
         &self,
         session_id: &str,
@@ -336,14 +355,7 @@ impl SessionStore {
     ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
 
-        {
-            let mut live = self.live.lock().await;
-            if let Some(buffer) = live.get_mut(session_id) {
-                buffer.words.clear();
-                buffer.hints.clear();
-                buffer.dirty = false;
-            }
-        }
+        let _operation = self.transcript_operations.lock(session_id).await;
 
         // One guard spans the "what's in the file today" read, the supersede-trash and the
         // rewrite, so a concurrent transcript write can't slip between them.
@@ -387,7 +399,9 @@ impl SessionStore {
             t.words,
             t.speaker_hints,
         )
-        .await
+        .await?;
+        self.live.lock().await.remove(session_id);
+        Ok(())
     }
 
     /// Speaker rename as a hints-only mutation: the words list is passed through
@@ -426,47 +440,9 @@ impl SessionStore {
             ))
         })?;
 
+        let _operation = self.transcript_operations.lock(&session_id).await;
+        self.flush_transcript_under_operation(&session_id).await?;
         let guard = self.lock_writes().await;
-
-        // Land any still-dirty live buffer first (same snapshot/re-dirty contract as
-        // flush_transcript, but under this guard): the rename must apply on top of every
-        // buffered word, and marking the buffer clean here means a pending retry flush
-        // afterwards no-ops instead of replacing speaker_hints wholesale (live buffers
-        // carry no label hints) and silently erasing the rename.
-        let snapshot = {
-            let mut live = self.live.lock().await;
-            match live.get_mut(&session_id) {
-                Some(buffer) if buffer.dirty => {
-                    buffer.dirty = false;
-                    Some((
-                        buffer.transcript_id.clone(),
-                        buffer.started_at_ms,
-                        buffer.words.clone(),
-                        buffer.hints.clone(),
-                    ))
-                }
-                _ => None,
-            }
-        };
-        if let Some((buffered_id, started_at_ms, words, hints)) = snapshot {
-            let result = self
-                .persist_transcript_locked(
-                    &guard,
-                    &session_id,
-                    &buffered_id,
-                    started_at_ms,
-                    words,
-                    hints,
-                )
-                .await;
-            if let Err(err) = result {
-                let mut live = self.live.lock().await;
-                if let Some(buffer) = live.get_mut(&session_id) {
-                    buffer.dirty = true;
-                }
-                return Err(err);
-            }
-        }
 
         let mut file = self.read_transcript_json(&session_id).await?;
         let Some(entry) = file.transcripts.iter_mut().find(|t| t.id == transcript_id) else {
@@ -556,10 +532,15 @@ impl SessionStore {
         // Hints-only mutation: `entry.words` is deliberately never reassigned, so word
         // content (including per-word metadata) cannot regress no matter what raced the
         // pre-guard index lookup.
-        entry.speaker_hints = next_hints;
-
+        entry.speaker_hints = next_hints.clone();
         self.write_transcript_json_locked(&guard, &session_id, file)
-            .await
+            .await?;
+        if let Some(buffer) = self.live.lock().await.get_mut(&session_id) {
+            if buffer.transcript_id == transcript_id {
+                buffer.hints = next_hints;
+            }
+        }
+        Ok(())
     }
 
     async fn persist_transcript(
@@ -2133,5 +2114,225 @@ mod tests {
             vault.path().join("sessions/s1/transcript.json").is_file(),
             "the recovered flush must land the file too"
         );
+    }
+    #[tokio::test]
+    async fn finish_releases_twenty_large_transcripts_after_disk_persistence() {
+        let (store, vault) = test_store().await;
+        for i in 0..20 {
+            let session = format!("s{i}");
+            store
+                .append_transcript(&session, delta_with_words(&vec!["word"; 5000]))
+                .await
+                .unwrap();
+            store.finish_transcript(&session, "t1").await.unwrap();
+            let fresh = SessionStore::new(vault.path().to_path_buf());
+            assert_eq!(
+                fresh
+                    .read_transcript_json(&session)
+                    .await
+                    .unwrap()
+                    .transcripts[0]
+                    .words
+                    .len(),
+                5000
+            );
+            assert!(store.live.lock().await.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_finish_keeps_words_and_retry_releases_them() {
+        let (store, vault) = test_store().await;
+        block_sessions_dir(vault.path());
+        store
+            .append_transcript("s1", delta_with_words(&["recoverable"]))
+            .await
+            .unwrap();
+        assert!(store.finish_transcript("s1", "t1").await.is_err());
+        assert_eq!(store.live.lock().await["s1"].words.len(), 1);
+        unblock_sessions_dir(vault.path());
+        store.flush_transcript("s1").await.unwrap();
+        assert!(store.live.lock().await.is_empty());
+        assert_eq!(
+            store.read_transcript_json("s1").await.unwrap().transcripts[0].words[0].text,
+            "recoverable"
+        );
+    }
+
+    #[tokio::test]
+    async fn old_finish_cannot_release_a_resumed_recording() {
+        let (store, _vault) = test_store().await;
+        store
+            .append_transcript("s1", delta_with_words(&["old"]))
+            .await
+            .unwrap();
+        store.finish_transcript("s1", "t1").await.unwrap();
+        let mut resumed = delta_with_words(&["new"]);
+        resumed.transcript_id = "t2".into();
+        store.append_transcript("s1", resumed).await.unwrap();
+        store.finish_transcript("s1", "t1").await.unwrap();
+        assert_eq!(store.live.lock().await["s1"].transcript_id, "t2");
+        store.finish_transcript("s1", "t2").await.unwrap();
+        store.finish_transcript("s1", "t2").await.unwrap();
+        store.flush_transcript("s1").await.unwrap();
+        assert!(store.live.lock().await.is_empty());
+        assert_eq!(
+            store
+                .read_transcript_json("s1")
+                .await
+                .unwrap()
+                .transcripts
+                .len(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_batch_preserves_buffered_words() {
+        for replace in [false, true] {
+            let (store, vault) = test_store().await;
+            block_sessions_dir(vault.path());
+            store
+                .append_transcript("s1", delta_with_words(&["recoverable"]))
+                .await
+                .unwrap();
+            let result = if replace {
+                store
+                    .replace_session_transcripts("s1", batch("t1", &["batch"]))
+                    .await
+            } else {
+                store.write_transcript("s1", batch("t1", &["batch"])).await
+            };
+            assert!(result.is_err());
+            assert_eq!(store.live.lock().await["s1"].words.len(), 1);
+            unblock_sessions_dir(vault.path());
+            store.finish_transcript("s1", "t1").await.unwrap();
+            assert_eq!(
+                store.read_transcript_json("s1").await.unwrap().transcripts[0].words[0].text,
+                "recoverable"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_append_finish_and_debounce_preserve_words() {
+        let (store, _vault) = test_store().await;
+        store
+            .append_transcript("s1", delta_with_words(&["first"]))
+            .await
+            .unwrap();
+        let (finished, appended) = tokio::join!(
+            store.finish_transcript("s1", "t1"),
+            store.append_transcript(
+                "s1",
+                TranscriptDelta {
+                    new_words: vec![word("w1", "second")],
+                    ..delta_with_words(&[])
+                }
+            )
+        );
+        finished.unwrap();
+        appended.unwrap();
+        store.finish_transcript("s1", "t1").await.unwrap();
+        tokio::time::sleep(DEBOUNCE + std::time::Duration::from_millis(100)).await;
+        assert!(store.live.lock().await.is_empty());
+        assert_eq!(
+            store.read_transcript_json("s1").await.unwrap().transcripts[0]
+                .words
+                .len(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn finalization_racing_replacement_keeps_the_replacement() {
+        for finish_first in [true, false] {
+            let (store, _vault) = test_store().await;
+            store
+                .append_transcript("s1", delta_with_words(&["live"]))
+                .await
+                .unwrap();
+            let finish = store.finish_transcript("s1", "t1");
+            let replace = store.replace_session_transcripts("s1", batch("t2", &["replacement"]));
+            if finish_first {
+                let (a, b) = tokio::join!(biased; finish, replace);
+                a.unwrap();
+                b.unwrap();
+            } else {
+                let (a, b) = tokio::join!(biased; replace, finish);
+                a.unwrap();
+                b.unwrap();
+            }
+            store.flush_transcript("s1").await.unwrap();
+            assert!(store.live.lock().await.is_empty());
+            let saved = store.read_transcript_json("s1").await.unwrap();
+            assert_eq!(saved.transcripts.len(), 1);
+            assert_eq!(saved.transcripts[0].id, "t2");
+            assert_eq!(saved.transcripts[0].words[0].text, "replacement");
+        }
+    }
+
+    #[tokio::test]
+    async fn finalization_racing_deletion_cannot_recreate_the_session() {
+        for finish_first in [true, false] {
+            let (store, vault) = test_store().await;
+            let meta = serde_json::from_value(serde_json::json!({
+                "id": "s1", "title": "Deletion race", "created_at": "2026-09-19T00:00:00Z", "tags": []
+            })).unwrap();
+            store.write_meta(&meta).await.unwrap();
+            let path = vault.path().join(store.session_dir("s1").await.unwrap());
+            store
+                .append_transcript("s1", delta_with_words(&["live"]))
+                .await
+                .unwrap();
+            store.flush_transcript("s1").await.unwrap();
+            let finish = store.finish_transcript("s1", "t1");
+            let delete = store.delete_session("s1");
+            if finish_first {
+                let (a, b) = tokio::join!(biased; finish, delete);
+                a.unwrap();
+                assert!(b.unwrap().is_some());
+            } else {
+                let (a, b) = tokio::join!(biased; delete, finish);
+                assert!(a.unwrap().is_some());
+                b.unwrap();
+            }
+            tokio::time::sleep(DEBOUNCE + std::time::Duration::from_millis(100)).await;
+            store.finish_transcript("s1", "t1").await.unwrap();
+            assert!(store.live.lock().await.is_empty());
+            assert!(!path.exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn speaker_edits_survive_later_appends_and_finalization() {
+        let (store, _vault) = test_store().await;
+        store
+            .append_transcript("s1", delta_with_words(&["first"]))
+            .await
+            .unwrap();
+        store.flush_transcript("s1").await.unwrap();
+        store
+            .assign_transcript_speaker("t1", 0, None, "Alice", "w0")
+            .await
+            .unwrap();
+        store
+            .append_transcript(
+                "s1",
+                TranscriptDelta {
+                    new_words: vec![word("w1", "second")],
+                    ..delta_with_words(&[])
+                },
+            )
+            .await
+            .unwrap();
+        store.finish_transcript("s1", "t1").await.unwrap();
+        let saved = store.read_transcript_json("s1").await.unwrap();
+        assert_eq!(
+            saved.transcripts[0].speaker_hints,
+            vec![label_hint("w0", "Alice")]
+        );
+        assert_eq!(saved.transcripts[0].words.len(), 2);
+        assert!(store.live.lock().await.is_empty());
     }
 }

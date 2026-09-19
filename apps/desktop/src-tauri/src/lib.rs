@@ -559,6 +559,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_move_tasks::<tauri::Wry>,
             session_store::commands::session_append_transcript::<tauri::Wry>,
             session_store::commands::session_flush_transcript::<tauri::Wry>,
+            session_store::commands::session_finish_transcript::<tauri::Wry>,
             session_store::commands::session_write_transcript::<tauri::Wry>,
             session_store::commands::session_assign_transcript_speaker::<tauri::Wry>,
             session_store::commands::session_replace_transcripts::<tauri::Wry>,

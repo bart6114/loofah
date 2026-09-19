@@ -23,6 +23,7 @@ pub mod summary;
 pub mod tags;
 pub mod tasks;
 pub mod transcript;
+mod transcript_operation;
 
 pub use attachments::SavedAttachment;
 pub use content::{
@@ -48,6 +49,7 @@ pub struct SessionStore {
     journal: Arc<journal::WriteJournal>,
     rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
     rebuild_generation: Arc<std::sync::atomic::AtomicU64>,
+    transcript_operations: transcript_operation::TranscriptOperations,
     write_lock: Arc<tokio::sync::Mutex<()>>, // single store-wide lock; can become per-path if contention matters
     // one live buffer per actively-recording session; guards the debounced-flush lifecycle
     live: Arc<tokio::sync::Mutex<HashMap<String, transcript::LiveTranscriptBuffer>>>,
@@ -125,6 +127,7 @@ impl SessionStore {
             journal: Arc::new(journal::WriteJournal::new()),
             rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
             rebuild_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            transcript_operations: Default::default(),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),
             live: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             index: Arc::new(std::sync::RwLock::new(index::VaultIndex::default())),
