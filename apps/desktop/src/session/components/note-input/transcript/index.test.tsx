@@ -1,8 +1,14 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Transcript } from "./index";
+import { TranscriptContent as Transcript } from "./index";
 
 import type { TranscriptRecord } from "~/stt/queries";
 
@@ -106,6 +112,75 @@ describe("Transcript", () => {
 
     useListenerMock.mockImplementation((selector) => selector(listenerState));
     useAudioPlayerMock.mockReturnValue({ audioExists: false });
+  });
+
+  it("does not mistake delayed loading or a failed read for an empty transcript", () => {
+    listenerState.getSessionMode = () => "inactive";
+    const retry = vi.fn();
+    const scrollRef = createRef<HTMLDivElement>();
+    const view = render(
+      <Transcript
+        sessionId={sessionId}
+        transcripts={[]}
+        scrollRef={scrollRef}
+        pending
+        retry={retry}
+      />,
+    );
+    expect(screen.getByText("Loading transcript...")).toBeTruthy();
+    expect(screen.queryByTestId("empty-state")).toBeNull();
+    view.rerender(
+      <Transcript
+        sessionId={sessionId}
+        transcripts={[]}
+        scrollRef={scrollRef}
+        error
+        retry={retry}
+      />,
+    );
+    expect(screen.queryByTestId("empty-state")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledOnce();
+    view.rerender(
+      <Transcript
+        sessionId={sessionId}
+        transcripts={[]}
+        scrollRef={scrollRef}
+      />,
+    );
+    expect(screen.getByTestId("empty-state")).toBeTruthy();
+  });
+
+  it("shows live words while stored history is loading", () => {
+    listenerState.liveSegments = [{ id: "live", words: [{ text: "now" }] }];
+    render(
+      <Transcript
+        sessionId={sessionId}
+        transcripts={[]}
+        scrollRef={createRef<HTMLDivElement>()}
+        pending
+      />,
+    );
+    flushAnimationFrame(animationFrames);
+    flushAnimationFrame(animationFrames);
+    expect(screen.getByTestId("transcript-viewer")).toBeTruthy();
+  });
+
+  it("does not add a loading delay when rendered data is cached", () => {
+    render(
+      <Transcript
+        sessionId={sessionId}
+        transcripts={[
+          makeTranscript([
+            { id: "w", text: "hello", start_ms: 0, end_ms: 10, channel: 0 },
+          ]),
+        ]}
+        scrollRef={createRef<HTMLDivElement>()}
+        initiallyReady
+      />,
+    );
+    expect(screen.queryByText("Loading transcript...")).toBeNull();
+    expect(screen.getByTestId("transcript-viewer")).toBeTruthy();
   });
 
   it("switches to transcript viewer after transcript words persist", () => {

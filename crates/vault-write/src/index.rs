@@ -108,6 +108,7 @@ pub(super) const VAULT_TASKS_KEY: &str = "";
 /// vault's word corpus never stays resident.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscriptSummary {
+    pub metadata: SessionTranscriptMetadata,
     /// Transcript ids in file order -- powers `transcript_get`'s id -> session
     /// resolution, `session_is_empty`'s count, and `RebuildReport.transcripts`.
     pub transcript_ids: Vec<String>,
@@ -122,6 +123,13 @@ pub struct TranscriptSummary {
     /// changes word content without changing the file's shape (same ids, same
     /// counts) must still flip `PartialEq` so a rescan notifies `Transcripts`.
     pub content_hash: u64,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct SessionTranscriptMetadata {
+    pub speaker_labels: Vec<String>,
+    pub started_at: Option<f64>,
+    pub ended_at: Option<f64>,
 }
 
 fn session_has_attachments(session_dir: &std::path::Path) -> Result<bool, StoreError> {
@@ -297,6 +305,16 @@ impl SessionStore {
     pub fn session_has_transcript(&self, session_id: &str) -> bool {
         let index = self.index.read().unwrap();
         has_transcript_words(&index, session_id)
+    }
+
+    pub fn session_transcript_metadata(&self, session_id: &str) -> SessionTranscriptMetadata {
+        self.index
+            .read()
+            .unwrap()
+            .transcripts
+            .get(session_id)
+            .map(|summary| summary.metadata.clone())
+            .unwrap_or_default()
     }
 
     /// Old `useEnhancedNoteRecords` semantics: docs with kind `summary` /

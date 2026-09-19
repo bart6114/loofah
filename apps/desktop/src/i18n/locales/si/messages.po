@@ -430,6 +430,10 @@ msgstr ""
 msgid "Couldn’t load attachments."
 msgstr ""
 
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Couldn't load transcript."
+msgstr ""
+
 #. placeholder {0}: attachment.attachmentId
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
@@ -437,6 +441,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
+msgstr ""
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Couldn't prepare export."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -597,6 +605,10 @@ msgstr ""
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Export"
+msgstr ""
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Export failed. Please try again."
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -802,6 +814,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
+msgstr ""
+
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Loading transcript..."
 msgstr ""
 
 #: src/changelog/index.tsx
@@ -1094,6 +1110,10 @@ msgid "Permissions granted"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Preparing export..."
+msgstr ""
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr ""
 
@@ -1259,6 +1279,8 @@ msgstr ""
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
+#: src/session/components/note-input/transcript/loading.tsx
+#: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Retry"
 msgstr ""

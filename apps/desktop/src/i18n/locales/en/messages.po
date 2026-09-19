@@ -430,6 +430,10 @@ msgstr "Couldn’t choose attachments"
 msgid "Couldn’t load attachments."
 msgstr "Couldn’t load attachments."
 
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Couldn't load transcript."
+msgstr "Couldn't load transcript."
+
 #. placeholder {0}: attachment.attachmentId
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
@@ -438,6 +442,10 @@ msgstr "Couldn’t open “{0}”"
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
 msgstr "Couldn’t open attachments in Finder"
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Couldn't prepare export."
+msgstr "Couldn't prepare export."
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
@@ -598,6 +606,10 @@ msgstr "Expand all"
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Export"
 msgstr "Export"
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Export failed. Please try again."
+msgstr "Export failed. Please try again."
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Exporting..."
@@ -803,6 +815,10 @@ msgstr "Loading models..."
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
 msgstr "Loading summary prompt..."
+
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Loading transcript..."
+msgstr "Loading transcript..."
 
 #: src/changelog/index.tsx
 #: src/task/resource-view.tsx
@@ -1094,6 +1110,10 @@ msgid "Permissions granted"
 msgstr "Permissions granted"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Preparing export..."
+msgstr "Preparing export..."
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr "Preparing transcript..."
 
@@ -1259,6 +1279,8 @@ msgstr "Resume listening"
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
+#: src/session/components/note-input/transcript/loading.tsx
+#: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Retry"
 msgstr "Retry"

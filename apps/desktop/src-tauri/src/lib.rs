@@ -578,6 +578,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_enhanced_docs::<tauri::Wry>,
             session_store::commands::enhanced_doc_get::<tauri::Wry>,
             session_store::commands::session_transcripts::<tauri::Wry>,
+            session_store::commands::session_transcript_metadata::<tauri::Wry>,
             session_store::commands::transcript_get::<tauri::Wry>,
             session_store::commands::session_find_by_tracking_id::<tauri::Wry>,
         ])

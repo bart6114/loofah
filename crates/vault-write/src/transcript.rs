@@ -1,5 +1,6 @@
 use hypr_fs_format::{
-    TranscriptJson, TranscriptJsonStats, TranscriptSpeakerHint, TranscriptWithData, TranscriptWord,
+    SeqCount, TranscriptJson, TranscriptJsonStats, TranscriptSpeakerHint, TranscriptStat,
+    TranscriptWithData, TranscriptWord,
 };
 
 use super::index::TranscriptSummary;
@@ -20,26 +21,61 @@ pub(crate) fn summarize_transcripts(
     bytes: &[u8],
     transcripts: &[TranscriptWithData],
 ) -> TranscriptSummary {
-    TranscriptSummary {
-        transcript_ids: transcripts.iter().map(|t| t.id.clone()).collect(),
-        has_words: transcripts.iter().any(|t| !t.words.is_empty()),
-        word_count: transcripts.iter().map(|t| t.words.len() as u64).sum(),
-        content_hash: content_hash(bytes),
-    }
+    summarize_stats(
+        bytes,
+        transcripts
+            .iter()
+            .map(|t| TranscriptStat {
+                id: t.id.clone(),
+                started_at: t.started_at,
+                ended_at: t.ended_at,
+                words: SeqCount(t.words.len()),
+                speaker_labels: t
+                    .speaker_hints
+                    .iter()
+                    .filter(|hint| hint.hint_type == "speaker_label")
+                    .filter_map(|hint| hint.value.as_str())
+                    .filter(|label| !label.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            })
+            .collect(),
+    )
 }
 
-/// Summary straight from raw file bytes (rebuild path) -- lexes the whole file but
-/// allocates nothing per word.
+/// Reads index metadata without materializing the word corpus.
 pub(crate) fn summarize_transcript_bytes(bytes: &[u8]) -> Result<TranscriptSummary, StoreError> {
     let stats: TranscriptJsonStats = serde_json::from_slice(bytes).map_err(|e| {
         StoreError::Serialize(format!("failed to deserialize transcript.json: {e}"))
     })?;
-    Ok(TranscriptSummary {
-        transcript_ids: stats.transcripts.iter().map(|t| t.id.clone()).collect(),
-        has_words: stats.transcripts.iter().any(|t| t.words.0 > 0),
-        word_count: stats.transcripts.iter().map(|t| t.words.0 as u64).sum(),
+    Ok(summarize_stats(bytes, stats.transcripts))
+}
+
+fn summarize_stats(bytes: &[u8], mut transcripts: Vec<TranscriptStat>) -> TranscriptSummary {
+    let mut summary = TranscriptSummary {
+        transcript_ids: transcripts.iter().map(|t| t.id.clone()).collect(),
+        has_words: transcripts.iter().any(|t| t.words.0 > 0),
+        word_count: transcripts.iter().map(|t| t.words.0 as u64).sum(),
         content_hash: content_hash(bytes),
-    })
+        metadata: Default::default(),
+    };
+    transcripts.sort_by(|a, b| a.started_at.total_cmp(&b.started_at).then(a.id.cmp(&b.id)));
+    let mut seen = std::collections::HashSet::new();
+    for transcript in transcripts {
+        let metadata = &mut summary.metadata;
+        metadata.started_at = Some(metadata.started_at.map_or(transcript.started_at, |start| {
+            start.min(transcript.started_at)
+        }));
+        if let Some(end) = transcript.ended_at {
+            metadata.ended_at = Some(metadata.ended_at.map_or(end, |current| current.max(end)));
+        }
+        for label in transcript.speaker_labels {
+            if seen.insert(label.clone()) {
+                metadata.speaker_labels.push(label);
+            }
+        }
+    }
+    summary
 }
 
 #[derive(serde::Deserialize, specta::Type, Clone)]
@@ -677,6 +713,7 @@ impl SessionStore {
                         has_words: false,
                         word_count: 0,
                         content_hash: 0,
+                        metadata: Default::default(),
                     });
                 }
                 Err(e) => {
@@ -720,6 +757,113 @@ mod tests {
         let vault = temp.path().to_path_buf();
         let store = SessionStore::new(vault);
         (store, temp)
+    }
+
+    #[test]
+    fn metadata_parity_preserves_speaker_order_and_duration() {
+        let bytes = serde_json::to_vec(&serde_json::json!({"transcripts": [
+            {"id":"late", "session_id":"s", "started_at":20, "ended_at":50,
+             "words":[], "speaker_hints":[{"word_id":"w", "type":"speaker_label", "value":"Bob"}]},
+            {"id":"b", "session_id":"s", "started_at":10, "ended_at":30,
+             "words":[], "speaker_hints":[{"word_id":"w", "type":"speaker_label", "value":"Bob"}]},
+            {"id":"a", "session_id":"s", "started_at":10, "ended_at":null,
+             "words":[{"id":"w","text":"hello","start_ms":0,"end_ms":10,"channel":0}],
+             "speaker_hints":[
+                {"word_id":"w", "type":"provider_speaker_index", "value":{"speaker_index":0}},
+                {"word_id":"w", "type":"speaker_label", "value":"Alice"},
+                {"word_id":"w", "type":"speaker_label", "value":""},
+                {"word_id":"w", "type":"speaker_label", "value":null},
+                {"word_id":"w", "type":"speaker_label", "value":"Alice"}
+             ]}
+        ]}))
+        .unwrap();
+        let full: TranscriptJson = serde_json::from_slice(&bytes).unwrap();
+        let compact = summarize_transcript_bytes(&bytes).unwrap();
+        assert_eq!(compact, summarize_transcripts(&bytes, &full.transcripts));
+        assert_eq!(compact.metadata.speaker_labels, ["Alice", "Bob"]);
+        assert_eq!(compact.metadata.started_at, Some(10.0));
+        assert_eq!(compact.metadata.ended_at, Some(50.0));
+        assert_eq!(compact.word_count, 1);
+        assert_eq!(compact.transcript_ids, ["late", "b", "a"]);
+    }
+
+    #[test]
+    fn metadata_skips_words_and_accepts_legacy_nulls() {
+        let summary = summarize_transcript_bytes(br#"{"transcripts":[
+            {"id":"a", "started_at":null, "words":[{"huge":"ignored without a word schema"}], "speaker_hints":null},
+            {"id":"b", "words":null}
+        ]}"#).unwrap();
+        assert_eq!(summary.word_count, 1);
+        assert_eq!(summary.metadata.started_at, Some(0.0));
+        assert_eq!(summary.metadata.ended_at, None);
+        assert!(summary.metadata.speaker_labels.is_empty());
+        assert!(summarize_transcript_bytes(b"not json").is_err());
+    }
+
+    #[tokio::test]
+    async fn metadata_follows_flush_external_refresh_and_removal() {
+        let (store, _vault) = test_store().await;
+        store
+            .append_transcript("s", delta_with_words(&["hello"]))
+            .await
+            .unwrap();
+        store.flush_transcript("s").await.unwrap();
+        assert_eq!(
+            store.session_transcript_metadata("s").started_at,
+            Some(1000.0)
+        );
+        let meta: crate::SessionMeta = serde_json::from_value(serde_json::json!({
+            "id":"s", "title":"Test", "created_at":"2026-01-01T00:00:00Z", "tags":[]
+        }))
+        .unwrap();
+        store.write_meta(&meta).await.unwrap();
+        let path = _vault
+            .path()
+            .join(store.session_dir("s").await.unwrap())
+            .join("transcript.json");
+        let mut file: TranscriptJson =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        file.transcripts[0].speaker_hints = vec![label_hint("w0", "Alice")];
+        file.transcripts[0].ended_at = Some(5000.0);
+        std::fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+        store.refresh_session("s").await.unwrap();
+        assert_eq!(
+            store.session_transcript_metadata("s").speaker_labels,
+            ["Alice"]
+        );
+        assert_eq!(
+            store.session_transcript_metadata("s").ended_at,
+            Some(5000.0)
+        );
+        std::fs::write(&path, "malformed").unwrap();
+        let _ = store.refresh_session("s").await;
+        assert_eq!(
+            store.session_transcript_metadata("s").speaker_labels,
+            ["Alice"]
+        );
+        std::fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+        store
+            .assign_transcript_speaker("t1", 0, None, "Bob", "w0")
+            .await
+            .unwrap();
+        assert_eq!(
+            store.session_transcript_metadata("s").speaker_labels,
+            ["Bob"]
+        );
+        file.transcripts[0].speaker_hints.clear();
+        store
+            .replace_session_transcripts("s", file.transcripts[0].clone())
+            .await
+            .unwrap();
+        assert!(
+            store
+                .session_transcript_metadata("s")
+                .speaker_labels
+                .is_empty()
+        );
+        std::fs::remove_file(&path).unwrap();
+        store.refresh_session("s").await.unwrap();
+        assert_eq!(store.session_transcript_metadata("s"), Default::default());
     }
 
     fn word(id: &str, text: &str) -> TranscriptWord {

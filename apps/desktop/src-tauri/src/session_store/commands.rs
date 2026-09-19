@@ -6,8 +6,8 @@ use hypr_fs_format::TranscriptWithData;
 
 use super::{
     EnhancedDoc, EnhancedDocPatch, PersonItem, RebuildReport, SessionListHeader, SessionMeta,
-    SessionMetaPatch, SessionRecord, SessionStore, TagItem, TaskInput, TaskItem, TranscriptDelta,
-    VaultStats,
+    SessionMetaPatch, SessionRecord, SessionStore, SessionTranscriptMetadata, TagItem, TaskInput,
+    TaskItem, TranscriptDelta, VaultStats,
 };
 use crate::related_tags::RelatedTagQueue;
 
@@ -517,6 +517,15 @@ pub async fn enhanced_doc_get<R: tauri::Runtime>(
     doc_id: String,
 ) -> Result<Option<EnhancedDoc>, String> {
     Ok(store(&app)?.enhanced_doc_get(&doc_id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn session_transcript_metadata<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+) -> Result<SessionTranscriptMetadata, String> {
+    Ok(store(&app)?.session_transcript_metadata(&session_id))
 }
 
 #[tauri::command]
