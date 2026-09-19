@@ -145,7 +145,7 @@ app-owned vault files:
 - `_meta.json` for title and session metadata
 - `notes.md` for the editable note
 - `transcript.json` for transcript words and speaker assignments
-- `enhanced/<uuid>.md` for generated summaries
+- `summary.md` for the plain Markdown session summary
 - `audio.mp3`, `audio.wav`, or `audio.ogg` plus `audio.peaks.json`
 - vault-root `config.json` for persisted settings
 

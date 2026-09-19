@@ -24,6 +24,7 @@ vi.mock("~/types/tauri.gen", () => ({
     sessionGet: mocks.sessionGet,
     sessionUpdateMeta: mocks.sessionUpdateMeta,
     sessionUpdateEnhancedDoc: mocks.sessionUpdateEnhancedDoc,
+    sessionUpdateSummary: mocks.sessionUpdateEnhancedDoc,
   },
 }));
 
@@ -67,7 +68,7 @@ describe("session content corrections", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "summary-1",
+        id: "session-1",
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
@@ -78,11 +79,8 @@ describe("session content corrections", () => {
     // markdown -- never a raw session_documents UPDATE.
     expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
       "session-1",
-      "summary-1",
-      {
-        markdown: "# New summary",
-        expected_markdown: "old summary",
-      },
+      "# New summary",
+      "old summary",
     );
 
     // `_meta.json` is the only tag store: deduped generated tags land there, sorted.
@@ -102,7 +100,7 @@ describe("session content corrections", () => {
         sessionId: "session-1",
         ownerUserId: "user-1",
         note: {
-          id: "summary-1",
+          id: "session-1",
           currentMarkdown: "stale summary",
           nextMarkdown: "# New summary",
         },
@@ -124,7 +122,7 @@ describe("session content corrections", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "summary-1",
+        id: "session-1",
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
@@ -147,7 +145,7 @@ describe("session content corrections", () => {
         sessionId: "session-1",
         ownerUserId: "user-1",
         note: {
-          id: "summary-1",
+          id: "session-1",
           currentMarkdown: "old summary",
           nextMarkdown: "# New summary",
         },
@@ -161,7 +159,7 @@ describe("session content corrections", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "summary-1",
+        id: "session-1",
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
@@ -184,7 +182,7 @@ describe("session content corrections", () => {
       nextTitle: "Planning",
       documents: [
         {
-          id: "summary-1",
+          id: "session-1",
           currentMarkdown: "old summary",
           nextMarkdown: "# Planning\n\nold summary",
         },
@@ -196,11 +194,8 @@ describe("session content corrections", () => {
     // separately through session_read_note/session_write_note).
     expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
       "session-1",
-      "summary-1",
-      {
-        markdown: "# Planning\n\nold summary",
-        expected_markdown: "old summary",
-      },
+      "# Planning\n\nold summary",
+      "old summary",
     );
     // The title itself is store-canonical, never a raw `UPDATE sessions`.
     expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {
@@ -258,7 +253,7 @@ describe("session content corrections", () => {
         nextTitle: "Planning",
         documents: [
           {
-            id: "summary-1",
+            id: "session-1",
             currentMarkdown: "old summary",
             nextMarkdown: "# Planning\n\nold summary",
           },

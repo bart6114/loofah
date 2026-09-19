@@ -12,7 +12,7 @@ vi.mock("~/session/content-queries", () => ({
 }));
 vi.mock("~/shared/utils", () => ({ id: () => "new-note" }));
 vi.mock("~/types/tauri.gen", () => ({
-  commands: { sessionWriteEnhancedDoc: mocks.write },
+  commands: { sessionEnsureSummary: mocks.write },
 }));
 
 function note(id: string, kind: string, position: number): EnhancerNote {
@@ -34,9 +34,9 @@ describe("summary storage", () => {
     vi.clearAllMocks();
     notes = [];
     mocks.load.mockImplementation(async () => ({ enhancedNotes: notes }));
-    mocks.write.mockImplementation(async (doc) => {
-      notes.push(note(doc.id, doc.kind, doc.sort_order));
-      return { status: "ok", data: null };
+    mocks.write.mockImplementation(async (sessionId) => {
+      notes.push(note(sessionId, "summary", 0));
+      return { status: "ok", data: "" };
     });
   });
   it("prefers the first ordinary summary by position then ID", () => {
@@ -49,12 +49,11 @@ describe("summary storage", () => {
       ])?.id,
     ).toBe("a");
   });
-  it("falls back to the first legacy document and preserves it", async () => {
-    notes = [note("z", "template_output", 1), note("a", "template_output", 1)];
-    const before = structuredClone(notes);
-    expect((await ensureSummaryDocument("s")).id).toBe("a");
-    expect(notes).toEqual(before);
-    expect(mocks.write).not.toHaveBeenCalled();
+  it("creates a session summary without replacing template outputs", async () => {
+    notes = [note("legacy", "template_output", 1)];
+    expect((await ensureSummaryDocument("s")).id).toBe("s");
+    expect(notes[0].id).toBe("legacy");
+    expect(mocks.write).toHaveBeenCalledExactlyOnceWith("s");
   });
   it("serializes simultaneous requests without creating duplicate summaries", async () => {
     const results = await Promise.all([
@@ -62,20 +61,8 @@ describe("summary storage", () => {
       ensureSummaryDocument("s"),
       ensureSummaryDocument("s"),
     ]);
-    expect(results.map((result) => result.id)).toEqual([
-      "new-note",
-      "new-note",
-      "new-note",
-    ]);
-    expect(mocks.write).toHaveBeenCalledExactlyOnceWith({
-      id: "new-note",
-      session_id: "s",
-      kind: "summary",
-      title: "Summary",
-      template_id: "",
-      sort_order: 1,
-      markdown: "",
-    });
+    expect(results.map((result) => result.id)).toEqual(["s", "s", "s"]);
+    expect(mocks.write).toHaveBeenCalledExactlyOnceWith("s");
   });
   it("reports missing sessions and failed writes", async () => {
     mocks.load.mockResolvedValueOnce(null);

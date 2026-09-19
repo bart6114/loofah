@@ -63,7 +63,7 @@ describe("createTasksSlice", () => {
     const pending = state.generate(taskId, {
       model: {} as any,
       taskType: "enhance",
-      args: { sessionId: "session", enhancedNoteId: "note" },
+      args: { sessionId: "session" },
     });
     await burstReceived;
     expect(state.tasks[taskId]?.streamedText).toBe("");
@@ -144,7 +144,6 @@ describe("createTasksSlice", () => {
       taskType: "enhance",
       args: {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
     });
 
@@ -188,7 +187,6 @@ describe("createTasksSlice", () => {
       taskType: "enhance",
       args: {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
     });
 
@@ -256,7 +254,6 @@ describe("createTasksSlice", () => {
       taskType: "enhance",
       args: {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
     });
 
@@ -294,7 +291,7 @@ describe("createTasksSlice", () => {
     await state.generate(taskId, {
       model: {} as any,
       taskType: "enhance",
-      args: { sessionId: "session-1", enhancedNoteId: "note-1" },
+      args: { sessionId: "session-1" },
     });
 
     expect(state.tasks[taskId]).toMatchObject({
@@ -328,7 +325,7 @@ describe("createTasksSlice", () => {
     const promise = state.generate(taskId, {
       model: {} as any,
       taskType: "enhance",
-      args: { sessionId: "session-1", enhancedNoteId: "note-1" },
+      args: { sessionId: "session-1" },
     });
 
     await vi.waitFor(() => {
@@ -370,7 +367,7 @@ describe("createTasksSlice", () => {
     const promise = state.generate(taskId, {
       model: {} as any,
       taskType: "enhance",
-      args: { sessionId: "session-1", enhancedNoteId: "note-1" },
+      args: { sessionId: "session-1" },
     });
 
     await vi.waitFor(() => {
@@ -407,7 +404,7 @@ describe("createTasksSlice", () => {
     const promise = state.generate(taskId, {
       model: {} as any,
       taskType: "enhance",
-      args: { sessionId: "session-1", enhancedNoteId: "note-1" },
+      args: { sessionId: "session-1" },
     });
 
     await vi.advanceTimersByTimeAsync(0);

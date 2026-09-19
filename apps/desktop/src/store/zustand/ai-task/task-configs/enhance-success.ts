@@ -78,11 +78,13 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   if (!snapshot) {
     throw new Error(`Session ${args.sessionId} no longer exists`);
   }
-  const note = snapshot.enhancedNotes.find(
-    (candidate) => candidate.id === args.enhancedNoteId,
+  const note = snapshot.enhancedNotes.find((candidate) =>
+    args.templateDocumentId
+      ? candidate.id === args.templateDocumentId
+      : candidate.kind === "summary",
   );
-  if (!note) {
-    throw new Error(`Summary ${args.enhancedNoteId} no longer exists`);
+  if (!note || transformedArgs.expectedMarkdown === null) {
+    throw new Error(`Summary ${args.sessionId} no longer exists`);
   }
 
   trimmedTitle = snapshot.title.trim();
@@ -122,17 +124,13 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
     return;
   }
 
-  // The summary's real home is `sessions/<id>/enhanced/<note.id>.md` -- one file per doc,
-  // templated or not -- written through the store inside persistGeneratedEnhancedNote (which
-  // also CASes on the file's current markdown so a stale run can't clobber a regenerated
-  // summary). No single-slot `summary.md` mirror and no shadow-row cleanup needed anymore.
   const persistableText = appendTagLineToMarkdown(persistableBody, tagNames);
   await persistGeneratedEnhancedNote({
     sessionId: args.sessionId,
     ownerUserId: snapshot.ownerUserId,
     note: {
       id: note.id,
-      currentMarkdown: note.markdown,
+      currentMarkdown: transformedArgs.expectedMarkdown,
       nextMarkdown: persistableText,
     },
     tagNames,

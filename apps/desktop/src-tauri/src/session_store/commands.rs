@@ -115,10 +115,68 @@ pub async fn session_read_note<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub fn session_summary_get<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    Ok(store(&app)?.summary_get(&session_id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn session_ensure_summary<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+) -> Result<String, String> {
+    store(&app)?
+        .ensure_summary(&session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn session_update_summary<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    markdown: String,
+    expected_markdown: Option<String>,
+) -> Result<(), String> {
+    store(&app)?
+        .update_summary(&session_id, &markdown, expected_markdown.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(queue) = app.try_state::<RelatedTagQueue>() {
+        queue.enqueue(session_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn session_delete_summary<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+) -> Result<(), String> {
+    store(&app)?
+        .delete_summary(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(queue) = app.try_state::<RelatedTagQueue>() {
+        queue.enqueue(session_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn session_write_enhanced_doc<R: tauri::Runtime>(
     app: AppHandle<R>,
     doc: EnhancedDoc,
 ) -> Result<(), String> {
+    if doc.kind == "summary" {
+        return Err("Use session_ensure_summary for session summaries".into());
+    }
     let session_id = doc.session_id.clone();
     store(&app)?
         .write_enhanced_doc(&doc)
@@ -138,6 +196,9 @@ pub async fn session_update_enhanced_doc<R: tauri::Runtime>(
     doc_id: String,
     patch: EnhancedDocPatch,
 ) -> Result<(), String> {
+    if patch.kind.as_deref() == Some("summary") {
+        return Err("Use session_ensure_summary for session summaries".into());
+    }
     store(&app)?
         .update_enhanced_doc(&session_id, &doc_id, patch)
         .await

@@ -397,18 +397,23 @@ fn assemble_meeting_sync(
     })
 }
 
-// AI documents live exclusively in `enhanced/<uuid>.md`, ordered by (sort_order, id).
+// Keep the existing document response shape while summary identity is session-scoped.
 fn load_summaries_sync(vault: &Path, location: &SessionLocation) -> Result<Vec<Document>> {
     let session_dir = &location.relative_dir;
     let mut summaries = Vec::new();
     for doc in hypr_vault_read::enhanced::list_enhanced_docs_in(vault, session_dir, &location.id)
         .map_err(vault_error("load meeting"))?
     {
+        let relative_path = if doc.kind == "summary" {
+            hypr_vault_read::summary::locate_in(vault, session_dir, &location.id)
+                .map_err(vault_error("load summary"))?
+                .map(|summary| summary.relative_path)
+                .unwrap_or_else(|| hypr_vault_read::paths::summary_path_in(session_dir))
+        } else {
+            hypr_vault_read::paths::enhanced_doc_path_in(session_dir, &doc.id)
+        };
         summaries.push(Document {
-            updated_at: file_updated_at(
-                vault,
-                &hypr_vault_read::paths::enhanced_doc_path_in(session_dir, &doc.id),
-            ),
+            updated_at: file_updated_at(vault, &relative_path),
             id: doc.id,
             kind: doc.kind,
             template_id: doc.template_id,
@@ -693,8 +698,9 @@ mod tests {
         let dir = vault.join("sessions/meeting-1");
         // Legacy note name: get_meeting must still read it through the fallback.
         std::fs::write(dir.join("_memo.md"), "Launch decision").unwrap();
-        // A loose `.md` is a user attachment, not a document -- must not surface.
+        // The canonical summary is plain Markdown; other loose files remain attachments.
         std::fs::write(dir.join("summary.md"), "Ship Tuesday").unwrap();
+        std::fs::write(dir.join("minutes.md"), "attachment only").unwrap();
         std::fs::create_dir_all(dir.join("enhanced")).unwrap();
         std::fs::write(
             dir.join("enhanced/doc-1.md"),
@@ -785,11 +791,13 @@ mod tests {
                 .iter()
                 .map(|summary| summary.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["doc-1"],
-            "only enhanced docs surface; loose .md attachments are ignored"
+            vec!["meeting-1", "doc-1"],
+            "the session summary and template output surface; other loose files are ignored"
         );
-        assert_eq!(meeting.summaries[0].title, "Customer review");
-        assert_eq!(meeting.summaries[0].template_id, "template-1");
+        assert_eq!(meeting.summaries[0].markdown, "Ship Tuesday");
+        assert_eq!(meeting.summaries[0].kind, "summary");
+        assert_eq!(meeting.summaries[1].title, "Customer review");
+        assert_eq!(meeting.summaries[1].template_id, "template-1");
         let serialized = serde_json::to_value(&meeting).unwrap();
         assert!(serialized.get("workspace_id").is_none());
         assert!(serialized.get("owner_user_id").is_none());

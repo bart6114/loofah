@@ -200,6 +200,21 @@ export function useEnhancedNote(
       ? ["enhanced-doc", enhancedNoteId, generationId]
       : ["enhanced-doc", enhancedNoteId],
     queryFn: async () => {
+      if (sessionId && enhancedNoteId === sessionId) {
+        const result = await commands.sessionSummaryGet(sessionId);
+        if (result.status === "error") throw new Error(result.error);
+        return result.data === null
+          ? null
+          : mapEnhancedDoc({
+              id: sessionId,
+              session_id: sessionId,
+              kind: "summary",
+              title: "Summary",
+              template_id: "",
+              sort_order: 0,
+              markdown: result.data,
+            });
+      }
       const result = await commands.enhancedDocGet(enhancedNoteId);
       if (result.status === "error") {
         throw new Error(result.error);
@@ -244,14 +259,12 @@ export function updateEnhancedNoteContent(
       // keep `content` as-is
     }
 
-    // File-first: `enhanced/<doc-id>.md` is canonical, and the store's dual-write keeps
-    // the `session_documents` row (still read by Phase-E-pending live queries and search)
-    // in sync -- a raw SQL update here would leave the file stale for the next rebuild.
-    const docWrite = await commands.sessionUpdateEnhancedDoc(
-      sessionId,
-      enhancedNoteId,
-      { markdown },
-    );
+    const docWrite =
+      enhancedNoteId === sessionId
+        ? await commands.sessionUpdateSummary(sessionId, markdown, null)
+        : await commands.sessionUpdateEnhancedDoc(sessionId, enhancedNoteId, {
+            markdown,
+          });
     if (docWrite.status === "error") {
       throw new Error(
         `Failed to update summary ${enhancedNoteId}: ${docWrite.error}`,
@@ -278,13 +291,10 @@ export function deleteEnhancedNote(
   sessionId: string,
 ): Promise<void> {
   return enqueueDatabaseWrite(`enhanced-note:${enhancedNoteId}`, async () => {
-    // The store moves `enhanced/<doc-id>.md` to `.trash/` (hand-recoverable) and
-    // hard-deletes the index row -- no tombstone, since no undo path exists for enhanced
-    // notes and rebuild prunes file-less rows anyway.
-    const result = await commands.sessionDeleteEnhancedDoc(
-      sessionId,
-      enhancedNoteId,
-    );
+    const result =
+      enhancedNoteId === sessionId
+        ? await commands.sessionDeleteSummary(sessionId)
+        : await commands.sessionDeleteEnhancedDoc(sessionId, enhancedNoteId);
     if (result.status === "error") {
       throw new Error(
         `Failed to delete summary ${enhancedNoteId}: ${result.error}`,

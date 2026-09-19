@@ -191,7 +191,10 @@ async fn migration_preserves_every_byte_and_reuses_its_metadata_snapshot() {
             ("audio.mp3", &[0, 1, 255, 42]),
             ("transcript.json", b"{\"transcripts\":[]}"),
             ("tasks.json", b"{\"tasks\":[]}"),
-            ("enhanced/doc-1.md", b"---\nkind: summary\n---\nRecap"),
+            (
+                "enhanced/doc-1.md",
+                b"---\nkind: template_output\n---\nRecap",
+            ),
             ("attachments/image.png", &[137, 80, 78, 71]),
             ("unknown.bin", &[0, 2, 0, 255]),
             (".hidden", b"untouched"),

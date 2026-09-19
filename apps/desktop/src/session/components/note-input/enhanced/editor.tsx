@@ -111,7 +111,13 @@ const EnhancedEditorInner = forwardRef<
           fileHandlerConfig={fileHandlerConfig}
           taskSource={
             persistChanges
-              ? { type: "enhanced_note", id: enhancedNoteId }
+              ? {
+                  type:
+                    enhancedNoteId === sessionId
+                      ? "session_summary"
+                      : "enhanced_note",
+                  id: enhancedNoteId,
+                }
               : undefined
           }
           extraNodeViews={extraNodeViews}

@@ -195,6 +195,7 @@ pub struct VaultIndex {
     pub sessions: HashMap<String, SessionEntry>,
     /// Session id -> that session's `enhanced/<uuid>.md` docs.
     pub docs: HashMap<String, Vec<EnhancedDoc>>,
+    pub summaries: HashMap<String, String>,
     pub transcripts: HashMap<String, TranscriptSummary>,
     /// Session id (or `VAULT_TASKS_KEY`) -> that file's tasks.
     pub tasks: HashMap<String, Vec<TaskItem>>,
@@ -306,6 +307,12 @@ impl SessionStore {
     pub fn session_enhanced_docs(&self, session_id: &str) -> Vec<EnhancedDoc> {
         let index = self.index.read().unwrap();
         let mut docs: Vec<EnhancedDoc> = index.docs.get(session_id).cloned().unwrap_or_default();
+        if let Some(markdown) = index.summaries.get(session_id) {
+            docs.push(hypr_vault_read::summary::as_document(
+                session_id,
+                markdown.clone(),
+            ));
+        }
         docs.sort_by(|a, b| a.sort_order.cmp(&b.sort_order).then(a.id.cmp(&b.id)));
         docs
     }
@@ -314,6 +321,12 @@ impl SessionStore {
     /// frontend doesn't know the session at that call site).
     pub fn enhanced_doc_get(&self, doc_id: &str) -> Option<EnhancedDoc> {
         let index = self.index.read().unwrap();
+        if let Some(markdown) = index.summaries.get(doc_id) {
+            return Some(hypr_vault_read::summary::as_document(
+                doc_id,
+                markdown.clone(),
+            ));
+        }
         index
             .docs
             .values()
@@ -405,7 +418,8 @@ impl SessionStore {
                 .get(session_id)
                 .map(|summary| summary.transcript_ids.len())
                 .unwrap_or_default();
-            let enhanced_count = index.docs.get(session_id).map(Vec::len).unwrap_or_default();
+            let enhanced_count = index.docs.get(session_id).map(Vec::len).unwrap_or_default()
+                + usize::from(index.summaries.contains_key(session_id));
             if transcript_count > 0 || enhanced_count > 0 || !entry.meta.tags.is_empty() {
                 return Ok(false);
             }
@@ -614,6 +628,9 @@ impl SessionStore {
                 .insert(session_id.to_string());
             changes.push((IndexEntity::Sessions, session_id.to_string()));
             changes.push((IndexEntity::SessionHeaders, session_id.to_string()));
+        }
+        if index.summaries.remove(session_id).is_some() {
+            changes.push((IndexEntity::Docs, session_id.to_string()));
         }
         if index.docs.remove(session_id).is_some() {
             changes.push((IndexEntity::Docs, session_id.to_string()));
@@ -1032,7 +1049,7 @@ mod tests {
         std::fs::write(dir.join("notes.md"), "# notes").unwrap();
         // A loose markdown file directly in the session dir is a user attachment,
         // not a document -- rebuild must leave it out of the index.
-        std::fs::write(dir.join("summary.md"), "user attachment body").unwrap();
+        std::fs::write(dir.join("minutes.md"), "user attachment body").unwrap();
         std::fs::write(
             dir.join("enhanced/doc-1.md"),
             hypr_vault_read::render_enhanced_file(&enhanced_doc("s1", "doc-1", 2)).unwrap(),
@@ -1075,7 +1092,7 @@ mod tests {
         assert_eq!(
             docs.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
             vec!["doc-1"],
-            "only enhanced/ docs are indexed; the loose summary.md attachment is ignored"
+            "only enhanced/ docs are indexed; the loose minutes.md attachment is ignored"
         );
 
         assert!(store.session_has_transcript("s1"));
