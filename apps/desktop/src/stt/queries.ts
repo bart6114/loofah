@@ -49,7 +49,26 @@ const EMPTY_TRANSCRIPTS: TranscriptRecord[] = [];
 const EMPTY_IDS: string[] = [];
 
 export function useSessionTranscripts(sessionId: string): TranscriptRecord[] {
-  const { data = EMPTY_TRANSCRIPTS } = useIndexQuery({
+  const { data = EMPTY_TRANSCRIPTS } = useSessionTranscriptsQuery(sessionId);
+  return sessionId ? data : EMPTY_TRANSCRIPTS;
+}
+
+export function useSessionTranscriptMetadata(sessionId: string) {
+  return useIndexQuery({
+    entity: "transcripts",
+    ids: [sessionId],
+    queryKey: ["session-transcript-metadata", sessionId],
+    queryFn: async () => {
+      const result = await commands.sessionTranscriptMetadata(sessionId);
+      if (result.status === "error") throw new Error(result.error);
+      return result.data;
+    },
+    enabled: Boolean(sessionId),
+  });
+}
+
+export function useSessionTranscriptsQuery(sessionId: string) {
+  return useIndexQuery({
     // Transcript events carry the session id. session_transcripts is already
     // ordered (started_at, id).
     entity: "transcripts",
@@ -64,7 +83,6 @@ export function useSessionTranscripts(sessionId: string): TranscriptRecord[] {
     },
     enabled: Boolean(sessionId),
   });
-  return sessionId ? data : EMPTY_TRANSCRIPTS;
 }
 
 export function useTranscript(transcriptId: string): TranscriptRecord | null {

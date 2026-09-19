@@ -30,7 +30,10 @@ pub use content::{
     is_tag_automation_candidate,
 };
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
-pub use index::{IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord};
+pub use index::{
+    IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord,
+    SessionTranscriptMetadata,
+};
 pub use people::PersonItem;
 pub use rebuild::RebuildReport;
 pub use stats::{VaultStats, VaultYearStats};

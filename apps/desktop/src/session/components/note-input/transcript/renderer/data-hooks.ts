@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import { TRANSCRIPT_RENDER_CACHE_TIME_MS } from "../cache";
 import { useTranscriptRenderData } from "../render-request-hooks";
@@ -20,10 +20,7 @@ export function useRenderedTranscriptData(
   transcriptId: string,
   transcript: TranscriptRecord | null,
   people: readonly Person[],
-): {
-  maxSpeakerNumber?: number;
-  segments: Segment[];
-} {
+) {
   const { request } = useTranscriptRenderData(transcript, people);
   const requestKey = useMemo(
     () => getRenderTranscriptRequestKey(request),
@@ -31,7 +28,7 @@ export function useRenderedTranscriptData(
   );
 
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- requestKey is the canonical hash of the complete render request.
-  const { data = [] } = useQuery({
+  const query = useQuery({
     queryKey: ["rendered-transcript-segments", transcriptId, requestKey],
     queryFn: async () => {
       if (!request) {
@@ -63,7 +60,20 @@ export function useRenderedTranscriptData(
     [request],
   );
 
-  return { maxSpeakerNumber, segments: data };
+  const previous = useRef<{ id: string; data: Segment[] } | null>(null);
+  if (!request) previous.current = null;
+  else if (query.data)
+    previous.current = { id: transcriptId, data: query.data };
+  const data =
+    query.data ??
+    (previous.current?.id === transcriptId ? previous.current.data : undefined);
+  return {
+    maxSpeakerNumber,
+    segments: request ? (data ?? []) : [],
+    isLoading: Boolean(request) && !data && !query.isError,
+    isError: query.isError,
+    refetch: query.refetch,
+  };
 }
 
 export function useTranscriptOffset(

@@ -789,6 +789,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionTranscriptMetadata(
+    sessionId: string,
+  ): Promise<Result<SessionTranscriptMetadata, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_transcript_metadata", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async transcriptGet(
     transcriptId: string,
   ): Promise<Result<TranscriptWithData | null, string>> {
@@ -1027,6 +1040,11 @@ export type SessionMetaPatch = {
  * preferring the file loses nothing.
  */
 export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
+export type SessionTranscriptMetadata = {
+  speaker_labels: string[];
+  started_at: number | null;
+  ended_at: number | null;
+};
 export type StartupPhase =
   | { kind: "openingVault" }
   | { kind: "scanning"; sessions_found: number }
