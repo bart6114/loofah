@@ -353,6 +353,19 @@ pub async fn session_flush_transcript<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn session_finish_transcript<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    transcript_id: String,
+) -> Result<(), String> {
+    store(&app)?
+        .finish_transcript(&session_id, &transcript_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn session_write_transcript<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,

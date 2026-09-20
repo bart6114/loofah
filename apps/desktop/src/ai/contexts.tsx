@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef } from "react";
+import React, { createContext, useContext, useEffect, useRef } from "react";
 import { shallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 
@@ -21,6 +21,8 @@ export const AITaskProvider = ({
   if (!storeRef.current) {
     storeRef.current = store;
   }
+
+  useEffect(() => storeRef.current!.getState().startHistoryMaintenance(), []);
 
   return (
     <AITaskContext.Provider value={storeRef.current}>

@@ -1,90 +1,77 @@
-use cidre::{core_audio as ca, os};
+use cidre::{arc, core_audio as ca, dispatch};
+use std::sync::Weak;
 
-use super::DEVICE_IS_RUNNING_SOMEWHERE;
-use super::state::SharedContext;
+use super::{AudioBackend, Control, DEVICE_IS_RUNNING_SOMEWHERE};
 
-pub(super) struct ListenerData {
-    pub(super) ctx: SharedContext,
-    pub(super) device_listener_ptr: *mut (),
+pub(super) struct CoreAudio {
+    queue: arc::R<dispatch::Queue>,
 }
 
-pub(super) fn is_mic_running(device: &ca::Device) -> Option<bool> {
-    device
-        .prop::<u32>(&DEVICE_IS_RUNNING_SOMEWHERE)
-        .map(|v| v != 0)
-        .ok()
-}
-
-pub(super) extern "C-unwind" fn device_listener(
-    _obj_id: ca::Obj,
-    number_addresses: u32,
-    addresses: *const ca::PropAddr,
-    client_data: *mut (),
-) -> os::Status {
-    let data = unsafe { &*(client_data as *const ListenerData) };
-    let addresses = unsafe { std::slice::from_raw_parts(addresses, number_addresses as usize) };
-
-    for addr in addresses {
-        if addr.selector != ca::PropSelector::DEVICE_IS_RUNNING_SOMEWHERE {
-            continue;
-        }
-        if let Ok(device) = ca::System::default_input_device()
-            && let Some(running) = is_mic_running(&device)
-        {
-            data.ctx.handle_mic_change(running);
+impl CoreAudio {
+    pub fn new() -> Self {
+        Self {
+            queue: dispatch::Queue::new(),
         }
     }
-
-    os::Status::NO_ERR
 }
 
-pub(super) extern "C-unwind" fn system_listener(
-    _obj_id: ca::Obj,
-    number_addresses: u32,
-    addresses: *const ca::PropAddr,
-    client_data: *mut (),
-) -> os::Status {
-    let data = unsafe { &*(client_data as *const ListenerData) };
-    let addresses = unsafe { std::slice::from_raw_parts(addresses, number_addresses as usize) };
+pub(super) struct Registration {
+    object: ca::Obj,
+    address: ca::PropAddr,
+    queue: arc::R<dispatch::Queue>,
+    block: arc::R<ca::PropListenerBlock>,
+}
 
-    for addr in addresses {
-        if addr.selector != ca::PropSelector::HW_DEFAULT_INPUT_DEVICE {
-            continue;
+impl Drop for Registration {
+    fn drop(&mut self) {
+        if let Err(error) = self.object.remove_prop_listener_block(
+            &self.address,
+            Some(&self.queue),
+            &mut self.block,
+        ) {
+            // CoreAudio owns its block copy. A failed removal retains only an inert weak wakeup.
+            tracing::error!(?error, object = ?self.object, "removing_mic_listener_failed");
         }
+    }
+}
 
-        let Ok(mut device_guard) = data.ctx.current_device.lock() else {
-            continue;
-        };
-
-        if let Some(old_device) = device_guard.take() {
-            let _ = old_device.remove_prop_listener(
-                &DEVICE_IS_RUNNING_SOMEWHERE,
-                device_listener,
-                data.device_listener_ptr,
-            );
-        }
-
-        let Ok(new_device) = ca::System::default_input_device() else {
-            continue;
-        };
-
-        if new_device
-            .add_prop_listener(
-                &DEVICE_IS_RUNNING_SOMEWHERE,
-                device_listener,
-                data.device_listener_ptr,
-            )
-            .is_ok()
-        {
-            let mic_in_use = is_mic_running(&new_device);
-            *device_guard = Some(new_device);
-            drop(device_guard);
-
-            if let Some(running) = mic_in_use {
-                data.ctx.handle_mic_change(running);
+impl AudioBackend for CoreAudio {
+    type Registration = Registration;
+    fn default_input(&mut self) -> Option<ca::Obj> {
+        ca::System::default_input_device()
+            .ok()
+            .map(|device| device.0)
+    }
+    fn register(
+        &mut self,
+        object: ca::Obj,
+        address: ca::PropAddr,
+        control: Weak<Control>,
+    ) -> Result<Registration, ()> {
+        let mut block = ca::PropListenerBlock::new2(move |_: u32, _: *const ca::PropAddr| {
+            if let Some(control) = control.upgrade() {
+                control.notify();
             }
-        }
+        });
+        object
+            .add_prop_listener_block(&address, Some(&self.queue), &mut block)
+            .map_err(|error| {
+                tracing::error!(?error, ?object, "adding_mic_listener_failed");
+            })?;
+        Ok(Registration {
+            object,
+            address,
+            queue: self.queue.clone(),
+            block,
+        })
     }
-
-    os::Status::NO_ERR
+    fn is_running(&self, object: ca::Obj) -> Option<bool> {
+        object
+            .prop::<u32>(&DEVICE_IS_RUNNING_SOMEWHERE)
+            .ok()
+            .map(|value| value != 0)
+    }
+    fn drain(&self) {
+        self.queue.sync(|| ());
+    }
 }

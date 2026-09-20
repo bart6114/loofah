@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
 
 import { type EnhanceResult, getEnhancerService } from "~/services/enhancer";
+import { createAsyncListenerScope } from "~/shared/async-listener-scope";
 import type { AITaskStore } from "~/store/zustand/ai-task";
 import type { RemoteTaskState, TaskState } from "~/store/zustand/ai-task/tasks";
 
@@ -120,10 +121,7 @@ export function AITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
 function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
   useEffect(() => {
     const sourceLabel = getCurrentWebviewWindowLabel();
-    let active = true;
-    let syncRequestUnlisten: UnlistenFn | null = null;
-    let cancelUnlisten: UnlistenFn | null = null;
-    let enhanceUnlisten: UnlistenFn | null = null;
+    const scope = createAsyncListenerScope();
 
     const emitSnapshot = () => {
       void emit(TASK_SYNC_EVENT, {
@@ -149,86 +147,86 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
     });
     emitSnapshot();
 
-    void listen<TaskSyncRequestPayload>(TASK_SYNC_REQUEST_EVENT, (event) => {
-      if (!active || !isTaskSyncRequestPayload(event.payload)) {
-        return;
-      }
-
-      void emitTo(event.payload.sourceLabel, TASK_SYNC_EVENT, {
-        sourceLabel,
-        tasks: serializeEnhanceTasks(store.getState().tasks),
-      } satisfies TaskSyncPayload);
-    }).then((unlisten) => {
-      if (active) {
-        syncRequestUnlisten = unlisten;
-      } else {
-        unlisten();
-      }
-    });
-
-    void listen<TaskCancelPayload>(TASK_CANCEL_EVENT, (event) => {
-      if (!active || !isTaskCancelPayload(event.payload)) {
-        return;
-      }
-
-      store.getState().cancel(event.payload.taskId);
-    }).then((unlisten) => {
-      if (active) {
-        cancelUnlisten = unlisten;
-      } else {
-        unlisten();
-      }
-    });
-
-    void listen<TaskEnhancePayload>(TASK_ENHANCE_EVENT, (event) => {
-      if (!active || !isTaskEnhancePayload(event.payload)) {
-        return;
-      }
-
-      const { sessionId, auto, opts, requestId, sourceLabel } = event.payload;
-      void (async () => {
-        const service = getEnhancerService();
-        if (!service) {
-          throw new Error("Summary service is unavailable. Please try again.");
-        }
-
-        if (auto === "regenerate") {
-          await service.resetEnhanceTasks(sessionId);
-          service.queueAutoEnhance(sessionId);
-        } else if (auto === "if_empty") {
-          await service.queueAutoEnhanceIfSummaryEmpty(sessionId);
-        } else {
-          const result = await service.enhance(sessionId, opts);
-          if (requestId && sourceLabel) {
-            await emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
-              requestId,
-              result,
-            } satisfies TaskEnhanceResultPayload);
+    void scope
+      .add(() =>
+        listen<TaskSyncRequestPayload>(TASK_SYNC_REQUEST_EVENT, (event) => {
+          if (!scope.active || !isTaskSyncRequestPayload(event.payload)) {
+            return;
           }
-        }
-      })().catch((error) => {
-        console.error("[enhancer] remote enhancement failed", error);
-        if (requestId && sourceLabel) {
-          void emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
-            requestId,
-            error: error instanceof Error ? error.message : String(error),
-          } satisfies TaskEnhanceResultPayload);
-        }
-      });
-    }).then((unlisten) => {
-      if (active) {
-        enhanceUnlisten = unlisten;
-      } else {
-        unlisten();
-      }
-    });
+
+          void emitTo(event.payload.sourceLabel, TASK_SYNC_EVENT, {
+            sourceLabel,
+            tasks: serializeEnhanceTasks(store.getState().tasks),
+          } satisfies TaskSyncPayload);
+        }),
+      )
+      .catch((error) =>
+        console.error("[ai-sync] listener setup failed", error),
+      );
+
+    void scope
+      .add(() =>
+        listen<TaskCancelPayload>(TASK_CANCEL_EVENT, (event) => {
+          if (!scope.active || !isTaskCancelPayload(event.payload)) {
+            return;
+          }
+
+          store.getState().cancel(event.payload.taskId);
+        }),
+      )
+      .catch((error) =>
+        console.error("[ai-sync] listener setup failed", error),
+      );
+
+    void scope
+      .add(() =>
+        listen<TaskEnhancePayload>(TASK_ENHANCE_EVENT, (event) => {
+          if (!scope.active || !isTaskEnhancePayload(event.payload)) {
+            return;
+          }
+
+          const { sessionId, auto, opts, requestId, sourceLabel } =
+            event.payload;
+          void (async () => {
+            const service = getEnhancerService();
+            if (!service) {
+              throw new Error(
+                "Summary service is unavailable. Please try again.",
+              );
+            }
+
+            if (auto === "regenerate") {
+              await service.resetEnhanceTasks(sessionId);
+              service.queueAutoEnhance(sessionId);
+            } else if (auto === "if_empty") {
+              await service.queueAutoEnhanceIfSummaryEmpty(sessionId);
+            } else {
+              const result = await service.enhance(sessionId, opts);
+              if (requestId && sourceLabel) {
+                await emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
+                  requestId,
+                  result,
+                } satisfies TaskEnhanceResultPayload);
+              }
+            }
+          })().catch((error) => {
+            console.error("[enhancer] remote enhancement failed", error);
+            if (requestId && sourceLabel) {
+              void emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
+                requestId,
+                error: error instanceof Error ? error.message : String(error),
+              } satisfies TaskEnhanceResultPayload);
+            }
+          });
+        }),
+      )
+      .catch((error) =>
+        console.error("[ai-sync] listener setup failed", error),
+      );
 
     return () => {
-      active = false;
+      scope.dispose();
       unsubscribe();
-      syncRequestUnlisten?.();
-      cancelUnlisten?.();
-      enhanceUnlisten?.();
     };
   }, [store]);
 
@@ -238,33 +236,35 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
 function RemoteAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
   useEffect(() => {
     const sourceLabel = getCurrentWebviewWindowLabel();
-    let active = true;
-    let syncUnlisten: UnlistenFn | null = null;
+    const scope = createAsyncListenerScope();
 
-    void listen<TaskSyncPayload>(TASK_SYNC_EVENT, (event) => {
-      if (
-        !active ||
-        !isTaskSyncPayload(event.payload) ||
-        event.payload.sourceLabel === sourceLabel
-      ) {
-        return;
-      }
+    void scope
+      .add(() =>
+        listen<TaskSyncPayload>(TASK_SYNC_EVENT, (event) => {
+          if (
+            !scope.active ||
+            !isTaskSyncPayload(event.payload) ||
+            event.payload.sourceLabel === sourceLabel
+          ) {
+            return;
+          }
 
-      store.getState().syncRemoteTasks(event.payload.tasks);
-    }).then((unlisten) => {
-      if (active) {
-        syncUnlisten = unlisten;
-        void emitTo("main", TASK_SYNC_REQUEST_EVENT, {
-          sourceLabel,
-        } satisfies TaskSyncRequestPayload);
-      } else {
-        unlisten();
-      }
-    });
+          store.getState().syncRemoteTasks(event.payload.tasks);
+        }),
+      )
+      .then(() => {
+        if (scope.active) {
+          void emitTo("main", TASK_SYNC_REQUEST_EVENT, {
+            sourceLabel,
+          } satisfies TaskSyncRequestPayload);
+        }
+      })
+      .catch((error) =>
+        console.error("[ai-sync] listener setup failed", error),
+      );
 
     return () => {
-      active = false;
-      syncUnlisten?.();
+      scope.dispose();
     };
   }, [store]);
 
@@ -286,6 +286,7 @@ function serializeEnhanceTasks(tasks: Record<string, TaskState>) {
             : undefined,
           currentStep: task.currentStep,
           sessionId: task.sessionId,
+          completedAt: task.completedAt,
         } satisfies RemoteTaskState,
       ]),
   );

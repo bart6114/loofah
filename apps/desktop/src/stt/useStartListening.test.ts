@@ -16,7 +16,7 @@ const {
   useSessionMock,
   useSessionHasTranscriptMock,
   sessionAppendTranscriptMock,
-  sessionFlushTranscriptMock,
+  sessionFinishTranscriptMock,
   softDeleteTranscriptMock,
   useConfigValueMock,
   useSTTConnectionMock,
@@ -40,7 +40,7 @@ const {
   useSessionMock: vi.fn(),
   useSessionHasTranscriptMock: vi.fn(),
   sessionAppendTranscriptMock: vi.fn(),
-  sessionFlushTranscriptMock: vi.fn(),
+  sessionFinishTranscriptMock: vi.fn(),
   softDeleteTranscriptMock: vi.fn(),
   useConfigValueMock: vi.fn(),
   useSTTConnectionMock: vi.fn(),
@@ -136,7 +136,7 @@ vi.mock("~/tags/suggestions", () => ({
 vi.mock("~/types/tauri.gen", () => ({
   commands: {
     sessionAppendTranscript: sessionAppendTranscriptMock,
-    sessionFlushTranscript: sessionFlushTranscriptMock,
+    sessionFinishTranscript: sessionFinishTranscriptMock,
   },
 }));
 
@@ -260,7 +260,7 @@ describe("useStartListening", () => {
     });
     useSessionHasTranscriptMock.mockReturnValue(false);
     sessionAppendTranscriptMock.mockResolvedValue({ status: "ok", data: null });
-    sessionFlushTranscriptMock.mockResolvedValue({ status: "ok", data: null });
+    sessionFinishTranscriptMock.mockResolvedValue({ status: "ok", data: null });
     softDeleteTranscriptMock.mockResolvedValue(undefined);
     catalogLocalSessionAudioMock.mockResolvedValue(
       "/vault/sessions/session-1/audio.wav",
@@ -896,6 +896,52 @@ describe("useStartListening", () => {
     );
   });
 
+  test("serializes capture appends and finalizes only after every delta settles", async () => {
+    let resolveFirst!: (value: { status: "ok"; data: null }) => void;
+    sessionAppendTranscriptMock.mockReturnValueOnce(
+      new Promise((r) => {
+        resolveFirst = r;
+      }),
+    );
+    const { result } = renderHook(() => useStartListening("session-1"));
+    await act(async () => {
+      await result.current();
+    });
+    const callbacks = startMock.mock.calls[0][1];
+    const delta = {
+      new_words: [
+        { id: "w", text: "word", start_ms: 0, end_ms: 100, channel: 0 },
+      ],
+      replaced_ids: [],
+      partials: [],
+    };
+    callbacks.handlePersist(delta);
+    callbacks.handlePersist({
+      ...delta,
+      new_words: [{ ...delta.new_words[0], id: "w2" }],
+    });
+    await Promise.resolve();
+    expect(sessionAppendTranscriptMock).toHaveBeenCalledTimes(1);
+    const stopped = callbacks.onStopped("session-1", {
+      durationSeconds: 1,
+      audioPath: null,
+      requestedLiveTranscription: true,
+      liveTranscriptionActive: true,
+      needsBatchRepair: false,
+    });
+    await Promise.resolve();
+    expect(sessionFinishTranscriptMock).not.toHaveBeenCalled();
+    resolveFirst({ status: "ok", data: null });
+    await act(async () => {
+      await stopped;
+    });
+    expect(sessionAppendTranscriptMock).toHaveBeenCalledTimes(2);
+    expect(sessionFinishTranscriptMock).toHaveBeenCalledWith(
+      "session-1",
+      sessionAppendTranscriptMock.mock.calls[0][1].transcript_id,
+    );
+  });
+
   test("regenerates the summary after resumed live capture writes transcript", async () => {
     let resolveTranscriptWrite:
       | ((value: { status: "ok"; data: null }) => void)
@@ -943,6 +989,9 @@ describe("useStartListening", () => {
     });
 
     expect(resetEnhanceTasksMock).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(resolveTranscriptWrite).toBeTypeOf("function"),
+    );
     resolveTranscriptWrite?.({ status: "ok", data: null });
     await act(async () => await stopped);
 

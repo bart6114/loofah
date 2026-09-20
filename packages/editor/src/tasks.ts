@@ -408,13 +408,17 @@ function normalizeNode(
 
     seenTaskIds.add(nextTaskId);
     seenTaskItemIds.add(nextTaskItemId);
+    const status = normalizeTaskStatus(node.attrs?.status, node.attrs?.checked);
 
     if (
       node.attrs?.taskId !== nextTaskId ||
-      node.attrs?.taskItemId !== nextTaskItemId
+      node.attrs?.taskItemId !== nextTaskItemId ||
+      node.attrs?.status !== status ||
+      node.attrs?.checked !== (status === "done")
     ) {
       nextAttrs = {
         ...(node.attrs ?? {}),
+        ...createTaskStatusAttrs(status),
         taskId: nextTaskId,
         taskItemId: nextTaskItemId,
       };

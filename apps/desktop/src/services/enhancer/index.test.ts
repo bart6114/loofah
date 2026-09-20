@@ -219,7 +219,10 @@ describe("EnhancerService", () => {
     const ai = createMockAITaskStore();
     const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
 
-    const result = await service.enhance("session-1", { isAuto: true });
+    const result = await service.enhance("session-1", {
+      isAuto: true,
+      regenerate: true,
+    });
 
     expect(result).toEqual({ type: "started", noteId: "existing" });
     expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
@@ -243,23 +246,28 @@ describe("EnhancerService", () => {
     expect(ai.generate).not.toHaveBeenCalled();
   });
 
-  it("does not rerun a successful task with durable summary content", async () => {
-    snapshot = createSnapshot({
-      notes: [
-        createNote({
-          content:
-            '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Saved"}]}]}',
-        }),
-      ],
-    });
-    const ai = createMockAITaskStore(() => ({ status: "success" }));
-    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+  it.each(["success", undefined])(
+    "does not rerun durable summary content with task status %s",
+    async (status) => {
+      snapshot = createSnapshot({
+        notes: [
+          createNote({
+            content:
+              '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Saved"}]}]}',
+          }),
+        ],
+      });
+      const ai = createMockAITaskStore(() => (status ? { status } : undefined));
+      const service = new EnhancerService(
+        createDeps({ aiTaskStore: ai.store }),
+      );
 
-    await expect(service.enhance("session-1")).resolves.toMatchObject({
-      type: "already_active",
-    });
-    expect(ai.generate).not.toHaveBeenCalled();
-  });
+      await expect(service.enhance("session-1")).resolves.toMatchObject({
+        type: "already_active",
+      });
+      expect(ai.generate).not.toHaveBeenCalled();
+    },
+  );
 
   it("refreshes the same successful summary after a resumed recording", async () => {
     snapshot = createSnapshot({
@@ -269,7 +277,7 @@ describe("EnhancerService", () => {
     const ai = createMockAITaskStore(() => ({ status: "success" }));
     const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
     await expect(
-      service.enhance("session-1", { isAuto: true }),
+      service.enhance("session-1", { isAuto: true, regenerate: true }),
     ).resolves.toEqual({ type: "started", noteId: "note-1" });
     expect(ai.generate).toHaveBeenCalledOnce();
     expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
@@ -340,7 +348,7 @@ describe("EnhancerService", () => {
       service.queueAutoEnhanceIfSummaryEmpty("session-1"),
     ).resolves.toEqual({ type: "queued" });
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith("session-1");
-    expect(queueSpy).toHaveBeenCalledWith("session-1");
+    expect(queueSpy).toHaveBeenCalledWith("session-1", false);
   });
 
   it("computes eligibility from canonical transcript words", async () => {

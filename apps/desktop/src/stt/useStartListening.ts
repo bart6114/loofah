@@ -87,8 +87,10 @@ export function useStartListening(sessionId: string) {
         duration: Infinity,
       });
     };
-    const trackTranscriptWrite = (write: Promise<void>) => {
-      lastTranscriptWrite = write.catch(reportTranscriptWriteError);
+    const trackTranscriptWrite = (write: () => Promise<void>) => {
+      lastTranscriptWrite = lastTranscriptWrite
+        .then(write)
+        .catch(reportTranscriptWriteError);
     };
     const onStopped: OnStoppedCallback = async (_sessionId, details) => {
       // Cataloging can relocate the recording, so everything downstream reads the path it
@@ -112,7 +114,10 @@ export function useStartListening(sessionId: string) {
       await lastTranscriptWrite;
       if (transcriptId) {
         try {
-          const result = await commands.sessionFlushTranscript(sessionId);
+          const result = await commands.sessionFinishTranscript(
+            sessionId,
+            transcriptId,
+          );
           if (result.status === "error") throw new Error(result.error);
         } catch (error) {
           reportTranscriptWriteError(error);
@@ -179,10 +184,11 @@ export function useStartListening(sessionId: string) {
       }
       if (!transcriptId) transcriptId = id();
 
-      trackTranscriptWrite(
+      const captureTranscriptId = transcriptId;
+      trackTranscriptWrite(() =>
         commands
           .sessionAppendTranscript(sessionId, {
-            transcript_id: transcriptId,
+            transcript_id: captureTranscriptId,
             new_words: delta.new_words.map((word) => ({
               ...word,
               metadata: { capture_source: "recording" },

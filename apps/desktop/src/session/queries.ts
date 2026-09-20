@@ -54,11 +54,12 @@ const EMPTY_ENHANCED_NOTES: EnhancedNoteRecord[] = [];
 const EMPTY_SESSION_SUMMARIES: SessionSummaryRecord[] = [];
 
 export function useSession(sessionId: string): SessionRecord | null {
+  const taskStorage = useTaskStorageOptional();
   const { data = null } = useIndexQuery({
     // Editable content revalidates on mount in case a write or watcher event is
     // still in flight when the user switches back to the note.
     refetchOnMount: "always",
-    entity: "sessions",
+    entity: ["sessions", "tasks"],
     ids: [sessionId],
     queryKey: ["session", sessionId],
     queryFn: async () => {
@@ -66,7 +67,22 @@ export function useSession(sessionId: string): SessionRecord | null {
       if (result.status === "error") {
         throw new Error(result.error);
       }
-      return result.data ? mapSessionRecord(result.data) : null;
+      if (!result.data) return null;
+      const note = mapSessionRecord(result.data);
+      if (taskStorage && note.raw_md) {
+        const source = { type: "session_raw_note", id: sessionId };
+        const loadedTasks = await taskStorage.loadSource?.(source);
+        note.raw_md = JSON.stringify(
+          hydrateTaskContent({
+            content: JSON.parse(note.raw_md),
+            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
+            getTask: (id) =>
+              loadedTasks?.find((task) => task.taskId === id) ??
+              taskStorage.getTask(id),
+          }),
+        );
+      }
+      return note;
     },
     enabled: Boolean(sessionId),
   });
@@ -196,7 +212,7 @@ export function useEnhancedNote(
 ): EnhancedNoteRecord | null {
   const taskStorage = useTaskStorageOptional();
   const { data = null } = useIndexQuery({
-    entity: "docs",
+    entity: ["docs", "tasks"],
     ids: sessionId ? [sessionId] : undefined,
     refetchOnMount: "always",
     queryKey: generationId
@@ -228,13 +244,15 @@ export function useEnhancedNote(
         type: note.id === note.sessionId ? "session_summary" : "enhanced_note",
         id: enhancedNoteId,
       };
-      await taskStorage?.loadSource?.(source);
+      const loadedTasks = await taskStorage?.loadSource?.(source);
       if (taskStorage && note.content) {
         note.content = JSON.stringify(
           hydrateTaskContent({
             content: JSON.parse(note.content),
-            sourceTasks: taskStorage.getTasksForSource(source),
-            getTask: taskStorage.getTask,
+            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
+            getTask: (id) =>
+              loadedTasks?.find((task) => task.taskId === id) ??
+              taskStorage.getTask(id),
           }),
         );
       }

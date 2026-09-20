@@ -12,6 +12,12 @@ import type { EditorView } from "prosemirror-view";
 import { createElement, createRef, StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { md2json } from "../markdown";
+import {
+  TaskStorageProvider,
+  createInMemoryTaskStorage,
+} from "../task-storage";
+import { extractTasksFromContent } from "../tasks";
 import type { JSONContent, NoteEditorRef } from "./index";
 import {
   createReadOnlyPlugin,
@@ -415,4 +421,63 @@ describe("browser-safe editor controls", () => {
 
     expect(rendered.queryByText("Commands")).toBeNull();
   });
+});
+
+it("keeps completed Markdown tasks completed when creating a real editor view", async () => {
+  const ref = createRef<NoteEditorRef>();
+  render(
+    createElement(NoteEditor, {
+      ref,
+      initialContent: md2json("- [x] Completed task"),
+      enforceTitleHeading: false,
+    }),
+  );
+  await waitFor(() => expect(ref.current?.view).not.toBeNull());
+  expect(
+    extractTasksFromContent(ref.current!.view!.state.doc.toJSON(), {
+      type: "session_raw_note",
+      id: "session",
+    }),
+  ).toMatchObject([{ status: "done" }]);
+});
+
+it("matches saved task identities before assigning identities to Markdown tasks", async () => {
+  const ref = createRef<NoteEditorRef>();
+  const source = { type: "session_raw_note", id: "session" };
+  const storage = createInMemoryTaskStorage();
+  storage.upsertTasksForSource(source, [
+    {
+      taskId: "saved-task",
+      sourceType: source.type,
+      sourceId: source.id,
+      sourceOrder: 0,
+      status: "done",
+      textPreview: "Completed task",
+      dueDate: "2026-10-01",
+      body: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Completed task" }],
+        },
+      ],
+    },
+  ]);
+  render(
+    createElement(TaskStorageProvider, {
+      storage,
+      children: createElement(NoteEditor, {
+        ref,
+        taskSource: source,
+        initialContent: md2json("- [x] Completed task"),
+        enforceTitleHeading: false,
+      }),
+    }),
+  );
+  await waitFor(() => expect(ref.current?.view).not.toBeNull());
+  const tasks = extractTasksFromContent(
+    ref.current!.view!.state.doc.toJSON(),
+    source,
+  );
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({ taskId: "saved-task", status: "done" });
 });

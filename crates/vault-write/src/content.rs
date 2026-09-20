@@ -422,12 +422,10 @@ impl SessionStore {
     /// move leaves the source and in-memory state intact. Undo remains process-local.
     pub async fn delete_session(&self, id: &str) -> Result<Option<std::path::PathBuf>, StoreError> {
         validate_session_id(id)?;
+        let _operation = self.transcript_operations.lock(id).await;
         let guard = self.lock_writes().await;
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
-        // Keep flushers blocked until the move succeeds, then drop their buffer so
-        // a pending flush cannot recreate the deleted directory. Failures keep it.
-        let mut live = self.live.lock().await;
         let vault_base = self.vault_base.clone();
         let trash_path = tokio::task::spawn_blocking(
             move || -> Result<Option<std::path::PathBuf>, StoreError> {
@@ -464,7 +462,7 @@ impl SessionStore {
         .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
 
         if let Some(trash_path) = &trash_path {
-            live.remove(id);
+            self.live.lock().await.remove(id);
             self.recent_deletions.lock().unwrap().insert(
                 id.to_string(),
                 DeletedSession {

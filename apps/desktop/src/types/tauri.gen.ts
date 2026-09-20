@@ -543,6 +543,23 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionFinishTranscript(
+    sessionId: string,
+    transcriptId: string,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_finish_transcript", {
+          sessionId,
+          transcriptId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionWriteTranscript(
     sessionId: string,
     transcript: TranscriptWithData,

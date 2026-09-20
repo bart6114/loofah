@@ -44,17 +44,23 @@ export function useAITaskTask<T extends TaskType>(
 ) {
   const enabled = taskId !== null;
 
-  const { taskState, generate, cancel, reset } = useAITask(
+  const { taskState, generate, cancel, reset, retainTask } = useAITask(
     useCallback(
       (state) => ({
         taskState: enabled ? getTaskState(state.tasks, taskId) : undefined,
         generate: state.generate,
         cancel: state.cancel,
         reset: state.reset,
+        retainTask: state.retainTask,
       }),
       [taskId, enabled],
     ),
     shallow,
+  );
+
+  useEffect(
+    () => (taskId ? retainTask(taskId) : undefined),
+    [taskId, retainTask],
   );
 
   const status = taskState?.status ?? "idle";
