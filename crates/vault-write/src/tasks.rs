@@ -229,13 +229,12 @@ impl SessionStore {
         source_id: &str,
         inputs: Vec<TaskInput>,
     ) -> Result<(), StoreError> {
-        let scope = self.resolve_task_scope(source_type, source_id).await?;
-        self.ensure_task_scope_writable(&scope).await?;
-
         // One guard across read-modify-write: a `tasks.json` holds every source's tasks, so
         // two concurrent replaces that each read the same starting file and write a whole new
         // one back would silently drop the loser's changes.
         let guard = self.lock_writes().await;
+        let scope = self.resolve_task_scope(source_type, source_id).await?;
+        self.ensure_task_scope_writable(&scope).await?;
 
         if source_type == "session_summary" {
             self.remap_summary_tasks_locked(&guard, source_id, None)
@@ -336,6 +335,9 @@ impl SessionStore {
         if task_ids.is_empty() {
             return Ok(());
         }
+        // Include destination validation and scope discovery: metadata can be briefly
+        // absent while the current writer preserves foreign bytes in trash.
+        let guard = self.lock_writes().await;
         let dest_scope = self
             .resolve_task_scope(next_source_type, next_source_id)
             .await?;
@@ -347,10 +349,6 @@ impl SessionStore {
                 scopes.push(scope);
             }
         }
-
-        // Same read-modify-write guard as `replace_tasks`, spanning every file this move
-        // touches (a move rewrites both the source and the destination `tasks.json`).
-        let guard = self.lock_writes().await;
 
         if next_source_type == "session_summary" {
             self.remap_summary_tasks_locked(&guard, next_source_id, None)
@@ -645,6 +643,47 @@ mod tests {
         id: &str,
     ) -> std::path::PathBuf {
         vault.path().join(store.session_dir(id).await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn task_writes_wait_for_metadata_replacement() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        let path = session_path(&store, &vault, "s1").await.join("_meta.json");
+        let original = std::fs::read(&path).unwrap();
+        for moving in [false, true] {
+            let guard = store.lock_writes().await;
+            std::fs::remove_file(&path).unwrap();
+            let write = async {
+                if moving {
+                    store
+                        .move_tasks(vec!["t-a".into()], "session_raw_note", "s1", 0)
+                        .await
+                } else {
+                    store
+                        .replace_tasks("session_raw_note", "s1", vec![input("t-a", 0, "Keep task")])
+                        .await
+                }
+            };
+            tokio::pin!(write);
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(20), &mut write)
+                    .await
+                    .is_err(),
+                "task validation ran before the active metadata write finished"
+            );
+            std::fs::write(&path, &original).unwrap();
+            drop(guard);
+            write.await.unwrap();
+        }
+        assert_eq!(
+            store
+                .list_tasks("session_raw_note", "s1")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
