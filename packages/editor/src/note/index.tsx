@@ -612,30 +612,27 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
     commentAnchorsEventRef.current = onCommentAnchorsEvent;
 
     const taskStorage = useTaskStorageOptional();
-    const normalizedInitialContent = useMemo(
-      () => normalizeTaskContent(initialContent),
-      [initialContent],
-    );
     const reconciledInitialContent = useMemo(() => {
-      if (!normalizedInitialContent) {
-        return normalizedInitialContent;
+      if (!initialContent) {
+        return initialContent;
       }
 
       const hydrated =
         taskSource && taskStorage
           ? (() => {
               const sourceTasks = taskStorage.getTasksForSource(taskSource);
-              if (sourceTasks.length === 0) return normalizedInitialContent;
+              if (sourceTasks.length === 0) return initialContent;
               return hydrateTaskContent({
-                content: normalizedInitialContent,
+                content: initialContent,
                 sourceTasks,
                 getTask: taskStorage.getTask,
               });
             })()
-          : normalizedInitialContent;
+          : initialContent;
 
-      return ensureImageTrailingParagraphs(hydrated);
-    }, [normalizedInitialContent, taskSource, taskStorage]);
+      const normalized = normalizeTaskContent(hydrated);
+      return normalized && ensureImageTrailingParagraphs(normalized);
+    }, [initialContent, taskSource, taskStorage]);
     const previousContentRef = useRef<JSONContent | undefined>(
       reconciledInitialContent,
     );
