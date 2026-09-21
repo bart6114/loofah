@@ -137,3 +137,10 @@ PDF/TXT/Org default to note and summary. `--include` selects exactly note, summa
 Markdown/JSON without `--include` preserve the legacy complete-session export and `--json` envelope-in-file behavior. With `--include` or PDF/TXT/Org, `--json --output FILE` writes the artifact to FILE and reports `{format, output, bytes}` in stdout's `data`; without a file, text is reported as `{format, content}`. JSON artifacts with `--include` filter the content fields while retaining metadata and action items.
 
 Export is headless and read-only with respect to the vault; output must be outside it. Writes are atomic. Existing destinations require `--force` (exit 4 otherwise); only pass it after approval for that exact file. Missing session ids return exit 2, and rendering/I/O failures return exit 1. With `--json`, errors go to stderr. Text `--output -` creates a literal file named `-`; omit `--output` for stdout.
+
+## Rename a session
+
+Run `loof --json sessions rename SESSION_ID "New title"` to change only the title.
+Titles are stored verbatim, including empty strings. The id, directory, other metadata,
+and content stay unchanged. JSON returns `command: "sessions.rename"` with `data` fields
+`id` and `title`. Missing sessions return `not_found` (exit 2). The `meetings` alias works too.
