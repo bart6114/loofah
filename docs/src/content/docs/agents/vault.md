@@ -119,6 +119,7 @@ output.
 | `sessions list` | List sessions, optionally filtered with `--query`. |
 | `sessions search` | Full-text search across titles, notes, summaries, and transcripts. |
 | `sessions get` | Metadata, note, summaries, and action items for one session. |
+| `sessions rename` | Change a session's title using its exact id. |
 | `sessions new` | Create a standalone note and print its id; pass `--author` when writing as an agent, plus `--skill` when a skill produced the note. |
 | `sessions note` | Show a session's note, or edit it with `--set` / `--append`. |
 | `sessions transcript` | The full speaker-labeled transcript. |
@@ -135,6 +136,14 @@ output.
 
 Per-command flags are documented at
 https://loofah.io/reference/cli/.
+
+## Rename a session
+
+Run `loof --json sessions rename SESSION_ID "New title"` to change a session's title.
+The title is stored verbatim, including an empty string. The session's id, directory,
+other metadata, and content stay unchanged. The response has `command: "sessions.rename"`
+and `data` fields `id` and `title`. A missing session returns `not_found` (exit 2).
+The `meetings` alias also supports this command.
 
 ## Delete and recover
 

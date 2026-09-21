@@ -188,6 +188,30 @@ expression: canonicalize_json(contract)
           "synopsis": "loof sessions get [-h] <id>"
         },
         {
+          "about": "Rename a session without changing its id or content",
+          "arguments": [
+            {
+              "name": "ID",
+              "required": true
+            },
+            {
+              "help": "New title, stored verbatim",
+              "name": "TITLE",
+              "required": true
+            }
+          ],
+          "name": "loof sessions rename",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof sessions rename [-h] <id> <title>"
+        },
+        {
           "about": "Create a meeting note and print its id",
           "name": "loof sessions new",
           "options": [

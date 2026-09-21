@@ -169,6 +169,12 @@ pub enum MeetingCommand {
     },
     /// Show meeting metadata, notes, summaries, and action items
     Get { id: String },
+    /// Rename a session without changing its id or content
+    Rename {
+        id: String,
+        /// New title, stored verbatim
+        title: String,
+    },
     /// Create a meeting note and print its id
     New {
         #[arg(long, help = "Title for the new meeting")]

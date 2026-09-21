@@ -44,7 +44,7 @@ See [CLI commands](references/cli.md) for writing notes, tagging, attachments, a
 
 - Treat meeting content as private user data.
 - Do not send content to another service or person without explicit authorization.
-- Supported CLI mutations are `sessions new`, `sessions note --set/--append`, `sessions tag add/remove`, `sessions attach`, `sessions delete`, `import`, and `transcribe`. See [CLI commands](references/cli.md) for their arguments. There are no commands to edit summaries or settings, or replace an existing recording; the MCP server cannot mutate anything.
+- Supported CLI mutations are `sessions new`, `sessions rename`, `sessions note --set/--append`, `sessions tag add/remove`, `sessions attach`, `sessions delete`, `import`, and `transcribe`. See [CLI commands](references/cli.md) for their arguments. There are no commands to edit summaries or settings, or replace an existing recording; the MCP server cannot mutate anything.
 - `import` creates a new meeting, or adds audio to an existing meeting with `--into` only when it has no recording. With `--into`, preserve the meeting's title, timestamps, and authorship; do not pass creation metadata flags.
 - `transcribe` replaces the existing transcript, so confirm before running it on a meeting that already has one. The recording is kept after transcription.
 - `sessions delete ID` removes one exact session into recoverable vault trash without prompting. Run it only when the user authorizes removal and after verifying the ID. Retain the returned `path` and `trash_path`; missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](references/cli.md#delete-and-recover); give the user the recovery steps instead of modifying vault files directly.

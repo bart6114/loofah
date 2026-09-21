@@ -73,6 +73,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             output::emit(&rendered);
             Ok(())
         }
+        MeetingCommand::Rename { id, title } => rename_session(vault, &id, title, json).await,
         MeetingCommand::New {
             title,
             note,
@@ -256,6 +257,38 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
         }
         command @ MeetingCommand::Export { .. } => super::export::run(vault, command, json).await,
     }
+}
+
+async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Result<()> {
+    let store = SessionStore::new(vault.to_path_buf());
+    store
+        .read_meta(id)
+        .await
+        .map_err(|error| Error::operation("rename session", error.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("session '{id}'")))?;
+
+    store
+        .update_meta(
+            id,
+            hypr_vault_write::SessionMetaPatch {
+                title: Some(title.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|error| Error::operation("rename session", error.to_string()))?;
+
+    let rendered = if json {
+        output::json(
+            "sessions.rename",
+            &serde_json::json!({ "id": id, "title": title }),
+            None,
+        )?
+    } else {
+        format!("Renamed session {id}.")
+    };
+    output::emit(&rendered);
+    Ok(())
 }
 
 async fn edit_note(
