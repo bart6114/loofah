@@ -17,9 +17,10 @@ describe("normalizeTagNames", () => {
     expect(normalizeTagNames(["a/b/c"])).toEqual(["a/b/c"]);
   });
 
-  test("allows digit-first segments after the root", () => {
-    expect(normalizeTagNames(["projects/2024"])).toEqual(["projects/2024"]);
-    expect(normalizeTagNames(["123/a"])).toEqual([]);
+  test("allows digit-first tags and path segments", () => {
+    expect(
+      normalizeTagNames(["#3E", "3e", "#2026", "#3", "projects/2024", "123/a"]),
+    ).toEqual(["3e", "2026", "3", "projects/2024", "123/a"]);
   });
 
   test("collapses duplicate slashes and strips leading/trailing slashes", () => {

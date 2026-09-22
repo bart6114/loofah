@@ -8,7 +8,7 @@ type EnhanceArgs = TaskArgsMapTransformed["enhance"];
 // `normalizeTagNames` then drops; the preceding-char class keeps excluding `/`
 // so URL fragments (`…/#foo`) stay unmatched.
 const HASHTAG_RE =
-  /(^|[^\p{L}\p{N}_/#])#([\p{L}_][\p{L}\p{N}_-]*(?:\/[\p{L}\p{N}_][\p{L}\p{N}_-]*)*)/gu;
+  /(^|[^\p{L}\p{N}_/#])#([\p{L}\p{N}_][\p{L}\p{N}_-]*(?:\/[\p{L}\p{N}_][\p{L}\p{N}_-]*)*)/gu;
 
 export function extractEnhanceTagNames(
   summaryMarkdown: string,

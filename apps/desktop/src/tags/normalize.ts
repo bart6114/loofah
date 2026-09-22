@@ -1,7 +1,5 @@
-// Slash-separated segments: the first keeps the historical no-digit-first rule,
-// later segments may start with a digit (`projects/2024`).
 export const TAG_NAME_RE =
-  /^[\p{L}_][\p{L}\p{N}_-]*(?:\/[\p{L}\p{N}_][\p{L}\p{N}_-]*)*$/u;
+  /^[\p{L}\p{N}_][\p{L}\p{N}_-]*(?:\/[\p{L}\p{N}_][\p{L}\p{N}_-]*)*$/u;
 
 // Lowercase-dedupe, dropping anything outside the tag charset. The Rust side's
 // `ensure_tag` only guarantees trim/strip-#/lowercase; the strict charset filter

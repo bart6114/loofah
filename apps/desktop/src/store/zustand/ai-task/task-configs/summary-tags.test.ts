@@ -38,7 +38,33 @@ describe("summary tags", () => {
       }),
     );
 
-    expect(tags).toEqual(["launch", "prep", "follow-up", "customer", "owners"]);
+    expect(tags).toEqual([
+      "launch",
+      "123",
+      "prep",
+      "follow-up",
+      "customer",
+      "owners",
+    ]);
+  });
+
+  it("extracts number-first tags while excluding URL fragments and headings", () => {
+    expect(
+      extractEnhanceTagNames(
+        "# 2026 review\n\n#3E #2026 #3 #3e/planning #3e https://x.com/#2027",
+        createEnhanceArgs(),
+      ),
+    ).toEqual(["3e", "2026", "3", "3e/planning"]);
+  });
+
+  it("round-trips a trailing tag line containing number-first tags", () => {
+    expect(
+      appendTagLineToMarkdown("Body\n\n#3e #2026", [
+        "3e",
+        "2026",
+        "3e/planning",
+      ]),
+    ).toBe("Body\n\n#3e #2026 #3e/planning");
   });
 
   it("appends tags at the bottom without duplicating existing trailing tags", () => {
