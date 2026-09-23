@@ -346,14 +346,21 @@ pub fn import_to_session(
         }
     };
 
+    let encode_path = session_dir.join(".audio.mp3.encode.tmp");
     let result = hypr_audio_norm::normalize_file(
         source_path,
+        &encode_path,
         &tmp_path,
-        &target_path,
         None,
         Some(on_progress),
     )
-    .map(|_| ());
+    .map_err(AudioImportError::from)
+    .and_then(|_| {
+        runtime.prepare_commit(session_id)?;
+        std::fs::rename(&tmp_path, &target_path)?;
+        runtime.finish_commit(session_id)?;
+        Ok(())
+    });
     match result {
         Ok(()) => {
             let final_path = target_path;
@@ -631,5 +638,85 @@ mod tests {
             &temp.path().join("out.mp3"),
         );
         assert!(result.is_ok(), "import failed: {:?}", result.err());
+    }
+}
+
+#[cfg(test)]
+mod import_commit_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct Runtime {
+        calls: Mutex<Vec<&'static str>>,
+        fail_commit: bool,
+    }
+    impl AudioImportRuntime for Runtime {
+        fn emit(&self, event: AudioImportEvent) {
+            match event {
+                AudioImportEvent::Completed { .. } => self.calls.lock().unwrap().push("completed"),
+                AudioImportEvent::Failed { .. } => self.calls.lock().unwrap().push("failed"),
+                _ => {}
+            }
+        }
+        fn prepare_commit(&self, _: &str) -> std::io::Result<()> {
+            self.calls.lock().unwrap().push("pending");
+            Ok(())
+        }
+        fn finish_commit(&self, _: &str) -> std::io::Result<()> {
+            self.calls.lock().unwrap().push("metadata");
+            if self.fail_commit {
+                Err(std::io::Error::other("synthetic write failure"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn completion_requires_both_audio_and_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source.wav");
+        // A generated RIFF fixture keeps this test independent of private or third-party recordings.
+        let samples: Vec<i16> = (0..16000)
+            .map(|i| ((i as f32 * 0.08).sin() * 1000.0) as i16)
+            .collect();
+        let data_len = (samples.len() * 2) as u32;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16_u32.to_le_bytes());
+        for v in [1_u16, 1] {
+            wav.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [16000_u32, 32000] {
+            wav.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [2_u16, 16] {
+            wav.extend_from_slice(&v.to_le_bytes());
+        }
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&data_len.to_le_bytes());
+        for sample in samples {
+            wav.extend_from_slice(&sample.to_le_bytes());
+        }
+        std::fs::write(&source, wav).unwrap();
+        for fail_commit in [false, true] {
+            let runtime = Runtime {
+                calls: Mutex::new(Vec::new()),
+                fail_commit,
+            };
+            let result =
+                import_to_session(&runtime, "synthetic", &temp.path().join("session"), &source);
+            assert_eq!(result.is_err(), fail_commit);
+            assert_eq!(
+                *runtime.calls.lock().unwrap(),
+                vec![
+                    "pending",
+                    "metadata",
+                    if fail_commit { "failed" } else { "completed" }
+                ]
+            );
+        }
     }
 }

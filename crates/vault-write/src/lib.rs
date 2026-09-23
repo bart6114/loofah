@@ -5,6 +5,7 @@ use std::sync::Arc;
 pub mod agents_doc;
 pub mod attachments;
 pub mod audio;
+mod audio_layout;
 pub mod content;
 pub mod enhanced;
 #[cfg(test)]
@@ -66,6 +67,7 @@ pub struct SessionStore {
     /// Recent `delete_session` records backing the process-local undo toast
     /// (see `session_path::DeletedSession`).
     recent_deletions: Arc<std::sync::Mutex<HashMap<String, session_path::DeletedSession>>>,
+    audio_operations: Arc<std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// Backend recording reservations also protect whole-vault relocation.
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
@@ -135,6 +137,7 @@ impl SessionStore {
             index_changes_rx: Arc::new(std::sync::Mutex::new(Some(index_changes_rx))),
             index_change_taps: Arc::new(std::sync::Mutex::new(Vec::new())),
             recent_deletions: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            audio_operations: Default::default(),
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -264,6 +267,17 @@ impl SessionStore {
         if !self.active_recordings.lock().unwrap().is_empty() {
             return Err(StoreError::Conflict(
                 "a recording is in progress; stop it before moving the vault".to_string(),
+            ));
+        }
+        if self
+            .audio_operations
+            .lock()
+            .unwrap()
+            .values()
+            .any(|operation| operation.try_lock().is_err())
+        {
+            return Err(StoreError::Conflict(
+                "an audio operation is in progress; finish it before moving the vault".into(),
             ));
         }
         // A dirty buffer here means an append raced in between the flush above and taking

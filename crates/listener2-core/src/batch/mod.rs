@@ -1,4 +1,5 @@
 mod accumulator;
+mod audio;
 mod diarize;
 mod progressive;
 mod simple;
@@ -60,6 +61,8 @@ impl BatchProvider {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BatchParams {
+    #[serde(default)]
+    pub audio: hypr_fs_format::SessionAudio,
     pub session_id: String,
     pub provider: BatchProvider,
     pub file_path: String,
@@ -145,7 +148,7 @@ pub fn expects_progressive_batch(params: &BatchParams) -> bool {
 
 async fn run_batch_inner(
     runtime: Arc<dyn BatchRuntime>,
-    params: BatchParams,
+    mut params: BatchParams,
 ) -> crate::Result<BatchRunOutput> {
     if matches!(params.provider, BatchProvider::Fmtr)
         && !crate::is_supported_languages_batch("fmtr", params.model.as_deref(), &params.languages)
@@ -159,9 +162,20 @@ async fn run_batch_inner(
         }
         .into());
     }
+    let prepared = audio::PreparedAudio::prepare(
+        params.file_path.clone(),
+        params.audio,
+        Some(runtime.clone()),
+    )
+    .await?;
+    params.file_path = prepared.path.to_string_lossy().into_owned();
+    let runtime: Arc<dyn BatchRuntime> = Arc::new(audio::PreparedRuntime {
+        inner: runtime,
+        prepared: prepared.clone(),
+    });
     let metadata_joined = tokio::task::spawn_blocking({
-        let path = params.file_path.clone();
-        move || hypr_audio_utils::audio_file_metadata(path)
+        let prepared = prepared.clone();
+        move || hypr_audio_utils::audio_file_metadata(&prepared.path)
     })
     .await;
 
@@ -191,10 +205,10 @@ async fn run_batch_inner(
     let listen_params = build_listen_params(&params, metadata.channels, metadata.sample_rate);
     let diarization = diarize::SharedDiarization::for_file(
         std::sync::Arc::new(diarize::SoniqoDiarizer),
-        params.file_path.clone(),
+        prepared.clone(),
     );
 
-    match params.provider {
+    let mut output = match params.provider {
         BatchProvider::WhisperLocal => {
             run_progressive_batch_session(runtime, params, listen_params, diarization).await
         }
@@ -225,7 +239,9 @@ async fn run_batch_inner(
             run_direct_batch_for_adapter_kind(adapter_kind, params, listen_params, diarization)
                 .await
         }
-    }
+    }?;
+    prepared.stamp_response(&mut output.response);
+    Ok(output)
 }
 
 fn build_listen_params(
@@ -296,6 +312,7 @@ mod tests {
 
     fn batch_params(provider: BatchProvider, base_url: &str) -> BatchParams {
         BatchParams {
+            audio: Default::default(),
             session_id: "session".to_string(),
             provider,
             file_path: "/tmp/audio.wav".to_string(),

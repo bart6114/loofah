@@ -39,6 +39,22 @@ fn resolve_vault_path(base: &Path, path: &str) -> Result<PathBuf, String> {
     crate::path::resolve_path_inside_base(base, Path::new(path)).map_err(|e| e.to_string())
 }
 
+async fn lock_audio_operation<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    session_id: &str,
+) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+    use tauri::Manager;
+    let store = app.state::<std::sync::Arc<hypr_vault_write::SessionStore>>();
+    let guard = store
+        .lock_session_audio(session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    if store.is_recording(session_id) {
+        return Err("Cannot replace or delete audio while recording".into());
+    }
+    Ok(guard)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn deserialize(input: String) -> Result<ParsedDocument, String> {
@@ -189,10 +205,15 @@ pub(crate) async fn audio_delete<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
+    let _audio_guard = lock_audio_operation(&app, &session_id).await?;
     let session_dir = resolve_session_dir(&app, &session_id)?;
     let deleted = crate::audio::delete(&session_dir).map_err(|e| e.to_string())?;
     use tauri::Manager;
     if let Some(store) = app.try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>() {
+        store
+            .clear_audio_metadata(&session_id)
+            .await
+            .map_err(|e| e.to_string())?;
         store.notify_artifacts_changed(&session_id);
     }
     Ok(deleted)
@@ -225,10 +246,12 @@ pub(crate) async fn audio_import<R: tauri::Runtime>(
     session_id: String,
     source_path: String,
 ) -> Result<String, String> {
+    let audio_guard = lock_audio_operation(&app, &session_id).await?;
     let session_dir = resolve_session_dir(&app, &session_id)?;
     let source_path = PathBuf::from(&source_path);
     let runtime = crate::runtime::TauriAudioImportRuntime::new(app);
     spawn_blocking!({
+        let _audio_guard = audio_guard;
         crate::audio::import_to_session(&runtime, &session_id, &session_dir, &source_path)
             .map(|path| path.to_string_lossy().to_string())
             .map_err(|e| e.to_string())
@@ -298,9 +321,11 @@ pub(crate) async fn audio_import_data<R: tauri::Runtime>(
     filename: String,
     content_type: Option<String>,
 ) -> Result<String, String> {
+    let audio_guard = lock_audio_operation(&app, &session_id).await?;
     let session_dir = resolve_session_dir(&app, &session_id)?;
     let runtime = crate::runtime::TauriAudioImportRuntime::new(app);
     spawn_blocking!({
+        let _audio_guard = audio_guard;
         std::fs::create_dir_all(&session_dir).map_err(|e| e.to_string())?;
 
         let source_path =

@@ -28,6 +28,23 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         let app = guard.app.clone();
         drop(guard);
 
+        let mut audio_guard = None;
+        let mut batch_params: core::BatchParams = params.clone().into();
+        if let Some(store) = self
+            .manager
+            .try_state::<Arc<hypr_vault_write::SessionStore>>()
+        {
+            audio_guard = Some(
+                store
+                    .lock_session_audio(&params.session_id)
+                    .await
+                    .map_err(|e| core::Error::BatchError(e.to_string()))?,
+            );
+            batch_params.audio = store
+                .resolve_session_audio(&params.session_id)
+                .await
+                .map_err(|e| core::Error::BatchError(e.to_string()))?;
+        }
         let registry = self
             .manager
             .state::<Arc<BatchSessionRegistry>>()
@@ -81,6 +98,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         }
 
         let runtime = Arc::new(TauriBatchRuntime {
+            _audio_guard: audio_guard,
             app: app.clone(),
             control: control.clone(),
         });
@@ -91,7 +109,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
             let control = control.clone();
             let session_id = session_id.clone();
             async move {
-                let _ = core::run_batch(runtime, params.into()).await;
+                let _ = core::run_batch(runtime, batch_params).await;
                 finish_batch_session(&registry, &session_id, &control);
             }
         });
@@ -186,6 +204,7 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> Listener2PluginExt<R> for T {
 }
 
 struct TauriBatchRuntime {
+    _audio_guard: Option<tokio::sync::OwnedMutexGuard<()>>,
     app: tauri::AppHandle,
     control: Arc<BatchSessionControl>,
 }

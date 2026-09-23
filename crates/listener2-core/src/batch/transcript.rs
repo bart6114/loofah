@@ -46,6 +46,11 @@ pub struct BatchTranscriptMeta<'a> {
 pub fn words_and_hints_from_batch_response(
     response: &batch::Response,
 ) -> (Vec<TranscriptWord>, Vec<BatchWordHint>) {
+    let audio = response
+        .metadata
+        .get("session_audio")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<hypr_fs_format::SessionAudio>(value).ok());
     let mut all_words = Vec::new();
     let mut all_hints = Vec::new();
 
@@ -62,14 +67,30 @@ pub fn words_and_hints_from_batch_response(
         let entries = word_entries_from_transcript(
             &alternative.words,
             &alternative.transcript,
-            channel_index as i32,
+            if audio.is_some_and(|a| a.layout == hypr_fs_format::AudioLayout::Mixed) {
+                2
+            } else {
+                channel_index as i32
+            },
             batch_duration_seconds(&response.metadata),
             timing_source,
         );
 
         let word_offset = all_words.len();
-        let (words, hints) =
+        let (mut words, hints) =
             transform_word_entries(&entries, &alternative.transcript, timing_source);
+
+        if let Some(audio) = audio {
+            for word in &mut words {
+                if audio.layout == hypr_fs_format::AudioLayout::Mixed {
+                    word.channel = 2.0;
+                }
+                word.metadata.get_or_insert_with(Map::new).insert(
+                    "capture_source".into(),
+                    serde_json::to_value(audio.source).unwrap(),
+                );
+            }
+        }
 
         all_hints.extend(hints.into_iter().map(|hint| BatchWordHint {
             word_index: hint.word_index + word_offset,

@@ -32,7 +32,8 @@ pub use tags::normalize_tag_name;
 pub use tasks::{TaskItem, TasksFile};
 
 pub use hypr_fs_format::{
-    TranscriptJson, TranscriptSpeakerHint, TranscriptWithData, TranscriptWord,
+    AudioLayout, AudioSource, SessionAudio, TranscriptJson, TranscriptSpeakerHint,
+    TranscriptWithData, TranscriptWord,
 };
 
 #[derive(Debug, thiserror::Error)]
