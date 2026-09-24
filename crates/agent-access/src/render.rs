@@ -101,6 +101,24 @@ fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
         }
     }
 
+    let mut imported_speakers = HashMap::new();
+    for (word, stored) in words.iter_mut().zip(&transcript.words) {
+        let source = stored
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("capture_source"))
+            .and_then(Value::as_str);
+        if word.channel == 2 || !matches!(source, Some("import" | "unknown")) {
+            continue;
+        }
+        let next = imported_speakers.len() as i32;
+        let index = *imported_speakers
+            .entry((word.channel, word.speaker_index))
+            .or_insert(next);
+        word.channel = 2;
+        word.speaker_index = Some(index);
+    }
+
     let mut assignments = Vec::new();
     for hint in &transcript.speaker_hints {
         if hint.hint_type != "speaker_label" {
@@ -377,6 +395,37 @@ mod tests {
         // One distinct index is not diarization: the mic channel keeps today's
         // self attribution.
         assert_eq!(rendered, "[00:00:16] Bart: hello there.");
+    }
+
+    #[test]
+    fn imported_speakers_use_mixed_capture_without_renumbering_new_transcripts() {
+        for (channels, expected_indexes) in [([0.0, 1.0], [0, 1]), ([2.0, 2.0], [7, 9])] {
+            let mut words = vec![
+                word("w1", " first", 0.0, channels[0]),
+                word("w2", " second", 1000.0, channels[1]),
+            ];
+            for word in &mut words {
+                word.metadata = Some(serde_json::Map::from_iter([(
+                    "capture_source".into(),
+                    "import".into(),
+                )]));
+            }
+            let input = render_input(&transcript(
+                "t1",
+                "self",
+                words,
+                vec![provider_hint("w1", 7), provider_hint("w2", 9)],
+            ));
+            assert!(input.words.iter().all(|word| word.channel == 2));
+            assert_eq!(
+                input
+                    .words
+                    .iter()
+                    .map(|word| word.speaker_index.unwrap())
+                    .collect::<Vec<_>>(),
+                expected_indexes,
+            );
+        }
     }
 
     #[test]

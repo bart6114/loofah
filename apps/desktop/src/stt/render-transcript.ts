@@ -302,8 +302,9 @@ function buildRenderTranscriptRequest(
         (word as { metadata?: unknown }).metadata,
       );
       if (
-        metadata?.capture_source !== "import" &&
-        metadata?.capture_source !== "unknown"
+        word.channel === 2 ||
+        (metadata?.capture_source !== "import" &&
+          metadata?.capture_source !== "unknown")
       )
         continue;
       const key = `${word.channel}:${word.speaker_index ?? "unknown"}`;

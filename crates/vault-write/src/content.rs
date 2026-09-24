@@ -50,7 +50,7 @@ impl SessionStore {
         self.finish_meta_write_locked(&guard, meta, dir).await
     }
 
-    async fn write_meta_locked(
+    pub(crate) async fn write_meta_locked(
         &self,
         guard: &WriteGuard<'_>,
         meta: &SessionMeta,
@@ -421,6 +421,7 @@ impl SessionStore {
     /// destination. A missing session returns `None`; invalid metadata or a failed
     /// move leaves the source and in-memory state intact. Undo remains process-local.
     pub async fn delete_session(&self, id: &str) -> Result<Option<std::path::PathBuf>, StoreError> {
+        let _audio_guard = self.lock_session_audio(id).await?;
         validate_session_id(id)?;
         let _operation = self.transcript_operations.lock(id).await;
         let guard = self.lock_writes().await;

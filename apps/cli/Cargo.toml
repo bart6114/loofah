@@ -12,8 +12,8 @@ serde_json = { workspace = true }
 
 [dependencies]
 hypr-agent-access = { workspace = true }
-hypr-audio-norm = { workspace = true }
 hypr-export-core = { workspace = true }
+hypr-fs-sync-core = { workspace = true }
 hypr-listener2-core = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
 hypr-vault-read = { workspace = true }

@@ -12,6 +12,24 @@ impl<R: tauri::Runtime> TauriAudioImportRuntime<R> {
 }
 
 impl<R: tauri::Runtime> AudioImportRuntime for TauriAudioImportRuntime<R> {
+    fn prepare_commit(&self, session_id: &str) -> std::io::Result<()> {
+        use tauri::Manager;
+        let store = self
+            .app
+            .state::<std::sync::Arc<hypr_vault_write::SessionStore>>();
+        tauri::async_runtime::block_on(store.begin_audio_import(session_id))
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    }
+
+    fn finish_commit(&self, session_id: &str) -> std::io::Result<()> {
+        use tauri::Manager;
+        let store = self
+            .app
+            .state::<std::sync::Arc<hypr_vault_write::SessionStore>>();
+        tauri::async_runtime::block_on(store.finish_audio_import(session_id))
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    }
+
     fn emit(&self, event: AudioImportEvent) {
         use tauri::Manager;
         if let AudioImportEvent::Completed { session_id, .. } = &event

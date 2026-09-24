@@ -39,12 +39,17 @@ enum DiarizationState {
 }
 
 impl SharedDiarization {
-    pub(super) fn for_file(diarizer: Arc<dyn Diarizer>, file_path: String) -> Self {
+    pub(super) fn for_file(
+        diarizer: Arc<dyn Diarizer>,
+        prepared: Arc<super::audio::PreparedAudio>,
+    ) -> Self {
         if !diarizer.is_ready() {
             return Self::disabled();
         }
 
-        let handle = tokio::task::spawn_blocking(move || file_diarization(&*diarizer, &file_path));
+        let handle = tokio::task::spawn_blocking(move || {
+            file_diarization(&*diarizer, &prepared.path.to_string_lossy())
+        });
         Self(Arc::new(tokio::sync::Mutex::new(
             DiarizationState::Pending(handle),
         )))
@@ -416,11 +421,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn imported_stereo_diarizes_the_prepared_conversation_once() {
+        let file = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: 16000,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for _ in 0..16000 {
+            writer.write_sample(0.2_f32).unwrap();
+            writer.write_sample(0.1_f32).unwrap();
+        }
+        writer.finalize().unwrap();
+        let prepared = super::super::audio::PreparedAudio::prepare(
+            file.path().to_string_lossy().into_owned(),
+            Default::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let fake = Arc::new(FakeDiarizer::ready_with(vec![segment(0, 1000, 7)]));
+        let shared = SharedDiarization::for_file(fake.clone(), prepared.clone());
+        let segments = shared.segments().await;
+        assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![0]);
+        let received = fake.diarized_first_samples.lock().unwrap();
+        assert_eq!(received.len(), 1);
+        assert!((received[0] - 0.15).abs() < 0.001);
+        let mut response = batch_response(vec![vec![batch_word(0.1, 0.3, 0)]]);
+        stamp_batch_response(&mut response, &segments);
+        prepared.stamp_response(&mut response);
+        let (words, hints) =
+            super::super::transcript::words_and_hints_from_batch_response(&response);
+        assert_eq!(words[0].channel, 2.0);
+        assert_eq!(hints[0].speaker_index, 7);
+    }
+
+    #[tokio::test]
     async fn model_missing_yields_todays_output() {
-        let diarization = SharedDiarization::for_file(
-            Arc::new(FakeDiarizer::not_ready()),
-            "/nonexistent/audio.wav".to_string(),
-        );
+        let file = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        writer.write_sample(0.1_f32).unwrap();
+        writer.finalize().unwrap();
+        let prepared = super::super::audio::PreparedAudio::prepare(
+            file.path().to_string_lossy().into_owned(),
+            Default::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let diarization =
+            SharedDiarization::for_file(Arc::new(FakeDiarizer::not_ready()), prepared);
         let segments = diarization.segments().await;
         assert!(segments.is_empty());
 

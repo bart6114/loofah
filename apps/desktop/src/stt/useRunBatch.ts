@@ -252,7 +252,7 @@ export const useRunBatch = (sessionId: string) => {
               channel: word.channel,
               metadata: JSON.stringify({
                 ...word.metadata,
-                capture_source: captureSource,
+                capture_source: word.metadata?.capture_source ?? captureSource,
               }),
             });
 

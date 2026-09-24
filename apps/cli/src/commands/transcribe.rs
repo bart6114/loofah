@@ -80,7 +80,15 @@ pub(crate) async fn transcribe_session(
     let model = resolve_soniqo_model(&config)?;
     ensure_soniqo_model_ready(&model)?;
 
+    let _audio_guard = store
+        .lock_session_audio(session_id)
+        .await
+        .map_err(|e| Error::operation(ACTION, e.to_string()))?;
     let params = BatchParams {
+        audio: store
+            .resolve_session_audio(session_id)
+            .await
+            .map_err(|e| Error::operation(ACTION, e.to_string()))?,
         session_id: session_id.to_string(),
         provider: BatchProvider::Soniqo,
         file_path: audio_path.to_string_lossy().into_owned(),
@@ -94,7 +102,7 @@ pub(crate) async fn transcribe_session(
         max_speakers: None,
     };
 
-    let output = run_batch(Arc::new(CliBatchRuntime), params)
+    let output = run_batch(Arc::new(CliBatchRuntime { _audio_guard }), params)
         .await
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
 
@@ -244,7 +252,9 @@ pub(crate) fn find_session_audio(session_dir: &Path) -> Option<PathBuf> {
 /// Headless stand-in for the desktop's Tauri event forwarding: progress goes
 /// to stderr (stdout stays reserved for the command's result, `--json` or
 /// not); the final response is consumed from `run_batch`'s return value.
-struct CliBatchRuntime;
+struct CliBatchRuntime {
+    _audio_guard: tokio::sync::OwnedMutexGuard<()>,
+}
 
 impl BatchRuntime for CliBatchRuntime {
     fn emit(&self, event: BatchEvent) {

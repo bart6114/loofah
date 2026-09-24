@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{Error, Result, output};
+use hypr_fs_sync_core::runtime::{AudioImportEvent, AudioImportRuntime};
 use hypr_vault_write::SessionStore;
 
 /// The formats the desktop app accepts in its import dialog. `normalize_file`
@@ -81,18 +82,16 @@ pub async fn run(
     };
     let session_id = meta.id.clone();
 
-    // Same layout and conversion as the desktop import path (fs-sync-core's
-    // `import_to_session`): normalize to 16 kHz MP3 via a temp file, then move
-    // atomically into place. The store resolves the session's physical
-    // directory — its basename may be a readable name, not the id.
+    let audio_guard = store
+        .lock_session_audio(&session_id)
+        .await
+        .map_err(|error| Error::operation("import audio", error.to_string()))?;
     let session_dir = vault.join(
         store
             .session_dir(&session_id)
             .await
             .map_err(|error| Error::operation("import audio", error.to_string()))?,
     );
-    let tmp_path = session_dir.join("audio.mp3.tmp");
-    let target_path = session_dir.join("audio.mp3");
     let source_path = file.clone();
     // Both arms name the session so a partial import stays identifiable —
     // whether the converter failed cleanly or panicked (JoinError). A freshly
@@ -101,21 +100,24 @@ pub async fn run(
         Error::operation(
             "import audio",
             if created {
-                format!(
-                    "meeting {session_id} was created, but converting its audio failed: {error}"
-                )
+                format!("meeting {session_id} was created, but importing its audio failed: {error}")
             } else {
-                format!("converting audio for meeting {session_id} failed: {error}")
+                format!("importing audio for meeting {session_id} failed: {error}")
             },
         )
     };
+    let runtime = CliAudioImportRuntime {
+        store: store.clone(),
+        handle: tokio::runtime::Handle::current(),
+    };
+    let import_id = session_id.clone();
     let audio_path = tokio::task::spawn_blocking(move || {
-        hypr_audio_norm::normalize_file(
+        let _audio_guard = audio_guard;
+        hypr_fs_sync_core::audio::import_to_session(
+            &runtime,
+            &import_id,
+            &session_dir,
             &source_path,
-            &tmp_path,
-            &target_path,
-            None,
-            None::<fn(f64)>,
         )
     })
     .await
@@ -162,4 +164,25 @@ pub async fn run(
     };
     output::emit(&rendered);
     Ok(exit_code)
+}
+
+struct CliAudioImportRuntime {
+    store: SessionStore,
+    handle: tokio::runtime::Handle,
+}
+
+impl AudioImportRuntime for CliAudioImportRuntime {
+    fn emit(&self, _event: AudioImportEvent) {}
+
+    fn prepare_commit(&self, session_id: &str) -> std::io::Result<()> {
+        self.handle
+            .block_on(self.store.begin_audio_import(session_id))
+            .map_err(|error| std::io::Error::other(error.to_string()))
+    }
+
+    fn finish_commit(&self, session_id: &str) -> std::io::Result<()> {
+        self.handle
+            .block_on(self.store.finish_audio_import(session_id))
+            .map_err(|error| std::io::Error::other(error.to_string()))
+    }
 }

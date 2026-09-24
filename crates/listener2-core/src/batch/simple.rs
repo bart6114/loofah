@@ -278,8 +278,7 @@ fn transcribe_soniqo_file(
         "soniqo_audio_resampled"
     );
 
-    let channel_samples =
-        collapse_identical_channels(split_resampled_channels(&samples, channel_count));
+    let channel_samples = split_resampled_channels(&samples, channel_count);
     tracing::info!(
         fmtr.stt.provider.name = "soniqo",
         fmtr.stt.model = %model,
@@ -742,52 +741,9 @@ fn split_audio_samples(samples: &[f32], max_samples: usize) -> Vec<AudioChunk> {
         .collect()
 }
 
-fn collapse_identical_channels(channels: Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-    if channels.len() != 2 || !channels_are_effectively_identical(&channels[0], &channels[1]) {
-        return channels;
-    }
-
-    channels.into_iter().take(1).collect()
-}
-
-fn channels_are_effectively_identical(left: &[f32], right: &[f32]) -> bool {
-    if left.len().abs_diff(right.len()) > 1 {
-        return false;
-    }
-
-    let compared = left.len().min(right.len());
-    if compared == 0 {
-        return true;
-    }
-
-    let mean_abs_diff = left
-        .iter()
-        .zip(right.iter())
-        .map(|(a, b)| (a - b).abs())
-        .sum::<f32>()
-        / compared as f32;
-
-    mean_abs_diff < 0.0005
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn collapses_effectively_identical_stereo_channels() {
-        let channels =
-            collapse_identical_channels(vec![vec![0.1, 0.2, 0.3], vec![0.1001, 0.2001, 0.3001]]);
-
-        assert_eq!(channels, vec![vec![0.1, 0.2, 0.3]]);
-    }
-
-    #[test]
-    fn keeps_distinct_stereo_channels() {
-        let channels = collapse_identical_channels(vec![vec![0.1, 0.2], vec![0.9, 0.8]]);
-
-        assert_eq!(channels, vec![vec![0.1, 0.2], vec![0.9, 0.8]]);
-    }
 
     fn speech_chunk(start_seconds: usize, end_seconds: usize) -> AudioChunk {
         let rate = TARGET_SAMPLE_RATE as usize;
