@@ -1542,11 +1542,15 @@ export function md2json(markdown: string): JSONContent {
 
 export function json2md(jsonContent: JSONContent): string {
   try {
-    const wrapped = wrapBlockImages(jsonContent);
-    const doc = PMNode.fromJSON(markdownSchema, wrapped);
-    return getSerializer().serialize(doc);
+    return json2mdStrict(jsonContent);
   } catch (error) {
     console.error(error);
     return "";
   }
+}
+
+export function json2mdStrict(jsonContent: JSONContent): string {
+  const wrapped = wrapBlockImages(jsonContent);
+  const doc = PMNode.fromJSON(markdownSchema, wrapped);
+  return getSerializer().serialize(doc);
 }

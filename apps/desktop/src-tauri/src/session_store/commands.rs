@@ -103,6 +103,24 @@ pub async fn session_write_note<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn session_save_note<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    markdown: String,
+    title: Option<String>,
+) -> Result<(), String> {
+    store(&app)?
+        .save_note(&session_id, &markdown, title.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(queue) = app.try_state::<RelatedTagQueue>() {
+        queue.note_changed(session_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn session_read_note<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
@@ -162,6 +180,30 @@ pub async fn session_update_summary<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn session_save_summary<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    markdown: String,
+    expected_markdown: Option<String>,
+    title: Option<String>,
+) -> Result<(), String> {
+    store(&app)?
+        .save_summary(
+            &session_id,
+            &markdown,
+            expected_markdown.as_deref(),
+            title.as_deref(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(queue) = app.try_state::<RelatedTagQueue>() {
+        queue.enqueue(session_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn session_delete_summary<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
@@ -209,6 +251,28 @@ pub async fn session_update_enhanced_doc<R: tauri::Runtime>(
     }
     store(&app)?
         .update_enhanced_doc(&session_id, &doc_id, patch)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(queue) = app.try_state::<RelatedTagQueue>() {
+        queue.enqueue(session_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn session_save_enhanced_doc<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    doc_id: String,
+    patch: EnhancedDocPatch,
+    title: Option<String>,
+) -> Result<(), String> {
+    if patch.kind.as_deref() == Some("summary") {
+        return Err("Use session_ensure_summary for session summaries".into());
+    }
+    store(&app)?
+        .save_enhanced_doc(&session_id, &doc_id, patch, title.as_deref())
         .await
         .map_err(|e| e.to_string())?;
     if let Some(queue) = app.try_state::<RelatedTagQueue>() {

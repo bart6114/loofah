@@ -73,6 +73,28 @@ impl SessionStore {
         doc_id: &str,
         patch: EnhancedDocPatch,
     ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(session_id, doc_id, patch, None)
+            .await
+    }
+
+    pub async fn save_enhanced_doc(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(session_id, doc_id, patch, title)
+            .await
+    }
+
+    async fn update_enhanced_doc_impl(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        session_title: Option<&str>,
+    ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
 
@@ -158,8 +180,24 @@ impl SessionStore {
         } else {
             None
         };
-        self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
+        if let Some(title) = session_title {
+            let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
+                StoreError::Io(format!("session {session_id} has no _meta.json to update"))
+            })?;
+            let changed_title = meta.title != title;
+            meta.title = title.to_owned();
+            self.persist_enhanced_doc_with_meta_locked(
+                &guard,
+                &doc,
+                tasks.as_deref(),
+                &meta,
+                changed_title,
+            )
             .await
+        } else {
+            self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
+                .await
+        }
     }
 
     pub async fn read_enhanced_doc(
@@ -263,6 +301,48 @@ impl SessionStore {
         self.notify_index_changed(super::IndexEntity::Docs, vec![doc.session_id.clone()]);
         task_result
     }
+
+    async fn persist_enhanced_doc_with_meta_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        doc: &EnhancedDoc,
+        tasks: Option<&[super::TaskItem]>,
+        meta: &super::SessionMeta,
+        changed_title: bool,
+    ) -> Result<(), StoreError> {
+        let rendered = render_enhanced_file(doc)?;
+        let session_dir = self.session_dir_locked(guard, &doc.session_id).await?;
+        self.write_file_locked(
+            guard,
+            paths::enhanced_doc_path_in(&session_dir, &doc.id),
+            rendered.into_bytes(),
+        )
+        .await?;
+        let task_result = if let Some(tasks) = tasks {
+            self.persist_generated_tasks(guard, &doc.session_id, tasks)
+                .await
+                .map_err(|error| {
+                    StoreError::Io(format!(
+                        "Summary saved but task synchronization failed; retry to finish: {error}"
+                    ))
+                })
+        } else {
+            Ok(())
+        };
+        if changed_title {
+            if let Err(error) = self.write_session_title_file_locked(guard, meta).await {
+                if let (Ok(Some(actual_meta)), Ok(Some(actual_doc))) = (
+                    self.read_meta(&doc.session_id).await,
+                    self.read_enhanced_doc(&doc.session_id, &doc.id).await,
+                ) {
+                    self.index_set_enhanced_doc_and_meta(&actual_meta, &actual_doc);
+                }
+                return Err(error);
+            }
+        }
+        self.index_set_enhanced_doc_and_meta(meta, doc);
+        task_result
+    }
 }
 
 fn validate_kind(kind: &str) -> Result<(), StoreError> {
@@ -314,6 +394,47 @@ mod tests {
         let vault = temp.path().to_path_buf();
         let store = SessionStore::new(vault);
         (store, temp)
+    }
+
+    #[tokio::test]
+    async fn save_enhanced_doc_updates_session_title_and_doc_together() {
+        let (store, _vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        store.write_enhanced_doc(&doc("s1", "doc-1")).await.unwrap();
+        store
+            .save_enhanced_doc(
+                "s1",
+                "doc-1",
+                EnhancedDocPatch {
+                    markdown: Some("Updated body".into()),
+                    ..Default::default()
+                },
+                Some("Updated session"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.session_get("s1").unwrap().meta.title,
+            "Updated session"
+        );
+        assert_eq!(
+            store.enhanced_doc_get("doc-1").unwrap().markdown,
+            "Updated body"
+        );
+        assert_eq!(
+            store.read_meta("s1").await.unwrap().unwrap().title,
+            "Updated session"
+        );
+        assert_eq!(
+            store
+                .read_enhanced_doc("s1", "doc-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .markdown,
+            "Updated body"
+        );
     }
 
     async fn session_path(

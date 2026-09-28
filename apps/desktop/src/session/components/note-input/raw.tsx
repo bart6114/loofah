@@ -1,7 +1,7 @@
 import type { EditorView } from "prosemirror-view";
 import { forwardRef, useCallback, useMemo } from "react";
 
-import { json2md, parseJsonContent } from "@hypr/editor/markdown";
+import { json2mdStrict, parseJsonContent } from "@hypr/editor/markdown";
 import {
   type FileHandlerConfig,
   NoteEditor,
@@ -19,14 +19,17 @@ import { sessionMentionDropConfig } from "~/editor-bridge/session-mention-drop";
 import { SessionNodeView } from "~/editor-bridge/session-view";
 import { hasStoredNoteContent } from "~/session/components/shared";
 import { useAttachmentResolver } from "~/session/hooks/useAttachmentResolver";
-import { useUpdateSession } from "~/session/queries";
+import {
+  captureNoteDraft,
+  persistNoteDraft,
+  usePendingNoteDraft,
+} from "~/session/pending-note-drafts";
+import { saveSessionNote, useRefreshSessionNote } from "~/session/queries";
 import {
   ensureFirstLineTitle,
   extractFirstLineTitle,
   documentTitlePlaceholder,
 } from "~/session/title-content";
-import { enqueueDatabaseWrite } from "~/shared/write-queue";
-import { commands } from "~/types/tauri.gen";
 
 const extraNodeViews = { appLink: AppLinkView, session: SessionNodeView };
 
@@ -62,49 +65,48 @@ export const RawEditor = forwardRef<
     },
     ref,
   ) => {
-    const updateSession = useUpdateSession(sessionId);
+    const draftKey = `session:${sessionId}:note`;
+    const refreshContent = useRefreshSessionNote(sessionId);
     const resolveAttachment = useAttachmentResolver(sessionId);
     const initialContent = useMemo<JSONContent>(
       () => ensureFirstLineTitle(parseJsonContent(rawMd), sessionTitle),
       [rawMd, sessionTitle],
     );
 
-    const persistChange = useCallback(
-      async (input: JSONContent) => {
-        const portableInput = normalizePortableAttachmentUrls(input);
-        const title = extractFirstLineTitle(portableInput);
-
-        const titleWrite =
-          title !== null || hasStoredNoteContent(rawMd)
-            ? updateSession({ title: title ?? "" })
-            : Promise.resolve();
-
-        const markdown = json2md(portableInput);
-        const noteWrite = enqueueDatabaseWrite(
-          `session:${sessionId}:note`,
-          async () => {
-            const result = await commands.sessionWriteNote(sessionId, markdown);
-            if (result.status === "error") {
-              throw new Error(result.error);
-            }
-          },
-        );
-
-        await Promise.all([titleWrite, noteWrite]);
-      },
-      [rawMd, sessionId, updateSession],
+    const { initialDraft, confirmedDraft } = usePendingNoteDraft(
+      draftKey,
+      initialContent,
+    );
+    const handleDraftChange = useCallback(
+      (getContent: () => JSONContent) => captureNoteDraft(draftKey, getContent),
+      [draftKey],
     );
 
     const handleChange = useCallback(
       (input: JSONContent) => {
-        void persistChange(input).catch((error) => {
+        const portableInput = normalizePortableAttachmentUrls(input);
+        const title = extractFirstLineTitle(portableInput);
+        const nextTitle =
+          title !== null || hasStoredNoteContent(rawMd)
+            ? (title ?? "")
+            : undefined;
+
+        return persistNoteDraft(draftKey, portableInput, async () => {
+          await saveSessionNote(
+            sessionId,
+            json2mdStrict(portableInput),
+            nextTitle,
+          );
+          return refreshContent();
+        }).catch((error) => {
           console.error("[raw-editor] failed to persist note", error);
           sonnerToast.error(`Note is NOT being saved: ${error}`, {
             id: `note-save-failed:${sessionId}`,
           });
+          throw error;
         });
       },
-      [persistChange, sessionId],
+      [draftKey, rawMd, refreshContent, sessionId],
     );
 
     const mentionConfig = useMentionConfig();
@@ -114,8 +116,11 @@ export const RawEditor = forwardRef<
         className={cn(["session-note-editor", className])}
         key={`session-${sessionId}-raw`}
         initialContent={initialContent}
+        initialDraft={initialDraft}
+        confirmedDraft={confirmedDraft}
         resolveAttachment={resolveAttachment}
         handleChange={handleChange}
+        onDraftChange={handleDraftChange}
         placeholderComponent={documentTitlePlaceholder}
         mentionConfig={mentionConfig}
         sessionMentionDropConfig={sessionMentionDropConfig}

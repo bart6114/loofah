@@ -279,6 +279,25 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionSaveNote(
+    sessionId: string,
+    markdown: string,
+    title: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_save_note", {
+          sessionId,
+          markdown,
+          title,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionReadNote(
     sessionId: string,
   ): Promise<Result<string | null, string>> {
@@ -339,6 +358,27 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionSaveSummary(
+    sessionId: string,
+    markdown: string,
+    expectedMarkdown: string | null,
+    title: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_save_summary", {
+          sessionId,
+          markdown,
+          expectedMarkdown,
+          title,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionDeleteSummary(sessionId: string): Promise<Result<null, string>> {
     try {
       return {
@@ -375,6 +415,27 @@ export const commands = {
           sessionId,
           docId,
           patch,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionSaveEnhancedDoc(
+    sessionId: string,
+    docId: string,
+    patch: EnhancedDocPatch,
+    title: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_save_enhanced_doc", {
+          sessionId,
+          docId,
+          patch,
+          title,
         }),
       };
     } catch (e) {
