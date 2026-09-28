@@ -343,11 +343,76 @@ impl SessionStore {
 
     pub async fn write_note(&self, id: &str, markdown: &str) -> Result<(), StoreError> {
         validate_session_id(id)?;
-        let note_bytes = markdown.as_bytes().to_vec();
         let guard = self.lock_writes().await;
-        let dir = self.session_dir_locked(&guard, id).await?;
-        self.write_file_locked(&guard, paths::note_path_in(&dir), note_bytes)
-            .await?;
+        self.write_note_file_locked(&guard, id, markdown).await?;
+        self.index_set_note(
+            id,
+            Some(super::strip_leading_frontmatter(markdown.to_string())),
+        );
+        self.notify_index_changed(super::IndexEntity::Sessions, vec![id.to_string()]);
+
+        Ok(())
+    }
+
+    /// Save the note and its extracted session title as one observable index change.
+    /// The files remain individually atomic; if the second write fails, the index is
+    /// reconciled from the actual files before the error reaches the caller.
+    pub async fn save_note(
+        &self,
+        id: &str,
+        markdown: &str,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
+        validate_session_id(id)?;
+        let guard = self.lock_writes().await;
+        let mut meta = self
+            .read_meta(id)
+            .await?
+            .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
+        let changed_title = title.is_some_and(|title| title != meta.title);
+        if let Some(title) = title {
+            meta.title = title.to_owned();
+        }
+        self.write_note_file_locked(&guard, id, markdown).await?;
+        if changed_title {
+            if let Err(error) = self.write_session_title_file_locked(&guard, &meta).await {
+                if let (Ok(Some(actual_meta)), Ok(Some(actual_note))) =
+                    (self.read_meta(id).await, self.read_note(id).await)
+                {
+                    self.index_set_note_and_meta(&actual_meta, actual_note);
+                }
+                return Err(error);
+            }
+        }
+        self.index_set_note_and_meta(&meta, super::strip_leading_frontmatter(markdown.to_owned()));
+        Ok(())
+    }
+
+    pub(crate) async fn write_session_title_file_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        meta: &SessionMeta,
+    ) -> Result<(), StoreError> {
+        let dir = self.session_dir_locked(guard, &meta.id).await?;
+        let bytes =
+            serde_json::to_vec_pretty(meta).map_err(|e| StoreError::Serialize(e.to_string()))?;
+        self.write_file_locked(guard, paths::meta_path_in(&dir), bytes)
+            .await
+    }
+
+    async fn write_note_file_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        markdown: &str,
+    ) -> Result<(), StoreError> {
+        let dir = self.session_dir_locked(guard, id).await?;
+        self.write_file_locked(
+            guard,
+            paths::note_path_in(&dir),
+            markdown.as_bytes().to_vec(),
+        )
+        .await?;
 
         // Migrate-on-first-edit: once `notes.md` lands, a leftover pre-rename `_memo.md`
         // would only ever be the stale copy (readers prefer `notes.md`), and an external
@@ -374,17 +439,6 @@ impl SessionStore {
                 }
             }
         }
-        drop(guard);
-
-        // Store what `read_note` would return, not the raw bytes: a body that starts with an
-        // exporter-shaped frontmatter block would otherwise sit un-stripped in the index and
-        // change under the user on the next rescan.
-        self.index_set_note(
-            id,
-            Some(super::strip_leading_frontmatter(markdown.to_string())),
-        );
-        self.notify_index_changed(super::IndexEntity::Sessions, vec![id.to_string()]);
-
         Ok(())
     }
 
@@ -1048,6 +1102,88 @@ mod tests {
         assert_eq!(
             store.read_note("s1").await.unwrap().unwrap(),
             "# Meeting notes\n\nDiscussed: X, Y, Z"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_note_updates_title_and_body_together_without_losing_meta() {
+        let (store, vault) = test_store().await;
+        let mut original = meta("s1", "Old title");
+        original.tags = vec!["team".to_owned()];
+        original.tracking_id = Some("external-1".to_owned());
+        store.write_meta(&original).await.unwrap();
+        let mut changes = store.subscribe_index_changes();
+
+        store
+            .save_note("s1", "# New title\n\nNew body", Some("New title"))
+            .await
+            .unwrap();
+
+        let session = store.session_get("s1").unwrap();
+        assert_eq!(session.meta.title, "New title");
+        assert_eq!(session.meta.tags, original.tags);
+        assert_eq!(session.meta.tracking_id, original.tracking_id);
+        assert_eq!(
+            session.note_markdown.as_deref(),
+            Some("# New title\n\nNew body")
+        );
+        assert_eq!(store.read_meta("s1").await.unwrap(), Some(session.meta));
+        assert_eq!(store.read_note("s1").await.unwrap(), session.note_markdown);
+        assert!(
+            session_path(&store, &vault, "s1")
+                .await
+                .join("notes.md")
+                .is_file()
+        );
+        while changes.try_recv().is_ok() {
+            let observed = store.session_get("s1").unwrap();
+            assert_eq!(observed.meta.title, "New title");
+            assert_eq!(
+                observed.note_markdown.as_deref(),
+                Some("# New title\n\nNew body")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn save_note_refuses_missing_meta_without_creating_content() {
+        let (store, vault) = test_store().await;
+        assert!(
+            store
+                .save_note("ghost", "body", Some("Title"))
+                .await
+                .is_err()
+        );
+        assert!(!vault.path().join("sessions/ghost/notes.md").exists());
+    }
+
+    #[tokio::test]
+    async fn save_note_refreshes_index_when_title_write_fails_after_note_write() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Old title")).await.unwrap();
+        let dir = session_path(&store, &vault, "s1").await;
+        let mut external = meta("s1", "External title");
+        external.tags.push("kept".to_owned());
+        std::fs::write(
+            dir.join("_meta.json"),
+            serde_json::to_vec_pretty(&external).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(vault.path().join(".trash"), "block trash").unwrap();
+
+        assert!(
+            store
+                .save_note("s1", "saved body", Some("New title"))
+                .await
+                .is_err()
+        );
+        let session = store.session_get("s1").unwrap();
+        assert_eq!(session.meta.title, "External title");
+        assert_eq!(session.meta.tags, vec!["kept"]);
+        assert_eq!(session.note_markdown.as_deref(), Some("saved body"));
+        assert_eq!(
+            store.read_note("s1").await.unwrap().as_deref(),
+            Some("saved body")
         );
     }
 

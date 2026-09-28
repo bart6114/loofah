@@ -577,6 +577,73 @@ impl SessionStore {
         }
     }
 
+    pub(super) fn index_set_note_and_meta(&self, meta: &SessionMeta, markdown: String) {
+        let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
+        index.sessions.insert(
+            meta.id.clone(),
+            SessionEntry {
+                meta: meta.clone(),
+                note_markdown: Some(markdown),
+            },
+        );
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
+        }
+        self.notify_index_changed(IndexEntity::Sessions, vec![meta.id.clone()]);
+    }
+
+    pub(super) fn index_set_summary_and_meta(&self, meta: &SessionMeta, markdown: String) {
+        let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
+        index
+            .sessions
+            .entry(meta.id.clone())
+            .and_modify(|entry| entry.meta = meta.clone())
+            .or_insert_with(|| SessionEntry {
+                meta: meta.clone(),
+                note_markdown: None,
+            });
+        if let Some(docs) = index.docs.get_mut(&meta.id) {
+            docs.retain(|doc| doc.kind != "summary");
+        }
+        index.summaries.insert(meta.id.clone(), markdown);
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
+        }
+        self.notify_index_changed(IndexEntity::Sessions, vec![meta.id.clone()]);
+        self.notify_index_changed(IndexEntity::Docs, vec![meta.id.clone()]);
+    }
+
+    pub(super) fn index_set_enhanced_doc_and_meta(&self, meta: &SessionMeta, doc: &EnhancedDoc) {
+        let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
+        index
+            .sessions
+            .entry(meta.id.clone())
+            .and_modify(|entry| entry.meta = meta.clone())
+            .or_insert_with(|| SessionEntry {
+                meta: meta.clone(),
+                note_markdown: None,
+            });
+        let docs = index.docs.entry(meta.id.clone()).or_default();
+        match docs.iter_mut().find(|existing| existing.id == doc.id) {
+            Some(existing) => *existing = doc.clone(),
+            None => docs.push(doc.clone()),
+        }
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
+        }
+        self.notify_index_changed(IndexEntity::Sessions, vec![meta.id.clone()]);
+        self.notify_index_changed(IndexEntity::Docs, vec![meta.id.clone()]);
+    }
+
     pub(super) fn index_upsert_doc(&self, doc: &EnhancedDoc) {
         let mut index = self.index.write().unwrap();
         let docs = index.docs.entry(doc.session_id.clone()).or_default();
