@@ -25,6 +25,7 @@ import {
   renderTranscriptSegments,
   type TranscriptRow,
 } from "~/stt/render-transcript";
+import { commands } from "~/types/tauri.gen";
 
 type TranscriptMeta = {
   id: string;
@@ -60,6 +61,10 @@ async function transformArgs(
   if (!hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)) {
     throw new Error(EMPTY_SUMMARY_SOURCE_MESSAGE);
   }
+  const tagContextResult = await commands.sessionTagContext(sessionId);
+  if (tagContextResult.status === "error") {
+    throw new Error(tagContextResult.error);
+  }
   const sessionContext = getSessionContext(snapshot);
   const language = getLanguage(settingsValues);
   const promptOverride = getPromptOverride(settingsValues);
@@ -81,6 +86,7 @@ async function transformArgs(
   );
   return {
     expectedMarkdown: target?.markdown ?? null,
+    tagContext: tagContextResult.data,
     language,
     promptOverride,
     session: sessionContext.session,

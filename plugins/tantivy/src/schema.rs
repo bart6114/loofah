@@ -12,7 +12,6 @@ pub struct SchemaFields {
     pub language: Field,
     pub title: Field,
     pub content: Field,
-    pub related_content: Field,
     pub created_at: Field,
     pub facets: Field,
 }
@@ -32,10 +31,6 @@ pub fn build_schema() -> Schema {
 
     schema_builder.add_text_field("title", text_options.clone());
     schema_builder.add_text_field("content", text_options.clone());
-    schema_builder.add_text_field(
-        "related_content",
-        TextOptions::default().set_indexing_options(text_indexing),
-    );
     schema_builder.add_date_field(
         "created_at",
         DateOptions::from(FAST | STORED).set_precision(DateTimePrecision::Milliseconds),
@@ -51,7 +46,6 @@ pub fn get_fields(schema: &Schema) -> SchemaFields {
         language: schema.get_field("language").unwrap(),
         title: schema.get_field("title").unwrap(),
         content: schema.get_field("content").unwrap(),
-        related_content: schema.get_field("related_content").unwrap(),
         created_at: schema.get_field("created_at").unwrap(),
         facets: schema.get_field("facets").unwrap(),
     }
@@ -86,7 +80,6 @@ pub fn extract_search_document(
         language,
         title,
         content,
-        related_content: None,
         created_at,
         facets,
     })

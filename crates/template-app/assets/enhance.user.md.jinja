@@ -22,3 +22,15 @@ Only speakers marked [current user] are identified as the person using Loofah. A
 {% if !transcripts.is_empty() %}# Transcript
 
 {{ macros::transcripts(transcripts=transcripts) }}{% endif %}
+
+# Tag context
+
+Available tags:
+{% for tag in tag_context.available %}- {{ tag }}
+{% endfor %}
+Attached tags:
+{% for tag in tag_context.attached %}- {{ tag }}
+{% endfor %}
+Dismissed tags:
+{% for tag in tag_context.dismissed %}- {{ tag }}
+{% endfor %}

@@ -6,11 +6,7 @@ use super::{SessionStore, StoreError, WriteGuard, paths, validate_session_id};
 // The `_meta.json` schema is shared with the read-only vault consumers (loof CLI/MCP);
 // the type lives in `hypr-vault-read` so both sides parse the same shape.
 pub use hypr_vault_read::SessionMeta;
-pub use hypr_vault_read::{TagSuggestionItem, TagSuggestionState, TagSuggestionStatus};
-
-pub fn is_tag_automation_candidate(name: &str) -> bool {
-    !name.to_lowercase().contains("import")
-}
+pub use hypr_vault_read::TagSuggestionState;
 
 /// Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
 /// field without knowing the rest. There is deliberately no way to clear a field back to
@@ -121,9 +117,13 @@ impl SessionStore {
         if let Some(tags) = tags {
             meta.tags = tags;
             if let Some(suggestions) = &mut meta.tag_suggestions {
-                suggestions
-                    .items
-                    .retain(|suggestion| !meta.tags.contains(&suggestion.name));
+                suggestions.items.retain(|suggestion| {
+                    !meta
+                        .tags
+                        .iter()
+                        .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
+                        .any(|tag| tag == *suggestion)
+                });
             }
         }
         if let Some(tracking_id) = tracking_id {
@@ -137,95 +137,6 @@ impl SessionStore {
         }
 
         self.write_meta_locked(&guard, &meta).await
-    }
-
-    pub async fn mark_tag_suggestions_pending(
-        &self,
-        id: &str,
-        source_hash: String,
-        algorithm_version: u32,
-    ) -> Result<bool, StoreError> {
-        validate_session_id(id)?;
-        let guard = self.lock_writes().await;
-        let mut meta = self
-            .read_meta(id)
-            .await?
-            .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
-
-        if let Some(state) = meta.tag_suggestions.as_ref().filter(|state| {
-            state.source_hash == source_hash && state.algorithm_version == algorithm_version
-        }) {
-            return Ok(state.status == TagSuggestionStatus::Pending);
-        }
-
-        let dismissed = meta
-            .tag_suggestions
-            .as_ref()
-            .filter(|state| state.algorithm_version == algorithm_version)
-            .map(|state| state.dismissed.clone())
-            .unwrap_or_default();
-        meta.tag_suggestions = Some(TagSuggestionState {
-            source_hash,
-            algorithm_version,
-            status: TagSuggestionStatus::Pending,
-            items: Vec::new(),
-            dismissed,
-        });
-        self.write_meta_locked(&guard, &meta).await?;
-        Ok(true)
-    }
-
-    pub async fn complete_tag_suggestions(
-        &self,
-        id: &str,
-        source_hash: &str,
-        algorithm_version: u32,
-        suggestions: Vec<TagSuggestionItem>,
-        auto_accept_threshold: Option<f32>,
-    ) -> Result<bool, StoreError> {
-        validate_session_id(id)?;
-        let guard = self.lock_writes().await;
-        let mut meta = self
-            .read_meta(id)
-            .await?
-            .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
-
-        let Some(current) = &meta.tag_suggestions else {
-            return Ok(false);
-        };
-        if current.source_hash != source_hash
-            || current.algorithm_version != algorithm_version
-            || current.status != TagSuggestionStatus::Pending
-        {
-            return Ok(false);
-        }
-
-        let dismissed = current.dismissed.clone();
-        let mut remaining = Vec::new();
-        for suggestion in suggestions {
-            if !is_tag_automation_candidate(&suggestion.name)
-                || meta.tags.contains(&suggestion.name)
-                || dismissed.contains(&suggestion.name)
-            {
-                continue;
-            }
-            if auto_accept_threshold.is_some_and(|threshold| suggestion.confidence >= threshold) {
-                meta.tags.push(suggestion.name);
-            } else {
-                remaining.push(suggestion);
-            }
-        }
-        meta.tags.sort();
-        meta.tags.dedup();
-        meta.tag_suggestions = Some(TagSuggestionState {
-            source_hash: source_hash.to_string(),
-            algorithm_version,
-            status: TagSuggestionStatus::Complete,
-            items: remaining,
-            dismissed,
-        });
-        self.write_meta_locked(&guard, &meta).await?;
-        Ok(true)
     }
 
     pub async fn accept_tag_suggestion(&self, id: &str, name: &str) -> Result<bool, StoreError> {
@@ -242,11 +153,17 @@ impl SessionStore {
             return Ok(false);
         };
         let before = state.items.len();
-        state.items.retain(|suggestion| suggestion.name != name);
+        state.items.retain(|suggestion| *suggestion != name);
         if before == state.items.len() {
             return Ok(false);
         }
-        if !meta.tags.contains(&name) {
+        self.ensure_tag_locked(&guard, &name).await?;
+        if !meta
+            .tags
+            .iter()
+            .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
+            .any(|tag| tag == name)
+        {
             meta.tags.push(name);
             meta.tags.sort();
         }
@@ -268,7 +185,7 @@ impl SessionStore {
             return Ok(false);
         };
         let before = state.items.len();
-        state.items.retain(|suggestion| suggestion.name != name);
+        state.items.retain(|suggestion| *suggestion != name);
         if before == state.items.len() {
             return Ok(false);
         }
@@ -662,169 +579,6 @@ mod tests {
         assert_eq!(
             store.read_meta("s1").await.unwrap().unwrap().title,
             "Jury feedback"
-        );
-    }
-
-    #[tokio::test]
-    async fn tag_suggestions_are_persisted_and_explicitly_resolved() {
-        let (store, _) = test_store().await;
-        store.write_meta(&meta("s1", "Atlas launch")).await.unwrap();
-
-        assert!(
-            store
-                .mark_tag_suggestions_pending("s1", "hash-1".to_string(), 1)
-                .await
-                .unwrap()
-        );
-        assert!(
-            store
-                .complete_tag_suggestions(
-                    "s1",
-                    "hash-1",
-                    1,
-                    vec![
-                        TagSuggestionItem {
-                            name: "project/atlas".to_string(),
-                            confidence: 0.8,
-                        },
-                        TagSuggestionItem {
-                            name: "customer/acme".to_string(),
-                            confidence: 0.6,
-                        },
-                    ],
-                    None,
-                )
-                .await
-                .unwrap()
-        );
-
-        assert!(
-            store
-                .accept_tag_suggestion("s1", "project/atlas")
-                .await
-                .unwrap()
-        );
-        assert!(
-            store
-                .dismiss_tag_suggestion("s1", "customer/acme")
-                .await
-                .unwrap()
-        );
-        let meta = store.read_meta("s1").await.unwrap().unwrap();
-        assert_eq!(meta.tags, vec!["project/atlas"]);
-        let state = meta.tag_suggestions.unwrap();
-        assert_eq!(state.items, Vec::new());
-        assert_eq!(state.dismissed, vec!["customer/acme"]);
-
-        store
-            .mark_tag_suggestions_pending("s1", "hash-2".to_string(), 1)
-            .await
-            .unwrap();
-        store
-            .complete_tag_suggestions(
-                "s1",
-                "hash-2",
-                1,
-                vec![TagSuggestionItem {
-                    name: "customer/acme".to_string(),
-                    confidence: 0.9,
-                }],
-                None,
-            )
-            .await
-            .unwrap();
-        assert!(
-            store
-                .read_meta("s1")
-                .await
-                .unwrap()
-                .unwrap()
-                .tag_suggestions
-                .unwrap()
-                .items
-                .is_empty()
-        );
-    }
-
-    #[tokio::test]
-    async fn stale_tag_suggestion_results_do_not_overwrite_new_work() {
-        let (store, _) = test_store().await;
-        store.write_meta(&meta("s1", "Atlas launch")).await.unwrap();
-        store
-            .mark_tag_suggestions_pending("s1", "new-hash".to_string(), 1)
-            .await
-            .unwrap();
-
-        assert!(
-            !store
-                .complete_tag_suggestions(
-                    "s1",
-                    "old-hash",
-                    1,
-                    vec![TagSuggestionItem {
-                        name: "project/atlas".to_string(),
-                        confidence: 0.9,
-                    }],
-                    None,
-                )
-                .await
-                .unwrap()
-        );
-        let state = store
-            .read_meta("s1")
-            .await
-            .unwrap()
-            .unwrap()
-            .tag_suggestions
-            .unwrap();
-        assert_eq!(state.status, TagSuggestionStatus::Pending);
-        assert_eq!(state.source_hash, "new-hash");
-    }
-
-    #[tokio::test]
-    async fn auto_accept_ignores_import_tags_and_keeps_lower_confidence_suggestions_pending() {
-        let (store, _) = test_store().await;
-        store.write_meta(&meta("s1", "Atlas launch")).await.unwrap();
-        store
-            .mark_tag_suggestions_pending("s1", "hash-1".to_string(), 1)
-            .await
-            .unwrap();
-        store
-            .complete_tag_suggestions(
-                "s1",
-                "hash-1",
-                1,
-                vec![
-                    TagSuggestionItem {
-                        name: "project/atlas".to_string(),
-                        confidence: 0.9,
-                    },
-                    TagSuggestionItem {
-                        name: "customer/acme".to_string(),
-                        confidence: 0.6,
-                    },
-                    TagSuggestionItem {
-                        name: "Imported".to_string(),
-                        confidence: 0.95,
-                    },
-                    TagSuggestionItem {
-                        name: "project/import-review".to_string(),
-                        confidence: 0.6,
-                    },
-                ],
-                Some(0.75),
-            )
-            .await
-            .unwrap();
-
-        let meta = store.read_meta("s1").await.unwrap().unwrap();
-        assert_eq!(meta.tags, vec!["project/atlas"]);
-        assert_eq!(
-            meta.tag_suggestions.unwrap().items,
-            vec![TagSuggestionItem {
-                name: "customer/acme".to_string(),
-                confidence: 0.6,
-            }]
         );
     }
 

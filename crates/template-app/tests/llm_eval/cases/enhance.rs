@@ -20,6 +20,7 @@ pub fn structured_summary(samples: usize) -> Result<EvalCase, Failed> {
             EvalMessage {
                 role: "user".to_string(),
                 content: render(Template::EnhanceUser(Box::new(EnhanceUser {
+                    tag_context: Default::default(),
                     session: Session {
                         title: Some("Daily Standup".to_string()),
                         started_at: None,
@@ -117,6 +118,7 @@ pub fn personal_actions(samples: usize, identified: bool) -> Result<EvalCase, Fa
     }
     .into();
     case.messages[1].content = render(Template::EnhanceUser(Box::new(EnhanceUser {
+                    tag_context: Default::default(),
         session: Session { title: Some("Launch planning".into()), started_at: None, ended_at: None, event: None },
         participants: vec![], pre_meeting_memo: String::new(), post_meeting_memo: String::new(),
         transcripts: vec![Transcript { started_at: None, ended_at: None, segments: vec![

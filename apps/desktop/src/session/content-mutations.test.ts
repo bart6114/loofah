@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enqueueDatabaseWrite } from "~/shared/write-queue";
+
 const mocks = vi.hoisted(() => ({
   sessionUpdateEnhancedDoc: vi.fn(async () => ({ status: "ok", data: null })),
   sessionGet: vi.fn(
@@ -64,7 +66,7 @@ describe("session content corrections", () => {
     });
   });
 
-  it("saves generated content through the store CAS, then the meta tag union", async () => {
+  it("saves content and suggestions through one guarded store command", async () => {
     await persistGeneratedEnhancedNote({
       sessionId: "session-1",
       ownerUserId: "user-1",
@@ -73,7 +75,7 @@ describe("session content corrections", () => {
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
-      tagNames: ["launch", "launch", "prep"],
+      suggestedTags: ["launch", "launch", "prep"],
     });
 
     // The doc body goes file-first through the store, guarded by the file's current
@@ -83,12 +85,11 @@ describe("session content corrections", () => {
       "# New summary",
       "old summary",
       true,
+      ["launch", "launch", "prep"],
     );
 
-    // `_meta.json` is the only tag store: deduped generated tags land there, sorted.
-    expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {
-      tags: ["launch", "prep"],
-    });
+    expect(mocks.sessionGet).not.toHaveBeenCalled();
+    expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
   it("also reconciles generated template document tasks", async () => {
@@ -100,7 +101,7 @@ describe("session content corrections", () => {
         currentMarkdown: "old",
         nextMarkdown: "- [ ] Send proposal",
       },
-      tagNames: [],
+      suggestedTags: [],
     });
     expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
       "session-1",
@@ -109,6 +110,7 @@ describe("session content corrections", () => {
         markdown: "- [ ] Send proposal",
         expected_markdown: "old",
         reconcile_tasks: true,
+        suggested_tags: [],
       },
     );
     expect(mocks.sessionUpdateSummary).not.toHaveBeenCalled();
@@ -129,44 +131,16 @@ describe("session content corrections", () => {
           currentMarkdown: "stale summary",
           nextMarkdown: "# New summary",
         },
-        tagNames: ["launch"],
+        suggestedTags: ["launch"],
       }),
     ).rejects.toThrow("conflict");
     expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
-  it("unions generated tags with the session's existing meta tags", async () => {
-    // The meta patch must carry the full set -- pre-existing tags plus the newly
-    // generated ones -- not just the delta, same as the old SQL read-back.
-    mocks.sessionGet.mockResolvedValueOnce({
-      status: "ok",
-      data: sessionRecord({ tags: ["existing", "prep"] }),
-    });
-
-    await persistGeneratedEnhancedNote({
-      sessionId: "session-1",
-      ownerUserId: "user-1",
-      note: {
-        id: "session-1",
-        currentMarkdown: "old summary",
-        nextMarkdown: "# New summary",
-      },
-      tagNames: ["launch", "prep"],
-    });
-
-    expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {
-      tags: ["existing", "launch", "prep"],
-    });
-  });
-
-  it("fails the persist when the meta tag write fails (meta is the only tag store)", async () => {
-    mocks.sessionUpdateMeta.mockResolvedValueOnce({
-      status: "error",
-      error: "no _meta.json",
-    });
-
-    await expect(
-      persistGeneratedEnhancedNote({
+  it.each([undefined, []])(
+    "distinguishes unavailable suggestions from an empty selection (%j)",
+    async (suggestedTags) => {
+      await persistGeneratedEnhancedNote({
         sessionId: "session-1",
         ownerUserId: "user-1",
         note: {
@@ -174,24 +148,47 @@ describe("session content corrections", () => {
           currentMarkdown: "old summary",
           nextMarkdown: "# New summary",
         },
-        tagNames: ["launch"],
-      }),
-    ).rejects.toThrow("no _meta.json");
-  });
+        suggestedTags,
+      });
 
-  it("skips the tag read and meta write entirely when generation produced no tags", async () => {
-    await persistGeneratedEnhancedNote({
+      expect(mocks.sessionUpdateSummary).toHaveBeenCalledWith(
+        "session-1",
+        "# New summary",
+        "old summary",
+        true,
+        suggestedTags ?? null,
+      );
+      expect(mocks.sessionGet).not.toHaveBeenCalled();
+      expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not persist a cancelled generation waiting in the write queue", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const blocker = enqueueDatabaseWrite("session:session-1", () => wait);
+    const controller = new AbortController();
+    const pending = persistGeneratedEnhancedNote({
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
         id: "session-1",
-        currentMarkdown: "old summary",
-        nextMarkdown: "# New summary",
+        currentMarkdown: "old",
+        nextMarkdown: "# Cancelled",
       },
-      tagNames: [],
+      suggestedTags: ["cancelled"],
+      signal: controller.signal,
     });
-
-    expect(mocks.sessionGet).not.toHaveBeenCalled();
+    const rejection = expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    controller.abort();
+    release();
+    await blocker;
+    await rejection;
+    expect(mocks.sessionUpdateSummary).not.toHaveBeenCalled();
     expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
@@ -222,6 +219,7 @@ describe("session content corrections", () => {
       "# Planning\n\nold summary",
       "old summary",
       false,
+      null,
     );
     // The title itself is store-canonical, never a raw `UPDATE sessions`.
     expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {

@@ -76,8 +76,6 @@ hypr-tauri-utils = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
-sha2 = { workspace = true }
-
 chrono = { workspace = true }
 dirs = { workspace = true }
 pico-args = { workspace = true }

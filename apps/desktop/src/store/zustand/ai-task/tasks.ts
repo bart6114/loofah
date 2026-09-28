@@ -7,6 +7,7 @@ import {
   TASK_CONFIGS,
   type TaskArgsMap,
   type TaskId,
+  type TaskResult,
   type TaskType,
 } from "./task-configs";
 
@@ -321,6 +322,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
       const taskConfig = TASK_CONFIGS[config.taskType];
       const sessionId = (config.args as { sessionId?: string }).sessionId;
       let fullText = "";
+      let workflowResult: TaskResult = {};
       let publishTimer: ReturnType<typeof setTimeout> | undefined;
       const publishText = () => {
         clearTimeout(publishTimer);
@@ -389,6 +391,14 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
             model: config.model,
             args: enrichedArgs,
             onProgress,
+            onResult: (result) => {
+              if (
+                !workflowAbortController.signal.aborted &&
+                get().tasks[taskId]?.abortController === abortController
+              ) {
+                workflowResult = result;
+              }
+            },
             signal: workflowAbortController.signal,
           });
 
@@ -442,10 +452,12 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           abortController.signal.removeEventListener("abort", abortWorkflow);
         }
 
+        checkAbort();
         publishText();
         await taskConfig.onSuccess?.({
           taskId,
           text: fullText,
+          result: workflowResult,
           model: config.model,
           args: config.args,
           transformedArgs: enrichedArgs,

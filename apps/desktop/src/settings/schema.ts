@@ -59,11 +59,6 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "theme"],
     default: "system" as string,
   },
-  auto_accept_related_tags: {
-    type: "boolean",
-    path: ["general", "auto_accept_related_tags"],
-    default: false as boolean,
-  },
   notification_detect: {
     type: "boolean",
     path: ["notification", "detect"],

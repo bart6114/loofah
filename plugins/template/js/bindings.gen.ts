@@ -125,7 +125,13 @@ export type DeviceInfo = {
 };
 export type EditableTemplate = "enhanceSystem" | "enhanceUser" | "titleUser";
 export type EnhanceSystem = { language: string | null; promptOverride: string };
+export type EnhanceTagContext = {
+  available: string[];
+  attached: string[];
+  dismissed: string[];
+};
 export type EnhanceUser = {
+  tagContext?: EnhanceTagContext;
   session: Session;
   participants: Participant[];
   transcripts: Transcript[];

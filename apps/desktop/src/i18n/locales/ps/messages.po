@@ -170,10 +170,6 @@ msgstr "ایپ"
 msgid "Appearance"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Apply only high-confidence tags from similar session content."
-msgstr ""
-
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr ""
@@ -189,10 +185,6 @@ msgstr ""
 
 #: src/settings/general/permissions.tsx
 msgid "Audio"
-msgstr ""
-
-#: src/settings/general/app-settings.tsx
-msgid "Automatically apply related tags"
 msgstr ""
 
 #: src/sidebar/custom-sidebar-header.tsx

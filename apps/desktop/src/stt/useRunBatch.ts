@@ -17,7 +17,6 @@ import {
 } from "~/stt/capabilities";
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
-import { queueTagSuggestions } from "~/tags/suggestions";
 import { commands } from "~/types/tauri.gen";
 
 type RunOptions = {
@@ -335,8 +334,6 @@ export const useRunBatch = (sessionId: string) => {
       }
 
       if (transcriptWriteError) throw transcriptWriteError;
-
-      await queueTagSuggestions(sessionId);
     },
     [conn, session, meetingLanguages, startTranscription, sessionId],
   );
