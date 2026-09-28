@@ -18,6 +18,7 @@ import { titleWorkflow } from "./title-workflow";
 import type { SettingValues } from "~/settings/schema";
 import { StreamTransform } from "~/store/zustand/ai-task/shared/transform_infra";
 import type { TaskState, TaskStepInfo } from "~/store/zustand/ai-task/tasks";
+import type { ScoredTagSuggestion } from "~/types/tauri.gen";
 
 export type TaskType = "enhance" | "title";
 
@@ -48,7 +49,7 @@ export function createTaskId<T extends TaskType>(
   return `${entityId}-${taskType}` as TaskId<T>;
 }
 
-export type TaskResult = { suggestedTags?: string[] };
+export type TaskResult = { suggestedTags?: ScoredTagSuggestion[] };
 
 export interface TaskConfig<T extends TaskType = TaskType> {
   transformArgs: (

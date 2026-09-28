@@ -1,5 +1,5 @@
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
-import { commands } from "~/types/tauri.gen";
+import { commands, type ScoredTagSuggestion } from "~/types/tauri.gen";
 
 // Compare-and-swap rejects generated content if the summary changed while AI was running.
 export type SessionDocumentContentUpdate = {
@@ -18,7 +18,7 @@ export function persistGeneratedEnhancedNote({
   sessionId: string;
   ownerUserId: string;
   note: SessionDocumentContentUpdate;
-  suggestedTags?: string[];
+  suggestedTags?: ScoredTagSuggestion[];
   signal?: AbortSignal;
 }): Promise<void> {
   return enqueueDatabaseWrite(`session:${sessionId}`, async () => {

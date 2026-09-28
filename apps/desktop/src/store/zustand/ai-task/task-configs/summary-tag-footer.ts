@@ -1,5 +1,7 @@
 import type { TextStreamPart, ToolSet } from "ai";
 
+import type { ScoredTagSuggestion } from "~/types/tauri.gen";
+
 const FOOTER_START = "<loofah-tags";
 const FOOTER_OPEN = `${FOOTER_START}>`;
 const FOOTER_CLOSE = "</loofah-tags>";
@@ -12,7 +14,7 @@ export async function* extractSummaryTagFooter<TOOLS extends ToolSet>(
     onResult,
   }: {
     signal: AbortSignal;
-    onResult: (tags: string[] | undefined) => void;
+    onResult: (tags: ScoredTagSuggestion[] | undefined) => void;
   },
 ): AsyncIterable<TextStreamPart<TOOLS>> {
   let pending = "";
@@ -77,7 +79,9 @@ export async function* extractSummaryTagFooter<TOOLS extends ToolSet>(
   onResult(tags);
 }
 
-function parseTagFooter(footer: string | undefined): string[] | undefined {
+function parseTagFooter(
+  footer: string | undefined,
+): ScoredTagSuggestion[] | undefined {
   if (!footer?.startsWith(FOOTER_OPEN)) return undefined;
   const end = footer.indexOf(FOOTER_CLOSE, FOOTER_OPEN.length);
   if (end === -1 || footer.slice(end + FOOTER_CLOSE.length).trim())
@@ -91,7 +95,17 @@ function parseTagFooter(footer: string | undefined): string[] | undefined {
       !Array.isArray(tags) ||
       tags.length > 3 ||
       tags.some(
-        (tag) => typeof tag !== "string" || !tag.trim() || tag.length > 120,
+        (tag) =>
+          !tag ||
+          typeof tag !== "object" ||
+          Array.isArray(tag) ||
+          typeof tag.name !== "string" ||
+          !tag.name.trim() ||
+          tag.name.length > 120 ||
+          typeof tag.confidence !== "number" ||
+          !Number.isFinite(tag.confidence) ||
+          tag.confidence < 0 ||
+          tag.confidence > 1,
       )
     ) {
       return undefined;

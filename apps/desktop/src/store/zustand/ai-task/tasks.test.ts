@@ -528,7 +528,7 @@ it("passes workflow metadata to persistence and clears it for the next run", asy
   TASK_CONFIGS.enhance.transforms = [];
   TASK_CONFIGS.enhance.onSuccess = vi.fn();
   TASK_CONFIGS.enhance.executeWorkflow = async function* ({ onResult }) {
-    onResult?.({ suggestedTags: ["Launch"] });
+    onResult?.({ suggestedTags: [{ name: "Launch", confidence: 0.93 }] });
     yield { type: "text-delta", text: "# Decisions\n- Ship Friday" } as any;
   };
   const config = {
@@ -538,7 +538,9 @@ it("passes workflow metadata to persistence and clears it for the next run", asy
   };
   await state.generate("metadata-enhance", config);
   expect(TASK_CONFIGS.enhance.onSuccess).toHaveBeenLastCalledWith(
-    expect.objectContaining({ result: { suggestedTags: ["Launch"] } }),
+    expect.objectContaining({
+      result: { suggestedTags: [{ name: "Launch", confidence: 0.93 }] },
+    }),
   );
   TASK_CONFIGS.enhance.executeWorkflow = async function* () {
     yield { type: "text-delta", text: "# Decisions\n- Review Monday" } as any;

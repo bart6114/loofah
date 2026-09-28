@@ -111,6 +111,11 @@ export const SETTING_DEFINITIONS = {
     path: ["personalization", "custom_summary_instructions_token_aware"],
     default: false as boolean,
   },
+  auto_apply_high_confidence_tags: {
+    type: "boolean",
+    path: ["ai", "auto_apply_high_confidence_tags"],
+    default: true as boolean,
+  },
   auto_summary_prompt: {
     type: "string",
     path: ["ai", "auto_summary_prompt"],

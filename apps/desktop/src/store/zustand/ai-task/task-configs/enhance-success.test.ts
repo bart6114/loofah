@@ -107,7 +107,7 @@ describe("enhanceSuccess.onSuccess", () => {
   it("persists generated content and tags through one guarded store write", async () => {
     const params = createParams({
       text: "# Summary\n\nDiscussed #Launch.",
-      result: { suggestedTags: ["Release"] },
+      result: { suggestedTags: [{ name: "Release", confidence: 0.93 }] },
       transformedArgs: {
         ...createTransformedArgs(),
         preMeetingMemo: "Prep #prep #Launch",
@@ -126,7 +126,7 @@ describe("enhanceSuccess.onSuccess", () => {
         currentMarkdown: "old content",
         nextMarkdown: expect.any(String),
       },
-      suggestedTags: ["Release"],
+      suggestedTags: [{ name: "Release", confidence: 0.93 }],
       signal: expect.any(AbortSignal),
     });
     const markdown =
