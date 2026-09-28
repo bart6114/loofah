@@ -159,9 +159,10 @@ vi.mock("./types/tauri.gen", () => ({
     sessionFindByTrackingId: vi
       .fn()
       .mockResolvedValue({ status: "ok", data: null }),
-    sessionQueueTagSuggestions: vi
-      .fn()
-      .mockResolvedValue({ status: "ok", data: null }),
+    sessionTagContext: vi.fn().mockResolvedValue({
+      status: "ok",
+      data: { available: [], attached: [], dismissed: [] },
+    }),
     sessionAcceptTagSuggestion: vi
       .fn()
       .mockResolvedValue({ status: "ok", data: true }),

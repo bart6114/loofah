@@ -56,7 +56,7 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, None)
+        self.update_summary_impl(session_id, markdown, expected, false, None, None)
             .await
     }
 
@@ -67,7 +67,7 @@ impl SessionStore {
         expected: Option<&str>,
         title: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, title)
+        self.update_summary_impl(session_id, markdown, expected, false, title, None)
             .await
     }
 
@@ -77,8 +77,27 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, true, None)
+        self.update_summary_impl(session_id, markdown, expected, true, None, None)
             .await
+    }
+
+    pub async fn update_summary_with_suggestions(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        reconcile_tasks: bool,
+        suggested_tags: Option<Vec<String>>,
+    ) -> Result<(), StoreError> {
+        self.update_summary_impl(
+            session_id,
+            markdown,
+            expected,
+            reconcile_tasks,
+            None,
+            suggested_tags,
+        )
+        .await
     }
 
     async fn update_summary_impl(
@@ -88,6 +107,7 @@ impl SessionStore {
         expected: Option<&str>,
         reconcile_tasks: bool,
         title: Option<&str>,
+        suggested_tags: Option<Vec<String>>,
     ) -> Result<(), StoreError> {
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
@@ -121,11 +141,15 @@ impl SessionStore {
         .map_err(join_error)??
         .ok_or_else(|| StoreError::Conflict("summary was deleted".into()))?;
         if expected.is_some_and(|expected| expected != summary.markdown)
-            && !(reconcile_tasks && markdown == summary.markdown)
+            && !(suggested_tags.is_none() && reconcile_tasks && markdown == summary.markdown)
         {
             return Err(StoreError::Conflict(
                 "summary changed since it was read".into(),
             ));
+        }
+        let changed_meta = changed_title || suggested_tags.is_some();
+        if let Some(suggestions) = suggested_tags {
+            super::tags::apply_suggested_tags(&mut meta, suggestions);
         }
         let tasks = if let Some(content) = task_content {
             Some(
@@ -158,7 +182,7 @@ impl SessionStore {
         } else {
             Ok(())
         };
-        if changed_title {
+        if changed_meta {
             if let Err(error) = self.write_session_title_file_locked(&guard, &meta).await {
                 if let (Ok(Some(actual_meta)), Ok(Some(actual_summary))) = (
                     self.read_meta(session_id).await,

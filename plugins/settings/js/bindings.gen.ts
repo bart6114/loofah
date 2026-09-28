@@ -180,7 +180,6 @@ export type AppConfig = Partial<{
   show_app_in_dock: boolean;
   show_tray_icon: boolean;
   theme: string;
-  auto_accept_related_tags: boolean;
   notification_detect: boolean;
   respect_dnd: boolean;
   cloud_sync_enabled: boolean;

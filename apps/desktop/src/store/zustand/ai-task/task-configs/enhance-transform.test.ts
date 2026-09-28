@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { enhanceTransform } from "./enhance-transform";
 
+import { commands } from "~/types/tauri.gen";
+
 const mocks = vi.hoisted(() => ({
   collectEnhanceImageContext: vi.fn(),
   loadSessionContentSnapshot: vi.fn(),
@@ -222,4 +224,22 @@ it("marks legacy transcript provenance unknown instead of assuming channel zero 
   );
   const [rows] = mocks.buildRenderTranscriptRequestFromRows.mock.lastCall!;
   expect(rows[0].words[0].metadata.capture_source).toBe("unknown");
+});
+
+it("loads the canonical tag context for this session", async () => {
+  const context = {
+    available: ["Launch", "Research"],
+    attached: ["Work"],
+    dismissed: ["Planning"],
+  };
+  vi.mocked(commands.sessionTagContext).mockResolvedValueOnce({
+    status: "ok",
+    data: context,
+  });
+  const result = await enhanceTransform.transformArgs(
+    { sessionId: "session-1" },
+    settingsValues,
+  );
+  expect(commands.sessionTagContext).toHaveBeenLastCalledWith("session-1");
+  expect(result.tagContext).toEqual(context);
 });

@@ -1,9 +1,5 @@
 import { createTaskId, type TaskConfig } from ".";
 import {
-  appendTagLineToMarkdown,
-  extractEnhanceTagNames,
-} from "./summary-tags";
-import {
   getPersistableGeneratedTitle,
   persistGeneratedTitle,
 } from "./title-success";
@@ -15,6 +11,7 @@ import { hasLiveSessionTitleDraft } from "~/store/zustand/live-title";
 
 const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   text,
+  result,
   args,
   transformedArgs,
   model,
@@ -23,12 +20,10 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   signal,
 }) => {
   const summaryText = text.trim();
-  if (!summaryText) {
+  if (signal.aborted || !summaryText) {
     return;
   }
 
-  const tagNames = extractEnhanceTagNames(summaryText, transformedArgs);
-  const textWithTags = appendTagLineToMarkdown(summaryText, tagNames);
   const initialSnapshot = await loadSessionContentSnapshot(args.sessionId);
   if (!initialSnapshot) {
     throw new Error(`Session ${args.sessionId} no longer exists`);
@@ -50,7 +45,7 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
         taskType: "title",
         args: {
           sessionId: args.sessionId,
-          enhancedNote: textWithTags,
+          enhancedNote: summaryText,
           skipPersist: true,
         },
         onComplete: (title) => {
@@ -94,16 +89,16 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
     return;
   }
 
-  const persistableText = appendTagLineToMarkdown(titledText, tagNames);
   await persistGeneratedEnhancedNote({
     sessionId: args.sessionId,
     ownerUserId: snapshot.ownerUserId,
     note: {
       id: note.id,
       currentMarkdown: transformedArgs.expectedMarkdown,
-      nextMarkdown: persistableText,
+      nextMarkdown: titledText,
     },
-    tagNames,
+    suggestedTags: result?.suggestedTags,
+    signal,
   });
 
   if (shouldPersistGeneratedTitle && !signal.aborted) {

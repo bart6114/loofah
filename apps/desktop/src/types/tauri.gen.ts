@@ -216,15 +216,13 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async sessionQueueTagSuggestions(
+  async sessionTagContext(
     sessionId: string,
-  ): Promise<Result<null, string>> {
+  ): Promise<Result<TagContext, string>> {
     try {
       return {
         status: "ok",
-        data: await TAURI_INVOKE("session_queue_tag_suggestions", {
-          sessionId,
-        }),
+        data: await TAURI_INVOKE("session_tag_context", { sessionId }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -342,6 +340,7 @@ export const commands = {
     markdown: string,
     expectedMarkdown: string | null,
     reconcileTasks: boolean | null,
+    suggestedTags: string[] | null,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -351,6 +350,7 @@ export const commands = {
           markdown,
           expectedMarkdown,
           reconcileTasks,
+          suggestedTags,
         }),
       };
     } catch (e) {
@@ -991,6 +991,7 @@ export type EnhancedDoc = {
  * of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
  */
 export type EnhancedDocPatch = {
+  suggested_tags?: string[] | null;
   reconcile_tasks?: boolean | null;
   kind?: string | null;
   title?: string | null;
@@ -1141,6 +1142,11 @@ export type StartupStatus = {
   phase: StartupPhase;
   migrationIssues: string[];
 };
+export type TagContext = {
+  available: string[];
+  attached: string[];
+  dismissed: string[];
+};
 /**
  * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
  * (lowercased) name itself — unlike people's lossy slug, two names normalizing
@@ -1149,15 +1155,7 @@ export type StartupStatus = {
  * `tags.json` disappears.
  */
 export type TagItem = { id: string; name?: string };
-export type TagSuggestionItem = { name: string; confidence: number };
-export type TagSuggestionState = {
-  source_hash: string;
-  algorithm_version: number;
-  status: TagSuggestionStatus;
-  items: TagSuggestionItem[];
-  dismissed: string[];
-};
-export type TagSuggestionStatus = "pending" | "complete";
+export type TagSuggestionState = { items: string[]; dismissed: string[] };
 /**
  * What the frontend sends on a write: source coordinates come from the command arguments,
  * timestamps and `assignee` are managed store-side (preserved from the existing entry when

@@ -73,6 +73,7 @@ function createTransformedArgs(): EnhanceSuccessParams["transformedArgs"] {
     transcripts: [],
     imageContext: [],
     expectedMarkdown: "old content",
+    tagContext: { available: [], attached: [], dismissed: [] },
   };
 }
 
@@ -106,6 +107,7 @@ describe("enhanceSuccess.onSuccess", () => {
   it("persists generated content and tags through one guarded store write", async () => {
     const params = createParams({
       text: "# Summary\n\nDiscussed #Launch.",
+      result: { suggestedTags: ["Release"] },
       transformedArgs: {
         ...createTransformedArgs(),
         preMeetingMemo: "Prep #prep #Launch",
@@ -124,13 +126,12 @@ describe("enhanceSuccess.onSuccess", () => {
         currentMarkdown: "old content",
         nextMarkdown: expect.any(String),
       },
-      tagNames: ["launch", "prep"],
+      suggestedTags: ["Release"],
+      signal: expect.any(AbortSignal),
     });
     const markdown =
       mocks.persistGeneratedEnhancedNote.mock.calls[0][0].note.nextMarkdown;
-    expect(markdown.trim()).toBe(
-      "# Summary\n\nDiscussed #Launch.\n\n#launch #prep",
-    );
+    expect(markdown.trim()).toBe("# Summary\n\nDiscussed #Launch.");
   });
 
   it("waits for a generated title, saves the note, then persists the title", async () => {
@@ -211,7 +212,7 @@ describe("enhanceSuccess.onSuccess", () => {
     expect(markdown).toContain("# Second");
     expect(markdown).toContain("# Action items");
     expect(markdown).toContain(`- [ ] ${"c".repeat(400)}`);
-    expect(markdown).toContain("#launch");
+    expect(markdown).not.toContain("#launch");
     expect(Array.from(markdown.replace(/\s+/gu, " ")).length).toBeGreaterThan(
       320,
     );
@@ -287,3 +288,16 @@ it("keeps the generation-start body as the CAS guard after a concurrent edit", a
     }),
   );
 });
+
+it.each([undefined, []])(
+  "preserves optional metadata semantics: %j",
+  async (suggestedTags) => {
+    mocks.loadSessionContentSnapshot.mockResolvedValue(createSnapshot("Title"));
+    await enhanceSuccess.onSuccess?.(
+      createParams({ result: { suggestedTags } }),
+    );
+    expect(mocks.persistGeneratedEnhancedNote).toHaveBeenLastCalledWith(
+      expect.objectContaining({ suggestedTags }),
+    );
+  },
+);

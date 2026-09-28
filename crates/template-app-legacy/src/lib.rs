@@ -26,18 +26,6 @@ pub enum Template {
     #[strum(serialize = "title.user")]
     #[serde(rename = "title.user")]
     TitleUser,
-    #[strum(serialize = "suggest_tags.system")]
-    #[serde(rename = "suggest_tags.system")]
-    SuggestTagsSystem,
-    #[strum(serialize = "suggest_tags.user")]
-    #[serde(rename = "suggest_tags.user")]
-    SuggestTagsUser,
-    #[strum(serialize = "auto_generate_tags.system")]
-    #[serde(rename = "auto_generate_tags.system")]
-    AutoGenerateTagsSystem,
-    #[strum(serialize = "auto_generate_tags.user")]
-    #[serde(rename = "auto_generate_tags.user")]
-    AutoGenerateTagsUser,
     #[strum(serialize = "postprocess_transcript.system")]
     #[serde(rename = "postprocess_transcript.system")]
     PostprocessTranscriptSystem,
@@ -81,16 +69,6 @@ fn init_environment() -> minijinja::Environment<'static> {
             .unwrap();
         env.add_template(Template::TitleUser.as_ref(), assets::TITLE_USER)
             .unwrap();
-        env.add_template(
-            Template::AutoGenerateTagsSystem.as_ref(),
-            assets::AUTO_GENERATE_TAGS_SYSTEM,
-        )
-        .unwrap();
-        env.add_template(
-            Template::AutoGenerateTagsUser.as_ref(),
-            assets::AUTO_GENERATE_TAGS_USER,
-        )
-        .unwrap();
         env.add_template(
             Template::PostprocessTranscriptSystem.as_ref(),
             assets::POSTPROCESS_TRANSCRIPT_SYSTEM,

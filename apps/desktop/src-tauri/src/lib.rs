@@ -8,7 +8,6 @@ mod identifier_migration;
 mod legacy_db;
 mod legacy_llm;
 mod recording_meta;
-mod related_tags;
 mod search_index;
 mod session_store;
 mod startup;
@@ -323,9 +322,6 @@ pub async fn main() {
                         app_handle.manage(store.clone());
 
                         search_index::spawn(app_handle.clone(), store.clone());
-                        let related_tag_queue =
-                            related_tags::spawn(app_handle.clone(), store.clone());
-                        app_handle.manage(related_tag_queue);
                         session_store::spawn_dispatcher(app_handle.clone());
                         startup::spawn(app_handle.clone(), store);
                     }
@@ -537,7 +533,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             startup::get_startup_status::<tauri::Wry>,
             session_store::commands::session_write_meta::<tauri::Wry>,
             session_store::commands::session_update_meta::<tauri::Wry>,
-            related_tags::session_queue_tag_suggestions::<tauri::Wry>,
+            session_store::commands::session_tag_context::<tauri::Wry>,
             session_store::commands::session_accept_tag_suggestion::<tauri::Wry>,
             session_store::commands::session_dismiss_tag_suggestion::<tauri::Wry>,
             session_store::commands::session_write_note::<tauri::Wry>,

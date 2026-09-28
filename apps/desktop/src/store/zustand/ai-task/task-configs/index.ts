@@ -48,6 +48,8 @@ export function createTaskId<T extends TaskType>(
   return `${entityId}-${taskType}` as TaskId<T>;
 }
 
+export type TaskResult = { suggestedTags?: string[] };
+
 export interface TaskConfig<T extends TaskType = TaskType> {
   transformArgs: (
     args: TaskArgsMap[T],
@@ -57,12 +59,14 @@ export interface TaskConfig<T extends TaskType = TaskType> {
     model: LanguageModel;
     args: TaskArgsMapTransformed[T];
     onProgress: (step: TaskStepInfo<T>) => void;
+    onResult?: (result: TaskResult) => void;
     signal: AbortSignal;
   }) => AsyncIterable<TextStreamPart<any>>;
   transforms?: StreamTransform[];
   onSuccess?: (params: {
     taskId: TaskId<T>;
     text: string;
+    result?: TaskResult;
     model: LanguageModel;
     args: TaskArgsMap[T];
     transformedArgs: TaskArgsMapTransformed[T];

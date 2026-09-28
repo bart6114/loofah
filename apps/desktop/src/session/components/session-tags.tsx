@@ -40,7 +40,7 @@ export function SessionTags({
   const tags = pendingTags ?? savedTags;
   const suggestedTags =
     session?.tag_suggestions?.items.filter(
-      (suggestion) => !tags.includes(suggestion.name),
+      (suggestion) => !tags.includes(suggestion),
     ) ?? EMPTY_SUGGESTIONS;
 
   const commit = (nextTags: string[]) => {
@@ -98,9 +98,9 @@ export function SessionTags({
       ))}
       {suggestedTags.map((suggestion) => (
         <SuggestedTag
-          key={suggestion.name}
+          key={suggestion}
           sessionId={sessionId}
-          name={suggestion.name}
+          name={suggestion}
         />
       ))}
       <TagAddControl attachedTags={tags} onAdd={addTag} />
@@ -316,4 +316,4 @@ function tagsEqual(a: string[], b: string[]): boolean {
 }
 
 const EMPTY_TAGS: string[] = [];
-const EMPTY_SUGGESTIONS: { name: string; confidence: number }[] = [];
+const EMPTY_SUGGESTIONS: string[] = [];

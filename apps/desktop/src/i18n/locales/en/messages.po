@@ -170,10 +170,6 @@ msgstr "App"
 msgid "Appearance"
 msgstr "Appearance"
 
-#: src/settings/general/app-settings.tsx
-msgid "Apply only high-confidence tags from similar session content."
-msgstr "Apply only high-confidence tags from similar session content."
-
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr "Assignees:"
@@ -190,10 +186,6 @@ msgstr "Attachments"
 #: src/settings/general/permissions.tsx
 msgid "Audio"
 msgstr "Audio"
-
-#: src/settings/general/app-settings.tsx
-msgid "Automatically apply related tags"
-msgstr "Automatically apply related tags"
 
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"

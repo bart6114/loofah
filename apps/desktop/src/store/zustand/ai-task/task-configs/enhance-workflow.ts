@@ -11,6 +11,7 @@ import { commands as templateCommands } from "@hypr/plugin-template";
 import type { TaskArgsMapTransformed, TaskConfig } from ".";
 import type { EnhanceImageContext } from "./enhance-images";
 import { createEnhanceValidator } from "./enhance-validator";
+import { extractSummaryTagFooter } from "./summary-tag-footer";
 
 import { normalizeBulletPoints } from "~/store/zustand/ai-task/shared/transform_impl";
 import { withEarlyValidationRetry } from "~/store/zustand/ai-task/shared/validate";
@@ -31,18 +32,17 @@ export const enhanceWorkflow: Pick<
   ],
 };
 
-async function* executeWorkflow(params: {
-  model: LanguageModel;
-  args: TaskArgsMapTransformed["enhance"];
-  onProgress: (step: any) => void;
-  signal: AbortSignal;
-}) {
-  const { model, args, onProgress, signal } = params;
+async function* executeWorkflow(
+  params: Parameters<TaskConfig<"enhance">["executeWorkflow"]>[0],
+) {
+  const { model, args, onProgress, onResult, signal } = params;
 
   const system = await getSystemPrompt(args);
   const prompt = `${withImageContextNote(await getUserPrompt(args), args.imageContext.length)}
 
 Keep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler.`;
+
+  if (signal.aborted) return;
 
   yield* generateSummary({
     model,
@@ -50,6 +50,7 @@ Keep the summary concise and proportional to the source. Preserve concrete decis
     system,
     prompt,
     onProgress,
+    onResult,
     signal,
   });
 }
@@ -76,6 +77,7 @@ async function getUserPrompt(args: TaskArgsMapTransformed["enhance"]) {
     transcripts,
     preMeetingMemo,
     postMeetingMemo,
+    tagContext,
   } = args;
   const result = await templateCommands.render({
     enhanceUser: {
@@ -84,6 +86,7 @@ async function getUserPrompt(args: TaskArgsMapTransformed["enhance"]) {
       transcripts,
       preMeetingMemo,
       postMeetingMemo,
+      tagContext,
     },
   });
 
@@ -100,9 +103,12 @@ async function* generateSummary(params: {
   system: string;
   prompt: string;
   onProgress: (step: any) => void;
+  onResult?: Parameters<
+    TaskConfig<"enhance">["executeWorkflow"]
+  >[0]["onResult"];
   signal: AbortSignal;
 }) {
-  const { model, args, system, prompt, onProgress, signal } = params;
+  const { model, args, system, prompt, onProgress, onResult, signal } = params;
 
   onProgress({ type: "generating" });
 
@@ -110,6 +116,7 @@ async function* generateSummary(params: {
 
   yield* withEarlyValidationRetry(
     (retrySignal, { previousFeedback }) => {
+      onResult?.({});
       let enhancedPrompt = prompt;
 
       if (previousFeedback) {
@@ -134,10 +141,16 @@ IMPORTANT: Previous attempt failed. ${previousFeedback}`;
         maxRetries: AI_GENERATION_MAX_RETRIES,
         maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
       });
-      return withCleanup(result.fullStream, () => {
-        signal.removeEventListener("abort", abortFromOuter);
-        retrySignal.removeEventListener("abort", abortFromRetry);
-      });
+      return withCleanup(
+        extractSummaryTagFooter(result.fullStream, {
+          signal: combinedController.signal,
+          onResult: (suggestedTags) => onResult?.({ suggestedTags }),
+        }),
+        () => {
+          signal.removeEventListener("abort", abortFromOuter);
+          retrySignal.removeEventListener("abort", abortFromRetry);
+        },
+      );
     },
     validator,
     {

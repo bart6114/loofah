@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{SessionStore, StoreError, paths};
+use super::{SessionStore, StoreError, WriteGuard, paths};
 
 /// One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
 /// (lowercased) name itself — unlike people's lossy slug, two names normalizing
@@ -26,7 +26,90 @@ fn normalize_tag_name(raw: &str) -> Option<String> {
     hypr_vault_read::normalize_tag_name(raw)
 }
 
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct TagContext {
+    pub available: Vec<String>,
+    pub attached: Vec<String>,
+    pub dismissed: Vec<String>,
+}
+
+fn normalized_tags(tags: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut tags: Vec<_> = tags
+        .into_iter()
+        .filter_map(|tag| normalize_tag_name(&tag))
+        .collect();
+    tags.sort();
+    tags.dedup();
+    tags
+}
+
+fn is_suggestible_tag(name: &str) -> bool {
+    static NAME: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\A[\p{L}\p{N}_][\p{L}\p{N}_-]*(?:/[\p{L}\p{N}_][\p{L}\p{N}_-]*)*\z")
+            .unwrap()
+    });
+    name.encode_utf16().count() <= 120 && !name.contains("import") && NAME.is_match(name)
+}
+
+pub(crate) fn apply_suggested_tags(meta: &mut super::SessionMeta, suggestions: Vec<String>) {
+    let dismissed = normalized_tags(
+        meta.tag_suggestions
+            .as_ref()
+            .map(|state| state.dismissed.clone())
+            .unwrap_or_default(),
+    );
+    let attached = normalized_tags(meta.tags.clone());
+    let mut items = Vec::new();
+    for name in suggestions
+        .into_iter()
+        .filter_map(|name| normalize_tag_name(&name))
+    {
+        if is_suggestible_tag(&name)
+            && !attached.contains(&name)
+            && !dismissed.contains(&name)
+            && !items.contains(&name)
+        {
+            items.push(name);
+            if items.len() == 3 {
+                break;
+            }
+        }
+    }
+    meta.tag_suggestions = Some(super::TagSuggestionState { items, dismissed });
+}
+
 impl SessionStore {
+    pub async fn session_tag_context(&self, session_id: &str) -> Result<TagContext, StoreError> {
+        let meta = self
+            .read_meta(session_id)
+            .await?
+            .ok_or_else(|| StoreError::Io(format!("session {session_id} has no _meta.json")))?;
+        let registry = self.list_tags().await?;
+        let mut names: Vec<_> = registry.into_iter().map(|tag| tag.name).collect();
+        {
+            let index = self.index.read().unwrap();
+            names.extend(
+                index
+                    .sessions
+                    .values()
+                    .flat_map(|entry| entry.meta.tags.iter().cloned()),
+            );
+        }
+        names.extend(meta.tags.iter().cloned());
+        Ok(TagContext {
+            available: normalized_tags(names)
+                .into_iter()
+                .filter(|name| is_suggestible_tag(name))
+                .collect(),
+            attached: normalized_tags(meta.tags),
+            dismissed: normalized_tags(
+                meta.tag_suggestions
+                    .map(|state| state.dismissed)
+                    .unwrap_or_default(),
+            ),
+        })
+    }
+
     /// A missing `tags.json` is an empty registry, and an unparseable one must never
     /// take the typeahead down with it — sessions keep their raw tag strings either way.
     async fn read_tags(&self) -> Result<Vec<TagItem>, StoreError> {
@@ -63,11 +146,18 @@ impl SessionStore {
     /// is whole-file rewritten, so two concurrent ensures without it could drop each
     /// other's entry.
     pub async fn ensure_tag(&self, name: &str) -> Result<TagItem, StoreError> {
+        let guard = self.lock_writes().await;
+        self.ensure_tag_locked(&guard, name).await
+    }
+
+    pub(crate) async fn ensure_tag_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        name: &str,
+    ) -> Result<TagItem, StoreError> {
         let Some(normalized) = normalize_tag_name(name) else {
             return Err(StoreError::Io("tag name cannot be empty".to_string()));
         };
-
-        let guard = self.lock_writes().await;
 
         let mut tags = self.read_tags().await?;
         if let Some(existing) = tags.iter().find(|t| t.id == normalized) {
@@ -82,7 +172,7 @@ impl SessionStore {
 
         let bytes = serde_json::to_vec_pretty(&TagsFile { tags })
             .map_err(|e| StoreError::Serialize(e.to_string()))?;
-        self.write_file_locked(&guard, paths::tags_path(), bytes)
+        self.write_file_locked(guard, paths::tags_path(), bytes)
             .await?;
 
         self.index_upsert_tag(&tag);
@@ -175,5 +265,233 @@ mod tests {
             .map(|t| t.name)
             .collect();
         assert_eq!(names, vec!["alpha", "hiring", "zebra"]);
+    }
+
+    fn meta(id: &str, tags: &[&str]) -> super::super::SessionMeta {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "title": "Session", "started_at": null, "ended_at": null,
+            "created_at": "2026-09-01T00:00:00Z", "tags": tags
+        }))
+        .unwrap()
+    }
+
+    async fn generate(
+        store: &SessionStore,
+        markdown: &str,
+        expected: &str,
+        tags: &[&str],
+    ) -> Result<(), StoreError> {
+        store
+            .update_summary_with_suggestions(
+                "s1",
+                markdown,
+                Some(expected),
+                true,
+                Some(tags.iter().map(|tag| tag.to_string()).collect()),
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn generated_tags_are_filtered_and_explicitly_resolved_across_regeneration() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        store
+            .write_meta(&meta("s1", &[" #Attached ", "Imported"]))
+            .await
+            .unwrap();
+        store.ensure_summary("s1").await.unwrap();
+        generate(
+            &store,
+            "First",
+            "",
+            &[
+                "attached", " #New ", "NEW", "imported", "Ignore", "Third", "Fourth",
+            ],
+        )
+        .await
+        .unwrap();
+        let before = store.read_meta("s1").await.unwrap().unwrap();
+        assert_eq!(before.tags, vec![" #Attached ", "Imported"]);
+        assert_eq!(
+            before.tag_suggestions.unwrap().items,
+            vec!["new", "ignore", "third"]
+        );
+        assert!(store.list_tags().await.unwrap().is_empty());
+        assert!(store.accept_tag_suggestion("s1", "#NEW").await.unwrap());
+        assert!(store.dismiss_tag_suggestion("s1", "Ignore").await.unwrap());
+        assert!(!store.accept_tag_suggestion("s1", "missing").await.unwrap());
+        assert_eq!(store.list_tags().await.unwrap()[0].name, "new");
+        generate(
+            &store,
+            "Second",
+            "First",
+            &["new", "IGNORE", "Third", "Novel"],
+        )
+        .await
+        .unwrap();
+        let after = store.read_meta("s1").await.unwrap().unwrap();
+        assert!(after.tags.contains(&"new".to_string()));
+        let state = after.tag_suggestions.unwrap();
+        assert_eq!(state.items, vec!["third", "novel"]);
+        assert_eq!(state.dismissed, vec!["ignore"]);
+        store
+            .update_generated_summary("s1", "Third", Some("Second"))
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .read_meta("s1")
+                .await
+                .unwrap()
+                .unwrap()
+                .tag_suggestions,
+            Some(state)
+        );
+        generate(&store, "Fourth", "Third", &[]).await.unwrap();
+        let state = store
+            .read_meta("s1")
+            .await
+            .unwrap()
+            .unwrap()
+            .tag_suggestions
+            .unwrap();
+        assert!(state.items.is_empty());
+        assert_eq!(state.dismissed, vec!["ignore"]);
+    }
+
+    #[tokio::test]
+    async fn stale_and_deleted_summaries_cannot_change_suggestions() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        store.write_meta(&meta("s1", &[])).await.unwrap();
+        store.ensure_summary("s1").await.unwrap();
+        generate(&store, "Saved", "", &["keep"]).await.unwrap();
+        for markdown in ["Stale", "Saved"] {
+            assert!(matches!(
+                generate(&store, markdown, "", &["wrong"]).await,
+                Err(StoreError::Conflict(_))
+            ));
+        }
+        store.delete_summary("s1").await.unwrap();
+        assert!(generate(&store, "Late", "Saved", &["wrong"]).await.is_err());
+        assert!(store.read_summary("s1").await.unwrap().is_none());
+        assert_eq!(
+            store
+                .read_meta("s1")
+                .await
+                .unwrap()
+                .unwrap()
+                .tag_suggestions
+                .unwrap()
+                .items,
+            vec!["keep"]
+        );
+        store.delete_session("s1").await.unwrap();
+        assert!(generate(&store, "Late", "Saved", &["wrong"]).await.is_err());
+        assert!(store.read_meta("s1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn tag_context_unions_registry_and_sessions_without_import_candidates() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        let mut session = meta("s1", &[" #Beta ", "Imported"]);
+        session.tag_suggestions = Some(super::super::TagSuggestionState {
+            items: vec![],
+            dismissed: vec![" #Ignored ".into(), "ignored".into()],
+        });
+        store.write_meta(&session).await.unwrap();
+        store
+            .write_meta(&meta("s2", &["Alpha", "beta", "project/import-test"]))
+            .await
+            .unwrap();
+        store.ensure_tag("Registry").await.unwrap();
+        store.ensure_tag("Imported").await.unwrap();
+        let context = store.session_tag_context("s1").await.unwrap();
+        assert_eq!(context.available, vec!["alpha", "beta", "registry"]);
+        assert_eq!(context.attached, vec!["beta", "imported"]);
+        assert_eq!(context.dismissed, vec!["ignored"]);
+    }
+
+    #[tokio::test]
+    async fn enhanced_doc_suggestions_follow_the_same_save_and_conflict_rules() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        store.write_meta(&meta("s1", &[])).await.unwrap();
+        store
+            .write_enhanced_doc(&super::super::EnhancedDoc {
+                id: "doc".into(),
+                session_id: "s1".into(),
+                kind: "template_output".into(),
+                title: "Doc".into(),
+                template_id: String::new(),
+                sort_order: 0,
+                markdown: "Original".into(),
+            })
+            .await
+            .unwrap();
+        let patch = super::super::EnhancedDocPatch {
+            markdown: Some("Generated".into()),
+            expected_markdown: Some("Original".into()),
+            suggested_tags: Some(vec!["Novel".into()]),
+            reconcile_tasks: Some(true),
+            ..Default::default()
+        };
+        store
+            .update_enhanced_doc("s1", "doc", patch.clone())
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.update_enhanced_doc("s1", "doc", patch.clone()).await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(
+            store
+                .read_meta("s1")
+                .await
+                .unwrap()
+                .unwrap()
+                .tag_suggestions
+                .unwrap()
+                .items,
+            vec!["novel"]
+        );
+        store.delete_enhanced_doc("s1", "doc").await.unwrap();
+        assert!(store.update_enhanced_doc("s1", "doc", patch).await.is_err());
+        assert_eq!(
+            store
+                .read_meta("s1")
+                .await
+                .unwrap()
+                .unwrap()
+                .tag_suggestions
+                .unwrap()
+                .items,
+            vec!["novel"]
+        );
+    }
+
+    #[test]
+    fn suggestions_reject_invalid_names_and_preserve_hierarchy() {
+        let mut session = meta("s1", &[]);
+        apply_suggested_tags(
+            &mut session,
+            vec![
+                "two words".into(),
+                "a//b".into(),
+                "-bad".into(),
+                "punctuation!".into(),
+                "x".repeat(121),
+                "\u{0345}".into(),
+                " #Project/Étude-2 ".into(),
+                "project/étude-2".into(),
+                "_valid/123".into(),
+            ],
+        );
+        assert_eq!(
+            session.tag_suggestions.unwrap().items,
+            vec!["project/étude-2", "_valid/123"]
+        );
     }
 }

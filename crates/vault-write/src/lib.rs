@@ -27,10 +27,7 @@ pub mod transcript;
 mod transcript_operation;
 
 pub use attachments::SavedAttachment;
-pub use content::{
-    SessionMeta, SessionMetaPatch, TagSuggestionItem, TagSuggestionState, TagSuggestionStatus,
-    is_tag_automation_candidate,
-};
+pub use content::{SessionMeta, SessionMetaPatch, TagSuggestionState};
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
 pub use index::{
     IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord,
@@ -40,7 +37,7 @@ pub use people::PersonItem;
 pub use rebuild::RebuildReport;
 pub use stats::{VaultStats, VaultYearStats};
 pub use storage_stats::{VaultStorageCategory, VaultStorageStats};
-pub use tags::TagItem;
+pub use tags::{TagContext, TagItem};
 pub use tasks::{TaskInput, TaskItem};
 pub use transcript::TranscriptDelta;
 

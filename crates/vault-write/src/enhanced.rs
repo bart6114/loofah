@@ -13,6 +13,8 @@ pub use hypr_vault_read::{ENHANCED_KINDS, EnhancedDoc};
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Default, PartialEq)]
 pub struct EnhancedDocPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reconcile_tasks: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
@@ -135,7 +137,8 @@ impl SessionStore {
         }
         if let Some(expected) = &patch.expected_markdown {
             if &doc.markdown != expected
-                && !(patch.reconcile_tasks == Some(true)
+                && !(patch.suggested_tags.is_none()
+                    && patch.reconcile_tasks == Some(true)
                     && patch.markdown.as_ref() == Some(&doc.markdown))
             {
                 return Err(StoreError::Conflict(format!(
@@ -145,6 +148,7 @@ impl SessionStore {
         }
 
         let EnhancedDocPatch {
+            suggested_tags,
             reconcile_tasks: _,
             kind,
             title,
@@ -180,18 +184,24 @@ impl SessionStore {
         } else {
             None
         };
-        if let Some(title) = session_title {
+        if session_title.is_some() || suggested_tags.is_some() {
             let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
                 StoreError::Io(format!("session {session_id} has no _meta.json to update"))
             })?;
-            let changed_title = meta.title != title;
-            meta.title = title.to_owned();
+            let changed_meta =
+                session_title.is_some_and(|title| meta.title != title) || suggested_tags.is_some();
+            if let Some(title) = session_title {
+                meta.title = title.to_owned();
+            }
+            if let Some(suggestions) = suggested_tags {
+                super::tags::apply_suggested_tags(&mut meta, suggestions);
+            }
             self.persist_enhanced_doc_with_meta_locked(
                 &guard,
                 &doc,
                 tasks.as_deref(),
                 &meta,
-                changed_title,
+                changed_meta,
             )
             .await
         } else {
@@ -308,7 +318,7 @@ impl SessionStore {
         doc: &EnhancedDoc,
         tasks: Option<&[super::TaskItem]>,
         meta: &super::SessionMeta,
-        changed_title: bool,
+        changed_meta: bool,
     ) -> Result<(), StoreError> {
         let rendered = render_enhanced_file(doc)?;
         let session_dir = self.session_dir_locked(guard, &doc.session_id).await?;
@@ -329,7 +339,7 @@ impl SessionStore {
         } else {
             Ok(())
         };
-        if changed_title {
+        if changed_meta {
             if let Err(error) = self.write_session_title_file_locked(guard, meta).await {
                 if let (Ok(Some(actual_meta)), Ok(Some(actual_doc))) = (
                     self.read_meta(&doc.session_id).await,
