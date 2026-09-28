@@ -86,7 +86,7 @@ class NotificationBackgroundView: NSView {
 
 class ClickableView: NSView {
   var trackingArea: NSTrackingArea?
-  var isHovering = false
+  private(set) var isHovering = false
   var onHover: ((Bool) -> Void)?
   weak var notification: NotificationInstance?
 
@@ -126,33 +126,31 @@ class ClickableView: NSView {
     let global = win.mouseLocationOutsideOfEventStream
     let local = convert(global, from: nil)
     let inside = bounds.contains(local)
-    if inside != isHovering {
-      isHovering = inside
-      onHover?(inside)
-    }
+    setHovering(inside)
   }
 
   override func mouseEntered(with event: NSEvent) {
     super.mouseEntered(with: event)
-    isHovering = true
-    onHover?(true)
+    setHovering(true)
   }
 
   override func mouseExited(with event: NSEvent) {
     super.mouseExited(with: event)
-    isHovering = false
     NSCursor.arrow.set()
-    onHover?(false)
+    setHovering(false)
   }
 
   override func mouseMoved(with event: NSEvent) {
     super.mouseMoved(with: event)
     let location = convert(event.locationInWindow, from: nil)
     let isInside = bounds.contains(location)
-    if isInside != isHovering {
-      isHovering = isInside
-      onHover?(isInside)
-    }
+    setHovering(isInside)
+  }
+
+  func setHovering(_ hovering: Bool) {
+    guard hovering != isHovering else { return }
+    isHovering = hovering
+    onHover?(hovering)
   }
 
   override func mouseDown(with event: NSEvent) {

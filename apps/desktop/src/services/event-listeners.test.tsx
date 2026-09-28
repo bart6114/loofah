@@ -362,6 +362,10 @@ describe("EventListeners notification events", () => {
   });
 
   test("notification_confirm with mic_detected source creates a session and sets triggerAppIds", async () => {
+    getListenerStateMock.mockReturnValue({
+      ...getListenerStateMock(),
+      live: { status: "inactive", loading: false, sessionId: null },
+    });
     render(<EventListeners />);
 
     await vi.waitFor(() =>
@@ -394,6 +398,10 @@ describe("EventListeners notification events", () => {
   });
 
   test("notification_option_selected with mic_detected source sets triggerAppIds", async () => {
+    getListenerStateMock.mockReturnValue({
+      ...getListenerStateMock(),
+      live: { status: "inactive", loading: false, sessionId: null },
+    });
     render(<EventListeners />);
 
     await vi.waitFor(() =>
@@ -415,11 +423,15 @@ describe("EventListeners notification events", () => {
       },
     });
 
-    expect(setTriggerAppIdsMock).toHaveBeenCalledWith(["us.zoom.xos"]);
     await vi.waitFor(() => expect(openNewMock).toHaveBeenCalledTimes(1));
+    expect(setTriggerAppIdsMock).toHaveBeenCalledWith(["us.zoom.xos"]);
   });
 
   test("notification_confirm opens without waiting for the legacy store", async () => {
+    getListenerStateMock.mockReturnValue({
+      ...getListenerStateMock(),
+      live: { status: "inactive", loading: false, sessionId: null },
+    });
     render(<EventListeners />);
 
     await vi.waitFor(() =>
@@ -444,5 +456,89 @@ describe("EventListeners notification events", () => {
       expect(setTriggerAppIdsMock).toHaveBeenCalledWith(["us.zoom.xos"]),
     );
     expect(openNewMock).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["notification_confirm", "active", false],
+    ["notification_accept", "active", false],
+    ["notification_option_selected", "active", false],
+    ["notification_confirm", "inactive", true],
+    ["notification_accept", "inactive", true],
+    ["notification_option_selected", "inactive", true],
+    ["notification_accept", "finalizing", false],
+  ])(
+    "%s opens the existing session while status=%s loading=%s",
+    async (type, status, loading) => {
+      getListenerStateMock.mockReturnValue({
+        ...getListenerStateMock(),
+        live: { status, loading, sessionId: "session-recording" },
+      });
+      render(<EventListeners />);
+      await vi.waitFor(() =>
+        expect(notificationListenMock).toHaveBeenCalledTimes(1),
+      );
+
+      notificationListenMock.mock.calls[0][0]({
+        payload: {
+          type,
+          selected_index: 0,
+          source: { type: "mic_detected", app_ids: ["us.zoom.xos"] },
+        },
+      });
+
+      await vi.waitFor(() =>
+        expect(openNewMock).toHaveBeenCalledWith({
+          type: "sessions",
+          id: "session-recording",
+          state: { view: null, autoStart: null },
+        }),
+      );
+      expect(createSessionMock).not.toHaveBeenCalled();
+      expect(setTriggerAppIdsMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("preserves recording started while notification session creation is pending", async () => {
+    getListenerStateMock.mockReturnValue({
+      ...getListenerStateMock(),
+      live: { status: "inactive", loading: false, sessionId: null },
+    });
+    let finishCreation!: (sessionId: string) => void;
+    createSessionMock.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishCreation = resolve;
+        }),
+    );
+    render(<EventListeners />);
+    await vi.waitFor(() =>
+      expect(notificationListenMock).toHaveBeenCalledTimes(1),
+    );
+
+    notificationListenMock.mock.calls[0][0]({
+      payload: {
+        type: "notification_accept",
+        source: { type: "mic_detected", app_ids: ["us.zoom.xos"] },
+      },
+    });
+    expect(createSessionMock).toHaveBeenCalledTimes(1);
+    getListenerStateMock.mockReturnValue({
+      ...getListenerStateMock(),
+      live: {
+        status: "active",
+        loading: false,
+        sessionId: "session-recording",
+      },
+    });
+    finishCreation("session-new");
+
+    await vi.waitFor(() =>
+      expect(openNewMock).toHaveBeenCalledWith({
+        type: "sessions",
+        id: "session-recording",
+        state: { view: null, autoStart: null },
+      }),
+    );
+    expect(setTriggerAppIdsMock).not.toHaveBeenCalled();
   });
 });

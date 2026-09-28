@@ -28,8 +28,21 @@ const LIVE_CAPTURE_CONFIG_DEBOUNCE_MS = 750;
 
 async function createNotificationSession(
   triggerAppIds: string[] | null,
-): Promise<{ sessionId: string; autoStart: boolean }> {
+): Promise<{ sessionId: string; autoStart: boolean } | null> {
+  const initialLive = listenerStore.getState().live;
+  if (initialLive.loading || initialLive.status !== "inactive") {
+    return initialLive.sessionId
+      ? { sessionId: initialLive.sessionId, autoStart: false }
+      : null;
+  }
+
   const sessionId = await createSession();
+  const currentLive = listenerStore.getState().live;
+  if (currentLive.loading || currentLive.status !== "inactive") {
+    return currentLive.sessionId
+      ? { sessionId: currentLive.sessionId, autoStart: false }
+      : null;
+  }
 
   if (triggerAppIds && triggerAppIds.length > 0) {
     listenerStore.getState().setTriggerAppIds(triggerAppIds);
@@ -254,7 +267,9 @@ function useNotificationEvents() {
           }
 
           void createNotificationSession(payload.source.app_ids ?? null)
-            .then(({ sessionId, autoStart }) => {
+            .then((session) => {
+              if (!session) return;
+              const { sessionId, autoStart } = session;
               openNewRef.current({
                 type: "sessions",
                 id: sessionId,
@@ -268,23 +283,24 @@ function useNotificationEvents() {
               );
             });
         } else if (payload.type === "notification_option_selected") {
-          const sessionPromise = createSession();
-
-          if (payload.source?.type === "mic_detected") {
-            const triggerAppIds = payload.source.app_ids ?? [];
-            listenerStore
-              .getState()
-              .setTriggerAppIds(
-                triggerAppIds.length > 0 ? triggerAppIds : null,
-              );
-          }
+          const sessionPromise =
+            payload.source?.type === "mic_detected"
+              ? createNotificationSession(payload.source.app_ids ?? null)
+              : createSession().then((sessionId) => ({
+                  sessionId,
+                  autoStart: true,
+                }));
 
           void sessionPromise
-            .then((sessionId) => {
+            .then((session) => {
+              if (!session) return;
               openNewRef.current({
                 type: "sessions",
-                id: sessionId,
-                state: { view: null, autoStart: true },
+                id: session.sessionId,
+                state: {
+                  view: null,
+                  autoStart: session.autoStart ? true : null,
+                },
               });
             })
             .catch((error) => {

@@ -10,6 +10,8 @@ swift!(fn _show_notification(json_payload: &SRString) -> Bool);
 
 swift!(fn _dismiss_all_notifications() -> Bool);
 
+swift!(fn _dismiss_notifications_on_focus() -> Bool);
+
 macro_rules! define_notification_callback {
     ($static_name:ident, $setup_fn:ident, $extern_fn:ident) => {
         static $static_name: Mutex<Option<Box<dyn Fn(String, i32) + Send + Sync>>> =
@@ -136,5 +138,11 @@ pub fn show(notification: &hypr_notification_interface::Notification) {
 pub fn dismiss_all() {
     unsafe {
         _dismiss_all_notifications();
+    }
+}
+
+pub fn dismiss_on_focus() {
+    unsafe {
+        _dismiss_notifications_on_focus();
     }
 }

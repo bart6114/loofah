@@ -101,6 +101,7 @@ run_rust() {
   fi
 
   run_step "ChatGPT model catalog" node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
+  run_step "native notification lifetime tests" swift test --package-path crates/notification-macos/swift-lib
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 

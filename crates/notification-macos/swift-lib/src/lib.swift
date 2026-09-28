@@ -22,3 +22,9 @@ public func _dismissAllNotifications() -> Bool {
   NotificationManager.shared.dismissAll()
   return true
 }
+
+@_cdecl("_dismiss_notifications_on_focus")
+public func _dismissNotificationsOnFocus() -> Bool {
+  NotificationManager.shared.dismissOnFocus()
+  return true
+}
