@@ -37,7 +37,7 @@ pub use people::PersonItem;
 pub use rebuild::RebuildReport;
 pub use stats::{VaultStats, VaultYearStats};
 pub use storage_stats::{VaultStorageCategory, VaultStorageStats};
-pub use tags::{TagContext, TagItem};
+pub use tags::{ScoredTagSuggestion, TagContext, TagItem};
 pub use tasks::{TaskInput, TaskItem};
 pub use transcript::TranscriptDelta;
 

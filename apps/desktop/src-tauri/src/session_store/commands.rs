@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
+use tauri_plugin_settings::SettingsPluginExt;
 
 use hypr_fs_format::TranscriptWithData;
 
 use super::{
-    EnhancedDoc, EnhancedDocPatch, PersonItem, RebuildReport, SessionListHeader, SessionMeta,
-    SessionMetaPatch, SessionRecord, SessionStore, SessionTranscriptMetadata, TagContext, TagItem,
-    TaskInput, TaskItem, TranscriptDelta, VaultStats,
+    EnhancedDoc, EnhancedDocPatch, PersonItem, RebuildReport, ScoredTagSuggestion,
+    SessionListHeader, SessionMeta, SessionMetaPatch, SessionRecord, SessionStore,
+    SessionTranscriptMetadata, TagContext, TagItem, TaskInput, TaskItem, TranscriptDelta,
+    VaultStats,
 };
 
 /// Every command below is a thin wrapper: fetch the managed store, call the matching
@@ -158,8 +160,9 @@ pub async fn session_update_summary<R: tauri::Runtime>(
     markdown: String,
     expected_markdown: Option<String>,
     reconcile_tasks: Option<bool>,
-    suggested_tags: Option<Vec<String>>,
+    suggested_tags: Option<Vec<ScoredTagSuggestion>>,
 ) -> Result<(), String> {
+    let auto_apply_high_confidence_tags = app.settings().config().auto_apply_high_confidence_tags;
     store(&app)?
         .update_summary_with_suggestions(
             &session_id,
@@ -167,6 +170,7 @@ pub async fn session_update_summary<R: tauri::Runtime>(
             expected_markdown.as_deref(),
             reconcile_tasks == Some(true),
             suggested_tags,
+            auto_apply_high_confidence_tags,
         )
         .await
         .map_err(|error| error.to_string())
@@ -233,8 +237,14 @@ pub async fn session_update_enhanced_doc<R: tauri::Runtime>(
     if patch.kind.as_deref() == Some("summary") {
         return Err("Use session_ensure_summary for session summaries".into());
     }
+    let auto_apply_high_confidence_tags = app.settings().config().auto_apply_high_confidence_tags;
     store(&app)?
-        .update_enhanced_doc(&session_id, &doc_id, patch)
+        .update_enhanced_doc_with_auto_apply(
+            &session_id,
+            &doc_id,
+            patch,
+            auto_apply_high_confidence_tags,
+        )
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -252,8 +262,15 @@ pub async fn session_save_enhanced_doc<R: tauri::Runtime>(
     if patch.kind.as_deref() == Some("summary") {
         return Err("Use session_ensure_summary for session summaries".into());
     }
+    let auto_apply_high_confidence_tags = app.settings().config().auto_apply_high_confidence_tags;
     store(&app)?
-        .save_enhanced_doc(&session_id, &doc_id, patch, title.as_deref())
+        .save_enhanced_doc_with_auto_apply(
+            &session_id,
+            &doc_id,
+            patch,
+            title.as_deref(),
+            auto_apply_high_confidence_tags,
+        )
         .await
         .map_err(|e| e.to_string())?;
     Ok(())

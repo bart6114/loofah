@@ -29,7 +29,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("summary tag footer", () => {
   const summary = "# Release\n- Ship Friday.\n\n";
-  const footer = '<loofah-tags>{"tags":["Release"]}</loofah-tags>';
+  const footer =
+    '<loofah-tags>{"tags":[{"name":"Release","confidence":0.93}]}</loofah-tags>';
 
   it("removes the footer at every possible split boundary", async () => {
     for (let boundary = 0; boundary <= footer.length; boundary++) {
@@ -38,16 +39,23 @@ describe("summary tag footer", () => {
         footer.slice(boundary),
       ]);
       expect(result.text).toBe(summary);
-      expect(result.onResult).toHaveBeenCalledWith(["Release"]);
+      expect(result.onResult).toHaveBeenCalledWith([
+        { name: "Release", confidence: 0.93 },
+      ]);
     }
   });
 
   it("handles single-character chunks and Unicode names", async () => {
     const result = await collect(
-      Array.from(summary + '<loofah-tags>{"tags":["研究"]}</loofah-tags>'),
+      Array.from(
+        summary +
+          '<loofah-tags>{"tags":[{"name":"研究","confidence":0.75}]}</loofah-tags>',
+      ),
     );
     expect(result.text).toBe(summary);
-    expect(result.onResult).toHaveBeenCalledWith(["研究"]);
+    expect(result.onResult).toHaveBeenCalledWith([
+      { name: "研究", confidence: 0.75 },
+    ]);
   });
 
   it("distinguishes an empty suggestion set from missing metadata", async () => {
@@ -55,6 +63,17 @@ describe("summary tag footer", () => {
       summary + '<loofah-tags>{"tags":[]}</loofah-tags>',
     ]);
     expect(result.onResult).toHaveBeenCalledWith([]);
+  });
+
+  it("accepts confidence values at both ends of the range", async () => {
+    const result = await collect([
+      summary +
+        '<loofah-tags>{"tags":[{"name":"possible","confidence":0},{"name":"certain","confidence":1}]}</loofah-tags>',
+    ]);
+    expect(result.onResult).toHaveBeenCalledWith([
+      { name: "possible", confidence: 0 },
+      { name: "certain", confidence: 1 },
+    ]);
   });
 
   it.each([
@@ -68,6 +87,12 @@ describe("summary tag footer", () => {
     '<loofah-tags>{"tags":"Release"}</loofah-tags>',
     '<loofah-tags>{"tags":["a", "b", "c", "d"]}</loofah-tags>',
     '<loofah-tags>{"tags":[2]}</loofah-tags>',
+    '<loofah-tags>{"tags":[{"name":"Release"}]}</loofah-tags>',
+    '<loofah-tags>{"tags":[{"name":"Release","confidence":"0.9"}]}</loofah-tags>',
+    '<loofah-tags>{"tags":[{"name":"Release","confidence":null}]}</loofah-tags>',
+    '<loofah-tags>{"tags":[{"name":"Release","confidence":-0.01}]}</loofah-tags>',
+    '<loofah-tags>{"tags":[{"name":"Release","confidence":1.01}]}</loofah-tags>',
+    '<loofah-tags>{"tags":[{"name":"Release","confidence":1e999}]}</loofah-tags>',
     '<loofah-tags>{"tags":[" "]}</loofah-tags>',
     '<loofah-tags>{"tags":[]}</loofah-tags> extra',
     '<loofah-tags>{"tags":[]}</loofah-tags><loofah-tags>{"tags":[]}</loofah-tags>',

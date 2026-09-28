@@ -75,7 +75,11 @@ describe("session content corrections", () => {
         currentMarkdown: "old summary",
         nextMarkdown: "# New summary",
       },
-      suggestedTags: ["launch", "launch", "prep"],
+      suggestedTags: [
+        { name: "launch", confidence: 0.93 },
+        { name: "launch", confidence: 0.8 },
+        { name: "prep", confidence: 0.5 },
+      ],
     });
 
     // The doc body goes file-first through the store, guarded by the file's current
@@ -85,7 +89,11 @@ describe("session content corrections", () => {
       "# New summary",
       "old summary",
       true,
-      ["launch", "launch", "prep"],
+      [
+        { name: "launch", confidence: 0.93 },
+        { name: "launch", confidence: 0.8 },
+        { name: "prep", confidence: 0.5 },
+      ],
     );
 
     expect(mocks.sessionGet).not.toHaveBeenCalled();
@@ -131,7 +139,7 @@ describe("session content corrections", () => {
           currentMarkdown: "stale summary",
           nextMarkdown: "# New summary",
         },
-        suggestedTags: ["launch"],
+        suggestedTags: [{ name: "launch", confidence: 0.93 }],
       }),
     ).rejects.toThrow("conflict");
     expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
@@ -178,7 +186,7 @@ describe("session content corrections", () => {
         currentMarkdown: "old",
         nextMarkdown: "# Cancelled",
       },
-      suggestedTags: ["cancelled"],
+      suggestedTags: [{ name: "cancelled", confidence: 0.91 }],
       signal: controller.signal,
     });
     const rejection = expect(pending).rejects.toMatchObject({

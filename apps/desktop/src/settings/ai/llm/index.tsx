@@ -4,6 +4,7 @@ import { ConfigureProviders } from "./configure";
 import { LlmSettingsProvider } from "./context";
 import { SelectProviderAndModel } from "./select";
 import { SummaryPromptSettings } from "./summary-prompt";
+import { TagSettings } from "./tags";
 
 import { SummaryLanguageSettings } from "~/settings/general/language-settings";
 import { SettingsPageTitle } from "~/settings/page-title";
@@ -17,6 +18,7 @@ export function LLM() {
         <ConfigureProviders />
         <SummaryLanguageSettings />
         <SummaryPromptSettings />
+        <TagSettings />
       </div>
     </LlmSettingsProvider>
   );

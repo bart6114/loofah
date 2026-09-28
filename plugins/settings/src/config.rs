@@ -43,6 +43,7 @@ pub struct AppConfig {
     pub custom_summary_instructions: String,
     pub custom_summary_instructions_token_aware: bool,
     pub auto_summary_prompt: String,
+    pub auto_apply_high_confidence_tags: bool,
     pub ignored_platforms: Vec<String>,
     pub included_platforms: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,6 +86,7 @@ impl Default for AppConfig {
             custom_summary_instructions: String::new(),
             custom_summary_instructions_token_aware: false,
             auto_summary_prompt: String::new(),
+            auto_apply_high_confidence_tags: true,
             ignored_platforms: Vec::new(),
             included_platforms: Vec::new(),
             current_llm_provider: None,
@@ -257,6 +259,32 @@ mod tests {
 
         assert_eq!(state.snapshot(), AppConfig::default());
         assert_eq!(state.snapshot().transcription_timing, "live");
+    }
+
+    #[tokio::test]
+    async fn confident_tags_default_on_and_explicit_opt_out_survives_restart() {
+        let temp = tempdir().unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert!(state.snapshot().auto_apply_high_confidence_tags);
+
+        std::fs::write(temp.path().join("config.json"), r#"{"theme":"dark"}"#).unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert!(state.snapshot().auto_apply_high_confidence_tags);
+        state
+            .set_values(values(&[("auto_apply_high_confidence_tags", json!(false))]))
+            .await
+            .unwrap();
+        let reloaded = ConfigState::load_or_default(temp.path());
+        assert!(!reloaded.snapshot().auto_apply_high_confidence_tags);
+        reloaded
+            .set_values(values(&[("theme", json!("light"))]))
+            .await
+            .unwrap();
+        assert!(
+            !ConfigState::load_or_default(temp.path())
+                .snapshot()
+                .auto_apply_high_confidence_tags
+        );
     }
 
     #[tokio::test]

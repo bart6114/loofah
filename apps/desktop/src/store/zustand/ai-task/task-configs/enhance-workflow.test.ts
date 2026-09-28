@@ -23,7 +23,7 @@ describe("shared summary generation", () => {
       fullStream: (async function* () {
         yield {
           type: "text-delta",
-          text: '# Decisions\n- Ship Friday\n<loofah-tags>{"tags":["Release"]}</loofah-tags>',
+          text: '# Decisions\n- Ship Friday\n<loofah-tags>{"tags":[{"name":"Release","confidence":0.93}]}</loofah-tags>',
         };
       })(),
     });
@@ -72,7 +72,9 @@ describe("shared summary generation", () => {
       for await (const chunk of workflow) chunks.push(chunk);
       expect(chunks).toHaveLength(1);
       expect(chunks[0]).toMatchObject({ text: "# Decisions\n- Ship Friday\n" });
-      expect(onResult).toHaveBeenLastCalledWith({ suggestedTags: ["Release"] });
+      expect(onResult).toHaveBeenLastCalledWith({
+        suggestedTags: [{ name: "Release", confidence: 0.93 }],
+      });
       expect(mocks.render.mock.calls[0][0]).toEqual({
         enhanceSystem: { language: "en", promptOverride },
       });
@@ -125,7 +127,7 @@ it("resets metadata for retries and uses only the accepted attempt", async () =>
       fullStream: (async function* () {
         yield {
           type: "text-delta",
-          text: 'Invalid summary structure<loofah-tags>{"tags":["Wrong"]}</loofah-tags>',
+          text: 'Invalid summary structure<loofah-tags>{"tags":[{"name":"Wrong","confidence":0.91}]}</loofah-tags>',
         };
       })(),
     })

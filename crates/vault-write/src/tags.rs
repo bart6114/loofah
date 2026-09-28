@@ -33,6 +33,12 @@ pub struct TagContext {
     pub dismissed: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct ScoredTagSuggestion {
+    pub name: String,
+    pub confidence: f64,
+}
+
 fn normalized_tags(tags: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut tags: Vec<_> = tags
         .into_iter()
@@ -51,7 +57,11 @@ fn is_suggestible_tag(name: &str) -> bool {
     name.encode_utf16().count() <= 120 && !name.contains("import") && NAME.is_match(name)
 }
 
-pub(crate) fn apply_suggested_tags(meta: &mut super::SessionMeta, suggestions: Vec<String>) {
+pub(crate) fn apply_suggested_tags(
+    meta: &mut super::SessionMeta,
+    suggestions: Vec<ScoredTagSuggestion>,
+    auto_apply_high_confidence_tags: bool,
+) -> Vec<String> {
     let dismissed = normalized_tags(
         meta.tag_suggestions
             .as_ref()
@@ -59,23 +69,41 @@ pub(crate) fn apply_suggested_tags(meta: &mut super::SessionMeta, suggestions: V
             .unwrap_or_default(),
     );
     let attached = normalized_tags(meta.tags.clone());
-    let mut items = Vec::new();
-    for name in suggestions
-        .into_iter()
-        .filter_map(|name| normalize_tag_name(&name))
-    {
-        if is_suggestible_tag(&name)
-            && !attached.contains(&name)
-            && !dismissed.contains(&name)
-            && !items.contains(&name)
+    let mut candidates: Vec<(String, f64)> = Vec::new();
+    for suggestion in suggestions {
+        if !suggestion.confidence.is_finite() || !(0.0..=1.0).contains(&suggestion.confidence) {
+            continue;
+        }
+        let Some(name) = normalize_tag_name(&suggestion.name) else {
+            continue;
+        };
+        if !is_suggestible_tag(&name) || attached.contains(&name) || dismissed.contains(&name) {
+            continue;
+        }
+        if let Some((_, confidence)) = candidates
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == name)
         {
-            items.push(name);
-            if items.len() == 3 {
-                break;
-            }
+            *confidence = (*confidence).max(suggestion.confidence);
+        } else if candidates.len() < 3 {
+            candidates.push((name, suggestion.confidence));
         }
     }
+    let mut items = Vec::new();
+    let mut auto_applied = Vec::new();
+    for (name, confidence) in candidates.into_iter().take(3) {
+        if auto_apply_high_confidence_tags && confidence > 0.85 {
+            auto_applied.push(name.clone());
+            meta.tags.push(name);
+        } else {
+            items.push(name);
+        }
+    }
+    if !auto_applied.is_empty() {
+        meta.tags.sort();
+    }
     meta.tag_suggestions = Some(super::TagSuggestionState { items, dismissed });
+    auto_applied
 }
 
 impl SessionStore {
@@ -185,6 +213,13 @@ impl SessionStore {
 mod tests {
     use super::*;
 
+    fn scored(name: &str, confidence: f64) -> ScoredTagSuggestion {
+        ScoredTagSuggestion {
+            name: name.into(),
+            confidence,
+        }
+    }
+
     #[tokio::test]
     async fn ensure_tag_creates_file_lazily_and_reuses_case_insensitively() {
         let vault = tempfile::tempdir().unwrap();
@@ -287,7 +322,8 @@ mod tests {
                 markdown,
                 Some(expected),
                 true,
-                Some(tags.iter().map(|tag| tag.to_string()).collect()),
+                Some(tags.iter().map(|tag| scored(tag, 0.5)).collect()),
+                false,
             )
             .await
     }
@@ -393,6 +429,108 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scored_suggestions_respect_threshold_setting_and_prior_decisions() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        let mut session = meta("s1", &["Attached"]);
+        session.tag_suggestions = Some(super::super::TagSuggestionState {
+            items: vec![],
+            dismissed: vec!["Dismissed".into()],
+        });
+        store.write_meta(&session).await.unwrap();
+        store.ensure_summary("s1").await.unwrap();
+        store
+            .update_summary_with_suggestions(
+                "s1",
+                "First",
+                Some(""),
+                false,
+                Some(vec![
+                    scored("Attached", 0.99),
+                    scored("Dismissed", 0.99),
+                    scored("Boundary", 0.85),
+                    scored("Auto", 0.5),
+                    scored("Auto", 0.8501),
+                    scored("Fourth", 0.5),
+                    scored("Fifth", 0.99),
+                ]),
+                true,
+            )
+            .await
+            .unwrap();
+        let after = store.read_meta("s1").await.unwrap().unwrap();
+        assert_eq!(after.tags, vec!["Attached", "auto"]);
+        let state = after.tag_suggestions.unwrap();
+        assert_eq!(state.items, vec!["boundary", "fourth"]);
+        assert_eq!(state.dismissed, vec!["dismissed"]);
+        assert_eq!(store.list_tags().await.unwrap()[0].name, "auto");
+
+        store
+            .update_summary_with_suggestions(
+                "s1",
+                "Second",
+                Some("First"),
+                false,
+                Some(vec![scored("Disabled", 1.0)]),
+                false,
+            )
+            .await
+            .unwrap();
+        let after = store.read_meta("s1").await.unwrap().unwrap();
+        assert_eq!(after.tags, vec!["Attached", "auto"]);
+        assert_eq!(after.tag_suggestions.unwrap().items, vec!["disabled"]);
+        assert_eq!(store.list_tags().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_scores_and_stale_summary_do_not_attach_or_register_tags() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        store.write_meta(&meta("s1", &[])).await.unwrap();
+        store.ensure_summary("s1").await.unwrap();
+        store
+            .update_summary_with_suggestions(
+                "s1",
+                "Saved",
+                Some(""),
+                false,
+                Some(vec![
+                    scored("nan", f64::NAN),
+                    scored("infinite", f64::INFINITY),
+                    scored("negative", -0.1),
+                    scored("excess", 1.1),
+                    scored("valid", 0.8501),
+                ]),
+                true,
+            )
+            .await
+            .unwrap();
+        let after = store.read_meta("s1").await.unwrap().unwrap();
+        assert_eq!(after.tags, vec!["valid"]);
+        assert!(after.tag_suggestions.unwrap().items.is_empty());
+        assert_eq!(store.list_tags().await.unwrap().len(), 1);
+
+        assert!(matches!(
+            store
+                .update_summary_with_suggestions(
+                    "s1",
+                    "Stale",
+                    Some(""),
+                    false,
+                    Some(vec![scored("must-not-register", 0.99)]),
+                    true,
+                )
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(
+            store.read_meta("s1").await.unwrap().unwrap().tags,
+            vec!["valid"]
+        );
+        assert_eq!(store.list_tags().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn tag_context_unions_registry_and_sessions_without_import_candidates() {
         let vault = tempfile::tempdir().unwrap();
         let store = SessionStore::new(vault.path().to_path_buf());
@@ -434,7 +572,7 @@ mod tests {
         let patch = super::super::EnhancedDocPatch {
             markdown: Some("Generated".into()),
             expected_markdown: Some("Original".into()),
-            suggested_tags: Some(vec!["Novel".into()]),
+            suggested_tags: Some(vec![scored("Novel", 0.5)]),
             reconcile_tasks: Some(true),
             ..Default::default()
         };
@@ -472,22 +610,69 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn enhanced_doc_auto_applies_only_after_a_successful_guard() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().to_path_buf());
+        store.write_meta(&meta("s1", &[])).await.unwrap();
+        store
+            .write_enhanced_doc(&super::super::EnhancedDoc {
+                id: "doc".into(),
+                session_id: "s1".into(),
+                kind: "template_output".into(),
+                title: "Doc".into(),
+                template_id: String::new(),
+                sort_order: 0,
+                markdown: "Original".into(),
+            })
+            .await
+            .unwrap();
+        let patch = super::super::EnhancedDocPatch {
+            markdown: Some("Updated".into()),
+            expected_markdown: Some("Original".into()),
+            suggested_tags: Some(vec![scored("enhanced", 0.99)]),
+            ..Default::default()
+        };
+        store
+            .update_enhanced_doc_with_auto_apply("s1", "doc", patch.clone(), true)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store
+                .update_enhanced_doc_with_auto_apply("s1", "doc", patch, true)
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(
+            store.read_meta("s1").await.unwrap().unwrap().tags,
+            vec!["enhanced"]
+        );
+        assert_eq!(store.list_tags().await.unwrap().len(), 1);
+    }
+
     #[test]
     fn suggestions_reject_invalid_names_and_preserve_hierarchy() {
         let mut session = meta("s1", &[]);
         apply_suggested_tags(
             &mut session,
-            vec![
-                "two words".into(),
-                "a//b".into(),
-                "-bad".into(),
-                "punctuation!".into(),
-                "x".repeat(121),
-                "\u{0345}".into(),
-                " #Project/Étude-2 ".into(),
-                "project/étude-2".into(),
-                "_valid/123".into(),
-            ],
+            [
+                "two words",
+                "a//b",
+                "-bad",
+                "punctuation!",
+                "\u{0345}",
+                " #Project/Étude-2 ",
+                "project/étude-2",
+                "_valid/123",
+            ]
+            .into_iter()
+            .map(|name| scored(name, 0.5))
+            .chain(std::iter::once(ScoredTagSuggestion {
+                name: "x".repeat(121),
+                confidence: 0.5,
+            }))
+            .collect(),
+            false,
         );
         assert_eq!(
             session.tag_suggestions.unwrap().items,

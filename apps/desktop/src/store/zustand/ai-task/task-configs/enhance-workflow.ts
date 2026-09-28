@@ -144,7 +144,9 @@ IMPORTANT: Previous attempt failed. ${previousFeedback}`;
       return withCleanup(
         extractSummaryTagFooter(result.fullStream, {
           signal: combinedController.signal,
-          onResult: (suggestedTags) => onResult?.({ suggestedTags }),
+          onResult: (suggestedTags) => {
+            if (suggestedTags !== undefined) onResult?.({ suggestedTags });
+          },
         }),
         () => {
           signal.removeEventListener("abort", abortFromOuter);

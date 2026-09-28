@@ -189,6 +189,7 @@ export type AppConfig = Partial<{
   custom_summary_instructions: string;
   custom_summary_instructions_token_aware: boolean;
   auto_summary_prompt: string;
+  auto_apply_high_confidence_tags: boolean;
   ignored_platforms: string[];
   included_platforms: string[];
   current_llm_provider?: string | null;

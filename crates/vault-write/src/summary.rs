@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::{IndexEntity, SessionStore, StoreError, WriteGuard, paths};
+use super::{IndexEntity, ScoredTagSuggestion, SessionStore, StoreError, WriteGuard, paths};
 
 #[derive(Serialize, Deserialize)]
 struct PendingMigration {
@@ -56,7 +56,7 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, None, None)
+        self.update_summary_impl(session_id, markdown, expected, false, None, None, false)
             .await
     }
 
@@ -67,7 +67,7 @@ impl SessionStore {
         expected: Option<&str>,
         title: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, title, None)
+        self.update_summary_impl(session_id, markdown, expected, false, title, None, false)
             .await
     }
 
@@ -77,7 +77,7 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, true, None, None)
+        self.update_summary_impl(session_id, markdown, expected, true, None, None, false)
             .await
     }
 
@@ -87,7 +87,8 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
         reconcile_tasks: bool,
-        suggested_tags: Option<Vec<String>>,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
         self.update_summary_impl(
             session_id,
@@ -96,6 +97,7 @@ impl SessionStore {
             reconcile_tasks,
             None,
             suggested_tags,
+            auto_apply_high_confidence_tags,
         )
         .await
     }
@@ -107,7 +109,8 @@ impl SessionStore {
         expected: Option<&str>,
         reconcile_tasks: bool,
         title: Option<&str>,
-        suggested_tags: Option<Vec<String>>,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
@@ -148,9 +151,15 @@ impl SessionStore {
             ));
         }
         let changed_meta = changed_title || suggested_tags.is_some();
-        if let Some(suggestions) = suggested_tags {
-            super::tags::apply_suggested_tags(&mut meta, suggestions);
-        }
+        let auto_applied = suggested_tags
+            .map(|suggestions| {
+                super::tags::apply_suggested_tags(
+                    &mut meta,
+                    suggestions,
+                    auto_apply_high_confidence_tags,
+                )
+            })
+            .unwrap_or_default();
         let tasks = if let Some(content) = task_content {
             Some(
                 self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
@@ -169,6 +178,9 @@ impl SessionStore {
         } else {
             markdown.as_bytes().to_vec()
         };
+        for name in &auto_applied {
+            self.ensure_tag_locked(&guard, name).await?;
+        }
         self.write_file_locked(&guard, summary.relative_path, bytes)
             .await?;
         let task_result = if let Some(tasks) = tasks {

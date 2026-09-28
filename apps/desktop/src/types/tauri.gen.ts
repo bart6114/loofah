@@ -340,7 +340,7 @@ export const commands = {
     markdown: string,
     expectedMarkdown: string | null,
     reconcileTasks: boolean | null,
-    suggestedTags: string[] | null,
+    suggestedTags: ScoredTagSuggestion[] | null,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -991,7 +991,7 @@ export type EnhancedDoc = {
  * of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
  */
 export type EnhancedDocPatch = {
-  suggested_tags?: string[] | null;
+  suggested_tags?: ScoredTagSuggestion[] | null;
   reconcile_tasks?: boolean | null;
   kind?: string | null;
   title?: string | null;
@@ -1059,6 +1059,7 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
+export type ScoredTagSuggestion = { name: string; confidence: number };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
  * subscribers (timeline, summaries, tags, float) consume.

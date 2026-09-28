@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use super::{SessionStore, StoreError, WriteGuard, paths, validate_doc_id, validate_session_id};
+use super::{
+    ScoredTagSuggestion, SessionStore, StoreError, WriteGuard, paths, validate_doc_id,
+    validate_session_id,
+};
 
 // The `enhanced/<id>.md` schema (type, frontmatter parse/render) is shared with the
 // read-only vault consumers (loof CLI/MCP) and lives in `hypr-vault-read`.
@@ -13,7 +16,7 @@ pub use hypr_vault_read::{ENHANCED_KINDS, EnhancedDoc};
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Default, PartialEq)]
 pub struct EnhancedDocPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub suggested_tags: Option<Vec<String>>,
+    pub suggested_tags: Option<Vec<ScoredTagSuggestion>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reconcile_tasks: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -75,8 +78,25 @@ impl SessionStore {
         doc_id: &str,
         patch: EnhancedDocPatch,
     ) -> Result<(), StoreError> {
-        self.update_enhanced_doc_impl(session_id, doc_id, patch, None)
+        self.update_enhanced_doc_impl(session_id, doc_id, patch, None, false)
             .await
+    }
+
+    pub async fn update_enhanced_doc_with_auto_apply(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        auto_apply_high_confidence_tags: bool,
+    ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(
+            session_id,
+            doc_id,
+            patch,
+            None,
+            auto_apply_high_confidence_tags,
+        )
+        .await
     }
 
     pub async fn save_enhanced_doc(
@@ -86,8 +106,26 @@ impl SessionStore {
         patch: EnhancedDocPatch,
         title: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_enhanced_doc_impl(session_id, doc_id, patch, title)
+        self.update_enhanced_doc_impl(session_id, doc_id, patch, title, false)
             .await
+    }
+
+    pub async fn save_enhanced_doc_with_auto_apply(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        title: Option<&str>,
+        auto_apply_high_confidence_tags: bool,
+    ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(
+            session_id,
+            doc_id,
+            patch,
+            title,
+            auto_apply_high_confidence_tags,
+        )
+        .await
     }
 
     async fn update_enhanced_doc_impl(
@@ -96,6 +134,7 @@ impl SessionStore {
         doc_id: &str,
         patch: EnhancedDocPatch,
         session_title: Option<&str>,
+        auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
@@ -193,8 +232,17 @@ impl SessionStore {
             if let Some(title) = session_title {
                 meta.title = title.to_owned();
             }
-            if let Some(suggestions) = suggested_tags {
-                super::tags::apply_suggested_tags(&mut meta, suggestions);
+            let auto_applied = suggested_tags
+                .map(|suggestions| {
+                    super::tags::apply_suggested_tags(
+                        &mut meta,
+                        suggestions,
+                        auto_apply_high_confidence_tags,
+                    )
+                })
+                .unwrap_or_default();
+            for name in &auto_applied {
+                self.ensure_tag_locked(&guard, name).await?;
             }
             self.persist_enhanced_doc_with_meta_locked(
                 &guard,
