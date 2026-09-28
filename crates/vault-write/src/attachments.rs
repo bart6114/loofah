@@ -28,11 +28,15 @@ impl SessionStore {
         let relative_dir = dir.join("attachments");
         let abs_dir = self.vault_base.join(&relative_dir);
         let filename = filename.to_string();
+        let vault = self.vault_base.clone();
         let final_filename = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&abs_dir)
-                .map_err(|e| StoreError::Io(format!("failed to create attachments dir: {e}")))?;
-            let safe_filename = sanitize_filename(&filename)?;
-            write_unique_file(&abs_dir, &safe_filename, &bytes)
+            super::sync_write(&vault, || {
+                std::fs::create_dir_all(&abs_dir).map_err(|e| {
+                    StoreError::Io(format!("failed to create attachments dir: {e}"))
+                })?;
+                let safe_filename = sanitize_filename(&filename)?;
+                write_unique_file(&abs_dir, &safe_filename, &bytes)
+            })
         })
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;

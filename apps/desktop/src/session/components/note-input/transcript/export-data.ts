@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import type { TranscriptItem } from "@hypr/plugin-export";
 import type { RenderTranscriptRequest } from "@hypr/plugin-transcription";
 
+export { formatTranscriptExportSegments } from "@hypr/utils";
+
 import { TRANSCRIPT_RENDER_CACHE_TIME_MS } from "./cache";
 import { useSessionTranscriptRenderData } from "./render-request-hooks";
 
@@ -62,12 +64,4 @@ export function useTranscriptExportSegments(sessionId: string) {
       void (transcripts.isError ? transcripts.refetch() : rendered.refetch());
     },
   };
-}
-
-export function formatTranscriptExportSegments(
-  segments: Array<{ speaker: string | null; text: string }>,
-) {
-  return segments
-    .map((segment) => `${segment.speaker ?? "Speaker"}: ${segment.text}`)
-    .join("\n\n");
 }

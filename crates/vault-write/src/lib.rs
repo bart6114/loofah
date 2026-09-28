@@ -222,26 +222,32 @@ impl SessionStore {
         let journal_relative = relative_str.clone();
 
         let hash = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&parent_path)
-                .map_err(|e| StoreError::Io(format!("failed to create parent directory: {}", e)))?;
+            sync_write(&vault_base, || {
+                std::fs::create_dir_all(&parent_path).map_err(|e| {
+                    StoreError::Io(format!("failed to create parent directory: {}", e))
+                })?;
 
-            trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
+                trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
 
-            let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
-            {
-                use std::io::Write;
-                let mut file = std::fs::File::create(&tmp_path)
-                    .map_err(|e| StoreError::Io(format!("failed to create temp file: {}", e)))?;
-                file.write_all(&bytes)
-                    .map_err(|e| StoreError::Io(format!("failed to write temp file: {}", e)))?;
-                file.sync_all()
-                    .map_err(|e| StoreError::Io(format!("failed to sync temp file: {}", e)))?;
-            }
+                let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
+                {
+                    use std::io::Write;
+                    let mut file = std::fs::File::create(&tmp_path).map_err(|e| {
+                        StoreError::Io(format!("failed to create temp file: {}", e))
+                    })?;
+                    file.write_all(&bytes)
+                        .map_err(|e| StoreError::Io(format!("failed to write temp file: {}", e)))?;
+                    file.sync_all()
+                        .map_err(|e| StoreError::Io(format!("failed to sync temp file: {}", e)))?;
+                }
 
-            std::fs::rename(&tmp_path, &abs_path)
-                .map_err(|e| StoreError::Io(format!("failed to rename temp file: {}", e)))?;
+                std::fs::rename(&tmp_path, &abs_path)
+                    .map_err(|e| StoreError::Io(format!("failed to rename temp file: {}", e)))?;
 
-            Ok::<String, StoreError>(sha256(&bytes))
+                hypr_vault_sync::record_write(&vault_base, std::path::Path::new(&journal_relative))
+                    .map_err(|e| StoreError::Io(e.to_string()))?;
+                Ok::<String, StoreError>(sha256(&bytes))
+            })
         })
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
@@ -288,6 +294,18 @@ impl SessionStore {
             ));
         }
         Ok(VaultMoveGuard { _guard: guard })
+    }
+}
+
+pub(crate) fn sync_write<T>(
+    root: &std::path::Path,
+    operation: impl FnOnce() -> Result<T, StoreError>,
+) -> Result<T, StoreError> {
+    if hypr_vault_sync::participation_enabled(root) {
+        hypr_vault_sync::coordinate(root, true, operation)
+            .map_err(|e| StoreError::Io(e.to_string()))?
+    } else {
+        operation()
     }
 }
 

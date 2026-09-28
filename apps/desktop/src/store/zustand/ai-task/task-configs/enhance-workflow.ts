@@ -6,6 +6,10 @@ import {
   type TextPart,
 } from "ai";
 
+import {
+  AI_GENERATION_MAX_RETRIES,
+  SUMMARY_MAX_OUTPUT_TOKENS,
+} from "@hypr/ai-providers";
 import { commands as templateCommands } from "@hypr/plugin-template";
 
 import type { TaskArgsMapTransformed, TaskConfig } from ".";
@@ -15,8 +19,6 @@ import { createEnhanceValidator } from "./enhance-validator";
 import { normalizeBulletPoints } from "~/store/zustand/ai-task/shared/transform_impl";
 import { withEarlyValidationRetry } from "~/store/zustand/ai-task/shared/validate";
 
-const AI_GENERATION_MAX_RETRIES = 4;
-const SUMMARY_MAX_OUTPUT_TOKENS = 8192;
 const IMAGE_CONTEXT_NOTE =
   "Attached note images are included as visual context. Use visible text, diagrams, screenshots, and other image content when it materially improves the summary.";
 
@@ -40,9 +42,10 @@ async function* executeWorkflow(params: {
   const { model, args, onProgress, signal } = params;
 
   const system = await getSystemPrompt(args);
-  const prompt = `${withImageContextNote(await getUserPrompt(args), args.imageContext.length)}
-
-Keep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler.`;
+  const prompt = withImageContextNote(
+    await getUserPrompt(args),
+    args.imageContext.length,
+  );
 
   yield* generateSummary({
     model,

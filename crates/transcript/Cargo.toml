@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+hypr-fs-format = { workspace = true }
 owhisper-interface = { workspace = true }
 
 hypr-template-app = { workspace = true }

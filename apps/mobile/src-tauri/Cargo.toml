@@ -1,0 +1,37 @@
+[package]
+name = "mobile"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "loofah_mobile"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+arc-swap = "1"
+chrono = { workspace = true }
+hound = { workspace = true }
+hypr-fs-format = { workspace = true }
+hypr-storage = { workspace = true }
+hypr-template-app = { workspace = true }
+hypr-transcript = { workspace = true }
+hypr-vault-read = { workspace = true }
+hypr-vault-sync = { workspace = true }
+hypr-vault-write = { workspace = true }
+owhisper-interface = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tauri = { workspace = true, features = ["protocol-asset"] }
+tauri-plugin-clipboard-manager = { workspace = true }
+tauri-plugin-http = { workspace = true }
+tauri-plugin-mobile-native = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt-multi-thread", "macros", "time"] }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

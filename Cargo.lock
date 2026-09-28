@@ -8349,6 +8349,7 @@ dependencies = [
  "tracing",
  "transcribe-core",
  "transcribe-soniqo",
+ "transcript",
  "whisper-local-model",
 ]
 
@@ -8887,6 +8888,35 @@ dependencies = [
  "log",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mobile"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "chrono",
+ "fs-format",
+ "hound",
+ "owhisper-interface",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "storage",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-http",
+ "tauri-plugin-mobile-native",
+ "tempfile",
+ "template-app",
+ "tokio",
+ "transcript",
+ "uuid",
+ "vault-read",
+ "vault-sync",
+ "vault-write",
 ]
 
 [[package]]
@@ -13518,6 +13548,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -14793,6 +14824,19 @@ dependencies = [
  "tauri-specta",
  "template-support",
  "vergen-gix",
+]
+
+[[package]]
+name = "tauri-plugin-mobile-native"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "specta",
+ "specta-typescript",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -16320,6 +16364,7 @@ dependencies = [
 name = "transcript"
 version = "0.1.0"
 dependencies = [
+ "fs-format",
  "json-patch 4.1.0",
  "owhisper-interface",
  "serde",
@@ -17407,6 +17452,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 name = "vault-read"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "frontmatter",
  "fs-format",
  "serde",
@@ -17416,6 +17462,20 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "unicode-normalization",
+]
+
+[[package]]
+name = "vault-sync"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
+ "vault-read",
 ]
 
 [[package]]
@@ -17437,6 +17497,7 @@ dependencies = [
  "tracing",
  "uuid",
  "vault-read",
+ "vault-sync",
 ]
 
 [[package]]

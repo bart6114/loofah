@@ -22,7 +22,9 @@ describe("shared summary generation", () => {
     vi.clearAllMocks();
     mocks.render.mockImplementation(async (input) => ({
       status: "ok",
-      data: JSON.stringify(input),
+      data: input.enhanceUser
+        ? `${JSON.stringify(input)}\n\nKeep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler.`
+        : JSON.stringify(input),
     }));
     mocks.streamText.mockReturnValue({
       fullStream: (async function* () {
@@ -100,6 +102,11 @@ describe("shared summary generation", () => {
       expect(request.messages[0].content[0].text).not.toContain(
         "characters overall",
       );
+      expect(
+        request.messages[0].content[0].text.match(
+          /Keep the summary concise and proportional/g,
+        ),
+      ).toHaveLength(1);
       expect(request.maxOutputTokens).toBe(8192);
     },
   );

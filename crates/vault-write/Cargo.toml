@@ -13,6 +13,7 @@ hypr-fs-sync-core = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-tiptap = { workspace = true }
 hypr-vault-read = { workspace = true }
+hypr-vault-sync = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 serde = { workspace = true, features = ["derive"] }

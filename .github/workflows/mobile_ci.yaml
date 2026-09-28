@@ -1,0 +1,90 @@
+name: mobile-ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/mobile_ci.yaml
+      - .github/actions/pnpm_install/**
+      - .github/actions/rust_install/**
+      - apps/mobile/**
+      - apps/desktop/src-tauri/icons/src/loofah-fullbleed-1024.png
+      - plugins/mobile-native/**
+      - crates/vault-sync/**
+      - crates/vault-read/**
+      - crates/vault-write/**
+      - crates/storage/**
+      - Cargo.lock
+      - Cargo.toml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - rust-toolchain.toml
+  pull_request:
+    paths:
+      - .github/workflows/mobile_ci.yaml
+      - .github/actions/pnpm_install/**
+      - .github/actions/rust_install/**
+      - apps/mobile/**
+      - apps/desktop/src-tauri/icons/src/loofah-fullbleed-1024.png
+      - plugins/mobile-native/**
+      - crates/vault-sync/**
+      - crates/vault-read/**
+      - crates/vault-write/**
+      - crates/storage/**
+      - Cargo.lock
+      - Cargo.toml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - rust-toolchain.toml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  mobile-ci:
+    runs-on: macos-26
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm_install
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: ios
+      - run: pnpm -F @hypr/mobile typecheck
+      - run: pnpm -F @hypr/mobile test
+      - run: pnpm -F @hypr/mobile build
+      - run: cargo test --locked -p vault-sync -p vault-write -p storage -p mobile -p tauri-plugin-mobile-native
+      - run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+      - run: pnpm -F @hypr/mobile ios:init --ci
+      - run: pnpm -F @hypr/mobile ios:build --target aarch64-sim --debug --ci
+      - name: Compile native capture and transcription for iPhone
+        working-directory: plugins/mobile-native/ios
+        run: >-
+          xcodebuild build -scheme tauri-plugin-mobile-native
+          -destination 'generic/platform=iOS'
+          -derivedDataPath "$RUNNER_TEMP/mobile-native-device" CODE_SIGNING_ALLOWED=NO
+      - name: Compile Live Activity for iPhone
+        run: >-
+          xcodebuild build -project apps/mobile/src-tauri/gen/apple/mobile.xcodeproj
+          -target RecordingWidget -sdk iphoneos -configuration debug
+          SYMROOT="$RUNNER_TEMP/mobile-widget-device-products"
+          OBJROOT="$RUNNER_TEMP/mobile-widget-device-objects" CODE_SIGNING_ALLOWED=NO
+      - working-directory: plugins/mobile-native/ios
+        run: |
+          simulator_id="$(xcrun simctl list devices available --json | jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | startswith("iPhone"))][0].udid')"
+          test "$simulator_id" != "null"
+          xcodebuild test -scheme tauri-plugin-mobile-native \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/mobile-native-tests" CODE_SIGNING_ALLOWED=NO
