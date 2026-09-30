@@ -1,15 +1,15 @@
 ---
 title: "Data, privacy, and retention"
-description: "See where your knowledge vault lives and when its content can leave your Mac."
+description: "See where your vault lives and when its content can leave your Mac or iPhone."
 ---
 
-Loofah has no account or cloud backend. Its vault on your Mac is the source of truth for standalone notes, meeting notes, transcripts, attachments, and agent-created material. Meeting recording still happens without adding a bot to the call.
+Loofah has no account or cloud backend. Your vault is the source of truth for notes, transcripts, recordings, attachments, and settings. Recording happens on your device without adding a bot to a call. See the [privacy policy](/privacy-policy) for the full disclosure.
 
 ## Files in the vault
 
-The app stores notes, transcripts, attachments, settings, recordings, and people as files in the vault. The default vault is in the app's data directory. You can change its location under **Settings → App → Storage**.
+The app stores notes, transcripts, attachments, settings, recordings, and people as files in the vault. On Mac, the default vault is in the app's data directory. You can change its location under **Settings → App → Storage**. On iPhone, the vault starts in Loofah's private app storage.
 
-To use the same vault on another Mac, move it into a supported local sync folder. See [Sync your notes](/syncing).
+To use the same vault on another Mac, move it into a supported local sync folder. On iPhone, you can optionally connect an iCloud Drive vault. This copies vault files through your Apple account while keeping a local copy on the phone. See [Sync your notes](/syncing).
 
 You can inspect and edit the vault with other tools. The app watches for external changes and refreshes its in-memory index. If the app is about to overwrite a version it did not write, it first moves that version into the vault's `.trash/` folder.
 
@@ -17,17 +17,17 @@ Downloaded transcription and speaker-detection models are also local, but they a
 
 ## Remote Intelligence providers
 
-Transcription and speaker detection run on your Mac. Session content only leaves the app when you ask a remote Intelligence provider to generate a summary or title. That request includes the prompt and the context needed to produce the result.
+Transcription runs locally on your Mac or iPhone; Mac speaker detection is local too. If you enable a remote Intelligence provider, the app sends the prompt and session context needed for summaries and titles. On iPhone, a summary can run automatically after transcription when a provider is enabled. iCloud or another sync service can also receive vault files if you choose to connect it.
 
-API keys are stored in the macOS login Keychain. Review a provider's retention and training policy before using it with sensitive meetings.
+API keys are stored in the macOS login Keychain or iPhone Keychain. Review a provider's retention and training policy before using it with sensitive meetings. Loofah is free, but a provider you choose may charge separately.
 
-For fully local summaries, use LM Studio or Ollama. See [Use the app offline](/offline).
+For local summaries on Mac, use LM Studio or Ollama. On iPhone, you can connect to a reachable LM Studio or Ollama server on another device. See [Use the app offline](/offline).
 
 ## Audio retention
 
 Loofah keeps recordings indefinitely. Recording and transcription never automatically delete audio, including when you transcribe through the CLI.
 
-You can explicitly delete a recording without removing its note, summary, or transcript. To find a recording, open the meeting's **•••** menu and choose **Show in Finder**.
+On Mac, you can explicitly delete a recording without removing its note, summary, or transcript. To find a recording, open the meeting's **•••** menu and choose **Show in Finder**.
 
 ## Telemetry
 
