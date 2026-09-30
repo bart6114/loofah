@@ -40,7 +40,7 @@ private final class RecordingStopWaiter: @unchecked Sendable {
     lock.lock()
     self.timeout = timeout
     observer = NotificationCenter.default.addObserver(
-      forName: Notification.Name("io.loofah.mobile.recording-stopped"),
+      forName: Notification.Name("io.loofah.notes.recording-stopped"),
       object: nil,
       queue: nil
     ) { [self] notification in
@@ -51,7 +51,7 @@ private final class RecordingStopWaiter: @unchecked Sendable {
 
     DispatchQueue.global().asyncAfter(deadline: .now() + 15, execute: timeout)
     NotificationCenter.default.post(
-      name: Notification.Name("io.loofah.mobile.stop-recording"),
+      name: Notification.Name("io.loofah.notes.stop-recording"),
       object: nil,
       userInfo: ["sessionID": sessionID]
     )

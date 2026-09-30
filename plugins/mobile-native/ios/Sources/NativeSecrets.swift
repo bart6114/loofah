@@ -29,7 +29,7 @@ enum NativeSecrets {
     else { throw NativeFailure(message: "Invalid AI provider identifier.") }
     return [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "io.loofah.mobile.ai-provider-api-keys",
+      kSecAttrService as String: "io.loofah.notes.ai-provider-api-keys",
       kSecAttrAccount as String: "llm:\(providerId)",
       kSecAttrSynchronizable as String: false,
     ]
@@ -45,7 +45,7 @@ enum NativeSecrets {
     guard providerId == "openrouter" else { return nil }
     let legacy: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "io.loofah.mobile.openrouter",
+      kSecAttrService as String: "io.loofah.notes.openrouter",
       kSecAttrAccount as String: "api-key",
       kSecAttrSynchronizable as String: false,
     ]

@@ -8909,6 +8909,7 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-http",
  "tauri-plugin-mobile-native",
+ "tauri-plugin-opener",
  "tempfile",
  "template-app",
  "tokio",

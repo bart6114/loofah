@@ -49,6 +49,22 @@ function prepare() {
   const config = JSON.parse(
     readFileSync(resolve(mobile, "src-tauri/tauri.conf.json"), "utf8"),
   );
+  const projectPath = resolve(apple, "project.yml");
+  const project = readFileSync(projectPath, "utf8")
+    .replace(
+      /^  bundleIdPrefix: .*$/m,
+      `  bundleIdPrefix: ${config.identifier}`,
+    )
+    .replace(
+      /^      PRODUCT_NAME: .*$/m,
+      `      PRODUCT_NAME: ${config.productName}`,
+    )
+    .replace(
+      /^      PRODUCT_BUNDLE_IDENTIFIER: .*$/m,
+      `      PRODUCT_BUNDLE_IDENTIFIER: ${config.identifier}`,
+    )
+    .replace(/^      - path: Externals\n/m, "");
+  writeFileSync(projectPath, project);
   const developmentTeam =
     process.env.APPLE_DEVELOPMENT_TEAM ?? config.bundle?.iOS?.developmentTeam;
   const appInfo = JSON.parse(
@@ -102,7 +118,7 @@ function prepare() {
         settings: {
           groups: ["app"],
           base: {
-            PRODUCT_BUNDLE_IDENTIFIER: "io.loofah.mobile.RecordingWidget",
+            PRODUCT_BUNDLE_IDENTIFIER: "io.loofah.notes.RecordingWidget",
             PRODUCT_NAME: "RecordingWidget",
             SWIFT_VERSION: "5.0",
             APPLICATION_EXTENSION_API_ONLY: true,

@@ -1,8 +1,9 @@
 import "./style.css";
 
 import { useForm, useStore } from "@tanstack/react-form";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   ChevronRight,
@@ -960,6 +961,9 @@ export function Setup({
   const download = useCommand("mobile_download_model");
   const select = useCommand("mobile_select_model");
   const remove = useCommand("mobile_delete_model");
+  const privacyPolicy = useMutation({
+    mutationFn: () => openUrl("https://loofah.io/privacy-policy"),
+  });
   const progressSnapshot = useQuery({
     ...snapshotOptions,
     enabled: download.isPending,
@@ -1153,6 +1157,17 @@ export function Setup({
         )}
       </section>
       <SummarySettings snapshot={snapshot} onDirty={onDirty} />
+      <section className="card">
+        <h2>Privacy</h2>
+        <p>
+          Your recordings and notes stay on this iPhone unless you choose iCloud
+          sync or a summary provider.
+        </p>
+        <button type="button" onClick={() => privacyPolicy.mutate()}>
+          Read privacy policy
+        </button>
+        <ErrorText error={privacyPolicy.error} />
+      </section>
     </>
   );
 }

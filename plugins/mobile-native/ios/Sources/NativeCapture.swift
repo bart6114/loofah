@@ -46,7 +46,7 @@ struct RecordingCaptureState {
 }
 
 final class NativeCapture {
-  private let queue = DispatchQueue(label: "io.loofah.mobile.capture", qos: .userInitiated)
+  private let queue = DispatchQueue(label: "io.loofah.notes.capture", qos: .userInitiated)
   private var engine: AVAudioEngine?
   private var tapGate: CaptureTapGate?
   private var wanted = false

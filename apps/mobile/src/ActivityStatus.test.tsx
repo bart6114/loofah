@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const snapshot: Snapshot = {
   vault: {
-    local_path: "/app/Library/Application Support/io.loofah.mobile/vault",
+    local_path: "/app/Library/Application Support/io.loofah.notes/vault",
     icloud_path: null,
   },
   sessions: ["Running", "Queued", "Paused", "Failed"].map((title) => ({

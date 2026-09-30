@@ -60,7 +60,7 @@ final class RecordingActivity {
       }
       releaseStopProtection()
       NotificationCenter.default.post(
-        name: Notification.Name("io.loofah.mobile.recording-stopped"), object: nil,
+        name: Notification.Name("io.loofah.notes.recording-stopped"), object: nil,
         userInfo: ["sessionID": sessionID])
     }.value
   }

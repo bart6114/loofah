@@ -11,7 +11,7 @@ final class NativeSecretsTests: XCTestCase {
     XCTAssertEqual(openrouter[kSecAttrAccount as String] as? String, "llm:openrouter")
     XCTAssertEqual(openai[kSecAttrAccount as String] as? String, "llm:openai")
     XCTAssertEqual(
-      openai[kSecAttrService as String] as? String, "io.loofah.mobile.ai-provider-api-keys")
+      openai[kSecAttrService as String] as? String, "io.loofah.notes.ai-provider-api-keys")
     XCTAssertEqual(openai[kSecAttrSynchronizable as String] as? Bool, false)
   }
 
@@ -39,7 +39,7 @@ final class NativeSecretsTests: XCTestCase {
       copy: { query in
         let service = query[kSecAttrService as String] as! String
         reads.append(service)
-        return service == "io.loofah.mobile.openrouter" ? key : nil
+        return service == "io.loofah.notes.openrouter" ? key : nil
       },
       save: { query, data in
         XCTAssertEqual(query[kSecAttrAccount as String] as? String, "llm:openrouter")
@@ -47,7 +47,7 @@ final class NativeSecretsTests: XCTestCase {
       })
     XCTAssertEqual(result, "legacy-secret")
     XCTAssertEqual(saved, key)
-    XCTAssertEqual(reads, ["io.loofah.mobile.ai-provider-api-keys", "io.loofah.mobile.openrouter"])
+    XCTAssertEqual(reads, ["io.loofah.notes.ai-provider-api-keys", "io.loofah.notes.openrouter"])
   }
 
   func testExistingKeyAndOtherProvidersNeverReadLegacyEntry() throws {
@@ -58,7 +58,7 @@ final class NativeSecretsTests: XCTestCase {
         copy: { query in
           reads += 1
           XCTAssertEqual(
-            query[kSecAttrService as String] as? String, "io.loofah.mobile.ai-provider-api-keys")
+            query[kSecAttrService as String] as? String, "io.loofah.notes.ai-provider-api-keys")
           return provider == "openrouter" ? Data("current-secret".utf8) : nil
         }, save: { _, _ in XCTFail("Unexpected migration") })
       XCTAssertEqual(reads, 1)
@@ -78,7 +78,7 @@ final class NativeSecretsTests: XCTestCase {
       providerId: "openrouter",
       copy: { query in
         XCTAssertEqual(
-          query[kSecAttrService as String] as? String, "io.loofah.mobile.ai-provider-api-keys")
+          query[kSecAttrService as String] as? String, "io.loofah.notes.ai-provider-api-keys")
         return marker
       }, save: { _, _ in XCTFail("Cleared key must not migrate") })
     XCTAssertNil(result)

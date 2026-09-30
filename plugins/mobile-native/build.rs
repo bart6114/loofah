@@ -1,3 +1,6 @@
 fn main() {
     tauri_plugin::Builder::new(&[]).ios_path("ios").build();
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios") {
+        println!("cargo:rustc-link-lib=c++");
+    }
 }

@@ -294,6 +294,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_mobile_native::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(providers::Bridge::default())
         .invoke_handler(tauri::generate_handler![

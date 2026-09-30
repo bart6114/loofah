@@ -40,7 +40,7 @@ class MobileNativePlugin: Plugin {
     let center = NotificationCenter.default
     observers.append(
       center.addObserver(
-        forName: Notification.Name("io.loofah.mobile.stop-recording"), object: nil, queue: nil
+        forName: Notification.Name("io.loofah.notes.stop-recording"), object: nil, queue: nil
       ) { note in
         guard let sessionID = note.userInfo?["sessionID"] as? String else { return }
         nativeEvent("stop_recording", sessionID: sessionID)
