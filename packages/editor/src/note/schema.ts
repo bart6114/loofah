@@ -243,6 +243,13 @@ const marks: Record<string, MarkSpec> = {
     },
   },
 
+  underline: {
+    parseDOM: [{ tag: "u" }],
+    toDOM() {
+      return ["u", 0];
+    },
+  },
+
   strike: {
     parseDOM: [
       { tag: "s" },
