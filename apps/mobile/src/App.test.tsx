@@ -91,6 +91,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 beforeEach(() => {
+  vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
   vi.mocked(invoke).mockReset();
   vi.mocked(listModels).mockReset();
   vi.mocked(listModels).mockResolvedValue({
@@ -237,7 +238,9 @@ describe("iPhone navigation", () => {
     expect(
       await screen.findByRole("heading", { name: "Settings" }),
     ).toBeTruthy();
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Back to note" }));
     expect(await screen.findByRole("tab", { name: "Summary" })).toHaveProperty(
       "ariaSelected",

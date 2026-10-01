@@ -95,17 +95,6 @@ export function App() {
   const [settingsSection, setSettingsSection] = useState<
     "summaries" | "transcription" | null
   >(null);
-  useEffect(() => {
-    if (settings && settingsSection)
-      document
-        .getElementById(
-          settingsSection === "summaries"
-            ? "summary-settings"
-            : "transcription-settings",
-        )
-        ?.scrollIntoView();
-    else window.scrollTo(0, 0);
-  }, [selected, settings, settingsSection]);
   const [dirty, setDirty] = useState(false);
   const [navigation, setNavigation] = useState<{ action: () => void } | null>(
     null,
@@ -145,6 +134,19 @@ export function App() {
   const imported = useCommand<string | null>("mobile_import_audio");
   const [search, setSearch] = useState("");
   const data = snapshot.data;
+  const hasSettingsContent = !!data;
+  useEffect(() => {
+    if (settings && settingsSection) {
+      if (!hasSettingsContent) return;
+      document
+        .getElementById(
+          settingsSection === "summaries"
+            ? "summary-settings"
+            : "transcription-settings",
+        )
+        ?.scrollIntoView();
+    } else window.scrollTo(0, 0);
+  }, [hasSettingsContent, selected, settings, settingsSection]);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
