@@ -7,7 +7,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   ChevronRight,
-  Cloud,
   Download,
   FileAudio,
   Mic,
@@ -37,6 +36,7 @@ import {
   time,
   useCommand,
   useEvents,
+  visibleJobError,
   type Session,
   type Snapshot,
 } from "./api";
@@ -87,18 +87,46 @@ export function App() {
   const [deleted, setDeleted] = useState<string | null>(null);
   const restore = useCommand("mobile_restore_session");
   const [selected, setSelected] = useState<string | null>(null);
+  const [detailView, setDetailView] = useState<{
+    id: string;
+    tab: "notes" | "transcript" | "summary";
+  } | null>(null);
   const [settings, setSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<
+    "summaries" | "transcription" | null
+  >(null);
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [selected, settings]);
+    if (settings && settingsSection)
+      document
+        .getElementById(
+          settingsSection === "summaries"
+            ? "summary-settings"
+            : "transcription-settings",
+        )
+        ?.scrollIntoView();
+    else window.scrollTo(0, 0);
+  }, [selected, settings, settingsSection]);
   const [dirty, setDirty] = useState(false);
   const [navigation, setNavigation] = useState<{ action: () => void } | null>(
     null,
   );
+  const saveCurrentNote = useRef<(() => Promise<void>) | null>(null);
+  const registerNoteSave = useCallback((save: (() => Promise<void>) | null) => {
+    saveCurrentNote.current = save;
+  }, []);
   const leave = (action: () => void) => {
-    if (dirty) setNavigation({ action });
+    if (saveCurrentNote.current) {
+      void saveCurrentNote
+        .current()
+        .then(action, () => setNavigation({ action }));
+    } else if (dirty) setNavigation({ action });
     else action();
   };
+  const openSettings = (section: "summaries" | "transcription" | null) =>
+    leave(() => {
+      setSettingsSection(section);
+      setSettings(true);
+    });
   const snapshot = useQuery({
     ...snapshotOptions,
     refetchInterval: (query) => {
@@ -114,9 +142,29 @@ export function App() {
     },
   });
   const create = useCommand<string>("mobile_create_session");
-  const imported = useCommand<string>("mobile_import_audio");
+  const imported = useCommand<string | null>("mobile_import_audio");
   const [search, setSearch] = useState("");
   const data = snapshot.data;
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () =>
+      document.documentElement.style.setProperty(
+        "--visual-viewport-top",
+        `${viewport.offsetTop}px`,
+      );
+    update();
+    viewport.addEventListener("scroll", update);
+    viewport.addEventListener("resize", update);
+    window.addEventListener("scroll", update, { passive: true });
+    return () => {
+      viewport.removeEventListener("scroll", update);
+      viewport.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update);
+      document.documentElement.style.removeProperty("--visual-viewport-top");
+    };
+  }, []);
+  const home = !settings && !selected;
   const sessions =
     data?.sessions.filter((s) =>
       (s.title || "Untitled note")
@@ -127,13 +175,13 @@ export function App() {
     <div
       className={cn([
         "app",
-        (data?.recording.session_id || (!settings && !selected)) &&
-          "has-capture",
+        (data?.recording.session_id || home) && "has-capture",
+        data?.recording.session_id && "has-active-capture",
       ])}
     >
       <header>
         <button
-          className="icon"
+          className="icon back-button"
           aria-label={settings && selected ? "Back to note" : "Back to notes"}
           hidden={!selected && !settings}
           onClick={() =>
@@ -144,26 +192,38 @@ export function App() {
           }
         >
           <ArrowLeft size={22} />
+          <span>{settings && selected ? "Note" : "Notes"}</span>
         </button>
-        <div
-          className={cn([
-            "navigation-title",
-            !selected && !settings && "brand",
-          ])}
-        >
-          {settings ? "Settings" : selected ? "" : "loofah"}
-        </div>
+        {selected && !settings ? (
+          <div className="navigation-title" />
+        ) : (
+          <h1 className={cn(["navigation-title", home && "home-title"])}>
+            {settings ? "Settings" : "loofah"}
+          </h1>
+        )}
+        {home && (
+          <button
+            className="icon primary new-note-button"
+            aria-label="New note"
+            disabled={create.isPending}
+            onClick={() => create.mutate({}, { onSuccess: setSelected })}
+          >
+            <Plus />
+          </button>
+        )}
         <button
           className="icon"
           aria-label="Settings"
           hidden={settings}
-          onClick={() => leave(() => setSettings(true))}
+          onClick={() => openSettings(null)}
         >
           <Settings size={22} />
         </button>
         {data && (
           <ActivityStatus
             snapshot={data}
+            compact={home}
+            onOpenTranscriptionSettings={() => openSettings("transcription")}
             onSelectSession={(id) =>
               selected === id && !settings
                 ? undefined
@@ -201,6 +261,12 @@ export function App() {
             id={selected}
             snapshot={data}
             onDirty={setDirty}
+            onSaveReady={registerNoteSave}
+            onOpenSettings={openSettings}
+            initialView={
+              detailView?.id === selected ? detailView.tab : undefined
+            }
+            onViewChange={(tab) => setDetailView({ id: selected, tab })}
             onDeleted={() => {
               setDeleted(selected);
               setDirty(false);
@@ -210,31 +276,21 @@ export function App() {
           />
         ) : (
           <>
-            <div className="page-heading">
-              <div>
-                <h1>Notes</h1>
-                <p>Your notes and conversations</p>
-              </div>
-              <button
-                className="icon primary"
-                aria-label="New note"
-                disabled={create.isPending}
-                onClick={() => create.mutate({}, { onSuccess: setSelected })}
-              >
-                <Plus />
-              </button>
-            </div>
             <ErrorText error={create.error} />
-            <ErrorText error={imported.error} />
             {(!data.model.ready ||
               data.sync.error ||
               data.recording.interrupted) && (
               <button
-                className="notice"
+                className={cn([
+                  "notice",
+                  !data.recording.interrupted &&
+                    !data.sync.error &&
+                    "model-setup-link",
+                ])}
                 onClick={() => {
                   if (data.recording.interrupted && data.recording.session_id)
                     setSelected(data.recording.session_id);
-                  else setSettings(true);
+                  else openSettings(data.model.ready ? null : "transcription");
                 }}
               >
                 {data.recording.interrupted
@@ -249,7 +305,7 @@ export function App() {
               className="search"
               type="search"
               aria-label="Search note titles"
-              placeholder="Find a note"
+              placeholder="Search note titles"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -266,8 +322,8 @@ export function App() {
                       {new Date(s.created_at).toLocaleDateString(undefined, {
                         day: "numeric",
                         month: "short",
-                      })}{" "}
-                      · {s.has_transcript_words ? "Transcribed" : "Note"}
+                      })}
+                      {s.has_transcript_words && " · Transcribed"}
                     </small>
                   </span>
                   <ChevronRight size={18} />
@@ -277,7 +333,7 @@ export function App() {
             {!data.sessions.length && (
               <div className="empty">
                 <h2>A little space to think.</h2>
-                <p>Create a note, record a conversation, or import audio.</p>
+                <p>Write a note or record a conversation.</p>
               </div>
             )}
             {data.sessions.length > 0 && sessions.length === 0 && (
@@ -288,21 +344,24 @@ export function App() {
               </div>
             )}
             <button
-              className="wide subtle"
-              disabled={imported.isPending}
-              onClick={() => imported.mutate({}, { onSuccess: setSelected })}
+              className="import-link"
+              disabled={imported.isPending || !!data.recording.session_id}
+              onClick={() =>
+                imported.mutate(
+                  {},
+                  { onSuccess: (id) => id && setSelected(id) },
+                )
+              }
             >
               <FileAudio size={18} />
               {imported.isPending ? "Importing…" : "Import audio"}
             </button>
-            <button className="sync-link" onClick={() => setSettings(true)}>
-              <Cloud size={16} />
-              {data.sync.connected
-                ? `${syncLabel(data.sync.state)}${data.sync.pending ? ` · ${data.sync.pending} pending` : ""}`
-                : data.vault.icloud_path
-                  ? "Saved on this iPhone · iCloud needs attention"
-                  : "Saved on this iPhone"}
-            </button>
+            <ErrorText error={imported.error} />
+            {data.recording.session_id && (
+              <p className="caption">
+                Finish recording before importing audio.
+              </p>
+            )}
           </>
         )}
       </main>
@@ -402,10 +461,8 @@ function Recording({
   snapshot,
   selected,
   select,
-  inline = false,
 }: {
   snapshot: Snapshot;
-  inline?: boolean;
   selected: string | null;
   select: (id: string) => void;
 }) {
@@ -429,8 +486,9 @@ function Recording({
   return (
     <div
       className={cn([
-        inline ? "recording-inline" : "recording-bar",
+        "recording-bar",
         active && "is-recording",
+        !active && !recording.stopping && "idle-recording",
       ])}
     >
       <ErrorText
@@ -489,11 +547,19 @@ export function Detail({
   id,
   snapshot,
   onDirty,
+  onSaveReady,
+  onOpenSettings,
+  initialView,
+  onViewChange,
   onDeleted = () => {},
 }: {
   id: string;
   snapshot: Snapshot;
   onDeleted?: () => void;
+  onSaveReady?: (save: (() => Promise<void>) | null) => void;
+  onOpenSettings?: (section: "summaries" | "transcription") => void;
+  initialView?: "notes" | "transcript" | "summary";
+  onViewChange?: (view: "notes" | "transcript" | "summary") => void;
   onDirty: (dirty: boolean) => void;
 }) {
   const session = useQuery({
@@ -516,7 +582,7 @@ export function Detail({
         : "summary"
       : null;
   const [tab, setTab] = useState<"notes" | "transcript" | "summary">(
-    jobPhase ?? "notes",
+    initialView ?? jobPhase ?? "notes",
   );
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const initialized = useRef(false);
@@ -546,8 +612,10 @@ export function Detail({
 
     if (!initialized.current) {
       initialized.current = true;
-      if (jobPhase && !notesDirty) setTab(jobPhase);
-      else if (session.data.summary) setTab("summary");
+      if (!initialView) {
+        if (jobPhase && !notesDirty) setTab(jobPhase);
+        else if (session.data.summary) setTab("summary");
+      }
     } else if (phase && phase !== lastPhase.current && !notesDirty) {
       setTab(phase);
     }
@@ -557,7 +625,7 @@ export function Detail({
       sawTranscription.current = false;
     }
     lastSummary.current = session.data.summary;
-  }, [job?.kind, job?.state, jobPhase, notesDirty, session.data]);
+  }, [initialView, job?.kind, job?.state, jobPhase, notesDirty, session.data]);
   if (!session.data)
     return (
       <>
@@ -582,13 +650,14 @@ export function Detail({
     finishingRecording ||
     job?.kind === "transcribe";
   const tabs: ("summary" | "notes" | "transcript")[] = canShowTranscript
-    ? (["summary", "notes", "transcript"] as const)
-    : (["summary", "notes"] as const);
+    ? (["notes", "transcript", "summary"] as const)
+    : (["notes", "summary"] as const);
   const activeTab = tab === "transcript" && !canShowTranscript ? "notes" : tab;
   return (
     <Editor
       session={data}
       onDirty={handleDirty}
+      onSaveReady={onSaveReady}
       showNotes={activeTab === "notes"}
       actions={(notes) => (
         <NoteActions
@@ -615,7 +684,10 @@ export function Detail({
               aria-selected={activeTab === view}
               tabIndex={activeTab === view ? 0 : -1}
               className={cn([activeTab === view && "selected"])}
-              onClick={() => setTab(view)}
+              onClick={() => {
+                setTab(view);
+                onViewChange?.(view);
+              }}
               onKeyDown={(event) => {
                 const index = tabs.indexOf(view);
                 const next =
@@ -631,6 +703,7 @@ export function Detail({
                 if (next !== null) {
                   event.preventDefault();
                   setTab(tabs[next]);
+                  onViewChange?.(tabs[next]);
                   event.currentTarget.parentElement
                     ?.querySelectorAll("button")
                     [next]?.focus();
@@ -645,30 +718,27 @@ export function Detail({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={cn([
-            "icon attachment-toggle",
-            attachmentsOpen && "selected",
-          ])}
-          aria-label="Attachments"
-          aria-expanded={attachmentsOpen}
-          aria-controls="session-attachments"
-          onClick={() => setAttachmentsOpen(!attachmentsOpen)}
-        >
-          <Paperclip size={18} />
-        </button>
-        {!snapshot.recording.session_id &&
-          !hasAudio &&
-          !data.transcript.length && (
-            <Recording
-              inline
-              snapshot={snapshot}
-              selected={id}
-              select={() => {}}
-            />
-          )}
+        {!!data.attachments?.length && (
+          <button
+            type="button"
+            className={cn([
+              "icon attachment-toggle",
+              attachmentsOpen && "selected",
+            ])}
+            aria-label="Attachments"
+            aria-expanded={attachmentsOpen}
+            aria-controls="session-attachments"
+            onClick={() => setAttachmentsOpen(!attachmentsOpen)}
+          >
+            <Paperclip size={18} />
+          </button>
+        )}
       </div>
+      {!snapshot.recording.session_id &&
+        !hasAudio &&
+        !data.transcript.length && (
+          <Recording snapshot={snapshot} selected={id} select={() => {}} />
+        )}
       {data.audio_url && !snapshot.recording.session_id && (
         <AudioPlayer
           audioRef={audio}
@@ -685,35 +755,31 @@ export function Detail({
           Download audio
         </CommandButton>
       )}
-      {attachmentsOpen && (
+      {attachmentsOpen && !!data.attachments?.length && (
         <section
           id="session-attachments"
           className="attachments-panel"
           aria-label="Note attachments"
         >
-          {data.attachments?.length ? (
-            <ul>
-              {data.attachments.map((attachment) => (
-                <li key={attachment.relative_path}>
-                  <button
-                    type="button"
-                    className="attachment-open"
-                    disabled={!attachment.url || openAttachment.isPending}
-                    onClick={() =>
-                      openAttachment.mutate({
-                        sessionId: id,
-                        relativePath: attachment.relative_path,
-                      })
-                    }
-                  >
-                    {attachment.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">No attachments.</p>
-          )}
+          <ul>
+            {data.attachments.map((attachment) => (
+              <li key={attachment.relative_path}>
+                <button
+                  type="button"
+                  className="attachment-open"
+                  disabled={!attachment.url || openAttachment.isPending}
+                  onClick={() =>
+                    openAttachment.mutate({
+                      sessionId: id,
+                      relativePath: attachment.relative_path,
+                    })
+                  }
+                >
+                  {attachment.name}
+                </button>
+              </li>
+            ))}
+          </ul>
           <ErrorText error={openAttachment.error} />
         </section>
       )}
@@ -737,7 +803,9 @@ export function Detail({
                   : undefined
               }
             />
-          ) : (
+          ) : !snapshot.model.ready &&
+            !recording &&
+            !finishingRecording ? null : (
             <p className="muted">
               {activeJob?.kind === "transcribe"
                 ? activeJob.state === "queued"
@@ -747,18 +815,52 @@ export function Detail({
                   ? "Your transcript will be ready after recording."
                   : finishingRecording
                     ? "Finishing recording…"
-                    : "No transcript yet."}
+                    : job?.kind === "transcribe" && job.state === "failed"
+                      ? "Transcription failed."
+                      : "No transcript yet."}
             </p>
           )}
-          {!job && (
-            <CommandButton
-              command="mobile_transcribe"
-              args={{ sessionId: id }}
-              disabled={!snapshot.model.ready || !data.audio_url || recording}
-            >
-              {data.transcript.length ? "Transcribe again" : "Transcribe"}
-            </CommandButton>
+          {job?.kind === "transcribe" && job.state === "failed" && (
+            <ErrorText error={visibleJobError(job, snapshot.model.ready)} />
           )}
+          {!snapshot.model.ready &&
+            !data.transcript.length &&
+            !recording &&
+            !finishingRecording && (
+              <>
+                {!(job?.kind === "transcribe" && job.state === "failed") && (
+                  <p className="muted">
+                    Download the on-device model to transcribe this recording.
+                  </p>
+                )}
+                {onOpenSettings && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSettings("transcription")}
+                  >
+                    Set up transcription
+                  </button>
+                )}
+              </>
+            )}
+          {!activeJob &&
+            !recording &&
+            !finishingRecording &&
+            snapshot.model.ready &&
+            data.audio_url && (
+              <CommandButton
+                command="mobile_transcribe"
+                args={{ sessionId: id }}
+              >
+                {data.transcript.length
+                  ? "Transcribe again"
+                  : job?.kind === "transcribe" && job.state === "failed"
+                    ? "Retry transcription"
+                    : job?.kind === "transcribe" && job.state === "paused"
+                      ? "Resume transcription"
+                      : "Transcribe"}
+              </CommandButton>
+            )}
         </div>
       )}
       {tab === "summary" && (
@@ -775,10 +877,17 @@ export function Detail({
                   : activeJob.kind === "title"
                     ? "Generating title…"
                     : "Generating summary…"
-                : "No summary yet."}
+                : job?.kind === "summary" && job.state === "failed"
+                  ? "Summary failed."
+                  : job?.kind === "summary" && job.state === "paused"
+                    ? "Summary paused."
+                    : "No summary yet."}
             </p>
           )}
-          {!job && (
+          {job?.kind === "summary" && job.state === "failed" && (
+            <ErrorText error={job.error} />
+          )}
+          {!activeJob && (
             <CommandButton
               command="mobile_summarize"
               args={{ sessionId: id }}
@@ -788,7 +897,13 @@ export function Detail({
                 (!data.notes.trim() && !data.transcript.length)
               }
             >
-              {data.summary ? "Regenerate summary" : "Create summary"}
+              {data.summary
+                ? "Regenerate summary"
+                : job?.kind === "summary" && job.state === "failed"
+                  ? "Retry summary"
+                  : job?.kind === "summary" && job.state === "paused"
+                    ? "Resume summary"
+                    : "Create summary"}
             </CommandButton>
           )}
           {notesDirty ? (
@@ -799,9 +914,19 @@ export function Detail({
             </p>
           ) : null}
           {!snapshot.summary.available && (
-            <p className="muted">
-              {snapshot.summary.reason || "Configure summaries in settings."}
-            </p>
+            <>
+              <p className="muted">
+                {snapshot.summary.reason || "Configure summaries in settings."}
+              </p>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={() => onOpenSettings("summaries")}
+                >
+                  Set up summaries
+                </button>
+              )}
+            </>
           )}
           {snapshot.summary.available &&
             snapshot.settings.summary_provider !== "none" && (
@@ -822,6 +947,7 @@ export function Detail({
 export function Editor({
   session,
   onDirty,
+  onSaveReady,
   showNotes = true,
   children,
   actions,
@@ -831,35 +957,51 @@ export function Editor({
   children?: React.ReactNode;
   actions?: (notes: string) => React.ReactNode;
   onDirty: (dirty: boolean) => void;
+  onSaveReady?: (save: (() => Promise<void>) | null) => void;
 }) {
   const save = useCommand("mobile_update_session");
-  const [baseline, setBaseline] = useState({
+  const baseline = useRef({
     title: session.title,
     notes: session.notes,
   });
+  const saveInFlight = useRef<Promise<void> | null>(null);
   const form = useForm({
-    defaultValues: baseline,
+    defaultValues: baseline.current,
     onSubmit: async ({ value }) => {
       await save.mutateAsync({
         sessionId: session.id,
         ...value,
-        expectedTitle: baseline.title,
-        expectedNotes: baseline.notes,
+        expectedTitle: baseline.current.title,
+        expectedNotes: baseline.current.notes,
       });
-      setBaseline(value);
-      form.reset(value);
+      baseline.current = value;
+      const latest = form.state.values;
+      if (latest.title === value.title && latest.notes === value.notes)
+        form.reset(value);
     },
   });
-  const titleField = useRef<HTMLTextAreaElement>(null);
   const notesField = useRef<HTMLTextAreaElement>(null);
-  const titleValue = useStore(form.store, (state) => state.values.title);
   const notesValue = useStore(form.store, (state) => state.values.notes);
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const commit = useCallback(async () => {
+    while (saveInFlight.current) await saveInFlight.current;
+    if (!form.state.isDirty) return;
+    const task = form.handleSubmit();
+    saveInFlight.current = task;
+    try {
+      await task;
+    } finally {
+      if (saveInFlight.current === task) saveInFlight.current = null;
+    }
+  }, [form]);
+  useEffect(() => {
+    onSaveReady?.(commit);
+    return () => onSaveReady?.(null);
+  }, [commit, onSaveReady]);
   useLayoutEffect(() => {
     const resize = () => {
-      for (const field of [
-        titleField.current,
-        showNotes ? notesField.current : null,
-      ]) {
+      for (const field of [showNotes ? notesField.current : null]) {
         if (field) {
           field.style.height = "auto";
           field.style.height = `${field.scrollHeight}px`;
@@ -869,8 +1011,7 @@ export function Editor({
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [titleValue, notesValue, showNotes]);
-  const isDirty = useStore(form.store, (state) => state.isDirty);
+  }, [isDirty, notesValue, showNotes]);
   useEffect(() => {
     onDirty(isDirty);
     return () => onDirty(false);
@@ -878,7 +1019,7 @@ export function Editor({
   useEffect(() => {
     if (!isDirty) {
       const current = { title: session.title, notes: session.notes };
-      setBaseline(current);
+      baseline.current = current;
       form.reset(current);
     }
   }, [session.title, session.notes]);
@@ -890,22 +1031,22 @@ export function Editor({
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            void form.handleSubmit().catch(() => {});
+            void commit().catch(() => {});
           }}
         >
           <form.Field name="title">
             {(field) => (
-              <textarea
-                ref={titleField}
-                rows={1}
+              <input
+                type="text"
                 aria-label="Note title"
                 className="title-input"
                 value={field.state.value}
                 placeholder="Untitled note"
-                onChange={(e) =>
-                  field.handleChange(e.target.value.replace(/\r?\n/g, " "))
-                }
-                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                onBlur={() => {
+                  field.handleBlur();
+                  void commit().catch(() => {});
+                }}
               />
             )}
           </form.Field>
@@ -929,25 +1070,24 @@ export function Editor({
               value={field.state.value}
               placeholder="A thought, a question, something to remember…"
               onChange={(e) => field.handleChange(e.target.value)}
-              onBlur={field.handleBlur}
+              onBlur={() => {
+                field.handleBlur();
+                void commit().catch(() => {});
+              }}
             />
           )}
         </form.Field>
       </div>
-      <form.Subscribe selector={(s) => [s.isDirty, s.isSubmitting]}>
-        {([dirty, submitting]) =>
-          showNotes || dirty ? (
-            <button
-              type="submit"
-              form={`note-form-${session.id}`}
-              disabled={!dirty || submitting}
-            >
-              {submitting ? "Saving…" : dirty ? "Save notes" : "Saved"}
-            </button>
-          ) : null
-        }
-      </form.Subscribe>
       <ErrorText error={save.error} />
+      {save.error && (
+        <button
+          type="button"
+          onClick={() => void commit().catch(() => {})}
+          disabled={isSubmitting}
+        >
+          Retry save
+        </button>
+      )}
     </>
   );
 }
@@ -996,22 +1136,17 @@ export function Setup({
         : `${percent}% · ${megabytes(downloaded)} / ${megabytes(total)} MB`;
   return (
     <>
-      <h1>Settings</h1>
       <section className="card">
-        <h2>Notes &amp; recordings folder</h2>
-        <p>
-          Your notes, recordings, and attachments are saved as files in this
-          folder.
-        </p>
+        <h2>Notes &amp; recordings</h2>
         <div className="vault-location">
           <strong>On this iPhone</strong>
-          <span>Loofah app storage</span>
+          <span>Saved as files in Loofah app storage</span>
         </div>
-        <p className="caption">
-          {snapshot.vault.icloud_path
-            ? "A local copy stays on this iPhone so you can keep working offline."
-            : "Your vault is ready to use. Everything is saved locally in Loofah’s private app folder; iCloud is optional."}
-        </p>
+        {snapshot.vault.icloud_path && (
+          <p className="caption">
+            A local copy stays on this iPhone for offline access.
+          </p>
+        )}
         <details className="vault-path">
           <summary>Show folder path</summary>
           <p>{snapshot.vault.local_path}</p>
@@ -1044,16 +1179,23 @@ export function Setup({
         <p className="caption">
           {snapshot.vault.icloud_path
             ? "Notes, transcripts, summaries and recordings sync with this folder. Audio downloads when needed."
-            : "To sync with your Mac, connect the same vault folder in iCloud Drive. Your existing notes will sync with it."}
+            : "Connect the same iCloud Drive folder as your Mac to sync notes and recordings."}
         </p>
         <ErrorText error={snapshot.sync.error} />
-        <CommandButton command="mobile_connect_vault">
+        <CommandButton command="mobile_connect_vault" disabled={busy}>
           {snapshot.vault.icloud_path
             ? "Reconnect iCloud folder"
             : "Connect iCloud folder"}
         </CommandButton>
         {snapshot.sync.connected && (
-          <CommandButton command="mobile_sync">Sync now</CommandButton>
+          <CommandButton command="mobile_sync" disabled={busy}>
+            Sync now
+          </CommandButton>
+        )}
+        {busy && (
+          <p className="caption">
+            Finish the current activity before changing iCloud sync.
+          </p>
         )}
         {snapshot.sync.conflicts.map((c) => (
           <div className="conflict" key={c.id}>
@@ -1067,6 +1209,7 @@ export function Setup({
                 key={resolution}
                 command="mobile_resolve_conflict"
                 args={{ conflictId: c.id, resolution }}
+                disabled={busy}
               >
                 {resolution === "local"
                   ? "Keep iPhone"
@@ -1078,11 +1221,10 @@ export function Setup({
           </div>
         ))}
       </section>
-      <section className="card">
+      <section id="transcription-settings" className="card">
         <h2>On-device transcription</h2>
         <p>
-          Transcription runs locally on your iPhone. Download the model once
-          before transcribing. Recordings sync when iCloud is enabled.
+          Transcription runs on this iPhone. Download a model once to start.
         </p>
         <label>
           Transcription model

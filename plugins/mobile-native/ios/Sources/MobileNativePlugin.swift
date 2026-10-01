@@ -188,7 +188,8 @@ class MobileNativePlugin: Plugin {
         result in
         self?.importPicker = nil
         switch result {
-        case .success(let imported): invoke.resolve(imported)
+        case .success(let imported):
+          if let imported { invoke.resolve(imported) } else { invoke.resolve() }
         case .failure(let error): invoke.reject(error.localizedDescription)
         }
       }

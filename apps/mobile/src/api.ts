@@ -104,6 +104,16 @@ export function useCommand<T = void>(command: string) {
 export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
+export function visibleJobError(
+  job: Snapshot["jobs"][number],
+  modelReady: boolean,
+) {
+  return job.kind === "transcribe" &&
+    modelReady &&
+    job.error?.startsWith("Download the transcription model")
+    ? null
+    : job.error;
+}
 export function time(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }

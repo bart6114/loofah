@@ -12,6 +12,16 @@ import {
 
 import { errorMessage, type Snapshot, useCommand } from "./api";
 
+function isLoopbackUrl(value: string) {
+  try {
+    return ["localhost", "127.0.0.1", "[::1]"].includes(
+      new URL(value).hostname,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function SummarySettings({
   snapshot,
   onDirty,
@@ -46,6 +56,7 @@ export function SummarySettings({
     form.store,
     (state) => state.values.summaryProvider,
   );
+  const baseUrl = useStore(form.store, (state) => state.values.summaryBaseUrl);
   const provider = PROVIDERS.find((candidate) => candidate.id === providerId);
   const supported = providerId === "none" || !!provider?.mobileSupported;
   const localServer = providerId === "lmstudio" || providerId === "ollama";
@@ -110,7 +121,7 @@ export function SummarySettings({
     snapshot.settings.summary_language,
   ]);
   return (
-    <section className="card">
+    <section id="summary-settings" className="card">
       <h2>Summaries</h2>
       <form
         onSubmit={(event) => {
@@ -134,13 +145,19 @@ export function SummarySettings({
                     const next = PROVIDERS.find(
                       (candidate) => candidate.id === id,
                     );
-                    form.setFieldValue(
-                      "summaryBaseUrl",
+                    const suggestedBaseUrl =
                       id === snapshot.settings.summary_provider
                         ? snapshot.settings.summary_base_url
                         : snapshot.settings.providers[id]?.base_url ||
-                            next?.baseUrl ||
-                            "",
+                          next?.baseUrl ||
+                          "";
+                    form.setFieldValue(
+                      "summaryBaseUrl",
+                      (id === "lmstudio" || id === "ollama") &&
+                        id !== snapshot.settings.summary_provider &&
+                        isLoopbackUrl(suggestedBaseUrl)
+                        ? ""
+                        : suggestedBaseUrl,
                     );
                     form.setFieldValue(
                       "summaryModel",
@@ -187,12 +204,20 @@ export function SummarySettings({
                   summary. Your API key is stored in the iPhone Keychain.
                 </p>
                 {localServer && (
-                  <p className="muted">
-                    {provider?.displayName} runs on your Mac or another
-                    computer. Enter a server address your iPhone can reach. This
-                    connection requires that server to be running; summaries do
-                    not run offline on iPhone.
-                  </p>
+                  <>
+                    <p className="muted">
+                      {provider?.displayName} runs on your Mac or another
+                      computer. Enter a server address your iPhone can reach.
+                      This connection requires that server to be running;
+                      summaries do not run offline on iPhone.
+                    </p>
+                    {isLoopbackUrl(baseUrl) && (
+                      <p className="notice">
+                        This address points to your iPhone. Use the server’s
+                        address on your Wi-Fi network instead.
+                      </p>
+                    )}
+                  </>
                 )}
                 <form.Field name="summaryBaseUrl">
                   {(field) => (
@@ -237,7 +262,13 @@ export function SummarySettings({
                     </label>
                   )}
                 </form.Field>
-                <button type="button" onClick={() => models.mutate()}>
+                <button
+                  type="button"
+                  disabled={
+                    !baseUrl.trim() || (localServer && isLoopbackUrl(baseUrl))
+                  }
+                  onClick={() => models.mutate()}
+                >
                   {models.isPending ? "Loading models…" : "Load models"}
                 </button>
                 {models.error && (
@@ -324,7 +355,10 @@ export function SummarySettings({
               </label>
             )}
           </form.Field>
-          <button type="submit" disabled={!supported}>
+          <button
+            type="submit"
+            disabled={!supported || (localServer && isLoopbackUrl(baseUrl))}
+          >
             {save.isPending ? "Saving…" : "Save summary settings"}
           </button>
         </fieldset>

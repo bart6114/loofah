@@ -123,7 +123,7 @@ impl<R: Runtime> MobileNative<R> {
     pub async fn import_audio(
         &self,
         destination_path: impl AsRef<str>,
-    ) -> crate::Result<NativeImportResult> {
+    ) -> crate::Result<Option<NativeImportResult>> {
         self.call(
             "importAudio",
             serde_json::json!({ "destinationPath": destination_path.as_ref() }),

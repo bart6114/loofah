@@ -63,6 +63,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("note actions", () => {
+  it("shows only actions with content to copy", () => {
+    setup({
+      session: { ...session, summary: null, transcript: [] },
+      notes: "",
+    });
+    expect(screen.queryByRole("button", { name: /Copy/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Delete note" })).toBeTruthy();
+  });
   it("copies the current note draft without saving it", async () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Copy notes" }));

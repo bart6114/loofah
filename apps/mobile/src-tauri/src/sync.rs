@@ -117,9 +117,10 @@ pub async fn mobile_connect_vault(app: tauri::AppHandle) -> Result<(), String> {
         .select_icloud_vault()
         .await
         .map_err(|e| e.to_string())?;
-    if let Some(path) = selected.path {
-        attach(&app, path).await?;
-    }
+    let Some(path) = selected.path else {
+        return Ok(());
+    };
+    attach(&app, path).await?;
     drop(_guard);
     reconcile(&app).await
 }

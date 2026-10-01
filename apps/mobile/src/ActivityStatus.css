@@ -11,10 +11,18 @@
   max-width: 100%;
   padding: 8px;
   gap: 6px;
-  font-size: 13px;
+  font-size: 0.765rem;
 }
 .activity-trigger > svg {
   flex-shrink: 0;
+}
+.activity-status.compact .activity-trigger {
+  min-width: 44px;
+  justify-content: center;
+}
+.activity-status.compact .activity-phase,
+.activity-status.compact .activity-count {
+  display: none;
 }
 .activity-phase {
   min-width: 0;
@@ -80,7 +88,7 @@
   border: 0;
   background: transparent;
   color: var(--muted, #72746b);
-  font-size: 13px;
+  font-size: 0.765rem;
   padding: 8px;
 }
 .activity-close {
@@ -109,7 +117,7 @@
   gap: 8px;
   margin: 4px 0 8px;
   color: var(--muted, #72746b);
-  font-size: 13px;
+  font-size: 0.765rem;
 }
 .activity-job progress {
   width: 100%;
@@ -118,12 +126,12 @@
 }
 .activity-action {
   margin-top: 8px;
-  font-size: 14px;
+  font-size: 0.824rem;
   padding: 8px 14px;
 }
 .activity-error,
 .activity-hint {
-  font-size: 13px;
+  font-size: 0.765rem;
   overflow-wrap: anywhere;
 }
 .activity-error {

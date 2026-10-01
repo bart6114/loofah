@@ -5,7 +5,12 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { cn } from "@hypr/utils";
 
-import { errorMessage, useCommand, type Snapshot } from "./api";
+import {
+  errorMessage,
+  useCommand,
+  visibleJobError,
+  type Snapshot,
+} from "./api";
 
 function activityPhase(snapshot: Snapshot) {
   const running = snapshot.jobs.find((job) => job.state === "running");
@@ -67,9 +72,13 @@ function activityPhase(snapshot: Snapshot) {
 export function ActivityStatus({
   snapshot,
   onSelectSession,
+  onOpenTranscriptionSettings,
+  compact = false,
 }: {
   snapshot: Snapshot;
   onSelectSession: (id: string) => void;
+  onOpenTranscriptionSettings?: () => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const dismissFailed = useCommand("mobile_dismiss_failed_jobs");
@@ -124,7 +133,7 @@ export function ActivityStatus({
   }`;
 
   return (
-    <div className="activity-status" ref={root}>
+    <div className={cn(["activity-status", compact && "compact"])} ref={root}>
       <span
         className="activity-announcement"
         role="status"
@@ -235,9 +244,16 @@ export function ActivityStatus({
                     ? "You can keep using Loofah while this runs. Processing pauses during recording and when the app is in the background."
                     : hasQueuedJob
                       ? "Queued work starts while Loofah is open. Processing waits during recording and when the app is in the background."
-                      : hasPausedJob
-                        ? "Resume a paused job to continue."
-                        : "Retry a failed job to continue."}
+                      : snapshot.jobs.some(
+                            (job) =>
+                              job.kind === "transcribe" &&
+                              (job.state === "failed" ||
+                                job.state === "paused"),
+                          ) && !snapshot.model.ready
+                        ? "Download the transcription model to continue."
+                        : hasPausedJob
+                          ? "Resume a paused job to continue."
+                          : "Retry a failed job to continue."}
             </p>
           )}
           {modelBusy && <ModelActivity model={snapshot.model} />}
@@ -254,6 +270,15 @@ export function ActivityStatus({
                 setOpen(false);
                 onSelectSession(job.session_id);
               }}
+              modelReady={snapshot.model.ready}
+              onOpenTranscriptionSettings={
+                onOpenTranscriptionSettings
+                  ? () => {
+                      setOpen(false);
+                      onOpenTranscriptionSettings();
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -266,10 +291,14 @@ function JobActivity({
   job,
   title,
   onSelect,
+  modelReady,
+  onOpenTranscriptionSettings,
 }: {
   job: Snapshot["jobs"][number];
   title: string;
   onSelect: () => void;
+  modelReady: boolean;
+  onOpenTranscriptionSettings?: () => void;
 }) {
   const resume = useCommand(
     job.kind === "transcribe"
@@ -320,6 +349,8 @@ function JobActivity({
   const resumable = job.state === "paused" || job.state === "failed";
   const action = job.state === "failed" ? "Retry" : "Resume";
   const error = resume.error || pause.error;
+  const visibleError = visibleJobError(job, modelReady);
+  const needsModel = job.kind === "transcribe" && resumable && !modelReady;
 
   return (
     <section className="activity-job" aria-label={`${kind} for ${title}`}>
@@ -338,21 +369,30 @@ function JobActivity({
           max={1}
         />
       )}
-      {job.error && <p className="activity-error">{job.error}</p>}
-      <button
-        className="activity-action"
-        disabled={resume.isPending || pause.isPending}
-        aria-label={`${resumable ? action : "Pause"} ${kind} for ${title}`}
-        onClick={() =>
-          (resumable ? resume : pause).mutate({ sessionId: job.session_id })
-        }
-      >
-        {resume.isPending || pause.isPending
-          ? "Working…"
-          : resumable
-            ? action
-            : "Pause"}
-      </button>
+      {visibleError && <p className="activity-error">{visibleError}</p>}
+      {needsModel && onOpenTranscriptionSettings ? (
+        <button
+          className="activity-action"
+          onClick={onOpenTranscriptionSettings}
+        >
+          Set up transcription
+        </button>
+      ) : (
+        <button
+          className="activity-action"
+          disabled={resume.isPending || pause.isPending}
+          aria-label={`${resumable ? action : "Pause"} ${kind} for ${title}`}
+          onClick={() =>
+            (resumable ? resume : pause).mutate({ sessionId: job.session_id })
+          }
+        >
+          {resume.isPending || pause.isPending
+            ? "Working…"
+            : resumable
+              ? action
+              : "Pause"}
+        </button>
+      )}
       {error && (
         <p className="activity-error" role="alert">
           {errorMessage(error)}

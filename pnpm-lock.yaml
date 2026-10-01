@@ -352,6 +352,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@fontsource-variable/fraunces':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@hypr/ai-providers':
         specifier: workspace:*
         version: link:../../packages/ai-providers

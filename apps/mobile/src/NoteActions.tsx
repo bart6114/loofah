@@ -109,27 +109,29 @@ export function NoteActions({
               ["summary", "Copy summary", !!session.summary?.trim()],
               ["transcript", "Copy transcript", !!session.transcript.length],
             ] as const
-          ).map(([kind, label, hasContent]) => {
-            const copied = copy.isSuccess && copy.variables === kind;
-            const pending = copy.isPending && copy.variables === kind;
-            return (
-              <button
-                key={kind}
-                type="button"
-                disabled={!hasContent || copy.isPending}
-                onClick={() => copy.mutate(kind)}
-              >
-                {copied ? (
-                  <Check size={16} className="copy-confirmed" />
-                ) : (
-                  <Copy size={16} />
-                )}
-                <span aria-live="polite" aria-atomic="true">
-                  {copied ? copy.data : pending ? "Copying…" : label}
-                </span>
-              </button>
-            );
-          })}
+          )
+            .filter(([, , hasContent]) => hasContent)
+            .map(([kind, label]) => {
+              const copied = copy.isSuccess && copy.variables === kind;
+              const pending = copy.isPending && copy.variables === kind;
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  disabled={copy.isPending}
+                  onClick={() => copy.mutate(kind)}
+                >
+                  {copied ? (
+                    <Check size={16} className="copy-confirmed" />
+                  ) : (
+                    <Copy size={16} />
+                  )}
+                  <span aria-live="polite" aria-atomic="true">
+                    {copied ? copy.data : pending ? "Copying…" : label}
+                  </span>
+                </button>
+              );
+            })}
           {copy.error && (
             <p className="error" role="alert">
               {errorMessage(copy.error)}

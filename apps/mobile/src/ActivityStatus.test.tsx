@@ -90,14 +90,22 @@ const jobs: Snapshot["jobs"] = [
   },
 ];
 
-function showActivity(data: Snapshot, onSelectSession = vi.fn()) {
+function showActivity(
+  data: Snapshot,
+  onSelectSession = vi.fn(),
+  onOpenTranscriptionSettings?: () => void,
+) {
   return render(
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { mutations: { retry: false } } })
       }
     >
-      <ActivityStatus snapshot={data} onSelectSession={onSelectSession} />
+      <ActivityStatus
+        snapshot={data}
+        onSelectSession={onSelectSession}
+        onOpenTranscriptionSettings={onOpenTranscriptionSettings}
+      />
     </QueryClientProvider>,
   );
 }
@@ -216,6 +224,88 @@ describe("global background activity", () => {
       "mobile_summarize",
       expect.anything(),
     );
+  });
+
+  it("opens model setup instead of retrying transcription without a model", () => {
+    const openSettings = vi.fn();
+    showActivity(
+      {
+        ...snapshot,
+        model: { ...snapshot.model, ready: false },
+        jobs: [
+          {
+            ...jobs[3],
+            kind: "transcribe",
+            error:
+              "Download the transcription model, then retry this recording",
+          },
+        ],
+      },
+      vi.fn(),
+      openSettings,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Needs attention, 1 background/ }),
+    );
+    expect(
+      screen.getByText("Download the transcription model to continue."),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Retry transcription/ }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up transcription" }),
+    );
+    expect(openSettings).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("hides the old download error after the model is installed", () => {
+    showActivity({
+      ...snapshot,
+      jobs: [
+        {
+          ...jobs[3],
+          kind: "transcribe",
+          error: "Download the transcription model, then retry this recording",
+        },
+      ],
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Needs attention, 1 background/ }),
+    );
+    expect(
+      screen.queryByText(/Download the transcription model, then retry/),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Retry transcription/ }),
+    ).toBeTruthy();
+  });
+
+  it("offers model setup for paused transcription after the model is removed", () => {
+    const openSettings = vi.fn();
+    showActivity(
+      {
+        ...snapshot,
+        model: { ...snapshot.model, ready: false },
+        jobs: [jobs[2]],
+      },
+      vi.fn(),
+      openSettings,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Transcription paused/ }),
+    );
+    expect(
+      screen.getByText("Download the transcription model to continue."),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Resume transcription/ }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up transcription" }),
+    );
+    expect(openSettings).toHaveBeenCalledOnce();
   });
 
   it("shows only the attention icon and dismisses all failed jobs", async () => {

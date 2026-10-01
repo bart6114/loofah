@@ -14,6 +14,10 @@ import { listModels } from "@hypr/ai-providers";
 import type { Session, Snapshot } from "./api";
 import { App, Detail, Editor, Setup, SummarySettings } from "./App";
 vi.stubGlobal("scrollTo", vi.fn());
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+  configurable: true,
+  value: vi.fn(),
+});
 vi.mock("@tauri-apps/plugin-http", () => ({ fetch: vi.fn() }));
 vi.mock("@hypr/ai-providers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hypr/ai-providers")>()),
@@ -122,24 +126,36 @@ describe("iPhone navigation", () => {
     });
   });
   afterEach(() => vi.restoreAllMocks());
-  it("keeps a draft until the user explicitly discards it", async () => {
+  it("saves a note before navigating back", async () => {
     render(<App />, { wrapper });
     fireEvent.click(await screen.findByRole("button", { name: /Original/ }));
     fireEvent.change(await screen.findByLabelText("Notes"), {
       target: { value: "Keep my draft" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Back to notes" }));
-    expect(screen.getByRole("dialog").textContent).toContain(
-      "haven’t been saved",
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "mobile_update_session",
+        expect.objectContaining({ notes: "Keep my draft" }),
+      ),
     );
+    expect(await screen.findByRole("heading", { name: "loofah" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByLabelText("Notes")).toBeNull();
+  });
+  it("keeps the draft when saving before navigation fails", async () => {
+    render(<App />, { wrapper });
+    fireEvent.click(await screen.findByRole("button", { name: /Original/ }));
+    fireEvent.change(await screen.findByLabelText("Notes"), {
+      target: { value: "Keep my draft" },
+    });
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("Could not save"));
+    fireEvent.click(screen.getByRole("button", { name: "Back to notes" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
     expect((screen.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe(
       "Keep my draft",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Back to notes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(await screen.findByRole("heading", { name: "Notes" })).toBeTruthy();
-    expect(screen.queryByLabelText("Notes")).toBeNull();
   });
   it("restores a deleted note without interrupting another draft", async () => {
     let deleted = false;
@@ -213,6 +229,46 @@ describe("iPhone navigation", () => {
     expect(await screen.findByLabelText("Notes")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
   });
+  it("opens summary setup from a note that cannot create summaries yet", async () => {
+    render(<App />, { wrapper });
+    fireEvent.click(await screen.findByRole("button", { name: /Original/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Summary" }));
+    fireEvent.click(screen.getByRole("button", { name: "Set up summaries" }));
+    expect(
+      await screen.findByRole("heading", { name: "Settings" }),
+    ).toBeTruthy();
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Back to note" }));
+    expect(await screen.findByRole("tab", { name: "Summary" })).toHaveProperty(
+      "ariaSelected",
+      "true",
+    );
+  });
+  it("offers transcription setup after a recording when the model is missing", async () => {
+    const openSettings = vi.fn();
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "mobile_session"
+        ? { ...session, has_audio: true }
+        : undefined,
+    );
+    render(
+      <Detail
+        id="one"
+        snapshot={{ ...snapshot, model: { ...snapshot.model, ready: false } }}
+        onDirty={() => {}}
+        onOpenSettings={openSettings}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(await screen.findByRole("tab", { name: "Transcript" }));
+    expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
+    expect(screen.queryByText("No transcript yet.")).toBeNull();
+    expect(screen.getAllByText(/Download the on-device model/)).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Set up transcription" }),
+    );
+    expect(openSettings).toHaveBeenCalledWith("transcription");
+  });
   it("explains an empty search and allows clearing it", async () => {
     render(<App />, { wrapper });
     fireEvent.change(await screen.findByRole("searchbox"), {
@@ -223,6 +279,40 @@ describe("iPhone navigation", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
     expect(screen.getByRole("button", { name: /Original/ })).toBeTruthy();
+  });
+  it("leaves notes unchanged when the audio picker is cancelled", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "mobile_snapshot"
+        ? { ...snapshot, sessions: [] }
+        : command === "mobile_import_audio"
+          ? null
+          : session,
+    );
+    render(<App />, { wrapper });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Import audio" }),
+    );
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("mobile_import_audio", {}),
+    );
+    expect(screen.getByRole("heading", { name: "loofah" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("waits until recording finishes before offering audio import", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "mobile_snapshot"
+        ? {
+            ...snapshot,
+            recording: { ...snapshot.recording, session_id: "one" },
+          }
+        : session,
+    );
+    render(<App />, { wrapper });
+    const button = await screen.findByRole("button", { name: "Import audio" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText("Finish recording before importing audio."),
+    ).toBeTruthy();
   });
   it("does not offer iCloud audio or transcription for an empty local note", async () => {
     render(<Detail id="one" snapshot={snapshot} onDirty={() => {}} />, {
@@ -235,6 +325,14 @@ describe("iPhone navigation", () => {
   });
 });
 describe("desktop-aligned mobile note views", () => {
+  it("keeps attachment controls out of notes without attachments", async () => {
+    vi.mocked(invoke).mockResolvedValue(session);
+    render(<Detail id="one" snapshot={snapshot} onDirty={() => {}} />, {
+      wrapper,
+    });
+    await screen.findByLabelText("Notes");
+    expect(screen.queryByRole("button", { name: "Attachments" })).toBeNull();
+  });
   it("opens an existing summary, shows inline tasks and toggles attachments without leaving the view", async () => {
     vi.mocked(invoke).mockResolvedValue({
       ...session,
@@ -299,7 +397,7 @@ describe("desktop-aligned mobile note views", () => {
     expect((screen.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe(
       "Keep this draft",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    fireEvent.blur(screen.getByLabelText("Notes"));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith(
         "mobile_update_session",
@@ -312,7 +410,18 @@ describe("desktop-aligned mobile note views", () => {
   });
   it("does not save a dirty note when using recording, attachment or view controls", async () => {
     vi.mocked(invoke).mockImplementation(async (command) =>
-      command === "mobile_session" ? session : undefined,
+      command === "mobile_session"
+        ? {
+            ...session,
+            attachments: [
+              {
+                name: "Agenda.pdf",
+                relative_path: "attachments/agenda.pdf",
+                url: "asset://agenda",
+              },
+            ],
+          }
+        : undefined,
     );
     render(<Detail id="one" snapshot={snapshot} onDirty={() => {}} />, {
       wrapper,
@@ -363,7 +472,7 @@ describe("desktop-aligned mobile note views", () => {
     fireEvent.change(screen.getByLabelText("Note title"), {
       target: { value: "A long wrapped meeting title" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    fireEvent.blur(screen.getByLabelText("Note title"));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith(
         "mobile_update_session",
@@ -514,6 +623,72 @@ describe("mobile processing views", () => {
       ).toBeNull();
     },
   );
+
+  it("allows transcription and summary after an earlier transcription failure", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "mobile_session"
+        ? { ...session, audio_url: "asset://recording" }
+        : undefined,
+    );
+    render(
+      <Detail
+        id="one"
+        snapshot={{
+          ...snapshot,
+          summary: { available: true, reason: null },
+          jobs: [
+            {
+              ...processingJob("transcribe", "failed"),
+              error:
+                "Download the transcription model, then retry this recording",
+            },
+          ],
+        }}
+        onDirty={() => {}}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(await screen.findByRole("tab", { name: "Transcript" }));
+    expect(
+      screen.queryByText(/Download the transcription model, then retry/),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry transcription" }),
+    );
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("mobile_transcribe", {
+        sessionId: "one",
+      }),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Summary" }));
+    expect(
+      screen.getByRole("button", { name: "Create summary" }),
+    ).toHaveProperty("disabled", false);
+  });
+
+  it("shows a failed summary and offers retry", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "mobile_session" ? session : undefined,
+    );
+    render(
+      <Detail
+        id="one"
+        snapshot={{
+          ...snapshot,
+          summary: { available: true, reason: null },
+          jobs: [processingJob("summary", "failed")],
+        }}
+        onDirty={() => {}}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(await screen.findByRole("tab", { name: "Summary" }));
+    expect(screen.getByText("Summary failed.")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("Provider failed");
+    expect(
+      screen.getByRole("button", { name: "Retry summary" }),
+    ).toHaveProperty("disabled", false);
+  });
 
   it("follows finishing, transcription and summary without overriding a manual tab in either phase", async () => {
     vi.mocked(invoke).mockImplementation(async (command) =>
@@ -716,7 +891,7 @@ describe("mobile processing views", () => {
   });
 
   it.each(["paused", "failed"] as const)(
-    "does not claim a %s job is still processing or duplicate its controls",
+    "shows the %s summary state without claiming it is processing",
     async (state) => {
       vi.mocked(invoke).mockImplementation(async (command) =>
         command === "mobile_session" ? session : undefined,
@@ -731,16 +906,61 @@ describe("mobile processing views", () => {
       );
       await screen.findByLabelText("Note title");
       fireEvent.click(screen.getByRole("tab", { name: "Summary" }));
-      expect(screen.getByText("No summary yet.")).toBeTruthy();
-      expect(screen.queryByText("Generating summary…")).toBeNull();
-      expect(screen.queryByText("Provider failed")).toBeNull();
       expect(
-        screen.queryByRole("button", { name: /Resume summary|Retry summary/ }),
-      ).toBeNull();
+        screen.getByText(
+          state === "paused" ? "Summary paused." : "Summary failed.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText("Generating summary…")).toBeNull();
+      expect(screen.queryByText("Provider failed")).toBe(
+        state === "failed" ? screen.getByRole("alert") : null,
+      );
+      expect(
+        screen.getByRole("button", {
+          name: state === "paused" ? "Resume summary" : "Retry summary",
+        }),
+      ).toHaveProperty("disabled", true);
     },
   );
 });
 describe("mobile notes", () => {
+  it("keeps typing during a save and commits the later draft on Done", async () => {
+    let finishFirstSave = () => {};
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (
+        command === "mobile_update_session" &&
+        (args as { notes?: string } | undefined)?.notes === "First"
+      )
+        await new Promise<void>((resolve) => {
+          finishFirstSave = resolve;
+        });
+      return command === "mobile_session" ? session : undefined;
+    });
+    render(<Editor session={session} onDirty={() => {}} />, { wrapper });
+    const notes = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    fireEvent.change(notes, { target: { value: "First" } });
+    fireEvent.blur(notes);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "mobile_update_session",
+        expect.objectContaining({ notes: "First" }),
+      ),
+    );
+    fireEvent.change(notes, { target: { value: "First and second" } });
+    fireEvent.blur(notes);
+    finishFirstSave();
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "mobile_update_session",
+        expect.objectContaining({
+          notes: "First and second",
+          expectedNotes: "First",
+        }),
+      ),
+    );
+    expect(notes.value).toBe("First and second");
+    expect(screen.queryByRole("button", { name: "Save notes" })).toBeNull();
+  });
   it("keeps the draft and original concurrency baseline when iCloud changes the note", async () => {
     const onDirty = vi.fn();
     const view = render(<Editor session={session} onDirty={onDirty} />, {
@@ -761,7 +981,7 @@ describe("mobile notes", () => {
     vi.mocked(invoke).mockRejectedValueOnce(
       "Notes changed in iCloud. Reload before saving.",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+    fireEvent.blur(screen.getByLabelText("Notes"));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("mobile_update_session", {
         sessionId: "one",
@@ -1168,6 +1388,11 @@ describe("mobile provider connections", () => {
     expect(
       screen.getByText(/summaries do not run offline on iPhone/),
     ).toBeTruthy();
+    expect(screen.getByLabelText("Server URL")).toHaveProperty("value", "");
+    expect(screen.getByRole("button", { name: "Load models" })).toHaveProperty(
+      "disabled",
+      true,
+    );
     fireEvent.change(screen.getByLabelText("Server URL"), {
       target: { value: "http://192.168.1.10:1234/v1" },
     });
@@ -1193,8 +1418,44 @@ describe("mobile provider connections", () => {
       ),
     );
   });
+  it("flags a synced local server address that points to the iPhone", () => {
+    render(
+      <SummarySettings
+        snapshot={{
+          ...snapshot,
+          settings: {
+            ...snapshot.settings,
+            summary_provider: "lmstudio",
+            summary_base_url: "http://127.0.0.1:1234/v1",
+          },
+        }}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByText(/This address points to your iPhone/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Save summary settings" }),
+    ).toHaveProperty("disabled", true);
+  });
 });
 describe("model settings", () => {
+  it("keeps iCloud changes unavailable during recording", () => {
+    render(
+      <Setup
+        snapshot={{
+          ...snapshot,
+          recording: { ...snapshot.recording, session_id: "one" },
+        }}
+      />,
+      { wrapper },
+    );
+    expect(
+      screen.getByRole("button", { name: "Connect iCloud folder" }),
+    ).toHaveProperty("disabled", true);
+    expect(
+      screen.getByText(/Finish the current activity before changing iCloud/),
+    ).toBeTruthy();
+  });
   it("shows byte progress with a known total and stays indeterminate without one", () => {
     const view = render(
       <Setup
@@ -1404,7 +1665,7 @@ describe("vault location", () => {
   it("shows the active local folder before iCloud is configured", () => {
     render(<Setup snapshot={snapshot} />, { wrapper });
     expect(
-      screen.getByRole("heading", { name: "Notes & recordings folder" }),
+      screen.getByRole("heading", { name: "Notes & recordings" }),
     ).toBeTruthy();
     expect(screen.getByText("On this iPhone")).toBeTruthy();
     expect(screen.getByText(snapshot.vault.local_path)).toBeTruthy();

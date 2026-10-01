@@ -543,7 +543,7 @@ pub async fn mobile_delete_model(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn mobile_import_audio(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn mobile_import_audio(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let state = app.state::<MobileState>();
     let _guard = state.operation.lock().await;
     if recording::is_active() {
@@ -558,7 +558,11 @@ pub async fn mobile_import_audio(app: tauri::AppHandle) -> Result<String, String
         .await
         .map_err(|e| e.to_string());
     let imported = match imported {
-        Ok(imported) => imported,
+        Ok(Some(imported)) => imported,
+        Ok(None) => {
+            let _ = std::fs::remove_file(&temporary);
+            return Ok(None);
+        }
         Err(error) => {
             let _ = std::fs::remove_file(&temporary);
             return Err(error);
@@ -578,7 +582,7 @@ pub async fn mobile_import_audio(app: tauri::AppHandle) -> Result<String, String
         .map_err(|e| e.to_string())?;
     jobs::enqueue(&app, &id, "transcribe").await?;
     state.changed(&app);
-    Ok(id)
+    Ok(Some(id))
 }
 
 #[tauri::command]

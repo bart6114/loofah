@@ -79,6 +79,7 @@ function prepare() {
   const version = JSON.parse(
     readFileSync(resolve(root, "package.json"), "utf8"),
   ).version;
+  const buildNumber = process.env.MOBILE_BUILD_NUMBER || version;
   const source = (path) => ({ path: relative(apple, resolve(root, path)) });
   const intent = source("apps/mobile/ios/Shared/StopRecordingIntent.swift");
   const spec = {
@@ -97,7 +98,7 @@ function prepare() {
             ...appInfo,
             NSSupportsLiveActivities: true,
             CFBundleShortVersionString: version,
-            CFBundleVersion: version,
+            CFBundleVersion: buildNumber,
           },
         },
       },
@@ -131,7 +132,7 @@ function prepare() {
           properties: {
             CFBundleDisplayName: "Loofah Recording",
             CFBundleShortVersionString: version,
-            CFBundleVersion: version,
+            CFBundleVersion: buildNumber,
             NSExtension: {
               NSExtensionPointIdentifier: "com.apple.widgetkit-extension",
             },

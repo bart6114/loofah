@@ -133,7 +133,7 @@ final class ICloudVaultAccess: NSObject, UIDocumentPickerDelegate {
     guard let invoke = pending else { return }
     pending = nil
     guard let url = urls.first else {
-      invoke.reject("No folder was selected.")
+      invoke.resolve(["path": NSNull()])
       return
     }
     do {
@@ -159,7 +159,7 @@ final class ICloudVaultAccess: NSObject, UIDocumentPickerDelegate {
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    pending?.reject("Folder selection cancelled.")
+    pending?.resolve(["path": NSNull()])
     pending = nil
   }
 

@@ -1,5 +1,15 @@
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/fraunces/files/fraunces-latin-full-normal.woff2")
+    format("woff2-variations");
+}
+
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: -apple-system-body;
   color: #1d1d1f;
   background: #ffffff;
   font-synthesis: none;
@@ -54,34 +64,24 @@ select:focus-visible {
 .app {
   max-width: 760px;
   margin: auto;
-  min-height: 100dvh;
+  /* WKWebView short pages otherwise leave both safe areas below fixed controls. */
+  min-height: calc(
+    100dvh + env(safe-area-inset-top) + env(safe-area-inset-bottom)
+  );
 }
 header {
-  padding: calc(env(safe-area-inset-top) + 14px) 20px 14px;
+  padding: calc(env(safe-area-inset-top) + 8px) 20px 8px;
   padding-left: max(20px, env(safe-area-inset-left));
   padding-right: max(20px, env(safe-area-inset-right));
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   border-bottom: 1px solid var(--border);
   background: #ffffff;
   position: sticky;
-  top: 0;
+  /* The iOS visual viewport moves above the keyboard while the document scrolls. */
+  top: var(--visual-viewport-top, 0px);
   z-index: 10;
-}
-.brand {
-  font-family: inherit;
-  font-size: 30px;
-  letter-spacing: -0.5px;
-  flex: 1;
-}
-.brand span {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 10px;
-  letter-spacing: 0.6px;
-  margin-left: 10px;
-  color: var(--muted);
-  text-transform: uppercase;
 }
 .icon {
   padding: 10px;
@@ -92,6 +92,13 @@ header {
 .icon[hidden] {
   display: none;
 }
+.back-button {
+  color: var(--green);
+  font-size: 0.941rem;
+  font-weight: 500;
+  padding-left: 0;
+  gap: 4px;
+}
 .primary {
   background: var(--green);
   color: white;
@@ -99,8 +106,11 @@ header {
 .primary:active {
   background: #244331;
 }
+.new-note-button {
+  border-radius: 12px;
+}
 main {
-  padding: 24px 20px calc(36px + env(safe-area-inset-bottom));
+  padding: 12px 20px calc(36px + env(safe-area-inset-bottom));
   padding-left: max(20px, env(safe-area-inset-left));
   padding-right: max(20px, env(safe-area-inset-right));
 }
@@ -108,12 +118,12 @@ h1 {
   font-family: inherit;
   font-weight: 600;
   letter-spacing: -0.6px;
-  font-size: 28px;
+  font-size: 1.647rem;
   line-height: 1.15;
   margin: 0 0 8px;
 }
 h2 {
-  font-size: 18px;
+  font-size: 1.059rem;
   line-height: 1.3;
   margin: 0 0 10px;
 }
@@ -122,23 +132,9 @@ p {
   margin: 10px 0;
 }
 .muted,
-.caption,
-.page-heading p {
-  color: var(--muted);
-}
 .caption {
-  font-size: 13px;
+  font-size: 0.765rem;
   overflow-wrap: anywhere;
-}
-.page-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 18px;
-}
-.page-heading p {
-  margin: 0;
-  font-size: 14px;
 }
 input,
 textarea,
@@ -150,7 +146,7 @@ select {
   background: white;
   color: inherit;
   min-height: 44px;
-  font-size: 16px;
+  font-size: 0.941rem;
 }
 .search {
   background: #f4f4f5;
@@ -159,7 +155,7 @@ select {
 }
 .session-row {
   width: 100%;
-  padding: 18px 0;
+  padding: 12px 0;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
@@ -171,32 +167,25 @@ select {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .session-row strong {
   font-weight: 500;
-  font-size: 17px;
+  font-size: 1rem;
   overflow-wrap: anywhere;
 }
 .session-row small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.706rem;
 }
-.wide {
-  width: 100%;
-  margin-top: 20px;
-}
-.subtle {
-  background: transparent;
-}
-.sync-link {
-  display: flex;
-  width: 100%;
+.import-link {
+  justify-content: flex-start;
   background: transparent;
   border: 0;
-  font-size: 12px;
+  padding: 10px 0;
+  font-size: 0.824rem;
   color: var(--muted);
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .empty {
   padding: 40px 6px;
@@ -213,18 +202,23 @@ select {
   border: 1px solid #dce4cf;
   border-radius: 12px;
   padding: 14px;
-  font-size: 14px;
+  font-size: 0.824rem;
   text-align: left;
   justify-content: space-between;
   line-height: 1.45;
   margin: 12px 0;
+}
+.model-setup-link {
+  min-height: 44px;
+  padding: 8px 12px;
+  margin: 4px 0 10px;
 }
 .error {
   background: #fff0ed;
   padding: 12px;
   border-radius: 10px;
   color: #953e2e;
-  font-size: 14px;
+  font-size: 0.824rem;
   overflow-wrap: anywhere;
 }
 .recording-bar {
@@ -242,6 +236,24 @@ select {
   padding-right: max(20px, env(safe-area-inset-right));
   z-index: 20;
 }
+.recording-bar.idle-recording {
+  left: auto;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: none;
+  width: auto;
+  max-width: min(320px, calc(100vw - 40px));
+  border: 0;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.idle-recording .recording-hint {
+  display: none;
+}
+.idle-recording .record-button {
+  box-shadow: 0 6px 22px #1d1d1f26;
+}
 .recording-bar .error {
   margin-top: 0;
 }
@@ -252,7 +264,7 @@ select {
   justify-content: space-between;
 }
 .recording-hint {
-  font-size: 13px;
+  font-size: 0.765rem;
   color: var(--muted);
 }
 .record-button {
@@ -273,7 +285,7 @@ select {
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 14px;
+  font-size: 0.824rem;
   gap: 8px;
 }
 .recording-title b {
@@ -300,7 +312,7 @@ select {
   flex: 1;
   background: transparent;
   border: 0;
-  font-size: 13px;
+  font-size: 0.765rem;
 }
 .tabs .selected {
   background: white;
@@ -309,17 +321,19 @@ select {
 .session-meta {
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  font-size: 10px;
+  font-size: 0.647rem;
   color: var(--muted);
 }
 .title-input {
   border: 0;
   background: transparent;
   font-family: inherit;
-  font-size: 28px;
+  font-size: 1.412rem;
   padding: 6px 0;
   letter-spacing: -0.5px;
   border-radius: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .notes-input {
   border: 0;
@@ -328,10 +342,14 @@ select {
   min-height: 260px;
   resize: vertical;
   line-height: 1.7;
-  padding: 18px 0;
+  padding: 8px 0;
+}
+.title-input:focus-visible,
+.notes-input:focus-visible {
+  outline: none;
 }
 .detail-title {
-  font-size: 27px;
+  font-size: 1.588rem;
 }
 .audio-section {
   border-top: 1px solid var(--border);
@@ -347,21 +365,29 @@ audio {
   display: block;
 }
 .card {
-  padding: 20px;
-  margin: 18px 0;
+  padding: 16px;
+  margin: 12px 0;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 16px;
 }
+#summary-settings,
+#transcription-settings {
+  scroll-margin-top: calc(env(safe-area-inset-top) + 90px);
+}
 .card p {
-  font-size: 14px;
+  font-size: 0.824rem;
+}
+.card h3 {
+  margin: 16px 0 8px;
+  font-size: 1rem;
 }
 .card button {
   margin: 8px 6px 0 0;
 }
 .card label {
   display: block;
-  font-size: 14px;
+  font-size: 0.824rem;
   margin: 18px 0 12px;
 }
 .card label input,
@@ -370,7 +396,7 @@ audio {
   margin-top: 8px;
 }
 .status {
-  font-size: 13px;
+  font-size: 0.765rem;
   color: var(--green);
 }
 .conflict {
@@ -397,11 +423,11 @@ audio {
   border: 0;
   background: transparent;
   color: var(--green);
-  font-size: 12px;
+  font-size: 0.706rem;
   font-variant-numeric: tabular-nums;
 }
 .transcript small {
-  font-size: 11px;
+  font-size: 0.647rem;
   color: var(--muted);
   flex: none;
   min-width: 28px;
@@ -450,7 +476,7 @@ audio {
   font-family: inherit;
   font-weight: 600;
   letter-spacing: 0;
-  font-size: 19px;
+  font-size: 1.118rem;
   margin-top: 24px;
 }
 .prose a {
@@ -477,7 +503,7 @@ audio {
   margin-top: 24px;
 }
 .app:has(input:focus, textarea:focus, select:focus)
-  .recording-bar:not(.is-recording) {
+  .recording-bar.idle-recording {
   display: none;
 }
 @media (min-width: 600px) {
@@ -489,7 +515,7 @@ audio {
     padding-left: 40px;
     padding-right: 40px;
   }
-  .recording-bar {
+  .recording-bar:not(.idle-recording) {
     padding-left: 40px;
     padding-right: 40px;
   }
@@ -497,18 +523,25 @@ audio {
 
 .navigation-title {
   flex: 1;
-  font-size: 16px;
-  font-weight: 500;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.059rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
 }
-.brand {
-  font-size: 22px;
+.navigation-title.home-title {
+  font-family: "Fraunces Variable", Georgia, serif;
+  font-size: 1.294rem;
+  font-variation-settings: "opsz" 28, "SOFT" 80, "WONK" 1;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 .session-controls {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  margin: 14px 0;
+  margin: 8px 0 4px;
 }
 .session-controls .tabs {
   margin: 0;
@@ -524,22 +557,6 @@ audio {
 }
 .attachment-toggle.selected {
   background: #f1f1f3;
-}
-.recording-inline .recording-hint {
-  display: none;
-}
-.recording-inline .record-button {
-  color: inherit;
-  background: #f4f4f5;
-  min-height: 44px;
-  padding: 10px 12px;
-  border-radius: 8px;
-}
-.recording-inline .recording-inner {
-  gap: 0;
-}
-.recording-inline .error {
-  width: 100%;
 }
 .attachments-panel {
   padding: 12px 16px;
@@ -567,13 +584,13 @@ audio {
   margin: 12px 0;
 }
 
-.title-input, .notes-input {
+.notes-input {
   resize: none;
   overflow: hidden;
 }
 .title-input {
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .attachment-open {
@@ -585,7 +602,11 @@ audio {
   width: 100%;
   text-align: left;
 }
-.has-capture > main {
+.has-capture > main,
+.app:has(.recording-bar.idle-recording) > main {
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+.has-active-capture > main {
   padding-bottom: calc(130px + env(safe-area-inset-bottom));
 }
 
@@ -602,7 +623,7 @@ audio {
 .prose table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 0.824rem;
 }
 .prose th, .prose td {
   padding: 8px;
@@ -614,21 +635,23 @@ audio {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border-radius: 12px;
   background: #f4f4f5;
   overflow-wrap: anywhere;
 }
 .vault-location span {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.824rem;
 }
 .vault-path {
-  margin: 16px 0;
-  font-size: 14px;
+  margin: 4px 0 8px;
+  font-size: 0.824rem;
 }
 .vault-path summary {
   cursor: pointer;
+  min-height: 44px;
+  padding: 12px 0;
 }
 .vault-path p {
   color: var(--muted);
@@ -673,7 +696,7 @@ audio {
 }
 .note-actions-panel p {
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 0.765rem;
 }
 button.danger {
   color: #b42318;

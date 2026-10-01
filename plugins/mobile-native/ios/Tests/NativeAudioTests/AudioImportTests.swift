@@ -17,8 +17,12 @@ final class AudioImportTests: XCTestCase {
     var completions = 0
     let picker = AudioImportPicker(
       destination: FileManager.default.temporaryDirectory.appendingPathComponent("unused.wav")
-    ) { [captured = probe!] _ in
+    ) { [captured = probe!] result in
       withExtendedLifetime(captured) { completions += 1 }
+      switch result {
+      case .success(let imported): XCTAssertNil(imported)
+      case .failure(let error): XCTFail("Cancellation failed: \(error)")
+      }
     }
     probe = nil
     XCTAssertNotNil(retainedProbe)

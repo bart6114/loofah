@@ -13,10 +13,10 @@ struct ImportedAudio: Encodable {
 
 final class AudioImportPicker: NSObject, UIDocumentPickerDelegate {
   private let destination: URL
-  private var completion: ((Result<ImportedAudio, Error>) -> Void)?
+  private var completion: ((Result<ImportedAudio?, Error>) -> Void)?
   private var finished = false
 
-  init(destination: URL, completion: @escaping (Result<ImportedAudio, Error>) -> Void) {
+  init(destination: URL, completion: @escaping (Result<ImportedAudio?, Error>) -> Void) {
     self.destination = destination
     self.completion = completion
   }
@@ -38,7 +38,7 @@ final class AudioImportPicker: NSObject, UIDocumentPickerDelegate {
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    finish(.failure(NativeFailure(message: "Audio import was cancelled.")))
+    finish(.success(nil))
   }
 
   func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL])
@@ -51,7 +51,7 @@ final class AudioImportPicker: NSObject, UIDocumentPickerDelegate {
       let scoped = source.startAccessingSecurityScopedResource()
       defer { if scoped { source.stopAccessingSecurityScopedResource() } }
       var coordinationError: NSError?
-      var result: Result<ImportedAudio, Error> = .failure(
+      var result: Result<ImportedAudio?, Error> = .failure(
         NativeFailure(message: "Could not read the selected audio file."))
       NSFileCoordinator().coordinate(readingItemAt: source, options: [], error: &coordinationError)
       { coordinated in
@@ -63,7 +63,7 @@ final class AudioImportPicker: NSObject, UIDocumentPickerDelegate {
     }
   }
 
-  private func finish(_ result: Result<ImportedAudio, Error>) {
+  private func finish(_ result: Result<ImportedAudio?, Error>) {
     guard !finished else { return }
     finished = true
     let callback = completion
