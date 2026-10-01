@@ -46,59 +46,33 @@ jobs:
           fi
           umask 077
           printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
-      - name: Archive iPhone app and Recording widget
+      - name: Build signed App Store IPA
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           set -euo pipefail
-          xcodebuild archive \
-            -project apps/mobile/src-tauri/gen/apple/mobile.xcodeproj \
-            -scheme mobile_iOS \
-            -configuration release \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Loofah.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$APPLE_API_KEY" \
-            -authenticationKeyIssuerID "$APPLE_API_ISSUER" \
-            DEVELOPMENT_TEAM="$APPLE_DEVELOPMENT_TEAM" \
-            CODE_SIGN_STYLE=Automatic
-      - name: Export signed App Store IPA
-        env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          set -euo pipefail
-          cat > "$RUNNER_TEMP/mobile-export.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>export</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>teamID</key><string>$APPLE_DEVELOPMENT_TEAM</string>
-            <key>manageAppVersionAndBuildNumber</key><false/>
-          </dict></plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/Loofah.xcarchive" \
-            -exportPath "$RUNNER_TEMP/mobile-export" \
-            -exportOptionsPlist "$RUNNER_TEMP/mobile-export.plist" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$APPLE_API_KEY" \
-            -authenticationKeyIssuerID "$APPLE_API_ISSUER"
+          export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          build_config="$(jq -nc --arg build "$MOBILE_BUILD_NUMBER" '{bundle:{iOS:{bundleVersion:$build}}}')"
+          pnpm -F @hypr/mobile ios:build --target aarch64 --ci \
+            --export-method app-store-connect --config "$build_config"
       - name: Find IPA
         id: ipa
         run: |
           set -euo pipefail
           shopt -s nullglob
-          ipas=("$RUNNER_TEMP/mobile-export"/*.ipa)
+          ipas=(apps/mobile/src-tauri/gen/apple/build/arm64/*.ipa)
           if [ "${#ipas[@]}" -ne 1 ]; then
             echo "::error::Expected one exported IPA, found ${#ipas[@]}"
             exit 1
           fi
+          ditto -x -k "${ipas[0]}" "$RUNNER_TEMP/mobile-ipa-inspect"
+          app_info="$RUNNER_TEMP/mobile-ipa-inspect/Payload/Loofah Notes.app/Info.plist"
+          widget_info="$RUNNER_TEMP/mobile-ipa-inspect/Payload/Loofah Notes.app/PlugIns/RecordingWidget.appex/Info.plist"
+          test "$(plutil -extract CFBundleVersion raw -o - "$app_info")" = "$MOBILE_BUILD_NUMBER"
+          test "$(plutil -extract CFBundleVersion raw -o - "$widget_info")" = "$MOBILE_BUILD_NUMBER"
+          test "$(plutil -extract UIDeviceFamily json -o - "$app_info")" = '[1]'
+          codesign --verify --deep --strict "$RUNNER_TEMP/mobile-ipa-inspect/Payload/Loofah Notes.app"
           echo "path=${ipas[0]}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
