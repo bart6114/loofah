@@ -490,9 +490,12 @@ function underlinePlugin(md: MarkdownIt) {
       // ++text++ syntax
       if (
         state.src.charCodeAt(start) === 0x2b /* + */ &&
-        state.src.charCodeAt(start + 1) === 0x2b
+        state.src.charCodeAt(start + 1) === 0x2b &&
+        (start === 0 || !/[\p{L}\p{N}_+]/u.test(state.src[start - 1]))
       ) {
-        const match = src.match(/^\+\+([\s\S]+?)\+\+/);
+        const match = src.match(
+          /^\+\+(?=\S)([^\n]+?\S|\S)\+\+(?![\p{L}\p{N}_+])/u,
+        );
         if (match) {
           if (!silent) {
             const open = state.push("underline_open", "u", 1);

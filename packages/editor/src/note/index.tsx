@@ -589,8 +589,8 @@ function EditorCommandsBridge({
   return null;
 }
 
-export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
-  function NoteEditor(props, ref) {
+const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
+  function NoteEditorContent(props, ref) {
     const {
       handleChange,
       onDraftChange,
@@ -856,22 +856,17 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
     );
 
     const defaultState = useMemo(() => {
-      let doc: PMNode;
-      try {
-        const content = mountedDraft ?? reconciledInitialContent;
-        doc =
-          content && content.type === "doc"
-            ? PMNode.fromJSON(schema, content)
-            : schema.node("doc", null, [schema.node("paragraph")]);
-        if (enforceTitleHeading) {
-          doc = normalizeTitleHeadingDoc(doc);
-        }
-      } catch {
-        doc = schema.node("doc", null, [
-          enforceTitleHeading
-            ? schema.node("heading", { level: 1 })
-            : schema.node("paragraph"),
-        ]);
+      const content = mountedDraft ?? reconciledInitialContent;
+      if (content && content.type !== "doc") {
+        throw new Error("Note content is not a document");
+      }
+      let doc = content
+        ? PMNode.fromJSON(schema, content)
+        : schema.node("doc", null, [schema.node("paragraph")]);
+      // A failed load must never become a blank document the autosave can persist.
+      doc.check();
+      if (enforceTitleHeading) {
+        doc = normalizeTitleHeadingDoc(doc);
       }
       return EditorState.create({ doc, plugins });
     }, [mountedDraft, reconciledInitialContent, plugins, enforceTitleHeading]);
@@ -1022,48 +1017,59 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
             <LinkedItemOpenBehaviorContext.Provider
               value={linkedItemOpenBehavior}
             >
-              <EditorErrorBoundary
-                resetKey={
-                  taskSource ? `${taskSource.type}:${taskSource.id}` : "note"
-                }
+              <ProseMirror
+                state={editorState}
+                dispatchTransaction={dispatchTransaction}
+                nodeViewComponents={nodeViews}
+                editable={() => !readOnly}
+                attributes={{
+                  spellCheck: "false",
+                  autoComplete: "off",
+                  autoCorrect: "off",
+                  autoCapitalize: "off",
+                  role: readOnly ? "document" : "textbox",
+                  "aria-readonly": readOnly ? "true" : "false",
+                  class: cn([
+                    "prosemirror-editor",
+                    enforceTitleHeading && "note-title-editor",
+                    className,
+                  ]),
+                }}
               >
-                <ProseMirror
-                  state={editorState}
-                  dispatchTransaction={dispatchTransaction}
-                  nodeViewComponents={nodeViews}
-                  editable={() => !readOnly}
-                  attributes={{
-                    spellCheck: "false",
-                    autoComplete: "off",
-                    autoCorrect: "off",
-                    autoCapitalize: "off",
-                    role: readOnly ? "document" : "textbox",
-                    "aria-readonly": readOnly ? "true" : "false",
-                    class: cn([
-                      "prosemirror-editor",
-                      enforceTitleHeading && "note-title-editor",
-                      className,
-                    ]),
-                  }}
-                >
-                  <ProseMirrorDoc />
-                  <ViewCapture
-                    viewRef={viewRef}
-                    onViewReady={onViewReady}
-                    onViewDisposed={handleViewDisposed}
-                  />
-                  <EditorCommandsBridge commandsRef={commandsRef} />
-                  {showFormatToolbar && !readOnly && <FormatToolbar />}
-                  {showSlashCommand && !readOnly && <SlashCommandMenu />}
-                  {mentionConfig && !readOnly && (
-                    <MentionSuggestion config={mentionConfig} />
-                  )}
-                </ProseMirror>
-              </EditorErrorBoundary>
+                <ProseMirrorDoc />
+                <ViewCapture
+                  viewRef={viewRef}
+                  onViewReady={onViewReady}
+                  onViewDisposed={handleViewDisposed}
+                />
+                <EditorCommandsBridge commandsRef={commandsRef} />
+                {showFormatToolbar && !readOnly && <FormatToolbar />}
+                {showSlashCommand && !readOnly && <SlashCommandMenu />}
+                {mentionConfig && !readOnly && (
+                  <MentionSuggestion config={mentionConfig} />
+                )}
+              </ProseMirror>
             </LinkedItemOpenBehaviorContext.Provider>
           </AttachmentResolverContext.Provider>
         </AttachmentEditingContext.Provider>
       </TaskSourceProvider>
+    );
+  },
+);
+
+export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
+  function NoteEditor(props, ref) {
+    return (
+      <EditorErrorBoundary
+        resetKey={
+          props.taskSource
+            ? `${props.taskSource.type}:${props.taskSource.id}`
+            : "note"
+        }
+        errorMessage="This note could not be loaded. Its saved content has been kept."
+      >
+        <NoteEditorContent {...props} ref={ref} />
+      </EditorErrorBoundary>
     );
   },
 );

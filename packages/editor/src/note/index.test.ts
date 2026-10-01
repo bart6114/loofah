@@ -43,6 +43,175 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("note load safety", () => {
+  it("opens a tech brief with repeated C++ mentions without saving on mount", async () => {
+    const handleChange = vi.fn();
+    const ref = createRef<NoteEditorRef>();
+    const content = md2json(
+      "# Morning Tech Brief\n\n- **EDG opens its C++ compiler front end.** The C++ Alliance becomes its nonprofit home.",
+    );
+    const rendered = render(
+      createElement(NoteEditor, { ref, initialContent: content, handleChange }),
+    );
+    await waitFor(() => expect(ref.current?.view).toBeTruthy());
+    expect(ref.current!.view!.state.doc.textContent).toContain(
+      "The C++ Alliance becomes its nonprofit home.",
+    );
+    act(() => ref.current!.flushPendingChanges());
+    rendered.unmount();
+    expect(handleChange).not.toHaveBeenCalled();
+  });
+
+  it("preserves the brief and underline formatting when an edit is saved", async () => {
+    const handleChange = vi.fn();
+    const ref = createRef<NoteEditorRef>();
+    const rendered = render(
+      createElement(NoteEditor, {
+        ref,
+        initialContent: md2json(
+          "# Morning Tech Brief\n\nThe C++ compiler and C++ Alliance.\n\n<u>Follow up</u>",
+        ),
+        handleChange,
+      }),
+    );
+    await waitFor(() => expect(ref.current?.view).toBeTruthy());
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(view.state.tr.insertText("Updated ", 1));
+      ref.current!.flushPendingChanges();
+    });
+    expect(handleChange).toHaveBeenCalledOnce();
+    const saved = handleChange.mock.calls[0][0] as JSONContent;
+    const doc = schema.nodeFromJSON(saved);
+    doc.check();
+    expect(doc.firstChild?.textContent).toBe("Updated Morning Tech Brief");
+    expect(doc.textContent).toContain("The C++ compiler and C++ Alliance.");
+    expect(saved.content?.[2]?.content?.[0]?.marks).toEqual([
+      { type: "underline" },
+    ]);
+    rendered.unmount();
+  });
+
+  it("blocks an invalid restored draft without scheduling a save", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const handleChange = vi.fn();
+      const rendered = render(
+        createElement(NoteEditor, {
+          initialContent: baseDoc,
+          initialDraft: () => ({
+            type: "doc",
+            content: [{ type: "unsupportedBlock" }],
+          }),
+          handleChange,
+        }),
+        { onCaughtError: () => {} },
+      );
+      expect(await rendered.findByRole("alert")).toBeTruthy();
+      expect(rendered.queryByRole("textbox")).toBeNull();
+      rendered.unmount();
+      expect(handleChange).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it.each([
+    { type: "doc", content: [{ type: "unsupportedBlock" }] },
+    {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Keep me",
+              marks: [{ type: "unsupportedMark" }],
+            },
+          ],
+        },
+      ],
+    },
+    { type: "paragraph", content: [{ type: "text", text: "Keep me" }] },
+    { type: "doc", content: [{ type: "text", text: "Keep me" }] },
+  ])(
+    "blocks invalid source documents instead of saving an empty replacement: %j",
+    async (content) => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      try {
+        const handleChange = vi.fn();
+        const onDraftChange = vi.fn();
+        const ref = createRef<NoteEditorRef>();
+        const rendered = render(
+          createElement(NoteEditor, {
+            ref,
+            initialContent: content,
+            handleChange,
+            onDraftChange,
+          }),
+          { onCaughtError: () => {} },
+        );
+        expect(await rendered.findByRole("alert")).toBeTruthy();
+        expect(rendered.queryByRole("textbox")).toBeNull();
+        expect(ref.current).toBeNull();
+        rendered.unmount();
+        expect(handleChange).not.toHaveBeenCalled();
+        expect(onDraftChange).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
+  it("keeps invalid incoming content from replacing a clean note and recovers for another session", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const handleChange = vi.fn();
+      const props = {
+        initialContent: baseDoc,
+        handleChange,
+        taskSource: { type: "session_raw_note", id: "session-a" },
+      };
+      const rendered = render(createElement(NoteEditor, props), {
+        onCaughtError: () => {},
+      });
+      await rendered.findByRole("textbox");
+      rendered.rerender(
+        createElement(NoteEditor, {
+          ...props,
+          initialContent: {
+            type: "doc",
+            content: [{ type: "unsupportedBlock" }],
+          },
+        }),
+      );
+      expect(await rendered.findByRole("alert")).toBeTruthy();
+      expect(rendered.queryByRole("textbox")).toBeNull();
+      rendered.rerender(
+        createElement(NoteEditor, {
+          ...props,
+          initialContent: nextDoc,
+          taskSource: { type: "session_raw_note", id: "session-b" },
+        }),
+      );
+      expect((await rendered.findByRole("textbox")).textContent).toContain(
+        "new",
+      );
+      rendered.unmount();
+      expect(handleChange).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
 describe("shouldReplaceEditorContent", () => {
   it("does not replace content while IME composition is active", () => {
     expect(
