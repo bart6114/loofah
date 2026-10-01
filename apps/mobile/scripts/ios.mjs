@@ -93,6 +93,9 @@ function prepare() {
       mobile_iOS: {
         sources: [intent],
         dependencies: [{ target: "RecordingWidget", embed: true }],
+        settings: {
+          base: { TARGETED_DEVICE_FAMILY: "1" },
+        },
         info: {
           properties: {
             ...appInfo,
@@ -124,7 +127,7 @@ function prepare() {
             SWIFT_VERSION: "5.0",
             APPLICATION_EXTENSION_API_ONLY: true,
             SKIP_INSTALL: true,
-            TARGETED_DEVICE_FAMILY: "1,2",
+            TARGETED_DEVICE_FAMILY: "1",
           },
         },
         info: {
