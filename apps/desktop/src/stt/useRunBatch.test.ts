@@ -19,7 +19,6 @@ const {
   sonnerToastWarningMock,
   createTranscriptMock,
   appendTranscriptWordsAndHintsMock,
-  queueTagSuggestionsMock,
   idMock,
 } = vi.hoisted(() => ({
   sessionTranscriptsMock: vi.fn(),
@@ -32,7 +31,6 @@ const {
   sonnerToastWarningMock: vi.fn(),
   createTranscriptMock: vi.fn(),
   appendTranscriptWordsAndHintsMock: vi.fn(),
-  queueTagSuggestionsMock: vi.fn(),
   idMock: vi.fn(),
 }));
 
@@ -77,10 +75,6 @@ vi.mock("~/stt/capabilities", async (importOriginal) => {
 vi.mock("~/stt/queries", () => ({
   appendTranscriptWordsAndHints: appendTranscriptWordsAndHintsMock,
   createTranscript: createTranscriptMock,
-}));
-
-vi.mock("~/tags/suggestions", () => ({
-  queueTagSuggestions: queueTagSuggestionsMock,
 }));
 
 test("routes Whisper Large V3 through progressive local batch transcription", () => {
@@ -183,7 +177,6 @@ describe("useRunBatch", () => {
     idMock.mockImplementation(() => `generated-${++nextId}`);
     createTranscriptMock.mockResolvedValue(undefined);
     appendTranscriptWordsAndHintsMock.mockResolvedValue(undefined);
-    queueTagSuggestionsMock.mockResolvedValue(undefined);
     isSupportedLanguagesBatchMock.mockResolvedValue(true);
     useListenerMock.mockImplementation((selector) =>
       selector({ startTranscription: startTranscriptionMock }),
@@ -212,7 +205,7 @@ describe("useRunBatch", () => {
     );
   });
 
-  test("waits for streamed persists before suggesting tags", async () => {
+  test("waits for streamed persists before completing transcription", async () => {
     let resolveAppend: (() => void) | undefined;
     appendTranscriptWordsAndHintsMock.mockImplementationOnce(
       () =>
@@ -232,21 +225,18 @@ describe("useRunBatch", () => {
     });
 
     const { result } = renderHook(() => useRunBatch("session-1"));
-    const run = result.current("/tmp/session.wav");
+    const completed = vi.fn();
+    const run = result.current("/tmp/session.wav").then(completed);
 
     await waitFor(() => {
       expect(appendTranscriptWordsAndHintsMock).toHaveBeenCalledTimes(1);
     });
-    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
 
+    expect(completed).not.toHaveBeenCalled();
     resolveAppend?.();
     await act(async () => await run);
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
-    expect(queueTagSuggestionsMock).toHaveBeenCalledWith("session-1");
-    expect(
-      appendTranscriptWordsAndHintsMock.mock.invocationCallOrder[0],
-    ).toBeLessThan(queueTagSuggestionsMock.mock.invocationCallOrder[0]);
   });
 
   test("does not save for custom batch persist handlers", async () => {
@@ -287,7 +277,6 @@ describe("useRunBatch", () => {
     ).rejects.toThrow("provider failed");
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
-    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
   });
 
   test("defaults Whisper batch to English without inheriting unsupported legacy languages", async () => {

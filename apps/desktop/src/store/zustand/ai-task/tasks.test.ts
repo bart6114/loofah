@@ -464,3 +464,89 @@ describe("extractUnderlyingError", () => {
     expect(extractUnderlyingError(error)).toBe(error);
   });
 });
+
+it("keeps footer data out of timed-out streamed text and persistence", async () => {
+  vi.useFakeTimers();
+  const { extractSummaryTagFooter } =
+    await import("./task-configs/summary-tag-footer");
+  let state: ReturnType<typeof createTasksSlice>;
+  state = createTasksSlice(
+    (updater: any) => {
+      state =
+        typeof updater === "function"
+          ? updater(state)
+          : { ...state, ...updater };
+    },
+    () => state,
+  );
+  TASK_CONFIGS.enhance.transformArgs = vi.fn(async () => ({}) as any);
+  TASK_CONFIGS.enhance.transforms = [];
+  TASK_CONFIGS.enhance.executeWorkflow = ({ signal, onResult }) =>
+    extractSummaryTagFooter(
+      (async function* () {
+        yield {
+          type: "text-delta",
+          text: '# Decisions\n- Ship Friday\n<loofah-tags>{"tags":["Launch"',
+        } as any;
+        await new Promise(() => {});
+      })(),
+      { signal, onResult: (suggestedTags) => onResult?.({ suggestedTags }) },
+    );
+  TASK_CONFIGS.enhance.onSuccess = vi.fn();
+  const pending = state.generate("footer-timeout-enhance", {
+    model: {} as any,
+    taskType: "enhance",
+    args: { sessionId: "session-1" },
+  });
+  await vi.waitFor(() =>
+    expect(state.tasks["footer-timeout-enhance"].streamedText).toBe(
+      "# Decisions\n- Ship Friday\n",
+    ),
+  );
+  await vi.advanceTimersByTimeAsync(TASK_STREAM_IDLE_TIMEOUT_MS);
+  await pending;
+  expect(TASK_CONFIGS.enhance.onSuccess).toHaveBeenCalledWith(
+    expect.objectContaining({
+      text: "# Decisions\n- Ship Friday\n",
+      result: {},
+    }),
+  );
+});
+
+it("passes workflow metadata to persistence and clears it for the next run", async () => {
+  let state: ReturnType<typeof createTasksSlice>;
+  state = createTasksSlice(
+    (updater: any) => {
+      state =
+        typeof updater === "function"
+          ? updater(state)
+          : { ...state, ...updater };
+    },
+    () => state,
+  );
+  TASK_CONFIGS.enhance.transformArgs = vi.fn(async () => ({}) as any);
+  TASK_CONFIGS.enhance.transforms = [];
+  TASK_CONFIGS.enhance.onSuccess = vi.fn();
+  TASK_CONFIGS.enhance.executeWorkflow = async function* ({ onResult }) {
+    onResult?.({ suggestedTags: [{ name: "Launch", confidence: 0.93 }] });
+    yield { type: "text-delta", text: "# Decisions\n- Ship Friday" } as any;
+  };
+  const config = {
+    model: {} as any,
+    taskType: "enhance" as const,
+    args: { sessionId: "session-1" },
+  };
+  await state.generate("metadata-enhance", config);
+  expect(TASK_CONFIGS.enhance.onSuccess).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      result: { suggestedTags: [{ name: "Launch", confidence: 0.93 }] },
+    }),
+  );
+  TASK_CONFIGS.enhance.executeWorkflow = async function* () {
+    yield { type: "text-delta", text: "# Decisions\n- Review Monday" } as any;
+  };
+  await state.generate("metadata-enhance", config);
+  expect(TASK_CONFIGS.enhance.onSuccess).toHaveBeenLastCalledWith(
+    expect.objectContaining({ result: {} }),
+  );
+});

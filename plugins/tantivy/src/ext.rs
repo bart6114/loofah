@@ -2,10 +2,9 @@ use std::collections::BTreeSet;
 
 use tantivy::collector::{Count, TopDocs};
 use tantivy::query::{
-    AllQuery, BooleanQuery, BoostQuery, FuzzyTermQuery, MoreLikeThisQuery, Occur, PhraseQuery,
-    Query, TermQuery,
+    AllQuery, BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, TermQuery,
 };
-use tantivy::schema::{Facet, Field, IndexRecordOption, OwnedValue, Value};
+use tantivy::schema::{Facet, Field, IndexRecordOption};
 use tantivy::snippet::SnippetGenerator;
 use tantivy::tokenizer::TextAnalyzer;
 use tantivy::{DateTime, Index, ReloadPolicy, Searcher, TantivyDocument, Term};
@@ -15,8 +14,8 @@ use crate::query::build_created_at_range_query;
 use crate::schema::{extract_search_document, get_fields};
 use crate::tokenizer::register_tokenizers;
 use crate::{
-    CollectionConfig, CollectionIndex, HighlightRange, IndexState, RelatedDocument, SearchDocument,
-    SearchHit, SearchRequest, SearchResult, Snippet,
+    CollectionConfig, CollectionIndex, HighlightRange, IndexState, SearchDocument, SearchHit,
+    SearchRequest, SearchResult, Snippet,
 };
 
 pub fn detect_language(text: &str) -> hypr_language::Language {
@@ -149,56 +148,6 @@ pub struct Tantivy<'a, R: tauri::Runtime, M: tauri::Manager<R>> {
 }
 
 impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
-    pub async fn related_documents(
-        &self,
-        content: &str,
-        exclude_id: &str,
-        limit: usize,
-    ) -> Result<Vec<RelatedDocument>, crate::Error> {
-        let state = self.manager.state::<IndexState>();
-        let guard = state.inner.read().await;
-        let collection = guard
-            .collections
-            .get("default")
-            .ok_or_else(|| crate::Error::CollectionNotFound("default".to_string()))?;
-        let fields = get_fields(&collection.schema);
-        let searcher = collection.reader.searcher();
-        let similar = MoreLikeThisQuery::builder()
-            .with_min_doc_frequency(1)
-            .with_min_term_frequency(1)
-            .with_max_query_terms(40)
-            .with_min_word_length(3)
-            .with_document_fields(vec![(
-                fields.related_content,
-                vec![OwnedValue::Str(content.to_string())],
-            )]);
-        let query = BooleanQuery::new(vec![
-            (Occur::Must, Box::new(similar) as Box<dyn Query>),
-            (
-                Occur::MustNot,
-                Box::new(TermQuery::new(
-                    Term::from_field_text(fields.id, exclude_id),
-                    IndexRecordOption::Basic,
-                )),
-            ),
-        ]);
-        let hits = searcher.search(&query, &TopDocs::with_limit(limit))?;
-        let mut related = Vec::with_capacity(hits.len());
-        for (score, address) in hits {
-            let document: TantivyDocument = searcher.doc(address)?;
-            if let Some(id) = document
-                .get_first(fields.id)
-                .and_then(|value| value.as_str())
-            {
-                related.push(RelatedDocument {
-                    id: id.to_string(),
-                    score,
-                });
-            }
-        }
-        Ok(related)
-    }
-
     pub async fn register_collection(&self, config: CollectionConfig) -> Result<(), crate::Error> {
         // The search index is a rebuildable cache, not user data: it lives in the
         // OS app-data dir (global_base), not the vault, so vault sync backends
@@ -553,9 +502,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
         doc.add_text(fields.language, document.language.as_deref().unwrap_or(""));
         doc.add_text(fields.title, &document.title);
         doc.add_text(fields.content, &document.content);
-        if let Some(content) = &document.related_content {
-            doc.add_text(fields.related_content, content);
-        }
         doc.add_date(
             fields.created_at,
             DateTime::from_timestamp_millis(document.created_at),
@@ -606,9 +552,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
         doc.add_text(fields.language, document.language.as_deref().unwrap_or(""));
         doc.add_text(fields.title, &document.title);
         doc.add_text(fields.content, &document.content);
-        if let Some(content) = &document.related_content {
-            doc.add_text(fields.related_content, content);
-        }
         doc.add_date(
             fields.created_at,
             DateTime::from_timestamp_millis(document.created_at),
@@ -662,9 +605,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
             doc.add_text(fields.language, document.language.as_deref().unwrap_or(""));
             doc.add_text(fields.title, &document.title);
             doc.add_text(fields.content, &document.content);
-            if let Some(content) = &document.related_content {
-                doc.add_text(fields.related_content, content);
-            }
             doc.add_date(
                 fields.created_at,
                 DateTime::from_timestamp_millis(document.created_at),
@@ -794,7 +734,6 @@ mod tests {
             language: None,
             title: title.to_string(),
             content: content.to_string(),
-            related_content: Some(content.to_string()),
             created_at: 0,
             facets: Vec::new(),
         }
@@ -886,62 +825,5 @@ mod tests {
 
         // A trailing space means the word is finished: no prefix matching.
         assert_eq!(search(&app, "dav ").await.count, 0);
-    }
-
-    #[tokio::test]
-    async fn related_documents_use_related_content_and_exclude_the_target() {
-        let app = harness().await;
-        app.tantivy()
-            .add_document(
-                None,
-                doc(
-                    "atlas-history",
-                    "Atlas review",
-                    "atlas rollout migration customer readiness deployment ownership support",
-                ),
-            )
-            .await
-            .unwrap();
-        app.tantivy()
-            .add_document(
-                None,
-                doc(
-                    "current",
-                    "Current Atlas meeting",
-                    "atlas rollout migration customer readiness deployment milestones",
-                ),
-            )
-            .await
-            .unwrap();
-        app.tantivy()
-            .add_document(
-                None,
-                doc(
-                    "hiring-history",
-                    "Hiring review",
-                    "candidate interview frontend engineering scorecard feedback",
-                ),
-            )
-            .await
-            .unwrap();
-        {
-            let state = app.state::<IndexState>();
-            let guard = state.inner.read().await;
-            guard.collections["default"].reader.reload().unwrap();
-        }
-
-        let related = app
-            .tantivy()
-            .related_documents(
-                "atlas rollout migration customer readiness deployment milestones",
-                "current",
-                10,
-            )
-            .await
-            .unwrap();
-
-        assert!(related.iter().any(|item| item.id == "atlas-history"));
-        assert!(related.iter().all(|item| item.id != "current"));
-        assert!(related.iter().all(|item| item.id != "hiring-history"));
     }
 }

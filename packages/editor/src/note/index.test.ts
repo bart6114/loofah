@@ -7,6 +7,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
+import { undoDepth } from "prosemirror-history";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { createElement, createRef, StrictMode } from "react";
@@ -40,6 +41,175 @@ const nextDoc: JSONContent = {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+describe("note load safety", () => {
+  it("opens a tech brief with repeated C++ mentions without saving on mount", async () => {
+    const handleChange = vi.fn();
+    const ref = createRef<NoteEditorRef>();
+    const content = md2json(
+      "# Morning Tech Brief\n\n- **EDG opens its C++ compiler front end.** The C++ Alliance becomes its nonprofit home.",
+    );
+    const rendered = render(
+      createElement(NoteEditor, { ref, initialContent: content, handleChange }),
+    );
+    await waitFor(() => expect(ref.current?.view).toBeTruthy());
+    expect(ref.current!.view!.state.doc.textContent).toContain(
+      "The C++ Alliance becomes its nonprofit home.",
+    );
+    act(() => ref.current!.flushPendingChanges());
+    rendered.unmount();
+    expect(handleChange).not.toHaveBeenCalled();
+  });
+
+  it("preserves the brief and underline formatting when an edit is saved", async () => {
+    const handleChange = vi.fn();
+    const ref = createRef<NoteEditorRef>();
+    const rendered = render(
+      createElement(NoteEditor, {
+        ref,
+        initialContent: md2json(
+          "# Morning Tech Brief\n\nThe C++ compiler and C++ Alliance.\n\n<u>Follow up</u>",
+        ),
+        handleChange,
+      }),
+    );
+    await waitFor(() => expect(ref.current?.view).toBeTruthy());
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(view.state.tr.insertText("Updated ", 1));
+      ref.current!.flushPendingChanges();
+    });
+    expect(handleChange).toHaveBeenCalledOnce();
+    const saved = handleChange.mock.calls[0][0] as JSONContent;
+    const doc = schema.nodeFromJSON(saved);
+    doc.check();
+    expect(doc.firstChild?.textContent).toBe("Updated Morning Tech Brief");
+    expect(doc.textContent).toContain("The C++ compiler and C++ Alliance.");
+    expect(saved.content?.[2]?.content?.[0]?.marks).toEqual([
+      { type: "underline" },
+    ]);
+    rendered.unmount();
+  });
+
+  it("blocks an invalid restored draft without scheduling a save", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const handleChange = vi.fn();
+      const rendered = render(
+        createElement(NoteEditor, {
+          initialContent: baseDoc,
+          initialDraft: () => ({
+            type: "doc",
+            content: [{ type: "unsupportedBlock" }],
+          }),
+          handleChange,
+        }),
+        { onCaughtError: () => {} },
+      );
+      expect(await rendered.findByRole("alert")).toBeTruthy();
+      expect(rendered.queryByRole("textbox")).toBeNull();
+      rendered.unmount();
+      expect(handleChange).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it.each([
+    { type: "doc", content: [{ type: "unsupportedBlock" }] },
+    {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Keep me",
+              marks: [{ type: "unsupportedMark" }],
+            },
+          ],
+        },
+      ],
+    },
+    { type: "paragraph", content: [{ type: "text", text: "Keep me" }] },
+    { type: "doc", content: [{ type: "text", text: "Keep me" }] },
+  ])(
+    "blocks invalid source documents instead of saving an empty replacement: %j",
+    async (content) => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      try {
+        const handleChange = vi.fn();
+        const onDraftChange = vi.fn();
+        const ref = createRef<NoteEditorRef>();
+        const rendered = render(
+          createElement(NoteEditor, {
+            ref,
+            initialContent: content,
+            handleChange,
+            onDraftChange,
+          }),
+          { onCaughtError: () => {} },
+        );
+        expect(await rendered.findByRole("alert")).toBeTruthy();
+        expect(rendered.queryByRole("textbox")).toBeNull();
+        expect(ref.current).toBeNull();
+        rendered.unmount();
+        expect(handleChange).not.toHaveBeenCalled();
+        expect(onDraftChange).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
+  it("keeps invalid incoming content from replacing a clean note and recovers for another session", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const handleChange = vi.fn();
+      const props = {
+        initialContent: baseDoc,
+        handleChange,
+        taskSource: { type: "session_raw_note", id: "session-a" },
+      };
+      const rendered = render(createElement(NoteEditor, props), {
+        onCaughtError: () => {},
+      });
+      await rendered.findByRole("textbox");
+      rendered.rerender(
+        createElement(NoteEditor, {
+          ...props,
+          initialContent: {
+            type: "doc",
+            content: [{ type: "unsupportedBlock" }],
+          },
+        }),
+      );
+      expect(await rendered.findByRole("alert")).toBeTruthy();
+      expect(rendered.queryByRole("textbox")).toBeNull();
+      rendered.rerender(
+        createElement(NoteEditor, {
+          ...props,
+          initialContent: nextDoc,
+          taskSource: { type: "session_raw_note", id: "session-b" },
+        }),
+      );
+      expect((await rendered.findByRole("textbox")).textContent).toContain(
+        "new",
+      );
+      rendered.unmount();
+      expect(handleChange).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });
 
 describe("shouldReplaceEditorContent", () => {
@@ -207,6 +377,353 @@ describe("createReadOnlyPlugin", () => {
 });
 
 describe("browser-safe editor controls", () => {
+  it("renders an external replacement and keeps subsequent typing and saves on that document", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const handleChange = vi.fn();
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+      showFormatToolbar: false,
+      showSlashCommand: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(rendered.getByRole("textbox").textContent).toBe("new");
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+    expect(handleChange).not.toHaveBeenCalled();
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(view.state.tr.insertText(" edited", 4));
+      ref.current!.flushPendingChanges();
+    });
+    expect(rendered.getByRole("textbox").textContent).toBe("new edited");
+    expect(handleChange).toHaveBeenCalledOnce();
+    expect(handleChange.mock.calls[0][0]).toEqual(md2json("new edited"));
+  });
+
+  it("accepts a fresh post-save snapshot when query delivery skipped the saved echo", async () => {
+    const ref = createRef<NoteEditorRef>();
+    let finish!: (readContent: () => JSONContent) => void;
+    const handleChange = vi.fn(
+      () =>
+        new Promise<() => JSONContent>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() =>
+      ref.current!.view!.dispatch(
+        ref.current!.view!.state.tr.insertText(" saved", 4),
+      ),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old saved");
+    await act(async () => finish(() => nextDoc));
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+  });
+
+  it("defers a confirmed external edit while focused and applies it on blur", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const handleChange = vi.fn(async () => () => nextDoc);
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() => {
+      const view = ref.current!.view!;
+      view.focus();
+      view.dispatch(view.state.tr.insertText(" saved", 4));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old saved");
+    await act(async () => ref.current!.view!.dom.blur());
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+  });
+
+  it("reads the latest confirmed source when props skip past the refreshed snapshot and never replays stale props", async () => {
+    const ref = createRef<NoteEditorRef>();
+    let finish!: (readContent: () => JSONContent) => void;
+    let source = nextDoc;
+    const handleChange = vi.fn(
+      () =>
+        new Promise<() => JSONContent>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(view.state.tr.insertText(" saved", 4));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    source = md2json("Latest external C");
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: source }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old saved");
+    await act(async () => finish(() => source));
+    expect(ref.current!.view!.state.doc.textContent).toBe("Latest external C");
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("Latest external C");
+
+    source = md2json("Latest external D");
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: source }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("Latest external D");
+  });
+
+  it("does not release newer local typing when an older save returns a source reader", async () => {
+    const ref = createRef<NoteEditorRef>();
+    let finish!: (readContent: () => JSONContent) => void;
+    const handleChange = vi.fn(
+      () =>
+        new Promise<() => JSONContent>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(view.state.tr.insertText(" A", 4));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(view.state.tr.insertText(" B", 6));
+    });
+    await act(async () => finish(() => nextDoc));
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old A B");
+    expect(undoDepth(ref.current!.view!.state)).toBeGreaterThan(0);
+  });
+
+  it("keeps newer typing and undo through older save echoes, then accepts clean external edits", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const completions: (() => void)[] = [];
+    const handleChange = vi.fn(
+      () => new Promise<void>((resolve) => completions.push(resolve)),
+    );
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+
+    act(() => {
+      const view = ref.current!.view!;
+      view.focus();
+      view.dispatch(view.state.tr.insertText(" first", 4));
+    });
+    const first = ref.current!.view!.state.doc.toJSON();
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    act(() => {
+      const view = ref.current!.view!;
+      view.dispatch(
+        view.state.tr.insertText(" SECOND", view.state.doc.content.size - 1),
+      );
+      view.dom.blur();
+    });
+    const second = ref.current!.view!.state.doc.toJSON();
+    const historyBefore = undoDepth(ref.current!.view!.state);
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: first }),
+    );
+    await act(async () => completions[0]());
+    expect(ref.current!.view!.state.doc.toJSON()).toEqual(second);
+    expect(undoDepth(ref.current!.view!.state)).toBe(historyBefore);
+
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    expect(handleChange).toHaveBeenCalledTimes(2);
+    // The persisted query can arrive before its save promise settles.
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: second }),
+    );
+    expect(undoDepth(ref.current!.view!.state)).toBe(historyBefore);
+    await act(async () => completions[1]());
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+  });
+
+  it("protects submitted edits until the newest save is acknowledged", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const completions: (() => void)[] = [];
+    const handleChange = vi.fn(
+      () => new Promise<void>((resolve) => completions.push(resolve)),
+    );
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() =>
+      ref.current!.view!.dispatch(
+        ref.current!.view!.state.tr.insertText(" A", 4),
+      ),
+    );
+    const first = ref.current!.view!.state.doc.toJSON();
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    act(() =>
+      ref.current!.view!.dispatch(
+        ref.current!.view!.state.tr.insertText(" B", 6),
+      ),
+    );
+    const second = ref.current!.view!.state.doc.toJSON();
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    await act(async () => completions[0]());
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: first }),
+    );
+    expect(ref.current!.view!.state.doc.toJSON()).toEqual(second);
+    await act(async () => completions[1]());
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.toJSON()).toEqual(second);
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: second }),
+    );
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+  });
+
+  it("keeps failed edits when a refresh arrives", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const handleChange = vi.fn().mockRejectedValue(new Error("disk full"));
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() =>
+      ref.current!.view!.dispatch(
+        ref.current!.view!.state.tr.insertText(" unsaved", 4),
+      ),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old unsaved");
+    expect(undoDepth(ref.current!.view!.state)).toBeGreaterThan(0);
+  });
+
+  it("starts a remounted editor from its draft and waits for persisted content", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const handleChange = vi.fn();
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      initialDraft: nextDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: { ...baseDoc } }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+    rendered.rerender(
+      createElement(NoteEditor, {
+        ...props,
+        initialContent: nextDoc,
+        initialDraft: undefined,
+      }),
+    );
+    rendered.rerender(
+      createElement(NoteEditor, {
+        ...props,
+        initialContent: baseDoc,
+        initialDraft: undefined,
+      }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old");
+    expect(handleChange).not.toHaveBeenCalled();
+  });
+
+  it("continues accepting focused preview updates without a persistence handler", async () => {
+    const ref = createRef<NoteEditorRef>();
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      syncContentWhenFocused: true,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    act(() => {
+      const view = ref.current!.view!;
+      view.focus();
+      view.dispatch(view.state.tr.insertText(" preview edit", 4));
+    });
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: nextDoc }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("new");
+  });
+
   it("renders an image upload started at the caret", async () => {
     const ref = createRef<NoteEditorRef>();
     let resolveUpload!: (value: {
@@ -273,7 +790,7 @@ describe("browser-safe editor controls", () => {
     expect(ref.current?.view?.state.selection.$from.index(0)).toBe(2);
   });
 
-  it("flushes the current document through the change handler immediately", async () => {
+  it("does not save an unchanged document when asked to flush", async () => {
     const ref = createRef<NoteEditorRef>();
     const handleChange = vi.fn();
     render(
@@ -289,8 +806,38 @@ describe("browser-safe editor controls", () => {
 
     act(() => ref.current?.flushPendingChanges());
 
+    expect(handleChange).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a deferred external edit when a clean focused editor is flushed for a tab switch", async () => {
+    const ref = createRef<NoteEditorRef>();
+    let source = baseDoc;
+    const handleChange = vi.fn(async () => () => source);
+    const props = {
+      ref,
+      initialContent: baseDoc,
+      handleChange,
+      enforceTitleHeading: false,
+    };
+    const rendered = render(createElement(NoteEditor, props));
+    await waitFor(() => expect(ref.current?.view).not.toBeNull());
+    vi.useFakeTimers();
+    act(() => {
+      const view = ref.current!.view!;
+      view.focus();
+      view.dispatch(view.state.tr.insertText(" saved", 4));
+      source = view.state.doc.toJSON();
+    });
+    await act(() => vi.advanceTimersByTimeAsync(500));
     expect(handleChange).toHaveBeenCalledOnce();
-    expect(handleChange).toHaveBeenCalledWith(baseDoc);
+    source = nextDoc;
+    rendered.rerender(
+      createElement(NoteEditor, { ...props, initialContent: source }),
+    );
+    expect(ref.current!.view!.state.doc.textContent).toBe("old saved");
+    act(() => ref.current!.flushPendingChanges());
+    rendered.unmount();
+    expect(handleChange).toHaveBeenCalledOnce();
   });
 
   it("cancels the original debounce after callback-changing rerenders", async () => {

@@ -9,7 +9,6 @@ import {
   type InstalledApp,
   type Result,
 } from "@hypr/plugin-detect";
-import { commands as notificationCommands } from "@hypr/plugin-notification";
 import { Badge } from "@hypr/ui/components/ui/badge";
 import { Button } from "@hypr/ui/components/ui/button";
 import {
@@ -37,7 +36,6 @@ import {
 
 import { useSetSettingValues } from "~/settings/queries";
 import { useConfigValues } from "~/shared/config";
-import { useMountEffect } from "~/shared/hooks/useMountEffect";
 
 export function NotificationSettingsView() {
   const { t } = useLingui();
@@ -50,13 +48,6 @@ export function NotificationSettingsView() {
     "ignored_platforms",
     "included_platforms",
   ] as const);
-
-  useMountEffect(() => {
-    void notificationCommands.clearNotifications();
-    return () => {
-      void notificationCommands.clearNotifications();
-    };
-  });
 
   const { data: installedApps = [] } = useQuery({
     queryKey: ["settings", "all-installed-applications"],

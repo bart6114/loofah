@@ -104,6 +104,11 @@ pub fn clear() {
     hypr_notification_linux::dismiss_all();
 }
 
+pub fn clear_on_focus() {
+    #[cfg(all(feature = "legacy", target_os = "macos"))]
+    hypr_notification_macos::dismiss_on_focus();
+}
+
 pub fn setup_dismiss_handler<F>(f: F)
 where
     F: Fn(NotificationContext) + Send + Sync + 'static,

@@ -7,10 +7,6 @@ pub const TITLE_SYSTEM: &str = include_str!("title.system.jinja");
 #[allow(dead_code)]
 pub const TITLE_USER: &str = include_str!("title.user.jinja");
 #[allow(dead_code)]
-pub const AUTO_GENERATE_TAGS_SYSTEM: &str = include_str!("auto_generate_tags.system.jinja");
-#[allow(dead_code)]
-pub const AUTO_GENERATE_TAGS_USER: &str = include_str!("auto_generate_tags.user.jinja");
-#[allow(dead_code)]
 pub const POSTPROCESS_TRANSCRIPT_SYSTEM: &str = include_str!("postprocess_transcript.system.jinja");
 #[allow(dead_code)]
 pub const POSTPROCESS_TRANSCRIPT_USER: &str = include_str!("postprocess_transcript.user.jinja");

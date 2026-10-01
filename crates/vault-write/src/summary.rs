@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::{IndexEntity, SessionStore, StoreError, WriteGuard, paths};
+use super::{IndexEntity, ScoredTagSuggestion, SessionStore, StoreError, WriteGuard, paths};
 
 #[derive(Serialize, Deserialize)]
 struct PendingMigration {
@@ -56,8 +56,23 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, false)
-            .await
+        self.update_summary_impl(
+            session_id, markdown, expected, false, None, None, false, false,
+        )
+        .await
+    }
+
+    pub async fn save_summary(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.update_summary_impl(
+            session_id, markdown, expected, false, title, None, false, false,
+        )
+        .await
     }
 
     pub async fn update_generated_summary(
@@ -66,8 +81,10 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, true, false)
-            .await
+        self.update_summary_impl(
+            session_id, markdown, expected, true, None, None, false, false,
+        )
+        .await
     }
 
     pub async fn create_generated_summary(
@@ -75,8 +92,30 @@ impl SessionStore {
         session_id: &str,
         markdown: &str,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, None, true, true)
+        self.update_summary_impl(session_id, markdown, None, true, None, None, false, true)
             .await
+    }
+
+    pub async fn update_summary_with_suggestions(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        reconcile_tasks: bool,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
+    ) -> Result<(), StoreError> {
+        self.update_summary_impl(
+            session_id,
+            markdown,
+            expected,
+            reconcile_tasks,
+            None,
+            suggested_tags,
+            auto_apply_high_confidence_tags,
+            false,
+        )
+        .await
     }
 
     async fn update_summary_impl(
@@ -85,6 +124,9 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
         reconcile_tasks: bool,
+        title: Option<&str>,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
         create_only: bool,
     ) -> Result<(), StoreError> {
         let task_content = if reconcile_tasks {
@@ -100,6 +142,13 @@ impl SessionStore {
         };
         let guard = self.lock_writes().await;
         let dir = self.writable_summary_dir(&guard, session_id).await?;
+        let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
+            StoreError::Io(format!("session {session_id} has no _meta.json to update"))
+        })?;
+        let changed_title = title.is_some_and(|title| title != meta.title);
+        if let Some(title) = title {
+            meta.title = title.to_owned();
+        }
         self.try_migrate_summary_locked(&guard, session_id, &dir)
             .await?;
         let vault = self.vault_base.clone();
@@ -121,7 +170,9 @@ impl SessionStore {
             }
             Some(summary)
                 if expected.is_some_and(|expected| expected != summary.markdown)
-                    && !(reconcile_tasks && markdown == summary.markdown) =>
+                    && !(suggested_tags.is_none()
+                        && reconcile_tasks
+                        && markdown == summary.markdown) =>
             {
                 return Err(StoreError::Conflict(
                     "summary changed since it was read".into(),
@@ -129,6 +180,16 @@ impl SessionStore {
             }
             _ => {}
         }
+        let changed_meta = changed_title || suggested_tags.is_some();
+        let auto_applied = suggested_tags
+            .map(|suggestions| {
+                super::tags::apply_suggested_tags(
+                    &mut meta,
+                    suggestions,
+                    auto_apply_high_confidence_tags,
+                )
+            })
+            .unwrap_or_default();
         let tasks = if let Some(content) = task_content {
             Some(
                 self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
@@ -137,6 +198,9 @@ impl SessionStore {
         } else {
             None
         };
+        for name in &auto_applied {
+            self.ensure_tag_locked(&guard, name).await?;
+        }
         if let Some(summary) = summary {
             let bytes = if let Some(legacy_id) = summary.legacy_id {
                 let mut doc = self
@@ -164,7 +228,20 @@ impl SessionStore {
         } else {
             Ok(())
         };
-        self.index_set_summary(session_id, Some(markdown.to_owned()));
+        if changed_meta {
+            if let Err(error) = self.write_session_title_file_locked(&guard, &meta).await {
+                if let (Ok(Some(actual_meta)), Ok(Some(actual_summary))) = (
+                    self.read_meta(session_id).await,
+                    self.read_summary(session_id).await,
+                ) {
+                    self.index_set_summary_and_meta(&actual_meta, actual_summary);
+                }
+                return Err(error);
+            }
+            self.index_set_summary_and_meta(&meta, markdown.to_owned());
+        } else {
+            self.index_set_summary(session_id, Some(markdown.to_owned()));
+        }
         task_result
     }
 
@@ -495,6 +572,63 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn save_summary_updates_session_title_and_summary_together() {
+        let (_vault, store) = setup().await;
+        store.ensure_summary("s1").await.unwrap();
+        store
+            .save_summary("s1", "# Decisions\nDone", Some(""), Some("Decisions"))
+            .await
+            .unwrap();
+
+        assert_eq!(store.session_get("s1").unwrap().meta.title, "Decisions");
+        assert_eq!(
+            store.summary_get("s1").as_deref(),
+            Some("# Decisions\nDone")
+        );
+        assert_eq!(
+            store.read_meta("s1").await.unwrap().unwrap().title,
+            "Decisions"
+        );
+        assert_eq!(
+            store.read_summary("s1").await.unwrap().as_deref(),
+            Some("# Decisions\nDone")
+        );
+    }
+
+    #[tokio::test]
+    async fn save_summary_refreshes_index_when_title_write_fails() {
+        let (vault, store) = setup().await;
+        store.ensure_summary("s1").await.unwrap();
+        store.update_summary("s1", "", Some("")).await.unwrap();
+        let external: SessionMeta = serde_json::from_value(serde_json::json!({
+            "id": "s1", "title": "External", "created_at": "2026-09-18T12:00:00Z", "tags": ["kept"]
+        }))
+        .unwrap();
+        std::fs::write(
+            vault.path().join("sessions/s1/_meta.json"),
+            serde_json::to_vec_pretty(&external).unwrap(),
+        )
+        .unwrap();
+        if vault.path().join(".trash").exists() {
+            std::fs::remove_dir_all(vault.path().join(".trash")).unwrap();
+        }
+        std::fs::write(vault.path().join(".trash"), "block trash").unwrap();
+
+        assert!(
+            store
+                .save_summary("s1", "New summary", Some(""), Some("New title"))
+                .await
+                .is_err()
+        );
+        assert_eq!(store.session_get("s1").unwrap().meta.title, "External");
+        assert_eq!(store.summary_get("s1").as_deref(), Some("New summary"));
+        assert_eq!(
+            store.read_summary("s1").await.unwrap().as_deref(),
+            Some("New summary")
+        );
     }
 
     #[tokio::test]

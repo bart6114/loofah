@@ -4,28 +4,45 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result, layout, paths, strip_leading_frontmatter};
 
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum TagSuggestionStatus {
-    Pending,
-    Complete,
-}
-
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct TagSuggestionItem {
-    pub name: String,
-    pub confidence: f32,
-}
-
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+#[derive(Serialize, specta::Type, Clone, Debug, Default, PartialEq)]
 pub struct TagSuggestionState {
-    #[serde(alias = "transcript_hash")]
-    pub source_hash: String,
-    pub algorithm_version: u32,
-    pub status: TagSuggestionStatus,
-    pub items: Vec<TagSuggestionItem>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<String>,
     pub dismissed: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for TagSuggestionState {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            #[serde(default)]
+            items: Vec<serde_json::Value>,
+            #[serde(default)]
+            dismissed: Vec<String>,
+            status: Option<serde_json::Value>,
+            source_hash: Option<serde_json::Value>,
+            transcript_hash: Option<serde_json::Value>,
+            algorithm_version: Option<serde_json::Value>,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        let legacy = stored.status.is_some()
+            || stored.source_hash.is_some()
+            || stored.transcript_hash.is_some()
+            || stored.algorithm_version.is_some();
+        Ok(Self {
+            items: if legacy {
+                Vec::new()
+            } else {
+                stored
+                    .items
+                    .into_iter()
+                    .filter_map(|item| item.as_str().map(str::to_owned))
+                    .collect()
+            },
+            dismissed: stored.dismissed,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
@@ -191,21 +208,30 @@ mod tests {
     }
 
     #[test]
-    fn tag_suggestions_migrate_transcript_hash_to_combined_source_hash() {
-        let state: TagSuggestionState = serde_json::from_value(serde_json::json!({
-            "transcript_hash": "legacy-hash",
-            "algorithm_version": 1,
-            "status": "complete",
-            "items": [],
-        }))
-        .unwrap();
+    fn legacy_tag_suggestions_preserve_dismissals_but_drop_inferred_items() {
+        for status in ["pending", "complete"] {
+            let state: TagSuggestionState = serde_json::from_value(serde_json::json!({
+                "transcript_hash": "legacy-hash", "algorithm_version": 1,
+                "status": status, "items": [{"name": "old", "confidence": 0.9}],
+                "dismissed": ["ignored"]
+            }))
+            .unwrap();
+            assert!(state.items.is_empty());
+            assert_eq!(state.dismissed, vec!["ignored"]);
+            assert_eq!(
+                serde_json::to_value(state).unwrap(),
+                serde_json::json!({
+                    "items": [], "dismissed": ["ignored"]
+                })
+            );
+        }
+    }
 
-        assert_eq!(state.source_hash, "legacy-hash");
-        assert!(state.dismissed.is_empty());
-        let serialized = serde_json::to_value(state).unwrap();
-        assert_eq!(serialized["source_hash"], "legacy-hash");
-        assert!(serialized.get("transcript_hash").is_none());
-        assert!(serialized.get("dismissed").is_none());
+    #[test]
+    fn generated_tag_suggestions_roundtrip() {
+        let raw = serde_json::json!({"items": ["new"], "dismissed": ["ignored"]});
+        let state: TagSuggestionState = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(serde_json::to_value(state).unwrap(), raw);
     }
 
     /// `author` and `skill` are typed fields (absent = the vault owner wrote the

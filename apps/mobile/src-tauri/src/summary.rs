@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use hypr_template_app::{
-    EditableTemplate, EnhanceSystem, EnhanceUser, Segment, Session, Template, Transcript,
-    template_source,
+    EditableTemplate, EnhanceSystem, EnhanceTagContext, EnhanceUser, Segment, Session, Template,
+    Transcript, template_source,
 };
 use hypr_transcript::{
     ChannelProfile, IdentityAssignment, IdentityScope, RenderTranscriptHuman,
@@ -138,6 +138,10 @@ fn assemble(
         return Err("Add notes or a transcript before creating a summary".into());
     }
     let user = EnhanceUser {
+        tag_context: EnhanceTagContext {
+            attached: meta.tags.clone(),
+            ..Default::default()
+        },
         session: Session {
             title: Some(meta.title.clone()),
             started_at: meta.started_at.clone(),
@@ -464,7 +468,8 @@ mod tests {
         )
         .unwrap();
         let prepared = prepare(&store, "s1", "nl").await.unwrap();
-        assert_eq!(prepared.instructions, "Summarize in DUTCH.");
+        assert!(prepared.instructions.starts_with("Summarize in DUTCH."));
+        assert!(prepared.instructions.contains("<loofah-tags>"));
         std::fs::write(
             root.path().join("config.json"),
             json!({

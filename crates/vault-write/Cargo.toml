@@ -16,6 +16,7 @@ hypr-vault-read = { workspace = true }
 hypr-vault-sync = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
+regex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

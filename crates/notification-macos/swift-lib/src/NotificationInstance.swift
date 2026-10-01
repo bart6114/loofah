@@ -125,6 +125,9 @@ class NotificationInstance {
     if let compactActionButton {
       compactActionButton.startProgress(duration: timeoutSeconds)
     }
+    if isExpanded || clickableView.isHovering {
+      pauseDismissTimer()
+    }
   }
 
   func pauseDismissTimer() {
@@ -146,7 +149,9 @@ class NotificationInstance {
   }
 
   func resumeDismissTimer() {
-    guard timeoutSeconds > 0, remainingDismissSeconds > 0 else { return }
+    guard timeoutSeconds > 0, remainingDismissSeconds > 0, dismissStartTime == nil,
+      !isExpanded, !clickableView.isHovering
+    else { return }
     dismissStartTime = Date()
     scheduleDismissTimer(after: remainingDismissSeconds)
     startStopCountdownUpdates()

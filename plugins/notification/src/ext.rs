@@ -19,6 +19,10 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Notification<'a, R, M> {
         hypr_notification::clear();
         Ok(())
     }
+
+    pub(crate) fn clear_on_focus(&self) {
+        hypr_notification::clear_on_focus();
+    }
 }
 
 pub trait NotificationPluginExt<R: tauri::Runtime> {

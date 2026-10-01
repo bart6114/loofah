@@ -33,18 +33,14 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             handler::init(app.clone());
             Ok(())
         })
-        .on_event(|app, event| match event {
-            tauri::RunEvent::MainEventsCleared => {}
-            tauri::RunEvent::Ready => {}
-            tauri::RunEvent::WindowEvent { label, event, .. } => {
-                if let Ok(tauri_plugin_windows::AppWindow::Main) =
+        .on_event(|app, event| {
+            if let tauri::RunEvent::WindowEvent { label, event, .. } = event
+                && let Ok(tauri_plugin_windows::AppWindow::Main) =
                     tauri_plugin_windows::AppWindow::from_str(label.as_ref())
-                    && let tauri::WindowEvent::Focused(true) = event
-                {
-                    app.notification().clear().unwrap();
-                }
+                && let tauri::WindowEvent::Focused(true) = event
+            {
+                app.notification().clear_on_focus();
             }
-            _ => {}
         })
         .build()
 }

@@ -23,4 +23,15 @@ Only speakers marked [current user] are identified as the person using Loofah. A
 
 {{ macros::transcripts(transcripts=transcripts) }}{% endif %}
 
+# Tag context
+
+Available tags:
+{% for tag in tag_context.available %}- {{ tag }}
+{% endfor %}
+Attached tags:
+{% for tag in tag_context.attached %}- {{ tag }}
+{% endfor %}
+Dismissed tags:
+{% for tag in tag_context.dismissed %}- {{ tag }}
+{% endfor %}
 Keep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler.

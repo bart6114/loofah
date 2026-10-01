@@ -57,7 +57,6 @@ function GeneralSettingsContent({
       "show_tray_icon",
       "auto_stop_meetings",
       "floating_bar_enabled",
-      "auto_accept_related_tags",
     ] as const,
     storedSettings,
   );
@@ -88,28 +87,20 @@ function GeneralSettingsContent({
                 {(dock) => (
                   <form.Field name="show_tray_icon">
                     {(tray) => (
-                      <form.Field name="auto_accept_related_tags">
-                        {(tags) => (
-                          <AppSettingsView
-                            autostart={{
-                              value: autostart.state.value,
-                              onChange: autostart.handleChange,
-                            }}
-                            showAppInDock={{
-                              value: dock.state.value,
-                              onChange: dock.handleChange,
-                            }}
-                            showTrayIcon={{
-                              value: tray.state.value,
-                              onChange: tray.handleChange,
-                            }}
-                            autoAcceptRelatedTags={{
-                              value: tags.state.value,
-                              onChange: tags.handleChange,
-                            }}
-                          />
-                        )}
-                      </form.Field>
+                      <AppSettingsView
+                        autostart={{
+                          value: autostart.state.value,
+                          onChange: autostart.handleChange,
+                        }}
+                        showAppInDock={{
+                          value: dock.state.value,
+                          onChange: dock.handleChange,
+                        }}
+                        showTrayIcon={{
+                          value: tray.state.value,
+                          onChange: tray.handleChange,
+                        }}
+                      />
                     )}
                   </form.Field>
                 )}

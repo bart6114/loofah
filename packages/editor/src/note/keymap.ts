@@ -13,6 +13,7 @@ import {
   selectTextblockStart,
   setBlockType,
   splitBlock,
+  splitBlockAs,
   toggleMark,
 } from "prosemirror-commands";
 import { redo, undo } from "prosemirror-history";
@@ -392,8 +393,37 @@ const mac =
     ? /Mac|iP(hone|[oa]d)/.test(navigator.platform)
     : false;
 
-export function buildKeymap(onNavigateToTitle?: (pixelWidth?: number) => void) {
+export function buildKeymap(
+  onNavigateToTitle?: (pixelWidth?: number) => void,
+  enforceTitleHeading = false,
+) {
   const keys: Record<string, Command> = {};
+
+  const hasTitleHeading = (state: EditorState) => {
+    const first = state.doc.firstChild;
+    return first?.type === schema.nodes.heading && first.attrs.level === 1;
+  };
+
+  const splitTitleIntoParagraph = splitBlockAs((node) =>
+    node.type === schema.nodes.heading
+      ? { type: schema.nodes.paragraph }
+      : null,
+  );
+
+  const enterInTitle: Command = (state, dispatch) => {
+    const { selection } = state;
+    if (
+      !enforceTitleHeading ||
+      !hasTitleHeading(state) ||
+      selection.$from.depth !== 1 ||
+      selection.$from.index(0) !== 0 ||
+      selection.$to.depth !== 1 ||
+      selection.$to.index(0) !== 0
+    ) {
+      return false;
+    }
+    return splitTitleIntoParagraph(state, dispatch);
+  };
 
   keys["Mod-z"] = undo;
   keys["Mod-Shift-z"] = redo;
@@ -458,6 +488,7 @@ export function buildKeymap(onNavigateToTitle?: (pixelWidth?: number) => void) {
     },
     createParagraphNear,
     liftEmptyBlock,
+    enterInTitle,
     splitBlock,
   );
 
@@ -476,12 +507,25 @@ export function buildKeymap(onNavigateToTitle?: (pixelWidth?: number) => void) {
 
   const backspaceCmd: Command = chainCommands(
     deleteSelection,
+    (state) =>
+      enforceTitleHeading &&
+      hasTitleHeading(state) &&
+      state.selection.empty &&
+      state.selection.$from.depth === 1 &&
+      state.selection.$from.pos === 1,
     (state, _dispatch) => {
       const { selection } = state;
       if (selection.$head.pos === 0 && selection.empty) return true;
       return false;
     },
     revertBlockToParagraph,
+    (state) =>
+      enforceTitleHeading &&
+      hasTitleHeading(state) &&
+      state.selection.empty &&
+      state.selection.$from.depth === 1 &&
+      state.selection.$from.index(0) === 1 &&
+      state.selection.$from.parentOffset === 0,
     joinTaskItemBackward,
     joinBackward,
     selectNodeBackward,
@@ -492,6 +536,14 @@ export function buildKeymap(onNavigateToTitle?: (pixelWidth?: number) => void) {
 
   const deleteCmd: Command = chainCommands(
     deleteSelection,
+    (state) =>
+      enforceTitleHeading &&
+      hasTitleHeading(state) &&
+      state.selection.empty &&
+      state.selection.$from.depth === 1 &&
+      state.selection.$from.index(0) === 0 &&
+      state.selection.$from.parentOffset ===
+        state.selection.$from.parent.content.size,
     joinForward,
     selectNodeForward,
   );

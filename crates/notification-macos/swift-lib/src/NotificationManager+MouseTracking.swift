@@ -37,13 +37,8 @@ extension NotificationManager {
   }
 
   func updateHoverForAll(atScreenPoint pt: NSPoint) {
-    for (key, notif) in activeNotifications {
-      let inside = notif.panel.frame.contains(pt)
-      let prev = hoverStates[key] ?? false
-      if inside != prev {
-        hoverStates[key] = inside
-        notif.clickableView.onHover?(inside)
-      }
+    for notification in activeNotifications.values {
+      notification.clickableView.setHovering(notification.panel.frame.contains(pt))
     }
   }
 }

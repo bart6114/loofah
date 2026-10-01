@@ -170,10 +170,6 @@ msgstr "Ҡушымта"
 msgid "Appearance"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Apply only high-confidence tags from similar session content."
-msgstr ""
-
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr ""
@@ -191,8 +187,12 @@ msgstr ""
 msgid "Audio"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Automatically apply related tags"
+#: src/settings/ai/llm/tags.tsx
+msgid "Auto-apply tags with high confidence"
+msgstr ""
+
+#: src/settings/ai/llm/tags.tsx
+msgid "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 msgstr ""
 
 #: src/sidebar/custom-sidebar-header.tsx

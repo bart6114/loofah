@@ -35,7 +35,7 @@ pub struct AppConfig {
     pub show_app_in_dock: bool,
     pub show_tray_icon: bool,
     pub theme: String,
-    pub auto_accept_related_tags: bool,
+    pub auto_apply_high_confidence_tags: bool,
     pub notification_detect: bool,
     pub respect_dnd: bool,
     pub cloud_sync_enabled: bool,
@@ -79,7 +79,7 @@ impl Default for AppConfig {
             show_app_in_dock: true,
             show_tray_icon: true,
             theme: "system".to_string(),
-            auto_accept_related_tags: false,
+            auto_apply_high_confidence_tags: true,
             notification_detect: true,
             respect_dnd: false,
             cloud_sync_enabled: true,
@@ -270,6 +270,32 @@ mod tests {
     use super::*;
     use serde_json::json;
     use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn confident_tags_default_on_and_explicit_opt_out_survives_restart() {
+        let temp = tempdir().unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert!(state.snapshot().auto_apply_high_confidence_tags);
+
+        std::fs::write(temp.path().join("config.json"), r#"{"theme":"dark"}"#).unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert!(state.snapshot().auto_apply_high_confidence_tags);
+        state
+            .set_values(values(&[("auto_apply_high_confidence_tags", json!(false))]))
+            .await
+            .unwrap();
+        let reloaded = ConfigState::load_or_default(temp.path());
+        assert!(!reloaded.snapshot().auto_apply_high_confidence_tags);
+        reloaded
+            .set_values(values(&[("theme", json!("light"))]))
+            .await
+            .unwrap();
+        assert!(
+            !ConfigState::load_or_default(temp.path())
+                .snapshot()
+                .auto_apply_high_confidence_tags
+        );
+    }
 
     #[test]
     fn meeting_languages_preserve_legacy_fallback_and_independent_selection() {

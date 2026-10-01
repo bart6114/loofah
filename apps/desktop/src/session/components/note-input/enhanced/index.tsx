@@ -107,6 +107,7 @@ export const Enhanced = forwardRef<
         enhancedNoteId={enhancedNoteId}
         fileHandlerConfig={fileHandlerConfig}
         content={enhancedNote.content}
+        generationId={generationId}
         onNavigateToTitle={onNavigateToTitle}
         onViewReady={onViewReady}
         onViewDisposed={onViewDisposed}

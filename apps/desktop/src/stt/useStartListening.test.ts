@@ -28,7 +28,6 @@ const {
   catalogLocalSessionAudioMock,
   getEnhancerServiceMock,
   requestMainAutoEnhanceMock,
-  queueTagSuggestionsMock,
 } = vi.hoisted(() => ({
   queueAutoEnhanceMock: vi.fn(),
   queueAutoEnhanceIfSummaryEmptyMock: vi.fn(),
@@ -52,7 +51,6 @@ const {
   catalogLocalSessionAudioMock: vi.fn(),
   getEnhancerServiceMock: vi.fn(),
   requestMainAutoEnhanceMock: vi.fn(),
-  queueTagSuggestionsMock: vi.fn(),
 }));
 
 vi.mock("@hypr/plugin-transcription", () => ({
@@ -127,10 +125,6 @@ vi.mock("~/shared/utils", () => ({
 
 vi.mock("~/stt/queries", () => ({
   softDeleteTranscript: softDeleteTranscriptMock,
-}));
-
-vi.mock("~/tags/suggestions", () => ({
-  queueTagSuggestions: queueTagSuggestionsMock,
 }));
 
 vi.mock("~/types/tauri.gen", () => ({
@@ -241,7 +235,6 @@ describe("getPostCaptureAction", () => {
 describe("useStartListening", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    queueTagSuggestionsMock.mockResolvedValue(undefined);
 
     getEnhancerServiceMock.mockImplementation(() => ({
       queueAutoEnhance: queueAutoEnhanceMock,

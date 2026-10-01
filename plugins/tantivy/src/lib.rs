@@ -26,17 +26,9 @@ pub struct SearchDocument {
     pub language: Option<String>,
     pub title: String,
     pub content: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub related_content: Option<String>,
     pub created_at: i64,
     #[serde(default)]
     pub facets: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RelatedDocument {
-    pub id: String,
-    pub score: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -109,7 +101,8 @@ pub struct SearchRequest {
 
 // 2 -> 3: title/content moved from 1-3 char ngrams to whole-word tokens; the
 // index must be rebuilt or every existing posting is an unmatchable fragment.
-pub const SCHEMA_VERSION: u32 = 5;
+// 5 -> 6 removes the retired related-tag content field.
+pub const SCHEMA_VERSION: u32 = 6;
 
 pub struct CollectionConfig {
     pub name: String,

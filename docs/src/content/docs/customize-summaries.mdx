@@ -3,11 +3,11 @@ title: Customize meeting summaries
 description: "Edit the shared prompt used for every summary."
 ---
 
-Summary generation is optional. When Intelligence is configured, every summary uses one shared prompt for your vault.
+Summary generation is optional. When an AI provider is configured, every summary uses one shared prompt for your vault.
 
 ## Edit the summary prompt
 
-1. Open **Settings → Intelligence → Summary prompt**, or choose **Edit summary prompt** from a summary's menu.
+1. Open **Settings → Summaries → Customize instructions**, or choose **Edit summary prompt** from a summary's menu.
 2. Edit the prompt and click **Save**.
 3. Regenerate an existing summary to apply your changes to it.
 
@@ -18,6 +18,14 @@ The **Current date** and **Language** buttons insert variables that are filled i
 Loofah supplies notes, transcripts, session details, participants, and supported note images separately. Your prompt can choose its own format; the summary-length policy still applies.
 
 Each session gets one Summary. Older additional summaries remain available to read, edit, and regenerate.
+
+## Tags from summaries
+
+When you generate or regenerate a summary, the same model request asks for 0–3 relevant tags and a confidence score from 0 to 1 for each. The model prefers existing tag names and can propose new ones. These scores are the model's estimates, not calibrated probabilities.
+
+**Auto-apply tags with high confidence** is on by default in **Settings → Summaries**. Loofah attaches tags with confidence strictly above 0.85 (85%) automatically. Tags at exactly 0.85 or below stay as suggestions that you can accept or dismiss.
+
+Turn the setting off to review every suggested tag manually. Accepting a new tag adds it to your tag list. Regeneration keeps tags you have already accepted and preserves your dismissals. Changing the toggle affects future summary generation; it does not change existing tags or resolve existing suggestions.
 
 ## Older templates
 

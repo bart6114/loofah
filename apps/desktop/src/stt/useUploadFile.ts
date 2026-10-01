@@ -21,7 +21,6 @@ import { enqueueSessionAudioOperation } from "~/session/audio-operations";
 import { useSession, useUpdateSession } from "~/session/queries";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { createTranscript } from "~/stt/queries";
-import { queueTagSuggestions } from "~/tags/suggestions";
 
 export const AUDIO_EXTENSIONS = [
   "wav",
@@ -288,8 +287,6 @@ export function useUploadFile(sessionId: string) {
             }).pipe(
               Effect.tap(() =>
                 Effect.sync(() => {
-                  void queueTagSuggestions(sessionId);
-
                   triggerEnhance();
                 }),
               ),

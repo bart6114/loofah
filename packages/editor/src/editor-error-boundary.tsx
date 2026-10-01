@@ -3,6 +3,7 @@ import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
 type EditorErrorBoundaryProps = {
   children: ReactNode;
   resetKey?: string;
+  errorMessage?: string;
 };
 
 type EditorErrorBoundaryState = {
@@ -66,7 +67,8 @@ export class EditorErrorBoundary extends Component<
           className="border-border bg-muted text-muted-foreground flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
         >
           <span>
-            The editor failed to render. Your recording is still running.
+            {this.props.errorMessage ??
+              "The editor failed to render. Your recording is still running."}
           </span>
           <button
             type="button"

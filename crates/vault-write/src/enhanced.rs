@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use super::{SessionStore, StoreError, WriteGuard, paths, validate_doc_id, validate_session_id};
+use super::{
+    ScoredTagSuggestion, SessionStore, StoreError, WriteGuard, paths, validate_doc_id,
+    validate_session_id,
+};
 
 // The `enhanced/<id>.md` schema (type, frontmatter parse/render) is shared with the
 // read-only vault consumers (loof CLI/MCP) and lives in `hypr-vault-read`.
@@ -12,6 +15,8 @@ pub use hypr_vault_read::{ENHANCED_KINDS, EnhancedDoc};
 /// of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Default, PartialEq)]
 pub struct EnhancedDocPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_tags: Option<Vec<ScoredTagSuggestion>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reconcile_tasks: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -73,6 +78,64 @@ impl SessionStore {
         doc_id: &str,
         patch: EnhancedDocPatch,
     ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(session_id, doc_id, patch, None, false)
+            .await
+    }
+
+    pub async fn update_enhanced_doc_with_auto_apply(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        auto_apply_high_confidence_tags: bool,
+    ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(
+            session_id,
+            doc_id,
+            patch,
+            None,
+            auto_apply_high_confidence_tags,
+        )
+        .await
+    }
+
+    pub async fn save_enhanced_doc(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(session_id, doc_id, patch, title, false)
+            .await
+    }
+
+    pub async fn save_enhanced_doc_with_auto_apply(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        title: Option<&str>,
+        auto_apply_high_confidence_tags: bool,
+    ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_impl(
+            session_id,
+            doc_id,
+            patch,
+            title,
+            auto_apply_high_confidence_tags,
+        )
+        .await
+    }
+
+    async fn update_enhanced_doc_impl(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        session_title: Option<&str>,
+        auto_apply_high_confidence_tags: bool,
+    ) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
 
@@ -113,7 +176,8 @@ impl SessionStore {
         }
         if let Some(expected) = &patch.expected_markdown {
             if &doc.markdown != expected
-                && !(patch.reconcile_tasks == Some(true)
+                && !(patch.suggested_tags.is_none()
+                    && patch.reconcile_tasks == Some(true)
                     && patch.markdown.as_ref() == Some(&doc.markdown))
             {
                 return Err(StoreError::Conflict(format!(
@@ -123,6 +187,7 @@ impl SessionStore {
         }
 
         let EnhancedDocPatch {
+            suggested_tags,
             reconcile_tasks: _,
             kind,
             title,
@@ -158,8 +223,39 @@ impl SessionStore {
         } else {
             None
         };
-        self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
+        if session_title.is_some() || suggested_tags.is_some() {
+            let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
+                StoreError::Io(format!("session {session_id} has no _meta.json to update"))
+            })?;
+            let changed_meta =
+                session_title.is_some_and(|title| meta.title != title) || suggested_tags.is_some();
+            if let Some(title) = session_title {
+                meta.title = title.to_owned();
+            }
+            let auto_applied = suggested_tags
+                .map(|suggestions| {
+                    super::tags::apply_suggested_tags(
+                        &mut meta,
+                        suggestions,
+                        auto_apply_high_confidence_tags,
+                    )
+                })
+                .unwrap_or_default();
+            for name in &auto_applied {
+                self.ensure_tag_locked(&guard, name).await?;
+            }
+            self.persist_enhanced_doc_with_meta_locked(
+                &guard,
+                &doc,
+                tasks.as_deref(),
+                &meta,
+                changed_meta,
+            )
             .await
+        } else {
+            self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
+                .await
+        }
     }
 
     pub async fn read_enhanced_doc(
@@ -270,6 +366,48 @@ impl SessionStore {
         self.notify_index_changed(super::IndexEntity::Docs, vec![doc.session_id.clone()]);
         task_result
     }
+
+    async fn persist_enhanced_doc_with_meta_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        doc: &EnhancedDoc,
+        tasks: Option<&[super::TaskItem]>,
+        meta: &super::SessionMeta,
+        changed_meta: bool,
+    ) -> Result<(), StoreError> {
+        let rendered = render_enhanced_file(doc)?;
+        let session_dir = self.session_dir_locked(guard, &doc.session_id).await?;
+        self.write_file_locked(
+            guard,
+            paths::enhanced_doc_path_in(&session_dir, &doc.id),
+            rendered.into_bytes(),
+        )
+        .await?;
+        let task_result = if let Some(tasks) = tasks {
+            self.persist_generated_tasks(guard, &doc.session_id, tasks)
+                .await
+                .map_err(|error| {
+                    StoreError::Io(format!(
+                        "Summary saved but task synchronization failed; retry to finish: {error}"
+                    ))
+                })
+        } else {
+            Ok(())
+        };
+        if changed_meta {
+            if let Err(error) = self.write_session_title_file_locked(guard, meta).await {
+                if let (Ok(Some(actual_meta)), Ok(Some(actual_doc))) = (
+                    self.read_meta(&doc.session_id).await,
+                    self.read_enhanced_doc(&doc.session_id, &doc.id).await,
+                ) {
+                    self.index_set_enhanced_doc_and_meta(&actual_meta, &actual_doc);
+                }
+                return Err(error);
+            }
+        }
+        self.index_set_enhanced_doc_and_meta(meta, doc);
+        task_result
+    }
 }
 
 fn validate_kind(kind: &str) -> Result<(), StoreError> {
@@ -321,6 +459,47 @@ mod tests {
         let vault = temp.path().to_path_buf();
         let store = SessionStore::new(vault);
         (store, temp)
+    }
+
+    #[tokio::test]
+    async fn save_enhanced_doc_updates_session_title_and_doc_together() {
+        let (store, _vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        store.write_enhanced_doc(&doc("s1", "doc-1")).await.unwrap();
+        store
+            .save_enhanced_doc(
+                "s1",
+                "doc-1",
+                EnhancedDocPatch {
+                    markdown: Some("Updated body".into()),
+                    ..Default::default()
+                },
+                Some("Updated session"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.session_get("s1").unwrap().meta.title,
+            "Updated session"
+        );
+        assert_eq!(
+            store.enhanced_doc_get("doc-1").unwrap().markdown,
+            "Updated body"
+        );
+        assert_eq!(
+            store.read_meta("s1").await.unwrap().unwrap().title,
+            "Updated session"
+        );
+        assert_eq!(
+            store
+                .read_enhanced_doc("s1", "doc-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .markdown,
+            "Updated body"
+        );
     }
 
     async fn session_path(

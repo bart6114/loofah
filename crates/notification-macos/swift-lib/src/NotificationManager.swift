@@ -13,7 +13,6 @@ class NotificationManager {
 
   var globalMouseMonitor: Any?
   var localMouseMonitor: Any?
-  var hoverStates: [String: Bool] = [:]
   var displayChangeObserver: Any?
   var nativeNotificationMonitor: Timer?
   var lastNativeNotificationOffset: CGFloat = 0
@@ -34,13 +33,19 @@ class NotificationManager {
     }
   }
 
+  func dismissOnFocus() {
+    for notification in activeNotifications.values {
+      if case .micDetected = notification.payload.source { continue }
+      notification.dismiss()
+    }
+  }
+
   func dismissAll() {
     activeNotifications.values.forEach { $0.dismiss() }
   }
 
   func removeNotification(_ notification: NotificationInstance) {
     activeNotifications.removeValue(forKey: notification.key)
-    hoverStates.removeValue(forKey: notification.key)
     repositionNotifications()
     stopMouseMonitorsIfNeeded()
     stopNativeNotificationMonitorIfNeeded()
