@@ -1,6 +1,7 @@
 import { Trans } from "@lingui/react/macro";
 
 import { SttSettingsProvider } from "./context";
+import { TranscriptionModelLanguageSupport } from "./language-support";
 import { SelectProviderAndModel } from "./select";
 import { TranscriptionTiming } from "./timing";
 
@@ -16,7 +17,10 @@ export function STT() {
       <div className="flex flex-col gap-6">
         <SettingsPageTitle title={<Trans>Transcription</Trans>} />
         <SelectProviderAndModel />
-        <MeetingLanguageSettings />
+        <div className="flex flex-col gap-2">
+          <MeetingLanguageSettings />
+          <TranscriptionModelLanguageSupport />
+        </div>
         <TranscriptionTiming />
       </div>
     </SttSettingsProvider>

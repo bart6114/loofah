@@ -70,6 +70,10 @@ msgstr "{added} attachments added"
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
 msgstr "{model} can't transcribe {0}. Try another model or change your spoken languages."
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+msgstr "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
 msgstr "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
@@ -1584,6 +1588,10 @@ msgstr "Summary prompt cannot be empty."
 msgid "Summary service selected"
 msgstr "Summary service selected"
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "Supported languages for {model}: {languages}."
+msgstr "Supported languages for {model}: {languages}."
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Switch"
 msgstr "Switch"
@@ -1654,8 +1662,8 @@ msgid "This folder already has files in it"
 msgstr "This folder already has files in it"
 
 #: src/settings/ai/stt/timing.tsx
-msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
-msgstr "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgid "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
+msgstr "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
 
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."

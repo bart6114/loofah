@@ -34,7 +34,7 @@ export function TranscriptionTiming() {
     getOnDeviceTranscriptionMode(config.current_stt_model, languages) ===
       "live";
   const timing =
-    canStream && config.transcription_timing !== "batch" ? "live" : "batch";
+    liveModel && config.transcription_timing !== "batch" ? "live" : "batch";
 
   return (
     <fieldset className="flex flex-col gap-3" disabled={save.isPending}>
@@ -76,7 +76,7 @@ export function TranscriptionTiming() {
             aria-describedby={`${groupId}-${option.value}${option.disabled ? ` ${groupId}-unavailable` : ""}`}
             onChange={() => save.mutate({ transcription_timing: option.value })}
             onClick={() => {
-              // A fallback already checks batch; clicking it must still save that preference.
+              // A batch-only model checks batch without changing the saved preference.
               if (
                 option.value === timing &&
                 config.transcription_timing !== timing
@@ -110,8 +110,8 @@ export function TranscriptionTiming() {
             <Trans>This model transcribes after recording.</Trans>
           ) : (
             <Trans>
-              This model transcribes after recording for the selected meeting
-              languages. Live transcription supports English only.
+              This model supports English only. Choose another model or change
+              your spoken languages to transcribe these meetings.
             </Trans>
           )}
         </p>

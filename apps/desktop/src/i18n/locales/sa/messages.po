@@ -70,6 +70,10 @@ msgstr ""
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
 msgstr ""
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
 msgstr ""
@@ -1584,6 +1588,10 @@ msgstr ""
 msgid "Summary service selected"
 msgstr ""
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "Supported languages for {model}: {languages}."
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Switch"
 msgstr ""
@@ -1654,7 +1662,7 @@ msgid "This folder already has files in it"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
-msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgid "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx

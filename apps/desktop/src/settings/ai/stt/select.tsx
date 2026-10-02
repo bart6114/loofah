@@ -444,8 +444,8 @@ function useTranscriptionLanguageWarning() {
         return null;
       }
 
-      // Recording demotes to the batch model when live can't cover the
-      // configured languages, so a live-only gap just delays the transcript.
+      // Check the selected model's file transcription support as well;
+      // a timing limitation is different from an unsupported language.
       const batchIssue = await getLanguageSupportIssue(
         languages,
         isSupportedBatch,
