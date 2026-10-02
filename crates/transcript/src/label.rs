@@ -95,20 +95,22 @@ pub fn render_speaker_label(
     mut labeler: Option<&mut SpeakerLabeler>,
 ) -> String {
     if let Some(ctx) = ctx {
+        if key.is_current_user(ctx)
+            && let Some(self_human_id) = ctx.self_human_id.as_ref()
+        {
+            return ctx
+                .human_name_by_id
+                .get(self_human_id)
+                .filter(|name| !name.trim().is_empty() && *name != self_human_id)
+                .cloned()
+                .unwrap_or_else(|| "You".to_string());
+        }
+
         if let Some(human_id) = key.speaker_human_id.as_ref() {
             if let Some(name) = ctx.human_name_by_id.get(human_id) {
                 return name.clone();
             }
             return human_id.clone();
-        }
-
-        if key.is_heuristic_self(ctx)
-            && let Some(self_human_id) = ctx.self_human_id.as_ref()
-        {
-            if let Some(name) = ctx.human_name_by_id.get(self_human_id) {
-                return name.clone();
-            }
-            return "You".to_string();
         }
     } else if let Some(human_id) = key.speaker_human_id.as_ref() {
         return human_id.clone();
@@ -174,6 +176,35 @@ mod tests {
             render_speaker_label(&direct_mic_key(), Some(&ctx), None),
             "You"
         );
+    }
+
+    #[test]
+    fn renders_current_user_as_you_instead_of_internal_id() {
+        let self_id = "00000000-0000-0000-0000-000000000000";
+        for name in [None, Some(self_id), Some(""), Some("   "), Some("Bart")] {
+            let ctx = SpeakerLabelContext {
+                self_human_id: Some(self_id.into()),
+                human_name_by_id: name
+                    .map(|name| HashMap::from([(self_id.into(), name.into())]))
+                    .unwrap_or_default(),
+                ..Default::default()
+            };
+            for channel in [ChannelProfile::DirectMic, ChannelProfile::MixedCapture] {
+                let key = SegmentKey {
+                    channel,
+                    speaker_index: Some(0),
+                    speaker_human_id: Some(self_id.into()),
+                };
+                assert_eq!(
+                    render_speaker_label(&key, Some(&ctx), None),
+                    if name == Some("Bart") { "Bart" } else { "You" }
+                );
+            }
+            assert_eq!(
+                render_speaker_label(&direct_mic_key(), Some(&ctx), None),
+                if name == Some("Bart") { "Bart" } else { "You" }
+            );
+        }
     }
 
     #[test]
