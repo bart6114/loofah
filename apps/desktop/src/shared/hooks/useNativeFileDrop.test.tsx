@@ -31,6 +31,54 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useNativeFileDrop", () => {
+  it("forwards drags without file paths without showing the file hover state", async () => {
+    const onDrop = vi.fn();
+    const onHoverPaths = vi.fn();
+    const onInternalDrag = vi.fn();
+    const view = render(
+      <Harness
+        onDrop={onDrop}
+        onHoverPaths={onHoverPaths}
+        onInternalDrag={onInternalDrag}
+      />,
+    );
+    await waitFor(() => expect(mocks.handler).not.toBeNull());
+    vi.spyOn(
+      view.getByTestId("target"),
+      "getBoundingClientRect",
+    ).mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 100,
+    } as DOMRect);
+
+    act(() => {
+      for (const type of ["enter", "over", "drop"]) {
+        mocks.handler?.({
+          payload: { type, paths: [], position: { x: 20, y: 40 } },
+        });
+      }
+      mocks.handler?.({ payload: { type: "leave" } });
+    });
+
+    expect(onInternalDrag.mock.calls).toEqual([
+      [{ type: "over", point: { x: 20, y: 40 } }],
+      [{ type: "over", point: { x: 20, y: 40 } }],
+      [{ type: "drop", point: { x: 20, y: 40 } }],
+      [{ type: "leave" }],
+    ]);
+    expect(view.getByTestId("hover").textContent).toBe("no");
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(onHoverPaths).not.toHaveBeenCalled();
+
+    act(() => {
+      mocks.handler?.({
+        payload: { type: "drop", paths: [], position: { x: 200, y: 40 } },
+      });
+    });
+    expect(onInternalDrag.mock.lastCall).toEqual([{ type: "leave" }]);
+  });
   it("uses native macOS points as CSS coordinates and hit-tests the target", () => {
     expect(nativeDragPointToCssPoint({ x: 40, y: 20 })).toEqual({
       x: 40,
@@ -98,12 +146,18 @@ describe("useNativeFileDrop", () => {
 function Harness({
   onDrop,
   onHoverPaths,
+  onInternalDrag,
 }: {
   onDrop: (paths: string[], point: { x: number; y: number }) => void;
   onHoverPaths: (paths: string[]) => void;
+  onInternalDrag?: Parameters<typeof useNativeFileDrop>[1]["onInternalDrag"];
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { isHovering } = useNativeFileDrop(ref, { onDrop, onHoverPaths });
+  const { isHovering } = useNativeFileDrop(ref, {
+    onDrop,
+    onHoverPaths,
+    onInternalDrag,
+  });
   return (
     <div ref={ref} data-testid="target">
       <span data-testid="hover">{isHovering ? "yes" : "no"}</span>

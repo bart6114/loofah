@@ -13,6 +13,7 @@ import {
   type FileHandlerConfig,
   type FileUploadCandidate,
   handleNativeFileDrop,
+  handleNativeEditorDrag,
   type NoteEditorRef,
 } from "@hypr/editor/note";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
@@ -109,6 +110,10 @@ export function useNoteFileHandlerConfig(
   }, [resetFileDrag, sessionId]);
 
   useNativeFileDrop(fileDropTargetRef, {
+    onInternalDrag: (event) => {
+      const view = editorRef.current?.view;
+      if (view) handleNativeEditorDrag(view, event);
+    },
     onHoverPaths: (paths) => setFileDragKind(classifyNativePaths(paths)),
     onHoverEnd: resetFileDrag,
     onDrop: (paths, point) => {
