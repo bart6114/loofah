@@ -47,6 +47,29 @@ const twoPersonCtx: RenderLabelContext = {
 };
 
 describe("SegmentKeyUtils", () => {
+  it.each([undefined, "", "   ", "00000000-0000-0000-0000-000000000000"])(
+    "renders self as You when the resolved name is %s",
+    (name) => {
+      const selfId = "00000000-0000-0000-0000-000000000000";
+      const selfContext: RenderLabelContext = {
+        getSelfHumanId: () => selfId,
+        getHumanName: () => name,
+      };
+      for (const assignedId of [null, selfId]) {
+        expect(
+          SegmentKeyUtils.renderLabel(
+            {
+              channel: "DirectMic",
+              speaker_index: null,
+              speaker_human_id: assignedId,
+            },
+            selfContext,
+          ),
+        ).toBe("You");
+      }
+    },
+  );
+
   it("treats diarized direct-mic segments as self", () => {
     const key: Parameters<typeof SegmentKeyUtils.isKnownSpeaker>[0] = {
       channel: "DirectMic",
