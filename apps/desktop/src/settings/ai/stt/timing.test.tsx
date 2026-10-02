@@ -85,9 +85,9 @@ test("preserves a live preference across model and language fallbacks", () => {
   mocks.config.meeting_languages = ["en", "nl"];
   view.rerender();
   expect(radio("While recording").disabled).toBe(true);
-  expect(
-    screen.getByText(/Live transcription supports English only/),
-  ).toBeTruthy();
+  expect(radio("While recording").checked).toBe(true);
+  expect(radio("After recording").checked).toBe(false);
+  expect(screen.getByText(/This model supports English only/)).toBeTruthy();
   mocks.config.meeting_languages = ["en"];
   view.rerender();
   expect(radio("While recording").checked).toBe(true);

@@ -223,18 +223,14 @@ fn ensure_soniqo_model_ready(model: &str) -> Result<()> {
             .map_err(|error: hypr_transcribe_soniqo::Error| {
                 Error::operation(ACTION, error.to_string())
             })?;
-    // Streaming models transcribe files with their batch sibling (the same
-    // mapping `run_soniqo_batch` applies), so check that model's cache.
-    let batch_model = parsed.batch_model();
-
-    let downloaded = hypr_transcribe_soniqo::is_model_downloaded(batch_model)
+    let downloaded = hypr_transcribe_soniqo::is_model_downloaded(parsed)
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
     if !downloaded {
         return Err(Error::operation(
             ACTION,
             format!(
                 "the {} model is not downloaded; open the desktop app once to download it",
-                batch_model.display_name()
+                parsed.display_name()
             ),
         ));
     }

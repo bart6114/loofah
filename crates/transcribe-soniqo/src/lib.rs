@@ -133,10 +133,16 @@ impl SoniqoModel {
         self.supports_live() && self.is_available_on_current_platform()
     }
 
-    pub const fn batch_model(self) -> Self {
+    pub fn supported_language_codes(self) -> Option<Vec<String>> {
         match self {
-            Self::ParakeetStreaming => Self::ParakeetBatch,
-            model => model,
+            Self::ParakeetStreaming => Some(vec!["en".to_string()]),
+            Self::ParakeetBatch => Some(
+                hypr_language::parakeet_tdt_v3_languages()
+                    .iter()
+                    .map(|language| language.iso639_code().to_string())
+                    .collect(),
+            ),
+            Self::Omnilingual => None,
         }
     }
 
@@ -1077,11 +1083,6 @@ mod tests {
         assert!(SoniqoModel::ParakeetStreaming.supports_language(&english));
         assert!(!SoniqoModel::ParakeetStreaming.supports_language(&french));
         assert!(!SoniqoModel::ParakeetStreaming.supports_language(&dutch));
-        assert!(
-            SoniqoModel::ParakeetStreaming
-                .batch_model()
-                .supports_language(&dutch)
-        );
     }
 
     #[test]
@@ -1106,18 +1107,6 @@ mod tests {
             cfg!(all(target_os = "macos", target_arch = "aarch64")),
         );
         assert!(!SoniqoModel::ParakeetBatch.supports_live_on_current_platform());
-    }
-
-    #[test]
-    fn streaming_model_uses_batch_model_for_file_transcription() {
-        assert_eq!(
-            SoniqoModel::ParakeetStreaming.batch_model(),
-            SoniqoModel::ParakeetBatch
-        );
-        assert_eq!(
-            SoniqoModel::ParakeetBatch.batch_model(),
-            SoniqoModel::ParakeetBatch
-        );
     }
 
     #[test]

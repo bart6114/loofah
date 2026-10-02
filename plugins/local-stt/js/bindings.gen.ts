@@ -127,7 +127,7 @@ export type ServerInfo = { url: string | null; status: ServerStatus; model: Loca
 export type ServerStatus = "unreachable" | "loading" | "ready"
 export type ServerType = "internal"
 export type SoniqoModel = "soniqo-parakeet-streaming" | "soniqo-parakeet-batch" | "soniqo-omnilingual"
-export type SttModelInfo = { key: LocalModel; display_name: string; description: string; size_bytes: number | null; model_type: SttModelType }
+export type SttModelInfo = { key: LocalModel; display_name: string; description: string; size_bytes: number | null; model_type: SttModelType; supported_languages: string[] | null }
 export type SttModelType = "soniqo" | "whispercpp"
 export type WhisperModel = "whisper-large-v3" | "QuantizedTiny" | "QuantizedTinyEn" | "QuantizedBase" | "QuantizedBaseEn" | "QuantizedSmall" | "QuantizedSmallEn" | "QuantizedLargeTurbo"
 
