@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   config: null as FileHandlerConfig | null,
   fileUpload: vi.fn(),
   handleNativeFileDrop: vi.fn(),
+  handleNativeEditorDrag: vi.fn(),
   nativeCallbacks: null as any,
   processAudioFile: vi.fn(),
   processAudioPath: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@hypr/editor/note", () => ({
   handleNativeFileDrop: mocks.handleNativeFileDrop,
+  handleNativeEditorDrag: mocks.handleNativeEditorDrag,
 }));
 
 vi.mock("@hypr/ui/components/ui/toast", () => ({
@@ -62,6 +64,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useNoteFileHandlerConfig", () => {
+  it("routes internal native drags to the editor without uploading files", () => {
+    const view = createEditorView(7);
+    render(<Harness view={view} />);
+    const event = { type: "drop", point: { x: 12, y: 34 } };
+
+    act(() => mocks.nativeCallbacks.onInternalDrag(event));
+
+    expect(mocks.handleNativeEditorDrag).toHaveBeenCalledWith(view, event);
+    expect(mocks.handleNativeFileDrop).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
   it("shows native attachment, audio, and mixed hover hints", () => {
     render(<Harness />);
 

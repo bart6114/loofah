@@ -124,6 +124,10 @@ export {
 export { schema };
 export { areEquivalentEditorContents };
 export {
+  handleNativeEditorDrag,
+  type NativeEditorDragEvent,
+} from "./native-drag";
+export {
   type CommentAnchorInput,
   type CommentAnchorsEvent,
   commentAnchorsPluginKey,
