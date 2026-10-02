@@ -160,7 +160,7 @@ impl Service<Request<Body>> for TranscribeService {
                     .and_then(|value| value.to_str().ok())
                     .unwrap_or("")
                     .to_string();
-                let body = match axum::body::to_bytes(req.into_body(), 100 * 1024 * 1024).await {
+                let body = match axum::body::to_bytes(req.into_body(), 250 * 1024 * 1024).await {
                     Ok(body) => body,
                     Err(error) => {
                         return Ok((StatusCode::BAD_REQUEST, error.to_string()).into_response());
