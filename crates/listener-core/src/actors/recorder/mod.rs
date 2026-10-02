@@ -100,25 +100,7 @@ pub fn find_session_dir(
     Ok(vault_base.join(hypr_vault_read::paths::validated_session_dir(session_id)?))
 }
 
-pub fn resolve_final_audio_path(vault_base: &Path, session_id: &str) -> Option<PathBuf> {
-    let session_dir = find_session_dir(vault_base, session_id).ok()?;
-    let mp3_path = session_dir.join("audio.mp3");
-    if mp3_path.exists() {
-        return Some(mp3_path);
-    }
-
-    let wav_path = session_dir.join("audio.wav");
-    if wav_path.exists() {
-        return Some(wav_path);
-    }
-
-    let ogg_path = session_dir.join("audio.ogg");
-    if ogg_path.exists() {
-        return Some(ogg_path);
-    }
-
-    None
-}
+pub use hypr_vault_read::audio::resolve_final_audio_path;
 
 fn into_actor_err<E>(err: E) -> ActorProcessingErr
 where

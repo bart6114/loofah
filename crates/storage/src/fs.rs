@@ -4,28 +4,30 @@ use std::path::Path;
 use tempfile::NamedTempFile;
 
 pub fn atomic_write(target: &Path, content: &str) -> std::io::Result<()> {
+    atomic_write_bytes(target, content.as_bytes())
+}
+
+pub fn atomic_write_bytes(target: &Path, content: &[u8]) -> std::io::Result<()> {
     let parent = target.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
     })?;
     std::fs::create_dir_all(parent)?;
 
     let mut temp = NamedTempFile::new_in(parent)?;
-    temp.write_all(content.as_bytes())?;
+    temp.write_all(content)?;
     temp.as_file().sync_all()?;
     temp.persist(target)?;
+    #[cfg(unix)]
+    std::fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 
 pub async fn atomic_write_async(target: &Path, content: &str) -> std::io::Result<()> {
-    let parent = target.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "target has no parent")
-    })?;
-    tokio::fs::create_dir_all(parent).await?;
-
-    let temp = NamedTempFile::new_in(parent)?;
-    tokio::fs::write(temp.path(), content).await?;
-    temp.persist(target)?;
-    Ok(())
+    let target = target.to_owned();
+    let content = content.to_owned();
+    tokio::task::spawn_blocking(move || atomic_write(&target, &content))
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 pub async fn copy_dir_recursive(
@@ -95,6 +97,32 @@ mod tests {
         assert_eq!(fs::read_to_string(&target).unwrap(), "new");
     }
 
+    #[test]
+    fn atomic_write_bytes_roundtrips_binary_content() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("nested/file.bin");
+        let bytes = [0, 255, 128, 10, 0];
+        atomic_write_bytes(&target, &bytes).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), bytes);
+        atomic_write_bytes(&target, &[]).unwrap();
+        assert!(fs::read(&target).unwrap().is_empty());
+        assert_eq!(fs::read_dir(target.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_atomic_publish_preserves_destination_and_cleans_up_temporary_file() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("destination");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("existing.bin"), b"preserve me").unwrap();
+        assert!(atomic_write_bytes(&target, b"replacement").is_err());
+        assert_eq!(
+            fs::read(target.join("existing.bin")).unwrap(),
+            b"preserve me"
+        );
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
     #[tokio::test]
     async fn atomic_write_async_creates_file() {
         let temp = tempdir().unwrap();
@@ -115,6 +143,20 @@ mod tests {
         atomic_write_async(&target, "async content").await.unwrap();
 
         assert_eq!(fs::read_to_string(&target).unwrap(), "async content");
+    }
+
+    #[tokio::test]
+    async fn failed_async_publish_preserves_destination_and_cleans_up_temporary_file() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("destination");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("existing.bin"), b"preserve me").unwrap();
+        assert!(atomic_write_async(&target, "replacement").await.is_err());
+        assert_eq!(
+            fs::read(target.join("existing.bin")).unwrap(),
+            b"preserve me"
+        );
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
     }
 
     #[tokio::test]
@@ -186,7 +228,7 @@ pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
         use std::os::unix::ffi::OsStrExt;
         let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
         let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) };
         #[cfg(target_os = "linux")]
         let result = unsafe {
@@ -198,12 +240,12 @@ pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
                 libc::RENAME_NOREPLACE,
             )
         };
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "exclusive rename unsupported",
         ));
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "linux"))]
         if result == 0 {
             Ok(())
         } else {

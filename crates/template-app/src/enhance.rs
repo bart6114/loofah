@@ -91,6 +91,7 @@ mod tests {
         };
         let rendered = input.render().unwrap();
         assert!(rendered.contains("# Notes\n\nShip the release on Friday."));
+        assert!(rendered.contains("Keep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler."));
         assert!(!rendered.contains("# Transcript"));
         assert!(!rendered.contains("# Meeting Notes"));
     }
@@ -363,7 +364,9 @@ mod tests {
     Attached tags:
 
     Dismissed tags:
-    ");
+
+    Keep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler.
+");
 
     tpl_snapshot!(
         test_enhance_user_with_memos,
@@ -420,6 +423,8 @@ mod tests {
     Attached tags:
 
     Dismissed tags:
+
+    Keep the summary concise and proportional to the source. Preserve concrete decisions and explicit actions; do not pad with filler.
     "
     );
 }

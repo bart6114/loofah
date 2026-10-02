@@ -1,8 +1,8 @@
 # Overview
 
-Tauri desktop note-taking app (`apps/desktop/`) and a CLI (`apps/cli/`).
+Tauri desktop note-taking app (`apps/desktop/`), iPhone app (`apps/mobile/`), and a CLI (`apps/cli/`).
 Uses pnpm workspaces.
-Files in the user's vault directory are the only source of truth — there is no database. The vault format lives in `crates/vault-read/`; the desktop write path and in-memory index are `apps/desktop/src-tauri/src/session_store/`. App settings are a `config.json` in the vault, not rows. Zustand is used for UI state, and TipTap powers the editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
+Files in the user's vault directory are the only source of truth — there is no database. The vault format lives in `crates/vault-read/`; the shared write path and in-memory index are in `crates/vault-write/`, re-exported by the desktop session store. App settings are a `config.json` in the vault, not rows. Zustand is used for desktop UI state, and TipTap powers the desktop editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
 
 ## Supported platform
 
@@ -31,6 +31,7 @@ Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crat
 
 ## Guidelines
 
+- Reuse shared machinery across desktop, mobile, and CLI. Extract existing domain logic into shared crates/packages instead of recreating it for another platform, including summary inputs/prompts, transcript conversion, settings, and vault operations. Keep platform-specific code focused on native APIs, model adapters, lifecycle constraints, and presentation. Follow desktop UI conventions when adapting mobile flows.
 - Format via dprint after making changes.
 - JavaScript/TypeScript formatting runs through `oxfmt` via dprint's exec plugin.
 - Run `pnpm -r typecheck` after TypeScript changes, `cargo check` after Rust changes.

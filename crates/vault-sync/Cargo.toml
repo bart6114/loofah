@@ -1,0 +1,18 @@
+[package]
+name = "vault-sync"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hypr-vault-read = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+tempfile = { workspace = true }

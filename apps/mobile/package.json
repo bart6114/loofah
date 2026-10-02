@@ -1,0 +1,45 @@
+{
+  "name": "@hypr/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "ios:init": "node scripts/ios.mjs init",
+    "ios:prepare": "node scripts/ios.mjs prepare",
+    "ios:dev": "node scripts/ios.mjs dev",
+    "ios:build": "node scripts/ios.mjs build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@hypr/ai-providers": "workspace:*",
+    "@hypr/utils": "workspace:^",
+    "@tanstack/react-form": "^1.29.0",
+    "@tanstack/react-query": "^5.99.0",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-http": "^2.5.8",
+    "@tauri-apps/plugin-opener": "^2.6.0",
+    "ai": "^6.0.158",
+    "lucide-react": "^0.544.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jsdom": "^27.4.0",
+    "typescript": "~5.8.3",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
+  }
+}

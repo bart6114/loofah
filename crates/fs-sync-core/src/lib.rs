@@ -96,53 +96,9 @@ impl FsSyncCore {
 
     pub fn attachment_list(&self, session_id: &str) -> Result<Vec<AttachmentInfo>> {
         let session_dir = self.resolve_session_dir(session_id)?;
-        let attachments_dir = session_dir.join("attachments");
-
-        let mut attachments = Vec::new();
-
-        let entries = match std::fs::read_dir(&attachments_dir) {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(attachments),
-            Err(e) => return Err(e.into()),
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let filename = match path.file_name().and_then(|s| s.to_str()) {
-                Some(name) if !name.starts_with('.') => name.to_string(),
-                None => continue,
-                Some(_) => continue,
-            };
-
-            let metadata = match entry.metadata() {
-                Ok(metadata) if metadata.is_file() => metadata,
-                _ => continue,
-            };
-
-            let extension = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_string();
-
-            let modified_at = metadata
-                .modified()
-                .map(|t| {
-                    chrono::DateTime::<chrono::Utc>::from(t)
-                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-                })
-                .unwrap_or_default();
-
-            attachments.push(AttachmentInfo {
-                attachment_id: filename,
-                path: path.to_string_lossy().to_string(),
-                extension,
-                size: metadata.len(),
-                modified_at,
-            });
-        }
-
-        Ok(attachments)
+        Ok(hypr_vault_read::attachments::read_attachments_in(
+            &session_dir,
+        )?)
     }
 
     pub fn attachment_read(&self, session_id: &str, attachment_id: &str) -> Result<Vec<u8>> {

@@ -139,6 +139,32 @@ impl SessionStore {
         self.write_meta_locked(&guard, &meta).await
     }
 
+    pub async fn apply_generated_title(
+        &self,
+        id: &str,
+        title: &str,
+        expected_title: &str,
+        expected_summary: &str,
+    ) -> Result<bool, StoreError> {
+        validate_session_id(id)?;
+        let title = title.trim();
+        if title.is_empty() || title == "<EMPTY>" {
+            return Ok(false);
+        }
+        let guard = self.lock_writes().await;
+        let Some(mut meta) = self.read_meta(id).await? else {
+            return Ok(false);
+        };
+        if meta.title != expected_title
+            || self.read_summary(id).await?.as_deref() != Some(expected_summary)
+        {
+            return Ok(false);
+        }
+        meta.title = title.to_owned();
+        self.write_meta_locked(&guard, &meta).await?;
+        Ok(true)
+    }
+
     pub async fn accept_tag_suggestion(&self, id: &str, name: &str) -> Result<bool, StoreError> {
         validate_session_id(id)?;
         let Some(name) = hypr_vault_read::normalize_tag_name(name) else {
@@ -399,37 +425,48 @@ impl SessionStore {
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
         let vault_base = self.vault_base.clone();
-        let trash_path = tokio::task::spawn_blocking(
-            move || -> Result<Option<std::path::PathBuf>, StoreError> {
-                let session_path = vault_base.join(&relative_dir);
-                for path in [
-                    vault_base.join("sessions"),
-                    session_path.clone(),
-                    session_path.join("_meta.json"),
-                ] {
-                    match std::fs::symlink_metadata(&path) {
-                        Ok(meta) if meta.file_type().is_symlink() => {
-                            return Err(StoreError::Io(format!(
-                                "refusing to delete a symlinked session: {}",
-                                path.display()
-                            )));
+        let trash_path = tokio::task::spawn_blocking(move || {
+            super::sync_write(
+                &vault_base,
+                || -> Result<Option<std::path::PathBuf>, StoreError> {
+                    let session_path = vault_base.join(&relative_dir);
+                    for path in [
+                        vault_base.join("sessions"),
+                        session_path.clone(),
+                        session_path.join("_meta.json"),
+                    ] {
+                        match std::fs::symlink_metadata(&path) {
+                            Ok(meta) if meta.file_type().is_symlink() => {
+                                return Err(StoreError::Io(format!(
+                                    "refusing to delete a symlinked session: {}",
+                                    path.display()
+                                )));
+                            }
+                            Ok(_) => {}
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                return Ok(None);
+                            }
+                            Err(error) => return Err(StoreError::Io(error.to_string())),
                         }
-                        Ok(_) => {}
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                            return Ok(None);
-                        }
-                        Err(error) => return Err(StoreError::Io(error.to_string())),
                     }
-                }
-                if hypr_vault_read::meta::read_session_meta_in(&vault_base, &relative_dir)?
-                    .is_none()
-                {
-                    return Ok(None);
-                }
-                hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
-                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {e}")))
-            },
-        )
+                    if hypr_vault_read::meta::read_session_meta_in(&vault_base, &relative_dir)?
+                        .is_none()
+                    {
+                        return Ok(None);
+                    }
+                    let trashed =
+                        hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
+                            .map_err(|e| {
+                                StoreError::Io(format!("failed to move session to trash: {e}"))
+                            })?;
+                    if trashed.is_some() {
+                        hypr_vault_sync::record_deletion(&vault_base, &relative_dir)
+                            .map_err(|e| StoreError::Io(e.to_string()))?;
+                    }
+                    Ok(trashed)
+                },
+            )
+        })
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
 
@@ -463,7 +500,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let id_owned = id.to_string();
         let deletion = record.clone();
-        let restored = tokio::task::spawn_blocking(move || -> Result<bool, StoreError> {
+        let restored = tokio::task::spawn_blocking(move || super::sync_write(&vault_base, || -> Result<bool, StoreError> {
             // The trash entry must still be this session: a parseable `_meta.json`
             // claiming the requested full id. A vanished entry is an expired undo; a
             // tampered one fails loudly rather than restoring someone else's bytes.
@@ -507,8 +544,10 @@ impl SessionStore {
             hypr_storage::fs::rename_no_replace(&deletion.trash_path, &destination).map_err(
                 |e| StoreError::Io(format!("failed to restore session from trash: {}", e)),
             )?;
+            hypr_vault_sync::record_restore(&vault_base, &paths::validated_session_dir(&id_owned)?)
+                .map_err(|e| StoreError::Io(e.to_string()))?;
             Ok(true)
-        })
+        }))
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
 
@@ -560,6 +599,64 @@ mod tests {
         id: &str,
     ) -> std::path::PathBuf {
         vault.path().join(store.session_dir(id).await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn generated_title_preserves_manual_titles_summary_edits_and_deleted_sessions() {
+        let (store, _vault) = test_store().await;
+        store.write_meta(&meta("s1", "")).await.unwrap();
+        store
+            .create_generated_summary("s1", "Summary")
+            .await
+            .unwrap();
+        assert!(
+            store
+                .apply_generated_title("s1", "  Release plan  ", "", "Summary")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            store.read_meta("s1").await.unwrap().unwrap().title,
+            "Release plan"
+        );
+        assert!(
+            !store
+                .apply_generated_title("s1", "Stale", "", "Summary")
+                .await
+                .unwrap()
+        );
+        store
+            .update_meta(
+                "s1",
+                SessionMetaPatch {
+                    title: Some("".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .update_summary("s1", "User edit", Some("Summary"))
+            .await
+            .unwrap();
+        assert!(
+            !store
+                .apply_generated_title("s1", "Stale", "", "Summary")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !store
+                .apply_generated_title("s1", "<EMPTY>", "", "User edit")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !store
+                .apply_generated_title("missing", "Stale", "", "Summary")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
