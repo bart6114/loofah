@@ -245,7 +245,21 @@ fn list_meetings_sync(vault: &Path, input: ListMeetingsInput) -> Result<MeetingP
         .clamp(1, MAX_LIST_LIMIT);
     let offset = input.offset.unwrap_or(0);
 
-    let mut sessions = discover_sessions(vault, "list meetings")?;
+    let cache = open_search_cache(vault)?;
+    let mut sessions = cache
+        .headers()
+        .values()
+        .map(|header| {
+            (
+                SessionLocation {
+                    id: header.meta.id.clone(),
+                    relative_dir: hypr_vault_read::paths::validated_session_dir(&header.meta.id)
+                        .expect("validated cached id"),
+                },
+                header.meta.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
 
     if let Some(search) = input
         .query
@@ -287,7 +301,23 @@ fn list_meetings_sync(vault: &Path, input: ListMeetingsInput) -> Result<MeetingP
         .into_iter()
         .skip(offset as usize)
         .take(limit as usize + 1)
-        .map(|(location, meta)| meeting_list_item(vault, &location, meta))
+        .map(|(_location, meta)| {
+            let header = &cache.headers()[&meta.id];
+            let updated_at = header
+                .fingerprints
+                .get("_meta.json")
+                .and_then(|f| {
+                    chrono::DateTime::from_timestamp(
+                        (f.modified_ns / 1_000_000_000) as i64,
+                        (f.modified_ns % 1_000_000_000) as u32,
+                    )
+                })
+                .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+                .unwrap_or_default();
+            let mut item = meeting_list_item(meta);
+            item.updated_at = updated_at;
+            item
+        })
         .collect::<Vec<_>>();
     let has_more = meetings.len() > limit as usize;
     meetings.truncate(limit as usize);
@@ -299,15 +329,18 @@ fn list_meetings_sync(vault: &Path, input: ListMeetingsInput) -> Result<MeetingP
     })
 }
 
-/// Discovered sessions with their physical locations; discovery diagnostics
-/// (corrupt/duplicate entries) never hide the healthy sessions.
-fn discover_sessions(
-    vault: &Path,
-    action: &'static str,
-) -> Result<Vec<(SessionLocation, hypr_vault_read::SessionMeta)>> {
-    Ok(hypr_vault_read::discover_sessions(vault)
-        .map_err(vault_error(action))?
-        .sessions)
+pub fn open_search_cache(vault: &Path) -> Result<hypr_search_cache::Cache> {
+    let mut cache = hypr_search_cache::Cache::open(vault, "cli").map_err(|e| Error::Vault {
+        action: "open search cache",
+        reason: e.to_string(),
+    })?;
+    if !cache.bootstrapped {
+        cache.refresh(false).map_err(|e| Error::Vault {
+            action: "build search cache",
+            reason: e.to_string(),
+        })?;
+    }
+    Ok(cache)
 }
 
 /// Resolve only the canonical directory and require matching metadata.
@@ -475,16 +508,9 @@ fn occurred_at(meta: &hypr_vault_read::SessionMeta) -> &str {
     }
 }
 
-fn meeting_list_item(
-    vault: &Path,
-    location: &SessionLocation,
-    meta: hypr_vault_read::SessionMeta,
-) -> MeetingListItem {
+fn meeting_list_item(meta: hypr_vault_read::SessionMeta) -> MeetingListItem {
     MeetingListItem {
-        updated_at: file_updated_at(
-            vault,
-            &hypr_vault_read::paths::meta_path_in(&location.relative_dir),
-        ),
+        updated_at: meta.created_at.clone(),
         tags: normalized_tags(&meta.tags),
         id: meta.id,
         title: meta.title,

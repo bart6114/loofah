@@ -20,6 +20,7 @@ crate-type = ["staticlib", "rlib"]
 tauri-build = { workspace = true, features = [] }
 
 [dependencies]
+hypr-search-cache = { workspace = true }
 # Keep aligned with tauri-plugin-tantivy for typed errors and projection tests.
 tantivy = "0.25"
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }

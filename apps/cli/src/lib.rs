@@ -19,7 +19,29 @@ pub async fn run(args: Args) -> Result<u8> {
 
     let vault = vault::open(&args)?;
 
+    let mut status = 0;
     match args.command {
+        cli::Command::Cache {
+            command: cli::CacheCommand::Refresh { full },
+        } => {
+            let refresh_vault = vault.clone();
+            let report = tokio::task::spawn_blocking(move || {
+                hypr_search_cache::Cache::open(&refresh_vault, "cli")?.refresh(full)
+            })
+            .await
+            .map_err(|e| Error::operation("refresh cache", e.to_string()))?
+            .map_err(|e| Error::operation("refresh cache", e.to_string()))?;
+            if args.json {
+                output::emit(&output::json("cache.refresh", &report, None)?);
+            } else {
+                output::emit(&format!(
+                    "Updated {} sessions; removed {}; {} pending repairs.",
+                    report.updated.len(),
+                    report.removed.len(),
+                    report.pending
+                ));
+            }
+        }
         cli::Command::Doctor => unreachable!("doctor returns before opening the vault"),
         cli::Command::Sessions { command } => {
             commands::meetings::run(&vault, command, args.json).await?
@@ -43,19 +65,25 @@ pub async fn run(args: Args) -> Result<u8> {
                 author,
                 skill,
             };
-            return commands::import::run(
-                &vault, file, title, into, transcribe, timestamps, args.json,
-            )
-            .await;
+            status =
+                commands::import::run(&vault, file, title, into, transcribe, timestamps, args.json)
+                    .await?;
         }
         cli::Command::Transcribe { id } => {
             commands::transcribe::run(&vault, &id, args.json).await?
         }
-        cli::Command::Mcp => mcp::serve(vault).await?,
+        cli::Command::Mcp => mcp::serve(vault.clone()).await?,
         cli::Command::Tags { command } => commands::tags::run(&vault, command, args.json).await?,
     }
 
-    Ok(0)
+    let maintenance_vault = vault.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        if let Ok(mut cache) = hypr_search_cache::Cache::open(&maintenance_vault, "cli") {
+            let _ = cache.maintain(16, false);
+        }
+    })
+    .await;
+    Ok(status)
 }
 
 #[cfg(test)]

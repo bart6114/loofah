@@ -39,6 +39,11 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Maintain the local search cache from canonical vault files
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommand,
+    },
     /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
     Doctor,
     /// Browse, create, edit, and export sessions
@@ -116,6 +121,15 @@ pub enum Command {
     Tags {
         #[command(subcommand)]
         command: TagsCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CacheCommand {
+    /// Drain reconciliation; --full also verifies source contents
+    Refresh {
+        #[arg(long)]
+        full: bool,
     },
 }
 

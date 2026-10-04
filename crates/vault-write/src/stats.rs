@@ -82,15 +82,27 @@ impl SessionStore {
                     SessionRow {
                         id: meta.id.clone(),
                         year: year_of(meta.started_at.as_deref().unwrap_or(&meta.created_at)),
-                        has_note: entry
-                            .note_markdown
-                            .as_deref()
-                            .is_some_and(|note| !note.trim().is_empty()),
+                        has_note: index
+                            .cached_headers
+                            .get(&meta.id)
+                            .map(|h| h.has_note)
+                            .unwrap_or_else(|| {
+                                entry
+                                    .note_markdown
+                                    .as_deref()
+                                    .is_some_and(|note| !note.trim().is_empty())
+                            }),
                         word_count: index
                             .transcripts
                             .get(&meta.id)
                             .map_or(0, |summary| summary.word_count),
-                        enhanced_docs: index.docs.get(&meta.id).map_or(0, |docs| docs.len() as u64),
+                        enhanced_docs: index
+                            .cached_headers
+                            .get(&meta.id)
+                            .map(|h| h.enhanced_docs)
+                            .unwrap_or_else(|| {
+                                index.docs.get(&meta.id).map_or(0, |docs| docs.len() as u64)
+                            }),
                         duration_seconds: duration_seconds(meta),
                         created_at: meta.created_at.clone(),
                     }

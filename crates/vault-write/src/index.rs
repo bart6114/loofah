@@ -200,6 +200,7 @@ fn session_has_attachments(session_dir: &std::path::Path) -> Result<bool, StoreE
 /// collections are normalized to absent keys so `PartialEq` diffs stay meaningful.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct VaultIndex {
+    pub cached_headers: HashMap<String, hypr_search_cache::CachedHeader>,
     pub sessions: HashMap<String, SessionEntry>,
     /// Session id -> that session's `enhanced/<uuid>.md` docs.
     pub docs: HashMap<String, Vec<EnhancedDoc>>,
@@ -706,6 +707,7 @@ impl SessionStore {
     pub(super) fn index_remove_session(&self, session_id: &str) -> Vec<(IndexEntity, String)> {
         let mut index = self.index.write().unwrap();
         let mut changes = Vec::new();
+        index.cached_headers.remove(session_id);
         if index.sessions.remove(session_id).is_some() {
             self.deleted_sessions
                 .lock()
@@ -731,6 +733,9 @@ impl SessionStore {
 
     pub(super) fn index_remove_session_and_notify(&self, session_id: &str) {
         let changes = self.index_remove_session(session_id);
+        if let Err(error) = hypr_search_cache::queue_repair(self.vault_base(), session_id) {
+            tracing::warn!(%error, "search deletion repair will be retried by reconciliation");
+        }
         self.notify_many(changes);
     }
 }

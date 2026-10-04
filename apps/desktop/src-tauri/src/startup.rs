@@ -121,6 +121,27 @@ async fn initialize(
     store: Arc<SessionStore>,
     state: StartupState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    crate::vault_watch::spawn(app.clone());
+    if let Err(error) = app.notify().start() {
+        tracing::warn!(%error, "watcher unavailable; incremental scans remain active");
+    }
+    let cached = match crate::search_index::open(&app, &store).await {
+        Ok(ready) => ready,
+        Err(error) => {
+            tracing::warn!(%error, "cache unavailable; opening canonical vault");
+            false
+        }
+    };
+    if cached {
+        store.set_startup_pending(false);
+        state.update(&app, StartupPhase::Ready);
+        crate::recording_meta::spawn(app.clone());
+        store.index_refresh_people().await;
+        store.index_refresh_tags().await;
+        store.index_refresh_vault_tasks().await;
+        ensure_agents_doc(&store).await;
+        return Ok(());
+    }
     state.update(&app, StartupPhase::Scanning { sessions_found: 0 });
 
     let scan_app = app.clone();
@@ -191,6 +212,29 @@ async fn initialize(
         "startup session index rebuild complete"
     );
 
+    let cache = app
+        .state::<tauri_plugin_tantivy::CacheState>()
+        .0
+        .read()
+        .unwrap()
+        .clone();
+    if let Some(cache) = cache {
+        match tokio::task::spawn_blocking(move || cache.lock().unwrap().refresh(false)).await {
+            Ok(Ok(_)) => {}
+            result => tracing::warn!(?result, "initial search build will continue in background"),
+        }
+    }
+
+    ensure_agents_doc(&store).await;
+
+    crate::recording_meta::spawn(app.clone());
+    store.set_startup_pending(false);
+    state.update(&app, StartupPhase::Ready);
+
+    Ok(())
+}
+
+async fn ensure_agents_doc(store: &SessionStore) {
     let vault_path = store.vault_base().to_path_buf();
     match tokio::task::spawn_blocking(move || {
         hypr_vault_write::agents_doc::ensure_agents_doc(&vault_path)
@@ -201,19 +245,6 @@ async fn initialize(
         Ok(Err(error)) => tracing::error!(%error, "failed to write AGENTS.md"),
         Err(error) => tracing::error!(%error, "AGENTS.md task failed"),
     }
-
-    crate::vault_watch::spawn(app.clone());
-    crate::recording_meta::spawn(app.clone());
-    store.set_startup_pending(false);
-    state.update(&app, StartupPhase::Ready);
-
-    tokio::task::spawn_blocking(move || {
-        if let Err(error) = app.notify().start() {
-            tracing::error!(%error, "failed to start vault watcher");
-        }
-    });
-
-    Ok(())
 }
 
 fn is_cloud_storage_path(path: &Path) -> bool {

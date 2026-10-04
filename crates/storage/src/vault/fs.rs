@@ -65,6 +65,8 @@ pub async fn copy_vault_items(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
 
+    copy_search_snapshots(src, dst).await?;
+
     for file_name in VAULT_FILES {
         let src_file = src.join(file_name);
         let dst_file = dst.join(file_name);
@@ -74,6 +76,32 @@ pub async fn copy_vault_items(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn copy_search_snapshots(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let relative = Path::new(".loofah-cache/search-v1");
+    let mut publishers = match tokio::fs::read_dir(src.join(relative)).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    while let Some(publisher) = publishers.next_entry().await? {
+        if !publisher.file_type().await?.is_dir() {
+            continue;
+        }
+        let mut packs = tokio::fs::read_dir(publisher.path()).await?;
+        while let Some(pack) = packs.next_entry().await? {
+            if !pack.file_type().await?.is_file()
+                || pack.path().extension().is_none_or(|e| e != "pack")
+            {
+                continue;
+            }
+            let target = dst.join(relative).join(publisher.file_name());
+            tokio::fs::create_dir_all(&target).await?;
+            tokio::fs::copy(pack.path(), target.join(pack.file_name())).await?;
+        }
+    }
     Ok(())
 }
 
@@ -202,6 +230,28 @@ mod tests {
 
         assert!(dst.join("events.json").exists());
         assert!(!dst.join("sessions").exists());
+    }
+
+    #[tokio::test]
+    async fn copy_includes_completed_search_snapshots_only() {
+        let temp = tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        let publisher = src.join(".loofah-cache/search-v1/publisher");
+        fs::create_dir_all(&publisher).unwrap();
+        fs::write(publisher.join("complete.pack"), "immutable snapshot").unwrap();
+        fs::write(publisher.join("unfinished.tmp"), "partial").unwrap();
+        fs::write(publisher.join("writer.lock"), "local lock").unwrap();
+        copy_vault_items(&src, &dst).await.unwrap();
+        let copied = dst.join(".loofah-cache/search-v1/publisher");
+        assert_eq!(
+            fs::read(copied.join("complete.pack")).unwrap(),
+            b"immutable snapshot"
+        );
+        assert!(!copied.join("unfinished.tmp").exists());
+        assert!(!copied.join("writer.lock").exists());
+        remove_vault_items(&src).await.unwrap();
+        assert!(copied.join("complete.pack").exists());
     }
 
     fn legacy_chat_files() -> [(&'static str, &'static [u8]); 4] {

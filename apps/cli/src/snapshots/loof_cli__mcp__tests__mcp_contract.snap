@@ -180,7 +180,7 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
             ]
           },
           "query": {
-            "description": "Case-insensitive search terms; every whitespace-separated term must occur. Required unless speaker is set",
+            "description": "Search words and quoted phrases, with a trailing word prefix; results are ranked by relevance, once per session. Required unless speaker is set",
             "type": [
               "string",
               "null"

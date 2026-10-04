@@ -1,0 +1,28 @@
+[package]
+name = "search-cache"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+hypr-language = { workspace = true, features = ["detect"] }
+hypr-vault-read = { workspace = true }
+notify = "8"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+specta = { workspace = true }
+tantivy = "0.25"
+tar = "0.4"
+tempfile = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+filetime = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+fsevent-sys = "4"
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true }

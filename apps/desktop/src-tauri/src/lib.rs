@@ -139,7 +139,7 @@ fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEven
     }
 
     tokio::spawn(async move {
-        match store.rebuild_index().await {
+        match store.reconcile_incremental().await {
             Ok(report) if !report.errors.is_empty() || !report.ghost_sessions.is_empty() => {
                 tracing::warn!(
                     error_count = report.errors.len(),

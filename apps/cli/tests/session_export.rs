@@ -81,6 +81,9 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, (Vec<u8>, std::time::SystemTime)> 
     ) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
+            if dir == root && path.file_name().is_some_and(|name| name == ".loofah-cache") {
+                continue;
+            }
             if path.is_dir() {
                 visit(root, &path, result);
             } else {

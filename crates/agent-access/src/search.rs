@@ -6,25 +6,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
 
-use hypr_vault_read::{SessionLocation, SessionMeta, TranscriptWithData};
+use hypr_vault_read::{SessionMeta, TranscriptWithData};
 
 use crate::render::object_hint_value;
-use crate::{
-    Error, Pagination, Result, discover_sessions, load_summaries_sync, occurred_at, pagination,
-    run_blocking, sort_sessions_recent_first,
-};
+use crate::{Error, Pagination, Result, occurred_at, pagination, run_blocking};
 
 pub const DEFAULT_SEARCH_LIMIT: u32 = 20;
 pub const MAX_SEARCH_LIMIT: u32 = 50;
-const MAX_TRANSCRIPT_HITS_PER_MEETING: usize = 3;
-const MIN_TRANSCRIPT_HIT_WORD_GAP: u32 = 100;
 const SNIPPET_RADIUS_CHARS: usize = 100;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "snake_case")]
 pub struct SearchMeetingsInput {
     #[schemars(
-        description = "Case-insensitive search terms; every whitespace-separated term must occur. Required unless speaker is set"
+        description = "Search words and quoted phrases, with a trailing word prefix; results are ranked by relevance, once per session. Required unless speaker is set"
     )]
     pub query: Option<String>,
     #[schemars(
@@ -93,7 +88,7 @@ pub async fn search_meetings(vault: &Path, input: SearchMeetingsInput) -> Result
 }
 
 struct SearchContext {
-    terms: Vec<String>,
+    query: String,
     speaker: Option<String>,
     kinds: Vec<SearchKind>,
     people_names: HashMap<String, String>,
@@ -150,8 +145,23 @@ fn search_meetings_sync(vault: &Path, input: SearchMeetingsInput) -> Result<Sear
     let offset = input.offset.unwrap_or(0);
     let needed = offset as usize + limit as usize + 1;
 
-    let mut sessions = discover_sessions(vault, "search meetings")?;
-    sort_sessions_recent_first(&mut sessions);
+    let cache = crate::open_search_cache(vault)?;
+    let ranked = cache
+        .search(hypr_search_cache::SearchRequest {
+            query: input.query.clone().unwrap_or_default(),
+            collection: None,
+            filters: Default::default(),
+            limit: cache.headers().len().max(1),
+            options: hypr_search_cache::SearchOptions {
+                snippets: Some(true),
+                ..Default::default()
+            },
+        })
+        .map_err(|error| Error::Vault {
+            action: "search meetings",
+            reason: error.to_string(),
+        })?;
+    let filtered = speaker.is_some() || input.kinds.as_ref().is_some_and(|k| !k.is_empty());
 
     // A speaker filter only makes sense against transcript words, so it narrows the
     // search to transcripts no matter which kinds were requested.
@@ -164,7 +174,7 @@ fn search_meetings_sync(vault: &Path, input: SearchMeetingsInput) -> Result<Sear
             .unwrap_or_else(|| ALL_KINDS.to_vec())
     };
     let ctx = SearchContext {
-        terms,
+        query: input.query.clone().unwrap_or_default(),
         speaker,
         kinds,
         people_names: hypr_vault_read::read_people(vault)
@@ -173,11 +183,30 @@ fn search_meetings_sync(vault: &Path, input: SearchMeetingsInput) -> Result<Sear
             .collect(),
     };
 
-    // Sessions are already recency-sorted, so scanning can stop as soon as the page
-    // (plus one hit to drive next_offset) is full.
     let mut hits = Vec::new();
-    for (location, meta) in &sessions {
-        collect_session_hits(vault, location, meta, &ctx, &mut hits);
+    for ranked in ranked.hits {
+        let Some(session) = cache
+            .session(&ranked.document.id)
+            .map_err(|error| Error::Vault {
+                action: "search meetings",
+                reason: error.to_string(),
+            })?
+        else {
+            continue;
+        };
+        let mut sources = Vec::new();
+        collect_session_hits(&session, &ctx, &mut sources);
+        if let Some(hit) = sources.into_iter().next() {
+            hits.push(hit);
+        } else if !filtered {
+            let mut hit = base_hit(&session.meta, "session");
+            hit.snippet = ranked
+                .content_snippet
+                .map(|s| s.fragment)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(ranked.document.title);
+            hits.push(hit);
+        }
         if hits.len() >= needed {
             break;
         }
@@ -196,78 +225,67 @@ fn search_meetings_sync(vault: &Path, input: SearchMeetingsInput) -> Result<Sear
 }
 
 fn collect_session_hits(
-    vault: &Path,
-    location: &SessionLocation,
-    meta: &SessionMeta,
+    session: &hypr_search_cache::CachedSession,
     ctx: &SearchContext,
     hits: &mut Vec<SearchHit>,
 ) {
+    let meta = &session.meta;
     if ctx.wants(SearchKind::Title)
-        && let Some((start, end)) = find_match(&meta.title, &ctx.terms)
+        && let Some((start, end)) = hypr_search_cache::matching_range(&meta.title, &ctx.query)
     {
         let mut hit = base_hit(meta, "title");
         hit.snippet = make_snippet(&meta.title, start, end);
         hits.push(hit);
     }
 
-    // A single unreadable file must never hide the rest of the vault from search, so
-    // per-session read failures degrade to "no hits from that source".
     if ctx.wants(SearchKind::Note)
-        && let Some(markdown) = hypr_vault_read::meta::read_note_in(vault, &location.relative_dir)
-            .ok()
-            .flatten()
-        && let Some((start, end)) = find_match(&markdown, &ctx.terms)
+        && let Some(markdown) = session.note.as_ref()
+        && let Some((start, end)) = hypr_search_cache::matching_range(markdown, &ctx.query)
     {
         let mut hit = base_hit(meta, "note");
-        hit.snippet = make_snippet(&markdown, start, end);
+        hit.snippet = make_snippet(markdown, start, end);
         hits.push(hit);
     }
 
     if ctx.wants(SearchKind::Summary) {
-        for doc in load_summaries_sync(vault, location).unwrap_or_default() {
+        for doc in &session.docs {
             let haystack = if doc.title.trim().is_empty() {
-                doc.markdown
+                doc.markdown.clone()
             } else {
                 format!("{}\n{}", doc.title, doc.markdown)
             };
-            let Some((start, end)) = find_match(&haystack, &ctx.terms) else {
+            let Some((start, end)) = hypr_search_cache::matching_range(&haystack, &ctx.query)
+            else {
                 continue;
             };
             let mut hit = base_hit(meta, "summary");
             hit.snippet = make_snippet(&haystack, start, end);
-            hit.document_id = Some(doc.id);
+            hit.document_id = Some(doc.id.clone());
             if !doc.title.trim().is_empty() {
-                hit.document_title = Some(doc.title);
+                hit.document_title = Some(doc.title.clone());
             }
             hits.push(hit);
         }
     }
 
     if ctx.wants(SearchKind::Transcript) {
-        collect_transcript_hits(vault, location, meta, ctx, hits);
+        collect_transcript_hits(session, ctx, hits);
     }
 }
 
 struct WordRecord {
-    global_offset: u32,
     start_ms: i64,
     speaker_id: Option<String>,
     text: String,
 }
 
 fn collect_transcript_hits(
-    vault: &Path,
-    location: &SessionLocation,
-    meta: &SessionMeta,
+    session: &hypr_search_cache::CachedSession,
     ctx: &SearchContext,
     hits: &mut Vec<SearchHit>,
 ) {
-    let Ok(file) =
-        hypr_vault_read::transcript::read_transcript_json_in(vault, &location.relative_dir)
-    else {
-        return;
-    };
-    let mut transcripts = file.transcripts;
+    let meta = &session.meta;
+    let mut transcripts = session.transcripts.clone();
     // Same ordering as get_meeting_transcript's flattening, so global_offset is
     // directly usable as its `offset` input.
     transcripts.sort_by(|a, b| {
@@ -275,17 +293,14 @@ fn collect_transcript_hits(
     });
 
     let mut records = Vec::new();
-    let mut global_offset = 0u32;
     for transcript in &transcripts {
         let speaker_ids = attribute_speakers(transcript);
         for (index, word) in transcript.words.iter().enumerate() {
             records.push(WordRecord {
-                global_offset,
                 start_ms: word.start_ms.round() as i64,
                 speaker_id: speaker_ids.get(index).cloned().flatten(),
                 text: word.text.trim().to_string(),
             });
-            global_offset = global_offset.saturating_add(1);
         }
     }
 
@@ -306,7 +321,7 @@ fn collect_transcript_hits(
         return;
     }
 
-    if ctx.terms.is_empty() {
+    if ctx.query.trim().is_empty() {
         let mut snippet = String::new();
         let mut chars = 0usize;
         let mut truncated = false;
@@ -347,39 +362,21 @@ fn collect_transcript_hits(
         haystack.push_str(&record.text);
     }
 
-    let (lowered, byte_map) = lower_with_map(&haystack);
-    if !ctx.terms.iter().all(|term| lowered.contains(term.as_str())) {
+    let Some((start, end)) = hypr_search_cache::matching_range(&haystack, &ctx.query) else {
         return;
-    }
-
-    let first_term = &ctx.terms[0];
-    let mut taken = 0usize;
-    let mut min_next_offset = 0u32;
-    let mut search_from = 0usize;
-    while taken < MAX_TRANSCRIPT_HITS_PER_MEETING {
-        let Some(found) = lowered[search_from..].find(first_term.as_str()) else {
-            break;
-        };
-        let position = search_from + found;
-        search_from = position + first_term.len();
-        let (start, end) =
-            original_range(&byte_map, &haystack, position, position + first_term.len());
-        let word_index =
-            match word_starts.binary_search_by(|(word_start, _)| word_start.cmp(&start)) {
-                Ok(index) => index,
-                Err(index) => index.saturating_sub(1),
-            };
-        let record = included[word_starts[word_index].1];
-        if record.global_offset < min_next_offset {
-            continue;
-        }
-        let snippet = make_snippet(&haystack, start, end);
-        push_transcript_hit(hits, meta, ctx, record, snippet);
-        min_next_offset = record
-            .global_offset
-            .saturating_add(MIN_TRANSCRIPT_HIT_WORD_GAP);
-        taken += 1;
-    }
+    };
+    let word_index = match word_starts.binary_search_by(|(word_start, _)| word_start.cmp(&start)) {
+        Ok(index) => index,
+        Err(index) => index.saturating_sub(1),
+    };
+    let snippet = make_snippet(&haystack, start, end);
+    push_transcript_hit(
+        hits,
+        meta,
+        ctx,
+        included[word_starts[word_index].1],
+        snippet,
+    );
 }
 
 fn push_transcript_hit(
@@ -486,53 +483,6 @@ fn attribute_speakers(transcript: &TranscriptWithData) -> Vec<Option<String>> {
         .collect()
 }
 
-/// Byte range (in `text`) of the first occurrence of the first term, provided every
-/// term occurs.
-fn find_match(text: &str, terms: &[String]) -> Option<(usize, usize)> {
-    let first_term = terms.first()?;
-    let (lowered, byte_map) = lower_with_map(text);
-    if !terms.iter().all(|term| lowered.contains(term.as_str())) {
-        return None;
-    }
-    let position = lowered.find(first_term.as_str())?;
-    Some(original_range(
-        &byte_map,
-        text,
-        position,
-        position + first_term.len(),
-    ))
-}
-
-/// Lowercased copy of `text` plus a map from every lowered byte position back to the
-/// byte position of the original character it came from (lowercasing can change UTF-8
-/// lengths, e.g. 'İ' lowers to two characters).
-fn lower_with_map(text: &str) -> (String, Vec<usize>) {
-    let mut lowered = String::with_capacity(text.len());
-    let mut byte_map = Vec::with_capacity(text.len() + 1);
-    for (index, character) in text.char_indices() {
-        for lower in character.to_lowercase() {
-            let before = lowered.len();
-            lowered.push(lower);
-            byte_map.extend(std::iter::repeat_n(index, lowered.len() - before));
-        }
-    }
-    byte_map.push(text.len());
-    (lowered, byte_map)
-}
-
-fn original_range(byte_map: &[usize], text: &str, start: usize, end: usize) -> (usize, usize) {
-    let original_start = byte_map[start.min(byte_map.len() - 1)];
-    let mut original_end = byte_map[end.min(byte_map.len() - 1)];
-    if original_end <= original_start {
-        original_end = text[original_start..]
-            .chars()
-            .next()
-            .map(|character| original_start + character.len_utf8())
-            .unwrap_or(text.len());
-    }
-    (original_start, original_end)
-}
-
 /// ~100 characters of context on each side of the match, cut on character boundaries,
 /// whitespace collapsed, with `…` marking truncation.
 fn make_snippet(text: &str, start: usize, end: usize) -> String {
@@ -628,6 +578,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn source_filters_use_shared_prefix_accent_and_phrase_matching() {
+        let vault = tempfile::tempdir().unwrap();
+        seed_session(vault.path(), "m1", "Planning", "2026-07-13");
+        std::fs::write(
+            vault.path().join("sessions/m1/notes.md"),
+            "Café roadmap review",
+        )
+        .unwrap();
+        for query in ["cafe road", "\"café roadmap\""] {
+            let page = search(
+                vault.path(),
+                SearchMeetingsInput {
+                    query: Some(query.into()),
+                    kinds: Some(vec![SearchKind::Note]),
+                    ..Default::default()
+                },
+            )
+            .await;
+            assert_eq!(page.hits.len(), 1);
+            assert_eq!(page.hits[0].kind, "note");
+        }
+    }
+
+    #[tokio::test]
     async fn requires_query_or_speaker() {
         let vault = tempfile::tempdir().unwrap();
         let error = search_meetings(vault.path(), SearchMeetingsInput::default())
@@ -673,18 +647,9 @@ mod tests {
         );
 
         let page = search(vault.path(), query("Budget")).await;
-        assert_eq!(
-            page.hits
-                .iter()
-                .map(|hit| hit.kind.as_str())
-                .collect::<Vec<_>>(),
-            vec!["title", "note", "summary", "transcript"],
-        );
+        assert_eq!(page.hits.len(), 1, "one result per session");
+        assert_eq!(page.hits[0].kind, "title");
         assert_eq!(page.hits[0].snippet, "Budget planning");
-        assert_eq!(page.hits[1].snippet, "We reviewed the budget baseline.");
-        assert_eq!(page.hits[2].document_id.as_deref(), Some("m1"));
-        assert_eq!(page.hits[2].document_title.as_deref(), Some("Summary"));
-        assert_eq!(page.hits[3].start_ms, Some(1000));
         assert!(page.pagination.next_offset.is_none());
 
         let page = search(
@@ -1071,69 +1036,64 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recency_order_pagination_and_corrupt_transcripts() {
+    async fn relevance_pagination_preserves_cached_entries_after_corruption() {
         let vault = tempfile::tempdir().unwrap();
-        for (id, date) in [
-            ("old", "2026-07-01"),
-            ("mid", "2026-07-05"),
-            ("new", "2026-07-10"),
-        ] {
-            seed_session(vault.path(), id, "Sync", date);
+        for id in ["old", "mid", "new"] {
+            seed_session(
+                vault.path(),
+                id,
+                if id == "new" { "Keyword" } else { "Sync" },
+                "2026-07-01",
+            );
             std::fs::write(
                 vault.path().join(format!("sessions/{id}/notes.md")),
                 "shared keyword",
             )
             .unwrap();
         }
-        // A corrupt transcript in the newest session must not hide anything else.
-        std::fs::write(
-            vault.path().join("sessions/new/transcript.json"),
-            "not json",
-        )
-        .unwrap();
-
         let first = search(
             vault.path(),
             SearchMeetingsInput {
-                query: Some("keyword".to_string()),
+                query: Some("keyword".into()),
                 limit: Some(2),
                 ..Default::default()
             },
         )
         .await;
-        assert_eq!(
-            first
-                .hits
-                .iter()
-                .map(|hit| hit.meeting_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["new", "mid"],
-        );
+        assert_eq!(first.hits[0].meeting_id, "new", "title match ranks first");
         assert_eq!(first.pagination.next_offset, Some(2));
-
+        std::fs::write(
+            vault.path().join("sessions/new/transcript.json"),
+            "not json",
+        )
+        .unwrap();
+        crate::open_search_cache(vault.path())
+            .unwrap()
+            .refresh(true)
+            .unwrap();
         let second = search(
             vault.path(),
             SearchMeetingsInput {
-                query: Some("keyword".to_string()),
+                query: Some("keyword".into()),
                 limit: Some(2),
                 offset: Some(2),
                 ..Default::default()
             },
         )
         .await;
-        assert_eq!(
-            second
+        assert_eq!(second.hits.len(), 1);
+        assert!(
+            !first
                 .hits
                 .iter()
-                .map(|hit| hit.meeting_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["old"],
+                .any(|hit| hit.meeting_id == second.hits[0].meeting_id)
         );
         assert!(second.pagination.next_offset.is_none());
+        assert_eq!(search(vault.path(), query("keyword")).await.hits.len(), 3);
     }
 
     #[tokio::test]
-    async fn transcript_hits_are_capped_and_spaced() {
+    async fn transcript_search_returns_one_useful_hit_per_session() {
         let vault = tempfile::tempdir().unwrap();
         seed_session(vault.path(), "m1", "Sync", "2026-07-13");
         let mut words = Vec::new();
@@ -1153,8 +1113,8 @@ mod tests {
                 .iter()
                 .map(|hit| hit.start_ms.unwrap())
                 .collect::<Vec<_>>(),
-            vec![0, 120_000, 250_000],
-            "close repeats collapse into one hit, capped at three per meeting",
+            vec![0],
+            "one result per session retains the first matching timestamp",
         );
     }
 }

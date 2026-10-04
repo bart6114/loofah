@@ -233,6 +233,26 @@ impl ServerHandler for LoofahMcpServer {
 }
 
 pub async fn serve(vault: PathBuf) -> crate::Result<()> {
+    let maintenance_vault = vault.clone();
+    let maintenance = tokio::spawn(async move {
+        loop {
+            let vault = maintenance_vault.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Ok(mut cache) = hypr_search_cache::Cache::open(&vault, "cli") {
+                    let _ = cache.maintain(16, false);
+                }
+            })
+            .await;
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
+    struct MaintenanceGuard(tokio::task::JoinHandle<()>);
+    impl Drop for MaintenanceGuard {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _maintenance = MaintenanceGuard(maintenance);
     let running = LoofahMcpServer::new(vault)
         .serve(rmcp::transport::stdio())
         .await

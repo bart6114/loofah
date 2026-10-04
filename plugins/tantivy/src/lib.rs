@@ -1,11 +1,9 @@
 mod commands;
 mod error;
 mod ext;
-mod query;
 mod schema;
 mod tokenizer;
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tantivy::schema::Schema;
 use tantivy::{Index, IndexReader, IndexWriter};
@@ -19,85 +17,10 @@ pub use tokenizer::{get_tokenizer_name_for_language, register_tokenizers};
 
 const PLUGIN_NAME: &str = "tantivy";
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct SearchDocument {
-    pub id: String,
-    pub doc_type: String,
-    pub language: Option<String>,
-    pub title: String,
-    pub content: String,
-    pub created_at: i64,
-    #[serde(default)]
-    pub facets: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct Snippet {
-    pub fragment: String,
-    pub highlights: Vec<HighlightRange>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct HighlightRange {
-    pub start: usize,
-    pub end: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct SearchHit {
-    pub score: f32,
-    pub document: SearchDocument,
-    pub title_snippet: Option<Snippet>,
-    pub content_snippet: Option<Snippet>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct SearchResult {
-    pub hits: Vec<SearchHit>,
-    pub count: usize,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
-pub struct CreatedAtFilter {
-    pub gte: Option<i64>,
-    pub lte: Option<i64>,
-    pub gt: Option<i64>,
-    pub lt: Option<i64>,
-    pub eq: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
-pub struct SearchFilters {
-    pub created_at: Option<CreatedAtFilter>,
-    pub doc_type: Option<String>,
-    pub facet: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
-pub struct SearchOptions {
-    pub fuzzy: Option<bool>,
-    pub distance: Option<u8>,
-    pub snippets: Option<bool>,
-    pub snippet_max_chars: Option<usize>,
-    pub phrase_slop: Option<u32>,
-}
-
-fn default_limit() -> usize {
-    100
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct SearchRequest {
-    pub query: String,
-    #[serde(default)]
-    pub collection: Option<String>,
-    #[serde(default)]
-    pub filters: SearchFilters,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    #[serde(default)]
-    pub options: SearchOptions,
-}
+pub use hypr_search_cache::{
+    CreatedAtFilter, HighlightRange, SearchDocument, SearchFilters, SearchHit, SearchOptions,
+    SearchRequest, SearchResult, Snippet,
+};
 
 // 2 -> 3: title/content moved from 1-3 char ngrams to whole-word tokens; the
 // index must be rebuilt or every existing posting is an unmatchable fragment.
@@ -122,6 +45,12 @@ pub struct CollectionIndex {
 pub struct IndexStateInner {
     pub collections: HashMap<String, CollectionIndex>,
 }
+
+#[derive(Default)]
+pub struct CacheState(
+    pub std::sync::RwLock<Option<std::sync::Arc<std::sync::Mutex<hypr_search_cache::Cache>>>>,
+    pub std::sync::RwLock<Option<hypr_search_cache::SearchReader>>,
+);
 
 pub struct IndexState {
     pub inner: RwLock<IndexStateInner>,
@@ -157,19 +86,7 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .setup(|app, _api| {
             app.manage(IndexState::default());
 
-            let handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let config = CollectionConfig {
-                    name: "default".to_string(),
-                    path: "search_index".to_string(),
-                    schema_builder: schema::build_schema,
-                    schema_version: SCHEMA_VERSION,
-                };
-
-                if let Err(e) = handle.tantivy().register_collection(config).await {
-                    tracing::error!("Failed to register default collection: {}", e);
-                }
-            });
+            app.manage(CacheState::default());
 
             Ok(())
         })

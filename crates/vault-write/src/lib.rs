@@ -17,6 +17,7 @@ pub mod migrate;
 pub mod paths;
 pub mod people;
 pub mod rebuild;
+mod search_cache;
 mod session_path;
 pub mod stats;
 pub mod storage_stats;
@@ -43,6 +44,9 @@ pub use transcript::TranscriptDelta;
 
 #[derive(Debug, Clone)]
 pub struct SessionStore {
+    search_cache: Arc<std::sync::RwLock<Option<Arc<std::sync::Mutex<hypr_search_cache::Cache>>>>>,
+    pending_cache_refresh: Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
+    cached_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     vault_base: PathBuf,
     journal: Arc<journal::WriteJournal>,
     rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
@@ -122,6 +126,9 @@ impl SessionStore {
     pub fn new(vault_base: PathBuf) -> Self {
         let (index_changes_tx, index_changes_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
+            search_cache: Default::default(),
+            cached_sessions: Default::default(),
+            pending_cache_refresh: Default::default(),
             vault_base,
             journal: Arc::new(journal::WriteJournal::new()),
             rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
@@ -238,6 +245,11 @@ impl SessionStore {
             std::fs::rename(&tmp_path, &abs_path)
                 .map_err(|e| StoreError::Io(format!("failed to rename temp file: {}", e)))?;
 
+            if let Some(id) = journal_relative.strip_prefix("sessions/").and_then(|path| path.split('/').next()) {
+                if let Err(error) = hypr_search_cache::queue_repair(&vault_base, id) {
+                    tracing::warn!(%error, "canonical write succeeded; search will reconcile later");
+                }
+            }
             Ok::<String, StoreError>(sha256(&bytes))
         })
         .await

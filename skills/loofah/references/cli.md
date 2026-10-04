@@ -21,6 +21,8 @@ loof --json sessions search "budget forecast" --limit 20
 loof --json sessions search --speaker "bob" --kind transcript
 ```
 
+Search returns one result per session, ranked by relevance, and supports quoted phrases and trailing word prefixes. Search and lists use persistent caches and catch up automatically. To reconcile explicitly, use `loof --json cache refresh`; add `--full` to verify source contents. Pending cloud downloads can leave repairs unfinished; inspect the report and retry after sync settles. This command never authorizes canonical-file cleanup.
+
 Read the full speaker-labeled transcript (`[HH:MM:SS] Speaker: ...` lines):
 
 ```bash

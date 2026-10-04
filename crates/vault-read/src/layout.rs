@@ -262,3 +262,32 @@ pub fn find_session(
 pub fn artifact_dir(_vault: &Path, id: &str) -> Result<PathBuf> {
     paths::validated_session_dir(id)
 }
+
+/// Membership only: no metadata or session content is opened. An incomplete
+/// listing is an error so callers cannot mistake inaccessible entries for deletion.
+pub fn session_membership(vault: &Path) -> Result<Vec<String>> {
+    let mut ids = Vec::new();
+    let entries = match std::fs::read_dir(vault.join(paths::sessions_root())) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ids),
+        Err(e) => return Err(Error::Io(e.to_string())),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| Error::Io(e.to_string()))?;
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if paths::validate_session_id(&name).is_err() || name.starts_with('.') {
+            continue;
+        }
+        if entry
+            .file_type()
+            .map_err(|e| Error::Io(e.to_string()))?
+            .is_dir()
+        {
+            ids.push(name);
+        }
+    }
+    ids.sort();
+    Ok(ids)
+}

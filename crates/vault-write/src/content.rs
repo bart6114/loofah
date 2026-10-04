@@ -443,6 +443,9 @@ impl SessionStore {
             );
             self.deleted_sessions.lock().unwrap().insert(id.to_string());
             self.index_remove_session_and_notify(id);
+            if let Err(error) = hypr_search_cache::queue_deletion(self.vault_base(), id) {
+                tracing::warn!(%error, "canonical deletion succeeded; search will reconcile later");
+            }
         }
         Ok(trash_path)
     }

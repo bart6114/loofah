@@ -241,6 +241,18 @@ impl SessionStore {
             self.index_remove_session_and_notify(&id);
         }
 
+        self.index_refresh_vault_tasks().await;
+
+        self.index_refresh_people().await;
+        self.index_refresh_tags().await;
+
+        if let Some(error) = first_outer {
+            return Err(error);
+        }
+        Ok(report)
+    }
+
+    pub async fn index_refresh_vault_tasks(&self) {
         if let Some(tasks) = self.read_index_tasks(paths::vault_tasks_path()).await {
             let changed = {
                 let mut index = self.index.write().unwrap();
@@ -250,14 +262,6 @@ impl SessionStore {
                 self.notify_index_changed(IndexEntity::Tasks, vec![VAULT_TASKS_KEY.to_string()]);
             }
         }
-
-        self.index_refresh_people().await;
-        self.index_refresh_tags().await;
-
-        if let Some(error) = first_outer {
-            return Err(error);
-        }
-        Ok(report)
     }
 
     /// Watcher + focus entry point: re-read one session's files, refresh its index slice.
@@ -317,7 +321,16 @@ impl SessionStore {
         };
         let meta = match read_meta {
             Ok(None) => {
-                // Missing identity is the only read outcome that removes a session.
+                let directory = self.vault_base().join(paths::validated_session_dir(id)?);
+                match std::fs::symlink_metadata(directory) {
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    _ if self.search_cache.read().unwrap().is_some() => {
+                        return Ok(Some(StoreError::Io(format!(
+                            "{id}: metadata temporarily unavailable"
+                        ))));
+                    }
+                    _ => {}
+                }
                 self.index_remove_session_and_notify(id);
                 match self.session_has_content(id).await {
                     Ok(true) => report.ghost_sessions.push(id.to_string()),

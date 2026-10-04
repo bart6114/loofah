@@ -40,6 +40,39 @@ expression: canonicalize_json(contract)
   ],
   "subcommands": [
     {
+      "about": "Maintain the local search cache from canonical vault files",
+      "name": "loof cache",
+      "options": [
+        {
+          "flags": "-h, --help",
+          "help": "Print help",
+          "is_flag": false,
+          "required": false
+        }
+      ],
+      "subcommands": [
+        {
+          "about": "Drain reconciliation; --full also verifies source contents",
+          "name": "loof cache refresh",
+          "options": [
+            {
+              "flags": "--full",
+              "is_flag": true,
+              "required": false
+            },
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof cache refresh [--full] [-h]"
+        }
+      ],
+      "synopsis": "loof cache [-h] <command>"
+    },
+    {
       "about": "Check vault access and layout; refresh the vault guide. Open desktop to migrate",
       "name": "loof doctor",
       "options": [

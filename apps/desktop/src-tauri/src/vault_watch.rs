@@ -69,11 +69,9 @@
 //!
 //! # Startup ordering
 //!
-//! Wired from `lib.rs`'s app-level `setup()` closure, after the session
-//! store is constructed and `.manage()`d and its startup `rebuild_index`
-//! pass has completed -- see `lib.rs`'s comments at the `vault_watch::spawn`
-//! call site for the full ordering rationale (a live edit only has to
-//! account for vault state from here on).
+//! Register before cache bootstrap and canonical scans. Events remain queued
+//! until the cached session list is ready; shared search maintenance separately
+//! replays persistent history for edits made while the app was closed.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -291,9 +289,8 @@ async fn ids_to_refresh(store: &SessionStore, changed: &HashSet<String>) -> Refr
 #[derive(Debug, Default, PartialEq)]
 struct RefreshPlan {
     session_ids: HashSet<String>,
-    /// One flag for the whole batch: any structural `sessions/` change means
-    /// one `rebuild_index` pass, which rediscovers every session and thereby
-    /// subsumes the per-id refreshes in `session_ids`.
+    /// Structural events request a bounded membership/fingerprint pass in
+    /// addition to the batch's known session IDs.
     rebuild_sessions: bool,
     people: bool,
     tags: bool,
@@ -321,8 +318,8 @@ async fn handle_batch(store: &SessionStore, changed: &HashSet<String>) {
     let plan = ids_to_refresh(store, changed).await;
     if plan.rebuild_sessions {
         store.notify_all_artifacts_changed();
-        // A full shallow rebuild also covers the batch's per-session refreshes.
-        match store.rebuild_index().await {
+        refresh_ids(store, plan.session_ids.clone()).await;
+        match store.reconcile_incremental().await {
             Ok(report) => {
                 tracing::info!(
                     sessions = report.sessions,
@@ -367,7 +364,14 @@ pub fn spawn(app: AppHandle) {
     });
 
     tauri::async_runtime::spawn(async move {
-        run(store, rx).await;
+        if app
+            .state::<crate::startup::StartupState>()
+            .wait_until_ready()
+            .await
+            .is_ok()
+        {
+            run(store, rx).await;
+        }
     });
 }
 

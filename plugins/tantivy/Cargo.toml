@@ -17,6 +17,7 @@ tokio = { workspace = true, features = ["macros"] }
 
 [dependencies]
 hypr-language = { workspace = true, features = ["detect"] }
+hypr-search-cache = { workspace = true }
 tantivy = "0.25"
 
 tauri = { workspace = true, features = ["test"] }

@@ -17,6 +17,7 @@ For agents with shell access, use the `loof` CLI for both reading and writing. S
   tags.json  tasks.json  people.json  events.json  calendars.json
   humans/  organizations/
   .trash/                soft-deleted files, kept by date; recoverable
+  .loofah-cache/search-v1/ immutable derived search snapshots for other devices
   sessions/<id>/         one session per directory; may be a meeting or standalone note
     _meta.json           identity + metadata; its presence marks a session
     notes.md             the user's note (legacy vaults: _memo.md)
@@ -59,6 +60,8 @@ Ownership rules:
 - Inside a session directory the app owns exactly the names above. **Any other file is a user attachment: leave it alone**, and never claim unknown files as app content.
 - Dot-prefixed files (`.tmp-*`, `.DS_Store`, `.trash/`) are never content.
 - Do not create or rename files under the app-owned names; use the CLI to write.
+
+Search and session lists use local caches, bootstrapped from synced snapshots when available. Canonical files remain authoritative. `loof --json cache refresh` reconciles explicitly; `loof --json cache refresh --full` also verifies source contents. Reports may contain pending repairs while cloud files are unavailable. Cache maintenance never authorizes deleting canonical files or unknown attachments.
 
 ## Authorship
 

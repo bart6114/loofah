@@ -133,10 +133,14 @@ pub async fn session_read_note<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
-pub fn session_summary_get<R: tauri::Runtime>(
+pub async fn session_summary_get<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Option<String>, String> {
+    store(&app)?
+        .ensure_session_loaded(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(store(&app)?.summary_get(&session_id))
 }
 
@@ -498,10 +502,7 @@ pub async fn session_restore<R: tauri::Runtime>(
 pub async fn session_rebuild_index<R: tauri::Runtime>(
     app: AppHandle<R>,
 ) -> Result<RebuildReport, String> {
-    store(&app)?
-        .rebuild_index()
-        .await
-        .map_err(|e| e.to_string())
+    store(&app)?.verify_index().await.map_err(|e| e.to_string())
 }
 
 // -- index queries (Phase E1): synchronous reads of the in-memory vault index; the
@@ -514,6 +515,10 @@ pub async fn session_get<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Option<SessionRecord>, String> {
+    store(&app)?
+        .ensure_session_loaded(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(store(&app)?.session_get(&session_id))
 }
 
@@ -556,6 +561,10 @@ pub async fn session_is_empty<R: tauri::Runtime>(
     session_id: String,
 ) -> Result<bool, String> {
     store(&app)?
+        .ensure_session_loaded(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    store(&app)?
         .session_is_empty(&session_id)
         .await
         .map_err(|error| error.to_string())
@@ -576,6 +585,10 @@ pub async fn session_enhanced_docs<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Vec<EnhancedDoc>, String> {
+    store(&app)?
+        .ensure_session_loaded(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(store(&app)?.session_enhanced_docs(&session_id))
 }
 
@@ -594,6 +607,10 @@ pub async fn session_transcript_metadata<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<SessionTranscriptMetadata, String> {
+    store(&app)?
+        .ensure_session_loaded(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(store(&app)?.session_transcript_metadata(&session_id))
 }
 
