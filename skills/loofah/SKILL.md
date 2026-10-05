@@ -24,11 +24,13 @@ When the user chooses Loofah as their personal knowledge vault and asks you to r
 
 Do not silently switch to MCP to work around a CLI command failure. Check the [error reference](references/errors.md) and resolve the underlying problem.
 
+If `doctor` reports a missing or incompatible cache, run `loof --json init` before vault commands. Progress streams on stderr.
+
 Never crawl or modify Loofah's vault files directly. The CLI and MCP server own compatibility with the application's file formats.
 
 ## Find the right note or meeting
 
-1. Use `loof --json sessions list --query "title fragment" --limit 10` to find a note by title, or `loof --json sessions search "search phrase" --limit 10` to search notes, summaries, and transcripts.
+1. Use `loof --json sessions list --query "search terms" --limit 10` to find matching sessions, or `loof --json sessions search "search phrase" --limit 10` to search notes, summaries, and transcripts.
 2. Resolve the session ID from the result. Do not guess an ID.
 3. Run `loof --json sessions get SESSION_ID` before requesting a transcript. Notes, summaries, and action items often contain enough context.
 4. Only if needed, run `loof --json sessions transcript SESSION_ID`.

@@ -4,6 +4,10 @@ use std::process::{Command, Output, Stdio};
 use serde_json::{Value, json};
 
 fn run(vault: &Path, args: &[&str], json: bool) -> Output {
+    let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+    if !cache.status().ready {
+        cache.initialize(&mut |_| {}).unwrap();
+    }
     let mut command = Command::new(env!("CARGO_BIN_EXE_loof"));
     for name in [
         "LOOFAH_BASE",
@@ -24,7 +28,7 @@ fn response(output: Output) -> Value {
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema_version"], "1");
+    assert_eq!(value["schema_version"], "2");
     value
 }
 
@@ -43,6 +47,10 @@ fn seed(vault: &Path) -> PathBuf {
         .to_string(),
     )
     .unwrap();
+    let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+    if !cache.status().ready {
+        cache.initialize(&mut |_| {}).unwrap();
+    }
     path
 }
 
@@ -100,11 +108,7 @@ fn rename_preserves_metadata_and_files_and_is_visible_to_read_commands() {
         true,
     ));
     assert_eq!(list["data"][0]["title"], title);
-    let search = response(run(
-        vault.path(),
-        &["sessions", "search", "Résumé", "--kind", "title"],
-        true,
-    ));
+    let search = response(run(vault.path(), &["sessions", "search", "Résumé"], true));
     assert!(!search["data"].as_array().unwrap().is_empty());
     let old = response(run(
         vault.path(),

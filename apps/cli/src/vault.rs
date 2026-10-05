@@ -38,25 +38,7 @@ fn resolve_default_path(data_dir: &Path) -> PathBuf {
 }
 
 fn resolve_default_path_for_command(data_dir: &Path, command_name: Option<&OsStr>) -> PathBuf {
-    let (current, legacy) = match command_name.and_then(OsStr::to_str) {
-        Some("loof-dev" | "loofah-dev" | "fmtr-dev") => (
-            data_dir.join("io.loofah.dev"),
-            data_dir.join("org.freemeetingtranscriber.dev"),
-        ),
-        Some("loof-staging" | "loofah-staging" | "fmtr-staging") => (
-            data_dir.join("io.loofah.staging"),
-            data_dir.join("org.freemeetingtranscriber.staging"),
-        ),
-        _ => (
-            data_dir.join("loofah"),
-            data_dir.join("free-meeting-transcriber"),
-        ),
-    };
-    let base = if current.exists() || !legacy.exists() {
-        current
-    } else {
-        legacy
-    };
+    let base = hypr_search_cache::default_global_base(data_dir, command_name);
     apply_vault_redirect(base)
 }
 

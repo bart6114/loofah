@@ -17,14 +17,20 @@ loof [--base DIR] [--vault-path DIR] [--json] <command>
 
 `--vault-path` takes precedence over `--base`. Without either option, the CLI uses Loofah's platform application-data directory, following the `vault_path` redirect in its `global.json` when the vault has been relocated.
 
+## Local search cache
+
+All vault commands require a compatible local Tantivy cache shared with desktop. If `doctor` reports a missing or invalid cache, run `loof --json init` for the existing vault. It builds, repairs, or refreshes the cache; it does not create a vault. Help, version, `doctor`, and `init` remain available without a cache.
+
+`init --json` streams NDJSON progress on stderr and returns one final JSON response on stdout. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
+
 ## Session commands
 
 `meetings` remains a compatibility alias for `sessions`. Plain-text invocations emit a deprecation warning when the alias is used; `--json` output remains machine-readable.
 
 | Command | Options | Result |
 | --- | --- | --- |
-| `sessions list` | `--query TEXT`, `--limit 1..200`, `--offset NUMBER`, `--tag NAME`, `--untagged` | Meetings ordered by the application query layer. Defaults to 20 results. `--tag` filters to meetings carrying that tag (case-insensitive); repeatable, and all given tags must match. `--untagged` keeps only meetings without tags and cannot be combined with `--tag`. Each meeting's JSON includes its normalized `tags`. |
-| `sessions search [QUERY]` | `--speaker TEXT`, `--kind title\|note\|summary\|transcript`, `--limit 1..50`, `--offset NUMBER` | Full-text hits across titles, notes, summaries, and transcript words, newest meetings first. Requires a query and/or `--speaker`; `--speaker` limits hits to meetings where that person spoke. `--kind` is repeatable and defaults to all. |
+| `sessions list` | `--query TEXT`, `--limit 1..200`, `--offset NUMBER`, `--tag NAME`, `--untagged` | Newest sessions first; with `--query`, desktop full-text matching and relevance order. Defaults to 20 results. `--tag` filters to meetings carrying that tag (case-insensitive); repeatable, and all given tags must match. `--untagged` keeps only meetings without tags and cannot be combined with `--tag`. Each meeting's JSON includes its normalized `tags`. |
+| `sessions search QUERY` | `--limit 1..50`, `--offset NUMBER` | One relevance-ranked result per session, using desktop word, phrase, and trailing-prefix matching. JSON includes `session_id`, `title`, `created_at` (epoch milliseconds), `score`, and plain-text title/content snippets. Source and speaker filters are no longer supported; use `sessions get` or `transcript` for detail. |
 | `sessions get ID` | None | Metadata, canonical note, summaries, and action items. |
 | `sessions rename ID TITLE` | None | Changes only the session title, stored verbatim. Keeps the id, directory, metadata, and content. JSON returns `sessions.rename` with `id` and `title`; missing sessions return `not_found` (exit 2). |
 | `sessions new` | `--title TEXT` (required), `--note FILE`, `--created-at RFC3339`, `--started-at RFC3339`, `--ended-at RFC3339`, `--tag NAME`, `--author NAME`, `--skill NAME` | Creates a meeting note in the vault and prints its id. `--note` seeds the note body from `FILE`, or from stdin when `FILE` is `-`. `--created-at` backdates the meeting on the timeline, which is useful when importing historical notes; `--started-at` and `--ended-at` set the meeting's start and end. All three take an RFC 3339 timestamp such as `2024-05-01T09:00:00Z` (offsets are normalized to UTC); invalid values are rejected before anything is written. `--tag` is repeatable and both tags the meeting and registers new tags in the vault's tag list. `--author` records who wrote the note in the meeting's metadata. When writing on behalf of someone other than the vault owner (an agent, for example `claude-code`), always set it because the app marks such meetings as not written by the owner. Left unset, the note counts as the vault owner's own. `--skill` additionally records the skill used to produce the note (for example `meeting-summarizer`); it requires `--author` and is omitted when no skill was involved. |
@@ -93,7 +99,7 @@ Successful `--json` responses contain:
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | CLI JSON contract version. Currently `1`. |
+| `schema_version` | CLI JSON contract version. Currently `2`. |
 | `command` | Stable command identifier such as `meetings.list`. |
 | `data` | Command result. |
 | `pagination` | Page metadata when the command is paginated. |
@@ -106,7 +112,7 @@ Pagination includes `offset`, `limit`, `returned`, optional `total`, and optiona
 loof --json doctor
 ```
 
-Checks the resolved vault path and read access to its sessions without changing meeting data.
+Checks the resolved vault path, session access, and local cache readiness without changing meeting data.
 It reports noncanonical session directories and directs you to open the updated desktop app for migration. CLI and MCP reads only use `sessions/<id>/`; they never migrate a vault.
 It exits with status 0 when `ready` is true and status 1 when `ready` is false.
 Inside a vault it also restores the root [`AGENTS.md` agent guide](/agents/vault/) when the file is missing or stale.

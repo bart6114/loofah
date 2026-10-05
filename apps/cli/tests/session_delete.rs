@@ -18,6 +18,10 @@ fn command() -> Command {
 }
 
 fn run(vault: &Path, args: &[&str]) -> Output {
+    let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+    if !cache.status().ready {
+        cache.initialize(&mut |_| {}).unwrap();
+    }
     command()
         .arg("--vault-path")
         .arg(vault)
@@ -31,7 +35,7 @@ fn data(output: &Output) -> Value {
     assert!(output.status.success(), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(response["schema_version"], "1");
+    assert_eq!(response["schema_version"], "2");
     response["data"].clone()
 }
 
@@ -52,6 +56,10 @@ fn seed(vault: &Path, id: &str) -> PathBuf {
         .to_string(),
     )
     .unwrap();
+    let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+    if !cache.status().ready {
+        cache.initialize(&mut |_| {}).unwrap();
+    }
     path
 }
 

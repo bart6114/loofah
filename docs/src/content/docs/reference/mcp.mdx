@@ -3,7 +3,7 @@ title: "MCP reference"
 description: "Tools, resources, limits, and transport details exposed by Loofah MCP."
 ---
 
-Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Every tool is read-only, non-destructive, idempotent, and local-only.
+Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Tools do not change vault content. Search and list requests refresh the shared local cache; run `loof --json init` before starting the server if the cache is missing or incompatible.
 
 ## Tools
 
@@ -11,7 +11,7 @@ Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio
 
 | Parameter | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `query` | string | None | Case-insensitive title or meeting ID substring. |
+| `query` | string | None | Desktop full-text matching; query results use relevance order. |
 | `limit` | integer | `20` | Clamped to `1..200`. |
 | `offset` | integer | `0` | Number of results to skip. |
 | `tags` | array | None | Only meetings carrying every one of these tags (case-insensitive). |
@@ -21,17 +21,15 @@ Each returned meeting includes its normalized `tags`, its `author` (`null` when 
 
 ### `search_meetings`
 
-Full-text search across meeting titles, notes, summaries, and transcript words. At least one of `query` and `speaker` is required.
+Search uses desktop word, quoted-phrase, and trailing-prefix matching. It returns one relevance-ranked result per session; equal scores use session ID order. `speaker` and `kinds` are no longer accepted.
 
 | Parameter | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `query` | string | None | Case-insensitive terms; every whitespace-separated term must occur. |
-| `speaker` | string | None | Person ID or name substring. Limits results to meetings where that person spoke; the query matches anywhere in those transcripts. Without `query` it lists those meetings. |
-| `kinds` | array | all | Any of `title`, `note`, `summary`, `transcript`. Ignored when `speaker` is set. |
+| `query` | string | required | Nonempty full-text query. |
 | `limit` | integer | `20` | Clamped to `1..50`. |
-| `offset` | integer | `0` | Number of hits to skip. |
+| `offset` | integer | `0` | Number of sessions to skip. |
 
-Hits are ordered by meeting recency and carry `meeting_id`, `kind`, and a `snippet` around the first match. Transcript hits add the resolved `speaker`, `speaker_id`, and `start_ms`, which lines up with the `[HH:MM:SS]` timestamps in `get_meeting_transcript`'s text. At most three transcript hits per meeting are returned.
+Hits contain `session_id`, `title`, `created_at` (epoch milliseconds), `score`, and plain-text `title_snippet`/`content_snippet`. Pagination includes the total. Fetch transcript details with `get_meeting_transcript`.
 
 ### `get_meeting`
 

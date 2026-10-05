@@ -1,0 +1,17 @@
+[package]
+name = "search-cache"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+dirs = { workspace = true }
+hypr-language = { path = "../language", package = "language", default-features = false, features = ["detect"] }
+hypr-vault-read = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+specta = { workspace = true, features = ["derive"] }
+tantivy = "0.25"
+tempfile = { workspace = true }
+thiserror = { workspace = true }

@@ -39,7 +39,9 @@ This returns the complete speaker-labeled transcript in one response. Transcript
 loof --json doctor
 ```
 
-The report includes the CLI version, a `ready` flag, the resolved vault path, path health, and the number of sessions. It exits with status 1 when `ready` is false, while still writing the report to standard output.
+If the cache is missing or incompatible, run `loof --json init`; progress streams on stderr.
+
+The report includes cache readiness, the CLI version, a `ready` flag, the resolved vault path, path health, and the number of sessions. It exits with status 1 when `ready` is false, while still writing the report to standard output.
 
 For a non-default vault, use `--vault-path DIR` or `LOOFAH_VAULT_PATH`.
 

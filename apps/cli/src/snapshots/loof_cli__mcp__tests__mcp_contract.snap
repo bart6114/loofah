@@ -3,7 +3,7 @@ source: apps/cli/src/mcp.rs
 expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": info.protocol_version, \"instructions\":\n    info.instructions, \"tools\": tools, \"resource_templates\": templates,\n}))"
 ---
 {
-  "instructions": "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, optionally limited to meetings where a specific speaker spoke; transcript hits include a start_ms that lines up with the transcript's timestamps. Never invent meeting ids, access SQLite directly, or claim a write occurred: every tool is idempotent and performs no writes. Documentation: https://github.com/bart6114/loofah",
+  "instructions": "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
   "protocol_version": "2024-11-05",
   "resource_templates": [
     {
@@ -99,7 +99,7 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
             ]
           },
           "query": {
-            "description": "Case-insensitive title or meeting id substring",
+            "description": "Desktop-compatible full-text query across titles and content",
             "type": [
               "string",
               "null"
@@ -135,33 +135,13 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Full-text search across Loofah meeting titles, notes, summaries, and transcript words. Set speaker to limit results to meetings where that person spoke, with the query matching anywhere in those transcripts (without query it lists those meetings); transcript hits carry a start_ms that matches the transcript's [HH:MM:SS] timestamps.",
+      "description": "Desktop-compatible full-text search across session titles and content. Returns one relevance-ranked result per session with its ID, score, and snippets; fetch the full transcript separately when needed.",
       "inputSchema": {
-        "$defs": {
-          "SearchKind": {
-            "enum": [
-              "title",
-              "note",
-              "summary",
-              "transcript"
-            ],
-            "type": "string"
-          }
-        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
         "properties": {
-          "kinds": {
-            "description": "Sources to search (title, note, summary, transcript); defaults to all. Ignored when speaker is set: speaker search is transcript-only",
-            "items": {
-              "$ref": "#/$defs/SearchKind"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
           "limit": {
-            "description": "Maximum hits; defaults to 20 and is capped at 50",
+            "description": "Maximum session hits; defaults to 20 and is capped at 50",
             "format": "uint32",
             "maximum": 50,
             "minimum": 1,
@@ -171,7 +151,7 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
             ]
           },
           "offset": {
-            "description": "Number of hits to skip; defaults to 0",
+            "description": "Number of session hits to skip; defaults to 0",
             "format": "uint32",
             "minimum": 0,
             "type": [
@@ -180,20 +160,13 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
             ]
           },
           "query": {
-            "description": "Case-insensitive search terms; every whitespace-separated term must occur. Required unless speaker is set",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "speaker": {
-            "description": "Case-insensitive person id or name substring; limits results to meetings where that person spoke. The query matches anywhere in those transcripts; without query, lists meetings where they spoke",
-            "type": [
-              "string",
-              "null"
-            ]
+            "description": "Desktop-compatible full-text query: words, quoted phrases, and a trailing word prefix",
+            "type": "string"
           }
         },
+        "required": [
+          "query"
+        ],
         "title": "SearchMeetingsInput",
         "type": "object"
       },

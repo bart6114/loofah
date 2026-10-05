@@ -226,6 +226,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "schemars 1.2.1",
+ "search-cache",
  "serde",
  "serde_json",
  "specta",
@@ -3844,7 +3845,6 @@ dependencies = [
  "storage",
  "strum 0.28.0",
  "supervisor",
- "tantivy",
  "tauri",
  "tauri-build",
  "tauri-plugin-automation",
@@ -8465,6 +8465,7 @@ dependencies = [
  "listener2-core",
  "owhisper-interface",
  "rmcp",
+ "search-cache",
  "serde",
  "serde_json",
  "tempfile",
@@ -12442,6 +12443,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
 
 [[package]]
+name = "search-cache"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs 6.0.0",
+ "language",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "specta",
+ "tantivy",
+ "tempfile",
+ "thiserror 2.0.18",
+ "vault-read",
+]
+
+[[package]]
 name = "sec1"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15089,7 +15107,7 @@ dependencies = [
 name = "tauri-plugin-tantivy"
 version = "0.1.0"
 dependencies = [
- "language",
+ "search-cache",
  "serde",
  "serde_json",
  "specta",

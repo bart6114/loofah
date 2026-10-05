@@ -15,6 +15,7 @@ hypr-agent-access = { workspace = true }
 hypr-export-core = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-listener2-core = { workspace = true }
+hypr-search-cache = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
