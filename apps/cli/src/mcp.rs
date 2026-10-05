@@ -36,7 +36,7 @@ impl LoofahMcpServer {
 #[tool_router]
 impl LoofahMcpServer {
     #[tool(
-        description = "List recent Loofah meetings with pagination metadata. Use query to narrow by title or meeting id, then pass next_offset as offset to continue.",
+        description = "List recent Loofah meetings with pagination metadata. Use query for relevance-ranked full-text matches, then pass next_offset as offset to continue.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,

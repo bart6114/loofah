@@ -4,7 +4,7 @@ Use these tools when CLI access is unavailable or the user specifically requests
 
 | Tool | Use |
 | --- | --- |
-| `list_meetings` | Find recent meetings by title or ID fragment; `tags` (all must match) or `untagged` filter by tags, and each result includes its normalized `tags` and its `author` (`null` when the vault owner wrote it). |
+| `list_meetings` | List recent sessions, or use `query` for relevance-ranked full-text matches; `tags` (all must match) or `untagged` filter by tags, and each result includes its normalized `tags` and its `author` (`null` when the vault owner wrote it). |
 | `search_meetings` | Desktop full-text matching, one relevance-ranked session hit with ID, score, and snippets. Fetch transcript details separately. |
 | `get_meeting` | Read metadata, canonical note, summaries, and action items. |
 | `get_meeting_transcript` | Read the full transcript as `[HH:MM:SS] Speaker: ...` lines, one per speaker turn. |
