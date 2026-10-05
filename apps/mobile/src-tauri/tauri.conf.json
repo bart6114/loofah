@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Loofah Notes",
+  "identifier": "io.loofah.notes",
+  "version": "../../../package.json",
+  "build": {
+    "beforeDevCommand": "pnpm -F @hypr/mobile dev",
+    "beforeBuildCommand": "pnpm -F @hypr/mobile build",
+    "devUrl": "http://localhost:1430",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "title": "Loofah", "width": 390, "height": 844 }],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; media-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost",
+      "assetProtocol": { "enable": true, "scope": ["$APPLOCALDATA/vault/**"] }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["../../desktop/src-tauri/icons/stable/128x128.png"],
+    "iOS": { "minimumSystemVersion": "26.0", "infoPlist": "Info.plist" }
+  }
+}

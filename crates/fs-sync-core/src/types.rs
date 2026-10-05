@@ -19,15 +19,7 @@ pub struct AttachmentSaveResult {
     pub attachment_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct AttachmentInfo {
-    pub attachment_id: String,
-    pub path: String,
-    pub extension: String,
-    pub size: u64,
-    pub modified_at: String,
-}
+pub use hypr_vault_read::attachments::AttachmentInfo;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

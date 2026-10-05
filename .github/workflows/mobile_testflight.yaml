@@ -1,0 +1,90 @@
+name: mobile-testflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    defaults:
+      run:
+        shell: bash
+    env:
+      APPLE_DEVELOPMENT_TEAM: L8GUHT98B4
+      MOBILE_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm_install
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: ios
+      - run: pnpm -F @hypr/mobile typecheck
+      - run: pnpm -F @hypr/mobile test
+      - run: pnpm -F @hypr/mobile build
+      - run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+      - run: pnpm -F @hypr/mobile ios:init --ci
+      - name: Prepare App Store Connect key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APPLE_API_KEY_CONTENT" ] || [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_ISSUER" ]; then
+            echo "::error::App Store Connect API key secrets are required"
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
+      - name: Build signed App Store IPA
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          build_config="$(jq -nc --arg build "$MOBILE_BUILD_NUMBER" '{bundle:{iOS:{bundleVersion:$build}}}')"
+          pnpm -F @hypr/mobile ios:build --target aarch64 --ci \
+            --export-method app-store-connect --config "$build_config"
+      - name: Find IPA
+        id: ipa
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          ipas=(apps/mobile/src-tauri/gen/apple/build/arm64/*.ipa)
+          if [ "${#ipas[@]}" -ne 1 ]; then
+            echo "::error::Expected one exported IPA, found ${#ipas[@]}"
+            exit 1
+          fi
+          ditto -x -k "${ipas[0]}" "$RUNNER_TEMP/mobile-ipa-inspect"
+          app_info="$RUNNER_TEMP/mobile-ipa-inspect/Payload/Loofah Notes.app/Info.plist"
+          widget_info="$RUNNER_TEMP/mobile-ipa-inspect/Payload/Loofah Notes.app/PlugIns/RecordingWidget.appex/Info.plist"
+          test "$(plutil -extract CFBundleVersion raw -o - "$app_info")" = "$MOBILE_BUILD_NUMBER"
+          test "$(plutil -extract CFBundleVersion raw -o - "$widget_info")" = "$MOBILE_BUILD_NUMBER"
+          test "$(plutil -extract UIDeviceFamily json -o - "$app_info")" = '[1]'
+          codesign --verify --deep --strict "$RUNNER_TEMP/mobile-ipa-inspect/Payload/Loofah Notes.app"
+          echo "path=${ipas[0]}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loofah-ios-${{ github.run_number }}
+          path: ${{ steps.ipa.outputs.path }}
+          retention-days: 7
+      - name: Upload to TestFlight
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          IPA_PATH: ${{ steps.ipa.outputs.path }}
+        run: >-
+          xcrun altool --upload-app -f "$IPA_PATH"
+          --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"
+          --p8-file-path "$RUNNER_TEMP/AuthKey.p8"

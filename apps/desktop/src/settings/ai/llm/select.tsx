@@ -1,9 +1,11 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { Check, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
+import { listModels, type ProviderId } from "@hypr/ai-providers";
 import { Button } from "@hypr/ui/components/ui/button";
 import { cn } from "@hypr/utils";
 
@@ -18,20 +20,7 @@ import {
 } from "~/ai/chatgpt-account";
 import { providerRowId, ProviderIconSlot } from "~/settings/ai/shared";
 import { getProviderSelectionBlockers } from "~/settings/ai/shared/eligibility";
-import { listAnthropicModels } from "~/settings/ai/shared/list-anthropic";
-import { listAzureAIModels } from "~/settings/ai/shared/list-azure-ai";
-import { listAzureOpenAIModels } from "~/settings/ai/shared/list-azure-openai";
-import { listCloudflareWorkersAIModels } from "~/settings/ai/shared/list-cloudflare-workers-ai";
 import { type ListModelsResult } from "~/settings/ai/shared/list-common";
-import { listGoogleModels } from "~/settings/ai/shared/list-google";
-import { listLMStudioModels } from "~/settings/ai/shared/list-lmstudio";
-import { listMistralModels } from "~/settings/ai/shared/list-mistral";
-import { listOllamaModels } from "~/settings/ai/shared/list-ollama";
-import {
-  listGenericModels,
-  listOpenAIModels,
-} from "~/settings/ai/shared/list-openai";
-import { listOpenRouterModels } from "~/settings/ai/shared/list-openrouter";
 import { ModelCombobox } from "~/settings/ai/shared/model-combobox";
 import { useAiProvidersState } from "~/settings/providers";
 import { setSettingValues, useSettingsReady } from "~/settings/queries";
@@ -334,45 +323,13 @@ export function getLlmProviderStatus({
     return { configured: false };
   }
 
-  let listModelsFunc: () => Promise<ListModelsResult>;
-
-  switch (provider.id) {
-    case "openai":
-      listModelsFunc = () => listOpenAIModels(baseUrl, apiKey);
-      break;
-    case "cloudflare_workers_ai":
-      listModelsFunc = () => listCloudflareWorkersAIModels(baseUrl, apiKey);
-      break;
-    case "anthropic":
-      listModelsFunc = () => listAnthropicModels(baseUrl, apiKey);
-      break;
-    case "openrouter":
-      listModelsFunc = () => listOpenRouterModels(baseUrl, apiKey);
-      break;
-    case "google_generative_ai":
-      listModelsFunc = () => listGoogleModels(baseUrl, apiKey);
-      break;
-    case "mistral":
-      listModelsFunc = () => listMistralModels(baseUrl, apiKey);
-      break;
-    case "azure_openai":
-      listModelsFunc = () => listAzureOpenAIModels(baseUrl, apiKey);
-      break;
-    case "azure_ai":
-      listModelsFunc = () => listAzureAIModels(baseUrl, apiKey);
-      break;
-    case "ollama":
-      listModelsFunc = () => listOllamaModels(baseUrl, apiKey);
-      break;
-    case "lmstudio":
-      listModelsFunc = () => listLMStudioModels(baseUrl, apiKey);
-      break;
-    case "custom":
-      listModelsFunc = () => listGenericModels(baseUrl, apiKey);
-      break;
-    default:
-      listModelsFunc = () => listGenericModels(baseUrl, apiKey);
-  }
+  const listModelsFunc = () =>
+    listModels({
+      providerId: provider.id as ProviderId,
+      baseUrl,
+      apiKey,
+      fetch: tauriFetch,
+    });
 
   return { configured: true, listModels: listModelsFunc };
 }

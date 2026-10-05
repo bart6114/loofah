@@ -1,0 +1,198 @@
+[
+  {
+    "id": "lmstudio",
+    "mobileSupported": true,
+    "displayName": "LM Studio",
+    "badge": null,
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "requirements": [],
+    "links": {
+      "download": {
+        "label": "Download LM Studio",
+        "url": "https://lmstudio.ai/download"
+      },
+      "models": {
+        "label": "Available models",
+        "url": "https://lmstudio.ai/models"
+      },
+      "setup": {
+        "label": "Setup guide",
+        "url": "https://github.com/bart6114/loofah"
+      }
+    }
+  },
+  {
+    "id": "ollama",
+    "mobileSupported": true,
+    "displayName": "Ollama",
+    "badge": null,
+    "baseUrl": "http://127.0.0.1:11434/v1",
+    "requirements": [],
+    "links": {
+      "download": {
+        "label": "Download Ollama",
+        "url": "https://ollama.com/download"
+      },
+      "models": {
+        "label": "Available models",
+        "url": "https://ollama.com/library"
+      },
+      "setup": {
+        "label": "Setup guide",
+        "url": "https://github.com/bart6114/loofah"
+      }
+    }
+  },
+  {
+    "id": "openrouter",
+    "mobileSupported": true,
+    "displayName": "OpenRouter",
+    "badge": null,
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "openai",
+    "mobileSupported": true,
+    "displayName": "OpenAI",
+    "badge": null,
+    "baseUrl": "https://api.openai.com/v1",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "chatgpt_subscription",
+    "mobileSupported": false,
+    "displayName": "ChatGPT subscription",
+    "badge": "Beta",
+    "requirements": []
+  },
+  {
+    "id": "cloudflare_workers_ai",
+    "mobileSupported": true,
+    "displayName": "Cloudflare Workers AI",
+    "badge": null,
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "base_url",
+          "api_key"
+        ]
+      }
+    ],
+    "links": {
+      "models": {
+        "label": "Available models",
+        "url": "https://developers.cloudflare.com/workers-ai/models/"
+      },
+      "setup": {
+        "label": "Setup guide",
+        "url": "https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/"
+      }
+    }
+  },
+  {
+    "id": "anthropic",
+    "mobileSupported": true,
+    "displayName": "Anthropic",
+    "badge": null,
+    "baseUrl": "https://api.anthropic.com/v1",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mistral",
+    "mobileSupported": true,
+    "displayName": "Mistral",
+    "badge": null,
+    "baseUrl": "https://api.mistral.ai/v1",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "azure_openai",
+    "mobileSupported": true,
+    "displayName": "Azure OpenAI",
+    "badge": "Beta",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "base_url",
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "azure_ai",
+    "mobileSupported": true,
+    "displayName": "Azure AI Foundry",
+    "badge": "Beta",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "base_url",
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "google_generative_ai",
+    "mobileSupported": true,
+    "displayName": "Google Gemini",
+    "badge": null,
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "api_key"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "custom",
+    "mobileSupported": true,
+    "displayName": "Custom",
+    "badge": null,
+    "requirements": [
+      {
+        "kind": "requires_config",
+        "fields": [
+          "base_url",
+          "api_key"
+        ]
+      }
+    ]
+  }
+]
