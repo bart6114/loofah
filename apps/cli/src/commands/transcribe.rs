@@ -129,6 +129,7 @@ pub(crate) async fn transcribe_session(
         words: transcript.words.len(),
     };
 
+    crate::output::track_write(session_id)?;
     store
         .replace_session_transcripts(session_id, transcript)
         .await

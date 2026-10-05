@@ -75,6 +75,7 @@ pub(crate) async fn create_session(
         skill: options.skill,
         extra: Default::default(),
     };
+    crate::output::track_write(&meta.id)?;
     store
         .create_session_meta(&meta)
         .await

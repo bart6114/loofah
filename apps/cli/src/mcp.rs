@@ -15,6 +15,7 @@ use hypr_agent_access as access;
 #[derive(Clone)]
 struct LoofahMcpServer {
     vault: Arc<PathBuf>,
+    cache: hypr_search_cache::Cache,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -24,9 +25,10 @@ enum ResourceRequest {
 }
 
 impl LoofahMcpServer {
-    fn new(vault: PathBuf) -> Self {
+    fn new(vault: PathBuf, cache: hypr_search_cache::Cache) -> Self {
         Self {
             vault: Arc::new(vault),
+            cache,
         }
     }
 }
@@ -34,7 +36,7 @@ impl LoofahMcpServer {
 #[tool_router]
 impl LoofahMcpServer {
     #[tool(
-        description = "List recent Loofah meetings with pagination metadata. Use query to narrow by title or meeting id, then pass next_offset as offset to continue.",
+        description = "List recent Loofah meetings with pagination metadata. Use query for relevance-ranked full-text matches, then pass next_offset as offset to continue.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -46,7 +48,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::ListMeetingsInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::list_meetings(&self.vault, input)
+        let page = access::list_meetings(&self.cache, input)
             .await
             .map_err(command_error)?;
         structured(&page)
@@ -91,7 +93,7 @@ impl LoofahMcpServer {
     }
 
     #[tool(
-        description = "Full-text search across Loofah meeting titles, notes, summaries, and transcript words. Set speaker to limit results to meetings where that person spoke, with the query matching anywhere in those transcripts (without query it lists those meetings); transcript hits carry a start_ms that matches the transcript's [HH:MM:SS] timestamps.",
+        description = "Desktop-compatible full-text search across session titles and content. Returns one relevance-ranked result per session with its ID, score, and snippets; fetch the full transcript separately when needed.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -103,7 +105,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::SearchMeetingsInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::search_meetings(&self.vault, input)
+        let page = access::search_meetings(&self.cache, input)
             .await
             .map_err(command_error)?;
         structured(&page)
@@ -125,7 +127,7 @@ impl ServerHandler for LoofahMcpServer {
             env!("LOOFAH_VERSION"),
         ))
         .with_instructions(
-            "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, optionally limited to meetings where a specific speaker spoke; transcript hits include a start_ms that lines up with the transcript's timestamps. Never invent meeting ids, access SQLite directly, or claim a write occurred: every tool is idempotent and performs no writes. Documentation: https://github.com/bart6114/loofah",
+            "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
         )
     }
 
@@ -146,7 +148,7 @@ impl ServerHandler for LoofahMcpServer {
             .transpose()?
             .unwrap_or(0);
         let page = access::list_meetings(
-            &self.vault,
+            &self.cache,
             access::ListMeetingsInput {
                 query: None,
                 limit: Some(access::DEFAULT_LIST_LIMIT),
@@ -232,8 +234,8 @@ impl ServerHandler for LoofahMcpServer {
     }
 }
 
-pub async fn serve(vault: PathBuf) -> crate::Result<()> {
-    let running = LoofahMcpServer::new(vault)
+pub async fn serve(vault: PathBuf, cache: hypr_search_cache::Cache) -> crate::Result<()> {
+    let running = LoofahMcpServer::new(vault, cache)
         .serve(rmcp::transport::stdio())
         .await
         .map_err(|error| Error::operation("start MCP server", error.to_string()))?;
@@ -301,6 +303,12 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
+    fn test_server(vault: &std::path::Path) -> LoofahMcpServer {
+        let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+        cache.initialize(&mut |_| {}).unwrap();
+        LoofahMcpServer::new(vault.to_path_buf(), cache)
+    }
+
     fn seed_vault_with_meeting() -> tempfile::TempDir {
         let vault = tempfile::tempdir().unwrap();
         let dir = vault.path().join("sessions/meeting-1");
@@ -347,19 +355,19 @@ mod tests {
     #[tokio::test]
     async fn server_advertises_tools_and_resources() {
         let vault = tempfile::tempdir().unwrap();
-        let info = LoofahMcpServer::new(vault.path().to_path_buf()).get_info();
+        let info = test_server(vault.path()).get_info();
         assert!(info.capabilities.tools.is_some());
         assert!(info.capabilities.resources.is_some());
         let instructions = info.instructions.unwrap();
         assert!(instructions.contains("Start with list_meetings"));
         assert!(instructions.contains("https://github.com/bart6114/loofah"));
-        assert!(instructions.contains("performs no writes"));
+        assert!(instructions.contains("never change vault content"));
     }
 
     #[tokio::test]
     async fn list_tool_returns_structured_meeting_data() {
         let vault = seed_vault_with_meeting();
-        let server = LoofahMcpServer::new(vault.path().to_path_buf());
+        let server = test_server(vault.path());
 
         let result = server
             .list_meetings(Parameters(access::ListMeetingsInput {
@@ -379,19 +387,19 @@ mod tests {
     #[tokio::test]
     async fn search_tool_returns_structured_hits_and_rejects_empty_input() {
         let vault = seed_vault_with_meeting();
-        let server = LoofahMcpServer::new(vault.path().to_path_buf());
+        let server = test_server(vault.path());
 
         let result = server
             .search_meetings(Parameters(access::SearchMeetingsInput {
-                query: Some("planning".to_string()),
+                query: "planning".to_string(),
                 ..Default::default()
             }))
             .await
             .unwrap();
 
         let page = result.structured_content.unwrap();
-        assert_eq!(page["hits"][0]["meeting_id"], "meeting-1");
-        assert_eq!(page["hits"][0]["kind"], "title");
+        assert_eq!(page["hits"][0]["session_id"], "meeting-1");
+        assert!(page["hits"][0]["score"].as_f64().unwrap() > 0.0);
 
         let error = server
             .search_meetings(Parameters(access::SearchMeetingsInput::default()))
@@ -401,10 +409,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn requests_refresh_external_changes_after_server_start() {
+        let vault = seed_vault_with_meeting();
+        let server = test_server(vault.path());
+        server
+            .list_meetings(Parameters(access::ListMeetingsInput::default()))
+            .await
+            .unwrap();
+        std::fs::write(
+            vault.path().join("sessions/meeting-1/notes.md"),
+            "external zebra",
+        )
+        .unwrap();
+        let result = server
+            .search_meetings(Parameters(access::SearchMeetingsInput {
+                query: "zebra".into(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            result.structured_content.unwrap()["hits"][0]["session_id"],
+            "meeting-1"
+        );
+        std::fs::remove_dir_all(vault.path().join("sessions/meeting-1")).unwrap();
+        let result = server
+            .list_meetings(Parameters(access::ListMeetingsInput::default()))
+            .await
+            .unwrap();
+        assert!(
+            result.structured_content.unwrap()["meetings"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
     async fn client_server_handshake_lists_tools_and_resources() {
         let vault = seed_vault_with_meeting();
         let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
-        let server = LoofahMcpServer::new(vault.path().to_path_buf());
+        let server = test_server(vault.path());
         let info = server.get_info();
         let server_handle = tokio::spawn(async move { server.serve(server_transport).await });
 

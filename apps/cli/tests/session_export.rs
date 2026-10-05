@@ -6,6 +6,10 @@ use std::{
 };
 
 fn run(vault: &Path, args: &[&str]) -> Output {
+    let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+    if !cache.status().ready {
+        cache.initialize(&mut |_| {}).unwrap();
+    }
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_loof"));
     for key in [
         "LOOFAH_BASE",
@@ -267,7 +271,7 @@ fn file_output_is_atomic_protected_and_reporting_is_separate() {
         ],
     ));
     let legacy: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-    assert_eq!(legacy["schema_version"], "1");
+    assert_eq!(legacy["schema_version"], "2");
     assert_eq!(legacy["data"]["id"], "demo");
     assert_eq!(std::fs::read_dir(out.path()).unwrap().count(), 1);
     let note = vault.path().join("sessions/demo/notes.md");

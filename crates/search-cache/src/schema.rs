@@ -18,7 +18,7 @@ pub struct SchemaFields {
 
 pub fn build_schema() -> Schema {
     let mut schema_builder = Schema::builder();
-    schema_builder.add_text_field("id", STRING | STORED);
+    schema_builder.add_text_field("id", STRING | STORED | FAST);
     schema_builder.add_text_field("doc_type", STRING | STORED);
     schema_builder.add_text_field("language", STRING | STORED);
 

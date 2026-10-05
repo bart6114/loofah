@@ -12,13 +12,14 @@ loof --json sessions note MEETING_ID --kind note
 loof --json sessions note MEETING_ID --kind summary
 ```
 
+Vault commands automatically initialize a missing or incompatible cache. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
+
 `doctor` exits with status 1 when its response contains `ready: false`. Inside a vault it also restores the root `AGENTS.md` agent guide when missing or stale (reported as `agents_md`).
 
-Search across titles, notes, summaries, and transcript words (query and/or `--speaker` required; transcript hits return a `start_ms` matching the transcript's timestamps):
+Search returns one relevance-ranked session result with `session_id`, score, and snippets, using desktop word, phrase, and trailing-prefix matching:
 
 ```bash
 loof --json sessions search "budget forecast" --limit 20
-loof --json sessions search --speaker "bob" --kind transcript
 ```
 
 Read the full speaker-labeled transcript (`[HH:MM:SS] Speaker: ...` lines):
@@ -48,7 +49,7 @@ loof --json tags list
 loof --json sessions path MEETING_ID
 ```
 
-JSON success responses contain `schema_version`, `command`, `data`, and optional `pagination`. Continue from `pagination.next_offset` only when more context is necessary.
+JSON schema version `2` success responses contain `schema_version`, `command`, `data`, and optional `pagination`. Continue from `pagination.next_offset` only when more context is necessary.
 
 Create a meeting note (prints the new meeting id; `--note` seeds the body from a file, or stdin with `-`). `--created-at`, `--started-at`, and `--ended-at` take RFC 3339 timestamps for backdating historical notes (`--created-at` sets the meeting's place on the timeline and in its folder name; invalid timestamps are rejected before anything is written), and `--tag` is repeatable and both tags the meeting and registers new tags in the vault. **Always pass `--author <your-agent-name>` (e.g. `--author claude-code`)** — it marks the meeting as not written by the vault owner, and the app surfaces that; leave it unset only when entering a note on the owner's dictation:
 

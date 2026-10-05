@@ -110,6 +110,7 @@ hypr-recall = { path = "crates/recall", package = "recall" }
 hypr-resampler = { path = "crates/resampler", package = "resampler" }
 hypr-s3 = { path = "crates/s3", package = "s3" }
 hypr-screen-core = { path = "crates/screen-core", package = "screen-core" }
+hypr-search-cache = { path = "crates/search-cache", package = "search-cache" }
 hypr-segmentation = { path = "crates/segmentation", package = "segmentation" }
 hypr-shortcut-macos = { path = "crates/shortcut-macos", package = "shortcut-macos" }
 hypr-slack-web = { path = "crates/slack-web", package = "slack-web" }

@@ -9,7 +9,12 @@ use hypr_agent_access::{
 };
 use hypr_vault_write::SessionStore;
 
-pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()> {
+pub async fn run(
+    vault: &Path,
+    cache: &hypr_search_cache::Cache,
+    command: MeetingCommand,
+    json: bool,
+) -> Result<()> {
     match command {
         MeetingCommand::List {
             query,
@@ -19,7 +24,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             untagged,
         } => {
             let page = list_meetings(
-                vault,
+                cache,
                 ListMeetingsInput {
                     query,
                     limit: Some(limit),
@@ -39,17 +44,13 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
         }
         MeetingCommand::Search {
             query,
-            speaker,
-            kind,
             limit,
             offset,
         } => {
             let page = search_meetings(
-                vault,
+                cache,
                 SearchMeetingsInput {
                     query,
-                    speaker,
-                    kinds: (!kind.is_empty()).then(|| kind.into_iter().map(Into::into).collect()),
                     limit: Some(limit),
                     offset: Some(offset),
                 },
@@ -267,6 +268,7 @@ async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Re
         .map_err(|error| Error::operation("rename session", error.to_string()))?
         .ok_or_else(|| Error::NotFound(format!("session '{id}'")))?;
 
+    output::track_write(id)?;
     store
         .update_meta(
             id,
@@ -334,6 +336,7 @@ async fn edit_note(
         body
     };
 
+    output::track_write(id)?;
     store
         .write_note(id, &markdown)
         .await
@@ -413,6 +416,7 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
     };
 
     if !changed.is_empty() {
+        output::track_write(id)?;
         store
             .update_meta(
                 id,
@@ -470,6 +474,7 @@ async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
     let vault = std::fs::canonicalize(vault)
         .map_err(|error| Error::operation("resolve vault path", error.to_string()))?;
     let path = vault.join(relative);
+    output::track_write(id)?;
     let trash_path = SessionStore::new(vault)
         .delete_session(id)
         .await
@@ -549,6 +554,7 @@ async fn attach_file(
         .map_err(|error| Error::operation("attach file", error.to_string()))?
         .ok_or_else(|| Error::NotFound(format!("meeting '{id}'")))?;
 
+    output::track_write(id)?;
     store
         .save_attachment(id, &filename, bytes)
         .await
@@ -630,28 +636,24 @@ fn render_list(meetings: &[MeetingListItem]) -> String {
 
 fn render_search(hits: &[SearchHit]) -> String {
     if hits.is_empty() {
-        return "No matches found.".to_string();
+        return "No sessions found.".into();
     }
-
-    let mut lines = vec![format!(
-        "{:<10}  {:<10}  {:<26}  SNIPPET",
-        "DATE", "KIND", "ID"
-    )];
-    for hit in hits {
-        let speaker = hit
-            .speaker
-            .as_deref()
-            .map(|speaker| format!("{speaker}: "))
-            .unwrap_or_default();
-        lines.push(format!(
-            "{:<10}  {:<10}  {:<26}  {speaker}{}",
-            truncate(&hit.occurred_at, 10),
-            hit.kind,
-            truncate(&hit.meeting_id, 26),
-            truncate(&hit.snippet, 100),
-        ));
-    }
-    lines.join("\n")
+    hits.iter()
+        .map(|hit| {
+            format!(
+                "{}  {}  ({:.3})\n{}",
+                hit.session_id,
+                hit.title,
+                hit.score,
+                hit.content_snippet
+                    .as_deref()
+                    .filter(|snippet| !snippet.is_empty())
+                    .or(hit.title_snippet.as_deref())
+                    .unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn render_documents(documents: &[Document]) -> String {
