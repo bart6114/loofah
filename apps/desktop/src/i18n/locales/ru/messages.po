@@ -394,6 +394,14 @@ msgstr ""
 msgid "Continue"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Copied"
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Copy debug information"
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Copy failed"
 msgstr ""
@@ -430,8 +438,16 @@ msgstr ""
 msgid "Couldn’t choose attachments"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Couldn’t copy debug information. Try again."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Couldn’t load debug information."
 msgstr ""
 
 #: src/session/components/note-input/transcript/loading.tsx
@@ -501,6 +517,10 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
+msgstr ""
+
+#: src/main/about-dialog.tsx
+msgid "Diagnostics"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -812,6 +832,10 @@ msgstr ""
 msgid "Loading connection…"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Loading debug information…"
+msgstr ""
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr ""
@@ -1119,6 +1143,10 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
