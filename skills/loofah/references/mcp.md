@@ -16,4 +16,4 @@ Available resources:
 
 Prefer tools when the workflow needs structured JSON. Use resources when the client needs concise Markdown or plain-text context.
 
-MCP requires the shared cache; run `loof --json init` if needed. Search and list requests reconcile external edits.
+MCP startup automatically builds a missing or incompatible shared cache, reporting progress on stderr. Use `loof --json init` for repair. Search and list requests reconcile external edits.

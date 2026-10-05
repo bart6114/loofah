@@ -12,7 +12,7 @@ loof --json sessions note MEETING_ID --kind note
 loof --json sessions note MEETING_ID --kind summary
 ```
 
-Run `loof --json init` if the cache is missing or incompatible. JSON progress streams on stderr; stdout contains the final response. Vault commands require the cache, and search/lists refresh it automatically.
+Vault commands automatically initialize a missing or incompatible cache. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
 
 `doctor` exits with status 1 when its response contains `ready: false`. Inside a vault it also restores the root `AGENTS.md` agent guide when missing or stale (reported as `agents_md`).
 

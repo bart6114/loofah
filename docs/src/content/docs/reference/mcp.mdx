@@ -3,7 +3,7 @@ title: "MCP reference"
 description: "Tools, resources, limits, and transport details exposed by Loofah MCP."
 ---
 
-Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Tools do not change vault content. Every search, list, and resource-list request refreshes the shared local cache, including while the server stays running. Detail tools and resource reads use the current vault files. Run `loof --json init` before starting the server if the cache is missing or incompatible.
+Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Tools do not change vault content. Every search, list, and resource-list request refreshes the shared local cache, including while the server stays running. Detail tools and resource reads use the current vault files. Startup automatically builds a missing or incompatible cache, reporting progress on stderr before the MCP connection is established. For corruption, run `loof --json init` to repair the cache.
 
 ## Tools
 

@@ -39,7 +39,7 @@ This returns the complete speaker-labeled transcript in one response. Transcript
 loof --json doctor
 ```
 
-If the cache is missing or incompatible, run `loof --json init`; progress streams on stderr.
+Vault commands automatically initialize a missing or incompatible cache; progress streams on stderr. Use `loof --json init` for explicit setup or repair.
 
 The report includes cache readiness, the CLI version, a `ready` flag, the resolved vault path, path health, and the number of sessions. It exits with status 1 when `ready` is false, while still writing the report to standard output.
 

@@ -19,7 +19,7 @@ Install the [`loof` CLI](/installation) first, then check that it can find your 
 loof doctor
 ```
 
-If the report says the cache needs initialization, run `loof --json init` first.
+CLI and MCP startup automatically initialize a missing or incompatible cache. First connection may take longer; progress appears on stderr. Use `loof --json init` for explicit setup or repair.
 
 For MCP, every client starts the same local command: `loof mcp`.
 

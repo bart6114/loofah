@@ -19,9 +19,9 @@ loof [--base DIR] [--vault-path DIR] [--json] <command>
 
 ## Local search cache
 
-All vault commands require a compatible local Tantivy cache shared with desktop. If `doctor` reports a missing or invalid cache, run `loof --json init` for the existing vault. It builds, repairs, or refreshes the cache; it does not create a vault. Help, version, `doctor`, and `init` remain available without a cache.
+Vault commands automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
 
-`init --json` streams NDJSON progress on stderr and returns one final JSON response on stdout. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
+With `--json`, initialization streams NDJSON progress on stderr; stdout contains only the requested command's response. Explicit `init` returns one final JSON response. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
 
 ## Session commands
 

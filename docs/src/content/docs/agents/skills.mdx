@@ -30,7 +30,9 @@ If you cannot install skills or save persistent memory, tell me which
 part needs manual setup.
 
 Check loof --version and loof --json doctor to verify CLI and vault
-access; run loof --json init if the local cache needs initialization. If the CLI is unavailable, explain how to install it. Installing
+access. Missing or incompatible caches initialize automatically; use
+loof --json init for repair. If the CLI is unavailable, explain how to
+install it. Installing
 the skill does not install the CLI. Use MCP only as a read-only alternative
 when you cannot run the CLI or I specifically ask for MCP.
 ```
@@ -41,7 +43,7 @@ The prompt asks your agent to install the skill and remember to use Loofah throu
 
 The skill gives your agent a workflow for storing knowledge and finding context:
 
-1. Check CLI, vault, and cache readiness with `loof --version` and `loof --json doctor`; run `loof --json init` when the cache needs initialization.
+1. Check CLI, vault, and cache readiness with `loof --version` and `loof --json doctor`. Vault commands initialize missing or incompatible caches automatically; use `loof --json init` for repair.
 2. Use `loof --json` for both reading and writing, including when MCP is connected.
 3. Resolve session IDs from list or search results.
 4. Read notes, summaries, and action items before requesting a transcript. Transcript commands return the complete transcript and can produce large responses.

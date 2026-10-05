@@ -18,11 +18,19 @@ pub async fn run(args: Args) -> Result<u8> {
     }
     let vault = vault::open(&args)?;
     let cache = hypr_search_cache::Cache::for_vault(&vault)?;
-    if matches!(&args.command, cli::Command::Init) {
-        let worker = cache.clone();
-        let json = args.json;
-        let report = tokio::task::spawn_blocking(move || {
-            worker.initialize(&mut |event| {
+    let explicit_init = matches!(&args.command, cli::Command::Init);
+    let worker = cache.clone();
+    let json = args.json;
+    let report = tokio::task::spawn_blocking(move || {
+        if !explicit_init {
+            match worker.check() {
+                Ok(()) => return Ok(None),
+                Err(hypr_search_cache::Error::NotReady) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        worker
+            .initialize(&mut |event| {
                 use std::io::Write;
                 let mut stderr = std::io::stderr().lock();
                 if json {
@@ -41,9 +49,12 @@ pub async fn run(args: Args) -> Result<u8> {
                 }
                 let _ = stderr.flush();
             })
-        })
-        .await
-        .map_err(|error| Error::operation("initialize cache", error.to_string()))??;
+            .map(Some)
+    })
+    .await
+    .map_err(|error| Error::operation("prepare cache", error.to_string()))??;
+    if explicit_init {
+        let report = report.expect("explicit init always initializes the cache");
         if args.json {
             output::emit(&output::json(
                 "init",
@@ -59,10 +70,6 @@ pub async fn run(args: Args) -> Result<u8> {
         }
         return Ok(0);
     }
-    let worker = cache.clone();
-    tokio::task::spawn_blocking(move || worker.check())
-        .await
-        .map_err(|error| Error::operation("check cache", error.to_string()))??;
     let mutation = match &args.command {
         cli::Command::Sessions { command } => {
             matches!(
@@ -186,17 +193,6 @@ async fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    async fn run(args: Args) -> Result<u8> {
-        if !matches!(args.command, cli::Command::Doctor | cli::Command::Init)
-            && let Ok(vault) = vault::open(&args)
-        {
-            let cache = hypr_search_cache::Cache::for_vault(&vault)?;
-            if !cache.status().ready {
-                cache.initialize(&mut |_| {})?;
-            }
-        }
-        super::run(args).await
-    }
 
     #[tokio::test]
     async fn doctor_returns_nonzero_status_when_vault_is_not_ready() {
