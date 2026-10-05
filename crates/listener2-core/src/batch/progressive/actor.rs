@@ -300,39 +300,18 @@ pub(super) fn report_stream_start_failure(
 pub(super) async fn process_provider_stream(
     stream: StreamingBatchStream,
     myself: ActorRef<BatchMsg>,
-    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-    provider: &str,
+    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    provider: ProgressiveProvider,
     context: &str,
 ) {
-    futures_util::pin_mut!(stream);
-    process_stream_loop(
-        &mut stream,
-        myself,
-        shutdown_rx,
-        provider,
-        context,
-        1,
-        std::convert::identity,
-    )
-    .await;
-}
-
-async fn process_stream_loop<S, Item, E, F>(
-    stream: &mut std::pin::Pin<&mut S>,
-    myself: ActorRef<BatchMsg>,
-    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-    provider: &str,
-    context: &str,
-    expected_completions: usize,
-    mut into_response: F,
-) where
-    S: futures_util::Stream<Item = Result<Item, E>>,
-    E: std::fmt::Debug,
-    F: FnMut(Item) -> BatchStreamEvent,
-{
+    let response_timeout = match provider {
+        ProgressiveProvider::WhisperCpp => None,
+        ProgressiveProvider::OpenAI => Some(Duration::from_secs(BATCH_STREAM_TIMEOUT_SECS)),
+    };
+    let provider = provider.label();
+    let mut stream = stream;
     let mut response_count = 0;
-    let response_timeout = Duration::from_secs(BATCH_STREAM_TIMEOUT_SECS);
-    let mut completions_seen: usize = 0;
+    let mut completed = false;
 
     loop {
         tracing::debug!(
@@ -345,15 +324,16 @@ async fn process_stream_loop<S, Item, E, F>(
                 tracing::info!("{context}: shutdown");
                 return;
             }
-            result = tokio::time::timeout(
-                response_timeout,
-                futures_util::StreamExt::next(stream),
-            ) => {
+            result = async {
+                match response_timeout {
+                    Some(timeout) => tokio::time::timeout(timeout, futures_util::StreamExt::next(&mut stream)).await,
+                    None => Ok(futures_util::StreamExt::next(&mut stream).await),
+                }
+            } => {
                 tracing::debug!("{context}: received result");
                 match result {
-                    Ok(Some(Ok(item))) => {
+                    Ok(Some(Ok(event))) => {
                         response_count += 1;
-                        let event = into_response(item);
 
                         let is_completion = is_completion_event(&event);
 
@@ -400,10 +380,8 @@ async fn process_stream_loop<S, Item, E, F>(
                         );
 
                         if is_completion {
-                            completions_seen += 1;
-                            if completions_seen >= expected_completions {
-                                break;
-                            }
+                            completed = true;
+                            break;
                         }
                     }
                     Ok(Some(Err(err))) => {
@@ -427,18 +405,8 @@ async fn process_stream_loop<S, Item, E, F>(
                         break;
                     }
                     Ok(None) => {
-                        if completions_seen >= expected_completions {
-                            tracing::info!(
-                                fmtr.response.count = response_count,
-                                "{context} completed"
-                            );
-                            break;
-                        }
-
                         tracing::error!(
                             fmtr.response.count = response_count,
-                            fmtr.completions.expected = expected_completions,
-                            fmtr.completions.seen = completions_seen,
                             "{context} ended without completion signal"
                         );
                         send_actor_message(
@@ -470,7 +438,7 @@ async fn process_stream_loop<S, Item, E, F>(
         }
     }
 
-    if completions_seen >= expected_completions {
+    if completed {
         send_actor_message(&myself, BatchMsg::StreamEnded, context, "stream ended");
     }
     tracing::info!("{context}: processing loop exited");
@@ -493,6 +461,180 @@ fn send_actor_message(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    struct Observer;
+
+    #[ractor::async_trait]
+    impl Actor for Observer {
+        type Msg = BatchMsg;
+        type State = tokio::sync::mpsc::UnboundedSender<BatchMsg>;
+        type Arguments = Self::State;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<BatchMsg>,
+            sender: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(sender)
+        }
+
+        async fn handle(
+            &self,
+            _: ActorRef<BatchMsg>,
+            message: BatchMsg,
+            sender: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            let _ = sender.send(message);
+            Ok(())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn local_batch_can_finish_after_long_event_gap() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let events = futures_util::stream::once(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(BatchStreamEvent::Terminal {
+                request_id: "req".into(),
+                created: "now".into(),
+                duration: 5100.0,
+                channels: 1,
+            })
+        });
+        process_provider_stream(
+            Box::pin(events),
+            observer.clone(),
+            shutdown_rx,
+            ProgressiveProvider::WhisperCpp,
+            "test",
+        )
+        .await;
+        assert!(matches!(
+            rx.recv().await,
+            Some(BatchMsg::StreamResponse { .. })
+        ));
+        assert!(matches!(rx.recv().await, Some(BatchMsg::StreamEnded)));
+        observer.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn remote_batch_still_detects_a_stalled_event_stream() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        process_provider_stream(
+            Box::pin(futures_util::stream::pending()),
+            observer.clone(),
+            shutdown_rx,
+            ProgressiveProvider::OpenAI,
+            "test",
+        )
+        .await;
+        assert!(matches!(
+            rx.recv().await,
+            Some(BatchMsg::StreamError(
+                crate::BatchFailure::ProgressiveStreamTimeout
+            ))
+        ));
+        observer.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn local_batch_wait_is_cancellable() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        shutdown_tx.send(()).unwrap();
+        process_provider_stream(
+            Box::pin(futures_util::stream::pending()),
+            observer.clone(),
+            shutdown_rx,
+            ProgressiveProvider::WhisperCpp,
+            "test",
+        )
+        .await;
+        assert!(rx.try_recv().is_err());
+        observer.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn batch_startup_can_be_cancelled_before_response_headers() {
+        let file = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 16_000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .unwrap();
+        writer.write_sample(0_i16).unwrap();
+        writer.finalize().unwrap();
+        let (uploaded_tx, uploaded_rx) = tokio::sync::oneshot::channel();
+        let uploaded_tx = Arc::new(Mutex::new(Some(uploaded_tx)));
+        let app = axum::Router::new().route(
+            "/v1/listen",
+            axum::routing::post(move |body: axum::body::Body| {
+                let uploaded_tx = uploaded_tx.clone();
+                async move {
+                    axum::body::to_bytes(body, 1024).await.unwrap();
+                    if let Some(tx) = uploaded_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    std::future::pending::<String>().await
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        struct Runtime;
+        impl BatchRuntime for Runtime {
+            fn emit(&self, _: BatchEvent) {}
+        }
+        let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, _done_rx) = tokio::sync::oneshot::channel();
+        let (task, shutdown_tx) = spawn_progressive_batch_task(
+            BatchArgs {
+                runtime: Arc::new(Runtime),
+                progressive_provider: ProgressiveProvider::WhisperCpp,
+                provider_label: "whispercpp".into(),
+                file_path: file.path().to_string_lossy().into_owned(),
+                base_url: format!("http://{address}/v1"),
+                api_key: String::new(),
+                listen_params: Default::default(),
+                start_notifier: Arc::new(Mutex::new(Some(start_tx))),
+                done_notifier: Arc::new(Mutex::new(Some(done_tx))),
+                session_id: "cancel-start".into(),
+                diarization: SharedDiarization::disabled(),
+            },
+            observer.clone(),
+        )
+        .await
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), uploaded_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        shutdown_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(start_rx.await.is_err());
+        observer.stop(None);
+        handle.await.unwrap();
+        server.abort();
+    }
 
     #[test]
     fn completion_event_result() {

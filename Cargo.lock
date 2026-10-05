@@ -8327,7 +8327,9 @@ dependencies = [
  "aspasia",
  "audio-chunking",
  "audio-utils",
+ "axum",
  "bytes",
+ "data",
  "fs-format",
  "futures-util",
  "host",
@@ -8348,6 +8350,7 @@ dependencies = [
  "tracing",
  "transcribe-core",
  "transcribe-soniqo",
+ "transcribe-whisper-local",
  "whisper-local-model",
 ]
 

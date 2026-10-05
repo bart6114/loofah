@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::path::Path;
 
 use axum::{
@@ -6,7 +5,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use bytes::Bytes;
 use hypr_model_manager::ModelManager;
 use hypr_transcribe_core::{
     ProgressTracker, batch_sse_response, channel_duration_sec, chunk_channel_audio,
@@ -22,8 +20,7 @@ use super::response::{TranscriptKind, build_batch_words, build_transcript_respon
 use super::{TARGET_SAMPLE_RATE, build_metadata, build_model, transcribe_chunk};
 
 pub(super) async fn handle_batch(
-    body: Bytes,
-    content_type: &str,
+    audio_file: tempfile::NamedTempFile,
     params: &ListenParams,
     manager: &ModelManager<hypr_whisper_local::LoadedWhisper>,
     model_path: &Path,
@@ -42,14 +39,12 @@ pub(super) async fn handle_batch(
 
     let model = model.clone();
     let model_path = model_path.to_path_buf();
-    let content_type = content_type.to_string();
     let params = params.clone();
 
     match tokio::task::spawn_blocking(move || {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             transcribe_batch(
-                &body,
-                &content_type,
+                audio_file.path(),
                 &params,
                 model.as_ref(),
                 &model_path,
@@ -77,8 +72,7 @@ pub(super) async fn handle_batch(
 }
 
 pub(super) async fn handle_batch_sse(
-    body: Bytes,
-    content_type: &str,
+    audio_file: tempfile::NamedTempFile,
     params: &ListenParams,
     manager: &ModelManager<hypr_whisper_local::LoadedWhisper>,
     model_path: &Path,
@@ -97,15 +91,13 @@ pub(super) async fn handle_batch_sse(
 
     let model = model.clone();
     let model_path = model_path.to_path_buf();
-    let content_type = content_type.to_string();
     let params = params.clone();
     let (event_tx, event_rx) = mpsc::unbounded_channel::<BatchSseMessage>();
 
     tokio::task::spawn_blocking(move || {
         let message = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             transcribe_batch(
-                &body,
-                &content_type,
+                audio_file.path(),
                 &params,
                 model.as_ref(),
                 &model_path,
@@ -130,23 +122,13 @@ pub(super) async fn handle_batch_sse(
 }
 
 fn transcribe_batch(
-    audio_data: &[u8],
-    content_type: &str,
+    audio_path: &Path,
     params: &ListenParams,
     loaded_model: &hypr_whisper_local::LoadedWhisper,
     model_path: &Path,
     event_tx: Option<mpsc::UnboundedSender<BatchSseMessage>>,
 ) -> Result<batch::Response, crate::Error> {
-    let extension = hypr_audio_utils::content_type_to_extension(content_type);
-    let mut temp_file = tempfile::Builder::new()
-        .prefix("whisper_local_batch_")
-        .suffix(&format!(".{}", extension))
-        .tempfile()?;
-
-    temp_file.write_all(audio_data)?;
-    temp_file.flush()?;
-
-    let source = hypr_audio_utils::source_from_path(temp_file.path())?;
+    let source = hypr_audio_utils::source_from_path(audio_path)?;
     transcribe_source(source, params, loaded_model, model_path, event_tx)
 }
 
@@ -196,7 +178,11 @@ where
 {
     let channel_count = u16::from(source.channels()).max(1) as usize;
     let resampled = hypr_audio_utils::resample_audio(source, TARGET_SAMPLE_RATE)?;
+    if event_tx.as_ref().is_some_and(|tx| tx.is_closed()) {
+        return Err(crate::Error::protocol("batch transcription cancelled"));
+    }
     let channel_samples = split_resampled_channels(&resampled, channel_count);
+    drop(resampled);
     let total_duration = channel_samples
         .iter()
         .map(|samples| channel_duration_sec(samples))
@@ -265,6 +251,9 @@ where
     jobs.sort_by_key(|(channel, _, chunk)| (chunk.sample_start, *channel));
     let mut first_text = true;
     for (channel, index, chunk) in jobs {
+        if progress.event_tx().is_some_and(|tx| tx.is_closed()) {
+            return Err(crate::Error::protocol("batch transcription cancelled"));
+        }
         language.advance(chunk.sample_start, &mut models[0])?;
         for model in &mut models {
             model.select_language(language.resolver.selected());

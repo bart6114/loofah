@@ -17,6 +17,7 @@ use hypr_model_manager::{ModelManager, ModelManagerBuilder};
 use hypr_ws_utils::ConnectionManager;
 use owhisper_interface::ListenParams;
 use owhisper_interface::stream::StreamResponse;
+use tokio::io::AsyncWriteExt;
 use tower::Service;
 
 use super::batch;
@@ -160,37 +161,59 @@ impl Service<Request<Body>> for TranscribeService {
                     .and_then(|value| value.to_str().ok())
                     .unwrap_or("")
                     .to_string();
-                let body = match axum::body::to_bytes(req.into_body(), 250 * 1024 * 1024).await {
-                    Ok(body) => body,
-                    Err(error) => {
-                        return Ok((StatusCode::BAD_REQUEST, error.to_string()).into_response());
-                    }
+                let audio_file = match receive_audio(req.into_body(), &content_type).await {
+                    Ok(file) => file,
+                    Err(response) => return Ok(response),
                 };
 
-                if body.is_empty() {
-                    return Ok((StatusCode::BAD_REQUEST, "request body is empty").into_response());
-                }
-
                 if accept.contains("text/event-stream") {
-                    Ok(
-                        batch::handle_batch_sse(
-                            body,
-                            &content_type,
-                            &params,
-                            &manager,
-                            &model_path,
-                        )
-                        .await,
-                    )
+                    Ok(batch::handle_batch_sse(audio_file, &params, &manager, &model_path).await)
                 } else {
-                    Ok(
-                        batch::handle_batch(body, &content_type, &params, &manager, &model_path)
-                            .await,
-                    )
+                    Ok(batch::handle_batch(audio_file, &params, &manager, &model_path).await)
                 }
             }
         })
     }
+}
+
+async fn receive_audio(
+    body: Body,
+    content_type: &str,
+) -> Result<tempfile::NamedTempFile, Response> {
+    let extension = hypr_audio_utils::content_type_to_extension(content_type);
+    let file = tokio::task::spawn_blocking(move || {
+        tempfile::Builder::new()
+            .prefix("whisper_local_batch_")
+            .suffix(&format!(".{extension}"))
+            .tempfile()
+    })
+    .await
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?;
+    let writer = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(file.path())
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?;
+    let mut writer = tokio::io::BufWriter::with_capacity(64 * 1024, writer);
+    let mut stream = body.into_data_stream();
+    let mut empty = true;
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()).into_response())?;
+        empty &= chunk.is_empty();
+        writer.write_all(&chunk).await.map_err(|error| {
+            (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+        })?;
+    }
+    writer
+        .flush()
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?;
+    if empty {
+        return Err((StatusCode::BAD_REQUEST, "request body is empty").into_response());
+    }
+    Ok(file)
 }
 
 struct ConnectionTasks {
@@ -311,6 +334,39 @@ async fn handle_websocket(
 mod tests {
     use super::*;
     use crate::service::build_metadata;
+
+    #[tokio::test]
+    async fn batch_upload_spools_more_than_previous_limits_and_cleans_up() {
+        let chunk = bytes::Bytes::from(vec![7; 1024 * 1024]);
+        let chunks = futures_util::stream::iter(
+            (0..251).map(move |_| Ok::<_, std::io::Error>(chunk.clone())),
+        );
+        let file = receive_audio(Body::from_stream(chunks), "audio/wav")
+            .await
+            .unwrap();
+        let path = file.path().to_path_buf();
+        assert_eq!(
+            tokio::fs::metadata(&path).await.unwrap().len(),
+            251 * 1024 * 1024
+        );
+        assert_eq!(path.extension().unwrap(), "wav");
+        drop(file);
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn empty_or_interrupted_uploads_are_rejected() {
+        let empty = receive_audio(Body::empty(), "audio/wav").await.unwrap_err();
+        assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+        let chunks = futures_util::stream::iter([
+            Ok(bytes::Bytes::from_static(b"partial audio")),
+            Err(std::io::Error::other("upload interrupted")),
+        ]);
+        let interrupted = receive_audio(Body::from_stream(chunks), "audio/wav")
+            .await
+            .unwrap_err();
+        assert_eq!(interrupted.status(), StatusCode::BAD_REQUEST);
+    }
 
     #[test]
     fn health_and_listen_paths_are_stable() {
