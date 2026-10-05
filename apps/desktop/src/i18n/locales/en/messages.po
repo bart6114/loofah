@@ -394,6 +394,14 @@ msgstr "Context always provided"
 msgid "Continue"
 msgstr "Continue"
 
+#: src/main/about-debug.tsx
+msgid "Copied"
+msgstr "Copied"
+
+#: src/main/about-debug.tsx
+msgid "Copy debug information"
+msgstr "Copy debug information"
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Copy failed"
 msgstr "Copy failed"
@@ -430,9 +438,17 @@ msgstr "Couldn’t calculate vault storage."
 msgid "Couldn’t choose attachments"
 msgstr "Couldn’t choose attachments"
 
+#: src/main/about-debug.tsx
+msgid "Couldn’t copy debug information. Try again."
+msgstr "Couldn’t copy debug information. Try again."
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
 msgstr "Couldn’t load attachments."
+
+#: src/main/about-debug.tsx
+msgid "Couldn’t load debug information."
+msgstr "Couldn’t load debug information."
 
 #: src/session/components/note-input/transcript/loading.tsx
 msgid "Couldn't load transcript."
@@ -502,6 +518,10 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
+
+#: src/main/about-dialog.tsx
+msgid "Diagnostics"
+msgstr "Diagnostics"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
@@ -812,6 +832,10 @@ msgstr "Loading"
 msgid "Loading connection…"
 msgstr "Loading connection…"
 
+#: src/main/about-debug.tsx
+msgid "Loading debug information…"
+msgstr "Loading debug information…"
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr "Loading models..."
@@ -1120,6 +1144,10 @@ msgstr "Preparing export..."
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr "Preparing transcript..."
+
+#: src/main/about-debug.tsx
+msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
+msgstr "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Previous match"
