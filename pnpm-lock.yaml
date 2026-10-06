@@ -36,9 +36,6 @@ importers:
       oxlint-tsgolint:
         specifier: ^0.21.1
         version: 0.21.1
-      turbo:
-        specifier: 2.9.14
-        version: 2.9.14
       typescript-eslint:
         specifier: ^8.58.1
         version: 8.58.1(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
@@ -63,9 +60,6 @@ importers:
       '@ai-sdk/provider':
         specifier: 3.0.8
         version: 3.0.8
-      '@emoji-mart/data':
-        specifier: ^1.2.1
-        version: 1.2.1
       '@floating-ui/react':
         specifier: ^0.27.19
         version: 0.27.19(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -96,9 +90,6 @@ importers:
       '@hypr/plugin-fs-sync':
         specifier: workspace:*
         version: link:../../plugins/fs-sync
-      '@hypr/plugin-fs2':
-        specifier: workspace:*
-        version: link:../../plugins/fs2
       '@hypr/plugin-icon':
         specifier: workspace:*
         version: link:../../plugins/icon
@@ -111,9 +102,6 @@ importers:
       '@hypr/plugin-notification':
         specifier: workspace:*
         version: link:../../plugins/notification
-      '@hypr/plugin-notify':
-        specifier: workspace:*
-        version: link:../../plugins/notify
       '@hypr/plugin-opener2':
         specifier: workspace:*
         version: link:../../plugins/opener2
@@ -228,9 +216,6 @@ importers:
       effect:
         specifier: ^3.21.0
         version: 3.21.0
-      js-levenshtein-esm:
-        specifier: ^2.0.0
-        version: 2.0.0
       lucide-react:
         specifier: ^0.544.0
         version: 0.544.0(react@19.2.5)
@@ -252,9 +237,6 @@ importers:
       react:
         specifier: ^19.2.5
         version: 19.2.5
-      react-colorful:
-        specifier: ^5.6.1
-        version: 5.6.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-dom:
         specifier: ^19.2.5
         version: 19.2.5(react@19.2.5)
@@ -5258,36 +5240,6 @@ packages:
   '@tootallnate/quickjs-emscripten@0.23.0':
     resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
 
-  '@turbo/darwin-64@2.9.14':
-    resolution: {integrity: sha512-t7QiPflaEyBE4oayeZtSmu4mEfjgIrcNlNNl1z1dmIVPqEdtA7+CfTf8d7KXsOGPh6aNgWjKxyvQg9uGfDQF+A==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@turbo/darwin-arm64@2.9.14':
-    resolution: {integrity: sha512-d23147mC9BsCPA9mJ0h/ubcpbRgcJBXbcG3+Vq7YLhjz3IXuvQsJ1UXH8f4MD76ZjJ4m/E4aRdJV+MW88CDfbw==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@turbo/linux-64@2.9.14':
-    resolution: {integrity: sha512-P3ZKB5tuUDdDQWuAsACGUR1qv9W7BNWxdxqVJ0kZNuNNPRaVYTPPikLcp79+GiEcW3npsR+KyP38lnQiBc5aSA==}
-    cpu: [x64]
-    os: [linux]
-
-  '@turbo/linux-arm64@2.9.14':
-    resolution: {integrity: sha512-ZRTlzcUMrrPv9ZuDzRF9n60Ym13bKeG9jDB8WjxyLhWNzV+AJQN+zdpIk3NJYf2zQsGUm1mNar2P0elRzLw25g==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@turbo/windows-64@2.9.14':
-    resolution: {integrity: sha512-exanwN6sIduZwykYeiTQj8kCmOhazP5WOz3bvXMcYtjhL6Z3iRWLewKrXCBq0bqwSP3iBMb/AerRCnHI4lx46A==}
-    cpu: [x64]
-    os: [win32]
-
-  '@turbo/windows-arm64@2.9.14':
-    resolution: {integrity: sha512-fVdCsnmYoKICsycbWuuGp6Jvi51/3G/UluFWuAUCvR8PIW5IJkAk5BM9UF8PSm0Q2IphWHFZjYEgjHsh3B9y/g==}
-    cpu: [arm64]
-    os: [win32]
-
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
 
@@ -7610,9 +7562,6 @@ packages:
     resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
     engines: {node: '>=14'}
 
-  js-levenshtein-esm@2.0.0:
-    resolution: {integrity: sha512-1n4LEPOL4wRXY8rOQcuA7Iuaphe5xCMayvufCzlLAi+hRsnBRDbSS6XPuV58CBVJxj5D9ApFLyjQ7KzFToyHBw==}
-
   js-sha256@0.10.1:
     resolution: {integrity: sha512-5obBtsz9301ULlsgggLg542s/jqtddfOpV5KJc4hajc9JV8GeY2gZHSVpYBn4nWqAUTJ9v+xwtbJ1mIBgIH5Vw==}
 
@@ -8504,9 +8453,6 @@ packages:
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
     engines: {node: '>=6'}
-
-  parse-english@7.0.0:
-    resolution: {integrity: sha512-mxxj3DyPdvOdiUl1okNub3wwoaaZI/Z++paDg3PH96RYvfVilS63WmQOnHlGm0S05y4g9GEjNP3pylyBsJrAwQ==}
 
   parse-entities@4.0.2:
     resolution: {integrity: sha512-GG2AQYWoLgL877gQIKeRPGO1xF9+eG1ujIb5soS5gPvLQ1y2o8FL90w2QWNdf9I361Mpp7726c+lj3U0qK1uGw==}
@@ -9764,10 +9710,6 @@ packages:
   tsx@4.21.0:
     resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
     engines: {node: '>=18.0.0'}
-    hasBin: true
-
-  turbo@2.9.14:
-    resolution: {integrity: sha512-BQqXRr4UoWI3UPFrtznCLykYHxwxWh53iCB57x092jPMjIlW1wnm3N895g5irpiXmnxUhREBB0n6+y8BHhs4nw==}
     hasBin: true
 
   type-check@0.4.0:
@@ -14434,24 +14376,6 @@ snapshots:
 
   '@tootallnate/quickjs-emscripten@0.23.0': {}
 
-  '@turbo/darwin-64@2.9.14':
-    optional: true
-
-  '@turbo/darwin-arm64@2.9.14':
-    optional: true
-
-  '@turbo/linux-64@2.9.14':
-    optional: true
-
-  '@turbo/linux-arm64@2.9.14':
-    optional: true
-
-  '@turbo/windows-64@2.9.14':
-    optional: true
-
-  '@turbo/windows-arm64@2.9.14':
-    optional: true
-
   '@tybys/wasm-util@0.10.1':
     dependencies:
       tslib: 2.8.1
@@ -17392,8 +17316,6 @@ snapshots:
 
   js-cookie@3.0.5: {}
 
-  js-levenshtein-esm@2.0.0: {}
-
   js-sha256@0.10.1: {}
 
   js-tokens@4.0.0: {}
@@ -18731,14 +18653,6 @@ snapshots:
     dependencies:
       callsites: 3.1.0
 
-  parse-english@7.0.0:
-    dependencies:
-      '@types/nlcst': 2.0.3
-      nlcst-to-string: 4.0.0
-      parse-latin: 7.0.0
-      unist-util-modify-children: 4.0.0
-      unist-util-visit-children: 3.0.0
-
   parse-entities@4.0.2:
     dependencies:
       '@types/unist': 2.0.11
@@ -18849,8 +18763,6 @@ snapshots:
   polished@4.3.1:
     dependencies:
       '@babel/runtime': 7.29.2
-
-  pos@0.4.2: {}
 
   postcss-nested@6.2.0(postcss@8.5.9):
     dependencies:
@@ -20051,8 +19963,6 @@ snapshots:
 
   stdin-discarder@0.3.2: {}
 
-  stemmer@2.0.1: {}
-
   stream-buffers@3.0.3: {}
 
   stream-replace-string@2.0.0: {}
@@ -20341,15 +20251,6 @@ snapshots:
       get-tsconfig: 4.13.7
     optionalDependencies:
       fsevents: 2.3.3
-
-  turbo@2.9.14:
-    optionalDependencies:
-      '@turbo/darwin-64': 2.9.14
-      '@turbo/darwin-arm64': 2.9.14
-      '@turbo/linux-64': 2.9.14
-      '@turbo/linux-arm64': 2.9.14
-      '@turbo/windows-64': 2.9.14
-      '@turbo/windows-arm64': 2.9.14
 
   type-check@0.4.0:
     dependencies:
