@@ -74,6 +74,41 @@ mod tests {
     use super::*;
     use crate::{initial_resolved_until, next_resolved_until};
 
+    #[test]
+    #[ignore = "requires LOOFAH_PCM_VAD_QA_AUDIO; compares complete long-recording VAD ranges"]
+    fn file_vad_matches_complete_recording() {
+        let pcm = hypr_audio_utils::PcmDescriptor::open(
+            std::env::var("LOOFAH_PCM_VAD_QA_AUDIO").unwrap(),
+        )
+        .unwrap();
+        let samples = pcm.reader().unwrap().channel(0, 0..pcm.frames).unwrap();
+        let start = std::time::Instant::now();
+        let legacy = chunk_channel_audio::<hypr_audio_chunking::Error>(&samples).unwrap();
+        let legacy_ms = start.elapsed().as_millis();
+        let expected: Vec<_> = legacy
+            .iter()
+            .map(|chunk| (chunk.sample_start, chunk.sample_end))
+            .collect();
+        drop(legacy);
+        drop(samples);
+        let start = std::time::Instant::now();
+        let ranges = chunk_pcm_channel::<Box<dyn std::error::Error>>(&pcm, 0, || false).unwrap();
+        let file_ms = start.elapsed().as_millis();
+        assert_eq!(
+            ranges
+                .iter()
+                .map(|chunk| (chunk.sample_start, chunk.sample_end))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(ranges.iter().all(|chunk| chunk.samples.is_empty()));
+        println!(
+            "duration={} ranges={} legacy_vad_ms={legacy_ms} file_vad_ms={file_ms}",
+            pcm.duration(),
+            ranges.len()
+        );
+    }
+
     struct FakeChunker {
         chunks: Vec<AudioChunk>,
     }
