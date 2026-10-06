@@ -78,15 +78,10 @@ jobs:
       - run: |
           cargo test --workspace \
             --exclude desktop \
-            --exclude email \
-            --exclude mac \
             --exclude notification-macos \
-            --exclude notification-macos2 \
             --exclude tcc \
-            --exclude apple-note \
             --exclude notification-linux \
             --exclude aec \
-            --exclude agc \
             --exclude whisper \
             --exclude whisper-local \
             --exclude whisper-local-model \
@@ -102,7 +97,6 @@ jobs:
             --exclude audio-device \
             --exclude transcribe-whisper-local \
             --exclude device-monitor \
-            --exclude local-stt-server \
             --exclude tauri-plugin-deeplink2 \
             --exclude tauri-plugin-detect \
             --exclude tauri-plugin-fs-sync \
