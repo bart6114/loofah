@@ -28,10 +28,7 @@ import { ShowInFinder } from "./misc";
 import { useAudioPlayer } from "~/audio-player";
 import { openFloatingMeetingPanel } from "~/meeting-float/host";
 import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
-import {
-  useCurrentNoteHasContent,
-  useHasTranscript,
-} from "~/session/components/shared";
+import { useHasTranscript } from "~/session/components/shared";
 import { openStandaloneNoteWindow } from "~/session/window";
 import { useConfigValue } from "~/shared/config";
 import type { EditorView } from "~/store/zustand/tabs/schema";
@@ -53,10 +50,6 @@ export function OverflowButton({
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [hasOpenedExportModal, setHasOpenedExportModal] = useState(false);
   const hasTranscript = useHasTranscript(sessionId);
-  const currentNoteHasContent = useCurrentNoteHasContent(
-    sessionId,
-    currentView,
-  );
   const { audioExists, audioExistsResolved } = useAudioPlayer();
   const { uploadAudio, uploadTranscript } = useUploadFile(sessionId);
   const regenerateTranscript = useRegenerateTranscript(sessionId);
@@ -71,7 +64,6 @@ export function OverflowButton({
     audioExistsResolved &&
     !audioExists &&
     !hasTranscript &&
-    !currentNoteHasContent &&
     !isMeetingInProgress;
   const canOpenFloatingPanel =
     allowListening && floatingBarEnabled && sessionMode === "active";
