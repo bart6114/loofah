@@ -1,4 +1,4 @@
-mod chunk_policy;
+pub(crate) mod chunk_policy;
 mod continuous;
 mod session;
 

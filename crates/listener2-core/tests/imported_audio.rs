@@ -176,3 +176,102 @@ async fn long_whisper_import_preserves_speech_at_both_ends() {
         start.elapsed()
     );
 }
+
+#[tokio::test]
+#[ignore = "requires LOOFAH_WHISPER_MODEL and LOOFAH_WHISPER_AUDIO; real large recording"]
+async fn actual_large_whisper_import() {
+    struct Metrics {
+        start: std::time::Instant,
+        progress: std::sync::Mutex<f64>,
+        first_progress: std::sync::atomic::AtomicBool,
+        first_words: std::sync::atomic::AtomicBool,
+    }
+    impl BatchRuntime for Metrics {
+        fn emit(&self, event: BatchEvent) {
+            use std::sync::atomic::Ordering;
+            if let BatchEvent::BatchResponseStreamed { event, .. } = event {
+                let percentage = event.percentage();
+                let mut previous = self.progress.lock().unwrap();
+                assert!(percentage >= *previous, "Progress moved backwards");
+                *previous = percentage;
+                if !self.first_progress.swap(true, Ordering::Relaxed) {
+                    println!("first_progress_ms={}", self.start.elapsed().as_millis());
+                }
+                if matches!(
+                    event,
+                    owhisper_interface::batch_stream::BatchStreamEvent::Segment { .. }
+                ) && !self.first_words.swap(true, Ordering::Relaxed)
+                {
+                    println!("first_words_ms={}", self.start.elapsed().as_millis());
+                }
+            }
+        }
+    }
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("listener2_core=info,transcribe_whisper_local=info,audio_utils=info")
+        .with_test_writer()
+        .try_init();
+    let path = std::env::var("LOOFAH_WHISPER_AUDIO").unwrap();
+    let app = hypr_transcribe_whisper_local::TranscribeService::builder()
+        .model_path(std::env::var("LOOFAH_WHISPER_MODEL").unwrap().into())
+        .build()
+        .into_router(|error: String| async move {
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, error)
+        });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let start = std::time::Instant::now();
+    let runtime = Arc::new(Metrics {
+        start,
+        progress: Default::default(),
+        first_progress: Default::default(),
+        first_words: Default::default(),
+    });
+    let output = run_batch(
+        runtime,
+        BatchParams {
+            audio: SessionAudio {
+                source: AudioSource::Import,
+                layout: AudioLayout::Mixed,
+            },
+            session_id: "real-large-whisper-qa".into(),
+            file_path: path,
+            provider: BatchProvider::WhisperLocal,
+            model: Some("whisper-large-v3-turbo".into()),
+            base_url: format!("http://{address}/v1"),
+            api_key: String::new(),
+            languages: vec!["nl".parse().unwrap()],
+            keywords: vec![],
+            num_speakers: None,
+            min_speakers: None,
+            max_speakers: None,
+        },
+    )
+    .await
+    .unwrap();
+    server.abort();
+    let alternative = &output.response.results.channels[0].alternatives[0];
+    let words = &alternative.words;
+    assert!(!words.is_empty());
+    assert!(words.iter().any(|word| word.start < 60.0));
+    let duration = output.response.metadata["duration"].as_f64().unwrap();
+    assert!(words.iter().any(|word| word.start > duration - 120.0));
+    assert!(words.iter().all(|word| word.start.is_finite()
+        && word.end >= word.start
+        && word.end <= duration + 0.1
+        && word.channel == 2));
+    let speakers: std::collections::BTreeSet<_> = words.iter().filter_map(|w| w.speaker).collect();
+    if hypr_transcribe_soniqo::diarize::is_ready() {
+        assert!(!speakers.is_empty());
+    }
+    println!(
+        "duration={duration} words={} speakers={} total_ms={}",
+        words.len(),
+        speakers.len(),
+        start.elapsed().as_millis()
+    );
+    if let Ok(path) = std::env::var("LOOFAH_WHISPER_QA_OUTPUT") {
+        std::fs::write(path, serde_json::to_vec(&output.response).unwrap()).unwrap();
+    }
+}

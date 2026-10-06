@@ -46,3 +46,4 @@ axum = { workspace = true }
 hypr-data = { workspace = true }
 hypr-transcribe-whisper-local = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true }

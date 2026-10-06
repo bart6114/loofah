@@ -172,3 +172,44 @@ mod tests {
         assert_eq!(next_resolved_until(&chunks, 1, 20.0), 20.0);
     }
 }
+
+pub fn chunk_pcm_channel<E>(
+    pcm: &hypr_audio_utils::PcmDescriptor,
+    channel: usize,
+    cancelled: impl Fn() -> bool,
+) -> Result<Vec<AudioChunk>, E>
+where
+    E: From<hypr_audio_chunking::Error> + From<hypr_audio_utils::Error>,
+{
+    let mut reader = pcm.reader()?;
+    let mut chunker =
+        hypr_audio_chunking::LiveSpeechChunker::ranges(DEFAULT_SPEECH_REDEMPTION_TIME)?;
+    let mut ranges = Vec::new();
+    let mut retain = |chunks: Vec<AudioChunk>| {
+        for chunk in chunks {
+            for start in (chunk.sample_start..chunk.sample_end).step_by(MAX_CHUNK_SAMPLES) {
+                ranges.push(AudioChunk {
+                    sample_start: start,
+                    sample_end: (start + MAX_CHUNK_SAMPLES).min(chunk.sample_end),
+                    samples: Vec::new(),
+                });
+            }
+        }
+    };
+    for start in (0..pcm.frames).step_by(hypr_audio_utils::PCM_BLOCK_FRAMES) {
+        if cancelled() {
+            return Err(hypr_audio_utils::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "Transcription cancelled",
+            ))
+            .into());
+        }
+        let samples = reader.channel(
+            channel,
+            start..(start + hypr_audio_utils::PCM_BLOCK_FRAMES).min(pcm.frames),
+        )?;
+        retain(chunker.push(&samples)?);
+    }
+    retain(chunker.finish()?);
+    Ok(ranges)
+}

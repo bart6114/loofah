@@ -7,13 +7,12 @@ use axum::{
 };
 use hypr_model_manager::ModelManager;
 use hypr_transcribe_core::{
-    ProgressTracker, batch_sse_response, channel_duration_sec, chunk_channel_audio,
-    initial_resolved_until, json_error_response, next_resolved_until, split_resampled_channels,
+    ProgressTracker, batch_sse_response, chunk_pcm_channel, initial_resolved_until,
+    json_error_response, next_resolved_until,
 };
 use owhisper_interface::ListenParams;
 use owhisper_interface::batch;
 use owhisper_interface::batch_sse::BatchSseMessage;
-use rodio::Source;
 use tokio::sync::mpsc;
 
 use super::response::{TranscriptKind, build_batch_words, build_transcript_response};
@@ -128,8 +127,7 @@ fn transcribe_batch(
     model_path: &Path,
     event_tx: Option<mpsc::UnboundedSender<BatchSseMessage>>,
 ) -> Result<batch::Response, crate::Error> {
-    let source = hypr_audio_utils::source_from_path(audio_path)?;
-    transcribe_source(source, params, loaded_model, model_path, event_tx)
+    transcribe_source(audio_path, params, loaded_model, model_path, event_tx)
 }
 
 pub(super) fn transcribe_recorded_file(
@@ -137,9 +135,8 @@ pub(super) fn transcribe_recorded_file(
     model_path: &Path,
     audio_path: &Path,
 ) -> Result<Vec<owhisper_interface::Word2>, crate::Error> {
-    let source = hypr_audio_utils::source_from_path(audio_path)?;
     let response = transcribe_source(
-        source,
+        audio_path,
         &ListenParams::default(),
         loaded_model,
         model_path,
@@ -166,42 +163,32 @@ pub(super) fn transcribe_recorded_file(
     Ok(words)
 }
 
-fn transcribe_source<S>(
-    source: S,
+fn transcribe_source(
+    audio_path: &Path,
     params: &ListenParams,
     loaded_model: &hypr_whisper_local::LoadedWhisper,
     model_path: &Path,
     event_tx: Option<mpsc::UnboundedSender<BatchSseMessage>>,
-) -> Result<batch::Response, crate::Error>
-where
-    S: Source<Item = f32>,
-{
-    let channel_count = u16::from(source.channels()).max(1) as usize;
-    let resampled = hypr_audio_utils::resample_audio(source, TARGET_SAMPLE_RATE)?;
-    if event_tx.as_ref().is_some_and(|tx| tx.is_closed()) {
-        return Err(crate::Error::protocol("batch transcription cancelled"));
-    }
-    let channel_samples = split_resampled_channels(&resampled, channel_count);
-    drop(resampled);
-    let total_duration = channel_samples
-        .iter()
-        .map(|samples| channel_duration_sec(samples))
-        .fold(0.0_f64, f64::max);
-
+) -> Result<batch::Response, crate::Error> {
+    let pcm_file = hypr_audio_utils::PcmFile::prepare(audio_path, || {
+        event_tx.as_ref().is_some_and(|tx| tx.is_closed())
+    })?;
+    let pcm = &pcm_file.descriptor;
+    let channel_count = pcm.channels;
+    let total_duration = pcm.duration();
     let metadata = build_metadata(model_path);
-    let channel_durations = channel_samples
-        .iter()
-        .map(|samples| channel_duration_sec(samples))
-        .collect::<Vec<_>>();
+    let channel_durations = vec![total_duration; channel_count];
     let started = std::time::Instant::now();
-    let raw_chunks = channel_samples
-        .iter()
-        .map(|samples| chunk_channel_audio::<crate::Error>(samples))
+    let raw_chunks = (0..channel_count)
+        .map(|channel| {
+            chunk_pcm_channel::<crate::Error>(pcm, channel, || {
+                event_tx.as_ref().is_some_and(|tx| tx.is_closed())
+            })
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let vad_ms = started.elapsed().as_millis();
     let languages = super::configured_languages(params);
-    let mut models = channel_samples
-        .iter()
+    let mut models = (0..channel_count)
         .map(|_| build_model(loaded_model, params))
         .collect::<Result<Vec<_>, _>>()?;
     let mut language = super::language::BatchLanguage::new(
@@ -209,17 +196,17 @@ where
         if languages.len() == 1 {
             vec![]
         } else {
-            super::language::evidence_windows(&channel_samples, &raw_chunks)
+            super::language::evidence_windows(channel_count, pcm.frames, &raw_chunks)
         },
-        &channel_samples,
+        pcm,
     );
     language.startup(&mut models[0])?;
     let packing_started = std::time::Instant::now();
-    let channel_chunks = channel_samples
+    let channel_chunks = raw_chunks
         .iter()
-        .zip(&raw_chunks)
-        .map(|(samples, chunks)| {
-            let packed = super::packing::pack(samples, chunks, super::packing::gap_override());
+        .map(|chunks| {
+            let packed =
+                super::packing::pack_ranges(pcm.frames, chunks, super::packing::gap_override());
             tracing::info!(
                 vad_windows = chunks.len(),
                 inference_windows = packed.len(),
@@ -249,6 +236,7 @@ where
         })
         .collect::<Vec<_>>();
     jobs.sort_by_key(|(channel, _, chunk)| (chunk.sample_start, *channel));
+    let mut reader = pcm.reader()?;
     let mut first_text = true;
     for (channel, index, chunk) in jobs {
         if progress.event_tx().is_some_and(|tx| tx.is_closed()) {
@@ -258,9 +246,10 @@ where
         for model in &mut models {
             model.select_language(language.resolver.selected());
         }
+        let samples = reader.channel(channel, chunk.sample_start..chunk.sample_end)?;
         let segments = transcribe_chunk(
             &mut models[channel],
-            &chunk.samples,
+            &samples,
             chunk.sample_start as f64 / TARGET_SAMPLE_RATE as f64,
         )?;
         if first_text && !segments.is_empty() {
@@ -371,14 +360,9 @@ mod performance_tests {
         };
         for run in 0..4 {
             let started = std::time::Instant::now();
-            let response = transcribe_source(
-                hypr_audio_utils::source_from_path(Path::new(&audio_path)).unwrap(),
-                &params,
-                &loaded,
-                model_path,
-                None,
-            )
-            .unwrap();
+            let response =
+                transcribe_source(Path::new(&audio_path), &params, &loaded, model_path, None)
+                    .unwrap();
             let elapsed = started.elapsed();
             let words: Vec<_> = response
                 .results

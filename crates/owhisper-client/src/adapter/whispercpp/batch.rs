@@ -120,6 +120,9 @@ fn audio_content_type(path: &Path) -> &'static str {
 }
 
 fn audio_duration_secs(path: &Path) -> f64 {
+    if let Ok(pcm) = hypr_audio_utils::PcmDescriptor::open(path) {
+        return pcm.duration();
+    }
     use hypr_audio_utils::Source;
     let Ok(source) = hypr_audio_utils::source_from_path(path) else {
         return 0.0;

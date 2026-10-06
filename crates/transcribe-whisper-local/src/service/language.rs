@@ -9,26 +9,28 @@ pub(super) struct EvidenceWindow {
 }
 
 impl EvidenceWindow {
-    fn samples(&self, channels: &[Vec<f32>]) -> Vec<f32> {
-        self.spans
-            .iter()
-            .flat_map(|r| channels[self.channel][r.clone()].iter().copied())
-            .collect()
+    fn samples(&self, pcm: &hypr_audio_utils::PcmDescriptor) -> Result<Vec<f32>, crate::Error> {
+        let mut reader = pcm.reader()?;
+        let mut samples = Vec::with_capacity(10 * 16000);
+        for range in &self.spans {
+            samples.extend(reader.channel(self.channel, range.clone())?);
+        }
+        Ok(samples)
     }
 }
 
 pub(super) fn evidence_windows(
-    channels: &[Vec<f32>],
+    channel_count: usize,
+    duration: usize,
     chunks: &[Vec<AudioChunk>],
 ) -> Vec<EvidenceWindow> {
-    let duration = channels.iter().map(Vec::len).max().unwrap_or(0);
     let mut result = Vec::new();
-    let mut indices = vec![0; channels.len()];
-    let mut accumulated: Vec<Vec<std::ops::Range<usize>>> = vec![Vec::new(); channels.len()];
+    let mut indices = vec![0; channel_count];
+    let mut accumulated: Vec<Vec<std::ops::Range<usize>>> = vec![Vec::new(); channel_count];
     for start in (0..duration).step_by(10 * 16000) {
         let end = (start + 10 * 16000).min(duration);
         let mut candidates = Vec::new();
-        for (channel, (audio, chunks)) in channels.iter().zip(chunks).enumerate() {
+        for (channel, chunks) in chunks.iter().enumerate() {
             while indices[channel] < chunks.len() && chunks[indices[channel]].sample_end <= start {
                 indices[channel] += 1;
             }
@@ -39,7 +41,7 @@ pub(super) fn evidence_windows(
                 .take_while(|c| c.sample_start < end)
             {
                 let a = chunk.sample_start.max(cursor);
-                let b = chunk.sample_end.min(end).min(audio.len());
+                let b = chunk.sample_end.min(end).min(duration);
                 if a < b {
                     spans.push(a..b);
                     cursor = b;
@@ -78,19 +80,19 @@ pub(super) fn evidence_windows(
 pub(super) struct BatchLanguage<'a> {
     pub resolver: LanguageResolver,
     windows: std::collections::VecDeque<EvidenceWindow>,
-    channels: &'a [Vec<f32>],
+    pcm: &'a hypr_audio_utils::PcmDescriptor,
 }
 
 impl<'a> BatchLanguage<'a> {
     pub fn new(
         resolver: LanguageResolver,
         windows: Vec<EvidenceWindow>,
-        channels: &'a [Vec<f32>],
+        pcm: &'a hypr_audio_utils::PcmDescriptor,
     ) -> Self {
         Self {
             resolver,
             windows: windows.into(),
-            channels,
+            pcm,
         }
     }
     pub fn startup(&mut self, detector: &mut Whisper) -> Result<(), crate::Error> {
@@ -100,7 +102,7 @@ impl<'a> BatchLanguage<'a> {
             };
             self.resolver.add_speech(window.speech_samples);
             self.resolver
-                .observe(detector.detect_language(&window.samples(self.channels))?);
+                .observe(detector.detect_language(&window.samples(self.pcm)?)?);
         }
         self.resolver.finish_startup();
         Ok(())
@@ -111,7 +113,7 @@ impl<'a> BatchLanguage<'a> {
             self.resolver.add_speech(window.speech_samples);
             if self.resolver.needs_observation() {
                 self.resolver
-                    .observe(detector.detect_language(&window.samples(self.channels))?);
+                    .observe(detector.detect_language(&window.samples(self.pcm)?)?);
             }
         }
         Ok(())
@@ -130,14 +132,15 @@ mod tests {
             samples: vec![],
         };
         let windows = evidence_windows(
-            &audio,
+            audio.len(),
+            audio[0].len(),
             &[
                 vec![chunk(0, 160000), chunk(160000, 170000)],
                 vec![chunk(0, 10000), chunk(160000, 300000)],
             ],
         );
         assert_eq!(windows.len(), 2);
-        assert!(windows[0].samples(&audio).iter().all(|x| *x == 1.0));
-        assert!(windows[1].samples(&audio).iter().all(|x| *x == 2.0));
+        assert!(windows[0].channel == 0);
+        assert!(windows[1].channel == 1);
     }
 }

@@ -82,3 +82,14 @@ impl Serialize for Error {
         serializer.serialize_str(self.to_string().as_ref())
     }
 }
+
+impl From<hypr_audio_utils::Error> for Error {
+    fn from(error: hypr_audio_utils::Error) -> Self {
+        Self::BatchError(error.to_string())
+    }
+}
+impl From<hypr_audio_chunking::Error> for Error {
+    fn from(error: hypr_audio_chunking::Error) -> Self {
+        Self::BatchError(error.to_string())
+    }
+}

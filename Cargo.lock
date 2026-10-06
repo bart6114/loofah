@@ -8349,6 +8349,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-subscriber",
  "transcribe-core",
  "transcribe-soniqo",
  "transcribe-whisper-local",
@@ -16294,6 +16295,8 @@ dependencies = [
 name = "transcribe-soniqo"
 version = "0.1.0"
 dependencies = [
+ "audio-utils",
+ "data",
  "language",
  "owhisper-interface",
  "serde",
