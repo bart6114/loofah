@@ -208,7 +208,7 @@ async fn actual_large_whisper_import() {
         }
     }
     let _ = tracing_subscriber::fmt()
-        .with_env_filter("listener2_core=info,transcribe_whisper_local=info,audio_utils=info")
+        .with_max_level(tracing::Level::INFO)
         .with_test_writer()
         .try_init();
     let path = std::env::var("LOOFAH_WHISPER_AUDIO").unwrap();
