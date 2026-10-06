@@ -173,36 +173,11 @@ async fn run_batch_inner(
         inner: runtime,
         prepared: prepared.clone(),
     });
-    let metadata_joined = tokio::task::spawn_blocking({
-        let prepared = prepared.clone();
-        move || hypr_audio_utils::audio_file_metadata(&prepared.path)
-    })
-    .await;
-
-    let metadata_result = match metadata_joined {
-        Ok(result) => result,
-        Err(err) => {
-            let raw_error = format!("{err:?}");
-            tracing::error!(error = %raw_error, "audio_metadata_task_join_failed");
-            return Err(crate::BatchFailure::AudioMetadataJoinFailed.into());
-        }
-    };
-
-    let metadata = match metadata_result {
-        Ok(metadata) => metadata,
-        Err(err) => {
-            let raw_error = err.to_string();
-            let message = format_user_friendly_error(&raw_error);
-            tracing::error!(
-                error = %raw_error,
-                fmtr.error.user_message = %message,
-                "failed_to_read_audio_metadata"
-            );
-            return Err(crate::BatchFailure::AudioMetadataReadFailed { message }.into());
-        }
-    };
-
-    let listen_params = build_listen_params(&params, metadata.channels, metadata.sample_rate);
+    let listen_params = build_listen_params(
+        &params,
+        prepared.pcm.channels as u8,
+        prepared.pcm.sample_rate,
+    );
     let diarization = diarize::SharedDiarization::for_file(
         std::sync::Arc::new(diarize::SoniqoDiarizer),
         prepared.clone(),

@@ -1,6 +1,8 @@
 use crate::{InferenceProgress, batch, batch_stream, common_derives, stream};
 
 pub const EVENT_NAME: &str = "batch";
+pub const KEEP_ALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+pub const IDLE_TIMEOUT: std::time::Duration = KEEP_ALIVE_INTERVAL.saturating_mul(3);
 
 common_derives! {
     #[serde(tag = "type", rename_all = "snake_case")]

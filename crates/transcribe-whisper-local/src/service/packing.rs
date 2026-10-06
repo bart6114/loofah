@@ -1,12 +1,16 @@
 use super::TARGET_SAMPLE_RATE;
 use hypr_audio_chunking::AudioChunk;
 
-pub(super) fn pack(samples: &[f32], chunks: &[AudioChunk], gap: Option<usize>) -> Vec<AudioChunk> {
+pub(super) fn pack_ranges(
+    frame_count: usize,
+    chunks: &[AudioChunk],
+    gap: Option<usize>,
+) -> Vec<AudioChunk> {
     let max_span = 25 * TARGET_SAMPLE_RATE as usize;
     let mut ranges: Vec<std::ops::Range<usize>> = Vec::new();
     for chunk in chunks {
-        let mut start = chunk.sample_start.min(samples.len());
-        let end = chunk.sample_end.min(samples.len());
+        let mut start = chunk.sample_start.min(frame_count);
+        let end = chunk.sample_end.min(frame_count);
         while start < end {
             if let Some(last) = ranges.last_mut() {
                 start = start.max(last.end);
@@ -30,7 +34,18 @@ pub(super) fn pack(samples: &[f32], chunks: &[AudioChunk], gap: Option<usize>) -
         .map(|range| AudioChunk {
             sample_start: range.start,
             sample_end: range.end,
-            samples: samples[range].to_vec(),
+            samples: Vec::new(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn pack(samples: &[f32], chunks: &[AudioChunk], gap: Option<usize>) -> Vec<AudioChunk> {
+    pack_ranges(samples.len(), chunks, gap)
+        .into_iter()
+        .map(|mut chunk| {
+            chunk.samples = samples[chunk.sample_start..chunk.sample_end].to_vec();
+            chunk
         })
         .collect()
 }

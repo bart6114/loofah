@@ -953,6 +953,7 @@ dependencies = [
  "resampler",
  "rodio",
  "rubato",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "vorbis_rs",
@@ -7478,7 +7479,9 @@ dependencies = [
  "aspasia",
  "audio-chunking",
  "audio-utils",
+ "axum",
  "bytes",
+ "data",
  "fs-format",
  "futures-util",
  "host",
@@ -7497,8 +7500,10 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-subscriber",
  "transcribe-core",
  "transcribe-soniqo",
+ "transcribe-whisper-local",
  "whisper-local-model",
 ]
 
@@ -14881,6 +14886,8 @@ dependencies = [
 name = "transcribe-soniqo"
 version = "0.1.0"
 dependencies = [
+ "audio-utils",
+ "data",
  "language",
  "owhisper-interface",
  "serde",
