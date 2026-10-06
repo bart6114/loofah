@@ -7,15 +7,10 @@ cd "$repo_root"
 
 readonly rust_excludes=(
   desktop
-  email
-  mac
   notification-macos
-  notification-macos2
   tcc
-  apple-note
   notification-linux
   aec
-  agc
   whisper
   whisper-local
   whisper-local-model
@@ -31,7 +26,6 @@ readonly rust_excludes=(
   audio-device
   transcribe-whisper-local
   device-monitor
-  local-stt-server
   tauri-plugin-deeplink2
   tauri-plugin-detect
   tauri-plugin-fs-sync
