@@ -181,7 +181,8 @@ fn main() {
         .pic(true);
 
     if cfg!(target_os = "windows") {
-        config.cxxflag("/utf-8");
+        // ClangCL needs exception handling enabled for ggml's try/catch blocks.
+        config.cxxflag("/utf-8").cxxflag("/EHsc");
         println!("cargo:rustc-link-lib=advapi32");
     }
 
