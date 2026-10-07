@@ -7,7 +7,7 @@ use ractor::{Actor, ActorName, ActorProcessingErr, ActorRef, SpawnErr};
 use tracing::Instrument;
 
 use super::super::accumulator::StreamBatchAccumulator;
-use super::super::diarize::{SharedDiarization, stamp_stream_event};
+use super::super::diarize::{ChannelSegments, SharedDiarization, stamp_stream_event};
 use super::super::{BatchParams, BatchRunOutput, format_user_friendly_error, session_span};
 use super::ProgressiveProvider;
 use super::bootstrap::{notify_start_result, spawn_progressive_batch_task};
@@ -129,6 +129,7 @@ pub(super) enum BatchMsg {
     StreamResponse { event: Box<BatchStreamEvent> },
     StreamError(crate::BatchFailure),
     StreamEnded,
+    DiarizationReady(Result<Arc<ChannelSegments>, crate::BatchFailure>),
     StreamStartFailed(crate::BatchFailure),
 }
 
@@ -160,11 +161,21 @@ struct BatchState {
     done_notifier: BatchDoneNotifier,
     final_result: Option<crate::Result<BatchRunOutput>>,
     accumulator: StreamBatchAccumulator,
-    diarization: SharedDiarization,
+    diarization_task: tokio::task::JoinHandle<()>,
+    segments: Option<Arc<ChannelSegments>>,
+    pending: std::collections::VecDeque<BatchStreamEvent>,
+    stream_ended: bool,
+    percentage: f64,
 }
 
 impl BatchState {
-    fn emit_streamed(&self, event: BatchStreamEvent) {
+    fn emit_streamed(&mut self, mut event: BatchStreamEvent) {
+        if let BatchStreamEvent::Progress { percentage, .. }
+        | BatchStreamEvent::Segment { percentage, .. } = &mut event
+        {
+            *percentage = percentage.max(self.percentage).min(0.99);
+            self.percentage = *percentage;
+        }
         self.runtime.emit(BatchEvent::BatchResponseStreamed {
             session_id: self.session_id.clone(),
             event,
@@ -196,7 +207,14 @@ impl Actor for BatchActor {
         myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let (rx_task, shutdown_tx) = spawn_progressive_batch_task(args.clone(), myself).await?;
+        let (rx_task, shutdown_tx) =
+            spawn_progressive_batch_task(args.clone(), myself.clone()).await?;
+
+        let diarization = args.diarization.clone();
+        let diarization_task = tokio::spawn(async move {
+            let segments = diarization.segments().await;
+            let _ = myself.send_message(BatchMsg::DiarizationReady(segments));
+        });
 
         Ok(BatchState {
             runtime: args.runtime,
@@ -206,7 +224,11 @@ impl Actor for BatchActor {
             done_notifier: args.done_notifier,
             final_result: None,
             accumulator: StreamBatchAccumulator::new(),
-            diarization: args.diarization,
+            diarization_task,
+            segments: None,
+            pending: Default::default(),
+            stream_ended: false,
+            percentage: 0.0,
         })
     }
 
@@ -215,6 +237,8 @@ impl Actor for BatchActor {
         _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        state.diarization_task.abort();
+        state.pending.clear();
         if let Some(shutdown_tx) = state.shutdown_tx.take() {
             let _ = shutdown_tx.send(());
             let _ = (&mut state.rx_task).await;
@@ -234,23 +258,21 @@ impl Actor for BatchActor {
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        if state.final_result.is_some() {
+            return Ok(());
+        }
         match message {
             BatchMsg::StreamResponse { mut event } => {
                 tracing::info!("batch stream response received");
-                // Words must carry speaker indexes before the chunk reaches the
-                // frontend: it persists each chunk incrementally, so a pass
-                // after the run completes would be too late.
-                let segments = match state.diarization.segments().await {
-                    Ok(segments) => segments,
-                    Err(error) => {
-                        state.final_result = Some(Err(error.into()));
-                        myself.stop(None);
-                        return Ok(());
-                    }
-                };
-                stamp_stream_event(&mut event, &segments);
-                state.accumulator.observe(&event);
-                state.emit_streamed(*event);
+                if matches!(*event, BatchStreamEvent::Progress { .. }) {
+                    state.emit_streamed(*event);
+                } else if let Some(segments) = &state.segments {
+                    stamp_stream_event(&mut event, segments);
+                    state.accumulator.observe(&event);
+                    state.emit_streamed(*event);
+                } else {
+                    state.pending.push_back(*event);
+                }
             }
             BatchMsg::StreamStartFailed(error) => {
                 tracing::error!("batch_stream_start_failed: {}", error);
@@ -264,17 +286,31 @@ impl Actor for BatchActor {
             }
             BatchMsg::StreamEnded => {
                 tracing::info!("batch_stream_ended");
-                if let Err(error) = state.diarization.segments().await {
-                    state.final_result = Some(Err(error.into()));
-                    myself.stop(None);
-                    return Ok(());
+                state.stream_ended = true;
+            }
+            BatchMsg::DiarizationReady(result) => {
+                let segments = match result {
+                    Ok(segments) => segments,
+                    Err(error) => {
+                        state.final_result = Some(Err(error.into()));
+                        myself.stop(None);
+                        return Ok(());
+                    }
+                };
+                state.segments = Some(segments.clone());
+                while let Some(mut event) = state.pending.pop_front() {
+                    stamp_stream_event(&mut event, &segments);
+                    state.accumulator.observe(&event);
+                    state.emit_streamed(event);
                 }
-                let output = std::mem::take(&mut state.accumulator).finish(&state.session_id);
-                state.final_result = Some(Ok(output));
-                myself.stop(None);
             }
         }
 
+        if state.stream_ended && state.segments.is_some() && state.final_result.is_none() {
+            let output = std::mem::take(&mut state.accumulator).finish(&state.session_id);
+            state.final_result = Some(Ok(output));
+            myself.stop(None);
+        }
         Ok(())
     }
 }
@@ -313,39 +349,18 @@ pub(super) fn report_stream_start_failure(
 pub(super) async fn process_provider_stream(
     stream: StreamingBatchStream,
     myself: ActorRef<BatchMsg>,
-    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-    provider: &str,
+    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    provider: ProgressiveProvider,
     context: &str,
 ) {
-    futures_util::pin_mut!(stream);
-    process_stream_loop(
-        &mut stream,
-        myself,
-        shutdown_rx,
-        provider,
-        context,
-        1,
-        std::convert::identity,
-    )
-    .await;
-}
-
-async fn process_stream_loop<S, Item, E, F>(
-    stream: &mut std::pin::Pin<&mut S>,
-    myself: ActorRef<BatchMsg>,
-    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-    provider: &str,
-    context: &str,
-    expected_completions: usize,
-    mut into_response: F,
-) where
-    S: futures_util::Stream<Item = Result<Item, E>>,
-    E: std::fmt::Debug,
-    F: FnMut(Item) -> BatchStreamEvent,
-{
+    let response_timeout = match provider {
+        ProgressiveProvider::WhisperCpp => None,
+        ProgressiveProvider::OpenAI => Some(Duration::from_secs(BATCH_STREAM_TIMEOUT_SECS)),
+    };
+    let provider = provider.label();
+    let mut stream = stream;
     let mut response_count = 0;
-    let response_timeout = Duration::from_secs(BATCH_STREAM_TIMEOUT_SECS);
-    let mut completions_seen: usize = 0;
+    let mut completed = false;
 
     loop {
         tracing::debug!(
@@ -358,15 +373,16 @@ async fn process_stream_loop<S, Item, E, F>(
                 tracing::info!("{context}: shutdown");
                 return;
             }
-            result = tokio::time::timeout(
-                response_timeout,
-                futures_util::StreamExt::next(stream),
-            ) => {
+            result = async {
+                match response_timeout {
+                    Some(timeout) => tokio::time::timeout(timeout, futures_util::StreamExt::next(&mut stream)).await,
+                    None => Ok(futures_util::StreamExt::next(&mut stream).await),
+                }
+            } => {
                 tracing::debug!("{context}: received result");
                 match result {
-                    Ok(Some(Ok(item))) => {
+                    Ok(Some(Ok(event))) => {
                         response_count += 1;
-                        let event = into_response(item);
 
                         let is_completion = is_completion_event(&event);
 
@@ -413,10 +429,8 @@ async fn process_stream_loop<S, Item, E, F>(
                         );
 
                         if is_completion {
-                            completions_seen += 1;
-                            if completions_seen >= expected_completions {
-                                break;
-                            }
+                            completed = true;
+                            break;
                         }
                     }
                     Ok(Some(Err(err))) => {
@@ -440,18 +454,8 @@ async fn process_stream_loop<S, Item, E, F>(
                         break;
                     }
                     Ok(None) => {
-                        if completions_seen >= expected_completions {
-                            tracing::info!(
-                                fmtr.response.count = response_count,
-                                "{context} completed"
-                            );
-                            break;
-                        }
-
                         tracing::error!(
                             fmtr.response.count = response_count,
-                            fmtr.completions.expected = expected_completions,
-                            fmtr.completions.seen = completions_seen,
                             "{context} ended without completion signal"
                         );
                         send_actor_message(
@@ -483,7 +487,7 @@ async fn process_stream_loop<S, Item, E, F>(
         }
     }
 
-    if completions_seen >= expected_completions {
+    if completed {
         send_actor_message(&myself, BatchMsg::StreamEnded, context, "stream ended");
     }
     tracing::info!("{context}: processing loop exited");
@@ -506,6 +510,481 @@ fn send_actor_message(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    struct Observer;
+
+    #[ractor::async_trait]
+    impl Actor for Observer {
+        type Msg = BatchMsg;
+        type State = tokio::sync::mpsc::UnboundedSender<BatchMsg>;
+        type Arguments = Self::State;
+
+        async fn pre_start(
+            &self,
+            _: ActorRef<BatchMsg>,
+            sender: Self::Arguments,
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(sender)
+        }
+
+        async fn handle(
+            &self,
+            _: ActorRef<BatchMsg>,
+            message: BatchMsg,
+            sender: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            let _ = sender.send(message);
+            Ok(())
+        }
+    }
+
+    struct Runtime(tokio::sync::mpsc::UnboundedSender<BatchStreamEvent>);
+    impl BatchRuntime for Runtime {
+        fn emit(&self, event: BatchEvent) {
+            if let BatchEvent::BatchResponseStreamed { event, .. } = event {
+                let _ = self.0.send(event);
+            }
+        }
+    }
+
+    async fn state() -> (
+        BatchState,
+        tokio::sync::mpsc::UnboundedReceiver<BatchStreamEvent>,
+        ActorRef<BatchMsg>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let (events, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let (actor, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        (
+            BatchState {
+                runtime: Arc::new(Runtime(events)),
+                session_id: "test".into(),
+                rx_task: tokio::spawn(async {
+                    let _ = shutdown_rx.await;
+                }),
+                shutdown_tx: Some(shutdown_tx),
+                done_notifier: Arc::new(Mutex::new(None)),
+                final_result: None,
+                accumulator: StreamBatchAccumulator::new(),
+                diarization_task: tokio::spawn(std::future::pending()),
+                segments: None,
+                pending: Default::default(),
+                stream_ended: false,
+                percentage: 0.0,
+            },
+            rx,
+            actor,
+            handle,
+        )
+    }
+
+    fn terminal() -> BatchStreamEvent {
+        BatchStreamEvent::Terminal {
+            request_id: "r".into(),
+            created: "now".into(),
+            duration: 10.0,
+            channels: 1,
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn slow_diarization_does_not_block_progress_and_completion_waits() {
+        let (mut state, mut rx, actor, handle) = state().await;
+        let queued = BatchStreamEvent::Segment {
+            response: owhisper_interface::stream::StreamResponse::TranscriptResponse {
+                start: 0.0,
+                duration: 1.0,
+                is_final: true,
+                speech_final: true,
+                from_finalize: false,
+                channel: owhisper_interface::stream::Channel {
+                    alternatives: vec![owhisper_interface::stream::Alternatives {
+                        transcript: "hello".into(),
+                        confidence: 1.0,
+                        languages: vec![],
+                        words: vec![owhisper_interface::stream::Word {
+                            word: "hello".into(),
+                            punctuated_word: None,
+                            start: 0.1,
+                            end: 0.2,
+                            confidence: 1.0,
+                            speaker: None,
+                            language: None,
+                        }],
+                    }],
+                },
+                metadata: owhisper_interface::stream::Metadata {
+                    request_id: "r".into(),
+                    model_uuid: "m".into(),
+                    extra: None,
+                    model_info: owhisper_interface::stream::ModelInfo {
+                        name: String::new(),
+                        version: String::new(),
+                        arch: String::new(),
+                    },
+                },
+                channel_index: vec![0, 1],
+            },
+            percentage: 0.1,
+        };
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::StreamResponse {
+                    event: Box::new(queued),
+                },
+                &mut state,
+            )
+            .await
+            .unwrap();
+        for percentage in [0.2, 0.8] {
+            tokio::time::advance(Duration::from_secs(35)).await;
+            BatchActor
+                .handle(
+                    actor.clone(),
+                    BatchMsg::StreamResponse {
+                        event: Box::new(BatchStreamEvent::Progress {
+                            percentage,
+                            partial_text: None,
+                        }),
+                    },
+                    &mut state,
+                )
+                .await
+                .unwrap();
+            assert_eq!(rx.recv().await.unwrap().percentage(), percentage);
+        }
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::StreamResponse {
+                    event: Box::new(terminal()),
+                },
+                &mut state,
+            )
+            .await
+            .unwrap();
+        BatchActor
+            .handle(actor.clone(), BatchMsg::StreamEnded, &mut state)
+            .await
+            .unwrap();
+        assert!(state.final_result.is_none());
+        assert!(rx.try_recv().is_err());
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::DiarizationReady(Ok(Arc::new(ChannelSegments::from([(
+                    0,
+                    vec![hypr_transcribe_soniqo::diarize::DiarizeSegment {
+                        start_ms: 0,
+                        end_ms: 1000,
+                        speaker_index: 3,
+                    }],
+                )])))),
+                &mut state,
+            )
+            .await
+            .unwrap();
+        let event = rx.recv().await.unwrap();
+        assert_eq!(event.percentage(), 0.8);
+        let BatchStreamEvent::Segment {
+            response: owhisper_interface::stream::StreamResponse::TranscriptResponse { channel, .. },
+            ..
+        } = event
+        else {
+            panic!("Expected queued segment");
+        };
+        assert_eq!(channel.alternatives[0].words[0].speaker, Some(3));
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            BatchStreamEvent::Terminal { .. }
+        ));
+        assert!(matches!(state.final_result, Some(Ok(_))));
+        BatchActor
+            .post_stop(actor.clone(), &mut state)
+            .await
+            .unwrap();
+        actor.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn diarization_failure_stops_without_persisting_pending_transcripts() {
+        let (mut state, mut rx, actor, handle) = state().await;
+        state.pending.push_back(terminal());
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::DiarizationReady(Err(crate::BatchFailure::DiarizationFailed {
+                    message: "model inference failed".into(),
+                })),
+                &mut state,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            &state.final_result,
+            Some(Err(crate::Error::BatchFailed(
+                crate::BatchFailure::DiarizationFailed { .. }
+            )))
+        ));
+        assert!(rx.try_recv().is_err());
+        BatchActor
+            .post_stop(actor.clone(), &mut state)
+            .await
+            .unwrap();
+        assert!(state.pending.is_empty());
+        actor.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn diarization_first_finishes_only_after_asr_and_cancellation_drops_queue() {
+        let (mut state, mut rx, actor, handle) = state().await;
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::DiarizationReady(Ok(Arc::new(ChannelSegments::new()))),
+                &mut state,
+            )
+            .await
+            .unwrap();
+        assert!(state.final_result.is_none());
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::StreamResponse {
+                    event: Box::new(terminal()),
+                },
+                &mut state,
+            )
+            .await
+            .unwrap();
+        BatchActor
+            .handle(actor.clone(), BatchMsg::StreamEnded, &mut state)
+            .await
+            .unwrap();
+        assert!(matches!(state.final_result, Some(Ok(_))));
+        assert!(rx.try_recv().is_ok());
+        BatchActor
+            .post_stop(actor.clone(), &mut state)
+            .await
+            .unwrap();
+        actor.stop(None);
+        handle.await.unwrap();
+
+        let (mut state, mut rx, actor, handle) = self::state().await;
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::StreamResponse {
+                    event: Box::new(terminal()),
+                },
+                &mut state,
+            )
+            .await
+            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            BatchActor.post_stop(actor.clone(), &mut state),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(state.pending.is_empty());
+        assert!(rx.try_recv().is_err());
+        actor.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn provider_failure_discards_queued_words_and_ignores_late_labels() {
+        let (mut state, mut rx, actor, handle) = state().await;
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::StreamResponse {
+                    event: Box::new(terminal()),
+                },
+                &mut state,
+            )
+            .await
+            .unwrap();
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::StreamError(crate::BatchFailure::ProgressiveStreamTimeout),
+                &mut state,
+            )
+            .await
+            .unwrap();
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::DiarizationReady(Ok(Arc::new(ChannelSegments::new()))),
+                &mut state,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(state.final_result, Some(Err(_))));
+        assert!(rx.try_recv().is_err());
+        BatchActor
+            .post_stop(actor.clone(), &mut state)
+            .await
+            .unwrap();
+        assert!(state.pending.is_empty());
+        actor.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn local_batch_can_finish_after_long_event_gap() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let events = futures_util::stream::once(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(BatchStreamEvent::Terminal {
+                request_id: "req".into(),
+                created: "now".into(),
+                duration: 5100.0,
+                channels: 1,
+            })
+        });
+        process_provider_stream(
+            Box::pin(events),
+            observer.clone(),
+            shutdown_rx,
+            ProgressiveProvider::WhisperCpp,
+            "test",
+        )
+        .await;
+        assert!(matches!(
+            rx.recv().await,
+            Some(BatchMsg::StreamResponse { .. })
+        ));
+        assert!(matches!(rx.recv().await, Some(BatchMsg::StreamEnded)));
+        observer.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn remote_batch_still_detects_a_stalled_event_stream() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        process_provider_stream(
+            Box::pin(futures_util::stream::pending()),
+            observer.clone(),
+            shutdown_rx,
+            ProgressiveProvider::OpenAI,
+            "test",
+        )
+        .await;
+        assert!(matches!(
+            rx.recv().await,
+            Some(BatchMsg::StreamError(
+                crate::BatchFailure::ProgressiveStreamTimeout
+            ))
+        ));
+        observer.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn local_batch_wait_is_cancellable() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        shutdown_tx.send(()).unwrap();
+        process_provider_stream(
+            Box::pin(futures_util::stream::pending()),
+            observer.clone(),
+            shutdown_rx,
+            ProgressiveProvider::WhisperCpp,
+            "test",
+        )
+        .await;
+        assert!(rx.try_recv().is_err());
+        observer.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn batch_startup_can_be_cancelled_before_response_headers() {
+        let file = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
+        let mut writer = hound::WavWriter::create(
+            file.path(),
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 16_000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .unwrap();
+        writer.write_sample(0_i16).unwrap();
+        writer.finalize().unwrap();
+        let (uploaded_tx, uploaded_rx) = tokio::sync::oneshot::channel();
+        let uploaded_tx = Arc::new(Mutex::new(Some(uploaded_tx)));
+        let app = axum::Router::new().route(
+            "/v1/listen",
+            axum::routing::post(move |body: axum::body::Body| {
+                let uploaded_tx = uploaded_tx.clone();
+                async move {
+                    axum::body::to_bytes(body, 1024).await.unwrap();
+                    if let Some(tx) = uploaded_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    std::future::pending::<String>().await
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (observer, handle) = Actor::spawn(None, Observer, tx).await.unwrap();
+        struct Runtime;
+        impl BatchRuntime for Runtime {
+            fn emit(&self, _: BatchEvent) {}
+        }
+        let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, _done_rx) = tokio::sync::oneshot::channel();
+        let (task, shutdown_tx) = spawn_progressive_batch_task(
+            BatchArgs {
+                runtime: Arc::new(Runtime),
+                progressive_provider: ProgressiveProvider::WhisperCpp,
+                provider_label: "whispercpp".into(),
+                file_path: file.path().to_string_lossy().into_owned(),
+                base_url: format!("http://{address}/v1"),
+                api_key: String::new(),
+                listen_params: Default::default(),
+                start_notifier: Arc::new(Mutex::new(Some(start_tx))),
+                done_notifier: Arc::new(Mutex::new(Some(done_tx))),
+                session_id: "cancel-start".into(),
+                diarization: SharedDiarization::disabled(),
+            },
+            observer.clone(),
+        )
+        .await
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), uploaded_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        shutdown_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(start_rx.await.is_err());
+        observer.stop(None);
+        handle.await.unwrap();
+        server.abort();
+    }
 
     #[test]
     fn completion_event_result() {

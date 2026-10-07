@@ -35,6 +35,7 @@ pub struct SttModelInfo {
     pub description: String,
     pub size_bytes: Option<u64>,
     pub model_type: SttModelType,
+    pub supported_languages: Option<Vec<String>>,
 }
 
 pub fn stt_model_info(model: &LocalModel) -> SttModelInfo {
@@ -52,6 +53,7 @@ pub fn stt_model_info(model: &LocalModel) -> SttModelInfo {
             } else {
                 SttModelType::Soniqo
             },
+            supported_languages: value.supported_language_codes(),
         },
         LocalModel::Whisper(value) => SttModelInfo {
             key: model.clone(),
@@ -59,6 +61,13 @@ pub fn stt_model_info(model: &LocalModel) -> SttModelInfo {
             description: value.description(),
             size_bytes: Some(value.model_size_bytes()),
             model_type: SttModelType::Whispercpp,
+            supported_languages: Some(
+                value
+                    .supported_languages()
+                    .iter()
+                    .map(|language| language.iso639_code().to_string())
+                    .collect(),
+            ),
         },
         LocalModel::Diarizer(_) => unreachable!(),
     }
@@ -95,6 +104,16 @@ mod tests {
     }
 
     #[test]
+    fn language_metadata_distinguishes_streaming_and_batch_parakeet() {
+        let streaming = stt_model_info(&LocalModel::Soniqo(SoniqoModel::ParakeetStreaming));
+        assert_eq!(streaming.supported_languages.unwrap(), vec!["en"]);
+        let batch = stt_model_info(&LocalModel::Soniqo(SoniqoModel::ParakeetBatch));
+        let languages = batch.supported_languages.unwrap();
+        assert_eq!(languages.len(), 25);
+        assert!(languages.contains(&"nl".to_string()));
+    }
+
+    #[test]
     fn soniqo_model_info_comes_from_soniqo_metadata() {
         for model in SoniqoModel::all() {
             let info = stt_model_info(&LocalModel::Soniqo(*model));
@@ -107,6 +126,7 @@ mod tests {
                 info.model_type,
                 SttModelType::Soniqo | SttModelType::Onnx
             ));
+            assert_eq!(info.supported_languages, model.supported_language_codes());
         }
     }
 }

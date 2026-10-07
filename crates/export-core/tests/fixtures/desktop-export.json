@@ -1,0 +1,17 @@
+{
+  "enhancedMd": "**Décision**: ship `v2`.",
+  "noteMd": "## Café\n\n- **naïve** [link](https://example.com)\n- 你好 👋",
+  "transcript": {
+    "items": [
+      { "speaker": "Zoë", "text": "Bonjour — 你好." },
+      { "speaker": "Speaker 1", "text": "Unknown speaker." },
+      { "speaker": null, "text": "Unlabelled." }
+    ]
+  },
+  "metadata": {
+    "title": "Démo 👋",
+    "createdAt": "Friday, September 18, 2026 at 12:00 AM",
+    "participants": ["Zoë", "李"],
+    "duration": "2m"
+  }
+}

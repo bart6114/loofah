@@ -1,9 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useState } from "react";
 
-import { Spinner } from "@hypr/ui/components/ui/spinner";
-
 import { useRegenerateTranscript } from "./actions";
+import { TranscriptLoadingState, TranscriptLoadError } from "./loading";
 import { TranscriptViewer } from "./renderer";
 import { BatchState } from "./screens/batch";
 import { TranscriptEmptyState } from "./screens/empty";
@@ -11,23 +11,70 @@ import { TranscriptListeningState } from "./screens/listening";
 import { useTranscriptScreen } from "./state";
 
 import { useListener } from "~/stt/contexts";
-import type { TranscriptRecord } from "~/stt/queries";
+import {
+  type TranscriptRecord,
+  useSessionTranscriptsQuery,
+} from "~/stt/queries";
 import { useUploadFile } from "~/stt/useUploadFile";
+
+const EMPTY_TRANSCRIPTS: TranscriptRecord[] = [];
 
 export function Transcript({
   sessionId,
+  scrollRef,
+}: {
+  sessionId: string;
+  scrollRef: RefObject<HTMLDivElement | null>;
+}) {
+  const client = useQueryClient();
+  const query = useSessionTranscriptsQuery(sessionId);
+  const cached =
+    Boolean(query.data?.length) &&
+    query.data!.every((transcript) =>
+      client
+        .getQueriesData({
+          queryKey: ["rendered-transcript-segments", transcript.id],
+        })
+        .some(([, data]) => data !== undefined),
+    );
+  return (
+    <TranscriptContent
+      key={sessionId}
+      sessionId={sessionId}
+      scrollRef={scrollRef}
+      transcripts={query.data ?? EMPTY_TRANSCRIPTS}
+      initiallyReady={cached}
+      pending={query.isPending}
+      error={query.isError}
+      retry={() => {
+        void query.refetch();
+      }}
+    />
+  );
+}
+
+export function TranscriptContent({
+  sessionId,
   transcripts,
+  initiallyReady = false,
+  pending = false,
+  error = false,
+  retry = () => {},
   scrollRef,
 }: {
   sessionId: string;
   transcripts: readonly TranscriptRecord[];
+  initiallyReady?: boolean;
+  pending?: boolean;
+  error?: boolean;
+  retry?: () => void;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
   const screen = useTranscriptScreen({ sessionId, transcripts });
   const { uploadAudio, uploadTranscript } = useUploadFile(sessionId);
   const regenerateTranscript = useRegenerateTranscript(sessionId);
   const stopTranscription = useListener((state) => state.stopTranscription);
-  const [viewerReady, setViewerReady] = useState(false);
+  const [viewerReady, setViewerReady] = useState(initiallyReady);
   useEffect(() => {
     if (screen.kind !== "ready") {
       setViewerReady(false);
@@ -75,10 +122,15 @@ export function Transcript({
           error={screen.error}
         />
       )}
-      {screen.kind === "listening" && (
+      {!pending && screen.kind === "listening" && (
         <TranscriptListeningState status={screen.status} />
       )}
-      {screen.kind === "empty" && (
+      {error && <TranscriptLoadError retry={retry} />}
+      {pending &&
+        screen.kind !== "ready" &&
+        screen.kind !== "running_batch" &&
+        screen.kind !== "batch_fallback" && <TranscriptLoadingState />}
+      {!pending && !error && screen.kind === "empty" && (
         <TranscriptEmptyState
           isBatching={false}
           hasAudio={screen.hasAudio}
@@ -97,18 +149,6 @@ export function Transcript({
           scrollRef={scrollRef}
         />
       )}
-    </div>
-  );
-}
-
-function TranscriptLoadingState() {
-  return (
-    <div
-      role="status"
-      className="text-muted-foreground flex h-full items-center justify-center gap-2 text-sm"
-    >
-      <Spinner size={18} />
-      <span>Loading transcript...</span>
     </div>
   );
 }

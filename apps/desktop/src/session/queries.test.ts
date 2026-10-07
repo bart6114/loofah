@@ -22,6 +22,11 @@ const mocks = vi.hoisted(() => ({
       { status: "ok"; data: null } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
   ),
+  sessionSaveNote: vi.fn(
+    (): Promise<
+      { status: "ok"; data: null } | { status: "error"; error: string }
+    > => Promise.resolve({ status: "ok", data: null }),
+  ),
   sessionWriteNote: vi.fn(
     (): Promise<
       { status: "ok"; data: null } | { status: "error"; error: string }
@@ -37,7 +42,7 @@ const mocks = vi.hoisted(() => ({
       { status: "ok"; data: boolean } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: true }),
   ),
-  sessionUpdateEnhancedDoc: vi.fn(
+  sessionSaveEnhancedDoc: vi.fn(
     (): Promise<
       { status: "ok"; data: null } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
@@ -47,23 +52,30 @@ const mocks = vi.hoisted(() => ({
       { status: "ok"; data: null } | { status: "error"; error: string }
     > => Promise.resolve({ status: "ok", data: null }),
   ),
+  sessionSaveSummary: vi.fn(async () => ({ status: "ok", data: null })),
+  sessionDeleteSummary: vi.fn(async () => ({ status: "ok", data: null })),
   waitForPendingSoftDelete: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("~/session/pending-soft-deletes", () => ({
+  sessionSaveSummary: vi.fn(async () => ({ status: "ok", data: null })),
+  sessionDeleteSummary: vi.fn(async () => ({ status: "ok", data: null })),
   waitForPendingSoftDelete: mocks.waitForPendingSoftDelete,
 }));
 
 vi.mock("~/types/tauri.gen", () => ({
   commands: {
     sessionGet: mocks.sessionGet,
+    sessionSaveSummary: mocks.sessionSaveSummary,
+    sessionDeleteSummary: mocks.sessionDeleteSummary,
     sessionIsEmpty: mocks.sessionIsEmpty,
     sessionWriteMeta: mocks.sessionWriteMeta,
     sessionUpdateMeta: mocks.sessionUpdateMeta,
     sessionWriteNote: mocks.sessionWriteNote,
+    sessionSaveNote: mocks.sessionSaveNote,
     sessionDelete: mocks.sessionDelete,
     sessionRestore: mocks.sessionRestore,
-    sessionUpdateEnhancedDoc: mocks.sessionUpdateEnhancedDoc,
+    sessionSaveEnhancedDoc: mocks.sessionSaveEnhancedDoc,
     sessionDeleteEnhancedDoc: mocks.sessionDeleteEnhancedDoc,
   },
 }));
@@ -74,6 +86,7 @@ import {
   isSessionEmpty,
   restoreDeletedSession,
   softDeleteSession,
+  saveSessionNote,
   updateEnhancedNoteContent,
   updateSession,
 } from "./queries";
@@ -98,6 +111,40 @@ describe("session store operations", () => {
     expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {
       title: "Updated title",
     });
+  });
+
+  it("saves raw note content and its title with one store command", async () => {
+    await saveSessionNote(
+      "session-1",
+      "# Edited title\n\nBody",
+      "Edited title",
+    );
+    expect(mocks.sessionSaveNote).toHaveBeenCalledWith(
+      "session-1",
+      "# Edited title\n\nBody",
+      "Edited title",
+    );
+    expect(mocks.sessionWriteNote).not.toHaveBeenCalled();
+    expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
+  });
+
+  it("preserves metadata when no derived raw note title is supplied", async () => {
+    await saveSessionNote("session-1", "Body");
+    expect(mocks.sessionSaveNote).toHaveBeenCalledWith(
+      "session-1",
+      "Body",
+      null,
+    );
+  });
+
+  it("propagates a rejected coherent raw note save", async () => {
+    mocks.sessionSaveNote.mockResolvedValueOnce({
+      status: "error",
+      error: "disk full",
+    });
+    await expect(saveSessionNote("session-1", "Body")).rejects.toThrow(
+      "disk full",
+    );
   });
 
   it("maps folder changes onto the store patch shape", async () => {
@@ -185,14 +232,13 @@ describe("session store operations", () => {
     // The doc body is file-canonical (`enhanced/<doc-id>.md`), so the editor's
     // prosemirror JSON is converted to markdown and written through the store -- never a
     // raw `UPDATE session_documents`.
-    expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalledWith(
+    expect(mocks.sessionSaveEnhancedDoc).toHaveBeenCalledWith(
       "session-1",
       "enhanced-note-1",
       { markdown: "Hi" },
+      "Edited title",
     );
-    expect(mocks.sessionUpdateMeta).toHaveBeenCalledWith("session-1", {
-      title: "Edited title",
-    });
+    expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
   it("does not touch session meta when no derived title accompanies the note content", async () => {
@@ -202,12 +248,17 @@ describe("session store operations", () => {
       '{"type":"doc"}',
     );
 
-    expect(mocks.sessionUpdateEnhancedDoc).toHaveBeenCalled();
+    expect(mocks.sessionSaveEnhancedDoc).toHaveBeenCalledWith(
+      "session-1",
+      "enhanced-note-1",
+      { markdown: expect.any(String) },
+      null,
+    );
     expect(mocks.sessionUpdateMeta).not.toHaveBeenCalled();
   });
 
   it("throws when the store rejects the enhanced note update", async () => {
-    mocks.sessionUpdateEnhancedDoc.mockResolvedValueOnce({
+    mocks.sessionSaveEnhancedDoc.mockResolvedValueOnce({
       status: "error",
       error: "enhanced doc enhanced-note-1 in session session-1 has no file",
     });
@@ -341,4 +392,16 @@ describe("session store operations", () => {
       }),
     ).rejects.toThrow("boom");
   });
+});
+
+it("writes and deletes the summary using only the session ID", async () => {
+  await updateEnhancedNoteContent("session-1", "session-1", "# Plain summary");
+  expect(mocks.sessionSaveSummary).toHaveBeenCalledWith(
+    "session-1",
+    "# Plain summary",
+    null,
+    null,
+  );
+  await deleteEnhancedNote("session-1", "session-1");
+  expect(mocks.sessionDeleteSummary).toHaveBeenCalledWith("session-1");
 });

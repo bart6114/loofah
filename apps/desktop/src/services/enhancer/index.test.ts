@@ -203,12 +203,11 @@ describe("EnhancerService", () => {
     expect(result).toEqual({ type: "started", noteId: "note-1" });
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith("session-1");
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledBefore(ai.generate);
-    expect(ai.generate).toHaveBeenCalledWith("note-1-enhance", {
+    expect(ai.generate).toHaveBeenCalledWith("session-1-enhance", {
       model: expect.any(Object),
       taskType: "enhance",
       args: {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
     });
   });
@@ -220,14 +219,17 @@ describe("EnhancerService", () => {
     const ai = createMockAITaskStore();
     const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
 
-    const result = await service.enhance("session-1", { isAuto: true });
+    const result = await service.enhance("session-1", {
+      isAuto: true,
+      regenerate: true,
+    });
 
     expect(result).toEqual({ type: "started", noteId: "existing" });
     expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
     expect(ai.generate).toHaveBeenCalledWith(
-      "existing-enhance",
+      "session-1-enhance",
       expect.objectContaining({
-        args: { sessionId: "session-1", enhancedNoteId: "existing" },
+        args: { sessionId: "session-1" },
       }),
     );
   });
@@ -244,23 +246,28 @@ describe("EnhancerService", () => {
     expect(ai.generate).not.toHaveBeenCalled();
   });
 
-  it("does not rerun a successful task with durable summary content", async () => {
-    snapshot = createSnapshot({
-      notes: [
-        createNote({
-          content:
-            '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Saved"}]}]}',
-        }),
-      ],
-    });
-    const ai = createMockAITaskStore(() => ({ status: "success" }));
-    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+  it.each(["success", undefined])(
+    "does not rerun durable summary content with task status %s",
+    async (status) => {
+      snapshot = createSnapshot({
+        notes: [
+          createNote({
+            content:
+              '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Saved"}]}]}',
+          }),
+        ],
+      });
+      const ai = createMockAITaskStore(() => (status ? { status } : undefined));
+      const service = new EnhancerService(
+        createDeps({ aiTaskStore: ai.store }),
+      );
 
-    await expect(service.enhance("session-1")).resolves.toMatchObject({
-      type: "already_active",
-    });
-    expect(ai.generate).not.toHaveBeenCalled();
-  });
+      await expect(service.enhance("session-1")).resolves.toMatchObject({
+        type: "already_active",
+      });
+      expect(ai.generate).not.toHaveBeenCalled();
+    },
+  );
 
   it("refreshes the same successful summary after a resumed recording", async () => {
     snapshot = createSnapshot({
@@ -270,7 +277,7 @@ describe("EnhancerService", () => {
     const ai = createMockAITaskStore(() => ({ status: "success" }));
     const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
     await expect(
-      service.enhance("session-1", { isAuto: true }),
+      service.enhance("session-1", { isAuto: true, regenerate: true }),
     ).resolves.toEqual({ type: "started", noteId: "note-1" });
     expect(ai.generate).toHaveBeenCalledOnce();
     expect(mocks.ensureSummaryDocument).not.toHaveBeenCalled();
@@ -305,7 +312,7 @@ describe("EnhancerService", () => {
     expect(ai.generate).toHaveBeenCalledWith(
       "note-1-enhance",
       expect.objectContaining({
-        args: { sessionId: "session-1", enhancedNoteId: note.id },
+        args: { sessionId: "session-1", templateDocumentId: note.id },
       }),
     );
     expect(note).toMatchObject({
@@ -341,7 +348,7 @@ describe("EnhancerService", () => {
       service.queueAutoEnhanceIfSummaryEmpty("session-1"),
     ).resolves.toEqual({ type: "queued" });
     expect(mocks.ensureSummaryDocument).toHaveBeenCalledWith("session-1");
-    expect(queueSpy).toHaveBeenCalledWith("session-1");
+    expect(queueSpy).toHaveBeenCalledWith("session-1", false);
   });
 
   it("computes eligibility from canonical transcript words", async () => {
@@ -372,7 +379,7 @@ describe("EnhancerService", () => {
     });
   });
 
-  it("resets every canonical summary task", async () => {
+  it("resets the session summary task once", async () => {
     snapshot = createSnapshot({
       notes: [createNote({ id: "one" }), createNote({ id: "two" })],
     });
@@ -381,8 +388,7 @@ describe("EnhancerService", () => {
 
     await service.resetEnhanceTasks("session-1");
 
-    expect(ai.reset).toHaveBeenCalledWith("one-enhance");
-    expect(ai.reset).toHaveBeenCalledWith("two-enhance");
+    expect(ai.reset).toHaveBeenCalledExactlyOnceWith("session-1-enhance");
   });
 
   it("deduplicates eligible auto-enhance requests", async () => {

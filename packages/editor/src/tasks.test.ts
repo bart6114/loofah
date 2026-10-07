@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { md2json } from "./markdown";
 import { createInMemoryTaskStorage } from "./task-storage";
 import {
   createTaskItemNode,
@@ -449,4 +450,53 @@ describe("in-memory task storage", () => {
       },
     ]);
   });
+});
+
+it("rehydrates background tasks by text before assigning IDs, without duplication or status loss", () => {
+  const source = { type: "enhanced_note", id: "summary" };
+  const initial = normalizeTaskContent(
+    md2json("- [ ] Send proposal\n- [ ] Send proposal"),
+  )!;
+  const saved = extractTasksFromContent(initial, source).map((task, index) => ({
+    ...task,
+    status: index === 0 ? ("done" as const) : ("in_progress" as const),
+    dueDate: "2026-10-01",
+  }));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const reopened = normalizeTaskContent(
+      hydrateTaskContent({
+        content: md2json("- [ ] Send proposal\n- [ ] Send proposal"),
+        sourceTasks: saved,
+        getTask: (id) => saved.find((task) => task.taskId === id) ?? null,
+      }),
+    )!;
+    const actual = extractTasksFromContent(
+      reopened,
+      source,
+      new Map(saved.map((task) => [task.taskId, task])),
+    );
+    expect(actual).toEqual(saved);
+  }
+});
+
+it("reuses nested generated task identities without appending duplicate children", () => {
+  const source = { type: "enhanced_note", id: "summary" };
+  const markdown = "- [ ] Prepare proposal\n  - [ ] Check figures";
+  const saved = extractTasksFromContent(
+    normalizeTaskContent(md2json(markdown))!,
+    source,
+  );
+  const reopened = normalizeTaskContent(
+    hydrateTaskContent({
+      content: md2json(markdown),
+      sourceTasks: saved,
+      getTask: (id) => saved.find((task) => task.taskId === id) ?? null,
+    }),
+  )!;
+  const actual = extractTasksFromContent(reopened, source);
+  expect(actual.map((task) => task.taskId)).toEqual(
+    saved.map((task) => task.taskId),
+  );
+  expect(reopened.content).toHaveLength(1);
+  expect(reopened.content![0].content).toHaveLength(1);
 });

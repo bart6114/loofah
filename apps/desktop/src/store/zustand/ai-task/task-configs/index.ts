@@ -18,11 +18,12 @@ import { titleWorkflow } from "./title-workflow";
 import type { SettingValues } from "~/settings/schema";
 import { StreamTransform } from "~/store/zustand/ai-task/shared/transform_infra";
 import type { TaskState, TaskStepInfo } from "~/store/zustand/ai-task/tasks";
+import type { ScoredTagSuggestion } from "~/types/tauri.gen";
 
 export type TaskType = "enhance" | "title";
 
 export interface TaskArgsMap {
-  enhance: { sessionId: string; enhancedNoteId: string };
+  enhance: { sessionId: string; templateDocumentId?: string };
   title: {
     sessionId: string;
     enhancedNote?: string;
@@ -34,6 +35,7 @@ export interface TaskArgsMapTransformed {
   enhance: EnhanceSystem &
     EnhanceUser & {
       imageContext: EnhanceImageContext[];
+      expectedMarkdown: string | null;
     };
   title: TitleSystem & TitleUser;
 }
@@ -47,6 +49,8 @@ export function createTaskId<T extends TaskType>(
   return `${entityId}-${taskType}` as TaskId<T>;
 }
 
+export type TaskResult = { suggestedTags?: ScoredTagSuggestion[] };
+
 export interface TaskConfig<T extends TaskType = TaskType> {
   transformArgs: (
     args: TaskArgsMap[T],
@@ -56,12 +60,14 @@ export interface TaskConfig<T extends TaskType = TaskType> {
     model: LanguageModel;
     args: TaskArgsMapTransformed[T];
     onProgress: (step: TaskStepInfo<T>) => void;
+    onResult?: (result: TaskResult) => void;
     signal: AbortSignal;
   }) => AsyncIterable<TextStreamPart<any>>;
   transforms?: StreamTransform[];
   onSuccess?: (params: {
     taskId: TaskId<T>;
     text: string;
+    result?: TaskResult;
     model: LanguageModel;
     args: TaskArgsMap[T];
     transformedArgs: TaskArgsMapTransformed[T];

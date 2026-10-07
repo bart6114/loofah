@@ -283,21 +283,25 @@ function hydrateNode(
         ? node.attrs.taskId
         : null;
 
-    if (!taskId) {
-      return node;
-    }
-
-    const sourceTask = sourceTasksById.get(taskId);
+    const sourceTask = taskId
+      ? sourceTasksById.get(taskId)
+      : [...sourceTasksById.values()].find(
+          (task) =>
+            !usedTaskIds.has(task.taskId) &&
+            task.textPreview.replace(/\s+/gu, " ").trim() ===
+              getTaskItemTextContent(node),
+        );
     if (sourceTask) {
-      usedTaskIds.add(taskId);
-      return createTaskItemNode(sourceTask);
-    }
-
-    if (getTask(taskId)) {
+      usedTaskIds.add(sourceTask.taskId);
+      node = taskId
+        ? createTaskItemNode(sourceTask)
+        : {
+            ...node,
+            attrs: createTaskItemAttrs(sourceTask.status, sourceTask.taskId),
+          };
+    } else if (taskId && getTask(taskId)) {
       return null;
     }
-
-    return node;
   }
 
   if (!node.content?.length) {
@@ -404,13 +408,17 @@ function normalizeNode(
 
     seenTaskIds.add(nextTaskId);
     seenTaskItemIds.add(nextTaskItemId);
+    const status = normalizeTaskStatus(node.attrs?.status, node.attrs?.checked);
 
     if (
       node.attrs?.taskId !== nextTaskId ||
-      node.attrs?.taskItemId !== nextTaskItemId
+      node.attrs?.taskItemId !== nextTaskItemId ||
+      node.attrs?.status !== status ||
+      node.attrs?.checked !== (status === "done")
     ) {
       nextAttrs = {
         ...(node.attrs ?? {}),
+        ...createTaskStatusAttrs(status),
         taskId: nextTaskId,
         taskItemId: nextTaskItemId,
       };

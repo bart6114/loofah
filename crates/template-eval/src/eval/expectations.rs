@@ -81,6 +81,27 @@ impl Expectation {
 
                 Ok(())
             }
+            Self::MarkdownTasks {
+                count,
+                required_terms,
+            } => {
+                let ast =
+                    to_mdast(output, &ParseOptions::gfm()).map_err(|error| error.to_string())?;
+                let mut tasks = Vec::new();
+                collect_tasks(&ast, &mut tasks);
+                if tasks.len() != *count {
+                    return Err(format!("expected {count} tasks, got {}", tasks.len()));
+                }
+                for term in required_terms {
+                    if !tasks
+                        .iter()
+                        .any(|task| task.to_lowercase().contains(&term.to_lowercase()))
+                    {
+                        return Err(format!("expected a task containing {term:?}"));
+                    }
+                }
+                Ok(())
+            }
             Self::MarkdownAtLeastHeadings(min) => {
                 let ast = parse_markdown(output)?;
                 let headings = find_headings(&ast);
@@ -216,6 +237,19 @@ fn collect_text(node: &Node, result: &mut String) {
     if let Some(children) = node.children() {
         for child in children {
             collect_text(child, result);
+        }
+    }
+}
+
+fn collect_tasks(node: &Node, tasks: &mut Vec<String>) {
+    if let Node::ListItem(item) = node {
+        if item.checked.is_some() {
+            tasks.push(extract_text(node));
+        }
+    }
+    if let Some(children) = node.children() {
+        for child in children {
+            collect_tasks(child, tasks);
         }
     }
 }

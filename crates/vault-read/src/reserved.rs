@@ -14,14 +14,16 @@
 /// - `_meta.json` -- session identity + metadata; its presence is what makes a
 ///   directory a session.
 /// - `notes.md` -- the user's note (canonical since the `_memo.md` rename).
+/// - `summary.md` -- the plain Markdown session summary.
 /// - `_memo.md` -- pre-rename note file; read as a fallback, migrated to trash on
 ///   the next note write.
 /// - `transcript.json`, `tasks.json` -- transcript and session tasks.
 /// - `audio.mp3` / `audio.wav` / `audio.ogg` -- the recording (one of), plus its
 ///   `audio.peaks.json` waveform cache.
-pub const SESSION_OWNED_FILES: [&str; 8] = [
+pub const SESSION_OWNED_FILES: [&str; 9] = [
     "_meta.json",
     "notes.md",
+    "summary.md",
     "_memo.md",
     "transcript.json",
     "tasks.json",
@@ -47,7 +49,7 @@ pub const SESSION_TRANSIENT_FILES: [&str; 6] = [
 
 /// App-owned directories inside a session directory.
 ///
-/// - `enhanced/` -- AI-generated documents (`enhanced/<uuid>.md`); the app owns the
+/// - `enhanced/` -- template outputs and legacy summaries (`enhanced/<uuid>.md`); the app owns the
 ///   whole namespace, every file inside is treated as a document.
 /// - `attachments/` -- files embedded in the note (`SessionStore::save_attachment`);
 ///   app-managed storage the editor resolves by relative src, distinct from the loose
@@ -76,6 +78,7 @@ mod tests {
         for owned in [
             "_meta.json",
             "notes.md",
+            "summary.md",
             "_memo.md",
             "transcript.json",
             "tasks.json",

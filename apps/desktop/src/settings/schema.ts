@@ -59,11 +59,6 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "theme"],
     default: "system" as string,
   },
-  auto_accept_related_tags: {
-    type: "boolean",
-    path: ["general", "auto_accept_related_tags"],
-    default: false as boolean,
-  },
   notification_detect: {
     type: "boolean",
     path: ["notification", "detect"],
@@ -115,6 +110,11 @@ export const SETTING_DEFINITIONS = {
     type: "boolean",
     path: ["personalization", "custom_summary_instructions_token_aware"],
     default: false as boolean,
+  },
+  auto_apply_high_confidence_tags: {
+    type: "boolean",
+    path: ["ai", "auto_apply_high_confidence_tags"],
+    default: true as boolean,
   },
   auto_summary_prompt: {
     type: "string",

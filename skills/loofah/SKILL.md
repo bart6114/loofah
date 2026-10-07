@@ -24,11 +24,13 @@ When the user chooses Loofah as their personal knowledge vault and asks you to r
 
 Do not silently switch to MCP to work around a CLI command failure. Check the [error reference](references/errors.md) and resolve the underlying problem.
 
+Vault commands automatically initialize a missing or incompatible cache. Progress streams on stderr; use `loof --json init` for explicit setup or repair.
+
 Never crawl or modify Loofah's vault files directly. The CLI and MCP server own compatibility with the application's file formats.
 
 ## Find the right note or meeting
 
-1. Use `loof --json sessions list --query "title fragment" --limit 10` to find a note by title, or `loof --json sessions search "search phrase" --limit 10` to search notes, summaries, and transcripts.
+1. Use `loof --json sessions list --query "search terms" --limit 10` to find matching sessions, or `loof --json sessions search "search phrase" --limit 10` to search notes, summaries, and transcripts.
 2. Resolve the session ID from the result. Do not guess an ID.
 3. Run `loof --json sessions get SESSION_ID` before requesting a transcript. Notes, summaries, and action items often contain enough context.
 4. Only if needed, run `loof --json sessions transcript SESSION_ID`.
@@ -44,12 +46,13 @@ See [CLI commands](references/cli.md) for writing notes, tagging, attachments, a
 
 - Treat meeting content as private user data.
 - Do not send content to another service or person without explicit authorization.
-- Supported CLI mutations are `sessions new`, `sessions note --set/--append`, `sessions tag add/remove`, `sessions attach`, `import`, and `transcribe`. See [CLI commands](references/cli.md) for their arguments. There are no commands to edit summaries or settings, or replace an existing recording; the MCP server cannot mutate anything.
+- Supported CLI mutations are `sessions new`, `sessions rename`, `sessions note --set/--append`, `sessions tag add/remove`, `sessions attach`, `sessions delete`, `import`, and `transcribe`. See [CLI commands](references/cli.md) for their arguments. There are no commands to edit summaries or settings, or replace an existing recording; the MCP server cannot mutate anything.
 - `import` creates a new meeting, or adds audio to an existing meeting with `--into` only when it has no recording. With `--into`, preserve the meeting's title, timestamps, and authorship; do not pass creation metadata flags.
 - `transcribe` replaces the existing transcript, so confirm before running it on a meeting that already has one. The recording is kept after transcription.
+- `sessions delete ID` removes one exact session into recoverable vault trash without prompting. Run it only when the user authorizes removal and after verifying the ID. Retain the returned `path` and `trash_path`; missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](references/cli.md#delete-and-recover); give the user the recovery steps instead of modifying vault files directly.
 - `sessions note --set` replaces the whole note body. Prefer `--append`, and pass `--set` only when the user explicitly wants the note replaced.
 - Pass `--author <agent-name>` (one stable name, e.g. `claude-code`) when creating a meeting with `sessions new` or `import`; leave it unset only when entering a note on the owner's dictation. When a specific skill produced the note, also record it with `--skill <skill-name>` (requires `--author`). Never add, change, or remove the authorship of an existing meeting.
-- CLI export may create a separate file. Never pass `--force` unless the user explicitly approves overwriting that exact path.
+- CLI export supports PDF, TXT, Markdown, Org, and JSON. Use `--include transcript` for transcript-only output; PDF requires `--output FILE`. See [export defaults and JSON compatibility](references/cli.md#selected-session-exports). CLI export may create a separate file. Never pass `--force` unless the user explicitly approves overwriting that exact path.
 - Preserve uncertainty when search results are ambiguous. Ask the user to choose between likely meetings.
 
 For setup and failures, see [setup](references/setup.md) and [errors](references/errors.md).

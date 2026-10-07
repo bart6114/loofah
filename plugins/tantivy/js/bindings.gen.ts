@@ -68,7 +68,7 @@ async removeDocument(id: string, collection: string | null) : Promise<Result<nul
 
 export type CreatedAtFilter = { gte: number | null; lte: number | null; gt: number | null; lt: number | null; eq: number | null }
 export type HighlightRange = { start: number; end: number }
-export type SearchDocument = { id: string; doc_type: string; language: string | null; title: string; content: string; related_content?: string | null; created_at: number; facets?: string[] }
+export type SearchDocument = { id: string; doc_type: string; language: string | null; title: string; content: string; created_at: number; facets?: string[] }
 export type SearchFilters = { created_at: CreatedAtFilter | null; doc_type: string | null; facet: string | null }
 export type SearchHit = { score: number; document: SearchDocument; title_snippet: Snippet | null; content_snippet: Snippet | null }
 export type SearchOptions = { fuzzy: boolean | null; distance: number | null; snippets: boolean | null; snippet_max_chars: number | null; phrase_slop: number | null }

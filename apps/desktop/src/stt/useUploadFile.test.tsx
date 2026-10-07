@@ -24,7 +24,6 @@ const {
   updateSessionMock,
   useTabsMock,
   updateSessionTabStateMock,
-  queueTagSuggestionsMock,
 } = vi.hoisted(() => ({
   audioSourceMetadataMock: vi.fn(),
   audioImportDataMock: vi.fn(),
@@ -44,7 +43,6 @@ const {
   updateSessionMock: vi.fn(),
   useTabsMock: vi.fn(),
   updateSessionTabStateMock: vi.fn(),
-  queueTagSuggestionsMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -113,10 +111,6 @@ vi.mock("~/stt/queries", () => ({
   createTranscript: createTranscriptMock,
 }));
 
-vi.mock("~/tags/suggestions", () => ({
-  queueTagSuggestions: queueTagSuggestionsMock,
-}));
-
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -152,7 +146,6 @@ describe("useUploadFile", () => {
     selectFileMock.mockResolvedValue("/tmp/replacement.wav");
     runBatchMock.mockResolvedValue(undefined);
     createTranscriptMock.mockResolvedValue(undefined);
-    queueTagSuggestionsMock.mockResolvedValue(undefined);
     enhanceMock.mockResolvedValue({ type: "started", noteId: "note-1" });
     useSessionMock.mockReturnValue({
       id: "session-1",
@@ -214,6 +207,7 @@ describe("useUploadFile", () => {
     expect(audioImportMock).not.toHaveBeenCalled();
     expect(runBatchMock).toHaveBeenCalledWith(
       "/vault/sessions/session-1/audio.wav",
+      { imported: true },
     );
     expect(handleBatchFailedMock).not.toHaveBeenCalled();
   });
@@ -322,7 +316,6 @@ describe("useUploadFile", () => {
         ],
       }),
     );
-    expect(queueTagSuggestionsMock).toHaveBeenCalledWith("session-1");
     expect(createTranscriptMock.mock.invocationCallOrder[0]).toBeLessThan(
       enhanceMock.mock.invocationCallOrder[0],
     );

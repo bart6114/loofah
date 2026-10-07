@@ -11,5 +11,7 @@ pub fn all(samples: usize) -> Result<Vec<EvalCase>, Failed> {
         transcript_patch::fix_typo(samples)?,
         transcript_patch::no_change(samples)?,
         enhance::structured_summary(samples)?,
+        enhance::personal_actions(samples, true)?,
+        enhance::personal_actions(samples, false)?,
     ])
 }

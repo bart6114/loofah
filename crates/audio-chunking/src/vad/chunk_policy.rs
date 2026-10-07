@@ -82,6 +82,11 @@ impl BufferedChunk {
     }
 
     fn merge(mut self, next: Self) -> Self {
+        if self.chunk.samples.is_empty() && next.chunk.samples.is_empty() {
+            self.chunk.sample_end = next.chunk.sample_end;
+            self.detected_speech_samples += next.detected_speech_samples;
+            return self;
+        }
         let gap_samples = self.gap_samples(&next);
         if gap_samples > 0 {
             self.chunk
@@ -96,14 +101,17 @@ impl BufferedChunk {
     }
 }
 
-struct NormalizerState {
+pub(crate) struct NormalizerState {
     pending: Option<BufferedChunk>,
     min_detected_speech_samples: usize,
     merge_gap_samples: usize,
 }
 
 impl NormalizerState {
-    fn new(redemption_time: Duration) -> Self {
+    pub(crate) fn finish(&mut self) -> Option<AudioChunk> {
+        self.pending.take().map(|pending| pending.chunk)
+    }
+    pub(crate) fn new(redemption_time: Duration) -> Self {
         Self {
             pending: None,
             min_detected_speech_samples: duration_to_samples(Duration::from_millis(
@@ -116,7 +124,7 @@ impl NormalizerState {
         }
     }
 
-    fn push(&mut self, next: BufferedChunk, output: &mut Vec<AudioChunk>) {
+    pub(crate) fn push(&mut self, next: BufferedChunk, output: &mut Vec<AudioChunk>) {
         if let Some(pending) = self.pending.take() {
             if pending.gap_samples(&next) <= self.merge_gap_samples {
                 let merged = pending.merge(next);

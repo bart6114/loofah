@@ -26,7 +26,12 @@ export function EnhanceError({
     void generate(taskId, {
       model,
       taskType: "enhance",
-      args: { sessionId, enhancedNoteId },
+      args: {
+        sessionId,
+        ...(enhancedNoteId === sessionId
+          ? {}
+          : { templateDocumentId: enhancedNoteId }),
+      },
     });
   };
 

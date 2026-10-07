@@ -124,7 +124,15 @@ function makePreview(candidate: FileUploadCandidate) {
   }
 
   const url = URL.createObjectURL(candidate.file);
-  return { url, dispose: () => URL.revokeObjectURL(url) };
+  let disposed = false;
+  return {
+    url,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      URL.revokeObjectURL(url);
+    },
+  };
 }
 
 function createPlaceholder(
@@ -423,14 +431,29 @@ export function fileHandlerPlugin(config: FileHandlerConfig) {
         );
       },
     },
-    view: (view) => ({
-      destroy() {
-        for (const decoration of fileHandlerKey.getState(view.state)?.find() ??
-          []) {
-          (decoration.spec.dispose as (() => void) | undefined)?.();
-        }
-      },
-    }),
+    view: (view) => {
+      const previews = () =>
+        new Set<() => void>(
+          (fileHandlerKey.getState(view.state)?.find() ?? [])
+            .map(
+              (decoration) =>
+                decoration.spec.dispose as (() => void) | undefined,
+            )
+            .filter((dispose): dispose is () => void => !!dispose),
+        );
+      let owned = previews();
+      return {
+        update() {
+          const next = previews();
+          for (const dispose of owned) if (!next.has(dispose)) dispose();
+          owned = next;
+        },
+        destroy() {
+          for (const dispose of owned) dispose();
+          owned.clear();
+        },
+      };
+    },
   });
 }
 

@@ -10,6 +10,7 @@ import {
   type FileHandlerConfig,
   fileHandlerPlugin,
   handleFileDrop,
+  handleNativeFileDrop,
 } from "./file-handler";
 import { imageTrailingParagraphPlugin } from "./image-trailing-paragraph";
 
@@ -253,3 +254,142 @@ function createUploader() {
     url: `asset:/${candidate.name}`,
   }));
 }
+
+describe("image preview ownership", () => {
+  function setup() {
+    const revoke = vi.fn();
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => "blob:owned"),
+        revokeObjectURL: revoke,
+      }),
+    );
+    let resolve!: (result: {
+      url: string;
+      path: string;
+      attachmentId: string;
+    }) => void;
+    let reject!: (error: Error) => void;
+    const upload = vi.fn(
+      () =>
+        new Promise<{ url: string; path: string; attachmentId: string }>(
+          (yes, no) => {
+            resolve = yes;
+            reject = no;
+          },
+        ),
+    );
+    const config = { onFileUpload: upload };
+    const view = createView(config, {
+      content: [schema.node("paragraph", null, schema.text("hello"))],
+    });
+    const file = new File(["image"], "test.png", { type: "image/png" });
+    return {
+      view,
+      config,
+      file,
+      revoke,
+      resolve: () =>
+        resolve({
+          url: "asset:/test.png",
+          path: "test.png",
+          attachmentId: "test.png",
+        }),
+      reject: () => reject(new Error("upload failed")),
+    };
+  }
+  const settle = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+  const removeDocument = (view: EditorView) =>
+    view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
+
+  it("revokes a failed preview on normal document deletion exactly once", async () => {
+    const h = setup();
+    handleFileDrop(h.view, h.config, [h.file], 3);
+    h.reject();
+    await settle();
+    expect(h.revoke).not.toHaveBeenCalled();
+    removeDocument(h.view);
+    expect(h.revoke).toHaveBeenCalledOnce();
+    h.view.destroy();
+    expect(h.revoke).toHaveBeenCalledOnce();
+  });
+
+  it.each(["success", "failure"])(
+    "deletion disposes a pending preview before late %s",
+    async (outcome) => {
+      const h = setup();
+      handleFileDrop(h.view, h.config, [h.file], 3);
+      removeDocument(h.view);
+      expect(h.revoke).toHaveBeenCalledOnce();
+      if (outcome === "success") h.resolve();
+      else h.reject();
+      await settle();
+      expect(h.view.state.doc.childCount).toBe(1);
+      expect(
+        h.view.dom.querySelector("[data-file-upload-placeholder]"),
+      ).toBeNull();
+      h.view.destroy();
+      expect(h.revoke).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("retains the preview across error/retry and releases on successful upload", async () => {
+    const h = setup();
+    handleFileDrop(h.view, h.config, [h.file], 3);
+    h.reject();
+    await settle();
+    const retry = [...h.view.dom.querySelectorAll("button")].find(
+      (b) => b.textContent === "Retry",
+    )!;
+    retry.click();
+    expect(h.revoke).not.toHaveBeenCalled();
+    h.resolve();
+    await settle();
+    h.view.destroy();
+    expect(h.revoke).toHaveBeenCalledOnce();
+  });
+
+  it("does not dispose previews when a speculative state is never committed", async () => {
+    const h = setup();
+    handleFileDrop(h.view, h.config, [h.file], 3);
+    h.view.state.apply(
+      h.view.state.tr.delete(0, h.view.state.doc.content.size),
+    );
+    expect(h.revoke).not.toHaveBeenCalled();
+    expect(h.view.dom.querySelector("img")?.src).toBe("blob:owned");
+    h.view.destroy();
+    h.resolve();
+    await settle();
+    expect(h.revoke).toHaveBeenCalledOnce();
+  });
+
+  it("handles explicit removal and never revokes an externally supplied preview", async () => {
+    const h = setup();
+    handleFileDrop(h.view, h.config, [h.file], 3);
+    h.view.dom.querySelector("button")!.click();
+    h.reject();
+    await settle();
+    expect(h.revoke).toHaveBeenCalledOnce();
+    handleNativeFileDrop(
+      h.view,
+      h.config,
+      [
+        {
+          kind: "path",
+          path: "test.png",
+          name: "test.png",
+          previewUrl: "blob:external",
+        },
+      ],
+      3,
+    );
+    h.view.destroy();
+    h.reject();
+    await settle();
+    expect(h.revoke).toHaveBeenCalledOnce();
+  });
+});

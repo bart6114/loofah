@@ -44,6 +44,8 @@ pub struct RenderTranscriptRequest {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct RenderedTranscriptSegment {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_current_user: Option<bool>,
     pub id: String,
     pub key: SegmentKey,
     pub speaker_label: String,
@@ -169,6 +171,7 @@ pub fn render_transcript_segments(
             }
 
             Some(RenderedTranscriptSegment {
+                is_current_user: Some(segment.key.is_current_user(&ctx)),
                 id: stable_segment_id(&segment.key, &words),
                 speaker_label: render_speaker_label(&segment.key, Some(&ctx), Some(&mut labeler)),
                 start_ms: first.start_ms,

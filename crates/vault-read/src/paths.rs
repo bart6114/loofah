@@ -55,6 +55,10 @@ pub fn legacy_note_path_in(session_dir: &Path) -> PathBuf {
     session_dir.join("_memo.md")
 }
 
+pub fn summary_path_in(session_dir: &Path) -> PathBuf {
+    session_dir.join("summary.md")
+}
+
 pub fn enhanced_dir_in(session_dir: &Path) -> PathBuf {
     session_dir.join("enhanced")
 }

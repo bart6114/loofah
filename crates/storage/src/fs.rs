@@ -372,11 +372,17 @@ pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
         }
         let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
         let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-        if unsafe { MoveFileW(from.as_ptr(), to.as_ptr()) } != 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error())
+        for delay_ms in [10, 20, 40, 80, 160, 320, 0] {
+            if unsafe { MoveFileW(from.as_ptr(), to.as_ptr()) } != 0 {
+                return Ok(());
+            }
+            let error = std::io::Error::last_os_error();
+            if delay_ms == 0 || !matches!(error.raw_os_error(), Some(5 | 32 | 33)) {
+                return Err(error);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         }
+        unreachable!()
     }
 }
 

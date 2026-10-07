@@ -25,6 +25,7 @@ import {
   renderTranscriptSegments,
   type TranscriptRow,
 } from "~/stt/render-transcript";
+import { commands } from "~/types/tauri.gen";
 
 type TranscriptMeta = {
   id: string;
@@ -34,6 +35,7 @@ type TranscriptMeta = {
 };
 
 type SegmentPayload = {
+  is_current_user: boolean;
   speaker_label: string;
   start_ms: number;
   end_ms: number;
@@ -49,7 +51,7 @@ async function transformArgs(
   args: TaskArgsMap["enhance"],
   settingsValues: SettingValues,
 ): Promise<TaskArgsMapTransformed["enhance"]> {
-  const { sessionId } = args;
+  const { sessionId, templateDocumentId } = args;
   await flushDatabaseWrites([`session:${sessionId}:note`]);
   const snapshot = await loadSessionContentSnapshot(sessionId);
   if (!snapshot) {
@@ -58,6 +60,10 @@ async function transformArgs(
 
   if (!hasSummarySource(snapshot.rawMarkdown, snapshot.transcripts)) {
     throw new Error(EMPTY_SUMMARY_SOURCE_MESSAGE);
+  }
+  const tagContextResult = await commands.sessionTagContext(sessionId);
+  if (tagContextResult.status === "error") {
+    throw new Error(tagContextResult.error);
   }
   const sessionContext = getSessionContext(snapshot);
   const language = getLanguage(settingsValues);
@@ -73,7 +79,14 @@ async function transformArgs(
       ])
     : [];
 
+  const target = snapshot.enhancedNotes.find((note) =>
+    templateDocumentId
+      ? note.id === templateDocumentId
+      : note.kind === "summary",
+  );
   return {
+    expectedMarkdown: target?.markdown ?? null,
+    tagContext: tagContextResult.data,
     language,
     promptOverride,
     session: sessionContext.session,
@@ -105,6 +118,7 @@ function formatTranscripts(
         segments: segments.map(
           (segment): Segment => ({
             speaker: segment.speaker_label,
+            isCurrentUser: segment.is_current_user,
             text: segment.text,
           }),
         ),
@@ -175,7 +189,30 @@ async function getTranscriptSegments(
   const transcriptRows: TranscriptRow[] = snapshot.transcripts.map(
     (transcript) => ({
       started_at: transcript.started_at,
-      words: transcript.words,
+      words: transcript.words.map((word) => {
+        let metadata: Record<string, unknown> = {};
+        try {
+          const value =
+            typeof word.metadata === "string"
+              ? JSON.parse(word.metadata)
+              : word.metadata;
+          if (value && typeof value === "object" && !Array.isArray(value))
+            metadata = value;
+        } catch {
+          /* Legacy metadata cannot establish microphone identity. */
+        }
+        return {
+          ...word,
+          metadata: {
+            ...metadata,
+            capture_source:
+              metadata.capture_source === "recording" ||
+              metadata.capture_source === "import"
+                ? metadata.capture_source
+                : "unknown",
+          },
+        };
+      }),
       speaker_hints: transcript.speaker_hints,
     }),
   );
@@ -208,6 +245,7 @@ function toSegmentPayload(
 ): SegmentPayload {
   return {
     speaker_label: segment.speaker_label,
+    is_current_user: segment.is_current_user === true,
     start_ms: segment.start_ms,
     end_ms: segment.end_ms,
     text: segment.text,

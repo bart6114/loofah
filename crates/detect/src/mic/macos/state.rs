@@ -37,7 +37,7 @@ impl DetectorState {
 
 pub(super) struct SharedContext {
     pub(super) callback: Arc<Mutex<crate::DetectCallback>>,
-    pub(super) current_device: Arc<Mutex<Option<cidre::core_audio::Device>>>,
+    pub(super) running: Arc<AtomicBool>,
     pub(super) state: Arc<Mutex<DetectorState>>,
     pub(super) polling_active: Arc<AtomicBool>,
 }
@@ -46,23 +46,17 @@ impl SharedContext {
     pub(super) fn new(callback: crate::DetectCallback) -> Self {
         Self {
             callback: Arc::new(Mutex::new(callback)),
-            current_device: Arc::new(Mutex::new(None)),
+            running: Arc::new(AtomicBool::new(true)),
             state: Arc::new(Mutex::new(DetectorState::new())),
             polling_active: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    pub(super) fn clone_shared(&self) -> Self {
-        Self {
-            callback: self.callback.clone(),
-            current_device: self.current_device.clone(),
-            state: self.state.clone(),
-            polling_active: self.polling_active.clone(),
-        }
-    }
-
     pub(super) fn emit(&self, event: DetectEvent) {
         tracing::info!(?event, "detected");
+        if !self.running.load(Ordering::SeqCst) {
+            return;
+        }
         if let Ok(guard) = self.callback.lock() {
             (*guard)(event);
         }

@@ -340,6 +340,7 @@ impl From<listener::SessionDataEvent> for CaptureDataEvent {
 impl From<TranscriptionParams> for listener2::BatchParams {
     fn from(value: TranscriptionParams) -> Self {
         Self {
+            audio: Default::default(),
             session_id: value.session_id,
             provider: value.provider,
             file_path: value.file_path,

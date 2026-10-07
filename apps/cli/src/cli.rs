@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use hypr_agent_access::{DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, SearchKind};
+use hypr_agent_access::{DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -39,6 +39,8 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Build or repair the local search cache for the existing vault
+    Init,
     /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
     Doctor,
     /// Browse, create, edit, and export sessions
@@ -146,22 +148,10 @@ pub enum MeetingCommand {
         #[arg(long, help = "Only meetings without any tags")]
         untagged: bool,
     },
-    /// Search across meeting titles, notes, summaries, and transcripts
-    #[command(group = clap::ArgGroup::new("criteria").required(true).multiple(true).args(["query", "speaker"]))]
+    /// Search sessions using desktop full-text matching and relevance ranking
     Search {
-        /// Case-insensitive terms that must all occur
-        query: Option<String>,
-        #[arg(
-            long,
-            help = "Person id or name substring; limits hits to meetings where that person spoke"
-        )]
-        speaker: Option<String>,
-        #[arg(
-            long,
-            value_enum,
-            help = "Restrict to a source; repeatable, defaults to all"
-        )]
-        kind: Vec<SearchKindArg>,
+        /// Words, quoted phrases, and trailing word prefixes
+        query: String,
         #[arg(long, default_value_t = DEFAULT_SEARCH_LIMIT, value_parser = clap::value_parser!(u32).range(1..=MAX_SEARCH_LIMIT as i64), help = "Maximum hits (1-50)")]
         limit: u32,
         #[arg(long, default_value_t = 0, help = "Number of hits to skip")]
@@ -169,6 +159,12 @@ pub enum MeetingCommand {
     },
     /// Show meeting metadata, notes, summaries, and action items
     Get { id: String },
+    /// Rename a session without changing its id or content
+    Rename {
+        id: String,
+        /// New title, stored verbatim
+        title: String,
+    },
     /// Create a meeting note and print its id
     New {
         #[arg(long, help = "Title for the new meeting")]
@@ -249,6 +245,11 @@ pub enum MeetingCommand {
     },
     /// Print the absolute path of a meeting's session directory
     Path { id: String },
+    /// Soft-delete one exact session ID into recoverable vault trash. Never prompts.
+    #[command(
+        long_about = "Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge."
+    )]
+    Delete { id: String },
     /// Store a file as a note attachment of a meeting and print its attachment id
     Attach {
         id: String,
@@ -261,11 +262,19 @@ pub enum MeetingCommand {
         )]
         name: Option<String>,
     },
-    /// Export a meeting to Markdown or JSON
+    /// Export a session as PDF, TXT, Markdown, Org, or JSON
+    ///
+    /// PDF/TXT/Org default to note,summary. --include selects desktop-style
+    /// content, including the session summary (missing sections are skipped).
+    /// Markdown/JSON without --include retain the legacy full-session export.
+    /// Text goes to stdout unless --output is set; PDF requires --output.
+    /// With --include or a new format, --json reports separately from the file.
     Export {
         id: String,
         #[arg(long, value_enum, default_value_t = ExportFormat::Markdown)]
         format: ExportFormat,
+        #[arg(long, value_enum, value_delimiter = ',', num_args = 1.., help = "Content to export: note,summary,transcript")]
+        include: Vec<ExportContent>,
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
         #[arg(long, requires = "output", help = "Replace an existing output file")]
@@ -289,25 +298,6 @@ pub enum TagCommand {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub enum SearchKindArg {
-    Title,
-    Note,
-    Summary,
-    Transcript,
-}
-
-impl From<SearchKindArg> for SearchKind {
-    fn from(kind: SearchKindArg) -> Self {
-        match kind {
-            SearchKindArg::Title => Self::Title,
-            SearchKindArg::Note => Self::Note,
-            SearchKindArg::Summary => Self::Summary,
-            SearchKindArg::Transcript => Self::Transcript,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum DocumentKind {
     #[default]
@@ -319,8 +309,19 @@ pub enum DocumentKind {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum ExportFormat {
     #[default]
+    #[value(alias = "md")]
     Markdown,
     Json,
+    Pdf,
+    Txt,
+    Org,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ExportContent {
+    Note,
+    Summary,
+    Transcript,
 }
 
 /// Validates timestamps at argument parsing, before any vault write, and
@@ -521,37 +522,17 @@ mod tests {
     }
 
     #[test]
-    fn parses_search_filters_and_requires_query_or_speaker() {
-        let Command::Sessions { command } = Args::parse_from([
-            "loof",
-            "meetings",
-            "search",
-            "--speaker",
-            "bob",
-            "--kind",
-            "transcript",
-        ])
-        .command
-        else {
-            panic!("expected meetings command");
-        };
-        let MeetingCommand::Search {
-            query,
-            speaker,
-            kind,
-            limit,
-            offset,
-        } = command
-        else {
-            panic!("expected search command");
-        };
-        assert_eq!(query, None);
-        assert_eq!(speaker.as_deref(), Some("bob"));
-        assert_eq!(kind, vec![SearchKindArg::Transcript]);
-        assert_eq!(limit, 20);
-        assert_eq!(offset, 0);
-
-        assert!(Args::try_parse_from(["loof", "meetings", "search"]).is_err());
+    fn search_requires_query_and_rejects_retired_filters() {
+        assert!(Args::try_parse_from(["loof", "sessions", "search", "planning"]).is_ok());
+        assert!(Args::try_parse_from(["loof", "sessions", "search"]).is_err());
+        assert!(
+            Args::try_parse_from(["loof", "sessions", "search", "planning", "--speaker", "bob"])
+                .is_err()
+        );
+        assert!(
+            Args::try_parse_from(["loof", "sessions", "search", "planning", "--kind", "title"])
+                .is_err()
+        );
     }
 
     #[test]
@@ -863,6 +844,21 @@ mod tests {
             );
         }
         assert_options_are_documented(&command, docs);
+    }
+
+    #[test]
+    fn session_delete_help_matches_snapshot() {
+        let help = Args::command()
+            .try_get_matches_from(["loof", "sessions", "delete", "--help"])
+            .unwrap_err();
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+        let help = help.to_string();
+        let help = help
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!("session_delete_help", help);
     }
 
     #[test]

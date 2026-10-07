@@ -11,11 +11,6 @@ vi.mock("ai", () => ({
   streamText: mocks.streamText,
   smoothStream: () => undefined,
 }));
-vi.mock("~/store/zustand/ai-task/shared/validate", () => ({
-  withEarlyValidationRetry: (
-    run: (signal: AbortSignal, feedback: object) => AsyncIterable<unknown>,
-  ) => run(new AbortController().signal, {}),
-}));
 
 describe("shared summary generation", () => {
   beforeEach(() => {
@@ -26,7 +21,10 @@ describe("shared summary generation", () => {
     }));
     mocks.streamText.mockReturnValue({
       fullStream: (async function* () {
-        yield { type: "text-delta", text: "# Decisions\n- Ship Friday" };
+        yield {
+          type: "text-delta",
+          text: '# Decisions\n- Ship Friday\n<loofah-tags>{"tags":[{"name":"Release","confidence":0.93}]}</loofah-tags>',
+        };
       })(),
     });
   });
@@ -34,6 +32,7 @@ describe("shared summary generation", () => {
     "sends source and images separately from prompt %j",
     async (promptOverride) => {
       const controller = new AbortController();
+      const onResult = vi.fn();
       const workflow = enhanceWorkflow.executeWorkflow!({
         model: {} as LanguageModel,
         args: {
@@ -57,14 +56,25 @@ describe("shared summary generation", () => {
               endedAt: null,
             },
           ],
+          tagContext: {
+            available: ["Release"],
+            attached: ["Work"],
+            dismissed: ["Planning"],
+          },
+          expectedMarkdown: "",
           imageContext: [{ base64: "image-bytes", mimeType: "image/png" }],
         },
         onProgress: vi.fn(),
+        onResult,
         signal: controller.signal,
       });
       const chunks = [];
       for await (const chunk of workflow) chunks.push(chunk);
       expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toMatchObject({ text: "# Decisions\n- Ship Friday\n" });
+      expect(onResult).toHaveBeenLastCalledWith({
+        suggestedTags: [{ name: "Release", confidence: 0.93 }],
+      });
       expect(mocks.render.mock.calls[0][0]).toEqual({
         enhanceSystem: { language: "en", promptOverride },
       });
@@ -74,6 +84,11 @@ describe("shared summary generation", () => {
           startedAt: null,
           endedAt: null,
           event: null,
+        },
+        tagContext: {
+          available: ["Release"],
+          attached: ["Work"],
+          dismissed: ["Planning"],
         },
         participants: [{ name: "Alice", jobTitle: null }],
         preMeetingMemo: "Discuss the pilot",
@@ -93,7 +108,57 @@ describe("shared summary generation", () => {
         image: "image-bytes",
         mediaType: "image/png",
       });
+      expect(request.messages[0].content[0].text).toContain(
+        "Keep the summary concise and proportional",
+      );
+      expect(request.messages[0].content[0].text).not.toContain(
+        "characters overall",
+      );
       expect(request.maxOutputTokens).toBe(8192);
     },
+  );
+});
+
+it("resets metadata for retries and uses only the accepted attempt", async () => {
+  mocks.streamText.mockReset();
+  mocks.render.mockResolvedValue({ status: "ok", data: "Prompt" });
+  mocks.streamText
+    .mockReturnValueOnce({
+      fullStream: (async function* () {
+        yield {
+          type: "text-delta",
+          text: 'Invalid summary structure<loofah-tags>{"tags":[{"name":"Wrong","confidence":0.91}]}</loofah-tags>',
+        };
+      })(),
+    })
+    .mockReturnValueOnce({
+      fullStream: (async function* () {
+        yield {
+          type: "text-delta",
+          text: '# Decisions\n- Ship Friday<loofah-tags>{"tags":[]}</loofah-tags>',
+        };
+      })(),
+    });
+  const onResult = vi.fn();
+  const onProgress = vi.fn();
+  const chunks = [];
+  for await (const chunk of enhanceWorkflow.executeWorkflow({
+    model: {} as LanguageModel,
+    args: {
+      promptOverride: "",
+      imageContext: [],
+      tagContext: { available: [], attached: [], dismissed: [] },
+    } as any,
+    signal: new AbortController().signal,
+    onResult,
+    onProgress,
+  }))
+    chunks.push(chunk);
+  expect(chunks).toEqual([
+    { type: "text-delta", text: "# Decisions\n- Ship Friday" },
+  ]);
+  expect(onResult.mock.calls).toEqual([[{}], [{}], [{ suggestedTags: [] }]]);
+  expect(onProgress).toHaveBeenCalledWith(
+    expect.objectContaining({ type: "retrying" }),
   );
 });

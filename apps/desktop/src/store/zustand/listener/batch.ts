@@ -330,7 +330,14 @@ function transformBatch(
   const allHints: RuntimeSpeakerHint[] = [];
   let wordOffset = 0;
 
-  response.results.channels.forEach((channel, channelIndex) => {
+  const metadata = response.metadata;
+  const audio = (
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata.session_audio
+      : undefined
+  ) as { layout?: string; source?: string } | undefined;
+  response.results.channels.forEach((channel, sourceChannelIndex) => {
+    const channelIndex = audio?.layout === "mixed" ? 2 : sourceChannelIndex;
     const alternative = channel.alternatives[0];
     if (!alternative) {
       return;
@@ -357,6 +364,12 @@ function transformBatch(
       channelIndex,
       { timingSource },
     );
+
+    if (audio?.source) {
+      for (const word of words) {
+        word.metadata = { ...word.metadata, capture_source: audio.source };
+      }
+    }
 
     hints.forEach((hint) => {
       allHints.push({

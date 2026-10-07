@@ -1,0 +1,24 @@
+---
+source: apps/cli/src/cli.rs
+expression: help
+---
+Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge.
+
+Usage: loof sessions delete [OPTIONS] <ID>
+
+Arguments:
+  <ID>
+
+
+Options:
+      --base <DIR>
+          [env: LOOFAH_BASE]
+
+      --vault-path <DIR>
+          [env: LOOFAH_VAULT_PATH]
+
+      --json
+
+
+  -h, --help
+          Print help (see a summary with '-h')

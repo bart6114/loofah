@@ -18,7 +18,6 @@ function renderAppSettings() {
     ...render(
       <AppSettingsView
         autostart={setting()}
-        autoAcceptRelatedTags={setting(false)}
         showAppInDock={setting()}
         showTrayIcon={setting()}
       />,

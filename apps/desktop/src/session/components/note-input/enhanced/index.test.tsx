@@ -100,9 +100,11 @@ vi.mock("./editor", () => ({
   EnhancedEditor: ({
     content,
     contentOverride,
+    generationId,
   }: {
     content: string;
     contentOverride?: { content?: unknown[] };
+    generationId?: string;
   }) => {
     const [mountId] = useState(() => {
       hoisted.enhancedEditorMountCount += 1;
@@ -125,7 +127,11 @@ vi.mock("./editor", () => ({
     };
 
     return (
-      <div data-testid="enhanced-editor" data-mount-id={mountId}>
+      <div
+        data-testid="enhanced-editor"
+        data-mount-id={mountId}
+        data-generation-id={generationId}
+      >
         <span>Enhanced editor</span>
         <span>{content}</span>
         {contentOverride ? <span>{collectText(contentOverride)}</span> : null}
@@ -271,7 +277,14 @@ describe("Enhanced", () => {
       hoisted.awaitingGenerationRead = false;
       view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
       expect(screen.getByText("Fresh persisted summary")).toBeTruthy();
-      return hoisted.generationReads[hoisted.generationReads.length - 1];
+      const generation =
+        hoisted.generationReads[hoisted.generationReads.length - 1];
+      expect(
+        screen
+          .getByTestId("enhanced-editor")
+          .getAttribute("data-generation-id"),
+      ).toBe(generation);
+      return generation;
     };
     const firstRead = completeRun();
     hoisted.content = "User edited summary";

@@ -7,6 +7,7 @@ import {
   TASK_CONFIGS,
   type TaskArgsMap,
   type TaskId,
+  type TaskResult,
   type TaskType,
 } from "./task-configs";
 
@@ -17,6 +18,8 @@ export type TasksState = {
 };
 
 export type TasksActions = {
+  retainTask: (taskId: string) => () => void;
+  startHistoryMaintenance: () => () => void;
   generate: <T extends TaskType>(
     taskId: TaskId<T>,
     config: {
@@ -55,6 +58,7 @@ export type TaskState<T extends TaskType = TaskType> = {
   abortController: AbortController | null;
   currentStep?: TaskStepInfo<T>;
   sessionId?: string;
+  completedAt?: number;
 };
 
 export type RemoteTaskState<T extends TaskType = TaskType> = {
@@ -64,6 +68,7 @@ export type RemoteTaskState<T extends TaskType = TaskType> = {
   error?: { name?: string; message: string };
   currentStep?: TaskStepInfo<T>;
   sessionId?: string;
+  completedAt?: number;
 };
 
 export function getTaskState<T extends TaskType>(
@@ -89,9 +94,14 @@ const STREAM_TIMEOUT = Symbol("stream-timeout");
 async function readStreamChunkWithTimeout<T>(
   iterator: AsyncIterator<T>,
   timeoutMs: number,
+  signal: AbortSignal,
 ): Promise<IteratorResult<T> | typeof STREAM_TIMEOUT> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: () => void = () => {};
   const timeout = new Promise<typeof STREAM_TIMEOUT>((resolve) => {
+    onAbort = () => resolve(STREAM_TIMEOUT);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
     timeoutId = setTimeout(() => resolve(STREAM_TIMEOUT), timeoutMs);
   });
 
@@ -99,6 +109,7 @@ async function readStreamChunkWithTimeout<T>(
     return await Promise.race([iterator.next(), timeout]);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
+    signal.removeEventListener("abort", onAbort);
   }
 }
 
@@ -107,8 +118,82 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
   get: StoreApi<T>["getState"],
 ): TasksState & TasksActions => {
   const streamFlushers = new Map<string, () => void>();
+  const observers = new Map<string, number>();
+  const remoteMissing = new Set<string>();
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+  let maintenanceActive = true;
+  let maintenanceOwners = 0;
+  const pruneHistory = () => {
+    clearTimeout(expiryTimer);
+    expiryTimer = undefined;
+    const now = Date.now();
+    const history = Object.entries(get().tasks)
+      .filter(
+        ([id, task]) => task.status !== "generating" && !observers.has(id),
+      )
+      .sort(([, a], [, b]) => (a.completedAt ?? now) - (b.completedAt ?? now));
+    let count = history.length;
+    let bytes = history.reduce(
+      (sum, [, task]) => sum + 2 * task.streamedText.length,
+      0,
+    );
+    const remove = new Set<string>();
+    for (const [id, task] of history) {
+      if (
+        remoteMissing.has(id) ||
+        now - (task.completedAt ?? now) >= 5 * 60_000 ||
+        count > 32 ||
+        bytes > 2 * 1024 * 1024
+      ) {
+        remove.add(id);
+        remoteMissing.delete(id);
+        count--;
+        bytes -= 2 * task.streamedText.length;
+      }
+    }
+    if (remove.size)
+      set((state) =>
+        mutate(state, (draft) => {
+          for (const id of remove) delete draft.tasks[id];
+        }),
+      );
+    const oldest = history.find(([id]) => !remove.has(id));
+    if (maintenanceActive && oldest)
+      expiryTimer = setTimeout(
+        pruneHistory,
+        Math.max(1, (oldest[1].completedAt ?? now) + 5 * 60_000 - now),
+      );
+  };
   return {
     ...initialState,
+    retainTask: (taskId) => {
+      observers.set(taskId, (observers.get(taskId) ?? 0) + 1);
+      pruneHistory();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        const count = observers.get(taskId) ?? 0;
+        if (count > 1) observers.set(taskId, count - 1);
+        else observers.delete(taskId);
+        pruneHistory();
+      };
+    },
+    startHistoryMaintenance: () => {
+      maintenanceOwners++;
+      maintenanceActive = true;
+      pruneHistory();
+      let stopped = false;
+      return () => {
+        if (stopped) return;
+        stopped = true;
+        if (--maintenanceOwners === 0) {
+          maintenanceActive = false;
+          clearTimeout(expiryTimer);
+          expiryTimer = undefined;
+        }
+      };
+    },
     getState: <Task extends TaskType>(
       taskId: TaskId<Task>,
     ): TaskState<Task> | undefined => {
@@ -129,6 +214,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           draft.tasks[taskId] = {
             taskType: task.taskType,
             status: "idle",
+            completedAt: Date.now(),
             streamedText: task.streamedText,
             error: undefined,
             abortController: null,
@@ -137,6 +223,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           };
         }),
       );
+      pruneHistory();
     },
     reset: (taskId: string) => {
       const state = get().tasks[taskId];
@@ -147,6 +234,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
             draft.tasks[taskId] = {
               taskType: state.taskType,
               status: "idle",
+              completedAt: Date.now(),
               streamedText: "",
               error: undefined,
               abortController: null,
@@ -156,6 +244,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           }),
         );
       }
+      pruneHistory();
     },
     syncRemoteTask: <Task extends TaskType>(
       taskId: TaskId<Task>,
@@ -166,6 +255,12 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           draft.tasks[taskId] = {
             taskType: task.taskType,
             status: task.status,
+            completedAt:
+              task.status === "generating"
+                ? undefined
+                : (task.completedAt ??
+                  state.tasks[taskId]?.completedAt ??
+                  Date.now()),
             streamedText: task.streamedText,
             error: task.error ? createSyncedTaskError(task.error) : undefined,
             abortController: null,
@@ -174,28 +269,40 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           };
         }),
       );
+      remoteMissing.delete(taskId);
+      pruneHistory();
     },
     syncRemoteTasks: (tasks) => {
+      for (const id of remoteMissing)
+        if (!(id in get().tasks)) remoteMissing.delete(id);
       set((state) =>
         mutate(state, (draft) => {
-          draft.tasks = Object.fromEntries(
-            Object.entries(tasks).map(([taskId, task]) => [
-              taskId,
-              {
-                taskType: task.taskType,
-                status: task.status,
-                streamedText: task.streamedText,
-                error: task.error
-                  ? createSyncedTaskError(task.error)
-                  : undefined,
-                abortController: null,
-                currentStep: task.currentStep,
-                sessionId: task.sessionId,
-              },
-            ]),
-          );
+          for (const [id, task] of Object.entries(draft.tasks)) {
+            if (id in tasks) continue;
+            if (observers.has(id) && task.status !== "generating")
+              remoteMissing.add(id);
+            else {
+              delete draft.tasks[id];
+              remoteMissing.delete(id);
+            }
+          }
+          for (const [id, task] of Object.entries(tasks)) {
+            remoteMissing.delete(id);
+            draft.tasks[id] = {
+              ...task,
+              completedAt:
+                task.status === "generating"
+                  ? undefined
+                  : (task.completedAt ??
+                    state.tasks[id]?.completedAt ??
+                    Date.now()),
+              error: task.error ? createSyncedTaskError(task.error) : undefined,
+              abortController: null,
+            };
+          }
         }),
       );
+      pruneHistory();
     },
     generate: async <Task extends TaskType>(
       taskId: TaskId<Task>,
@@ -215,6 +322,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
       const taskConfig = TASK_CONFIGS[config.taskType];
       const sessionId = (config.args as { sessionId?: string }).sessionId;
       let fullText = "";
+      let workflowResult: TaskResult = {};
       let publishTimer: ReturnType<typeof setTimeout> | undefined;
       const publishText = () => {
         clearTimeout(publishTimer);
@@ -259,11 +367,12 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           }
         };
 
+        checkAbort();
         const onProgress = (step: TaskStepInfo<Task>) => {
           set((state) =>
             mutate(state, (draft) => {
               const currentState = draft.tasks[taskId];
-              if (currentState?.taskType === config.taskType) {
+              if (currentState?.abortController === abortController) {
                 (currentState as any).currentStep = step;
               }
             }),
@@ -282,6 +391,14 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
             model: config.model,
             args: enrichedArgs,
             onProgress,
+            onResult: (result) => {
+              if (
+                !workflowAbortController.signal.aborted &&
+                get().tasks[taskId]?.abortController === abortController
+              ) {
+                workflowResult = result;
+              }
+            },
             signal: workflowAbortController.signal,
           });
 
@@ -301,6 +418,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
               fullText.trim()
                 ? TASK_STREAM_IDLE_TIMEOUT_MS
                 : TASK_STREAM_START_TIMEOUT_MS,
+              abortController.signal,
             );
             checkAbort();
 
@@ -334,10 +452,12 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           abortController.signal.removeEventListener("abort", abortWorkflow);
         }
 
+        checkAbort();
         publishText();
         await taskConfig.onSuccess?.({
           taskId,
           text: fullText,
+          result: workflowResult,
           model: config.model,
           args: config.args,
           transformedArgs: enrichedArgs,
@@ -354,6 +474,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
             draft.tasks[taskId] = {
               taskType: config.taskType,
               status: "success",
+              completedAt: Date.now(),
               streamedText: fullText,
               error: undefined,
               abortController: null,
@@ -384,6 +505,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
               draft.tasks[taskId] = {
                 taskType: config.taskType,
                 status: "idle",
+                completedAt: Date.now(),
                 streamedText: "",
                 error: undefined,
                 abortController: null,
@@ -399,6 +521,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
               draft.tasks[taskId] = {
                 taskType: config.taskType,
                 status: "error",
+                completedAt: Date.now(),
                 streamedText: "",
                 error,
                 abortController: null,
@@ -412,6 +535,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
         clearTimeout(publishTimer);
         if (streamFlushers.get(taskId) === publishText)
           streamFlushers.delete(taskId);
+        pruneHistory();
       }
     },
   };

@@ -3,7 +3,10 @@ import { useMemo } from "react";
 import type { RenderTranscriptRequest } from "@hypr/plugin-transcription";
 
 import { type Person, usePeople } from "~/people/queries";
-import { type TranscriptRecord, useSessionTranscripts } from "~/stt/queries";
+import {
+  type TranscriptRecord,
+  useSessionTranscriptsQuery,
+} from "~/stt/queries";
 import {
   buildRenderTranscriptRequestFromRows,
   type TranscriptRow,
@@ -29,14 +32,11 @@ export function useTranscriptRenderData(
   return useRenderData(transcripts, people);
 }
 
-export function useSessionTranscriptRenderData(sessionId: string): {
-  request: RenderTranscriptRequest | null;
-  transcriptRows: TranscriptRowWithId[];
-} {
-  const transcripts = useSessionTranscripts(sessionId);
+export function useSessionTranscriptRenderData(sessionId: string) {
+  const query = useSessionTranscriptsQuery(sessionId);
   const people = usePeople();
-
-  return useRenderData(transcripts, people);
+  const renderData = useRenderData(query.data ?? emptyTranscripts, people);
+  return { ...renderData, query };
 }
 
 function useRenderData(

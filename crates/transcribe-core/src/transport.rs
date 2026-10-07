@@ -6,11 +6,11 @@ use axum::{
     http::StatusCode,
     response::{
         IntoResponse, Response,
-        sse::{Event, Sse},
+        sse::{Event, KeepAlive, Sse},
     },
 };
 use futures_util::{SinkExt, stream::SplitSink};
-use owhisper_interface::batch_sse::{BatchSseMessage, EVENT_NAME};
+use owhisper_interface::batch_sse::{BatchSseMessage, EVENT_NAME, KEEP_ALIVE_INTERVAL};
 use owhisper_interface::stream::StreamResponse;
 use tokio::sync::mpsc;
 
@@ -67,7 +67,40 @@ pub fn batch_sse_response(event_rx: mpsc::UnboundedReceiver<BatchSseMessage>) ->
         })
     });
 
-    Sse::new(events_stream).into_response()
+    Sse::new(events_stream)
+        .keep_alive(KeepAlive::new().interval(KEEP_ALIVE_INTERVAL))
+        .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures_util::StreamExt;
+
+    #[tokio::test(start_paused = true)]
+    async fn batch_sse_sends_keepalives_while_worker_is_busy() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut body = batch_sse_response(rx).into_body().into_data_stream();
+        for _ in 0..4 {
+            let start = tokio::time::Instant::now();
+            let bytes = body.next().await.unwrap().unwrap();
+            assert!(bytes.starts_with(b":"));
+            assert!(start.elapsed() >= KEEP_ALIVE_INTERVAL);
+        }
+        tx.send(BatchSseMessage::Error {
+            error: "transcription_failed".into(),
+            detail: "worker failed".into(),
+        })
+        .unwrap();
+        let bytes = body.next().await.unwrap().unwrap();
+        assert!(
+            std::str::from_utf8(&bytes)
+                .unwrap()
+                .contains("worker failed")
+        );
+        drop(tx);
+        assert!(body.next().await.is_none());
+    }
 }
 
 pub fn format_timestamp_now() -> String {

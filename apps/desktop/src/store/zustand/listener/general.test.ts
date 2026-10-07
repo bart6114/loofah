@@ -119,6 +119,153 @@ describe("General Listener Slice", () => {
     sessionDirMock.mockResolvedValue({ status: "error", error: "unmocked" });
   });
 
+  test.each([0, 1, 2])(
+    "disposes partial capture registration %i, including late listeners",
+    async (failed) => {
+      const registrations = [
+        listenCaptureLifecycleMock,
+        listenCaptureStatusMock,
+        listenCaptureDataMock,
+      ];
+      for (let cycle = 0; cycle < 10; cycle++) {
+        const cleanups = [vi.fn(), vi.fn(), vi.fn()];
+        let resolveLate!: (cleanup: () => void) => void;
+        registrations[failed].mockRejectedValueOnce(
+          new Error("registration failed"),
+        );
+        registrations[(failed + 1) % 3].mockResolvedValueOnce(
+          cleanups[(failed + 1) % 3],
+        );
+        registrations[(failed + 2) % 3].mockReturnValueOnce(
+          new Promise<() => void>((r) => {
+            resolveLate = r;
+          }),
+        );
+        await store.getState().attachLiveSession("session-a");
+        resolveLate(cleanups[(failed + 2) % 3]);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(cleanups[(failed + 1) % 3]).toHaveBeenCalledOnce();
+        expect(cleanups[(failed + 2) % 3]).toHaveBeenCalledOnce();
+        expect(store.getState().live.eventUnlistenersBySession).toEqual({});
+      }
+    },
+  );
+
+  test("a stopped event during registration prevents snapshot hydration and disposes late listeners", async () => {
+    const cleanup = vi.fn();
+    let resolve!: (cleanup: () => void) => void;
+    listenCaptureDataMock.mockReturnValueOnce(
+      new Promise<() => void>((r) => {
+        resolve = r;
+      }),
+    );
+    const attached = store.getState().attachLiveSession("session-a");
+    await vi.waitFor(() =>
+      expect(listenCaptureLifecycleMock).toHaveBeenCalled(),
+    );
+    listenCaptureLifecycleMock.mock.calls[0][0]({
+      payload: {
+        type: "stopped",
+        session_id: "session-a",
+        requested_live_transcription: false,
+        live_transcription_active: false,
+      },
+    });
+    resolve(cleanup);
+    await attached;
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(getCaptureSnapshotMock).not.toHaveBeenCalled();
+    expect(store.getState().live.eventUnlistenersBySession).toEqual({});
+    expect(store.getState().live.intervalId).toBeUndefined();
+  });
+
+  test("a failed stale snapshot cannot clean up its replacement", async () => {
+    let resolve!: (value: unknown) => void;
+    getCaptureSnapshotMock.mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const first = store.getState().attachLiveSession("session-a");
+    await vi.waitFor(() =>
+      expect(getCaptureSnapshotMock).toHaveBeenCalledOnce(),
+    );
+    listenCaptureLifecycleMock.mock.calls[0][0]({
+      payload: {
+        type: "stopped",
+        session_id: "session-a",
+        requested_live_transcription: false,
+        live_transcription_active: false,
+      },
+    });
+    getCaptureSnapshotMock.mockResolvedValueOnce({
+      status: "ok",
+      data: {
+        state: "active",
+        activeSessionId: "session-a",
+        finalizingSessionIds: [],
+        requestedLiveTranscription: true,
+        liveTranscriptionActive: true,
+      },
+    });
+    await store.getState().attachLiveSession("session-a");
+    const replacement =
+      store.getState().live.eventUnlistenersBySession["session-a"];
+    resolve({ status: "error", error: "late failure" });
+    await first;
+    expect(
+      store.getState().live.eventUnlistenersBySession["session-a"],
+    ).toEqual(replacement);
+    expect(store.getState().live.status).toBe("active");
+    clearInterval(store.getState().live.intervalId);
+    replacement.dispose();
+  });
+
+  test("keeps an idle detached session subscribed for its next capture", async () => {
+    await store.getState().attachLiveSession("session-a");
+    await store.getState().attachLiveSession("session-a");
+    expect(listenCaptureLifecycleMock).toHaveBeenCalledOnce();
+    expect(listenCaptureStatusMock).toHaveBeenCalledOnce();
+    expect(listenCaptureDataMock).toHaveBeenCalledOnce();
+    store.getState().live.eventUnlistenersBySession["session-a"].dispose();
+  });
+
+  test("snapshot failure disposes every acquired listener and active interval", async () => {
+    const cleanups = [vi.fn(), vi.fn(), vi.fn()];
+    listenCaptureLifecycleMock.mockResolvedValueOnce(cleanups[0]);
+    listenCaptureStatusMock.mockResolvedValueOnce(cleanups[1]);
+    listenCaptureDataMock.mockResolvedValueOnce(cleanups[2]);
+    let reject!: (error: Error) => void;
+    getCaptureSnapshotMock.mockReturnValueOnce(
+      new Promise((_, no) => {
+        reject = no;
+      }),
+    );
+    const attach = store.getState().attachLiveSession("session-a");
+    await vi.waitFor(() =>
+      expect(getCaptureSnapshotMock).toHaveBeenCalledOnce(),
+    );
+    listenCaptureLifecycleMock.mock.calls[0][0]({
+      payload: {
+        type: "started",
+        session_id: "session-a",
+        requested_live_transcription: true,
+        live_transcription_active: true,
+        degraded: null,
+      },
+    });
+    const interval = store.getState().live.intervalId;
+    const clear = vi.spyOn(globalThis, "clearInterval");
+    reject(new Error("snapshot failed"));
+    await attach;
+    cleanups.forEach((cleanup) => expect(cleanup).toHaveBeenCalledOnce());
+    expect(clear).toHaveBeenCalledWith(interval);
+    expect(store.getState().live.intervalId).toBeUndefined();
+    expect(store.getState().live.eventUnlistenersBySession).toEqual({});
+    clear.mockRestore();
+  });
+
   describe("Initial State", () => {
     test("initializes with correct default values", () => {
       const state = store.getState();

@@ -70,6 +70,10 @@ msgstr ""
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
 msgstr ""
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
 msgstr ""
@@ -170,10 +174,6 @@ msgstr "Εφαρμογή"
 msgid "Appearance"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Apply only high-confidence tags from similar session content."
-msgstr ""
-
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr ""
@@ -191,8 +191,12 @@ msgstr ""
 msgid "Audio"
 msgstr ""
 
-#: src/settings/general/app-settings.tsx
-msgid "Automatically apply related tags"
+#: src/settings/ai/llm/tags.tsx
+msgid "Auto-apply tags with high confidence"
+msgstr ""
+
+#: src/settings/ai/llm/tags.tsx
+msgid "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 msgstr ""
 
 #: src/sidebar/custom-sidebar-header.tsx
@@ -394,6 +398,14 @@ msgstr ""
 msgid "Continue"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Copied"
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Copy debug information"
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Copy failed"
 msgstr ""
@@ -430,8 +442,20 @@ msgstr ""
 msgid "Couldn’t choose attachments"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Couldn’t copy debug information. Try again."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Couldn’t load debug information."
+msgstr ""
+
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Couldn't load transcript."
 msgstr ""
 
 #. placeholder {0}: attachment.attachmentId
@@ -445,6 +469,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
+msgstr ""
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Couldn't prepare export."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -497,6 +525,10 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
+msgstr ""
+
+#: src/main/about-dialog.tsx
+msgid "Diagnostics"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -605,6 +637,10 @@ msgstr ""
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Export"
+msgstr ""
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Export failed. Please try again."
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -808,12 +844,20 @@ msgstr ""
 msgid "Loading connection…"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Loading debug information…"
+msgstr ""
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
+msgstr ""
+
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Loading transcript..."
 msgstr ""
 
 #: src/changelog/index.tsx
@@ -1107,7 +1151,15 @@ msgid "Permissions granted"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Preparing export..."
+msgstr ""
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
@@ -1272,6 +1324,8 @@ msgstr ""
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
+#: src/session/components/note-input/transcript/loading.tsx
+#: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Retry"
 msgstr ""
@@ -1593,6 +1647,10 @@ msgstr ""
 msgid "Summary service selected"
 msgstr ""
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "Supported languages for {model}: {languages}."
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Switch"
 msgstr ""
@@ -1663,7 +1721,7 @@ msgid "This folder already has files in it"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
-msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgid "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx

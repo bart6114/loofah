@@ -1,7 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
+import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
+import { useStore } from "@tanstack/react-store";
 import { downloadDir, join } from "@tauri-apps/api/path";
-import { useMemo, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 import { json2md } from "@hypr/editor/markdown";
@@ -13,7 +15,6 @@ import {
   type TranscriptItem,
 } from "@hypr/plugin-export";
 import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
-import { commands as fs2Commands } from "@hypr/plugin-fs2";
 import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { cn } from "@hypr/utils";
 
@@ -22,36 +23,9 @@ import { formatDate, formatDuration } from "./export-utils";
 import { useTranscriptExportSegments } from "~/session/components/note-input/transcript/export-data";
 import { useEnhancedNote, useSession } from "~/session/queries";
 import type { EditorView } from "~/store/zustand/tabs/schema";
-import { useSessionTranscripts } from "~/stt/queries";
+import { useSessionTranscriptMetadata } from "~/stt/queries";
 
 type FileFormat = "pdf" | "txt" | "md" | "org";
-
-function markdownToText(content: string): string {
-  return content
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
-    .replace(/^\s*[-*+]\s+/gm, "• ")
-    .replace(/^\s*\d+\.\s+/gm, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/_(.*?)_/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function markdownToOrg(content: string): string {
-  return content
-    .replace(/^(#{1,6})\s+/gm, (_match, hashes: string) => {
-      return `${"*".repeat(hashes.length)} `;
-    })
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "[[$2][$1]]")
-    .replace(/\*\*(.*?)\*\*/g, "*$1*")
-    .replace(/__(.*?)__/g, "*$1*")
-    .replace(/`([^`]+)`/g, "~$1~")
-    .trim();
-}
 
 const EMPTY_PARTICIPANT_NAMES: string[] = [];
 
@@ -67,10 +41,18 @@ export function ExportModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useLingui();
-  const [format, setFormat] = useState<FileFormat>("pdf");
-  const [includeNote, setIncludeNote] = useState(true);
-  const [includeSummary, setIncludeSummary] = useState(true);
-  const [includeTranscript, setIncludeTranscript] = useState(false);
+  const form = useForm({
+    defaultValues: {
+      format: "pdf" as FileFormat,
+      includeNote: true,
+      includeSummary: true,
+      includeTranscript: false,
+    },
+  });
+  const { format, includeNote, includeSummary, includeTranscript } = useStore(
+    form.store,
+    (state) => state.values,
+  );
 
   const session = useSession(sessionId);
   const sessionTitle = session?.title;
@@ -81,35 +63,12 @@ export function ExportModal({
   const enhancedNoteContent = useEnhancedNote(enhancedNoteId)?.content;
   const participantNames: string[] = EMPTY_PARTICIPANT_NAMES;
 
-  const { data: transcriptItems, isLoading: isTranscriptLoading } =
-    useTranscriptExportSegments(sessionId);
-
-  const transcripts = useSessionTranscripts(sessionId);
-
-  const transcriptDuration = useMemo((): string | null => {
-    if (transcripts.length === 0) {
-      return null;
-    }
-
-    let minStartedAt: number | null = null;
-    let maxEndedAt: number | null = null;
-
-    for (const transcript of transcripts) {
-      if (minStartedAt === null || transcript.startedAt < minStartedAt) {
-        minStartedAt = transcript.startedAt;
-      }
-      if (transcript.endedAt !== undefined) {
-        if (maxEndedAt === null || transcript.endedAt > maxEndedAt) {
-          maxEndedAt = transcript.endedAt;
-        }
-      }
-    }
-
-    if (minStartedAt !== null && maxEndedAt !== null) {
-      return formatDuration(minStartedAt, maxEndedAt);
-    }
-    return null;
-  }, [transcripts]);
+  const metadataQuery = useSessionTranscriptMetadata(sessionId);
+  const metadata = metadataQuery.data;
+  const transcriptDuration =
+    metadata?.started_at != null && metadata.ended_at != null
+      ? formatDuration(metadata.started_at, metadata.ended_at)
+      : null;
 
   const getNoteMd = (): string => {
     if (!rawMd) return "";
@@ -131,169 +90,9 @@ export function ExportModal({
     }
   };
 
-  const getTranscriptText = (): string => {
-    if (transcriptItems.length === 0) return "";
-    return transcriptItems
-      .map((item) => {
-        const speaker = item.speaker ? `${item.speaker}: ` : "";
-        return `${speaker}${item.text}`;
-      })
-      .join("\n\n");
-  };
-
-  const buildMdContent = (): string => {
-    const sections: string[] = [];
-    const title = sessionTitle || t`Untitled`;
-    sections.push(`# ${title}`);
-
-    if (sessionCreatedAt) {
-      sections.push(`- ${t`Created`}: ${formatDate(sessionCreatedAt)}`);
-    }
-
-    if (participantNames.length > 0) {
-      sections.push(`- ${t`Participants`}: ${participantNames.join(", ")}`);
-    }
-
-    if (transcriptDuration) {
-      sections.push(`- ${t`Duration`}: ${transcriptDuration}`);
-    }
-
-    if (includeNote) {
-      const note = getNoteMd();
-      if (note) {
-        sections.push("");
-        sections.push(`## ${t`Note`}`);
-        sections.push(note);
-      }
-    }
-
-    if (includeSummary) {
-      const summary = getSummaryMd();
-      if (summary) {
-        sections.push("");
-        sections.push(`## ${t`Summary`}`);
-        sections.push(summary);
-      }
-    }
-
-    if (includeTranscript) {
-      const transcript = getTranscriptText();
-      if (transcript) {
-        sections.push("");
-        sections.push(`## ${t`Transcript`}`);
-        sections.push(transcript);
-      }
-    }
-
-    return sections.join("\n");
-  };
-
-  const buildTxtContent = (): string => {
-    const sections: string[] = [];
-    const title = sessionTitle || t`Untitled`;
-    sections.push(title);
-    sections.push("=".repeat(title.length));
-
-    if (sessionCreatedAt) {
-      sections.push(formatDate(sessionCreatedAt));
-    }
-
-    if (participantNames.length > 0) {
-      sections.push(`${t`Participants`}: ${participantNames.join(", ")}`);
-    }
-
-    if (transcriptDuration) {
-      sections.push(`${t`Duration`}: ${transcriptDuration}`);
-    }
-
-    if (includeNote) {
-      const note = getNoteMd();
-      if (note) {
-        sections.push("");
-        sections.push(t`Note`);
-        sections.push("-".repeat(4));
-        sections.push(markdownToText(note));
-      }
-    }
-
-    if (includeSummary) {
-      const summary = getSummaryMd();
-      if (summary) {
-        sections.push("");
-        sections.push(t`Summary`);
-        sections.push("-".repeat(7));
-        sections.push(markdownToText(summary));
-      }
-    }
-
-    if (includeTranscript) {
-      const transcript = getTranscriptText();
-      if (transcript) {
-        sections.push("");
-        sections.push(t`Transcript`);
-        sections.push("-".repeat(10));
-        sections.push(transcript);
-      }
-    }
-
-    return sections.join("\n");
-  };
-
-  const buildOrgContent = (): string => {
-    const sections: string[] = [];
-    const title = sessionTitle || t`Untitled`;
-    sections.push(`#+TITLE: ${title}`);
-
-    if (sessionCreatedAt) {
-      sections.push(`#+DATE: ${formatDate(sessionCreatedAt)}`);
-    }
-
-    sections.push("");
-    sections.push(`* ${t`Metadata`}`);
-
-    if (sessionCreatedAt) {
-      sections.push(`- ${t`Created`} :: ${formatDate(sessionCreatedAt)}`);
-    }
-
-    if (participantNames.length > 0) {
-      sections.push(`- ${t`Participants`} :: ${participantNames.join(", ")}`);
-    }
-
-    if (transcriptDuration) {
-      sections.push(`- ${t`Duration`} :: ${transcriptDuration}`);
-    }
-
-    if (includeNote) {
-      const note = getNoteMd();
-      if (note) {
-        sections.push("");
-        sections.push(`* ${t`Note`}`);
-        sections.push(markdownToOrg(note));
-      }
-    }
-
-    if (includeSummary) {
-      const summary = getSummaryMd();
-      if (summary) {
-        sections.push("");
-        sections.push(`* ${t`Summary`}`);
-        sections.push(markdownToOrg(summary));
-      }
-    }
-
-    if (includeTranscript) {
-      const transcript = getTranscriptText();
-      if (transcript) {
-        sections.push("");
-        sections.push(`* ${t`Transcript`}`);
-        sections.push(transcript);
-      }
-    }
-
-    return sections.join("\n");
-  };
-
-  const buildPdfContent = (): {
+  const buildExportContent = (
+    transcriptItems: TranscriptItem[],
+  ): {
     enhancedMd: string;
     noteMd: string | null;
     transcript: { items: TranscriptItem[] } | null;
@@ -349,34 +148,52 @@ export function ExportModal({
       .filter((attachment) => haystack.includes(`](${attachment.src}`));
   };
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: async () => {
+  const {
+    mutate,
+    isPending,
+    isSuccess,
+    reset,
+    error: exportError,
+  } = useMutation({
+    gcTime: 0,
+    mutationFn: async ({
+      content,
+      format,
+      title,
+    }: {
+      content: ReturnType<typeof buildExportContent>;
+      format: FileFormat;
+      title: string;
+    }) => {
       const downloadsPath = await downloadDir();
-      const sanitizedTitle = (
-        (sessionTitle ?? t`Untitled`).trim() || t`Untitled`
-      ).replace(/[<>:"/\\|?*]/g, "_");
+      const sanitizedTitle = (title.trim() || t`Untitled`).replace(
+        /[<>:"/\\|?*]/g,
+        "_",
+      );
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `${sanitizedTitle}_${timestamp}.${format}`;
       const path = await join(downloadsPath, filename);
 
       if (format === "pdf") {
-        const exportContent = buildPdfContent();
-        const attachments = await collectPdfAttachments(exportContent);
+        const attachments = await collectPdfAttachments(content);
         const result = await exportCommands.export(path, {
-          ...exportContent,
+          ...content,
           attachments,
         });
         if (result.status === "error") {
           throw new Error(result.error);
         }
       } else {
-        const textContent =
-          format === "md"
-            ? buildMdContent()
-            : format === "org"
-              ? buildOrgContent()
-              : buildTxtContent();
-        const result = await fs2Commands.writeTextFile(path, textContent);
+        const result = await exportCommands.exportText(path, content, format, {
+          untitled: t`Untitled`,
+          created: t`Created`,
+          participants: t`Participants`,
+          duration: t`Duration`,
+          metadata: t`Metadata`,
+          note: t`Note`,
+          summary: t`Summary`,
+          transcript: t`Transcript`,
+        });
         if (result.status === "error") {
           throw new Error(result.error);
         }
@@ -393,9 +210,61 @@ export function ExportModal({
     onError: console.error,
   });
 
+  useEffect(() => {
+    if (!isPending && (!open || isSuccess)) reset();
+  }, [isPending, isSuccess, open, reset]);
+
   const hasAnyContentSelected =
     includeNote || includeSummary || includeTranscript;
-  const isTranscriptPending = includeTranscript && isTranscriptLoading;
+  const renderExportAction = ({
+    data,
+    isLoading,
+    error,
+    refetch,
+  }: ReturnType<typeof useTranscriptExportSegments>) => (
+    <>
+      {(error || metadataQuery.error) && (
+        <div role="alert" className="text-sm">
+          <Trans>Couldn't prepare export.</Trans>{" "}
+          <button
+            className="underline"
+            onClick={() => {
+              if (metadataQuery.isError) void metadataQuery.refetch();
+              if (error) refetch();
+            }}
+          >
+            <Trans>Retry</Trans>
+          </button>
+        </div>
+      )}
+      <button
+        onClick={() =>
+          mutate({
+            content: buildExportContent(data),
+            format,
+            title: sessionTitle ?? t`Untitled`,
+          })
+        }
+        disabled={
+          isPending ||
+          isLoading ||
+          metadataQuery.isPending ||
+          !!error ||
+          metadataQuery.isError ||
+          !hasAnyContentSelected
+        }
+        className="border-primary bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-full rounded-full border-2 text-sm font-medium shadow-[0_4px_14px_rgba(87,83,78,0.4)] transition-none duration-200 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isPending
+          ? t`Exporting...`
+          : isLoading
+            ? t`Preparing transcript...`
+            : metadataQuery.isPending
+              ? t`Preparing export...`
+              : t`Export`}
+      </button>
+    </>
+  );
   if (!open) {
     return null;
   }
@@ -440,7 +309,7 @@ export function ExportModal({
                       type="radio"
                       name="export-format"
                       checked={format === f}
-                      onChange={() => setFormat(f)}
+                      onChange={() => form.setFieldValue("format", f)}
                       className="accent-primary"
                     />
                     {f === "md"
@@ -460,18 +329,26 @@ export function ExportModal({
               <div className="flex justify-center gap-4">
                 {(
                   [
-                    ["note", <Trans>Note</Trans>, includeNote, setIncludeNote],
+                    [
+                      "note",
+                      <Trans>Note</Trans>,
+                      includeNote,
+                      (value: boolean) =>
+                        form.setFieldValue("includeNote", value),
+                    ],
                     [
                       "summary",
                       <Trans>Summary</Trans>,
                       includeSummary,
-                      setIncludeSummary,
+                      (value: boolean) =>
+                        form.setFieldValue("includeSummary", value),
                     ],
                     [
                       "transcript",
                       <Trans>Transcript</Trans>,
                       includeTranscript,
-                      setIncludeTranscript,
+                      (value: boolean) =>
+                        form.setFieldValue("includeTranscript", value),
                     ],
                   ] as const
                 ).map(([id, label, checked, setter]) => (
@@ -492,22 +369,39 @@ export function ExportModal({
             </div>
           </div>
 
-          <button
-            onClick={() => mutate(null)}
-            disabled={
-              isPending || isTranscriptPending || !hasAnyContentSelected
-            }
-            className="border-primary bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-full rounded-full border-2 text-sm font-medium shadow-[0_4px_14px_rgba(87,83,78,0.4)] transition-none duration-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isPending
-              ? t`Exporting...`
-              : isTranscriptPending
-                ? t`Preparing transcript...`
-                : t`Export`}
-          </button>
+          {exportError && (
+            <p role="alert">
+              <Trans>Export failed. Please try again.</Trans>
+            </p>
+          )}
+          {includeTranscript ? (
+            <TranscriptExportAction sessionId={sessionId}>
+              {(result) => renderExportAction(result)}
+            </TranscriptExportAction>
+          ) : (
+            renderExportAction({
+              data: [],
+              isLoading: false,
+              error: null,
+              refetch: () => {},
+            })
+          )}
         </div>
       </div>
     </div>,
     document.body,
   );
+}
+
+function TranscriptExportAction({
+  sessionId,
+  children,
+}: {
+  sessionId: string;
+  children: (
+    result: ReturnType<typeof useTranscriptExportSegments>,
+  ) => ReactNode;
+}) {
+  const result = useTranscriptExportSegments(sessionId);
+  return children(result);
 }

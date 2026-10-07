@@ -68,10 +68,23 @@ impl<T: AsyncSource> SpeechChunkExt for T {}
 
 /// Incremental access to the existing VAD, including fresh speech evidence before an utterance ends.
 pub struct LiveSpeechChunker {
+    normalizer: Option<crate::vad::chunk_policy::NormalizerState>,
     session: crate::vad::VadSession,
 }
 
 impl LiveSpeechChunker {
+    /// Emits normalized speech offsets with empty sample buffers, preserving whole-utterance VAD rules.
+    pub fn ranges(redemption_time: Duration) -> Result<Self, crate::Error> {
+        let mut session =
+            crate::vad::VadSession::new(crate::vad::VadChunkerConfig::speech(redemption_time))?;
+        session.ranges_only();
+        Ok(Self {
+            session,
+            normalizer: Some(crate::vad::chunk_policy::NormalizerState::new(
+                redemption_time,
+            )),
+        })
+    }
     pub fn new(redemption_time: Duration, max_samples: usize) -> Result<Self, crate::Error> {
         let mut config = crate::vad::VadChunkerConfig::speech(redemption_time);
         if max_samples < 512 {
@@ -82,17 +95,31 @@ impl LiveSpeechChunker {
         config.max_chunk_samples = Some(max_samples);
         Ok(Self {
             session: crate::vad::VadSession::new(config)?,
+            normalizer: None,
         })
     }
     pub fn push(&mut self, frame: &[f32]) -> Result<Vec<AudioChunk>, crate::Error> {
         let transitions = self.session.process(frame)?;
-        Ok(Self::chunks(transitions))
+        Ok(self.chunks(transitions))
     }
     pub fn finish(&mut self) -> Result<Vec<AudioChunk>, crate::Error> {
         let transitions = self.session.finish(&[])?;
-        Ok(Self::chunks(transitions))
+        let mut chunks = self.chunks(transitions);
+        if let Some(normalizer) = &mut self.normalizer
+            && let Some(pending) = normalizer.finish()
+        {
+            chunks.push(pending);
+        }
+        Ok(chunks)
     }
-    fn chunks(transitions: Vec<crate::vad::VadTransition>) -> Vec<AudioChunk> {
+    fn chunks(&mut self, transitions: Vec<crate::vad::VadTransition>) -> Vec<AudioChunk> {
+        if let Some(normalizer) = &mut self.normalizer {
+            let mut output = Vec::new();
+            for chunk in crate::vad::chunk_policy::speech_chunks_from_transitions(transitions) {
+                normalizer.push(chunk, &mut output);
+            }
+            return output;
+        }
         transitions
             .into_iter()
             .filter_map(|transition| match transition {
@@ -153,5 +180,48 @@ mod tests {
             chunks.first(),
             Some(Err(crate::Error::UnsupportedSampleRate(8_000)))
         ));
+    }
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::*;
+    #[test]
+    fn range_scan_matches_batch_vad_without_retaining_recording() {
+        use crate::Chunker;
+        let samples = speech_fixture();
+        let duration = Duration::from_millis(150);
+        let mut batch = SpeechChunker::new(SpeechChunkingConfig::speech(duration)).unwrap();
+        let expected = batch.chunk(&samples, 16000).unwrap();
+        let mut scanner = LiveSpeechChunker::ranges(duration).unwrap();
+        let mut actual = Vec::new();
+        let mut processed = 0;
+        for block in samples.chunks(1024) {
+            actual.extend(scanner.push(block).unwrap());
+            processed += block.len();
+            assert!(processed.saturating_sub(scanner.retained_start()) <= 4096);
+            assert!(scanner.speech_observation().is_empty());
+        }
+        actual.extend(scanner.finish().unwrap());
+        assert!(!expected.is_empty());
+        assert_eq!(
+            expected
+                .iter()
+                .map(|c| (c.sample_start, c.sample_end))
+                .collect::<Vec<_>>(),
+            actual
+                .iter()
+                .map(|c| (c.sample_start, c.sample_end))
+                .collect::<Vec<_>>()
+        );
+        assert!(actual.iter().all(|c| c.samples.is_empty()));
+    }
+    fn speech_fixture() -> Vec<f32> {
+        let source = rodio::Decoder::try_from(
+            std::fs::File::open(hypr_data::english_1::AUDIO_PATH).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(u32::from(rodio::Source::sample_rate(&source)), 16000);
+        source.collect()
     }
 }

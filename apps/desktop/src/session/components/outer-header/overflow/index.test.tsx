@@ -247,7 +247,7 @@ describe("OverflowButton", () => {
   );
 
   it("renders one separator when meeting actions are disabled", () => {
-    useHasTranscriptMock.mockReturnValue(false);
+    useHasTranscriptMock.mockReturnValue(true);
     currentNoteContent.value = "Existing content";
 
     const { container } = render(
@@ -356,22 +356,27 @@ describe("OverflowButton", () => {
     });
   });
 
-  it("hides upload actions when the current note has content", () => {
-    useHasTranscriptMock.mockReturnValue(false);
-    currentNoteContent.value = "Existing content";
+  it.each([
+    "# new test",
+    "# Meeting notes\n\nExisting notes before importing audio",
+  ])(
+    "offers upload actions when the note contains %s but has no audio or transcript",
+    (content) => {
+      useHasTranscriptMock.mockReturnValue(false);
+      currentNoteContent.value = content;
 
-    render(
-      <OverflowButton
-        sessionId="session-1"
-        currentView={{ type: "enhanced", id: "note-1" } as EditorView}
-      />,
-    );
+      render(
+        <OverflowButton sessionId="session-1" currentView={{ type: "raw" }} />,
+      );
 
-    expect(screen.queryByRole("button", { name: "Upload audio" })).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Upload transcript" }),
-    ).toBeNull();
-  });
+      fireEvent.click(screen.getByRole("button", { name: "Upload audio" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Upload transcript" }),
+      );
+      expect(uploadAudioMock).toHaveBeenCalledTimes(1);
+      expect(uploadTranscriptMock).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("hides upload actions while a meeting is in progress", () => {
     useHasTranscriptMock.mockReturnValue(false);

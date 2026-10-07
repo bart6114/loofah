@@ -18,6 +18,7 @@ import {
   PluginKey,
   Selection,
   TextSelection,
+  type Transaction,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import {
@@ -28,6 +29,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { useDebounceCallback } from "usehooks-ts";
 
@@ -89,6 +91,7 @@ import {
   SlashCommandMenu,
   mentionSkipPlugin,
 } from "../widgets";
+import { areEquivalentEditorContents } from "./content-equivalence";
 import { buildInputRules, buildKeymap } from "./keymap";
 import {
   LinkedItemOpenBehaviorContext,
@@ -119,6 +122,11 @@ export {
   toPortableAttachmentSrc,
 } from "./portable-attachments";
 export { schema };
+export { areEquivalentEditorContents };
+export {
+  handleNativeEditorDrag,
+  type NativeEditorDragEvent,
+} from "./native-drag";
 export {
   type CommentAnchorInput,
   type CommentAnchorsEvent,
@@ -183,10 +191,15 @@ type NodeViewComponents = NonNullable<
   ComponentProps<typeof ProseMirror>["nodeViewComponents"]
 >;
 
+export type EditorSaveResult = void | (() => JSONContent);
+
 export interface NoteEditorProps {
   className?: string;
-  handleChange?: (content: JSONContent) => void;
+  handleChange?: (content: JSONContent) => void | Promise<EditorSaveResult>;
+  onDraftChange?: (getContent: () => JSONContent) => void;
   initialContent?: JSONContent;
+  initialDraft?: JSONContent | (() => JSONContent | undefined);
+  confirmedDraft?: () => JSONContent;
   resolveAttachment?: AttachmentResolver;
   mentionConfig?: MentionConfig;
   placeholderComponent?: PlaceholderFunction;
@@ -580,12 +593,15 @@ function EditorCommandsBridge({
   return null;
 }
 
-export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
-  function NoteEditor(props, ref) {
+const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
+  function NoteEditorContent(props, ref) {
     const {
       handleChange,
+      onDraftChange,
       className,
       initialContent,
+      initialDraft,
+      confirmedDraft,
       resolveAttachment,
       mentionConfig,
       placeholderComponent,
@@ -612,39 +628,61 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
     commentAnchorsEventRef.current = onCommentAnchorsEvent;
 
     const taskStorage = useTaskStorageOptional();
-    const normalizedInitialContent = useMemo(
-      () => normalizeTaskContent(initialContent),
-      [initialContent],
-    );
     const reconciledInitialContent = useMemo(() => {
-      if (!normalizedInitialContent) {
-        return normalizedInitialContent;
+      if (!initialContent) {
+        return initialContent;
       }
 
       const hydrated =
         taskSource && taskStorage
           ? (() => {
               const sourceTasks = taskStorage.getTasksForSource(taskSource);
-              if (sourceTasks.length === 0) return normalizedInitialContent;
+              if (sourceTasks.length === 0) return initialContent;
               return hydrateTaskContent({
-                content: normalizedInitialContent,
+                content: initialContent,
                 sourceTasks,
                 getTask: taskStorage.getTask,
               });
             })()
-          : normalizedInitialContent;
+          : initialContent;
 
-      return ensureImageTrailingParagraphs(hydrated);
-    }, [normalizedInitialContent, taskSource, taskStorage]);
-    const previousContentRef = useRef<JSONContent | undefined>(
-      reconciledInitialContent,
+      const normalized = normalizeTaskContent(hydrated);
+      return normalized && ensureImageTrailingParagraphs(normalized);
+    }, [initialContent, taskSource, taskStorage]);
+    const [mountedDraft] = useState(() =>
+      typeof initialDraft === "function" ? initialDraft() : initialDraft,
     );
+    const previousContentRef = useRef<JSONContent | undefined>(undefined);
+    const incomingDocRef = useRef<PMNode | null>(null);
+    const syncIncomingRef = useRef<(() => void) | null>(null);
+    const draftChangeRef = useRef(onDraftChange);
+    draftChangeRef.current = onDraftChange;
+    const confirmedSourceRef = useRef<(() => JSONContent) | null>(null);
+    const saveStateRef = useRef({
+      revision: 0,
+      acknowledgedRevision: mountedDraft ? -1 : 0,
+      savedRevision: 0,
+    });
     const viewRef = useRef<EditorView | null>(null);
     const commandsRef = useRef<EditorCommands>(noopCommands);
     const compositionStateRef = useRef<CompositionState>({
       active: false,
       endedAt: 0,
     });
+
+    const acknowledgeSavedContent = useCallback(() => {
+      const view = viewRef.current;
+      const incoming = incomingDocRef.current;
+      const save = saveStateRef.current;
+      if (
+        view &&
+        incoming &&
+        save.savedRevision >= save.revision &&
+        areEquivalentEditorContents(view.state.doc.toJSON(), incoming.toJSON())
+      ) {
+        save.acknowledgedRevision = save.revision;
+      }
+    }, []);
 
     const syncTasks = useCallback(
       (content: JSONContent) => {
@@ -673,9 +711,41 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
           return;
         }
 
-        handleChange(content);
+        const revision = saveStateRef.current.revision;
+        try {
+          void Promise.resolve(handleChange(content)).then(
+            (confirmed) => {
+              const save = saveStateRef.current;
+              if (
+                typeof confirmed === "function" &&
+                revision === save.revision
+              ) {
+                try {
+                  confirmed();
+                } catch {
+                  return;
+                }
+                // The host refreshed its authoritative cache. Read it directly
+                // so delayed React props cannot replay an older save snapshot.
+                confirmedSourceRef.current = confirmed;
+                save.acknowledgedRevision = revision;
+              }
+              save.savedRevision = Math.max(save.savedRevision, revision);
+              acknowledgeSavedContent();
+              if (confirmed && revision === save.acknowledgedRevision) {
+                previousContentRef.current = undefined;
+                syncIncomingRef.current?.();
+              }
+            },
+            () => {
+              // The host reports persistence failures and keeps its draft.
+            },
+          );
+        } catch {
+          // A failed save must not release ownership of the local document.
+        }
       },
-      [handleChange, syncTasks],
+      [handleChange, syncTasks, acknowledgeSavedContent],
     );
 
     const flushChangeRef = useRef(flushChange);
@@ -700,7 +770,10 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
         flushPendingChanges: () => {
           const view = viewRef.current;
           onUpdate.cancel();
-          if (view) flushChangeRef.current(view.state.doc);
+          const save = saveStateRef.current;
+          if (view && save.revision !== save.acknowledgedRevision) {
+            flushChangeRef.current(view.state.doc);
+          }
         },
       }),
       [onUpdate],
@@ -718,14 +791,28 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
         reactKeys(),
         createCompositionStatePlugin(setCompositionActive),
         ...(readOnly ? [createReadOnlyPlugin()] : []),
-        docChangeListenerPlugin((doc) => onUpdateRef.current(doc)),
+        docChangeListenerPlugin((doc) => {
+          saveStateRef.current.revision += 1;
+          draftChangeRef.current?.(() => doc.toJSON() as JSONContent);
+          onUpdateRef.current(doc);
+        }),
+        new Plugin({
+          props: {
+            handleDOMEvents: {
+              blur() {
+                void Promise.resolve().then(() => syncIncomingRef.current?.());
+                return false;
+              },
+            },
+          },
+        }),
         buildInputRules(),
         ...(enforceTitleHeading ? [titleHeadingPlugin()] : []),
         ...(titleTrailerElement
           ? [titleTrailerPlugin(titleTrailerElement)]
           : []),
         taskIdentityPlugin(),
-        buildKeymap(onNavigateToTitle),
+        buildKeymap(onNavigateToTitle, enforceTitleHeading),
         trailingEmptyLineClickPlugin(),
         history(),
         dropCursor(),
@@ -773,42 +860,79 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
     );
 
     const defaultState = useMemo(() => {
-      let doc: PMNode;
-      try {
-        doc =
-          reconciledInitialContent && reconciledInitialContent.type === "doc"
-            ? PMNode.fromJSON(schema, reconciledInitialContent)
-            : schema.node("doc", null, [schema.node("paragraph")]);
-        if (enforceTitleHeading) {
-          doc = normalizeTitleHeadingDoc(doc);
-        }
-      } catch {
-        doc = schema.node("doc", null, [
-          enforceTitleHeading
-            ? schema.node("heading", { level: 1 })
-            : schema.node("paragraph"),
-        ]);
+      const content = mountedDraft ?? reconciledInitialContent;
+      if (content && content.type !== "doc") {
+        throw new Error("Note content is not a document");
+      }
+      let doc = content
+        ? PMNode.fromJSON(schema, content)
+        : schema.node("doc", null, [schema.node("paragraph")]);
+      // A failed load must never become a blank document the autosave can persist.
+      doc.check();
+      if (enforceTitleHeading) {
+        doc = normalizeTitleHeadingDoc(doc);
       }
       return EditorState.create({ doc, plugins });
-    }, [reconciledInitialContent, plugins, enforceTitleHeading]);
+    }, [mountedDraft, reconciledInitialContent, plugins, enforceTitleHeading]);
+    const [editorState, setEditorState] = useState(defaultState);
+    const dispatchTransaction = useCallback((transaction: Transaction) => {
+      setEditorState((state) => state.applyTransaction(transaction).state);
+    }, []);
 
     useEffect(() => {
       let retryTimeout: ReturnType<typeof setTimeout> | undefined;
 
+      // A save started by the previous editor instance can finish after remount.
+      // Its confirmation must never acknowledge edits made by this new instance.
+      if (
+        mountedDraft &&
+        confirmedDraft &&
+        saveStateRef.current.revision === 0
+      ) {
+        try {
+          confirmedDraft();
+          confirmedSourceRef.current = confirmedDraft;
+          saveStateRef.current.acknowledgedRevision = 0;
+          previousContentRef.current = undefined;
+        } catch {
+          // Keep the restored draft when its source cannot be read.
+        }
+      }
+
       const syncContent = () => {
         const view = viewRef.current;
         if (!view) return;
-        if (previousContentRef.current === reconciledInitialContent) return;
-
         if (
-          !reconciledInitialContent ||
-          reconciledInitialContent.type !== "doc"
-        ) {
+          !confirmedSourceRef.current &&
+          previousContentRef.current === reconciledInitialContent
+        )
+          return;
+
+        let doc: PMNode;
+        try {
+          const content =
+            confirmedSourceRef.current?.() ?? reconciledInitialContent;
+          if (!content || content.type !== "doc") return;
+          const normalized = normalizeTaskContent(content);
+          doc = PMNode.fromJSON(
+            schema,
+            normalized ? ensureImageTrailingParagraphs(normalized) : content,
+          );
+          if (enforceTitleHeading) doc = normalizeTitleHeadingDoc(doc);
+        } catch {
+          return;
+        }
+        incomingDocRef.current = doc;
+        acknowledgeSavedContent();
+        const currentContent = view.state.doc.toJSON() as JSONContent;
+        if (areEquivalentEditorContents(currentContent, doc.toJSON())) {
+          acknowledgeSavedContent();
+          previousContentRef.current = reconciledInitialContent;
           return;
         }
 
-        const currentContent = view.state.doc.toJSON() as JSONContent;
-        if (isSameContent(currentContent, reconciledInitialContent)) {
+        const save = saveStateRef.current;
+        if (handleChange && save.revision !== save.acknowledgedRevision) {
           previousContentRef.current = reconciledInitialContent;
           return;
         }
@@ -825,7 +949,7 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
         if (
           !shouldReplaceEditorContent({
             currentContent,
-            nextContent: reconciledInitialContent,
+            nextContent: doc.toJSON(),
             hasFocus: view.hasFocus(),
             isComposing: false,
             syncContentWhenFocused,
@@ -835,40 +959,45 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
         }
 
         try {
-          let doc = PMNode.fromJSON(schema, reconciledInitialContent);
-          if (enforceTitleHeading) {
-            doc = normalizeTitleHeadingDoc(doc);
-          }
           const state = EditorState.create({
             doc,
             plugins: view.state.plugins,
           });
           onUpdate.cancel();
-          view.updateState(state);
+          setEditorState(state);
           previousContentRef.current = reconciledInitialContent;
         } catch {
           // invalid content
         }
       };
 
+      syncIncomingRef.current = syncContent;
       syncContent();
 
       return () => {
+        if (syncIncomingRef.current === syncContent)
+          syncIncomingRef.current = null;
         if (retryTimeout) {
           clearTimeout(retryTimeout);
         }
       };
     }, [
       reconciledInitialContent,
+      initialDraft,
+      confirmedDraft,
+      mountedDraft,
       syncContentWhenFocused,
       enforceTitleHeading,
       onUpdate,
+      handleChange,
+      acknowledgeSavedContent,
     ]);
 
     const onViewReady = useCallback(
       (view: EditorView) => {
         onViewReadyProp?.(view);
         syncTasks(view.state.doc.toJSON() as JSONContent);
+        syncIncomingRef.current?.();
       },
       [onViewReadyProp, syncTasks],
     );
@@ -892,47 +1021,59 @@ export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
             <LinkedItemOpenBehaviorContext.Provider
               value={linkedItemOpenBehavior}
             >
-              <EditorErrorBoundary
-                resetKey={
-                  taskSource ? `${taskSource.type}:${taskSource.id}` : "note"
-                }
+              <ProseMirror
+                state={editorState}
+                dispatchTransaction={dispatchTransaction}
+                nodeViewComponents={nodeViews}
+                editable={() => !readOnly}
+                attributes={{
+                  spellCheck: "false",
+                  autoComplete: "off",
+                  autoCorrect: "off",
+                  autoCapitalize: "off",
+                  role: readOnly ? "document" : "textbox",
+                  "aria-readonly": readOnly ? "true" : "false",
+                  class: cn([
+                    "prosemirror-editor",
+                    enforceTitleHeading && "note-title-editor",
+                    className,
+                  ]),
+                }}
               >
-                <ProseMirror
-                  defaultState={defaultState}
-                  nodeViewComponents={nodeViews}
-                  editable={() => !readOnly}
-                  attributes={{
-                    spellCheck: "false",
-                    autoComplete: "off",
-                    autoCorrect: "off",
-                    autoCapitalize: "off",
-                    role: readOnly ? "document" : "textbox",
-                    "aria-readonly": readOnly ? "true" : "false",
-                    class: cn([
-                      "prosemirror-editor",
-                      enforceTitleHeading && "note-title-editor",
-                      className,
-                    ]),
-                  }}
-                >
-                  <ProseMirrorDoc />
-                  <ViewCapture
-                    viewRef={viewRef}
-                    onViewReady={onViewReady}
-                    onViewDisposed={handleViewDisposed}
-                  />
-                  <EditorCommandsBridge commandsRef={commandsRef} />
-                  {showFormatToolbar && !readOnly && <FormatToolbar />}
-                  {showSlashCommand && !readOnly && <SlashCommandMenu />}
-                  {mentionConfig && !readOnly && (
-                    <MentionSuggestion config={mentionConfig} />
-                  )}
-                </ProseMirror>
-              </EditorErrorBoundary>
+                <ProseMirrorDoc />
+                <ViewCapture
+                  viewRef={viewRef}
+                  onViewReady={onViewReady}
+                  onViewDisposed={handleViewDisposed}
+                />
+                <EditorCommandsBridge commandsRef={commandsRef} />
+                {showFormatToolbar && !readOnly && <FormatToolbar />}
+                {showSlashCommand && !readOnly && <SlashCommandMenu />}
+                {mentionConfig && !readOnly && (
+                  <MentionSuggestion config={mentionConfig} />
+                )}
+              </ProseMirror>
             </LinkedItemOpenBehaviorContext.Provider>
           </AttachmentResolverContext.Provider>
         </AttachmentEditingContext.Provider>
       </TaskSourceProvider>
+    );
+  },
+);
+
+export const NoteEditor = forwardRef<NoteEditorRef, NoteEditorProps>(
+  function NoteEditor(props, ref) {
+    return (
+      <EditorErrorBoundary
+        resetKey={
+          props.taskSource
+            ? `${props.taskSource.type}:${props.taskSource.id}`
+            : "note"
+        }
+        errorMessage="This note could not be loaded. Its saved content has been kept."
+      >
+        <NoteEditorContent {...props} ref={ref} />
+      </EditorErrorBoundary>
     );
   },
 );

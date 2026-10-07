@@ -8,7 +8,6 @@ mod identifier_migration;
 mod legacy_db;
 mod legacy_llm;
 mod recording_meta;
-mod related_tags;
 mod search_index;
 mod session_store;
 mod startup;
@@ -337,9 +336,6 @@ pub async fn main() {
                         app_handle.manage(store.clone());
 
                         search_index::spawn(app_handle.clone(), store.clone());
-                        let related_tag_queue =
-                            related_tags::spawn(app_handle.clone(), store.clone());
-                        app_handle.manage(related_tag_queue);
                         session_store::spawn_dispatcher(app_handle.clone());
                         startup::spawn(app_handle.clone(), store);
                     }
@@ -551,13 +547,20 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             startup::get_startup_status::<tauri::Wry>,
             session_store::commands::session_write_meta::<tauri::Wry>,
             session_store::commands::session_update_meta::<tauri::Wry>,
-            related_tags::session_queue_tag_suggestions::<tauri::Wry>,
+            session_store::commands::session_tag_context::<tauri::Wry>,
             session_store::commands::session_accept_tag_suggestion::<tauri::Wry>,
             session_store::commands::session_dismiss_tag_suggestion::<tauri::Wry>,
             session_store::commands::session_write_note::<tauri::Wry>,
+            session_store::commands::session_save_note::<tauri::Wry>,
             session_store::commands::session_read_note::<tauri::Wry>,
+            session_store::commands::session_summary_get::<tauri::Wry>,
+            session_store::commands::session_ensure_summary::<tauri::Wry>,
+            session_store::commands::session_update_summary::<tauri::Wry>,
+            session_store::commands::session_save_summary::<tauri::Wry>,
+            session_store::commands::session_delete_summary::<tauri::Wry>,
             session_store::commands::session_write_enhanced_doc::<tauri::Wry>,
             session_store::commands::session_update_enhanced_doc::<tauri::Wry>,
+            session_store::commands::session_save_enhanced_doc::<tauri::Wry>,
             session_store::commands::session_delete_enhanced_doc::<tauri::Wry>,
             session_store::commands::people_list::<tauri::Wry>,
             session_store::commands::people_ensure::<tauri::Wry>,
@@ -569,6 +572,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_move_tasks::<tauri::Wry>,
             session_store::commands::session_append_transcript::<tauri::Wry>,
             session_store::commands::session_flush_transcript::<tauri::Wry>,
+            session_store::commands::session_finish_transcript::<tauri::Wry>,
             session_store::commands::session_write_transcript::<tauri::Wry>,
             session_store::commands::session_assign_transcript_speaker::<tauri::Wry>,
             session_store::commands::session_replace_transcripts::<tauri::Wry>,
@@ -588,6 +592,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_enhanced_docs::<tauri::Wry>,
             session_store::commands::enhanced_doc_get::<tauri::Wry>,
             session_store::commands::session_transcripts::<tauri::Wry>,
+            session_store::commands::session_transcript_metadata::<tauri::Wry>,
             session_store::commands::transcript_get::<tauri::Wry>,
             session_store::commands::session_find_by_tracking_id::<tauri::Wry>,
         ])

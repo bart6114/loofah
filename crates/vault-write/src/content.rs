@@ -6,11 +6,7 @@ use super::{SessionStore, StoreError, WriteGuard, paths, validate_session_id};
 // The `_meta.json` schema is shared with the read-only vault consumers (loof CLI/MCP);
 // the type lives in `hypr-vault-read` so both sides parse the same shape.
 pub use hypr_vault_read::SessionMeta;
-pub use hypr_vault_read::{TagSuggestionItem, TagSuggestionState, TagSuggestionStatus};
-
-pub fn is_tag_automation_candidate(name: &str) -> bool {
-    !name.to_lowercase().contains("import")
-}
+pub use hypr_vault_read::TagSuggestionState;
 
 /// Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
 /// field without knowing the rest. There is deliberately no way to clear a field back to
@@ -50,7 +46,7 @@ impl SessionStore {
         self.finish_meta_write_locked(&guard, meta, dir).await
     }
 
-    async fn write_meta_locked(
+    pub(crate) async fn write_meta_locked(
         &self,
         guard: &WriteGuard<'_>,
         meta: &SessionMeta,
@@ -121,9 +117,13 @@ impl SessionStore {
         if let Some(tags) = tags {
             meta.tags = tags;
             if let Some(suggestions) = &mut meta.tag_suggestions {
-                suggestions
-                    .items
-                    .retain(|suggestion| !meta.tags.contains(&suggestion.name));
+                suggestions.items.retain(|suggestion| {
+                    !meta
+                        .tags
+                        .iter()
+                        .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
+                        .any(|tag| tag == *suggestion)
+                });
             }
         }
         if let Some(tracking_id) = tracking_id {
@@ -137,95 +137,6 @@ impl SessionStore {
         }
 
         self.write_meta_locked(&guard, &meta).await
-    }
-
-    pub async fn mark_tag_suggestions_pending(
-        &self,
-        id: &str,
-        source_hash: String,
-        algorithm_version: u32,
-    ) -> Result<bool, StoreError> {
-        validate_session_id(id)?;
-        let guard = self.lock_writes().await;
-        let mut meta = self
-            .read_meta(id)
-            .await?
-            .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
-
-        if let Some(state) = meta.tag_suggestions.as_ref().filter(|state| {
-            state.source_hash == source_hash && state.algorithm_version == algorithm_version
-        }) {
-            return Ok(state.status == TagSuggestionStatus::Pending);
-        }
-
-        let dismissed = meta
-            .tag_suggestions
-            .as_ref()
-            .filter(|state| state.algorithm_version == algorithm_version)
-            .map(|state| state.dismissed.clone())
-            .unwrap_or_default();
-        meta.tag_suggestions = Some(TagSuggestionState {
-            source_hash,
-            algorithm_version,
-            status: TagSuggestionStatus::Pending,
-            items: Vec::new(),
-            dismissed,
-        });
-        self.write_meta_locked(&guard, &meta).await?;
-        Ok(true)
-    }
-
-    pub async fn complete_tag_suggestions(
-        &self,
-        id: &str,
-        source_hash: &str,
-        algorithm_version: u32,
-        suggestions: Vec<TagSuggestionItem>,
-        auto_accept_threshold: Option<f32>,
-    ) -> Result<bool, StoreError> {
-        validate_session_id(id)?;
-        let guard = self.lock_writes().await;
-        let mut meta = self
-            .read_meta(id)
-            .await?
-            .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
-
-        let Some(current) = &meta.tag_suggestions else {
-            return Ok(false);
-        };
-        if current.source_hash != source_hash
-            || current.algorithm_version != algorithm_version
-            || current.status != TagSuggestionStatus::Pending
-        {
-            return Ok(false);
-        }
-
-        let dismissed = current.dismissed.clone();
-        let mut remaining = Vec::new();
-        for suggestion in suggestions {
-            if !is_tag_automation_candidate(&suggestion.name)
-                || meta.tags.contains(&suggestion.name)
-                || dismissed.contains(&suggestion.name)
-            {
-                continue;
-            }
-            if auto_accept_threshold.is_some_and(|threshold| suggestion.confidence >= threshold) {
-                meta.tags.push(suggestion.name);
-            } else {
-                remaining.push(suggestion);
-            }
-        }
-        meta.tags.sort();
-        meta.tags.dedup();
-        meta.tag_suggestions = Some(TagSuggestionState {
-            source_hash: source_hash.to_string(),
-            algorithm_version,
-            status: TagSuggestionStatus::Complete,
-            items: remaining,
-            dismissed,
-        });
-        self.write_meta_locked(&guard, &meta).await?;
-        Ok(true)
     }
 
     pub async fn accept_tag_suggestion(&self, id: &str, name: &str) -> Result<bool, StoreError> {
@@ -242,11 +153,17 @@ impl SessionStore {
             return Ok(false);
         };
         let before = state.items.len();
-        state.items.retain(|suggestion| suggestion.name != name);
+        state.items.retain(|suggestion| *suggestion != name);
         if before == state.items.len() {
             return Ok(false);
         }
-        if !meta.tags.contains(&name) {
+        self.ensure_tag_locked(&guard, &name).await?;
+        if !meta
+            .tags
+            .iter()
+            .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
+            .any(|tag| tag == name)
+        {
             meta.tags.push(name);
             meta.tags.sort();
         }
@@ -268,7 +185,7 @@ impl SessionStore {
             return Ok(false);
         };
         let before = state.items.len();
-        state.items.retain(|suggestion| suggestion.name != name);
+        state.items.retain(|suggestion| *suggestion != name);
         if before == state.items.len() {
             return Ok(false);
         }
@@ -343,11 +260,76 @@ impl SessionStore {
 
     pub async fn write_note(&self, id: &str, markdown: &str) -> Result<(), StoreError> {
         validate_session_id(id)?;
-        let note_bytes = markdown.as_bytes().to_vec();
         let guard = self.lock_writes().await;
-        let dir = self.session_dir_locked(&guard, id).await?;
-        self.write_file_locked(&guard, paths::note_path_in(&dir), note_bytes)
-            .await?;
+        self.write_note_file_locked(&guard, id, markdown).await?;
+        self.index_set_note(
+            id,
+            Some(super::strip_leading_frontmatter(markdown.to_string())),
+        );
+        self.notify_index_changed(super::IndexEntity::Sessions, vec![id.to_string()]);
+
+        Ok(())
+    }
+
+    /// Save the note and its extracted session title as one observable index change.
+    /// The files remain individually atomic; if the second write fails, the index is
+    /// reconciled from the actual files before the error reaches the caller.
+    pub async fn save_note(
+        &self,
+        id: &str,
+        markdown: &str,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
+        validate_session_id(id)?;
+        let guard = self.lock_writes().await;
+        let mut meta = self
+            .read_meta(id)
+            .await?
+            .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
+        let changed_title = title.is_some_and(|title| title != meta.title);
+        if let Some(title) = title {
+            meta.title = title.to_owned();
+        }
+        self.write_note_file_locked(&guard, id, markdown).await?;
+        if changed_title {
+            if let Err(error) = self.write_session_title_file_locked(&guard, &meta).await {
+                if let (Ok(Some(actual_meta)), Ok(Some(actual_note))) =
+                    (self.read_meta(id).await, self.read_note(id).await)
+                {
+                    self.index_set_note_and_meta(&actual_meta, actual_note);
+                }
+                return Err(error);
+            }
+        }
+        self.index_set_note_and_meta(&meta, super::strip_leading_frontmatter(markdown.to_owned()));
+        Ok(())
+    }
+
+    pub(crate) async fn write_session_title_file_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        meta: &SessionMeta,
+    ) -> Result<(), StoreError> {
+        let dir = self.session_dir_locked(guard, &meta.id).await?;
+        let bytes =
+            serde_json::to_vec_pretty(meta).map_err(|e| StoreError::Serialize(e.to_string()))?;
+        self.write_file_locked(guard, paths::meta_path_in(&dir), bytes)
+            .await
+    }
+
+    async fn write_note_file_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        markdown: &str,
+    ) -> Result<(), StoreError> {
+        let dir = self.session_dir_locked(guard, id).await?;
+        self.write_file_locked(
+            guard,
+            paths::note_path_in(&dir),
+            markdown.as_bytes().to_vec(),
+        )
+        .await?;
 
         // Migrate-on-first-edit: once `notes.md` lands, a leftover pre-rename `_memo.md`
         // would only ever be the stale copy (readers prefer `notes.md`), and an external
@@ -374,17 +356,6 @@ impl SessionStore {
                 }
             }
         }
-        drop(guard);
-
-        // Store what `read_note` would return, not the raw bytes: a body that starts with an
-        // exporter-shaped frontmatter block would otherwise sit un-stripped in the index and
-        // change under the user on the next rescan.
-        self.index_set_note(
-            id,
-            Some(super::strip_leading_frontmatter(markdown.to_string())),
-        );
-        self.notify_index_changed(super::IndexEntity::Sessions, vec![id.to_string()]);
-
         Ok(())
     }
 
@@ -417,69 +388,63 @@ impl SessionStore {
         Ok(result)
     }
 
-    /// Moves the session's whole physical directory to trash (undo-able via
-    /// `restore_session`). The directory is resolved under the store write lock --
-    /// never rebuilt from the id -- and the exact trash path `move_to_trash` returns
-    /// is recorded in the recent-deletions map so undo can restore that directory to
-    /// `sessions/<id>/`, retaining the actual trash path for undo.
-    ///
-    /// The id is validated first: an empty id would resolve to `sessions/` itself, so
-    /// an unguarded delete would trash the user's entire session tree in one call.
-    pub async fn delete_session(&self, id: &str) -> Result<(), StoreError> {
+    /// Move a validated session directory to recoverable trash and return its exact
+    /// destination. A missing session returns `None`; invalid metadata or a failed
+    /// move leaves the source and in-memory state intact. Undo remains process-local.
+    pub async fn delete_session(&self, id: &str) -> Result<Option<std::path::PathBuf>, StoreError> {
+        let _audio_guard = self.lock_session_audio(id).await?;
         validate_session_id(id)?;
-
-        // Write lock first, then the live lock -- the same order as
-        // assign_transcript_speaker, so the two can never deadlock. Holding the write
-        // lock across the trash keeps a concurrent session-scoped write from resolving
-        // the directory mid-move and recreating it.
+        let _operation = self.transcript_operations.lock(id).await;
         let guard = self.lock_writes().await;
-
-        // Resolve before touching any in-memory state: a failed resolution
-        // (ambiguous id, I/O error) must leave the live buffer and the
-        // recording-deferral guard intact -- the session survives the failed delete.
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
-        // Drop the session's live transcript buffer *before* trashing the folder, and keep
-        // the `live` lock held across the trash. A debounced flush still holding words for
-        // this session would otherwise fire afterwards, and `persist_transcript` ->
-        // `write_file` -> `create_dir_all` would recreate the session directory --
-        // resurrecting a ghost session and, worse, making `restore_session` fail with
-        // ENOTEMPTY because the destination it renames onto now exists. Any flusher that
-        // wakes up during the delete blocks here, then finds no buffer and no-ops.
-        // (Recording into a session with no `_meta.json` still persists, deliberately:
-        // this only drops buffers for a session that was just deleted.)
-        let mut live = self.live.lock().await;
-        live.remove(id);
-
         let vault_base = self.vault_base.clone();
-        let dir_to_move = relative_dir.clone();
         let trash_path = tokio::task::spawn_blocking(
             move || -> Result<Option<std::path::PathBuf>, StoreError> {
-                let session_path = vault_base.join(&dir_to_move);
+                let session_path = vault_base.join(&relative_dir);
+                for path in [
+                    vault_base.join("sessions"),
+                    session_path.clone(),
+                    session_path.join("_meta.json"),
+                ] {
+                    match std::fs::symlink_metadata(&path) {
+                        Ok(meta) if meta.file_type().is_symlink() => {
+                            return Err(StoreError::Io(format!(
+                                "refusing to delete a symlinked session: {}",
+                                path.display()
+                            )));
+                        }
+                        Ok(_) => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(None);
+                        }
+                        Err(error) => return Err(StoreError::Io(error.to_string())),
+                    }
+                }
+                if hypr_vault_read::meta::read_session_meta_in(&vault_base, &relative_dir)?
+                    .is_none()
+                {
+                    return Ok(None);
+                }
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
-                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {}", e)))
+                    .map_err(|e| StoreError::Io(format!("failed to move session to trash: {e}")))
             },
         )
         .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
+        .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
 
-        drop(live);
-
-        // `move_to_trash` returns None when the directory never existed -- nothing to
-        // undo, and a stale recent-deletion record must not shadow an older real one.
-        if let Some(trash_path) = trash_path {
-            self.recent_deletions
-                .lock()
-                .unwrap()
-                .insert(id.to_string(), DeletedSession { trash_path });
+        if let Some(trash_path) = &trash_path {
+            self.live.lock().await.remove(id);
+            self.recent_deletions.lock().unwrap().insert(
+                id.to_string(),
+                DeletedSession {
+                    trash_path: trash_path.clone(),
+                },
+            );
+            self.deleted_sessions.lock().unwrap().insert(id.to_string());
+            self.index_remove_session_and_notify(id);
         }
-
-        self.deleted_sessions.lock().unwrap().insert(id.to_string());
-        // Only a successful trash operation makes the session unavailable.
-        self.index_remove_session_and_notify(id);
-        drop(guard);
-
-        Ok(())
+        Ok(trash_path)
     }
 
     /// Undoes a `delete_session` from this process: renames the exact trashed directory
@@ -614,169 +579,6 @@ mod tests {
         assert_eq!(
             store.read_meta("s1").await.unwrap().unwrap().title,
             "Jury feedback"
-        );
-    }
-
-    #[tokio::test]
-    async fn tag_suggestions_are_persisted_and_explicitly_resolved() {
-        let (store, _) = test_store().await;
-        store.write_meta(&meta("s1", "Atlas launch")).await.unwrap();
-
-        assert!(
-            store
-                .mark_tag_suggestions_pending("s1", "hash-1".to_string(), 1)
-                .await
-                .unwrap()
-        );
-        assert!(
-            store
-                .complete_tag_suggestions(
-                    "s1",
-                    "hash-1",
-                    1,
-                    vec![
-                        TagSuggestionItem {
-                            name: "project/atlas".to_string(),
-                            confidence: 0.8,
-                        },
-                        TagSuggestionItem {
-                            name: "customer/acme".to_string(),
-                            confidence: 0.6,
-                        },
-                    ],
-                    None,
-                )
-                .await
-                .unwrap()
-        );
-
-        assert!(
-            store
-                .accept_tag_suggestion("s1", "project/atlas")
-                .await
-                .unwrap()
-        );
-        assert!(
-            store
-                .dismiss_tag_suggestion("s1", "customer/acme")
-                .await
-                .unwrap()
-        );
-        let meta = store.read_meta("s1").await.unwrap().unwrap();
-        assert_eq!(meta.tags, vec!["project/atlas"]);
-        let state = meta.tag_suggestions.unwrap();
-        assert_eq!(state.items, Vec::new());
-        assert_eq!(state.dismissed, vec!["customer/acme"]);
-
-        store
-            .mark_tag_suggestions_pending("s1", "hash-2".to_string(), 1)
-            .await
-            .unwrap();
-        store
-            .complete_tag_suggestions(
-                "s1",
-                "hash-2",
-                1,
-                vec![TagSuggestionItem {
-                    name: "customer/acme".to_string(),
-                    confidence: 0.9,
-                }],
-                None,
-            )
-            .await
-            .unwrap();
-        assert!(
-            store
-                .read_meta("s1")
-                .await
-                .unwrap()
-                .unwrap()
-                .tag_suggestions
-                .unwrap()
-                .items
-                .is_empty()
-        );
-    }
-
-    #[tokio::test]
-    async fn stale_tag_suggestion_results_do_not_overwrite_new_work() {
-        let (store, _) = test_store().await;
-        store.write_meta(&meta("s1", "Atlas launch")).await.unwrap();
-        store
-            .mark_tag_suggestions_pending("s1", "new-hash".to_string(), 1)
-            .await
-            .unwrap();
-
-        assert!(
-            !store
-                .complete_tag_suggestions(
-                    "s1",
-                    "old-hash",
-                    1,
-                    vec![TagSuggestionItem {
-                        name: "project/atlas".to_string(),
-                        confidence: 0.9,
-                    }],
-                    None,
-                )
-                .await
-                .unwrap()
-        );
-        let state = store
-            .read_meta("s1")
-            .await
-            .unwrap()
-            .unwrap()
-            .tag_suggestions
-            .unwrap();
-        assert_eq!(state.status, TagSuggestionStatus::Pending);
-        assert_eq!(state.source_hash, "new-hash");
-    }
-
-    #[tokio::test]
-    async fn auto_accept_ignores_import_tags_and_keeps_lower_confidence_suggestions_pending() {
-        let (store, _) = test_store().await;
-        store.write_meta(&meta("s1", "Atlas launch")).await.unwrap();
-        store
-            .mark_tag_suggestions_pending("s1", "hash-1".to_string(), 1)
-            .await
-            .unwrap();
-        store
-            .complete_tag_suggestions(
-                "s1",
-                "hash-1",
-                1,
-                vec![
-                    TagSuggestionItem {
-                        name: "project/atlas".to_string(),
-                        confidence: 0.9,
-                    },
-                    TagSuggestionItem {
-                        name: "customer/acme".to_string(),
-                        confidence: 0.6,
-                    },
-                    TagSuggestionItem {
-                        name: "Imported".to_string(),
-                        confidence: 0.95,
-                    },
-                    TagSuggestionItem {
-                        name: "project/import-review".to_string(),
-                        confidence: 0.6,
-                    },
-                ],
-                Some(0.75),
-            )
-            .await
-            .unwrap();
-
-        let meta = store.read_meta("s1").await.unwrap().unwrap();
-        assert_eq!(meta.tags, vec!["project/atlas"]);
-        assert_eq!(
-            meta.tag_suggestions.unwrap().items,
-            vec![TagSuggestionItem {
-                name: "customer/acme".to_string(),
-                confidence: 0.6,
-            }]
         );
     }
 
@@ -1058,6 +860,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn save_note_updates_title_and_body_together_without_losing_meta() {
+        let (store, vault) = test_store().await;
+        let mut original = meta("s1", "Old title");
+        original.tags = vec!["team".to_owned()];
+        original.tracking_id = Some("external-1".to_owned());
+        store.write_meta(&original).await.unwrap();
+        let mut changes = store.subscribe_index_changes();
+
+        store
+            .save_note("s1", "# New title\n\nNew body", Some("New title"))
+            .await
+            .unwrap();
+
+        let session = store.session_get("s1").unwrap();
+        assert_eq!(session.meta.title, "New title");
+        assert_eq!(session.meta.tags, original.tags);
+        assert_eq!(session.meta.tracking_id, original.tracking_id);
+        assert_eq!(
+            session.note_markdown.as_deref(),
+            Some("# New title\n\nNew body")
+        );
+        assert_eq!(store.read_meta("s1").await.unwrap(), Some(session.meta));
+        assert_eq!(store.read_note("s1").await.unwrap(), session.note_markdown);
+        assert!(
+            session_path(&store, &vault, "s1")
+                .await
+                .join("notes.md")
+                .is_file()
+        );
+        while changes.try_recv().is_ok() {
+            let observed = store.session_get("s1").unwrap();
+            assert_eq!(observed.meta.title, "New title");
+            assert_eq!(
+                observed.note_markdown.as_deref(),
+                Some("# New title\n\nNew body")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn save_note_refuses_missing_meta_without_creating_content() {
+        let (store, vault) = test_store().await;
+        assert!(
+            store
+                .save_note("ghost", "body", Some("Title"))
+                .await
+                .is_err()
+        );
+        assert!(!vault.path().join("sessions/ghost/notes.md").exists());
+    }
+
+    #[tokio::test]
+    async fn save_note_refreshes_index_when_title_write_fails_after_note_write() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Old title")).await.unwrap();
+        let dir = session_path(&store, &vault, "s1").await;
+        let mut external = meta("s1", "External title");
+        external.tags.push("kept".to_owned());
+        std::fs::write(
+            dir.join("_meta.json"),
+            serde_json::to_vec_pretty(&external).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(vault.path().join(".trash"), "block trash").unwrap();
+
+        assert!(
+            store
+                .save_note("s1", "saved body", Some("New title"))
+                .await
+                .is_err()
+        );
+        let session = store.session_get("s1").unwrap();
+        assert_eq!(session.meta.title, "External title");
+        assert_eq!(session.meta.tags, vec!["kept"]);
+        assert_eq!(session.note_markdown.as_deref(), Some("saved body"));
+        assert_eq!(
+            store.read_note("s1").await.unwrap().as_deref(),
+            Some("saved body")
+        );
+    }
+
+    #[tokio::test]
     async fn write_note_indexes_what_read_note_would_return() {
         // An exporter-shaped frontmatter block is stripped on read, so it must be stripped on
         // the write-through too -- otherwise the index and the file disagree until the next
@@ -1195,7 +1079,8 @@ mod tests {
         let rel = store.session_dir("s1").await.unwrap();
         let dir = vault.path().join(&rel);
         assert!(dir.is_dir());
-        store.delete_session("s1").await.unwrap();
+        let trash = store.delete_session("s1").await.unwrap().unwrap();
+        assert!(trash.join("_meta.json").is_file());
 
         assert!(!dir.is_dir());
 
@@ -1216,6 +1101,33 @@ mod tests {
             "trashed session's _meta.json should exist under .trash/<date>/{}",
             rel.display()
         );
+    }
+
+    #[tokio::test]
+    async fn failed_delete_keeps_live_buffer_index_and_recording_reservation() {
+        let (store, vault) = test_store().await;
+        store
+            .write_meta(&meta("s1", "Keep recording"))
+            .await
+            .unwrap();
+        store.note_recording_active("s1");
+        store.live.lock().await.insert(
+            "s1".to_string(),
+            super::super::transcript::LiveTranscriptBuffer {
+                transcript_id: "pending".to_string(),
+                dirty: true,
+                ..Default::default()
+            },
+        );
+        std::fs::write(vault.path().join(".trash"), b"obstruction").unwrap();
+
+        assert!(store.delete_session("s1").await.is_err());
+        assert!(store.session_get("s1").is_some());
+        assert!(store.is_recording("s1"));
+        assert!(store.live.lock().await.get("s1").unwrap().dirty);
+        assert!(!store.deleted_sessions.lock().unwrap().contains("s1"));
+        assert!(!store.recent_deletions.lock().unwrap().contains_key("s1"));
+        assert!(store.read_meta("s1").await.unwrap().is_some());
     }
 
     /// `sessions/<id>` for an empty id is `sessions/` itself, so an unguarded delete would
@@ -1520,10 +1432,7 @@ mod tests {
     #[tokio::test]
     async fn delete_session_on_nonexistent_session_succeeds() {
         let (store, _vault) = test_store().await;
-        // delete_session on a session that doesn't exist should succeed
-        // (trash no-ops since path doesn't exist, deletes affect 0 rows)
-        let result = store.delete_session("nonexistent").await;
-        assert!(result.is_ok());
+        assert_eq!(store.delete_session("nonexistent").await.unwrap(), None);
     }
 
     #[tokio::test]

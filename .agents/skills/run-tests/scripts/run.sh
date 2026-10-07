@@ -7,15 +7,10 @@ cd "$repo_root"
 
 readonly rust_excludes=(
   desktop
-  email
-  mac
   notification-macos
-  notification-macos2
   tcc
-  apple-note
   notification-linux
   aec
-  agc
   whisper
   whisper-local
   whisper-local-model
@@ -31,7 +26,6 @@ readonly rust_excludes=(
   audio-device
   transcribe-whisper-local
   device-monitor
-  local-stt-server
   tauri-plugin-deeplink2
   tauri-plugin-detect
   tauri-plugin-fs-sync
@@ -101,6 +95,7 @@ run_rust() {
   fi
 
   run_step "ChatGPT model catalog" node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
+  run_step "native notification lifetime tests" swift test --package-path crates/notification-macos/swift-lib
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 
@@ -113,11 +108,15 @@ run_rust() {
 }
 
 run_cli() {
+  run_step "export-core tests" cargo test --locked -p export-core
+  run_step "search-cache tests" cargo test --locked -p search-cache
   run_step "agent-access tests" cargo test --locked -p agent-access
   run_step "CLI tests" cargo test --locked -p loof-cli
   run_step "TipTap tests" cargo test --locked -p tiptap
   run_step "CLI clippy" cargo clippy --locked \
+    -p search-cache \
     -p agent-access \
+    -p export-core \
     -p loof-cli \
     -p tiptap \
     --all-targets \

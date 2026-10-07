@@ -16,13 +16,147 @@ pub async fn run(args: Args) -> Result<u8> {
         let ready = commands::doctor::run(&args, args.json)?;
         return Ok(if ready { 0 } else { 1 });
     }
-
     let vault = vault::open(&args)?;
-
-    match args.command {
-        cli::Command::Doctor => unreachable!("doctor returns before opening the vault"),
+    let cache = hypr_search_cache::Cache::for_vault(&vault)?;
+    let explicit_init = matches!(&args.command, cli::Command::Init);
+    let worker = cache.clone();
+    let json = args.json;
+    let report = tokio::task::spawn_blocking(move || {
+        if !explicit_init {
+            match worker.check() {
+                Ok(()) => return Ok(None),
+                Err(hypr_search_cache::Error::NotReady) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        worker
+            .initialize(&mut |event| {
+                use std::io::Write;
+                let mut stderr = std::io::stderr().lock();
+                if json {
+                    let _ = writeln!(stderr, "{}", serde_json::to_string(&event).unwrap());
+                } else {
+                    let _ = writeln!(
+                        stderr,
+                        "{}: {} / {}",
+                        event.phase,
+                        event.processed,
+                        event
+                            .total
+                            .map(|total| total.to_string())
+                            .unwrap_or_else(|| "?".into())
+                    );
+                }
+                let _ = stderr.flush();
+            })
+            .map(Some)
+    })
+    .await
+    .map_err(|error| Error::operation("prepare cache", error.to_string()))??;
+    if explicit_init {
+        let report = report.expect("explicit init always initializes the cache");
+        if args.json {
+            output::emit(&output::json(
+                "init",
+                &serde_json::json!({ "cache_path": cache.path(), "ready": true, "added": report.added, "updated": report.updated, "deleted": report.deleted, "sessions": report.sessions }),
+                None,
+            )?);
+        } else {
+            output::emit(&format!(
+                "Search cache ready: {} ({} sessions)",
+                cache.path().display(),
+                report.sessions
+            ));
+        }
+        return Ok(0);
+    }
+    let mutation = match &args.command {
         cli::Command::Sessions { command } => {
-            commands::meetings::run(&vault, command, args.json).await?
+            matches!(
+                command,
+                cli::MeetingCommand::New { .. }
+                    | cli::MeetingCommand::Rename { .. }
+                    | cli::MeetingCommand::Delete { .. }
+                    | cli::MeetingCommand::Tag { .. }
+                    | cli::MeetingCommand::Attach { .. }
+            ) || matches!(command, cli::MeetingCommand::Note { set, append, .. } if set.is_some() || append.is_some())
+        }
+        cli::Command::Import { .. } | cli::Command::Transcribe { .. } => true,
+        _ => false,
+    };
+    if !mutation {
+        return dispatch(args, &vault, &cache).await;
+    }
+    let (result, pending_output, before) =
+        output::capture(cache.clone(), dispatch(args, &vault, &cache)).await;
+    let worker = cache.clone();
+    let (changed, persisted, reconciliation) = tokio::task::spawn_blocking(move || {
+        let mut changed = Vec::new();
+        let mut persisted = false;
+        for (id, prior) in &before {
+            match worker.sources_for(std::slice::from_ref(id)) {
+                Ok(after) if prior != &after => {
+                    persisted = true;
+                    changed.push(id.clone());
+                }
+                Err(_) => {
+                    persisted = true;
+                    changed.push(id.clone());
+                }
+                _ => {}
+            }
+        }
+        let ids: Vec<_> = before.into_keys().collect();
+        let reconciliation = if ids.is_empty() {
+            Ok(Default::default())
+        } else {
+            worker.reconcile_sessions(&ids)
+        };
+        (changed, persisted, reconciliation)
+    })
+    .await
+    .map_err(|error| Error::operation("reconcile write", error.to_string()))?;
+    match (result, reconciliation) {
+        (Ok(status), Ok(_)) => {
+            for text in pending_output {
+                output::emit(&text);
+            }
+            Ok(status)
+        }
+        (Err(error), Ok(_)) if !persisted => Err(error),
+        (Ok(_), Err(error)) if !persisted => Err(error.into()),
+        (result, reconciliation) => {
+            let reason = [
+                result.err().map(|error| error.to_string()),
+                reconciliation.err().map(|error| error.to_string()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join("; ");
+            if persisted {
+                Err(Error::WritePersisted {
+                    reason,
+                    session_ids: changed,
+                })
+            } else {
+                Err(Error::operation("complete command", reason))
+            }
+        }
+    }
+}
+
+async fn dispatch(
+    args: Args,
+    vault: &std::path::Path,
+    cache: &hypr_search_cache::Cache,
+) -> Result<u8> {
+    match args.command {
+        cli::Command::Doctor | cli::Command::Init => {
+            unreachable!("setup commands return before dispatch")
+        }
+        cli::Command::Sessions { command } => {
+            commands::meetings::run(vault, cache, command, args.json).await?
         }
         cli::Command::Import {
             file,
@@ -44,15 +178,13 @@ pub async fn run(args: Args) -> Result<u8> {
                 skill,
             };
             return commands::import::run(
-                &vault, file, title, into, transcribe, timestamps, args.json,
+                vault, file, title, into, transcribe, timestamps, args.json,
             )
             .await;
         }
-        cli::Command::Transcribe { id } => {
-            commands::transcribe::run(&vault, &id, args.json).await?
-        }
-        cli::Command::Mcp => mcp::serve(vault).await?,
-        cli::Command::Tags { command } => commands::tags::run(&vault, command, args.json).await?,
+        cli::Command::Transcribe { id } => commands::transcribe::run(vault, &id, args.json).await?,
+        cli::Command::Mcp => mcp::serve(vault.to_path_buf(), cache.clone()).await?,
+        cli::Command::Tags { command } => commands::tags::run(cache, command, args.json).await?,
     }
 
     Ok(0)
@@ -923,6 +1055,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault = dir.path().join("vault");
         write_session(&vault, "target", Some("bounded lookup"));
+        hypr_search_cache::Cache::for_vault(&vault)
+            .unwrap()
+            .initialize(&mut |_| {})
+            .unwrap();
         let root = vault.join("sessions");
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o111)).unwrap();
         assert!(std::fs::read_dir(&root).is_err());
@@ -933,6 +1069,7 @@ mod tests {
                 cli::MeetingCommand::Export {
                     id: id.into(),
                     format: cli::ExportFormat::Json,
+                    include: vec![],
                     output: Some(dir.path().join(format!("{id}.json"))),
                     force: false,
                 },
@@ -1046,6 +1183,7 @@ mod tests {
                 command: cli::MeetingCommand::Export {
                     id: "meeting-1".to_string(),
                     format: cli::ExportFormat::Markdown,
+                    include: vec![],
                     output: Some(output_path.clone()),
                     force: false,
                 },

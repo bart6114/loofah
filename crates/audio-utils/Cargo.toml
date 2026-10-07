@@ -10,6 +10,7 @@ futures-util = { workspace = true }
 hypr-audio-interface = { workspace = true }
 hypr-audio-mime = { workspace = true }
 hypr-resampler = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

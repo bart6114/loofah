@@ -57,3 +57,7 @@ paths may need updating.
 [Open a GitHub issue](https://github.com/bart6114/loofah/issues) and include the app version, what you expected, and what happened.
 
 For CLI and MCP failures, use the [error reference](/reference/errors).
+
+## CLI search cache needs repair
+
+Missing or incompatible caches initialize automatically on first CLI/MCP use. For cache errors, run `loof --json doctor`, then `loof --json init` to repair the local cache. For `cache_busy`, retry after the other operation finishes. If an error says `write_persisted: true`, the vault write succeeded: fix the reported issue and refresh the cache without repeating the write.

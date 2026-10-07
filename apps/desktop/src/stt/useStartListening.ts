@@ -27,7 +27,6 @@ import {
   getTranscriptionLanguages,
 } from "~/stt/capabilities";
 import { softDeleteTranscript } from "~/stt/queries";
-import { queueTagSuggestions } from "~/tags/suggestions";
 import { commands } from "~/types/tauri.gen";
 
 export function getPostCaptureAction(
@@ -87,8 +86,10 @@ export function useStartListening(sessionId: string) {
         duration: Infinity,
       });
     };
-    const trackTranscriptWrite = (write: Promise<void>) => {
-      lastTranscriptWrite = write.catch(reportTranscriptWriteError);
+    const trackTranscriptWrite = (write: () => Promise<void>) => {
+      lastTranscriptWrite = lastTranscriptWrite
+        .then(write)
+        .catch(reportTranscriptWriteError);
     };
     const onStopped: OnStoppedCallback = async (_sessionId, details) => {
       // Cataloging can relocate the recording, so everything downstream reads the path it
@@ -112,7 +113,10 @@ export function useStartListening(sessionId: string) {
       await lastTranscriptWrite;
       if (transcriptId) {
         try {
-          const result = await commands.sessionFlushTranscript(sessionId);
+          const result = await commands.sessionFinishTranscript(
+            sessionId,
+            transcriptId,
+          );
           if (result.status === "error") throw new Error(result.error);
         } catch (error) {
           reportTranscriptWriteError(error);
@@ -133,7 +137,7 @@ export function useStartListening(sessionId: string) {
       let batchCompleted = false;
       if (postCaptureAction === "batch_then_enhance") {
         try {
-          await runBatchRef.current(storedAudioPath!);
+          await runBatchRef.current(storedAudioPath!, { imported: false });
           batchCompleted = true;
         } catch (error) {
           if (isStoppedTranscriptionError(error)) {
@@ -152,9 +156,6 @@ export function useStartListening(sessionId: string) {
 
       const hasTranscriptEvidence =
         hadTranscriptBeforeStart || transcriptId !== null || batchCompleted;
-      if (!batchCompleted && transcriptId !== null) {
-        await queueTagSuggestions(sessionId);
-      }
       if (postCaptureAction !== "none" || hasTranscriptEvidence) {
         const shouldRegenerateExistingSummary =
           hadTranscriptBeforeStart && (transcriptId !== null || batchCompleted);
@@ -179,11 +180,15 @@ export function useStartListening(sessionId: string) {
       }
       if (!transcriptId) transcriptId = id();
 
-      trackTranscriptWrite(
+      const captureTranscriptId = transcriptId;
+      trackTranscriptWrite(() =>
         commands
           .sessionAppendTranscript(sessionId, {
-            transcript_id: transcriptId,
-            new_words: delta.new_words,
+            transcript_id: captureTranscriptId,
+            new_words: delta.new_words.map((word) => ({
+              ...word,
+              metadata: { capture_source: "recording" },
+            })),
             replaced_ids: delta.replaced_ids,
             // Live deltas from the transcription plugin carry no speaker-hint data (that's
             // produced by the separate batch/assignment paths) -- nothing to forward here.

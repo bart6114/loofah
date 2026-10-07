@@ -5,6 +5,7 @@ Default permissions for the plugin
 #### This default permission set includes the following:
 
 - `allow-export`
+- `allow-export-text`
 
 ## Permission Table
 

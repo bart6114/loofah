@@ -2,7 +2,6 @@ import {
   loadSessionContentSnapshot,
   type SessionContentSnapshot,
 } from "~/session/content-queries";
-import { id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import { commands } from "~/types/tauri.gen";
 
@@ -22,21 +21,7 @@ export function ensureSummaryDocument(
       return existing;
     }
 
-    const noteId = id();
-    const position =
-      snapshot.enhancedNotes.reduce(
-        (highest, note) => Math.max(highest, note.position),
-        0,
-      ) + 1;
-    const result = await commands.sessionWriteEnhancedDoc({
-      id: noteId,
-      session_id: sessionId,
-      kind: "summary",
-      title: "Summary",
-      template_id: "",
-      sort_order: position,
-      markdown: "",
-    });
+    const result = await commands.sessionEnsureSummary(sessionId);
     if (result.status === "error") {
       throw new Error(
         `Failed to create summary document for session ${sessionId}: ${result.error}`,
@@ -44,14 +29,14 @@ export function ensureSummaryDocument(
     }
 
     return {
-      id: noteId,
+      id: sessionId,
       title: "Summary",
-      markdown: "",
-      content: "",
+      markdown: result.data,
+      content: result.data,
       contentFormat: "md",
       templateId: "",
       kind: "summary",
-      position,
+      position: 0,
     };
   });
 }
@@ -62,5 +47,5 @@ export function selectSummaryDocument(
   const sorted = [...notes].sort(
     (a, b) => a.position - b.position || a.id.localeCompare(b.id),
   );
-  return sorted.find((note) => note.kind === "summary") ?? sorted[0];
+  return sorted.find((note) => note.kind === "summary");
 }

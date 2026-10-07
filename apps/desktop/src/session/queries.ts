@@ -1,8 +1,17 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { json2md, md2json } from "@hypr/editor/markdown";
+import {
+  json2md,
+  json2mdStrict,
+  md2json,
+  parseJsonContent,
+} from "@hypr/editor/markdown";
+import { useTaskStorageOptional } from "@hypr/editor/task-storage";
+import { hydrateTaskContent } from "@hypr/editor/tasks";
 
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
+import { ensureFirstLineTitle } from "~/session/title-content";
 import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
@@ -27,8 +36,7 @@ export type SessionRecord = {
   tag_suggestions: TagSuggestionState | null;
 };
 
-// Note content ("raw_md") is intentionally excluded: it's written exclusively via
-// `sessionWriteNote` now (see raw.tsx's persistChange), never through this SQL path.
+// Note content is saved together with its title through sessionSaveNote.
 export type SessionChanges = Partial<
   Pick<SessionRecord, "created_at" | "folder_id" | "title" | "tags">
 >;
@@ -52,11 +60,12 @@ const EMPTY_ENHANCED_NOTES: EnhancedNoteRecord[] = [];
 const EMPTY_SESSION_SUMMARIES: SessionSummaryRecord[] = [];
 
 export function useSession(sessionId: string): SessionRecord | null {
+  const taskStorage = useTaskStorageOptional();
   const { data = null } = useIndexQuery({
     // Editable content revalidates on mount in case a write or watcher event is
     // still in flight when the user switches back to the note.
     refetchOnMount: "always",
-    entity: "sessions",
+    entity: ["sessions", "tasks"],
     ids: [sessionId],
     queryKey: ["session", sessionId],
     queryFn: async () => {
@@ -64,7 +73,22 @@ export function useSession(sessionId: string): SessionRecord | null {
       if (result.status === "error") {
         throw new Error(result.error);
       }
-      return result.data ? mapSessionRecord(result.data) : null;
+      if (!result.data) return null;
+      const note = mapSessionRecord(result.data);
+      if (taskStorage && note.raw_md) {
+        const source = { type: "session_raw_note", id: sessionId };
+        const loadedTasks = await taskStorage.loadSource?.(source);
+        note.raw_md = JSON.stringify(
+          hydrateTaskContent({
+            content: JSON.parse(note.raw_md),
+            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
+            getTask: (id) =>
+              loadedTasks?.find((task) => task.taskId === id) ??
+              taskStorage.getTask(id),
+          }),
+        );
+      }
+      return note;
     },
     enabled: Boolean(sessionId),
   });
@@ -85,8 +109,8 @@ export function useSession(sessionId: string): SessionRecord | null {
  * second window, an Obsidian edit) handed the editor pre-edit content that the next
  * keystroke's `persistChange` then wrote back over `notes.md`.
  *
- * Live updates are safe for the focused editor: NoteEditor only re-syncs its content from a
- * changed `rawMd` when it isn't focused (`shouldReplaceEditorContent` in `@hypr/editor/note`).
+ * NoteEditor preserves local edits until saving and reloading confirms their persistence,
+ * and defers external changes while the editor is focused.
  */
 export function useSessionRawMd(sessionId: string): string | null {
   return useSession(sessionId)?.raw_md ?? null;
@@ -192,19 +216,53 @@ export function useEnhancedNote(
   generationId?: string,
   sessionId?: string,
 ): EnhancedNoteRecord | null {
+  const taskStorage = useTaskStorageOptional();
   const { data = null } = useIndexQuery({
-    entity: "docs",
+    entity: ["docs", "tasks"],
     ids: sessionId ? [sessionId] : undefined,
     refetchOnMount: "always",
     queryKey: generationId
       ? ["enhanced-doc", enhancedNoteId, generationId]
       : ["enhanced-doc", enhancedNoteId],
     queryFn: async () => {
-      const result = await commands.enhancedDocGet(enhancedNoteId);
-      if (result.status === "error") {
-        throw new Error(result.error);
+      const isSummary = sessionId !== undefined && enhancedNoteId === sessionId;
+      let note: EnhancedNoteRecord;
+      if (isSummary) {
+        const result = await commands.sessionSummaryGet(sessionId);
+        if (result.status === "error") throw new Error(result.error);
+        if (result.data === null) return null;
+        note = mapEnhancedDoc({
+          id: sessionId,
+          session_id: sessionId,
+          kind: "summary",
+          title: "Summary",
+          template_id: "",
+          sort_order: 0,
+          markdown: result.data,
+        });
+      } else {
+        const result = await commands.enhancedDocGet(enhancedNoteId);
+        if (result.status === "error") throw new Error(result.error);
+        if (!result.data) return null;
+        note = mapEnhancedDoc(result.data);
       }
-      return result.data ? mapEnhancedDoc(result.data) : null;
+      const source = {
+        type: note.id === note.sessionId ? "session_summary" : "enhanced_note",
+        id: enhancedNoteId,
+      };
+      const loadedTasks = await taskStorage?.loadSource?.(source);
+      if (taskStorage && note.content) {
+        note.content = JSON.stringify(
+          hydrateTaskContent({
+            content: JSON.parse(note.content),
+            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
+            getTask: (id) =>
+              loadedTasks?.find((task) => task.taskId === id) ??
+              taskStorage.getTask(id),
+          }),
+        );
+      }
+      return note;
     },
     enabled: Boolean(enhancedNoteId),
   });
@@ -238,39 +296,120 @@ export function updateEnhancedNoteContent(
     // that doesn't parse is already markdown (defensive -- the enhanced editor always
     // serializes JSON today).
     let markdown = content;
+    let parsed;
     try {
-      markdown = json2md(JSON.parse(content));
+      parsed = JSON.parse(content);
     } catch {
       // keep `content` as-is
     }
+    if (parsed) markdown = json2mdStrict(parsed);
 
-    // File-first: `enhanced/<doc-id>.md` is canonical, and the store's dual-write keeps
-    // the `session_documents` row (still read by Phase-E-pending live queries and search)
-    // in sync -- a raw SQL update here would leave the file stale for the next rebuild.
-    const docWrite = await commands.sessionUpdateEnhancedDoc(
-      sessionId,
-      enhancedNoteId,
-      { markdown },
-    );
+    const docWrite =
+      enhancedNoteId === sessionId
+        ? await commands.sessionSaveSummary(
+            sessionId,
+            markdown,
+            null,
+            sessionTitle ?? null,
+          )
+        : await commands.sessionSaveEnhancedDoc(
+            sessionId,
+            enhancedNoteId,
+            {
+              markdown,
+            },
+            sessionTitle ?? null,
+          );
     if (docWrite.status === "error") {
       throw new Error(
         `Failed to update summary ${enhancedNoteId}: ${docWrite.error}`,
       );
     }
-
-    // Session title is store-canonical (`_meta.json`), so it rides its own store call --
-    // the store's dual-write updates the sessions row itself.
-    if (sessionTitle !== undefined) {
-      const result = await commands.sessionUpdateMeta(sessionId, {
-        title: sessionTitle,
-      });
-      if (result.status === "error") {
-        throw new Error(
-          `Failed to update session ${sessionId} title: ${result.error}`,
-        );
-      }
-    }
   });
+}
+
+export function saveSessionNote(
+  sessionId: string,
+  markdown: string,
+  title?: string,
+): Promise<void> {
+  return enqueueDatabaseWrite(`session:${sessionId}:note`, async () => {
+    const result = await commands.sessionSaveNote(
+      sessionId,
+      markdown,
+      title ?? null,
+    );
+    if (result.status === "error") throw new Error(result.error);
+  });
+}
+
+export function useRefreshSessionNote(sessionId: string) {
+  const client = useQueryClient();
+  return useCallback(async () => {
+    const filter = { queryKey: ["session", sessionId], exact: true };
+    // A post-save read also cancels older reads, so an intermediate save echo
+    // cannot arrive after the editor releases its local draft.
+    await client.cancelQueries(filter);
+    await client.refetchQueries(
+      { ...filter, type: "all" },
+      { throwOnError: true },
+    );
+    const readContent = () => {
+      const session = client.getQueryData<SessionRecord>(filter.queryKey);
+      if (!session) throw new Error("The saved note could not be reloaded");
+      return ensureFirstLineTitle(
+        parseJsonContent(session.raw_md),
+        session.title,
+      );
+    };
+    readContent();
+    return readContent;
+  }, [client, sessionId]);
+}
+
+export function useRefreshEnhancedNote(
+  enhancedNoteId: string,
+  sessionId: string,
+  generationId?: string,
+) {
+  const client = useQueryClient();
+  return useCallback(async () => {
+    const sessionFilter = { queryKey: ["session", sessionId], exact: true };
+    const docFilter = {
+      queryKey: generationId
+        ? ["enhanced-doc", enhancedNoteId, generationId]
+        : ["enhanced-doc", enhancedNoteId],
+      exact: true,
+    };
+    await Promise.all([
+      client.cancelQueries(sessionFilter),
+      client.cancelQueries(docFilter),
+    ]);
+    await Promise.all([
+      client.refetchQueries(
+        { ...sessionFilter, type: "all" },
+        { throwOnError: true },
+      ),
+      client.refetchQueries(
+        { ...docFilter, type: "all" },
+        { throwOnError: true },
+      ),
+    ]);
+    const readContent = () => {
+      const session = client.getQueryData<SessionRecord>(
+        sessionFilter.queryKey,
+      );
+      const note = client.getQueryData<EnhancedNoteRecord>(docFilter.queryKey);
+      if (!session || !note)
+        throw new Error("The saved summary could not be reloaded");
+      return ensureFirstLineTitle(
+        parseJsonContent(note.content),
+        session.title,
+      );
+    };
+    readContent();
+    return readContent;
+  }, [client, enhancedNoteId, generationId, sessionId]);
 }
 
 export function deleteEnhancedNote(
@@ -278,13 +417,10 @@ export function deleteEnhancedNote(
   sessionId: string,
 ): Promise<void> {
   return enqueueDatabaseWrite(`enhanced-note:${enhancedNoteId}`, async () => {
-    // The store moves `enhanced/<doc-id>.md` to `.trash/` (hand-recoverable) and
-    // hard-deletes the index row -- no tombstone, since no undo path exists for enhanced
-    // notes and rebuild prunes file-less rows anyway.
-    const result = await commands.sessionDeleteEnhancedDoc(
-      sessionId,
-      enhancedNoteId,
-    );
+    const result =
+      enhancedNoteId === sessionId
+        ? await commands.sessionDeleteSummary(sessionId)
+        : await commands.sessionDeleteEnhancedDoc(sessionId, enhancedNoteId);
     if (result.status === "error") {
       throw new Error(
         `Failed to delete summary ${enhancedNoteId}: ${result.error}`,

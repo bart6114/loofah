@@ -23,7 +23,8 @@ For agents with shell access, use the `loof` CLI for both reading and writing. S
     transcript.json      speaker-labeled transcript
     tasks.json           session tasks
     audio.mp3|wav|ogg    the recording, with audio.peaks.json waveform cache
-    enhanced/<uuid>.md   AI-generated documents (summaries)
+    summary.md           the session summary (plain Markdown)
+    enhanced/<uuid>.md   template outputs and unmigrated legacy summaries
     attachments/         files embedded in the note
 ```
 
@@ -41,6 +42,17 @@ Before migration, stop older desktop builds on **all devices sharing the vault**
 upgrade them together. Older builds rename ID directories back to readable names.
 External bookmarks to readable directory paths may break; session IDs and relative
 attachment links stay valid.
+
+Each session has one summary. Its identity is the session ID; `summary.md` has no
+frontmatter or separate document ID. Summary checkbox tasks in `tasks.json` use
+`source_type: "session_summary"` and the session ID as `source_id`.
+
+The desktop app migrates legacy summaries from `enhanced/`, preserving task IDs
+and completion state and keeping the original document in `.trash/`. If a
+`summary.md` already occupies the destination, migration leaves both files in
+place and displays a warning. Move the conflicting file to another filename and
+restart to retry. Attachments added through the app live inside `attachments/`
+and do not collide with the summary.
 
 Ownership rules:
 
@@ -99,19 +111,22 @@ If CLI access is unavailable or the user requests MCP, use connected Loofah MCP 
 
 Run `loof doctor` first to verify the CLI can reach the vault (it also repairs
 a missing or stale `AGENTS.md`). Always pass `--json` for machine-readable
-output.
+output. Vault commands automatically initialize a missing or incompatible local cache, with progress on stderr. Use `loof --json init` for repair. Search and lists refresh changes automatically; successful writes are searchable.
 
 | Command | Purpose |
 | --- | --- |
-| `doctor` | Check CLI and vault access without changing data. |
+| `doctor` | Check vault and cache readiness; refresh this guide. |
+| `init` | Build, repair, or refresh the local search cache for the existing vault. |
 | `sessions list` | List sessions, optionally filtered with `--query`. |
 | `sessions search` | Full-text search across titles, notes, summaries, and transcripts. |
 | `sessions get` | Metadata, note, summaries, and action items for one session. |
+| `sessions rename` | Change a session's title using its exact id. |
 | `sessions new` | Create a standalone note and print its id; pass `--author` when writing as an agent, plus `--skill` when a skill produced the note. |
 | `sessions note` | Show a session's note, or edit it with `--set` / `--append`. |
 | `sessions transcript` | The full speaker-labeled transcript. |
 | `sessions tag add` | Add tags to a session, registering new ones in the vault. |
 | `sessions tag remove` | Remove tags from a session. |
+| `sessions delete` | Soft-delete one exact ID to recoverable trash, without prompting. |
 | `sessions path` | Print the absolute path of a session directory. |
 | `sessions attach` | Store a file as a note attachment and print its id. |
 | `sessions export` | Export a session to Markdown or JSON. |
@@ -122,3 +137,21 @@ output.
 
 Per-command flags are documented at
 https://loofah.io/reference/cli/.
+
+## Rename a session
+
+Run `loof --json sessions rename SESSION_ID "New title"` to change a session's title.
+The title is stored verbatim, including an empty string. The session's id, directory,
+other metadata, and content stay unchanged. The response has `command: "sessions.rename"`
+and `data` fields `id` and `title`. A missing session returns `not_found` (exit 2).
+The `meetings` alias also supports this command.
+
+## Delete and recover
+
+Only remove a session when the user authorizes it. Verify its exact ID with `loof --json sessions get SESSION_ID`, then use `loof --json sessions delete SESSION_ID`. There is no confirmation flag or prompt, including in JSON mode. The response has `command: "sessions.delete"` and `data` fields `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and UTC RFC 3339 `deleted_at` observed after the move. Retain the response for recovery. Deletion validates the exact `_meta.json` identity without scanning the vault. MCP remains read-only.
+
+The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
+
+There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
+
+A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.

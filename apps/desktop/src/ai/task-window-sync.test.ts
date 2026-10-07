@@ -110,3 +110,51 @@ it("does not broadcast unrelated task changes and sends the final summary snapsh
   view.unmount();
   mocks.label = "note-window";
 });
+
+it("broadcasts pruned history, preserves a detached observer until release, and cleans late listeners", async () => {
+  vi.useFakeTimers();
+  const { createAITaskStore } = await import("~/store/zustand/ai-task");
+  const main = createAITaskStore();
+  const remote = createAITaskStore();
+  const release = remote.getState().retainTask("summary-enhance");
+  const callbacks = new Map<string, (event: any) => void>();
+  const cleanups: ReturnType<typeof vi.fn>[] = [];
+  const resolves: (() => void)[] = [];
+  mocks.listen.mockImplementation((event, handler) => {
+    callbacks.set(event, handler);
+    const cleanup = vi.fn();
+    cleanups.push(cleanup);
+    return new Promise<() => void>((resolve) => {
+      resolves.push(() => resolve(cleanup));
+    });
+  });
+  mocks.emit.mockImplementation(async (_event, payload) =>
+    remote.getState().syncRemoteTasks(payload.tasks),
+  );
+  mocks.label = "main";
+  const view = render(createElement(AITaskWindowSyncBridge, { store: main }));
+  act(() =>
+    main.getState().syncRemoteTask("summary-enhance", {
+      taskType: "enhance",
+      status: "success",
+      streamedText: "complete",
+    }),
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+  });
+  expect(main.getState().tasks).toEqual({});
+  expect(remote.getState().tasks["summary-enhance"]?.streamedText).toBe(
+    "complete",
+  );
+  release();
+  expect(remote.getState().tasks).toEqual({});
+  view.unmount();
+  await act(async () => {
+    resolves.forEach((resolve) => resolve());
+  });
+  cleanups.forEach((cleanup) => expect(cleanup).toHaveBeenCalledOnce());
+  expect(vi.getTimerCount()).toBe(0);
+  mocks.label = "note-window";
+  vi.useRealTimers();
+});

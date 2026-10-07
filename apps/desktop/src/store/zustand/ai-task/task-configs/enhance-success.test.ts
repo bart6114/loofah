@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskConfig } from ".";
 import { enhanceSuccess } from "./enhance-success";
 
-import { MIN_SUMMARY_CHARACTERS } from "~/services/enhancer/summary-length";
 import { useLiveTitle } from "~/store/zustand/live-title";
 
 const mocks = vi.hoisted(() => ({
@@ -44,7 +43,8 @@ function createSnapshot(title = "") {
     rawMarkdown: "",
     enhancedNotes: [
       {
-        id: "note-1",
+        id: "session-1",
+        kind: "summary",
         title: "",
         markdown: "old content",
         content: "old content",
@@ -72,6 +72,8 @@ function createTransformedArgs(): EnhanceSuccessParams["transformedArgs"] {
     postMeetingMemo: "",
     transcripts: [],
     imageContext: [],
+    expectedMarkdown: "old content",
+    tagContext: { available: [], attached: [], dismissed: [] },
   };
 }
 
@@ -79,12 +81,11 @@ function createParams(
   overrides: Partial<EnhanceSuccessParams> = {},
 ): EnhanceSuccessParams {
   return {
-    taskId: "note-1-enhance",
+    taskId: "session-1-enhance",
     text: "# Summary\n\n- Point",
     model: {} as LanguageModel,
     args: {
       sessionId: "session-1",
-      enhancedNoteId: "note-1",
     },
     transformedArgs: createTransformedArgs(),
     signal: new AbortController().signal,
@@ -106,6 +107,7 @@ describe("enhanceSuccess.onSuccess", () => {
   it("persists generated content and tags through one guarded store write", async () => {
     const params = createParams({
       text: "# Summary\n\nDiscussed #Launch.",
+      result: { suggestedTags: [{ name: "Release", confidence: 0.93 }] },
       transformedArgs: {
         ...createTransformedArgs(),
         preMeetingMemo: "Prep #prep #Launch",
@@ -120,17 +122,16 @@ describe("enhanceSuccess.onSuccess", () => {
       sessionId: "session-1",
       ownerUserId: "user-1",
       note: {
-        id: "note-1",
+        id: "session-1",
         currentMarkdown: "old content",
         nextMarkdown: expect.any(String),
       },
-      tagNames: ["launch", "prep"],
+      suggestedTags: [{ name: "Release", confidence: 0.93 }],
+      signal: expect.any(AbortSignal),
     });
     const markdown =
       mocks.persistGeneratedEnhancedNote.mock.calls[0][0].note.nextMarkdown;
-    expect(markdown.trim()).toBe(
-      "# Summary\n\nDiscussed #Launch.\n\n#launch #prep",
-    );
+    expect(markdown.trim()).toBe("# Summary\n\nDiscussed #Launch.");
   });
 
   it("waits for a generated title, saves the note, then persists the title", async () => {
@@ -174,7 +175,7 @@ describe("enhanceSuccess.onSuccess", () => {
     expect(markdown.trim()).toBe("# Existing title\n\n# Summary\n\n- Point");
   });
 
-  it("persists a short summary and tags within the transcript length and section cap", async () => {
+  it("preserves all generated sections and tasks even when longer than the source", async () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue(
       createSnapshot("Meeting title"),
     );
@@ -198,9 +199,9 @@ describe("enhanceSuccess.onSuccess", () => {
 
 - ${"b".repeat(100)}
 
-# Third
+# Action items
 
-- ${"c".repeat(100)}`,
+- [ ] ${"c".repeat(400)}`,
         transformedArgs,
       }),
     );
@@ -209,11 +210,12 @@ describe("enhanceSuccess.onSuccess", () => {
       mocks.persistGeneratedEnhancedNote.mock.calls[0][0].note.nextMarkdown.trim();
     expect(markdown).toContain("# First");
     expect(markdown).toContain("# Second");
-    expect(markdown).not.toContain("# Third");
-    expect(markdown).toContain("#launch");
-    expect(
-      Array.from(markdown.replace(/\s+/gu, " ")).length,
-    ).toBeLessThanOrEqual(MIN_SUMMARY_CHARACTERS);
+    expect(markdown).toContain("# Action items");
+    expect(markdown).toContain(`- [ ] ${"c".repeat(400)}`);
+    expect(markdown).not.toContain("#launch");
+    expect(Array.from(markdown.replace(/\s+/gu, " ")).length).toBeGreaterThan(
+      320,
+    );
   });
 
   it("does not claim success when the guarded store write fails", async () => {
@@ -256,7 +258,7 @@ describe("enhanceSuccess.onSuccess", () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
 
     await expect(enhanceSuccess.onSuccess?.(createParams())).rejects.toThrow(
-      "Summary note-1 no longer exists",
+      "Summary session-1 no longer exists",
     );
   });
 
@@ -270,3 +272,32 @@ describe("enhanceSuccess.onSuccess", () => {
     expect(mocks.persistGeneratedTitle).not.toHaveBeenCalled();
   });
 });
+
+it("keeps the generation-start body as the CAS guard after a concurrent edit", async () => {
+  const snapshot = createSnapshot("Existing title");
+  snapshot.enhancedNotes[0].markdown = "user edited while generating";
+  mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
+  const params = createParams();
+  params.transformedArgs.expectedMarkdown = "body when generation started";
+  await enhanceSuccess.onSuccess?.(params);
+  expect(mocks.persistGeneratedEnhancedNote).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      note: expect.objectContaining({
+        currentMarkdown: "body when generation started",
+      }),
+    }),
+  );
+});
+
+it.each([undefined, []])(
+  "preserves optional metadata semantics: %j",
+  async (suggestedTags) => {
+    mocks.loadSessionContentSnapshot.mockResolvedValue(createSnapshot("Title"));
+    await enhanceSuccess.onSuccess?.(
+      createParams({ result: { suggestedTags } }),
+    );
+    expect(mocks.persistGeneratedEnhancedNote).toHaveBeenLastCalledWith(
+      expect.objectContaining({ suggestedTags }),
+    );
+  },
+);

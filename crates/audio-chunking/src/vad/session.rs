@@ -123,6 +123,7 @@ enum VadState {
 }
 
 pub struct VadSession {
+    ranges_only: bool,
     silero: SileroVad,
     config: VadChunkerConfig,
     state: VadState,
@@ -146,6 +147,7 @@ impl VadSession {
             state: VadState::Silence,
             retained_audio: Vec::new(),
             retained_start_sample: 0,
+            ranges_only: false,
             cursor_sample: 0,
             silent_samples: 0,
             last_prob: 0.0,
@@ -173,14 +175,19 @@ impl VadSession {
         end_sample: usize,
         detected_speech_samples: usize,
     ) -> VadTransition {
-        let start_idx = self.absolute_to_index(start_sample);
-        let end_idx = self.absolute_to_index(end_sample);
+        let samples = if self.ranges_only {
+            Vec::new()
+        } else {
+            let start_idx = self.absolute_to_index(start_sample);
+            let end_idx = self.absolute_to_index(end_sample);
+            self.retained_audio[start_idx..end_idx].to_vec()
+        };
 
         VadTransition::SpeechEnd {
             detected_speech_samples,
             sample_start: start_sample,
             sample_end: end_sample,
-            samples: self.retained_audio[start_idx..end_idx].to_vec(),
+            samples,
         }
     }
 
@@ -190,11 +197,16 @@ impl VadSession {
     }
 
     fn trim_buffer(&mut self) {
-        let min_keep_sample = match self.state {
-            VadState::Silence => self
-                .session_end_sample()
-                .saturating_sub(Self::duration_to_samples(self.config.pre_speech_pad)),
-            VadState::Speech { start_sample, .. } => start_sample,
+        let min_keep_sample = if self.ranges_only {
+            self.session_end_sample()
+                .saturating_sub(Self::duration_to_samples(self.config.pre_speech_pad))
+        } else {
+            match self.state {
+                VadState::Silence => self
+                    .session_end_sample()
+                    .saturating_sub(Self::duration_to_samples(self.config.pre_speech_pad)),
+                VadState::Speech { start_sample, .. } => start_sample,
+            }
         };
         let keep_from = min_keep_sample.min(self.cursor_sample);
 
@@ -276,6 +288,10 @@ impl VadSession {
         self.reset_to_silence();
         self.trim_buffer();
         Ok(transitions)
+    }
+
+    pub(crate) fn ranges_only(&mut self) {
+        self.ranges_only = true;
     }
 
     pub(crate) fn retained_start(&self) -> usize {

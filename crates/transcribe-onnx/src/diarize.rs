@@ -14,7 +14,7 @@ const FRAME: usize = 270;
 const CENTER: usize = 495;
 const POWERSET: [u8; 7] = [0, 1, 2, 4, 3, 5, 6];
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Segment {
     pub start_ms: i64,
     pub end_ms: i64,
@@ -59,15 +59,35 @@ impl Diarizer {
             samples.iter().all(|s| s.is_finite()),
             "Invalid audio samples"
         );
-        if samples.is_empty() {
+        self.process_audio(samples.len(), |range| Ok(samples[range].to_vec()))
+    }
+
+    pub fn process_file(&mut self, path: &std::path::Path, channel: usize) -> Result<Vec<Segment>> {
+        let pcm = hypr_audio_utils::PcmDescriptor::open(path)?;
+        ensure!(channel < pcm.channels, "Invalid speaker detection channel");
+        let mut reader = pcm.reader()?;
+        self.process_audio(pcm.frames, |range| Ok(reader.channel(channel, range)?))
+    }
+
+    fn process_audio(
+        &mut self,
+        frame_count: usize,
+        mut read: impl FnMut(std::ops::Range<usize>) -> Result<Vec<f32>>,
+    ) -> Result<Vec<Segment>> {
+        if frame_count == 0 {
             return Ok(Vec::new());
         }
         let mut embeddings = Vec::new();
         let mut windows = Vec::new();
-        for offset in (0..samples.len()).step_by(HOP) {
+        for offset in (0..frame_count).step_by(HOP) {
+            let samples = read(offset..(offset + WINDOW + CENTER + FRAME).min(frame_count))?;
+            ensure!(
+                samples.iter().all(|sample| sample.is_finite()),
+                "Invalid audio samples"
+            );
             let mut audio = vec![0.0; WINDOW];
-            let length = WINDOW.min(samples.len() - offset);
-            audio[..length].copy_from_slice(&samples[offset..offset + length]);
+            let length = WINDOW.min(samples.len());
+            audio[..length].copy_from_slice(&samples[..length]);
             let labels = {
                 let output = self
                     .segmentation
@@ -99,9 +119,9 @@ impl Diarizer {
                         {
                             continue;
                         }
-                        let start = (offset + CENTER + frame * FRAME).min(samples.len());
-                        let end = (start + FRAME).min(samples.len());
-                        selected.extend_from_slice(&samples[start..end]);
+                        let start = (offset + CENTER + frame * FRAME).min(frame_count);
+                        let end = (start + FRAME).min(frame_count);
+                        selected.extend_from_slice(&samples[start - offset..end - offset]);
                     }
                     selected
                 };
@@ -118,7 +138,8 @@ impl Diarizer {
             windows.push((offset, labels, identities));
         }
         let assignments = cluster(&embeddings, 0.5);
-        let frame_count = samples.len().div_ceil(FRAME);
+        let sample_count = frame_count;
+        let frame_count = sample_count.div_ceil(FRAME);
         let mut votes = vec![BTreeMap::<usize, u16>::new(); frame_count];
         let mut counts = vec![(0_u16, 0_u16); frame_count];
         for (offset, labels, identities) in windows {
@@ -153,7 +174,7 @@ impl Diarizer {
                 speakers.sort_by_key(|&(speaker, vote)| (std::cmp::Reverse(vote), speaker));
                 speakers.truncate(count as usize);
             }
-            let time = (CENTER + frame * FRAME).min(samples.len()) as i64 * 1000 / RATE as i64;
+            let time = (CENTER + frame * FRAME).min(sample_count) as i64 * 1000 / RATE as i64;
             let stopped = active
                 .keys()
                 .copied()

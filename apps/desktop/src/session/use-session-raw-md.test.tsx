@@ -4,6 +4,11 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { md2json } from "@hypr/editor/markdown";
+import {
+  TaskStorageProvider,
+  createInMemoryTaskStorage,
+} from "@hypr/editor/task-storage";
+import { extractTasksFromContent } from "@hypr/editor/tasks";
 
 import type { IndexChanged } from "~/types/tauri.gen";
 
@@ -165,4 +170,51 @@ describe("useSessionRawMd", () => {
       queryClient.getQueryCache().findAll({ queryKey: ["session-note-file"] }),
     ).toEqual([]);
   });
+});
+
+it("refreshes canonical task status when task persistence completes after the note event", async () => {
+  const source = { type: "session_raw_note", id: "session-1" };
+  const storage = createInMemoryTaskStorage();
+  let status: "todo" | "done" = "todo";
+  storage.loadSource = async () => [
+    {
+      taskId: "saved-task",
+      sourceType: source.type,
+      sourceId: source.id,
+      sourceOrder: 0,
+      status,
+      textPreview: "Send proposal",
+      dueDate: "2026-10-01",
+      body: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Send proposal" }],
+        },
+      ],
+    },
+  ];
+  mocks.sessionGet.mockResolvedValue({
+    status: "ok",
+    data: sessionRecord("- [x] Send proposal"),
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>
+      <TaskStorageProvider storage={storage}>{children}</TaskStorageProvider>
+    </QueryClientProvider>
+  );
+  const taskStatus = (content: string | null) =>
+    content && extractTasksFromContent(JSON.parse(content), source)[0]?.status;
+  const first = renderHook(() => useSessionRawMd(source.id), { wrapper });
+  await waitFor(() => expect(taskStatus(first.result.current)).toBe("todo"));
+  status = "done";
+  act(() => emitIndexChanged({ entity: "tasks", ids: [source.id] }));
+  await waitFor(() => expect(taskStatus(first.result.current)).toBe("done"));
+  first.unmount();
+  const reopened = renderHook(() => useSessionRawMd(source.id), { wrapper });
+  expect(taskStatus(reopened.result.current)).toBe("done");
+  reopened.unmount();
+  client.clear();
 });

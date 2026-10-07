@@ -9,6 +9,7 @@ import {
   type NoteEditorRef,
   normalizePortableAttachmentUrls,
 } from "@hypr/editor/note";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { AppLinkView } from "~/editor-bridge/app-link-view";
 import { useMentionConfig } from "~/editor-bridge/mention-config";
@@ -17,7 +18,15 @@ import { sessionMentionDropConfig } from "~/editor-bridge/session-mention-drop";
 import { SessionNodeView } from "~/editor-bridge/session-view";
 import { hasStoredNoteContent } from "~/session/components/shared";
 import { useAttachmentResolver } from "~/session/hooks/useAttachmentResolver";
-import { useUpdateEnhancedNoteContent } from "~/session/queries";
+import {
+  captureNoteDraft,
+  persistNoteDraft,
+  usePendingNoteDraft,
+} from "~/session/pending-note-drafts";
+import {
+  useUpdateEnhancedNoteContent,
+  useRefreshEnhancedNote,
+} from "~/session/queries";
 import {
   ensureFirstLineTitle,
   extractFirstLineTitle,
@@ -33,6 +42,7 @@ const EnhancedEditorInner = forwardRef<
     sessionTitle: string;
     enhancedNoteId: string;
     content: string;
+    generationId?: string;
     contentOverride?: JSONContent;
     fileHandlerConfig?: FileHandlerConfig;
     onNavigateToTitle?: (pixelWidth?: number) => void;
@@ -47,6 +57,7 @@ const EnhancedEditorInner = forwardRef<
       sessionTitle,
       enhancedNoteId,
       content,
+      generationId,
       contentOverride,
       fileHandlerConfig,
       onNavigateToTitle,
@@ -56,6 +67,11 @@ const EnhancedEditorInner = forwardRef<
     },
     ref,
   ) => {
+    const refreshContent = useRefreshEnhancedNote(
+      enhancedNoteId,
+      sessionId,
+      generationId,
+    );
     const resolveAttachment = useAttachmentResolver(sessionId);
     const updateContent = useUpdateEnhancedNoteContent(
       enhancedNoteId,
@@ -71,6 +87,17 @@ const EnhancedEditorInner = forwardRef<
       [content, contentOverride, sessionTitle],
     );
     const persistChanges = contentOverride === undefined;
+    const draftKey = `session:${sessionId}:enhanced:${enhancedNoteId}`;
+    const { initialDraft, confirmedDraft } = usePendingNoteDraft(
+      persistChanges ? draftKey : undefined,
+      initialContent,
+      generationId,
+    );
+    const handleDraftChange = useCallback(
+      (getContent: () => JSONContent) =>
+        captureNoteDraft(draftKey, getContent, generationId),
+      [draftKey, generationId],
+    );
     const editorKey = persistChanges
       ? `enhanced-note-${enhancedNoteId}`
       : `enhanced-note-${enhancedNoteId}-preview`;
@@ -83,13 +110,30 @@ const EnhancedEditorInner = forwardRef<
           title !== null || hasStoredNoteContent(content)
             ? (title ?? "")
             : undefined;
-        void updateContent(JSON.stringify(portableInput), nextTitle).catch(
-          (error) => {
-            console.error("[enhanced-editor] failed to persist summary", error);
+        return persistNoteDraft(
+          draftKey,
+          portableInput,
+          async () => {
+            await updateContent(JSON.stringify(portableInput), nextTitle);
+            return refreshContent();
           },
-        );
+          generationId,
+        ).catch((error) => {
+          console.error("[enhanced-editor] failed to persist summary", error);
+          sonnerToast.error(`Summary is NOT being saved: ${error}`, {
+            id: `summary-save-failed:${enhancedNoteId}`,
+          });
+          throw error;
+        });
       },
-      [content, updateContent],
+      [
+        content,
+        draftKey,
+        enhancedNoteId,
+        generationId,
+        refreshContent,
+        updateContent,
+      ],
     );
 
     const mentionConfig = useMentionConfig();
@@ -101,8 +145,11 @@ const EnhancedEditorInner = forwardRef<
           className="session-note-editor enhanced-summary-editor"
           key={editorKey}
           initialContent={initialContent}
+          initialDraft={initialDraft}
+          confirmedDraft={confirmedDraft}
           resolveAttachment={resolveAttachment}
           handleChange={persistChanges ? handleChange : undefined}
+          onDraftChange={persistChanges ? handleDraftChange : undefined}
           placeholderComponent={documentTitlePlaceholder}
           mentionConfig={mentionConfig}
           sessionMentionDropConfig={sessionMentionDropConfig}
@@ -111,7 +158,13 @@ const EnhancedEditorInner = forwardRef<
           fileHandlerConfig={fileHandlerConfig}
           taskSource={
             persistChanges
-              ? { type: "enhanced_note", id: enhancedNoteId }
+              ? {
+                  type:
+                    enhancedNoteId === sessionId
+                      ? "session_summary"
+                      : "enhanced_note",
+                  id: enhancedNoteId,
+                }
               : undefined
           }
           extraNodeViews={extraNodeViews}

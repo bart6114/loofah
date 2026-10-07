@@ -125,7 +125,13 @@ export type DeviceInfo = {
 };
 export type EditableTemplate = "enhanceSystem" | "enhanceUser" | "titleUser";
 export type EnhanceSystem = { language: string | null; promptOverride: string };
+export type EnhanceTagContext = {
+  available: string[];
+  attached: string[];
+  dismissed: string[];
+};
 export type EnhanceUser = {
+  tagContext?: EnhanceTagContext;
   session: Session;
   participants: Participant[];
   transcripts: Transcript[];
@@ -173,7 +179,11 @@ export type ModelInfo = {
   sttModel?: string | null;
 };
 export type Participant = { name: string; jobTitle: string | null };
-export type Segment = { text: string; speaker: string };
+export type Segment = {
+  isCurrentUser?: boolean | null;
+  text: string;
+  speaker: string;
+};
 export type Session = {
   title: string | null;
   startedAt: string | null;

@@ -18,6 +18,24 @@ pub(crate) fn render_meeting_transcript(
     vault: &Path,
     transcripts: &[TranscriptWithData],
 ) -> String {
+    meeting_transcript_segments(vault, transcripts)
+        .iter()
+        .map(|segment| {
+            format!(
+                "[{}] {}: {}",
+                timestamp(segment.start_ms),
+                segment.speaker_label,
+                segment.text
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub(crate) fn meeting_transcript_segments(
+    vault: &Path,
+    transcripts: &[TranscriptWithData],
+) -> Vec<hypr_transcript::RenderedTranscriptSegment> {
     let humans = hypr_vault_read::read_people(vault)
         .into_iter()
         .filter(|person| !person.name.trim().is_empty())
@@ -32,25 +50,12 @@ pub(crate) fn render_meeting_transcript(
         .find(|user_id| !user_id.is_empty())
         .map(str::to_string);
 
-    let segments = render_transcript_segments(RenderTranscriptRequest {
+    render_transcript_segments(RenderTranscriptRequest {
         transcripts: transcripts.iter().map(render_input).collect(),
         participant_human_ids: Vec::new(),
         self_human_id,
         humans,
-    });
-
-    segments
-        .iter()
-        .map(|segment| {
-            format!(
-                "[{}] {}: {}",
-                timestamp(segment.start_ms),
-                segment.speaker_label,
-                segment.text
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    })
 }
 
 /// Mirrors the desktop's two-pass hint normalization (`render-transcript.ts`):
@@ -94,6 +99,24 @@ fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
         if let Some(channel) = value.get("channel").and_then(Value::as_f64) {
             words[index].channel = channel.round() as i32;
         }
+    }
+
+    let mut imported_speakers = HashMap::new();
+    for (word, stored) in words.iter_mut().zip(&transcript.words) {
+        let source = stored
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("capture_source"))
+            .and_then(Value::as_str);
+        if word.channel == 2 || !matches!(source, Some("import" | "unknown")) {
+            continue;
+        }
+        let next = imported_speakers.len() as i32;
+        let index = *imported_speakers
+            .entry((word.channel, word.speaker_index))
+            .or_insert(next);
+        word.channel = 2;
+        word.speaker_index = Some(index);
     }
 
     let mut assignments = Vec::new();
@@ -372,6 +395,37 @@ mod tests {
         // One distinct index is not diarization: the mic channel keeps today's
         // self attribution.
         assert_eq!(rendered, "[00:00:16] Bart: hello there.");
+    }
+
+    #[test]
+    fn imported_speakers_use_mixed_capture_without_renumbering_new_transcripts() {
+        for (channels, expected_indexes) in [([0.0, 1.0], [0, 1]), ([2.0, 2.0], [7, 9])] {
+            let mut words = vec![
+                word("w1", " first", 0.0, channels[0]),
+                word("w2", " second", 1000.0, channels[1]),
+            ];
+            for word in &mut words {
+                word.metadata = Some(serde_json::Map::from_iter([(
+                    "capture_source".into(),
+                    "import".into(),
+                )]));
+            }
+            let input = render_input(&transcript(
+                "t1",
+                "self",
+                words,
+                vec![provider_hint("w1", 7), provider_hint("w2", 9)],
+            ));
+            assert!(input.words.iter().all(|word| word.channel == 2));
+            assert_eq!(
+                input
+                    .words
+                    .iter()
+                    .map(|word| word.speaker_index.unwrap())
+                    .collect::<Vec<_>>(),
+                expected_indexes,
+            );
+        }
     }
 
     #[test]

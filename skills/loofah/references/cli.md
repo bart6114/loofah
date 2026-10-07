@@ -12,13 +12,14 @@ loof --json sessions note MEETING_ID --kind note
 loof --json sessions note MEETING_ID --kind summary
 ```
 
+Vault commands automatically initialize a missing or incompatible cache. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
+
 `doctor` exits with status 1 when its response contains `ready: false`. Inside a vault it also restores the root `AGENTS.md` agent guide when missing or stale (reported as `agents_md`).
 
-Search across titles, notes, summaries, and transcript words (query and/or `--speaker` required; transcript hits return a `start_ms` matching the transcript's timestamps):
+Search returns one relevance-ranked session result with `session_id`, score, and snippets, using desktop word, phrase, and trailing-prefix matching:
 
 ```bash
 loof --json sessions search "budget forecast" --limit 20
-loof --json sessions search --speaker "bob" --kind transcript
 ```
 
 Read the full speaker-labeled transcript (`[HH:MM:SS] Speaker: ...` lines):
@@ -48,7 +49,7 @@ loof --json tags list
 loof --json sessions path MEETING_ID
 ```
 
-JSON success responses contain `schema_version`, `command`, `data`, and optional `pagination`. Continue from `pagination.next_offset` only when more context is necessary.
+JSON schema version `2` success responses contain `schema_version`, `command`, `data`, and optional `pagination`. Continue from `pagination.next_offset` only when more context is necessary.
 
 Create a meeting note (prints the new meeting id; `--note` seeds the body from a file, or stdin with `-`). `--created-at`, `--started-at`, and `--ended-at` take RFC 3339 timestamps for backdating historical notes (`--created-at` sets the meeting's place on the timeline and in its folder name; invalid timestamps are rejected before anything is written), and `--tag` is repeatable and both tags the meeting and registers new tags in the vault. **Always pass `--author <your-agent-name>` (e.g. `--author claude-code`)** — it marks the meeting as not written by the vault owner, and the app surfaces that; leave it unset only when entering a note on the owner's dictation:
 
@@ -110,3 +111,37 @@ Global vault overrides:
 loof --vault-path /path/to/vault --json sessions list
 loof --base /path/to/vault --json sessions list
 ```
+
+## Delete and recover
+
+After the user authorizes removal, verify the exact session with `sessions get`, then run:
+
+```bash
+loof --json sessions delete SESSION_ID
+loof --vault-path /absolute/vault --json sessions delete SESSION_ID
+```
+
+No confirmation flag is required and the command never prompts, including with `--json`. Deletion validates the exact `_meta.json` identity; it never matches a title or scans the vault. JSON uses `command: "sessions.delete"` with `data.id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and UTC RFC 3339 `deleted_at` observed after the move. Keep these paths for recovery.
+
+The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
+
+There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
+
+A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
+
+### Selected session exports
+
+Use `sessions export ID --format txt --include transcript` for transcript-only stdout, or `--format pdf --include note,summary,transcript --output session.pdf` for a shareable PDF. Formats are `markdown` (alias `md`), `json`, `pdf`, `txt`, and `org`. PDF requires a file destination; it cannot use stdout or `--output -`.
+
+PDF/TXT/Org default to note and summary. `--include` selects exactly note, summary, and/or transcript; missing sections are skipped. `summary` includes the session’s single summary. Sections always appear note, summary, transcript. Dates use local time and CLI labels are English. PDFs embed referenced managed images; text exports do not copy attachments.
+
+Markdown/JSON without `--include` preserve the legacy complete-session export and `--json` envelope-in-file behavior. With `--include` or PDF/TXT/Org, `--json --output FILE` writes the artifact to FILE and reports `{format, output, bytes}` in stdout's `data`; without a file, text is reported as `{format, content}`. JSON artifacts with `--include` filter the content fields while retaining metadata and action items.
+
+Export is headless and read-only with respect to the vault; output must be outside it. Writes are atomic. Existing destinations require `--force` (exit 4 otherwise); only pass it after approval for that exact file. Missing session ids return exit 2, and rendering/I/O failures return exit 1. With `--json`, errors go to stderr. Text `--output -` creates a literal file named `-`; omit `--output` for stdout.
+
+## Rename a session
+
+Run `loof --json sessions rename SESSION_ID "New title"` to change only the title.
+Titles are stored verbatim, including empty strings. The id, directory, other metadata,
+and content stay unchanged. JSON returns `command: "sessions.rename"` with `data` fields
+`id` and `title`. Missing sessions return `not_found` (exit 2). The `meetings` alias works too.

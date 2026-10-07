@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EnhancedEditor as SessionEnhancedEditor } from "./editor";
@@ -8,6 +8,7 @@ const hoisted = vi.hoisted(() => ({
   sessionTitle: "Weekly sync",
   persistContent: vi.fn(() => Promise.resolve()),
   noteEditorProps: [] as Record<string, unknown>[],
+  sonnerToastError: vi.fn(),
 }));
 
 vi.mock("@hypr/editor/markdown", () => ({
@@ -15,12 +16,18 @@ vi.mock("@hypr/editor/markdown", () => ({
 }));
 
 vi.mock("@hypr/editor/note", () => ({
+  areEquivalentEditorContents: (left: unknown, right: unknown) =>
+    JSON.stringify(left) === JSON.stringify(right),
   normalizePortableAttachmentUrls: (value: unknown) => value,
   NoteEditor: (props: Record<string, unknown>) => {
     hoisted.noteEditorProps.push(props);
 
     return <div>Note editor</div>;
   },
+}));
+
+vi.mock("@hypr/ui/components/ui/toast", () => ({
+  sonnerToast: { error: hoisted.sonnerToastError },
 }));
 
 vi.mock("~/session/hooks/useAttachmentResolver", () => ({
@@ -48,6 +55,7 @@ vi.mock("~/editor-bridge/session-view", () => ({
 }));
 
 vi.mock("~/session/queries", () => ({
+  useRefreshEnhancedNote: () => () => Promise.resolve(),
   useEnhancedNote: () => ({ content: hoisted.content }),
   useUpdateEnhancedNoteContent: () => hoisted.persistContent,
 }));
@@ -63,6 +71,13 @@ function EnhancedEditor(
   );
 }
 
+function readInitialDraft() {
+  return (
+    hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]
+      ?.initialDraft as (() => unknown) | undefined
+  )?.();
+}
+
 describe("EnhancedEditor", () => {
   afterEach(() => {
     cleanup();
@@ -70,6 +85,7 @@ describe("EnhancedEditor", () => {
 
   beforeEach(() => {
     hoisted.noteEditorProps = [];
+    hoisted.sonnerToastError.mockClear();
     hoisted.content = JSON.stringify({ type: "doc", content: [] });
     hoisted.sessionTitle = "Weekly sync";
     hoisted.persistContent = vi.fn(() => Promise.resolve());
@@ -140,7 +156,7 @@ describe("EnhancedEditor", () => {
     expect(hoisted.noteEditorProps).toHaveLength(1);
   });
 
-  it("persists content and updates the session title from the first line", () => {
+  it("persists content and updates the session title from the first line", async () => {
     render(
       <EnhancedEditor
         sessionId="session-1"
@@ -161,7 +177,9 @@ describe("EnhancedEditor", () => {
       ],
     };
 
-    (props?.handleChange as (input: unknown) => void)(input);
+    await act(async () => {
+      await (props?.handleChange as (input: unknown) => Promise<void>)(input);
+    });
 
     expect(hoisted.persistContent).toHaveBeenCalledWith(
       JSON.stringify(input),
@@ -205,5 +223,42 @@ describe("EnhancedEditor", () => {
         },
       ],
     });
+  });
+
+  it("retains a failed summary draft when reopened without affecting preview content", async () => {
+    hoisted.persistContent.mockRejectedValue(new Error("disk full"));
+    const props = {
+      sessionId: "failed-session",
+      enhancedNoteId: "failed-summary",
+      content: hoisted.content,
+    };
+    const input = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Unsaved summary" }],
+        },
+      ],
+    };
+    const mounted = render(<EnhancedEditor {...props} />);
+    const handleChange = hoisted.noteEditorProps[
+      hoisted.noteEditorProps.length - 1
+    ]?.handleChange as (input: unknown) => Promise<void>;
+    await act(async () => {
+      await expect(handleChange(input)).rejects.toThrow("disk full");
+    });
+    expect(hoisted.sonnerToastError).toHaveBeenCalledWith(
+      expect.stringContaining("Summary is NOT being saved"),
+      { id: "summary-save-failed:failed-summary" },
+    );
+    mounted.unmount();
+    const reopened = render(<EnhancedEditor {...props} />);
+    expect(readInitialDraft()).toEqual(input);
+    reopened.rerender(<EnhancedEditor {...props} contentOverride={input} />);
+    expect(readInitialDraft()).toBeUndefined();
+    expect(
+      hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]?.handleChange,
+    ).toBeUndefined();
   });
 });

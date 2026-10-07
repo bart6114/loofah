@@ -82,7 +82,7 @@ export default defineConfig({
         },
         {
           label: "AI and privacy",
-          items: ["ai-setup", "offline", "data-and-privacy"],
+          items: ["ai-setup", "offline", "data-and-privacy", "privacy-policy"],
         },
         {
           label: "Compare meeting tools",

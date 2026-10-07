@@ -49,14 +49,24 @@ impl crate::Observer for SleepDetector {
         let running = self.running.clone();
 
         self.thread_handle = Some(std::thread::spawn(move || {
-            let will_sleep_callback = f.clone();
+            let will_sleep_callback = Arc::downgrade(&f);
+            let will_sleep_running = running.clone();
             let will_sleep_block = RcBlock::new(move |_notification: *const NSNotification| {
-                will_sleep_callback(DetectEvent::SleepStateChanged { value: true });
+                if will_sleep_running.load(Ordering::SeqCst) {
+                    if let Some(callback) = will_sleep_callback.upgrade() {
+                        callback(DetectEvent::SleepStateChanged { value: true });
+                    }
+                }
             });
 
-            let did_wake_callback = f.clone();
+            let did_wake_callback = Arc::downgrade(&f);
+            let did_wake_running = running.clone();
             let did_wake_block = RcBlock::new(move |_notification: *const NSNotification| {
-                did_wake_callback(DetectEvent::SleepStateChanged { value: false });
+                if did_wake_running.load(Ordering::SeqCst) {
+                    if let Some(callback) = did_wake_callback.upgrade() {
+                        callback(DetectEvent::SleepStateChanged { value: false });
+                    }
+                }
             });
 
             let _observer = unsafe {
@@ -90,7 +100,7 @@ impl crate::Observer for SleepDetector {
             };
 
             while running.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::park_timeout(Duration::from_millis(500));
             }
         }));
     }
@@ -103,7 +113,14 @@ impl crate::Observer for SleepDetector {
         self.running.store(false, Ordering::SeqCst);
 
         if let Some(handle) = self.thread_handle.take() {
+            handle.thread().unpark();
             let _ = handle.join();
         }
+    }
+}
+
+impl Drop for SleepDetector {
+    fn drop(&mut self) {
+        crate::Observer::stop(self);
     }
 }

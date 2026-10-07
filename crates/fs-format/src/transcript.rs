@@ -63,7 +63,54 @@ pub struct TranscriptJsonStats {
 pub struct TranscriptStat {
     pub id: String,
     #[serde(default, deserialize_with = "null_or_default")]
+    pub started_at: f64,
+    #[serde(default)]
+    pub ended_at: Option<f64>,
+    #[serde(default, rename = "speaker_hints", deserialize_with = "speaker_labels")]
+    pub speaker_labels: Vec<String>,
+    #[serde(default, deserialize_with = "null_or_default")]
     pub words: SeqCount,
+}
+
+fn speaker_labels<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    struct Visitor;
+    impl<'de> serde::de::Visitor<'de> for Visitor {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("speaker hints or null")
+        }
+
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(
+            self,
+            mut seq: A,
+        ) -> Result<Self::Value, A::Error> {
+            #[derive(Deserialize)]
+            struct Hint {
+                #[serde(rename = "type")]
+                kind: String,
+                #[serde(default)]
+                value: Value,
+            }
+            let mut labels = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            while let Some(hint) = seq.next_element::<Hint>()? {
+                if hint.kind == "speaker_label" {
+                    if let Value::String(label) = hint.value {
+                        if !label.is_empty() && seen.insert(label.clone()) {
+                            labels.push(label);
+                        }
+                    }
+                }
+            }
+            Ok(labels)
+        }
+
+        fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+            Ok(Vec::new())
+        }
+    }
+    deserializer.deserialize_any(Visitor)
 }
 
 /// Deserializes a JSON array (or `null`, per the file format's `null_or_default`

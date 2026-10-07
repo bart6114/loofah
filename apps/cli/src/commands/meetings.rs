@@ -1,15 +1,20 @@
 use std::path::Path;
 
-use crate::cli::{DocumentKind, ExportFormat, MeetingCommand, TagCommand};
+use crate::cli::{DocumentKind, MeetingCommand, TagCommand};
 use crate::{Error, Result, output};
 use hypr_agent_access::{
     Document, GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, MeetingListItem,
-    SearchHit, SearchMeetingsInput, get_meeting, get_meeting_export, get_meeting_transcript,
-    list_meetings, search_meetings,
+    SearchHit, SearchMeetingsInput, get_meeting, get_meeting_transcript, list_meetings,
+    search_meetings,
 };
 use hypr_vault_write::SessionStore;
 
-pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()> {
+pub async fn run(
+    vault: &Path,
+    cache: &hypr_search_cache::Cache,
+    command: MeetingCommand,
+    json: bool,
+) -> Result<()> {
     match command {
         MeetingCommand::List {
             query,
@@ -19,7 +24,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             untagged,
         } => {
             let page = list_meetings(
-                vault,
+                cache,
                 ListMeetingsInput {
                     query,
                     limit: Some(limit),
@@ -39,17 +44,13 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
         }
         MeetingCommand::Search {
             query,
-            speaker,
-            kind,
             limit,
             offset,
         } => {
             let page = search_meetings(
-                vault,
+                cache,
                 SearchMeetingsInput {
                     query,
-                    speaker,
-                    kinds: (!kind.is_empty()).then(|| kind.into_iter().map(Into::into).collect()),
                     limit: Some(limit),
                     offset: Some(offset),
                 },
@@ -73,6 +74,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             output::emit(&rendered);
             Ok(())
         }
+        MeetingCommand::Rename { id, title } => rename_session(vault, &id, title, json).await,
         MeetingCommand::New {
             title,
             note,
@@ -217,6 +219,7 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             TagCommand::Add { id, tags } => edit_tags(vault, &id, tags, true, json).await,
             TagCommand::Remove { id, tags } => edit_tags(vault, &id, tags, false, json).await,
         },
+        MeetingCommand::Delete { id } => delete_session(vault, &id, json).await,
         MeetingCommand::Path { id } => {
             let path = session_path(vault, &id).await?;
             let rendered = if json {
@@ -253,29 +256,41 @@ pub async fn run(vault: &Path, command: MeetingCommand, json: bool) -> Result<()
             output::emit(&rendered);
             Ok(())
         }
-        MeetingCommand::Export {
-            id,
-            format,
-            output: path,
-            force,
-        } => {
-            let meeting = get_meeting_export(vault, id).await?;
-            let content = match (format, json) {
-                (ExportFormat::Markdown, false) => meeting.to_markdown(),
-                (ExportFormat::Json, false) => output::raw_json(&meeting)?,
-                (ExportFormat::Markdown, true) => output::json(
-                    "meetings.export",
-                    &serde_json::json!({
-                        "format": "markdown",
-                        "content": meeting.to_markdown(),
-                    }),
-                    None,
-                )?,
-                (ExportFormat::Json, true) => output::json("meetings.export", &meeting, None)?,
-            };
-            output::write_or_emit(&content, path.as_deref(), force)
-        }
+        command @ MeetingCommand::Export { .. } => super::export::run(vault, command, json).await,
     }
+}
+
+async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Result<()> {
+    let store = SessionStore::new(vault.to_path_buf());
+    store
+        .read_meta(id)
+        .await
+        .map_err(|error| Error::operation("rename session", error.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("session '{id}'")))?;
+
+    output::track_write(id)?;
+    store
+        .update_meta(
+            id,
+            hypr_vault_write::SessionMetaPatch {
+                title: Some(title.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|error| Error::operation("rename session", error.to_string()))?;
+
+    let rendered = if json {
+        output::json(
+            "sessions.rename",
+            &serde_json::json!({ "id": id, "title": title }),
+            None,
+        )?
+    } else {
+        format!("Renamed session {id}.")
+    };
+    output::emit(&rendered);
+    Ok(())
 }
 
 async fn edit_note(
@@ -321,6 +336,7 @@ async fn edit_note(
         body
     };
 
+    output::track_write(id)?;
     store
         .write_note(id, &markdown)
         .await
@@ -400,6 +416,7 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
     };
 
     if !changed.is_empty() {
+        output::track_write(id)?;
         store
             .update_meta(
                 id,
@@ -451,8 +468,44 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
     Ok(())
 }
 
+async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
+    let relative = hypr_vault_read::paths::validated_session_dir(id)
+        .map_err(|error| Error::operation("delete session", error.to_string()))?;
+    let vault = std::fs::canonicalize(vault)
+        .map_err(|error| Error::operation("resolve vault path", error.to_string()))?;
+    let path = vault.join(relative);
+    output::track_write(id)?;
+    let trash_path = SessionStore::new(vault)
+        .delete_session(id)
+        .await
+        .map_err(|error| Error::operation("delete session", error.to_string()))?
+        .ok_or_else(|| Error::NotFound(format!("session '{id}' (missing or already deleted)")))?;
+    let deleted_at = chrono::Utc::now().to_rfc3339();
+    let rendered = if json {
+        output::json(
+            "sessions.delete",
+            &serde_json::json!({
+                "id": id,
+                "status": "deleted",
+                "mode": "soft",
+                "path": path,
+                "trash_path": trash_path,
+                "deleted_at": deleted_at,
+            }),
+            None,
+        )?
+    } else {
+        format!(
+            "Deleted session {id}; recover from {}",
+            trash_path.display()
+        )
+    };
+    output::emit(&rendered);
+    Ok(())
+}
+
 /// Resolve only `sessions/<id>`, verifying its metadata without discovery.
-async fn session_path(vault: &Path, id: &str) -> Result<std::path::PathBuf> {
+pub(super) async fn session_path(vault: &Path, id: &str) -> Result<std::path::PathBuf> {
     let scan_vault = vault.to_path_buf();
     let scan_id = id.to_string();
     let location =
@@ -501,6 +554,7 @@ async fn attach_file(
         .map_err(|error| Error::operation("attach file", error.to_string()))?
         .ok_or_else(|| Error::NotFound(format!("meeting '{id}'")))?;
 
+    output::track_write(id)?;
     store
         .save_attachment(id, &filename, bytes)
         .await
@@ -511,7 +565,7 @@ async fn attach_file(
 /// (`packages/editor/src/note/portable-attachments.ts`): JavaScript
 /// `encodeURIComponent` over the attachment id, with parens additionally
 /// encoded so the src never breaks markdown link syntax.
-fn to_portable_attachment_src(attachment_id: &str) -> String {
+pub(super) fn to_portable_attachment_src(attachment_id: &str) -> String {
     use std::fmt::Write;
 
     let mut src = String::from("attachments/");
@@ -582,28 +636,24 @@ fn render_list(meetings: &[MeetingListItem]) -> String {
 
 fn render_search(hits: &[SearchHit]) -> String {
     if hits.is_empty() {
-        return "No matches found.".to_string();
+        return "No sessions found.".into();
     }
-
-    let mut lines = vec![format!(
-        "{:<10}  {:<10}  {:<26}  SNIPPET",
-        "DATE", "KIND", "ID"
-    )];
-    for hit in hits {
-        let speaker = hit
-            .speaker
-            .as_deref()
-            .map(|speaker| format!("{speaker}: "))
-            .unwrap_or_default();
-        lines.push(format!(
-            "{:<10}  {:<10}  {:<26}  {speaker}{}",
-            truncate(&hit.occurred_at, 10),
-            hit.kind,
-            truncate(&hit.meeting_id, 26),
-            truncate(&hit.snippet, 100),
-        ));
-    }
-    lines.join("\n")
+    hits.iter()
+        .map(|hit| {
+            format!(
+                "{}  {}  ({:.3})\n{}",
+                hit.session_id,
+                hit.title,
+                hit.score,
+                hit.content_snippet
+                    .as_deref()
+                    .filter(|snippet| !snippet.is_empty())
+                    .or(hit.title_snippet.as_deref())
+                    .unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn render_documents(documents: &[Document]) -> String {

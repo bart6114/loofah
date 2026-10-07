@@ -10,6 +10,7 @@ pub mod paths;
 pub mod people;
 pub mod reserved;
 pub mod strip;
+pub mod summary;
 pub mod tags;
 pub mod tasks;
 pub mod transcript;
@@ -20,7 +21,7 @@ pub use layout::{
     classify_session_dir, discover_sessions, discover_sessions_with_progress, find_session,
     has_session_boundary,
 };
-pub use meta::{SessionMeta, TagSuggestionItem, TagSuggestionState, TagSuggestionStatus};
+pub use meta::{SessionMeta, TagSuggestionState};
 pub use people::{Person, read_people};
 pub use reserved::{
     SESSION_OWNED_DIRS, SESSION_OWNED_FILES, SESSION_PEAKS_FILE, SESSION_TRANSIENT_FILES,
@@ -31,7 +32,8 @@ pub use tags::normalize_tag_name;
 pub use tasks::{TaskItem, TasksFile};
 
 pub use hypr_fs_format::{
-    TranscriptJson, TranscriptSpeakerHint, TranscriptWithData, TranscriptWord,
+    AudioLayout, AudioSource, SessionAudio, TranscriptJson, TranscriptSpeakerHint,
+    TranscriptWithData, TranscriptWord,
 };
 
 #[derive(Debug, thiserror::Error)]

@@ -7,10 +7,8 @@ use crate::{Error, Result, layout, paths};
 
 pub const ENHANCED_KINDS: [&str; 2] = ["summary", "template_output"];
 
-/// One AI-generated document (`summary` or `template_output`), file-canonical at
-/// `sessions/<session_id>/enhanced/<id>.md`. `id` is the same UUID the `session_documents`
-/// index row uses, and the frontmatter carries every metadata column that row mirrors --
-/// there is deliberately no sidecar file.
+/// Shared document response for session summaries and UUID-backed template outputs.
+/// A summary uses its session ID; only legacy/template files carry frontmatter.
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
 pub struct EnhancedDoc {
     pub id: String,
@@ -104,34 +102,84 @@ pub fn list_enhanced_docs(vault: &Path, session_id: &str) -> Result<Vec<Enhanced
 
 /// `list_enhanced_docs` for an already-resolved session directory (vault-relative);
 /// `session_id` is stamped into each returned doc.
-pub fn list_enhanced_docs_in(
+pub fn list_legacy_enhanced_docs_in(
     vault: &Path,
     session_dir: &Path,
     session_id: &str,
 ) -> Result<Vec<EnhancedDoc>> {
+    Ok(scan_legacy_docs_in(vault, session_dir, session_id)?
+        .into_iter()
+        .filter_map(|(_, doc)| doc.ok())
+        .collect())
+}
+
+pub fn scan_legacy_docs_in(
+    vault: &Path,
+    session_dir: &Path,
+    session_id: &str,
+) -> Result<Vec<(String, Result<EnhancedDoc>)>> {
     let dir = vault.join(paths::enhanced_dir_in(session_dir));
+    match std::fs::symlink_metadata(&dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(Error::Io(e.to_string())),
+        Ok(meta) if !meta.is_dir() || meta.file_type().is_symlink() => {
+            return Err(Error::Io("enhanced is not a regular directory".into()));
+        }
+        Ok(_) => {}
+    }
     let entries = match std::fs::read_dir(&dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(Error::Io(format!("failed to read enhanced dir: {e}"))),
     };
-
     let mut docs = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|e| Error::Io(format!("failed to read dir entry: {e}")))?;
+        let entry = entry.map_err(|e| Error::Io(e.to_string()))?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
-        let Ok(raw) = std::fs::read_to_string(&path) else {
+        if stem.starts_with('.')
+            || stem.contains(".conflict-")
+            || path.extension().and_then(|s| s.to_str()) != Some("md")
+        {
             continue;
-        };
-        if let Ok(doc) = parse_enhanced_file(stem, session_id, &raw) {
-            docs.push(doc);
         }
+        let parsed = entry
+            .file_type()
+            .map_err(|e| Error::Io(e.to_string()))
+            .and_then(|kind| {
+                if !kind.is_file() {
+                    return Err(Error::Io(format!(
+                        "not a regular document: {}",
+                        path.display()
+                    )));
+                }
+                let raw = std::fs::read_to_string(&path).map_err(|e| Error::Io(e.to_string()))?;
+                parse_enhanced_file(stem, session_id, &raw)
+            });
+        docs.push((stem.to_owned(), parsed));
+    }
+    Ok(docs)
+}
+
+pub fn list_enhanced_docs_in(
+    vault: &Path,
+    session_dir: &Path,
+    session_id: &str,
+) -> Result<Vec<EnhancedDoc>> {
+    let mut docs = list_legacy_enhanced_docs_in(vault, session_dir, session_id)?;
+    let mut summaries: Vec<_> = docs
+        .iter()
+        .filter(|doc| doc.kind == "summary")
+        .cloned()
+        .collect();
+    summaries.sort_by(|a, b| (a.sort_order, &a.id).cmp(&(b.sort_order, &b.id)));
+    docs.retain(|doc| doc.kind != "summary");
+    if let Some(summary) = summaries.into_iter().next() {
+        docs.push(crate::summary::as_document(session_id, summary.markdown));
+    } else if let Some(markdown) = crate::summary::read_canonical_in(vault, session_dir)? {
+        docs.push(crate::summary::as_document(session_id, markdown));
     }
     Ok(docs)
 }

@@ -6,12 +6,14 @@ use crate::{Error, ExportInput};
 const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp"];
 
 pub fn export_pdf(path: impl AsRef<Path>, input: impl Into<ExportInput>) -> Result<(), Error> {
-    let input = input.into();
-    let (images, files) = load_attachment_images(&input);
-    let typst_content = crate::typst::build_typst_content(&input, &images);
-    let pdf_bytes = crate::typst::compile_to_pdf(&typst_content, files)?;
-    std::fs::write(path.as_ref(), pdf_bytes)?;
+    std::fs::write(path.as_ref(), render_pdf(&input.into())?)?;
     Ok(())
+}
+
+pub fn render_pdf(input: &ExportInput) -> Result<Vec<u8>, Error> {
+    let (images, files) = load_attachment_images(input);
+    let typst_content = crate::typst::build_typst_content(input, &images);
+    crate::typst::compile_to_pdf(&typst_content, files)
 }
 
 // Maps each readable image attachment to a virtual path served to the typst
@@ -80,6 +82,46 @@ mod tests {
 
         let pdf = crate::typst::compile_to_pdf(&content, files).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn pdf_loads_portable_images_and_skips_missing_or_non_image_attachments() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("photo é.PNG");
+        std::fs::write(&image, ONE_PX_PNG).unwrap();
+        let document = dir.path().join("document.pdf");
+        std::fs::write(&document, b"not an image").unwrap();
+        let src = "attachments/photo%20%C3%A9.PNG";
+        let input = ExportInput {
+            enhanced_md: String::new(),
+            note_md: Some(format!("![Photo]({src})")),
+            transcript: None,
+            metadata: None,
+            attachments: vec![
+                crate::ExportAttachment {
+                    src: src.into(),
+                    path: image.to_string_lossy().into_owned(),
+                },
+                crate::ExportAttachment {
+                    src: "attachments/document.pdf".into(),
+                    path: document.to_string_lossy().into_owned(),
+                },
+                crate::ExportAttachment {
+                    src: "attachments/missing.png".into(),
+                    path: dir
+                        .path()
+                        .join("missing.png")
+                        .to_string_lossy()
+                        .into_owned(),
+                },
+            ],
+        };
+        let (images, files) = super::load_attachment_images(&input);
+        assert_eq!(images.len(), 1);
+        assert_eq!(files[&images[src]], ONE_PX_PNG);
+        let typst = crate::typst::build_typst_content(&input, &images);
+        assert!(typst.contains("#image(\"/att-0.png\", width: 80%)"));
+        assert!(super::render_pdf(&input).unwrap().starts_with(b"%PDF"));
     }
 
     #[test]

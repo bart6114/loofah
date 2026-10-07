@@ -446,6 +446,26 @@ mod tests {
     /// edit must still refresh its session, and a deleted doc's trash destination must
     /// stay ignored like all `.trash/` paths.
     #[test]
+    fn summary_changes_refresh_the_session_but_migration_files_do_not() {
+        assert_eq!(
+            classify_event("sessions/s1/summary.md", false),
+            WatchAction::Refresh("s1".into())
+        );
+        assert_eq!(
+            classify_event("sessions/s1/.summary-migration.json", false),
+            WatchAction::Ignore
+        );
+        assert_eq!(
+            classify_event("sessions/s1/.summary-publish.tmp", false),
+            WatchAction::Ignore
+        );
+        assert_eq!(
+            classify_event(".trash/2026-09-18/sessions/s1/summary.md", false),
+            WatchAction::Ignore
+        );
+    }
+
+    #[test]
     fn nested_enhanced_doc_paths_refresh_their_session() {
         assert!(matches!(
             classify_event("sessions/s1/enhanced/doc-1.md", false),

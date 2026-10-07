@@ -11,10 +11,7 @@ use owhisper_interface::batch_stream::BatchStreamEvent;
 use tracing::Instrument;
 
 use hypr_audio_chunking::AudioChunk;
-use hypr_audio_utils::Source;
-use hypr_transcribe_core::{
-    TARGET_SAMPLE_RATE, channel_duration_sec, chunk_channel_audio, split_resampled_channels,
-};
+use hypr_transcribe_core::{TARGET_SAMPLE_RATE, chunk_pcm_channel};
 
 use super::diarize::{SharedDiarization, stamp_batch_response};
 use super::{BatchParams, BatchRunMode, BatchRunOutput, format_user_friendly_error, session_span};
@@ -138,8 +135,14 @@ pub(super) async fn run_soniqo_batch(
             .map_err(|e| crate::BatchFailure::DirectRequestFailed {
                 provider: "soniqo".to_string(),
                 message: e.to_string(),
-            })?
-            .batch_model();
+            })?;
+
+        if !model.supports_languages(&listen_params.languages) {
+            return Err(crate::BatchFailure::DirectRequestFailed {
+                provider: "soniqo".to_string(),
+                message: format!("{} does not support the selected meeting languages. Choose another model or change your spoken languages.", model.display_name()),
+            }.into());
+        }
 
         let file_path = params.file_path.clone();
         let file_extension = Path::new(&file_path)
@@ -166,10 +169,17 @@ pub(super) async fn run_soniqo_batch(
         );
 
         let session_id = params.session_id.clone();
+        struct CancelOnDrop(Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for CancelOnDrop {
+            fn drop(&mut self) { self.0.store(true, std::sync::atomic::Ordering::Relaxed); }
+        }
+        let cancel = CancelOnDrop(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let cancelled = cancel.0.clone();
         let transcribed = tokio::task::spawn_blocking(move || {
             let progress = SoniqoProgressReporter {
                 runtime,
                 session_id,
+                cancelled,
             };
             transcribe_soniqo_file(model, &file_path, language_hint.as_deref(), Some(&progress))
         })
@@ -228,24 +238,12 @@ fn transcribe_soniqo_file(
     language: Option<&str>,
     progress: Option<&SoniqoProgressReporter>,
 ) -> std::result::Result<Vec<hypr_transcribe_soniqo::FileTranscript>, String> {
-    let source = hypr_audio_utils::source_from_path(file_path).map_err(|e| e.to_string())?;
-    let channel_count = u16::from(source.channels()).max(1) as usize;
-    let sample_rate = u32::from(source.sample_rate());
-    let duration_ms = source
-        .total_duration()
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64);
-
-    tracing::info!(
-        fmtr.stt.provider.name = "soniqo",
-        fmtr.stt.model = %model,
-        fmtr.stt.language = %language.unwrap_or("auto"),
-        audio.channel_count = channel_count,
-        audio.sample_rate_hz = sample_rate,
-        audio.duration_ms = duration_ms.unwrap_or_default(),
-        audio.duration_known = duration_ms.is_some(),
-        "soniqo_audio_file_loaded"
-    );
-
+    let pcm_file = hypr_audio_utils::PcmFile::prepare(file_path, || {
+        progress.is_some_and(|p| p.is_cancelled())
+    })
+    .map_err(|e| e.to_string())?;
+    let pcm = &pcm_file.descriptor;
+    let channel_count = pcm.channels;
     if channel_count <= 1 && !uses_resilient_soniqo_chunking(model) {
         if let Some(progress) = progress {
             progress.emit(SONIQO_PROGRESS_PLANNED);
@@ -265,42 +263,17 @@ fn transcribe_soniqo_file(
             .map_err(|e| e.to_string());
     }
 
-    let resample_started_at = Instant::now();
-    let samples =
-        hypr_audio_utils::resample_audio(source, TARGET_SAMPLE_RATE).map_err(|e| e.to_string())?;
-    tracing::info!(
-        fmtr.stt.provider.name = "soniqo",
-        fmtr.stt.model = %model,
-        elapsed_ms = resample_started_at.elapsed().as_millis() as u64,
-        audio.source_sample_rate_hz = sample_rate,
-        audio.target_sample_rate_hz = TARGET_SAMPLE_RATE,
-        audio.resampled_sample_count = samples.len(),
-        "soniqo_audio_resampled"
-    );
-
-    let channel_samples =
-        collapse_identical_channels(split_resampled_channels(&samples, channel_count));
-    tracing::info!(
-        fmtr.stt.provider.name = "soniqo",
-        fmtr.stt.model = %model,
-        audio.source_channel_count = channel_count,
-        audio.transcribed_channel_count = channel_samples.len(),
-        "soniqo_channels_prepared"
-    );
-
-    let transcribed_channel_count = channel_samples.len();
-    let plans = channel_samples
-        .into_iter()
-        .enumerate()
-        .map(|(channel_index, samples)| {
+    let plans = (0..channel_count)
+        .map(|channel_index| {
             soniqo_channel_plan(
                 model,
                 channel_index,
-                &samples,
-                transcribed_channel_count == 2 && channel_index == 0,
+                pcm,
+                channel_count == 2 && channel_index == 0,
+                || progress.is_some_and(|p| p.is_cancelled()),
             )
         })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
     let total_chunks = plans.iter().map(|plan| plan.chunks.len()).sum::<usize>();
     let mut completed_chunks = 0usize;
 
@@ -309,21 +282,32 @@ fn transcribe_soniqo_file(
     }
 
     collect_soniqo_channel_transcripts(plans.into_iter().map(|plan| {
-        transcribe_soniqo_channel_chunks(model, plan, language, || {
-            completed_chunks += 1;
-            if let Some(progress) = progress {
-                progress.emit(soniqo_batch_progress(completed_chunks, total_chunks));
-            }
-        })
+        transcribe_soniqo_channel_chunks(
+            model,
+            plan,
+            pcm,
+            language,
+            || progress.is_some_and(|p| p.is_cancelled()),
+            || {
+                completed_chunks += 1;
+                if let Some(progress) = progress {
+                    progress.emit(soniqo_batch_progress(completed_chunks, total_chunks));
+                }
+            },
+        )
     }))
 }
 
 struct SoniqoProgressReporter {
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
     runtime: Arc<dyn BatchRuntime>,
     session_id: String,
 }
 
 impl SoniqoProgressReporter {
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::Relaxed) || self.runtime.is_cancelled()
+    }
     fn emit(&self, percentage: f64) {
         self.runtime.emit(BatchEvent::BatchResponseStreamed {
             session_id: self.session_id.clone(),
@@ -433,17 +417,41 @@ where
 fn soniqo_channel_plan(
     model: hypr_transcribe_soniqo::SoniqoModel,
     channel_index: usize,
-    samples: &[f32],
+    pcm: &hypr_audio_utils::PcmDescriptor,
     is_direct_mic: bool,
+    cancelled: impl Fn() -> bool,
 ) -> std::result::Result<SoniqoChannelPlan, String> {
-    let duration_seconds = channel_duration_sec(samples);
-    let chunks = soniqo_channel_chunks(model, samples)?;
+    let duration_seconds = pcm.duration();
+    let raw = chunk_pcm_channel::<crate::Error>(pcm, channel_index, &cancelled);
+    let chunks = if model == hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch {
+        match raw {
+            Ok(chunks) => pack_speech_ranges(pcm.frames, chunks, SONIQO_PARAKEET_MAX_CHUNK_SAMPLES),
+            Err(error) if !cancelled() => {
+                tracing::warn!(%error, "soniqo_speech_chunking_failed_using_fixed_windows");
+                (0..pcm.frames)
+                    .step_by(SONIQO_PARAKEET_MAX_CHUNK_SAMPLES)
+                    .map(|start| ChannelChunk {
+                        samples: Vec::new(),
+                        sample_start: start,
+                        sample_end: (start + SONIQO_PARAKEET_MAX_CHUNK_SAMPLES).min(pcm.frames),
+                        speech_spans: Vec::new(),
+                    })
+                    .collect()
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    } else {
+        raw.map_err(|e| e.to_string())?
+            .into_iter()
+            .map(ChannelChunk::from)
+            .collect()
+    };
     tracing::info!(
         fmtr.stt.provider.name = "soniqo",
         fmtr.stt.model = %model,
         channel.index = channel_index,
         channel.duration_seconds = duration_seconds,
-        channel.sample_count = samples.len(),
+        channel.sample_count = pcm.frames,
         chunk.count = chunks.len(),
         "soniqo_channel_chunked"
     );
@@ -459,7 +467,9 @@ fn soniqo_channel_plan(
 fn transcribe_soniqo_channel_chunks(
     model: hypr_transcribe_soniqo::SoniqoModel,
     plan: SoniqoChannelPlan,
+    pcm: &hypr_audio_utils::PcmDescriptor,
     language: Option<&str>,
+    cancelled: impl Fn() -> bool,
     mut on_chunk_completed: impl FnMut(),
 ) -> std::result::Result<hypr_transcribe_soniqo::FileTranscript, String> {
     let mut texts = Vec::new();
@@ -469,7 +479,14 @@ fn transcribe_soniqo_channel_chunks(
     let channel_index = plan.channel_index;
     let is_direct_mic = plan.is_direct_mic;
 
-    for (chunk_index, chunk) in plan.chunks.into_iter().enumerate() {
+    let mut reader = pcm.reader().map_err(|e| e.to_string())?;
+    for (chunk_index, mut chunk) in plan.chunks.into_iter().enumerate() {
+        if cancelled() {
+            return Err("Transcription cancelled".into());
+        }
+        chunk.samples = reader
+            .channel(channel_index, chunk.sample_start..chunk.sample_end)
+            .map_err(|e| e.to_string())?;
         let chunk_duration_ms =
             (chunk.sample_end - chunk.sample_start) * 1000 / TARGET_SAMPLE_RATE as usize;
         let chunk_rms = chunk_speech_rms(&chunk);
@@ -613,41 +630,8 @@ fn transcribe_soniqo_samples(
     hypr_transcribe_soniqo::transcribe_file(model, file.path(), language).map_err(|e| e.to_string())
 }
 
-fn soniqo_channel_chunks(
-    model: hypr_transcribe_soniqo::SoniqoModel,
-    samples: &[f32],
-) -> std::result::Result<Vec<ChannelChunk>, String> {
-    if uses_resilient_soniqo_chunking(model) {
-        return Ok(
-            match chunk_channel_audio::<hypr_audio_chunking::Error>(samples) {
-                Ok(chunks) => {
-                    pack_speech_chunks(samples, chunks, SONIQO_PARAKEET_MAX_CHUNK_SAMPLES)
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        fmtr.stt.provider.name = "soniqo",
-                        fmtr.stt.model = %model,
-                        error = %error,
-                        "soniqo_speech_chunking_failed_using_fixed_windows"
-                    );
-                    split_audio_samples(samples, SONIQO_PARAKEET_MAX_CHUNK_SAMPLES)
-                        .into_iter()
-                        .map(ChannelChunk::from)
-                        .collect()
-                }
-            },
-        );
-    }
-
-    Ok(chunk_channel_audio::<hypr_audio_chunking::Error>(samples)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(ChannelChunk::from)
-        .collect())
-}
-
-fn pack_speech_chunks(
-    samples: &[f32],
+fn pack_speech_ranges(
+    frame_count: usize,
     chunks: Vec<AudioChunk>,
     max_samples: usize,
 ) -> Vec<ChannelChunk> {
@@ -656,8 +640,8 @@ fn pack_speech_chunks(
 
     for chunk in chunks {
         let span = (
-            chunk.sample_start.min(samples.len()),
-            chunk.sample_end.min(samples.len()),
+            chunk.sample_start.min(frame_count),
+            chunk.sample_end.min(frame_count),
         );
         match current.as_mut() {
             Some((start, end, spans)) if span.1.saturating_sub(*start) <= max_samples => {
@@ -666,7 +650,7 @@ fn pack_speech_chunks(
             }
             _ => {
                 if let Some((start, end, spans)) = current.take() {
-                    packs.push(pack_from_range(samples, start, end, spans));
+                    packs.push(pack_from_range(start, end, spans));
                 }
                 current = Some((span.0, span.1, vec![span]));
             }
@@ -674,20 +658,19 @@ fn pack_speech_chunks(
     }
 
     if let Some((start, end, spans)) = current.take() {
-        packs.push(pack_from_range(samples, start, end, spans));
+        packs.push(pack_from_range(start, end, spans));
     }
 
     packs
 }
 
 fn pack_from_range(
-    samples: &[f32],
     sample_start: usize,
     sample_end: usize,
     speech_spans: Vec<(usize, usize)>,
 ) -> ChannelChunk {
     ChannelChunk {
-        samples: samples[sample_start..sample_end].to_vec(),
+        samples: Vec::new(),
         sample_start,
         sample_end,
         speech_spans,
@@ -733,68 +716,24 @@ fn audio_rms(samples: &[f32]) -> f64 {
     (sum / samples.len() as f64).sqrt()
 }
 
-fn split_audio_samples(samples: &[f32], max_samples: usize) -> Vec<AudioChunk> {
-    samples
-        .chunks(max_samples)
-        .enumerate()
-        .map(|(index, window)| {
-            let sample_start = index * max_samples;
-            let sample_end = sample_start + window.len();
-            AudioChunk {
-                samples: window.to_vec(),
-                sample_start,
-                sample_end,
-            }
+#[cfg(test)]
+fn pack_speech_chunks(
+    samples: &[f32],
+    chunks: Vec<AudioChunk>,
+    max_samples: usize,
+) -> Vec<ChannelChunk> {
+    pack_speech_ranges(samples.len(), chunks, max_samples)
+        .into_iter()
+        .map(|mut chunk| {
+            chunk.samples = samples[chunk.sample_start..chunk.sample_end].to_vec();
+            chunk
         })
         .collect()
-}
-
-fn collapse_identical_channels(channels: Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-    if channels.len() != 2 || !channels_are_effectively_identical(&channels[0], &channels[1]) {
-        return channels;
-    }
-
-    channels.into_iter().take(1).collect()
-}
-
-fn channels_are_effectively_identical(left: &[f32], right: &[f32]) -> bool {
-    if left.len().abs_diff(right.len()) > 1 {
-        return false;
-    }
-
-    let compared = left.len().min(right.len());
-    if compared == 0 {
-        return true;
-    }
-
-    let mean_abs_diff = left
-        .iter()
-        .zip(right.iter())
-        .map(|(a, b)| (a - b).abs())
-        .sum::<f32>()
-        / compared as f32;
-
-    mean_abs_diff < 0.0005
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn collapses_effectively_identical_stereo_channels() {
-        let channels =
-            collapse_identical_channels(vec![vec![0.1, 0.2, 0.3], vec![0.1001, 0.2001, 0.3001]]);
-
-        assert_eq!(channels, vec![vec![0.1, 0.2, 0.3]]);
-    }
-
-    #[test]
-    fn keeps_distinct_stereo_channels() {
-        let channels = collapse_identical_channels(vec![vec![0.1, 0.2], vec![0.9, 0.8]]);
-
-        assert_eq!(channels, vec![vec![0.1, 0.2], vec![0.9, 0.8]]);
-    }
 
     fn speech_chunk(start_seconds: usize, end_seconds: usize) -> AudioChunk {
         let rate = TARGET_SAMPLE_RATE as usize;

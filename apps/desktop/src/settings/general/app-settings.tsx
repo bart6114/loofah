@@ -12,14 +12,12 @@ interface SettingItem {
 
 interface AppSettingsViewProps {
   autostart: SettingItem;
-  autoAcceptRelatedTags: SettingItem;
   showAppInDock: SettingItem;
   showTrayIcon: SettingItem;
 }
 
 export function AppSettingsView({
   autostart,
-  autoAcceptRelatedTags,
   showAppInDock,
   showTrayIcon,
 }: AppSettingsViewProps) {
@@ -73,19 +71,6 @@ export function AppSettingsView({
             onChange={showTrayIcon.onChange}
           />
         </div>
-      </section>
-
-      <section>
-        <SettingRow
-          title={<Trans>Automatically apply related tags</Trans>}
-          description={
-            <Trans>
-              Apply only high-confidence tags from similar session content.
-            </Trans>
-          }
-          checked={autoAcceptRelatedTags.value}
-          onChange={autoAcceptRelatedTags.onChange}
-        />
       </section>
     </div>
   );

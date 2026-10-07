@@ -39,7 +39,9 @@ This returns the complete speaker-labeled transcript in one response. Transcript
 loof --json doctor
 ```
 
-The report includes the CLI version, a `ready` flag, the resolved vault path, path health, and the number of sessions. It exits with status 1 when `ready` is false, while still writing the report to standard output.
+Vault commands automatically initialize a missing or incompatible cache; progress streams on stderr. Use `loof --json init` for explicit setup or repair.
+
+The report includes cache readiness, the CLI version, a `ready` flag, the resolved vault path, path health, and the number of sessions. It exits with status 1 when `ready` is false, while still writing the report to standard output.
 
 For a non-default vault, use `--vault-path DIR` or `LOOFAH_VAULT_PATH`.
 
@@ -66,13 +68,25 @@ Only store content when the user asks. Respect the permissions and privacy bound
 On-device transcription requires macOS on Apple Silicon and the on-device Soniqo model configured in the desktop app. The CLI never downloads models, so open the desktop app once to download it.
 :::
 
+## Remove a session when asked
+
+Verify the redundant session's exact ID with `sessions get` before deleting it:
+
+```bash
+loof --json sessions delete SESSION_ID
+```
+
+This moves the complete session to recoverable vault trash. There is no prompt or confirmation flag, so only invoke it after the user authorizes removal. Keep the response's original `path`, `trash_path`, and `deleted_at` for recovery. A missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](/reference/cli#delete-and-recover-a-session) for failure behavior and recovery steps to give the user. MCP remains read-only.
+
 ## Export only when asked
 
 ```bash
 loof sessions export SESSION_ID --format markdown --output session.md
 loof sessions export SESSION_ID --format json --output session.json
+loof sessions export SESSION_ID --format txt --include transcript
+loof sessions export SESSION_ID --format pdf --include note,summary,transcript --output session.pdf
 ```
 
-Export refuses to replace an existing file. Pass `--force` only when the user has approved overwriting that exact path.
+PDF/TXT/Org default to note and summary; `--include` selects specific content. Read the [export behavior and JSON compatibility policy](/reference/cli#export-behavior) before combining `--json` with file output. Export refuses to replace an existing file. Pass `--force` only when the user has approved overwriting that exact path.
 
 See the [CLI reference](/reference/cli) for the full command contract.

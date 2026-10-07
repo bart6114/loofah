@@ -420,6 +420,57 @@ describe("json2md", () => {
 });
 
 describe("md2json", () => {
+  test("preserves repeated C++ mentions and surrounding formatting", () => {
+    const markdown =
+      "- **EDG opens its C++ compiler front end.** The C++ Alliance becomes its nonprofit home.";
+    const json = md2json(markdown);
+    const doc = PMNode.fromJSON(noteSchema, json);
+
+    expect(doc.textContent).toBe(
+      "EDG opens its C++ compiler front end. The C++ Alliance becomes its nonprofit home.",
+    );
+    expect(json2md(json)).toContain(
+      "**EDG opens its C++ compiler front end.**",
+    );
+  });
+
+  test.each(["++underlined++", "<u>underlined</u>"])(
+    "loads underline syntax %s into the note editor schema",
+    (markdown) => {
+      const json = md2json(markdown);
+      const doc = PMNode.fromJSON(noteSchema, json);
+      doc.check();
+
+      expect(doc.textContent).toBe("underlined");
+      expect(json.content?.[0]?.content?.[0]?.marks).toEqual([
+        { type: "underline" },
+      ]);
+      expect(json2md(json)).toBe("<u>underlined</u>");
+    },
+  );
+
+  test.each([
+    "C++ and C++",
+    "counter++ and other++",
+    "语言++ and 语言++",
+    "++ spaced ++",
+    "++first\nsecond++",
+  ])("preserves literal plus signs in %s", (markdown) => {
+    const json = md2json(markdown);
+    expect(JSON.stringify(json)).not.toContain('"type":"underline"');
+    expect(PMNode.fromJSON(noteSchema, json).textContent).toBe(
+      markdown.replaceAll("\n", " "),
+    );
+  });
+
+  test("reads escaped C++ literally for recovery in older app versions", () => {
+    const json = md2json("The C\\+\\+ compiler and C\\+\\+ Alliance.");
+    const doc = PMNode.fromJSON(noteSchema, json);
+
+    expect(doc.textContent).toBe("The C++ compiler and C++ Alliance.");
+    expect(json.content?.[0]?.content?.[0]?.marks).toBeUndefined();
+  });
+
   test("converts html underline tags to underline marks", () => {
     const json = md2json("<u>underlined</u>");
     const paragraph = json.content?.[0];
@@ -1075,4 +1126,22 @@ describe("attachment-backed nodes persist portably", () => {
     expect(attachments[0].attrs?.name).toBe("notes (final).pdf");
     expect(attachments[0].attrs?.src).toBeNull();
   });
+});
+
+test("mixed lists preserve ordinary bullets beside and around nested checkboxes", () => {
+  const json = md2json(
+    "- Bob sends the invoice\n- [ ] Send proposal\n  - Supporting detail\n  - [x] Check figures\n- Discussion only",
+  );
+  expect(json.content!.map((node) => node.type)).toEqual([
+    "bulletList",
+    "taskList",
+    "bulletList",
+  ]);
+  const task = json.content![1].content![0];
+  expect(task.content!.map((node) => node.type)).toEqual([
+    "paragraph",
+    "bulletList",
+    "taskList",
+  ]);
+  expect(task.content![2].content![0].attrs?.checked).toBe(true);
 });

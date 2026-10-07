@@ -70,6 +70,10 @@ msgstr "{added} attachments added"
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
 msgstr "{model} can't transcribe {0}. Try another model or change your spoken languages."
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+msgstr "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
 msgstr "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
@@ -170,10 +174,6 @@ msgstr "App"
 msgid "Appearance"
 msgstr "Appearance"
 
-#: src/settings/general/app-settings.tsx
-msgid "Apply only high-confidence tags from similar session content."
-msgstr "Apply only high-confidence tags from similar session content."
-
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr "Assignees:"
@@ -191,9 +191,13 @@ msgstr "Attachments"
 msgid "Audio"
 msgstr "Audio"
 
-#: src/settings/general/app-settings.tsx
-msgid "Automatically apply related tags"
-msgstr "Automatically apply related tags"
+#: src/settings/ai/llm/tags.tsx
+msgid "Auto-apply tags with high confidence"
+msgstr "Auto-apply tags with high confidence"
+
+#: src/settings/ai/llm/tags.tsx
+msgid "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
+msgstr "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
@@ -394,6 +398,14 @@ msgstr "Context always provided"
 msgid "Continue"
 msgstr "Continue"
 
+#: src/main/about-debug.tsx
+msgid "Copied"
+msgstr "Copied"
+
+#: src/main/about-debug.tsx
+msgid "Copy debug information"
+msgstr "Copy debug information"
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Copy failed"
 msgstr "Copy failed"
@@ -430,9 +442,21 @@ msgstr "Couldn’t calculate vault storage."
 msgid "Couldn’t choose attachments"
 msgstr "Couldn’t choose attachments"
 
+#: src/main/about-debug.tsx
+msgid "Couldn’t copy debug information. Try again."
+msgstr "Couldn’t copy debug information. Try again."
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
 msgstr "Couldn’t load attachments."
+
+#: src/main/about-debug.tsx
+msgid "Couldn’t load debug information."
+msgstr "Couldn’t load debug information."
+
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Couldn't load transcript."
+msgstr "Couldn't load transcript."
 
 #. placeholder {0}: attachment.attachmentId
 #: src/session/components/note-input/attachments.tsx
@@ -446,6 +470,10 @@ msgstr "Couldn’t open attachments in File Explorer"
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
 msgstr "Couldn’t open attachments in Finder"
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Couldn't prepare export."
+msgstr "Couldn't prepare export."
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
@@ -498,6 +526,10 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
+
+#: src/main/about-dialog.tsx
+msgid "Diagnostics"
+msgstr "Diagnostics"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
@@ -606,6 +638,10 @@ msgstr "Expand all"
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Export"
 msgstr "Export"
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Export failed. Please try again."
+msgstr "Export failed. Please try again."
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Exporting..."
@@ -808,6 +844,10 @@ msgstr "Loading"
 msgid "Loading connection…"
 msgstr "Loading connection…"
 
+#: src/main/about-debug.tsx
+msgid "Loading debug information…"
+msgstr "Loading debug information…"
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr "Loading models..."
@@ -815,6 +855,10 @@ msgstr "Loading models..."
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
 msgstr "Loading summary prompt..."
+
+#: src/session/components/note-input/transcript/loading.tsx
+msgid "Loading transcript..."
+msgstr "Loading transcript..."
 
 #: src/changelog/index.tsx
 #: src/task/resource-view.tsx
@@ -1107,8 +1151,16 @@ msgid "Permissions granted"
 msgstr "Permissions granted"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
+msgid "Preparing export..."
+msgstr "Preparing export..."
+
+#: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr "Preparing transcript..."
+
+#: src/main/about-debug.tsx
+msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
+msgstr "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Previous match"
@@ -1272,6 +1324,8 @@ msgstr "Resume listening"
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
+#: src/session/components/note-input/transcript/loading.tsx
+#: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Retry"
 msgstr "Retry"
@@ -1593,6 +1647,10 @@ msgstr "Summary prompt cannot be empty."
 msgid "Summary service selected"
 msgstr "Summary service selected"
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "Supported languages for {model}: {languages}."
+msgstr "Supported languages for {model}: {languages}."
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Switch"
 msgstr "Switch"
@@ -1663,8 +1721,8 @@ msgid "This folder already has files in it"
 msgstr "This folder already has files in it"
 
 #: src/settings/ai/stt/timing.tsx
-msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
-msgstr "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgid "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
+msgstr "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
 
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."

@@ -150,7 +150,7 @@ function ItemPipeline({
 
       clearBatchSession(sessionId);
       store.setItemStatus(item.id, "transcribing");
-      await runBatch(importedPath);
+      await runBatch(importedPath, { imported: true });
 
       // Summarization intentionally overlaps the next item's transcription:
       // auto-enhance is fire-and-forget, matching the single-file upload flow.

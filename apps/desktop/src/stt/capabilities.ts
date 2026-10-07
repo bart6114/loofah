@@ -142,7 +142,7 @@ export function getOnDeviceTranscriptionConfig(
     };
   }
 
-  // Keep every language so the backend can validate coverage and select a fallback.
+  // Keep every language so the backend can validate the selected model's coverage.
   const englishOnly =
     model === "soniqo-parakeet-streaming" ||
     model === "onnx-parakeet-streaming" ||

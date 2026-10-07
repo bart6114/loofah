@@ -9,6 +9,7 @@ import {
 } from "@hypr/plugin-updater2";
 import { cn } from "@hypr/utils";
 
+import { createAsyncListenerScope } from "~/shared/async-listener-scope";
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useDevtoolsOtaPreview } from "~/store/zustand/devtools-ota-preview";
 
@@ -60,109 +61,102 @@ export function useDesktopUpdateControl(): DesktopUpdateControl {
   );
 
   useMountEffect(() => {
-    let cancelled = false;
-    const unlistenFns: Array<() => void> = [];
-
+    const scope = createAsyncListenerScope();
     const listen = async () => {
-      const [
-        unlistenAvailable,
-        unlistenDownloading,
-        unlistenProgress,
-        unlistenReady,
-        unlistenFailed,
-        unlistenUpdated,
-      ] = await Promise.all([
-        updaterEvents.updateAvailableEvent.listen(({ payload }) => {
-          setEventState((current) =>
-            current?.version === payload.version &&
-            (current.status === "downloading" ||
-              current.status === "ready" ||
-              current.status === "failed")
-              ? current
-              : {
-                  status: "available",
+      await Promise.all([
+        scope.add(() =>
+          updaterEvents.updateAvailableEvent.listen(
+            scope.guard(({ payload }) => {
+              setEventState((current) =>
+                current?.version === payload.version &&
+                (current.status === "downloading" ||
+                  current.status === "ready" ||
+                  current.status === "failed")
+                  ? current
+                  : {
+                      status: "available",
+                      version: payload.version,
+                      downloadedBytes: 0,
+                      contentLength: null,
+                      errorMessage: null,
+                    },
+              );
+            }),
+          ),
+        ),
+        scope.add(() =>
+          updaterEvents.updateDownloadingEvent.listen(
+            scope.guard(({ payload }) => {
+              setEventState({
+                status: "downloading",
+                version: payload.version,
+                downloadedBytes: 0,
+                contentLength: null,
+                errorMessage: null,
+              });
+            }),
+          ),
+        ),
+        scope.add(() =>
+          updaterEvents.updateDownloadProgressEvent.listen(
+            scope.guard(({ payload }) => {
+              setEventState((current) => {
+                const downloadedBytes =
+                  current?.version === payload.version
+                    ? current.downloadedBytes + payload.chunk_length
+                    : payload.chunk_length;
+
+                return {
+                  status: "downloading",
                   version: payload.version,
-                  downloadedBytes: 0,
-                  contentLength: null,
+                  downloadedBytes,
+                  contentLength: payload.content_length,
                   errorMessage: null,
-                },
-          );
-        }),
-        updaterEvents.updateDownloadingEvent.listen(({ payload }) => {
-          setEventState({
-            status: "downloading",
-            version: payload.version,
-            downloadedBytes: 0,
-            contentLength: null,
-            errorMessage: null,
-          });
-        }),
-        updaterEvents.updateDownloadProgressEvent.listen(({ payload }) => {
-          setEventState((current) => {
-            const downloadedBytes =
-              current?.version === payload.version
-                ? current.downloadedBytes + payload.chunk_length
-                : payload.chunk_length;
-
-            return {
-              status: "downloading",
-              version: payload.version,
-              downloadedBytes,
-              contentLength: payload.content_length,
-              errorMessage: null,
-            };
-          });
-        }),
-        updaterEvents.updateReadyEvent.listen(({ payload }) => {
-          setEventState({
-            status: "ready",
-            version: payload.version,
-            downloadedBytes: 0,
-            contentLength: null,
-            errorMessage: null,
-          });
-        }),
-        updaterEvents.updateDownloadFailedEvent.listen(({ payload }) => {
-          setEventState({
-            status: "failed",
-            version: payload.version,
-            downloadedBytes: 0,
-            contentLength: null,
-            errorMessage: "Failed to download update.",
-          });
-        }),
-        updaterEvents.updatedEvent.listen(({ payload }) => {
-          setAcknowledgedVersion(payload.current);
-          setEventState(null);
-        }),
+                };
+              });
+            }),
+          ),
+        ),
+        scope.add(() =>
+          updaterEvents.updateReadyEvent.listen(
+            scope.guard(({ payload }) => {
+              setEventState({
+                status: "ready",
+                version: payload.version,
+                downloadedBytes: 0,
+                contentLength: null,
+                errorMessage: null,
+              });
+            }),
+          ),
+        ),
+        scope.add(() =>
+          updaterEvents.updateDownloadFailedEvent.listen(
+            scope.guard(({ payload }) => {
+              setEventState({
+                status: "failed",
+                version: payload.version,
+                downloadedBytes: 0,
+                contentLength: null,
+                errorMessage: "Failed to download update.",
+              });
+            }),
+          ),
+        ),
+        scope.add(() =>
+          updaterEvents.updatedEvent.listen(
+            scope.guard(({ payload }) => {
+              setAcknowledgedVersion(payload.current);
+              setEventState(null);
+            }),
+          ),
+        ),
       ]);
-
-      if (cancelled) {
-        unlistenAvailable();
-        unlistenDownloading();
-        unlistenProgress();
-        unlistenReady();
-        unlistenFailed();
-        unlistenUpdated();
-        return;
-      }
-
-      unlistenFns.push(
-        unlistenAvailable,
-        unlistenDownloading,
-        unlistenProgress,
-        unlistenReady,
-        unlistenFailed,
-        unlistenUpdated,
-      );
     };
-
-    void listen();
-
-    return () => {
-      cancelled = true;
-      unlistenFns.forEach((unlisten) => unlisten());
-    };
+    void listen().catch((error) =>
+      console.error("[updater] listener setup failed", error),
+    );
+    return scope.dispose;
   });
 
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- The state setter reconciles updater events and is not part of the update-check identity.

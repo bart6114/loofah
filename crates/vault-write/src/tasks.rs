@@ -59,16 +59,158 @@ fn same_content(existing: &TaskItem, next: &TaskItem) -> bool {
         && existing.due_at == next.due_at
 }
 
+fn normalize_task_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn task_node_text(node: &serde_json::Value) -> String {
+    if let Some(text) = node["text"].as_str() {
+        return normalize_task_text(text);
+    }
+    normalize_task_text(
+        &node["content"]
+            .as_array()
+            .map(|children| {
+                children
+                    .iter()
+                    .map(task_node_text)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default(),
+    )
+}
+
+fn collect_task_nodes<'a>(node: &'a serde_json::Value, tasks: &mut Vec<&'a serde_json::Value>) {
+    if node["type"] == "taskItem" {
+        tasks.push(node);
+    }
+    if let Some(children) = node["content"].as_array() {
+        for child in children {
+            collect_task_nodes(child, tasks);
+        }
+    }
+}
+
 impl SessionStore {
+    pub(super) async fn prepare_generated_tasks(
+        &self,
+        session_id: &str,
+        source_type: &str,
+        source_id: &str,
+        content: &serde_json::Value,
+    ) -> Result<Vec<TaskItem>, StoreError> {
+        let mut existing = self
+            .read_tasks_at(&TaskScope::Session(session_id.to_string()))
+            .await?;
+        if source_type == "session_summary" {
+            self.normalize_summary_tasks(session_id, &mut existing, None)
+                .await?;
+        }
+        let mut previous: Vec<_> = existing
+            .iter()
+            .filter(|task| task.source_type == source_type && task.source_id == source_id)
+            .cloned()
+            .collect();
+        previous.sort_by_key(|task| task.source_order);
+        let mut next: Vec<_> = existing
+            .into_iter()
+            .filter(|task| task.source_type != source_type || task.source_id != source_id)
+            .collect();
+        let mut nodes = Vec::new();
+        collect_task_nodes(content, &mut nodes);
+        let now = now_iso();
+        for (order, node) in nodes.into_iter().enumerate() {
+            let body = node
+                .get("content")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!([]));
+            let text = body
+                .as_array()
+                .and_then(|nodes| nodes.iter().find(|node| node["type"] == "paragraph"))
+                .map(task_node_text)
+                .unwrap_or_default();
+            if text.is_empty() {
+                continue;
+            }
+            let prior = previous
+                .iter()
+                .position(|task| normalize_task_text(&task.text) == text)
+                .map(|index| previous.remove(index));
+            let mut task = TaskItem {
+                id: prior
+                    .as_ref()
+                    .map(|task| task.id.clone())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                source_type: source_type.into(),
+                source_id: source_id.into(),
+                source_order: order as i32,
+                status: prior
+                    .as_ref()
+                    .map(|task| task.status.clone())
+                    .unwrap_or_else(|| {
+                        if node["attrs"]["checked"] == true {
+                            "done"
+                        } else {
+                            "todo"
+                        }
+                        .into()
+                    }),
+                text,
+                body,
+                due_at: prior
+                    .as_ref()
+                    .map(|task| task.due_at.clone())
+                    .unwrap_or_default(),
+                assignee: prior
+                    .as_ref()
+                    .map(|task| task.assignee.clone())
+                    .unwrap_or_default(),
+                created_at: prior
+                    .as_ref()
+                    .map(|task| task.created_at.clone())
+                    .unwrap_or_else(|| now.clone()),
+                updated_at: now.clone(),
+            };
+            if let Some(prior) = prior {
+                if same_content(&prior, &task) {
+                    task.updated_at = prior.updated_at;
+                }
+            }
+            next.push(task);
+        }
+        serde_json::to_vec(&TasksFile {
+            tasks: next.clone(),
+        })
+        .map_err(|error| StoreError::Serialize(error.to_string()))?;
+        Ok(next)
+    }
+
+    pub(super) async fn persist_generated_tasks(
+        &self,
+        guard: &WriteGuard<'_>,
+        session_id: &str,
+        tasks: &[TaskItem],
+    ) -> Result<(), StoreError> {
+        let scope = TaskScope::Session(session_id.to_string());
+        if self.read_tasks_at(&scope).await? == tasks {
+            return Ok(());
+        }
+        self.write_tasks_at_locked(guard, &scope, tasks).await
+    }
+
     pub async fn list_tasks(
         &self,
         source_type: &str,
         source_id: &str,
     ) -> Result<Vec<TaskItem>, StoreError> {
         let scope = self.resolve_task_scope(source_type, source_id).await?;
-        let mut tasks: Vec<TaskItem> = self
-            .read_tasks_at(&scope)
-            .await?
+        let mut tasks = self.read_tasks_at(&scope).await?;
+        if source_type == "session_summary" {
+            self.normalize_summary_tasks(source_id, &mut tasks, None)
+                .await?;
+        }
+        let mut tasks: Vec<TaskItem> = tasks
             .into_iter()
             .filter(|t| t.source_type == source_type && t.source_id == source_id)
             .collect();
@@ -87,14 +229,17 @@ impl SessionStore {
         source_id: &str,
         inputs: Vec<TaskInput>,
     ) -> Result<(), StoreError> {
-        let scope = self.resolve_task_scope(source_type, source_id).await?;
-        self.ensure_task_scope_writable(&scope).await?;
-
         // One guard across read-modify-write: a `tasks.json` holds every source's tasks, so
         // two concurrent replaces that each read the same starting file and write a whole new
         // one back would silently drop the loser's changes.
         let guard = self.lock_writes().await;
+        let scope = self.resolve_task_scope(source_type, source_id).await?;
+        self.ensure_task_scope_writable(&scope).await?;
 
+        if source_type == "session_summary" {
+            self.remap_summary_tasks_locked(&guard, source_id, None)
+                .await?;
+        }
         let existing = self.read_tasks_at(&scope).await?;
         let prior_by_id: HashMap<&str, &TaskItem> =
             existing.iter().map(|t| (t.id.as_str(), t)).collect();
@@ -155,6 +300,10 @@ impl SessionStore {
         }
         let scope = self.resolve_task_scope(source_type, source_id).await?;
         let guard = self.lock_writes().await;
+        if source_type == "session_summary" {
+            self.remap_summary_tasks_locked(&guard, source_id, None)
+                .await?;
+        }
         let existing = self.read_tasks_at(&scope).await?;
         let ids: std::collections::HashSet<&str> = task_ids.iter().map(|s| s.as_str()).collect();
         let next: Vec<TaskItem> = existing
@@ -186,6 +335,9 @@ impl SessionStore {
         if task_ids.is_empty() {
             return Ok(());
         }
+        // Include destination validation and scope discovery: metadata can be briefly
+        // absent while the current writer preserves foreign bytes in trash.
+        let guard = self.lock_writes().await;
         let dest_scope = self
             .resolve_task_scope(next_source_type, next_source_id)
             .await?;
@@ -198,10 +350,10 @@ impl SessionStore {
             }
         }
 
-        // Same read-modify-write guard as `replace_tasks`, spanning every file this move
-        // touches (a move rewrites both the source and the destination `tasks.json`).
-        let guard = self.lock_writes().await;
-
+        if next_source_type == "session_summary" {
+            self.remap_summary_tasks_locked(&guard, next_source_id, None)
+                .await?;
+        }
         let mut files: Vec<(TaskScope, Vec<TaskItem>, bool)> = Vec::new();
         for scope in scopes {
             let tasks = self.read_tasks_at(&scope).await?;
@@ -260,7 +412,7 @@ impl SessionStore {
         source_id: &str,
     ) -> Result<TaskScope, StoreError> {
         match source_type {
-            "session_raw_note" => {
+            "session_raw_note" | "session_summary" => {
                 validate_session_id(source_id)?;
                 Ok(TaskScope::Session(source_id.to_string()))
             }
@@ -327,6 +479,56 @@ impl SessionStore {
             }
             TaskScope::Vault => Ok(paths::vault_tasks_path()),
         }
+    }
+
+    async fn normalize_summary_tasks(
+        &self,
+        id: &str,
+        tasks: &mut [TaskItem],
+        legacy_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        if !tasks.iter().any(|task| task.source_type == "enhanced_note") {
+            return Ok(());
+        }
+        let legacy_id = if let Some(id) = legacy_id {
+            Some(id.to_owned())
+        } else {
+            let vault = self.vault_base.clone();
+            let dir = self.session_dir(id).await?;
+            let session_id = id.to_owned();
+            tokio::task::spawn_blocking(move || {
+                hypr_vault_read::summary::locate_in(&vault, &dir, &session_id)
+                    .map(|summary| summary.and_then(|s| s.legacy_id))
+            })
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))??
+        };
+        if let Some(legacy_id) = legacy_id {
+            for task in tasks {
+                if task.source_type == "enhanced_note" && task.source_id == legacy_id {
+                    task.source_type = "session_summary".into();
+                    task.source_id = id.to_owned();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) async fn remap_summary_tasks_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        legacy_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let scope = TaskScope::Session(id.to_owned());
+        let existing = self.read_tasks_at(&scope).await?;
+        let mut tasks = existing.clone();
+        self.normalize_summary_tasks(id, &mut tasks, legacy_id)
+            .await?;
+        if tasks != existing {
+            self.write_tasks_at_locked(guard, &scope, &tasks).await?;
+        }
+        Ok(())
     }
 
     async fn read_tasks_at(&self, scope: &TaskScope) -> Result<Vec<TaskItem>, StoreError> {
@@ -441,6 +643,47 @@ mod tests {
         id: &str,
     ) -> std::path::PathBuf {
         vault.path().join(store.session_dir(id).await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn task_writes_wait_for_metadata_replacement() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1")).await.unwrap();
+        let path = session_path(&store, &vault, "s1").await.join("_meta.json");
+        let original = std::fs::read(&path).unwrap();
+        for moving in [false, true] {
+            let guard = store.lock_writes().await;
+            std::fs::remove_file(&path).unwrap();
+            let write = async {
+                if moving {
+                    store
+                        .move_tasks(vec!["t-a".into()], "session_raw_note", "s1", 0)
+                        .await
+                } else {
+                    store
+                        .replace_tasks("session_raw_note", "s1", vec![input("t-a", 0, "Keep task")])
+                        .await
+                }
+            };
+            tokio::pin!(write);
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(20), &mut write)
+                    .await
+                    .is_err(),
+                "task validation ran before the active metadata write finished"
+            );
+            std::fs::write(&path, &original).unwrap();
+            drop(guard);
+            write.await.unwrap();
+        }
+        assert_eq!(
+            store
+                .list_tasks("session_raw_note", "s1")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]

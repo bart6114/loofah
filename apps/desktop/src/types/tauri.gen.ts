@@ -216,15 +216,13 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async sessionQueueTagSuggestions(
+  async sessionTagContext(
     sessionId: string,
-  ): Promise<Result<null, string>> {
+  ): Promise<Result<TagContext, string>> {
     try {
       return {
         status: "ok",
-        data: await TAURI_INVOKE("session_queue_tag_suggestions", {
-          sessionId,
-        }),
+        data: await TAURI_INVOKE("session_tag_context", { sessionId }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -279,6 +277,25 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionSaveNote(
+    sessionId: string,
+    markdown: string,
+    title: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_save_note", {
+          sessionId,
+          markdown,
+          title,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async sessionReadNote(
     sessionId: string,
   ): Promise<Result<string | null, string>> {
@@ -286,6 +303,87 @@ export const commands = {
       return {
         status: "ok",
         data: await TAURI_INVOKE("session_read_note", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionSummaryGet(
+    sessionId: string,
+  ): Promise<Result<string | null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_summary_get", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionEnsureSummary(
+    sessionId: string,
+  ): Promise<Result<string, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_ensure_summary", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionUpdateSummary(
+    sessionId: string,
+    markdown: string,
+    expectedMarkdown: string | null,
+    reconcileTasks: boolean | null,
+    suggestedTags: ScoredTagSuggestion[] | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_update_summary", {
+          sessionId,
+          markdown,
+          expectedMarkdown,
+          reconcileTasks,
+          suggestedTags,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionSaveSummary(
+    sessionId: string,
+    markdown: string,
+    expectedMarkdown: string | null,
+    title: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_save_summary", {
+          sessionId,
+          markdown,
+          expectedMarkdown,
+          title,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionDeleteSummary(sessionId: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_delete_summary", { sessionId }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -317,6 +415,27 @@ export const commands = {
           sessionId,
           docId,
           patch,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionSaveEnhancedDoc(
+    sessionId: string,
+    docId: string,
+    patch: EnhancedDocPatch,
+    title: string | null,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_save_enhanced_doc", {
+          sessionId,
+          docId,
+          patch,
+          title,
         }),
       };
     } catch (e) {
@@ -479,6 +598,23 @@ export const commands = {
       return {
         status: "ok",
         data: await TAURI_INVOKE("session_flush_transcript", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionFinishTranscript(
+    sessionId: string,
+    transcriptId: string,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_finish_transcript", {
+          sessionId,
+          transcriptId,
+        }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -733,6 +869,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async sessionTranscriptMetadata(
+    sessionId: string,
+  ): Promise<Result<SessionTranscriptMetadata, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_transcript_metadata", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async transcriptGet(
     transcriptId: string,
   ): Promise<Result<TranscriptWithData | null, string>> {
@@ -817,10 +966,8 @@ export type EmbeddedCliStatus = {
   details: string | null;
 };
 /**
- * One AI-generated document (`summary` or `template_output`), file-canonical at
- * `sessions/<session_id>/enhanced/<id>.md`. `id` is the same UUID the `session_documents`
- * index row uses, and the frontmatter carries every metadata column that row mirrors --
- * there is deliberately no sidecar file.
+ * Shared document response for session summaries and UUID-backed template outputs.
+ * A summary uses its session ID; only legacy/template files carry frontmatter.
  */
 export type EnhancedDoc = {
   id: string;
@@ -844,6 +991,8 @@ export type EnhancedDoc = {
  * of the SQL era's `expectedRowsAffected`/`WHERE title = ?` rejections.
  */
 export type EnhancedDocPatch = {
+  suggested_tags?: ScoredTagSuggestion[] | null;
+  reconcile_tasks?: boolean | null;
   kind?: string | null;
   title?: string | null;
   template_id?: string | null;
@@ -899,7 +1048,7 @@ export type RebuildReport = {
   sessions: number;
   /**
    * Documents read this pass -- the note (`notes.md`, or the pre-rename `_memo.md`)
-   * and every `enhanced/<doc_id>.md` doc, not just the note.
+   * the plain summary, and every template output.
    */
   notes: number;
   transcripts: number;
@@ -910,6 +1059,7 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
+export type ScoredTagSuggestion = { name: string; confidence: number };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
  * subscribers (timeline, summaries, tags, float) consume.
@@ -973,6 +1123,11 @@ export type SessionMetaPatch = {
  * preferring the file loses nothing.
  */
 export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
+export type SessionTranscriptMetadata = {
+  speaker_labels: string[];
+  started_at: number | null;
+  ended_at: number | null;
+};
 export type StartupPhase =
   | { kind: "openingVault" }
   | { kind: "scanning"; sessions_found: number }
@@ -988,6 +1143,11 @@ export type StartupStatus = {
   phase: StartupPhase;
   migrationIssues: string[];
 };
+export type TagContext = {
+  available: string[];
+  attached: string[];
+  dismissed: string[];
+};
 /**
  * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
  * (lowercased) name itself — unlike people's lossy slug, two names normalizing
@@ -996,15 +1156,7 @@ export type StartupStatus = {
  * `tags.json` disappears.
  */
 export type TagItem = { id: string; name?: string };
-export type TagSuggestionItem = { name: string; confidence: number };
-export type TagSuggestionState = {
-  source_hash: string;
-  algorithm_version: number;
-  status: TagSuggestionStatus;
-  items: TagSuggestionItem[];
-  dismissed: string[];
-};
-export type TagSuggestionStatus = "pending" | "complete";
+export type TagSuggestionState = { items: string[]; dismissed: string[] };
 /**
  * What the frontend sends on a write: source coordinates come from the command arguments,
  * timestamps and `assignee` are managed store-side (preserved from the existing entry when
@@ -1028,7 +1180,7 @@ export type TaskInput = {
 export type TaskItem = {
   id: string;
   /**
-   * "session_raw_note" (source_id is the session id) or "enhanced_note" (source_id is
+   * "session_raw_note" / "session_summary" (source_id is the session id), or "enhanced_note" (source_id is
    * the enhanced doc id). Stored verbatim for any other value.
    */
   source_type: string;

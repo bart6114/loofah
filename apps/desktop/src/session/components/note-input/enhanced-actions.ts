@@ -69,7 +69,9 @@ export function useEnhancedNoteActions({
         model,
         args: {
           sessionId,
-          enhancedNoteId,
+          ...(enhancedNoteId === sessionId
+            ? {}
+            : { templateDocumentId: enhancedNoteId }),
         },
       });
     } catch (error) {

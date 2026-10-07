@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { enhanceTransform } from "./enhance-transform";
 
+import { commands } from "~/types/tauri.gen";
+
 const mocks = vi.hoisted(() => ({
   collectEnhanceImageContext: vi.fn(),
   loadSessionContentSnapshot: vi.fn(),
@@ -76,7 +78,7 @@ describe("enhanceTransform.transformArgs", () => {
     };
     mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
     const result = await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       settingsValues,
     );
     expect(result.postMeetingMemo).toBe("Ship Friday");
@@ -92,7 +94,7 @@ describe("enhanceTransform.transformArgs", () => {
     });
     await expect(
       enhanceTransform.transformArgs(
-        { sessionId: "session-1", enhancedNoteId: "note-1" },
+        { sessionId: "session-1" },
         settingsValues,
       ),
     ).rejects.toThrow("Add a note or transcript");
@@ -100,7 +102,7 @@ describe("enhanceTransform.transformArgs", () => {
 
   it("uses the saved prompt override for summaries", async () => {
     const result = await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       {
         ...settingsValues,
         auto_summary_prompt: "  Start with decisions.  ",
@@ -120,7 +122,6 @@ describe("enhanceTransform.transformArgs", () => {
     const result = await enhanceTransform.transformArgs(
       {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
       {
         ...settingsValues,
@@ -134,7 +135,7 @@ describe("enhanceTransform.transformArgs", () => {
 
   it("uses the built-in prompt when no override is saved", async () => {
     const result = await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       settingsValues,
     );
 
@@ -145,7 +146,6 @@ describe("enhanceTransform.transformArgs", () => {
     await enhanceTransform.transformArgs(
       {
         sessionId: "session-1",
-        enhancedNoteId: "note-1",
       },
       {
         current_llm_provider: "openai",
@@ -162,7 +162,7 @@ describe("enhanceTransform.transformArgs", () => {
 
   it("builds the render request straight from the transcript's own owner, without a humans lookup", async () => {
     await enhanceTransform.transformArgs(
-      { sessionId: "session-1", enhancedNoteId: "note-1" },
+      { sessionId: "session-1" },
       settingsValues,
     );
 
@@ -179,10 +179,67 @@ describe("enhanceTransform.transformArgs", () => {
     mocks.loadSessionContentSnapshot.mockResolvedValue(null);
 
     await expect(
-      enhanceTransform.transformArgs(
-        { sessionId: "missing", enhancedNoteId: "note-1" },
-        settingsValues,
-      ),
+      enhanceTransform.transformArgs({ sessionId: "missing" }, settingsValues),
     ).rejects.toThrow("Session missing no longer exists");
   });
+});
+
+it("passes structured current-user identity to the prompt without guessing from speaker labels", async () => {
+  mocks.loadSessionContentSnapshot.mockResolvedValue(createSnapshot());
+  mocks.buildRenderTranscriptRequestFromRows.mockReturnValue({
+    transcripts: [],
+  });
+  mocks.renderTranscriptSegments.mockResolvedValue([
+    {
+      speaker_label: "00000000-0000-0000-0000-000000000000",
+      is_current_user: true,
+      start_ms: 0,
+      end_ms: 1,
+      words: [{ text: "I will send the proposal.", start_ms: 0, end_ms: 1 }],
+    },
+    {
+      speaker_label: "You",
+      is_current_user: false,
+      start_ms: 2,
+      end_ms: 3,
+      words: [{ text: "I will send the invoice.", start_ms: 2, end_ms: 3 }],
+    },
+  ]);
+  const result = await enhanceTransform.transformArgs(
+    { sessionId: "session-1" },
+    settingsValues,
+  );
+  expect(
+    result.transcripts[0].segments.map((segment) => segment.isCurrentUser),
+  ).toEqual([true, false]);
+});
+
+it("marks legacy transcript provenance unknown instead of assuming channel zero belongs to the user", async () => {
+  const snapshot = createSnapshot();
+  mocks.loadSessionContentSnapshot.mockResolvedValue(snapshot);
+  mocks.buildRenderTranscriptRequestFromRows.mockReturnValue(null);
+  await enhanceTransform.transformArgs(
+    { sessionId: "session-1" },
+    settingsValues,
+  );
+  const [rows] = mocks.buildRenderTranscriptRequestFromRows.mock.lastCall!;
+  expect(rows[0].words[0].metadata.capture_source).toBe("unknown");
+});
+
+it("loads the canonical tag context for this session", async () => {
+  const context = {
+    available: ["Launch", "Research"],
+    attached: ["Work"],
+    dismissed: ["Planning"],
+  };
+  vi.mocked(commands.sessionTagContext).mockResolvedValueOnce({
+    status: "ok",
+    data: context,
+  });
+  const result = await enhanceTransform.transformArgs(
+    { sessionId: "session-1" },
+    settingsValues,
+  );
+  expect(commands.sessionTagContext).toHaveBeenLastCalledWith("session-1");
+  expect(result.tagContext).toEqual(context);
 });

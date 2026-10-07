@@ -33,6 +33,7 @@ import {
 } from "./general-shared";
 import type { TranscriptActions, TranscriptState } from "./transcript";
 
+import { createAsyncListenerScope } from "~/shared/async-listener-scope";
 import { fromResult } from "~/stt/fromResult";
 
 type EventListeners = {
@@ -43,26 +44,64 @@ type EventListeners = {
 
 type LiveStore = GeneralState & TranscriptState & TranscriptActions;
 
+let nextAttemptToken = 0;
+
 const listenToAllSessionEvents = (
   handlers: EventListeners,
-): Effect.Effect<(() => void)[], unknown> =>
+  scope: ReturnType<typeof createAsyncListenerScope>,
+): Effect.Effect<void, unknown> =>
   Effect.tryPromise({
     try: async () => {
-      const unlisteners = await Promise.all([
-        listenerEvents.captureLifecycleEvent.listen(({ payload }) =>
-          handlers.lifecycle(payload),
+      await Promise.all([
+        scope.add(() =>
+          listenerEvents.captureLifecycleEvent.listen(
+            scope.guard(({ payload }) => handlers.lifecycle(payload)),
+          ),
         ),
-        listenerEvents.captureStatusEvent.listen(({ payload }) =>
-          handlers.progress(payload),
+        scope.add(() =>
+          listenerEvents.captureStatusEvent.listen(
+            scope.guard(({ payload }) => handlers.progress(payload)),
+          ),
         ),
-        listenerEvents.captureDataEvent.listen(({ payload }) =>
-          handlers.data(payload),
+        scope.add(() =>
+          listenerEvents.captureDataEvent.listen(
+            scope.guard(({ payload }) => handlers.data(payload)),
+          ),
         ),
       ]);
-      return unlisteners;
     },
     catch: (error) => error,
   });
+
+function beginAttempt<T extends LiveStore>(
+  set: StoreApi<T>["setState"],
+  get: StoreApi<T>["getState"],
+  sessionId: string,
+) {
+  get().live.eventUnlistenersBySession[sessionId]?.dispose();
+  const scope = createAsyncListenerScope();
+  const token = ++nextAttemptToken;
+  setLiveState(set, (live) => {
+    live.eventUnlistenersBySession[sessionId] = {
+      token,
+      dispose: scope.dispose,
+    };
+  });
+  const owns = () =>
+    get().live.eventUnlistenersBySession[sessionId]?.token === token;
+  return {
+    scope,
+    owns,
+    active: () => scope.active && owns(),
+    clear: () => {
+      scope.dispose();
+      if (owns())
+        setLiveState(set, (live) => {
+          delete live.eventUnlistenersBySession[sessionId];
+        });
+    },
+  };
+}
 
 const startSessionEffect = (params: CaptureParams) =>
   fromResult(listenerCommands.startCapture(params));
@@ -116,10 +155,6 @@ const createLiveSecondsInterval = <T extends GeneralState>(
       notifyTranscriptionStalled();
     }
   }, 1000);
-
-const clearLiveEventUnlisteners = (unlisteners?: (() => void)[]) => {
-  unlisteners?.forEach((fn) => fn());
-};
 
 const createSessionEventHandlers = <T extends LiveStore>(
   set: StoreApi<T>["setState"],
@@ -195,7 +230,7 @@ const createSessionEventHandlers = <T extends LiveStore>(
         : (currentLive.finalizingBySession[targetSessionId]?.needsBatchRepair ??
           false);
 
-    clearLiveEventUnlisteners(unlisteners);
+    unlisteners?.dispose();
 
     setLiveState(set, (live) => {
       delete live.eventUnlistenersBySession[targetSessionId];
@@ -288,21 +323,12 @@ export const startLiveSession = <T extends LiveStore>(
   targetSessionId: string,
   params: CaptureParams,
 ): Promise<boolean> => {
-  clearLiveEventUnlisteners(
-    get().live.eventUnlistenersBySession[targetSessionId],
-  );
-  setLiveState(set, (live) => {
-    delete live.eventUnlistenersBySession[targetSessionId];
-  });
-
+  const attempt = beginAttempt(set, get, targetSessionId);
   const handlers = createSessionEventHandlers(set, get, targetSessionId);
 
   const program = Effect.gen(function* () {
-    const unlisteners = yield* listenToAllSessionEvents(handlers);
-
-    setLiveState(set, (live) => {
-      live.eventUnlistenersBySession[targetSessionId] = unlisteners;
-    });
+    yield* listenToAllSessionEvents(handlers, attempt.scope);
+    if (!attempt.active()) return;
 
     const [micUsingApps, bundleId] = yield* Effect.tryPromise({
       try: () =>
@@ -317,6 +343,7 @@ export const startLiveSession = <T extends LiveStore>(
       catch: (error) => error,
     });
 
+    if (!attempt.active()) return;
     const triggerAppIds = getAutoStopTriggerAppIds(micUsingApps, bundleId);
 
     if (triggerAppIds.length > 0) {
@@ -328,6 +355,7 @@ export const startLiveSession = <T extends LiveStore>(
     }
 
     yield* startSessionEffect(params);
+    if (!attempt.active()) return;
 
     setLiveState(set, (live) => {
       live.status = "active";
@@ -340,18 +368,16 @@ export const startLiveSession = <T extends LiveStore>(
     Exit.match(exit, {
       onFailure: (cause) => {
         console.error(JSON.stringify(cause));
-        const currentLive = get().live;
-        clearLiveInterval(currentLive.intervalId);
-        clearLiveEventUnlisteners(
-          currentLive.eventUnlistenersBySession[targetSessionId],
-        );
-        setLiveState(set, (live) => {
-          delete live.eventUnlistenersBySession[targetSessionId];
-          markLiveStartFailed(live);
-        });
+        if (attempt.owns()) {
+          clearLiveInterval(get().live.intervalId);
+          setLiveState(set, (live) => {
+            markLiveStartFailed(live);
+          });
+        }
+        attempt.clear();
         return false;
       },
-      onSuccess: () => true,
+      onSuccess: () => attempt.active(),
     }),
   );
 };
@@ -366,33 +392,16 @@ export const attachLiveSession = <T extends LiveStore>(
     return Promise.resolve();
   }
 
-  const pendingUnlisteners: (() => void)[] = [];
-  let registeredUnlisteners = pendingUnlisteners;
+  const attempt = beginAttempt(set, get, targetSessionId);
   setLiveState(set, (live) => {
-    live.eventUnlistenersBySession[targetSessionId] = pendingUnlisteners;
-    if (!live.sessionId) {
-      live.sessionId = targetSessionId;
-    }
+    if (!live.sessionId) live.sessionId = targetSessionId;
   });
-
   const handlers = createSessionEventHandlers(set, get, targetSessionId);
-
   const program = Effect.gen(function* () {
-    const unlisteners = yield* listenToAllSessionEvents(handlers);
-    if (
-      get().live.eventUnlistenersBySession[targetSessionId] !==
-      pendingUnlisteners
-    ) {
-      clearLiveEventUnlisteners(unlisteners);
-      return;
-    }
-
-    registeredUnlisteners = unlisteners;
-    setLiveState(set, (live) => {
-      live.eventUnlistenersBySession[targetSessionId] = unlisteners;
-    });
-
+    yield* listenToAllSessionEvents(handlers, attempt.scope);
+    if (!attempt.active()) return;
     const snapshot = yield* fromResult(listenerCommands.getCaptureSnapshot());
+    if (!attempt.active()) return;
     applyCaptureSnapshot(set, get, targetSessionId, snapshot);
   });
 
@@ -400,21 +409,15 @@ export const attachLiveSession = <T extends LiveStore>(
     Exit.match(exit, {
       onFailure: (cause) => {
         console.error("[listener] failed to attach live session:", cause);
-        clearLiveEventUnlisteners(registeredUnlisteners);
-        setLiveState(set, (live) => {
-          if (
-            live.eventUnlistenersBySession[targetSessionId] ===
-            registeredUnlisteners
-          ) {
-            delete live.eventUnlistenersBySession[targetSessionId];
-          }
-          if (
-            live.sessionId === targetSessionId &&
-            live.status === "inactive"
-          ) {
-            live.sessionId = null;
-          }
-        });
+        if (attempt.owns()) {
+          setLiveState(set, (live) => {
+            if (live.sessionId === targetSessionId) {
+              clearLiveInterval(live.intervalId);
+              markLiveInactive(live, null);
+            }
+          });
+        }
+        attempt.clear();
       },
       onSuccess: () => undefined,
     }),

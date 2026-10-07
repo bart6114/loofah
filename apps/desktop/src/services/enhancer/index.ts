@@ -27,6 +27,7 @@ type QueueEmptySummaryResult =
   | { type: "summary_exists"; noteId: string };
 
 type EnhanceOpts = {
+  regenerate?: boolean;
   isAuto?: boolean;
   targetNoteId?: string;
 };
@@ -147,10 +148,10 @@ export class EnhancerService {
     return getEligibility(snapshot.transcripts);
   }
 
-  queueAutoEnhance(sessionId: string) {
+  queueAutoEnhance(sessionId: string, regenerate = true) {
     if (this.activeAutoEnhance.has(sessionId)) return;
     this.activeAutoEnhance.add(sessionId);
-    void this.tryAutoEnhance(sessionId, 0).catch((error) => {
+    void this.tryAutoEnhance(sessionId, 0, regenerate).catch((error) => {
       this.handleAutoEnhanceError(sessionId, error);
     });
   }
@@ -172,11 +173,15 @@ export class EnhancerService {
       }
     }
 
-    this.queueAutoEnhance(sessionId);
+    this.queueAutoEnhance(sessionId, false);
     return { type: "queued" };
   }
 
-  private async tryAutoEnhance(sessionId: string, attempt: number) {
+  private async tryAutoEnhance(
+    sessionId: string,
+    attempt: number,
+    regenerate: boolean,
+  ) {
     if (!this.activeAutoEnhance.has(sessionId)) return;
 
     const eligibility = await this.checkEligibility(sessionId);
@@ -186,9 +191,11 @@ export class EnhancerService {
       if (attempt < 20) {
         const timer = setTimeout(() => {
           this.pendingRetries.delete(sessionId);
-          void this.tryAutoEnhance(sessionId, attempt + 1).catch((error) => {
-            this.handleAutoEnhanceError(sessionId, error);
-          });
+          void this.tryAutoEnhance(sessionId, attempt + 1, regenerate).catch(
+            (error) => {
+              this.handleAutoEnhanceError(sessionId, error);
+            },
+          );
         }, 500);
         this.pendingRetries.set(sessionId, timer);
         return;
@@ -204,7 +211,7 @@ export class EnhancerService {
       return;
     }
 
-    const result = await this.enhance(sessionId, { isAuto: true });
+    const result = await this.enhance(sessionId, { isAuto: true, regenerate });
     if (!this.activeAutoEnhance.has(sessionId)) return;
 
     if (result.type === "no_model") {
@@ -244,9 +251,11 @@ export class EnhancerService {
 
   async resetEnhanceTasks(sessionId: string): Promise<void> {
     const snapshot = await this.loadSession(sessionId);
-    const { aiTaskStore } = this.deps;
-    for (const note of snapshot.enhancedNotes) {
-      aiTaskStore.getState().reset(createTaskId(note.id, "enhance"));
+    const tasks = this.deps.aiTaskStore.getState();
+    tasks.reset(createTaskId(sessionId, "enhance"));
+    for (const document of snapshot.enhancedNotes) {
+      if (document.kind !== "summary")
+        tasks.reset(createTaskId(document.id, "enhance"));
     }
   }
 
@@ -287,25 +296,26 @@ export class EnhancerService {
       targetNote ??
       selectSummaryDocument(snapshot.enhancedNotes) ??
       (await ensureSummaryDocument(sessionId));
-    const enhanceTaskId = createTaskId(note.id, "enhance");
+    const enhanceTaskId = createTaskId(
+      note.kind === "summary" ? sessionId : note.id,
+      "enhance",
+    );
     const existingTask = aiTaskStore.getState().getState(enhanceTaskId);
     if (existingTask?.status === "generating") {
       return { type: "already_active", noteId: note.id };
     }
 
-    if (
-      !targetNote &&
-      !opts?.isAuto &&
-      existingTask?.status === "success" &&
-      hasSummaryContent(note.content)
-    ) {
+    if (!targetNote && !opts?.regenerate && hasSummaryContent(note.content)) {
       return { type: "already_active", noteId: note.id };
     }
 
     void aiTaskStore.getState().generate(enhanceTaskId, {
       model,
       taskType: "enhance",
-      args: { sessionId, enhancedNoteId: note.id },
+      args: {
+        sessionId,
+        ...(note.kind === "summary" ? {} : { templateDocumentId: note.id }),
+      },
     });
 
     return { type: "started", noteId: note.id };

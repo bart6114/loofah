@@ -21,8 +21,6 @@ tauri-build = { workspace = true, features = [] }
 serde_json = { workspace = true }
 
 [dependencies]
-# Keep aligned with tauri-plugin-tantivy for typed errors and projection tests.
-tantivy = "0.25"
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }
 
 camino = { workspace = true }
@@ -77,8 +75,6 @@ hypr-tauri-utils = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
-sha2 = { workspace = true }
-
 chrono = { workspace = true }
 dirs = { workspace = true }
 pico-args = { workspace = true }
@@ -94,6 +90,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
+sha2 = { workspace = true }
 winreg = "0.55"
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
@@ -116,6 +113,7 @@ tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 
 [dev-dependencies]
+sha2 = { workspace = true }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
 tauri = { workspace = true, features = ["test"] }

@@ -42,3 +42,39 @@ pub struct ExportInput {
     #[serde(default)]
     pub attachments: Vec<ExportAttachment>,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum TextFormat {
+    Md,
+    Txt,
+    Org,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportLabels {
+    pub untitled: String,
+    pub created: String,
+    pub participants: String,
+    pub duration: String,
+    pub metadata: String,
+    pub note: String,
+    pub summary: String,
+    pub transcript: String,
+}
+
+impl Default for ExportLabels {
+    fn default() -> Self {
+        Self {
+            untitled: "Untitled".into(),
+            created: "Created".into(),
+            participants: "Participants".into(),
+            duration: "Duration".into(),
+            metadata: "Metadata".into(),
+            note: "Note".into(),
+            summary: "Summary".into(),
+            transcript: "Transcript".into(),
+        }
+    }
+}

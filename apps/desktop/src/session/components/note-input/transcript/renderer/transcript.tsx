@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@hypr/utils";
 
 import { useSearch } from "../../search/context";
+import { TranscriptLoadingState, TranscriptLoadError } from "../loading";
 import { useRenderedTranscriptData, useTranscriptOffset } from "./data-hooks";
 import {
   EMPTY_TRANSCRIPT_SEARCH,
@@ -62,8 +63,13 @@ export function RenderTranscript({
   startPlayback: () => void;
   audioExists: boolean;
 }) {
-  const { maxSpeakerNumber, segments: storedSegments } =
-    useRenderedTranscriptData(transcriptId, transcript, people);
+  const {
+    maxSpeakerNumber,
+    segments: storedSegments,
+    isLoading,
+    isError,
+    refetch,
+  } = useRenderedTranscriptData(transcriptId, transcript, people);
   const mergedSegments = useMemo(
     () => mergeRenderedAndLiveSegments(storedSegments, liveSegments),
     [liveSegments, storedSegments],
@@ -71,26 +77,34 @@ export function RenderTranscript({
   const segments = useStableSegments(mergedSegments);
   const offsetMs = useTranscriptOffset(transcript, transcripts);
 
-  if (segments.length === 0) {
-    return null;
-  }
+  if (segments.length === 0 && isLoading) return <TranscriptLoadingState />;
+  if (segments.length === 0 && !isError) return null;
 
   return (
-    <SegmentsList
-      segments={segments}
-      scrollElement={scrollElement}
-      transcriptId={transcriptId}
-      offsetMs={offsetMs}
-      shouldScrollToEnd={isLastTranscript && shouldScrollToEnd}
-      currentMs={currentMs}
-      seek={seek}
-      startPlayback={startPlayback}
-      audioExists={audioExists}
-      maxSpeakerNumber={maxSpeakerNumber}
-      transcript={transcript}
-      people={people}
-      recording={recording}
-    />
+    <>
+      {isError && (
+        <TranscriptLoadError
+          retry={() => {
+            void refetch();
+          }}
+        />
+      )}
+      <SegmentsList
+        segments={segments}
+        scrollElement={scrollElement}
+        transcriptId={transcriptId}
+        offsetMs={offsetMs}
+        shouldScrollToEnd={isLastTranscript && shouldScrollToEnd}
+        currentMs={currentMs}
+        seek={seek}
+        startPlayback={startPlayback}
+        audioExists={audioExists}
+        maxSpeakerNumber={maxSpeakerNumber}
+        transcript={transcript}
+        people={people}
+        recording={recording}
+      />
+    </>
   );
 }
 

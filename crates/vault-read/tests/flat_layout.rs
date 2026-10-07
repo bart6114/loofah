@@ -23,8 +23,7 @@ fn seed_full_session(vault: &Path, relative_dir: &str, id: &str, title: &str) {
     )
     .unwrap();
     std::fs::write(dir.join("notes.md"), format!("note for {title}")).unwrap();
-    // A loose markdown file directly in the session dir is a user attachment now --
-    // no reader may surface it as content.
+    // A destination collision keeps the legacy summary readable without claiming this file.
     std::fs::write(dir.join("summary.md"), format!("attachment for {title}")).unwrap();
     std::fs::write(
         dir.join("enhanced/doc-1.md"),

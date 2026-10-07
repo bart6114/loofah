@@ -17,23 +17,47 @@ loof [--base DIR] [--vault-path DIR] [--json] <command>
 
 `--vault-path` takes precedence over `--base`. Without either option, the CLI uses Loofah's platform application-data directory, following the `vault_path` redirect in its `global.json` when the vault has been relocated.
 
+## Local search cache
+
+Vault commands automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
+
+With `--json`, initialization streams NDJSON progress on stderr; stdout contains only the requested command's response. Explicit `init` returns one final JSON response. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
+
 ## Session commands
 
 `meetings` remains a compatibility alias for `sessions`. Plain-text invocations emit a deprecation warning when the alias is used; `--json` output remains machine-readable.
 
 | Command | Options | Result |
 | --- | --- | --- |
-| `sessions list` | `--query TEXT`, `--limit 1..200`, `--offset NUMBER`, `--tag NAME`, `--untagged` | Meetings ordered by the application query layer. Defaults to 20 results. `--tag` filters to meetings carrying that tag (case-insensitive); repeatable, and all given tags must match. `--untagged` keeps only meetings without tags and cannot be combined with `--tag`. Each meeting's JSON includes its normalized `tags`. |
-| `sessions search [QUERY]` | `--speaker TEXT`, `--kind title\|note\|summary\|transcript`, `--limit 1..50`, `--offset NUMBER` | Full-text hits across titles, notes, summaries, and transcript words, newest meetings first. Requires a query and/or `--speaker`; `--speaker` limits hits to meetings where that person spoke. `--kind` is repeatable and defaults to all. |
+| `sessions list` | `--query TEXT`, `--limit 1..200`, `--offset NUMBER`, `--tag NAME`, `--untagged` | Newest sessions first; with `--query`, desktop full-text matching and relevance order. Defaults to 20 results. `--tag` filters to meetings carrying that tag (case-insensitive); repeatable, and all given tags must match. `--untagged` keeps only meetings without tags and cannot be combined with `--tag`. Each meeting's JSON includes its normalized `tags`. |
+| `sessions search QUERY` | `--limit 1..50`, `--offset NUMBER` | One relevance-ranked result per session, using desktop word, phrase, and trailing-prefix matching. JSON includes `session_id`, `title`, `created_at` (epoch milliseconds), `score`, and plain-text title/content snippets. Source and speaker filters are no longer supported; use `sessions get` or `transcript` for detail. |
 | `sessions get ID` | None | Metadata, canonical note, summaries, and action items. |
+| `sessions rename ID TITLE` | None | Changes only the session title, stored verbatim. Keeps the id, directory, metadata, and content. JSON returns `sessions.rename` with `id` and `title`; missing sessions return `not_found` (exit 2). |
 | `sessions new` | `--title TEXT` (required), `--note FILE`, `--created-at RFC3339`, `--started-at RFC3339`, `--ended-at RFC3339`, `--tag NAME`, `--author NAME`, `--skill NAME` | Creates a meeting note in the vault and prints its id. `--note` seeds the note body from `FILE`, or from stdin when `FILE` is `-`. `--created-at` backdates the meeting on the timeline, which is useful when importing historical notes; `--started-at` and `--ended-at` set the meeting's start and end. All three take an RFC 3339 timestamp such as `2024-05-01T09:00:00Z` (offsets are normalized to UTC); invalid values are rejected before anything is written. `--tag` is repeatable and both tags the meeting and registers new tags in the vault's tag list. `--author` records who wrote the note in the meeting's metadata. When writing on behalf of someone other than the vault owner (an agent, for example `claude-code`), always set it because the app marks such meetings as not written by the owner. Left unset, the note counts as the vault owner's own. `--skill` additionally records the skill used to produce the note (for example `meeting-summarizer`); it requires `--author` and is omitted when no skill was involved. |
 | `sessions note ID` | `--kind note\|summary\|all`, `--set FILE`, `--append FILE` | The selected note documents. Defaults to `note`. With `--set` or `--append` (mutually exclusive, and incompatible with `--kind`), replaces or extends the note body from `FILE` or stdin (`-`); fails when the meeting does not exist. |
 | `sessions transcript ID` | None | The full transcript as `[HH:MM:SS] Speaker: ...` lines, one per speaker turn. |
 | `sessions tag add ID TAG...` | None | Adds one or more tags to the meeting and registers new ones in the vault's tag registry. Tags are normalized (trimmed, `#` stripped, lowercased) and stored deduplicated and sorted; adding a tag the meeting already has is a no-op. Prints the meeting's resulting tag list. |
 | `sessions tag remove ID TAG...` | None | Removes one or more tags from the meeting. Removing an absent tag is a no-op, and removed tags stay in the vault's tag registry. Prints the meeting's resulting tag list. |
+| `sessions delete ID` | None | Soft-delete one exact session into recoverable vault trash. No prompt or confirmation flag; the invocation authorizes the move. |
 | `sessions path ID` | None | Prints the absolute path of the meeting's session directory. |
 | `sessions attach ID FILE` | `--name NAME` | Stores `FILE` as a note attachment of the meeting and prints the resulting attachment id. `--name` overrides the stored filename (defaults to the file's name). Notes reference attachments as `![alt](attachments/<id>)` with the id URL-encoded. The printed attachment id is authoritative and may differ from the input name when an existing attachment of the same name forces a deduplicated one. |
-| `sessions export ID` | `--format markdown\|json`, `--output FILE`, `--force` | A complete meeting export, including transcripts. Defaults to Markdown on stdout. Existing files require `--force`, which is only valid together with `--output`. |
+| `sessions export ID` | `--format markdown\|md\|json\|pdf\|txt\|org`, `--include note,summary,transcript`, `--output FILE`, `--force` | Export selected content or a legacy complete meeting. Text defaults to stdout; PDF requires a file. See [export behavior](#export-behavior). |
+
+## Delete and recover a session
+
+```bash
+loof --vault-path /absolute/vault --json sessions delete SESSION_ID
+```
+
+The exact ID is the confirmation in both human and JSON modes; this command never reads stdin or prompts. Resolve and verify the ID first. It validates `sessions/<ID>/_meta.json` directly without scanning the vault or matching titles. Directories without session metadata are refused. MCP remains read-only.
+
+The JSON envelope uses `command: "sessions.delete"` (also through the `meetings` alias). `data` contains `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and `deleted_at` (UTC RFC 3339 timestamp observed after the move).
+
+The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
+
+There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
+
+A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
 
 ## Tags command
 
@@ -75,7 +99,7 @@ Successful `--json` responses contain:
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | CLI JSON contract version. Currently `1`. |
+| `schema_version` | CLI JSON contract version. Currently `2`. |
 | `command` | Stable command identifier such as `meetings.list`. |
 | `data` | Command result. |
 | `pagination` | Page metadata when the command is paginated. |
@@ -88,7 +112,7 @@ Pagination includes `offset`, `limit`, `returned`, optional `total`, and optiona
 loof --json doctor
 ```
 
-Checks the resolved vault path and read access to its sessions without changing meeting data.
+Checks the resolved vault path, session access, and local cache readiness without changing meeting data.
 It reports noncanonical session directories and directs you to open the updated desktop app for migration. CLI and MCP reads only use `sessions/<id>/`; they never migrate a vault.
 It exits with status 0 when `ready` is true and status 1 when `ready` is false.
 Inside a vault it also restores the root [`AGENTS.md` agent guide](/agents/vault/) when the file is missing or stale.
@@ -109,3 +133,28 @@ loof sessions --help
 loof sessions list --help
 loof --version
 ```
+
+## Export behavior
+
+Export runs headlessly and reads sessions without changing the vault. Write exports outside the source vault.
+
+```bash
+loof sessions export ID --format txt --include transcript --output transcript.txt
+loof sessions export ID --format pdf --include note,summary,transcript --output session.pdf
+loof sessions export ID --format org --include summary
+loof --json sessions export ID --format md --include note,summary --output session.md
+```
+
+PDF, TXT, and Org default to `note,summary`. `--include` replaces the selection; it accepts comma-separated values or repeated flags. Sections appear in Note, Summary, Transcript order, regardless of flag order. Missing or blank sections are skipped. `summary` includes the session’s single summary.
+
+Markdown accepts `markdown` and `md`. Text formats use stdout when `--output` is omitted. PDF requires `--output FILE`; `--output -` is rejected for PDF. Text `--output -` names a literal file. Existing files require `--force`, which requires `--output`; refusal returns `output_exists` (exit 4). File exports are written atomically. Source vault destinations are rejected, even with `--force`.
+
+Desktop and CLI share text conversion and PDF rendering. Transcript exports preserve speaker turns, names, unknown-speaker labels, and the order across recording parts. Dates use the local timezone; CLI section labels are English. PDFs embed referenced, readable images from the session's managed attachments. Text exports retain attachment references where supported; they do not copy files. Empty sessions still export title and metadata.
+
+### JSON reporting and compatibility
+
+Existing Markdown and JSON calls **without `--include`** keep their complete-session artifact: the note, summary, transcripts, and existing metadata and layout. Their `--json` envelope behavior also stays unchanged, including writing that envelope to `--output` when both flags are used.
+
+For PDF/TXT/Org or any export with `--include`, `--json` reports separately from the artifact. With `--output`, the file contains only the requested format and stdout contains a versioned `meetings.export` response with `data.format`, `data.output`, and `data.bytes`. Without a file, text appears in `data.content` alongside `data.format`. `--format json --include ...` retains the existing session JSON schema but filters note, summary, and transcript content; session metadata and action items remain.
+
+Usage parsing errors return exit 2. Missing sessions return exit 2; existing destinations return exit 4. Rendering, invalid PDF destinations, unreadable source content, and other I/O failures return exit 1. With `--json`, errors go to stderr as the existing structured error response. Failed rendering leaves an existing destination intact.

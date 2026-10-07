@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use futures_util::StreamExt;
 use owhisper_interface::ListenParams;
-use owhisper_interface::batch_sse::{BatchSseMessage, EVENT_NAME as BATCH_EVENT};
+use owhisper_interface::batch_sse::{BatchSseMessage, EVENT_NAME as BATCH_EVENT, IDLE_TIMEOUT};
 use owhisper_interface::batch_stream::BatchStreamEvent;
 use owhisper_interface::progress::InferenceProgress;
 use owhisper_interface::stream::StreamResponse;
@@ -25,18 +25,21 @@ impl WhisperCppAdapter {
             "starting_whispercpp_batch_stream"
         );
 
-        let (audio_data, content_type, audio_duration_secs) =
-            tokio::task::spawn_blocking(move || load_audio_file(path))
-                .await
-                .map_err(|e| Error::AudioProcessing(format!("task panicked: {:?}", e)))??;
+        let content_type = audio_content_type(&path);
+        let file = tokio::fs::File::open(&path)
+            .await
+            .map_err(|e| Error::AudioProcessing(format!("read failed: {e}")))?;
+        let audio_duration_secs = tokio::task::spawn_blocking(move || audio_duration_secs(&path))
+            .await
+            .map_err(|e| Error::AudioProcessing(format!("task panicked: {e:?}")))?;
 
         let url = build_batch_url(api_base, params);
 
         let response = reqwest::Client::new()
             .post(url.as_str())
-            .header("Content-Type", &content_type)
+            .header("Content-Type", content_type)
             .header("Accept", "text/event-stream")
-            .body(audio_data)
+            .body(file)
             .send()
             .await?;
 
@@ -46,51 +49,66 @@ impl WhisperCppAdapter {
             return Err(Error::UnexpectedStatus { status, body });
         }
 
-        let byte_stream = response.bytes_stream();
-
-        let event_stream = futures_util::stream::unfold(
-            SseParserState::new(byte_stream, audio_duration_secs),
-            |mut state| async move {
-                loop {
-                    if let Some(event) = state.pending_events.pop_front() {
-                        return Some((event, state));
-                    }
-
-                    match state.stream.next().await {
-                        Some(Ok(chunk)) => {
-                            state.buffer.extend_from_slice(&chunk);
-                            state.parse_buffer();
-                        }
-                        Some(Err(e)) => {
-                            return Some((
-                                Err(Error::WebSocket(format!("stream error: {:?}", e))),
-                                state,
-                            ));
-                        }
-                        None => {
-                            if !state.buffer.is_empty() {
-                                state.parse_buffer();
-                                if let Some(event) = state.pending_events.pop_front() {
-                                    return Some((event, state));
-                                }
-                            }
-                            return None;
-                        }
-                    }
-                }
-            },
-        );
-
-        Ok(Box::pin(event_stream))
+        Ok(batch_event_stream(
+            response.bytes_stream(),
+            audio_duration_secs,
+        ))
     }
 }
 
-fn load_audio_file(path: PathBuf) -> Result<(Vec<u8>, String, f64), Error> {
-    let data =
-        std::fs::read(&path).map_err(|e| Error::AudioProcessing(format!("read failed: {e}")))?;
+fn batch_event_stream<S, E>(stream: S, audio_duration_secs: f64) -> StreamingBatchStream
+where
+    S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Send + Unpin + 'static,
+    E: std::fmt::Debug + Send + 'static,
+{
+    let event_stream = futures_util::stream::unfold(
+        SseParserState::new(stream, audio_duration_secs),
+        |mut state| async move {
+            loop {
+                if let Some(event) = state.pending_events.pop_front() {
+                    return Some((event, state));
+                }
+                if state.finished {
+                    return None;
+                }
 
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("wav");
-    let content_type = match extension {
+                // Keepalives and partial SSE frames indicate a healthy connection even
+                // when decoding or a single inference window takes longer than the deadline.
+                match tokio::time::timeout(IDLE_TIMEOUT, state.stream.next()).await {
+                    Ok(Some(Ok(chunk))) => {
+                        state.buffer.extend_from_slice(&chunk);
+                        state.parse_buffer();
+                    }
+                    Ok(Some(Err(e))) => {
+                        state.finished = true;
+                        return Some((
+                            Err(Error::WebSocket(format!("stream error: {e:?}"))),
+                            state,
+                        ));
+                    }
+                    Ok(None) => {
+                        state.finished = true;
+                        state.parse_buffer();
+                    }
+                    Err(_) => {
+                        state.finished = true;
+                        return Some((
+                            Err(Error::WebSocket(
+                                "Local transcription connection timed out waiting for SSE data."
+                                    .into(),
+                            )),
+                            state,
+                        ));
+                    }
+                }
+            }
+        },
+    );
+    Box::pin(event_stream)
+}
+
+fn audio_content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("wav") {
         "wav" => "audio/wav",
         "mp3" => "audio/mpeg",
         "ogg" => "audio/ogg",
@@ -99,14 +117,12 @@ fn load_audio_file(path: PathBuf) -> Result<(Vec<u8>, String, f64), Error> {
         "webm" => "audio/webm",
         _ => "application/octet-stream",
     }
-    .to_string();
-
-    let duration = audio_duration_secs(&path);
-
-    Ok((data, content_type, duration))
 }
 
 fn audio_duration_secs(path: &Path) -> f64 {
+    if let Ok(pcm) = hypr_audio_utils::PcmDescriptor::open(path) {
+        return pcm.duration();
+    }
     use hypr_audio_utils::Source;
     let Ok(source) = hypr_audio_utils::source_from_path(path) else {
         return 0.0;
@@ -150,6 +166,7 @@ struct SseParserState<S> {
     pending_events: std::collections::VecDeque<Result<StreamingBatchEvent, Error>>,
     audio_duration_secs: f64,
     last_percentage: f64,
+    finished: bool,
 }
 
 impl<S> SseParserState<S> {
@@ -160,6 +177,7 @@ impl<S> SseParserState<S> {
             pending_events: std::collections::VecDeque::new(),
             audio_duration_secs,
             last_percentage: 0.0,
+            finished: false,
         }
     }
 
@@ -346,6 +364,73 @@ impl<S> SseParserState<S> {
 #[cfg(test)]
 mod request_tests {
     use super::*;
+
+    fn result_bytes() -> bytes::Bytes {
+        let message = BatchSseMessage::Result {
+            response: owhisper_interface::batch::Response {
+                metadata: serde_json::json!({}),
+                results: owhisper_interface::batch::Results { channels: vec![] },
+            },
+        };
+        format!(
+            "event: batch\ndata: {}\n\n",
+            serde_json::to_string(&message).unwrap()
+        )
+        .into()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn keepalives_allow_slow_inference_without_fake_progress() {
+        let start = tokio::time::Instant::now();
+        let chunks = futures_util::stream::unfold(0, |index| async move {
+            tokio::time::sleep(owhisper_interface::batch_sse::KEEP_ALIVE_INTERVAL).await;
+            let bytes = match index {
+                0..=4 => bytes::Bytes::from_static(b":\n\n"),
+                5 => result_bytes(),
+                _ => return None,
+            };
+            Some((Ok::<_, std::io::Error>(bytes), index + 1))
+        });
+        let mut events = batch_event_stream(Box::pin(chunks), 1.0);
+        assert!(matches!(
+            events.next().await,
+            Some(Ok(BatchStreamEvent::Result { .. }))
+        ));
+        assert!(start.elapsed() > IDLE_TIMEOUT);
+        assert!(events.next().await.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn partial_frames_reset_connection_idle_timeout() {
+        let result = result_bytes();
+        let chunks = futures_util::stream::unfold((result, 0), |(bytes, offset)| async move {
+            if offset >= bytes.len() {
+                return None;
+            }
+            tokio::time::sleep(owhisper_interface::batch_sse::KEEP_ALIVE_INTERVAL).await;
+            let end = (offset + 20).min(bytes.len());
+            Some((
+                Ok::<_, std::io::Error>(bytes.slice(offset..end)),
+                (bytes, end),
+            ))
+        });
+        let start = tokio::time::Instant::now();
+        let mut events = batch_event_stream(Box::pin(chunks), 1.0);
+        assert!(matches!(
+            events.next().await,
+            Some(Ok(BatchStreamEvent::Result { .. }))
+        ));
+        assert!(start.elapsed() > IDLE_TIMEOUT);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn silent_connection_times_out_once() {
+        let chunks = futures_util::stream::pending::<Result<bytes::Bytes, std::io::Error>>();
+        let mut events = batch_event_stream(chunks, 1.0);
+        let error = events.next().await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("timed out"));
+        assert!(events.next().await.is_none());
+    }
 
     #[test]
     fn local_batch_preserves_languages_and_dictionary_terms() {

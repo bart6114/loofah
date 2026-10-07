@@ -44,12 +44,37 @@ impl SessionStore {
     /// Count reservations so a failed duplicate start releases only its own attempt.
     /// The write lock also serializes acquisition with whole-vault relocation.
     pub async fn prepare_recording(&self, id: &str) -> Result<PathBuf, StoreError> {
+        let _audio_guard = self.lock_session_audio(id).await?;
         let dir = self.session_dir(id).await?;
-        let _guard = self.lock_writes().await;
+        let guard = self.lock_writes().await;
         self.ensure_ready()?;
         self.read_meta(id).await?;
         if self.deleted_sessions.lock().unwrap().contains(id) {
             return Err(StoreError::Io(format!("session {id} was deleted")));
+        }
+        let has_audio = ["audio.mp3", "audio.wav", "audio.ogg"]
+            .iter()
+            .any(|name| self.vault_base.join(&dir).join(name).exists());
+        if has_audio {
+            self.resolve_session_audio_locked(&guard, id).await?;
+        } else {
+            let mut meta = self
+                .read_meta(id)
+                .await?
+                .ok_or_else(|| StoreError::Io("session not found".into()))?;
+            if meta
+                .extra
+                .get("audio_import_pending")
+                .and_then(|v| v.as_bool())
+                == Some(true)
+            {
+                return Err(StoreError::Conflict("audio import is pending".into()));
+            }
+            meta.extra.insert(
+                "audio".into(),
+                serde_json::json!({"source": "recording", "layout": "mic_system"}),
+            );
+            self.write_meta_locked(&guard, &meta).await?;
         }
         *self
             .active_recordings

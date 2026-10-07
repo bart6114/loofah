@@ -33,12 +33,19 @@ pub enum Expectation {
     SingleLine,
     NotContains(String),
     JsonPatchEmpty,
-    JsonPatchSingleReplace { path: String, value: String },
+    JsonPatchSingleReplace {
+        path: String,
+        value: String,
+    },
     MarkdownAtLeastHeadings(usize),
     MarkdownAllHeadingsAreH1,
     MarkdownHasHeadings(Vec<String>),
     MarkdownHasUnorderedList,
     MarkdownWordCountAtMost(usize),
+    MarkdownTasks {
+        count: usize,
+        required_terms: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

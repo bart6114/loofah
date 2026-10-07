@@ -9,6 +9,7 @@ import {
 import { useRunBatch } from "./useRunBatch";
 
 const {
+  sessionTranscriptsMock,
   startTranscriptionMock,
   useListenerMock,
   useSessionMock,
@@ -18,9 +19,9 @@ const {
   sonnerToastWarningMock,
   createTranscriptMock,
   appendTranscriptWordsAndHintsMock,
-  queueTagSuggestionsMock,
   idMock,
 } = vi.hoisted(() => ({
+  sessionTranscriptsMock: vi.fn(),
   startTranscriptionMock: vi.fn(),
   useListenerMock: vi.fn(),
   useSessionMock: vi.fn(),
@@ -30,8 +31,11 @@ const {
   sonnerToastWarningMock: vi.fn(),
   createTranscriptMock: vi.fn(),
   appendTranscriptWordsAndHintsMock: vi.fn(),
-  queueTagSuggestionsMock: vi.fn(),
   idMock: vi.fn(),
+}));
+
+vi.mock("~/types/tauri.gen", () => ({
+  commands: { sessionTranscripts: sessionTranscriptsMock },
 }));
 
 vi.mock("./contexts", () => ({
@@ -71,10 +75,6 @@ vi.mock("~/stt/capabilities", async (importOriginal) => {
 vi.mock("~/stt/queries", () => ({
   appendTranscriptWordsAndHints: appendTranscriptWordsAndHintsMock,
   createTranscript: createTranscriptMock,
-}));
-
-vi.mock("~/tags/suggestions", () => ({
-  queueTagSuggestions: queueTagSuggestionsMock,
 }));
 
 test("routes Whisper Large V3 through progressive local batch transcription", () => {
@@ -150,14 +150,37 @@ describe("canRunBatchTranscription", () => {
 });
 
 describe("useRunBatch", () => {
+  test.each([true, undefined])(
+    "preserves imported provenance through batch and re-transcription (%s)",
+    async (imported) => {
+      sessionTranscriptsMock.mockResolvedValue({
+        status: "ok",
+        data: [{ words: [{ metadata: { capture_source: "import" } }] }],
+      });
+      startTranscriptionMock.mockImplementation(async (_params, options) => {
+        options.handlePersist(
+          [{ text: "I will send it", start_ms: 0, end_ms: 100, channel: 0 }],
+          [],
+        );
+      });
+      const { result } = renderHook(() => useRunBatch("session-1"));
+      await act(async () => {
+        await result.current("/tmp/import.wav", { imported });
+      });
+      expect(
+        JSON.parse(createTranscriptMock.mock.calls[0][0].words[0].metadata),
+      ).toMatchObject({ capture_source: "import" });
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionTranscriptsMock.mockResolvedValue({ status: "ok", data: [] });
 
     let nextId = 0;
     idMock.mockImplementation(() => `generated-${++nextId}`);
     createTranscriptMock.mockResolvedValue(undefined);
     appendTranscriptWordsAndHintsMock.mockResolvedValue(undefined);
-    queueTagSuggestionsMock.mockResolvedValue(undefined);
     isSupportedLanguagesBatchMock.mockResolvedValue(true);
     useListenerMock.mockImplementation((selector) =>
       selector({ startTranscription: startTranscriptionMock }),
@@ -186,7 +209,7 @@ describe("useRunBatch", () => {
     );
   });
 
-  test("waits for streamed persists before suggesting tags", async () => {
+  test("waits for streamed persists before completing transcription", async () => {
     let resolveAppend: (() => void) | undefined;
     appendTranscriptWordsAndHintsMock.mockImplementationOnce(
       () =>
@@ -206,21 +229,18 @@ describe("useRunBatch", () => {
     });
 
     const { result } = renderHook(() => useRunBatch("session-1"));
-    const run = result.current("/tmp/session.wav");
+    const completed = vi.fn();
+    const run = result.current("/tmp/session.wav").then(completed);
 
     await waitFor(() => {
       expect(appendTranscriptWordsAndHintsMock).toHaveBeenCalledTimes(1);
     });
-    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
 
+    expect(completed).not.toHaveBeenCalled();
     resolveAppend?.();
     await act(async () => await run);
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
-    expect(queueTagSuggestionsMock).toHaveBeenCalledWith("session-1");
-    expect(
-      appendTranscriptWordsAndHintsMock.mock.invocationCallOrder[0],
-    ).toBeLessThan(queueTagSuggestionsMock.mock.invocationCallOrder[0]);
   });
 
   test("does not save for custom batch persist handlers", async () => {
@@ -239,7 +259,6 @@ describe("useRunBatch", () => {
     });
 
     expect(handlePersist).toHaveBeenCalledTimes(1);
-    expect(createTranscriptMock).not.toHaveBeenCalled();
     expect(appendTranscriptWordsAndHintsMock).not.toHaveBeenCalled();
   });
 
@@ -261,7 +280,6 @@ describe("useRunBatch", () => {
     ).rejects.toThrow("provider failed");
 
     expect(createTranscriptMock).toHaveBeenCalledTimes(1);
-    expect(queueTagSuggestionsMock).not.toHaveBeenCalled();
   });
 
   test("defaults Whisper batch to English without inheriting unsupported legacy languages", async () => {
@@ -331,7 +349,28 @@ describe("useRunBatch", () => {
     );
   });
 
-  test("falls back to local Soniqo batch when the selected on-device model is not batch-capable", async () => {
+  test("uses the selected streaming model for supported file transcription", async () => {
+    useSTTConnectionMock.mockReturnValue({
+      conn: {
+        provider: "fmtr",
+        model: "soniqo-parakeet-streaming",
+        baseUrl: "soniqo://local",
+        apiKey: "",
+      },
+    });
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    await result.current("/tmp/session.wav", { languages: ["en"] });
+    expect(startTranscriptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "soniqo-parakeet-streaming",
+        provider: "soniqo",
+        languages: ["en"],
+      }),
+      expect.any(Object),
+    );
+  });
+
+  test("rejects unsupported languages without switching the selected model", async () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
@@ -341,53 +380,21 @@ describe("useRunBatch", () => {
       },
     });
     isSupportedLanguagesBatchMock.mockResolvedValue(false);
-    startTranscriptionMock.mockResolvedValue(undefined);
-
     const { result } = renderHook(() => useRunBatch("session-1"));
-
-    await act(async () => {
-      await result.current("/tmp/session.wav");
-    });
-
-    expect(startTranscriptionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "soniqo",
-        model: "soniqo-parakeet-batch",
-        base_url: "soniqo://local",
-        api_key: "",
-      }),
-      expect.any(Object),
+    await expect(result.current("/tmp/session.wav")).rejects.toThrow(
+      "soniqo-parakeet-streaming cannot transcribe the selected meeting languages",
     );
-    expect(sonnerToastWarningMock).toHaveBeenCalledWith(
-      "Using a batch transcription provider",
-      expect.objectContaining({
-        description:
-          "soniqo-parakeet-streaming is not available for batch transcription. Using Soniqo batch transcription instead.",
-      }),
-    );
+    expect(startTranscriptionMock).not.toHaveBeenCalled();
+    expect(sonnerToastWarningMock).not.toHaveBeenCalled();
   });
 
-  // STT is on-device only: there is no cloud/hosted fallback left, so an
-  // absent connection always resolves to the local Soniqo batch target.
-  test("always falls back to the local Soniqo target when there is no STT connection", async () => {
+  test("requires a selected model instead of choosing a fallback when no connection exists", async () => {
     useSTTConnectionMock.mockReturnValue({ conn: null });
-    startTranscriptionMock.mockResolvedValue(undefined);
-
     const { result } = renderHook(() => useRunBatch("session-1"));
-
-    await act(async () => {
-      await result.current("/tmp/session.wav");
-    });
-
-    expect(startTranscriptionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "soniqo",
-        model: "soniqo-parakeet-batch",
-        base_url: "soniqo://local",
-        api_key: "",
-      }),
-      expect.any(Object),
+    await expect(result.current("/tmp/session.wav")).rejects.toThrow(
+      "Select a transcription model in Settings",
     );
+    expect(startTranscriptionMock).not.toHaveBeenCalled();
   });
 });
 

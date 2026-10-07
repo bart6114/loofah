@@ -38,7 +38,6 @@ extension NotificationManager {
     setupContent(effectView: effectView, container: container, notification: notification)
 
     activeNotifications[notification.key] = notification
-    hoverStates[notification.key] = false
 
     showWithAnimation(
       notification: notification, screen: screen, timeoutSeconds: payload.timeoutSeconds)

@@ -4,7 +4,7 @@ mod render;
 mod search;
 
 pub use search::{
-    DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, SearchHit, SearchKind, SearchMeetingsInput, SearchPage,
+    DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, SearchHit, SearchMeetingsInput, SearchPage,
     search_meetings,
 };
 
@@ -25,6 +25,8 @@ pub enum Error {
     NotFound(String),
     #[error("{0}")]
     InvalidInput(String),
+    #[error(transparent)]
+    Cache(#[from] hypr_search_cache::Error),
     #[error("{action} failed: {reason}")]
     Vault {
         action: &'static str,
@@ -37,7 +39,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "snake_case")]
 pub struct ListMeetingsInput {
-    #[schemars(description = "Case-insensitive title or meeting id substring")]
+    #[schemars(description = "Desktop-compatible full-text query across titles and content")]
     pub query: Option<String>,
     #[schemars(description = "Maximum results; defaults to 20 and is capped at 200")]
     #[schemars(range(min = 1, max = 200))]
@@ -74,21 +76,7 @@ pub struct Pagination {
     pub next_offset: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub struct MeetingListItem {
-    pub id: String,
-    pub title: String,
-    pub kind: String,
-    pub status: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub started_at: String,
-    pub ended_at: String,
-    pub tags: Vec<String>,
-    pub author: Option<String>,
-    pub skill: Option<String>,
-}
+pub use hypr_search_cache::SessionListItem as MeetingListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -168,11 +156,46 @@ pub struct MeetingExport {
     pub transcripts: Vec<Transcript>,
 }
 
-pub async fn list_meetings(vault: &Path, input: ListMeetingsInput) -> Result<MeetingPage> {
-    run_blocking("list meetings", vault, move |vault| {
-        list_meetings_sync(vault, input)
+pub async fn list_meetings(
+    cache: &hypr_search_cache::Cache,
+    input: ListMeetingsInput,
+) -> Result<MeetingPage> {
+    if input.untagged.unwrap_or(false) && input.tags.as_ref().is_some_and(|tags| !tags.is_empty()) {
+        return Err(Error::InvalidInput(
+            "tags cannot be combined with untagged".into(),
+        ));
+    }
+    let cache = cache.clone();
+    tokio::task::spawn_blocking(move || {
+        let limit = input
+            .limit
+            .unwrap_or(DEFAULT_LIST_LIMIT)
+            .clamp(1, MAX_LIST_LIMIT);
+        let offset = input.offset.unwrap_or(0);
+        let (meetings, total) = cache.list_fresh(
+            input.query.as_deref(),
+            input.tags.as_deref().unwrap_or_default(),
+            input.untagged.unwrap_or(false),
+            offset as usize,
+            limit as usize,
+        )?;
+        let page = pagination(
+            offset,
+            limit,
+            meetings.len(),
+            Some(total),
+            offset as usize + meetings.len() < total,
+        );
+        Ok(MeetingPage {
+            meetings,
+            pagination: page,
+        })
     })
     .await
+    .map_err(|error| Error::Vault {
+        action: "list sessions",
+        reason: error.to_string(),
+    })?
 }
 
 pub async fn get_meeting(vault: &Path, input: GetMeetingInput) -> Result<Meeting> {
@@ -188,6 +211,18 @@ pub async fn get_meeting_transcript(
 ) -> Result<MeetingTranscript> {
     run_blocking("load transcript", vault, move |vault| {
         get_meeting_transcript_sync(vault, input)
+    })
+    .await
+}
+
+pub async fn get_meeting_export_segments(
+    vault: &Path,
+    meeting_id: String,
+) -> Result<Vec<hypr_transcript::RenderedTranscriptSegment>> {
+    run_blocking("export transcript", vault, move |vault| {
+        let (location, _) = find_meeting(vault, &meeting_id)?;
+        let transcripts = load_raw_transcripts_sync(vault, &location)?;
+        Ok(render::meeting_transcript_segments(vault, &transcripts))
     })
     .await
 }
@@ -224,78 +259,6 @@ fn vault_error(action: &'static str) -> impl Fn(hypr_vault_read::Error) -> Error
         action,
         reason: error.to_string(),
     }
-}
-
-fn list_meetings_sync(vault: &Path, input: ListMeetingsInput) -> Result<MeetingPage> {
-    let limit = input
-        .limit
-        .unwrap_or(DEFAULT_LIST_LIMIT)
-        .clamp(1, MAX_LIST_LIMIT);
-    let offset = input.offset.unwrap_or(0);
-
-    let mut sessions = discover_sessions(vault, "list meetings")?;
-
-    if let Some(search) = input
-        .query
-        .as_deref()
-        .map(str::trim)
-        .filter(|query| !query.is_empty())
-    {
-        let search = search.to_lowercase();
-        sessions.retain(|(_, meta)| {
-            meta.title.to_lowercase().contains(&search) || meta.id.to_lowercase().contains(&search)
-        });
-    }
-
-    let wanted_tags = input
-        .tags
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
-        .collect::<Vec<_>>();
-    let untagged = input.untagged.unwrap_or(false);
-    if !wanted_tags.is_empty() && untagged {
-        return Err(Error::InvalidInput(
-            "tags cannot be combined with untagged".to_string(),
-        ));
-    }
-    if !wanted_tags.is_empty() {
-        sessions.retain(|(_, meta)| {
-            let session_tags = normalized_tags(&meta.tags);
-            wanted_tags.iter().all(|tag| session_tags.contains(tag))
-        });
-    } else if untagged {
-        sessions.retain(|(_, meta)| normalized_tags(&meta.tags).is_empty());
-    }
-
-    sort_sessions_recent_first(&mut sessions);
-
-    let mut meetings = sessions
-        .into_iter()
-        .skip(offset as usize)
-        .take(limit as usize + 1)
-        .map(|(location, meta)| meeting_list_item(vault, &location, meta))
-        .collect::<Vec<_>>();
-    let has_more = meetings.len() > limit as usize;
-    meetings.truncate(limit as usize);
-    let pagination = pagination(offset, limit, meetings.len(), None, has_more);
-
-    Ok(MeetingPage {
-        meetings,
-        pagination,
-    })
-}
-
-/// Discovered sessions with their physical locations; discovery diagnostics
-/// (corrupt/duplicate entries) never hide the healthy sessions.
-fn discover_sessions(
-    vault: &Path,
-    action: &'static str,
-) -> Result<Vec<(SessionLocation, hypr_vault_read::SessionMeta)>> {
-    Ok(hypr_vault_read::discover_sessions(vault)
-        .map_err(vault_error(action))?
-        .sessions)
 }
 
 /// Resolve only the canonical directory and require matching metadata.
@@ -385,18 +348,23 @@ fn assemble_meeting_sync(
     })
 }
 
-// AI documents live exclusively in `enhanced/<uuid>.md`, ordered by (sort_order, id).
+// Keep the existing document response shape while summary identity is session-scoped.
 fn load_summaries_sync(vault: &Path, location: &SessionLocation) -> Result<Vec<Document>> {
     let session_dir = &location.relative_dir;
     let mut summaries = Vec::new();
     for doc in hypr_vault_read::enhanced::list_enhanced_docs_in(vault, session_dir, &location.id)
         .map_err(vault_error("load meeting"))?
     {
+        let relative_path = if doc.kind == "summary" {
+            hypr_vault_read::summary::locate_in(vault, session_dir, &location.id)
+                .map_err(vault_error("load summary"))?
+                .map(|summary| summary.relative_path)
+                .unwrap_or_else(|| hypr_vault_read::paths::summary_path_in(session_dir))
+        } else {
+            hypr_vault_read::paths::enhanced_doc_path_in(session_dir, &doc.id)
+        };
         summaries.push(Document {
-            updated_at: file_updated_at(
-                vault,
-                &hypr_vault_read::paths::enhanced_doc_path_in(session_dir, &doc.id),
-            ),
+            updated_at: file_updated_at(vault, &relative_path),
             id: doc.id,
             kind: doc.kind,
             template_id: doc.template_id,
@@ -439,46 +407,6 @@ fn load_transcripts_sync(vault: &Path, location: &SessionLocation) -> Result<Vec
         .into_iter()
         .map(Transcript::from)
         .collect())
-}
-
-// Matches the retired SQL ordering: most recent first by started_at (falling back to
-// created_at when a session never started), then created_at, then id.
-fn sort_sessions_recent_first(sessions: &mut [(SessionLocation, hypr_vault_read::SessionMeta)]) {
-    sessions.sort_by(|(_, a), (_, b)| {
-        let a_key = (occurred_at(a), a.created_at.as_str(), a.id.as_str());
-        let b_key = (occurred_at(b), b.created_at.as_str(), b.id.as_str());
-        b_key.cmp(&a_key)
-    });
-}
-
-fn occurred_at(meta: &hypr_vault_read::SessionMeta) -> &str {
-    match meta.started_at.as_deref() {
-        Some(started_at) if !started_at.is_empty() => started_at,
-        _ => meta.created_at.as_str(),
-    }
-}
-
-fn meeting_list_item(
-    vault: &Path,
-    location: &SessionLocation,
-    meta: hypr_vault_read::SessionMeta,
-) -> MeetingListItem {
-    MeetingListItem {
-        updated_at: file_updated_at(
-            vault,
-            &hypr_vault_read::paths::meta_path_in(&location.relative_dir),
-        ),
-        tags: normalized_tags(&meta.tags),
-        id: meta.id,
-        title: meta.title,
-        kind: "meeting".to_string(),
-        status: "active".to_string(),
-        created_at: meta.created_at,
-        started_at: meta.started_at.unwrap_or_default(),
-        ended_at: meta.ended_at.unwrap_or_default(),
-        author: meta.author,
-        skill: meta.skill,
-    }
 }
 
 /// Session tags for output and filtering: normalized (trimmed, `#`-stripped,
@@ -645,6 +573,18 @@ fn pagination(
 #[cfg(test)]
 mod tests {
     use super::*;
+    async fn list_meetings(vault: &Path, input: ListMeetingsInput) -> Result<MeetingPage> {
+        let global = tempfile::tempdir().unwrap();
+        let cache = hypr_search_cache::Cache::new(global.path(), vault).unwrap();
+        cache.initialize(&mut |_| {}).unwrap();
+        super::list_meetings(&cache, input).await
+    }
+    async fn search_meetings(vault: &Path, input: SearchMeetingsInput) -> Result<SearchPage> {
+        let global = tempfile::tempdir().unwrap();
+        let cache = hypr_search_cache::Cache::new(global.path(), vault).unwrap();
+        cache.initialize(&mut |_| {}).unwrap();
+        super::search_meetings(&cache, input).await
+    }
 
     fn seed_session(vault: &Path, id: &str, title: &str, started_at: Option<&str>) {
         seed_session_with_tags(vault, id, title, started_at, &[]);
@@ -681,8 +621,9 @@ mod tests {
         let dir = vault.join("sessions/meeting-1");
         // Legacy note name: get_meeting must still read it through the fallback.
         std::fs::write(dir.join("_memo.md"), "Launch decision").unwrap();
-        // A loose `.md` is a user attachment, not a document -- must not surface.
+        // The canonical summary is plain Markdown; other loose files remain attachments.
         std::fs::write(dir.join("summary.md"), "Ship Tuesday").unwrap();
+        std::fs::write(dir.join("minutes.md"), "attachment only").unwrap();
         std::fs::create_dir_all(dir.join("enhanced")).unwrap();
         std::fs::write(
             dir.join("enhanced/doc-1.md"),
@@ -773,11 +714,13 @@ mod tests {
                 .iter()
                 .map(|summary| summary.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["doc-1"],
-            "only enhanced docs surface; loose .md attachments are ignored"
+            vec!["meeting-1", "doc-1"],
+            "the session summary and template output surface; other loose files are ignored"
         );
-        assert_eq!(meeting.summaries[0].title, "Customer review");
-        assert_eq!(meeting.summaries[0].template_id, "template-1");
+        assert_eq!(meeting.summaries[0].markdown, "Ship Tuesday");
+        assert_eq!(meeting.summaries[0].kind, "summary");
+        assert_eq!(meeting.summaries[1].title, "Customer review");
+        assert_eq!(meeting.summaries[1].template_id, "template-1");
         let serialized = serde_json::to_value(&meeting).unwrap();
         assert!(serialized.get("workspace_id").is_none());
         assert!(serialized.get("owner_user_id").is_none());
@@ -796,7 +739,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_meetings_orders_by_started_at_then_created_at_and_matches_ids() {
+    async fn list_meetings_orders_by_recency_and_uses_full_text_queries() {
         let vault = tempfile::tempdir().unwrap();
         seed_session(
             vault.path(),
@@ -836,7 +779,7 @@ mod tests {
         let by_id = list_meetings(
             vault.path(),
             ListMeetingsInput {
-                query: Some("old".to_string()),
+                query: Some("planning".to_string()),
                 ..Default::default()
             },
         )
@@ -926,15 +869,21 @@ mod tests {
         let hits = search_meetings(
             vault.path(),
             SearchMeetingsInput {
-                query: Some("budget".to_string()),
+                query: "budget".to_string(),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
         assert_eq!(hits.hits.len(), 1);
-        assert_eq!(hits.hits[0].meeting_id, readable_id);
-        assert_eq!(hits.hits[0].kind, "transcript");
+        assert_eq!(hits.hits[0].session_id, readable_id);
+        assert!(
+            hits.hits[0]
+                .content_snippet
+                .as_deref()
+                .unwrap()
+                .contains("budget")
+        );
 
         // The directory basename is presentation, never identity.
         let error = get_meeting(

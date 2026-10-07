@@ -108,6 +108,7 @@ pub(super) const VAULT_TASKS_KEY: &str = "";
 /// vault's word corpus never stays resident.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscriptSummary {
+    pub metadata: SessionTranscriptMetadata,
     /// Transcript ids in file order -- powers `transcript_get`'s id -> session
     /// resolution, `session_is_empty`'s count, and `RebuildReport.transcripts`.
     pub transcript_ids: Vec<String>,
@@ -122,6 +123,13 @@ pub struct TranscriptSummary {
     /// changes word content without changing the file's shape (same ids, same
     /// counts) must still flip `PartialEq` so a rescan notifies `Transcripts`.
     pub content_hash: u64,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct SessionTranscriptMetadata {
+    pub speaker_labels: Vec<String>,
+    pub started_at: Option<f64>,
+    pub ended_at: Option<f64>,
 }
 
 fn session_has_attachments(session_dir: &std::path::Path) -> Result<bool, StoreError> {
@@ -195,6 +203,7 @@ pub struct VaultIndex {
     pub sessions: HashMap<String, SessionEntry>,
     /// Session id -> that session's `enhanced/<uuid>.md` docs.
     pub docs: HashMap<String, Vec<EnhancedDoc>>,
+    pub summaries: HashMap<String, String>,
     pub transcripts: HashMap<String, TranscriptSummary>,
     /// Session id (or `VAULT_TASKS_KEY`) -> that file's tasks.
     pub tasks: HashMap<String, Vec<TaskItem>>,
@@ -298,6 +307,16 @@ impl SessionStore {
         has_transcript_words(&index, session_id)
     }
 
+    pub fn session_transcript_metadata(&self, session_id: &str) -> SessionTranscriptMetadata {
+        self.index
+            .read()
+            .unwrap()
+            .transcripts
+            .get(session_id)
+            .map(|summary| summary.metadata.clone())
+            .unwrap_or_default()
+    }
+
     /// Old `useEnhancedNoteRecords` semantics: docs with kind `summary` /
     /// `template_output`, ordered `(sort_order, id)`. The tombstone filter is
     /// inherent: deleted docs have no file, hence no entry. No kind filter is needed:
@@ -306,6 +325,12 @@ impl SessionStore {
     pub fn session_enhanced_docs(&self, session_id: &str) -> Vec<EnhancedDoc> {
         let index = self.index.read().unwrap();
         let mut docs: Vec<EnhancedDoc> = index.docs.get(session_id).cloned().unwrap_or_default();
+        if let Some(markdown) = index.summaries.get(session_id) {
+            docs.push(hypr_vault_read::summary::as_document(
+                session_id,
+                markdown.clone(),
+            ));
+        }
         docs.sort_by(|a, b| a.sort_order.cmp(&b.sort_order).then(a.id.cmp(&b.id)));
         docs
     }
@@ -314,6 +339,12 @@ impl SessionStore {
     /// frontend doesn't know the session at that call site).
     pub fn enhanced_doc_get(&self, doc_id: &str) -> Option<EnhancedDoc> {
         let index = self.index.read().unwrap();
+        if let Some(markdown) = index.summaries.get(doc_id) {
+            return Some(hypr_vault_read::summary::as_document(
+                doc_id,
+                markdown.clone(),
+            ));
+        }
         index
             .docs
             .values()
@@ -405,7 +436,8 @@ impl SessionStore {
                 .get(session_id)
                 .map(|summary| summary.transcript_ids.len())
                 .unwrap_or_default();
-            let enhanced_count = index.docs.get(session_id).map(Vec::len).unwrap_or_default();
+            let enhanced_count = index.docs.get(session_id).map(Vec::len).unwrap_or_default()
+                + usize::from(index.summaries.contains_key(session_id));
             if transcript_count > 0 || enhanced_count > 0 || !entry.meta.tags.is_empty() {
                 return Ok(false);
             }
@@ -545,6 +577,73 @@ impl SessionStore {
         }
     }
 
+    pub(super) fn index_set_note_and_meta(&self, meta: &SessionMeta, markdown: String) {
+        let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
+        index.sessions.insert(
+            meta.id.clone(),
+            SessionEntry {
+                meta: meta.clone(),
+                note_markdown: Some(markdown),
+            },
+        );
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
+        }
+        self.notify_index_changed(IndexEntity::Sessions, vec![meta.id.clone()]);
+    }
+
+    pub(super) fn index_set_summary_and_meta(&self, meta: &SessionMeta, markdown: String) {
+        let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
+        index
+            .sessions
+            .entry(meta.id.clone())
+            .and_modify(|entry| entry.meta = meta.clone())
+            .or_insert_with(|| SessionEntry {
+                meta: meta.clone(),
+                note_markdown: None,
+            });
+        if let Some(docs) = index.docs.get_mut(&meta.id) {
+            docs.retain(|doc| doc.kind != "summary");
+        }
+        index.summaries.insert(meta.id.clone(), markdown);
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
+        }
+        self.notify_index_changed(IndexEntity::Sessions, vec![meta.id.clone()]);
+        self.notify_index_changed(IndexEntity::Docs, vec![meta.id.clone()]);
+    }
+
+    pub(super) fn index_set_enhanced_doc_and_meta(&self, meta: &SessionMeta, doc: &EnhancedDoc) {
+        let mut index = self.index.write().unwrap();
+        let previous_header = index.session_header(&meta.id);
+        index
+            .sessions
+            .entry(meta.id.clone())
+            .and_modify(|entry| entry.meta = meta.clone())
+            .or_insert_with(|| SessionEntry {
+                meta: meta.clone(),
+                note_markdown: None,
+            });
+        let docs = index.docs.entry(meta.id.clone()).or_default();
+        match docs.iter_mut().find(|existing| existing.id == doc.id) {
+            Some(existing) => *existing = doc.clone(),
+            None => docs.push(doc.clone()),
+        }
+        let header_changed = previous_header != index.session_header(&meta.id);
+        drop(index);
+        if header_changed {
+            self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
+        }
+        self.notify_index_changed(IndexEntity::Sessions, vec![meta.id.clone()]);
+        self.notify_index_changed(IndexEntity::Docs, vec![meta.id.clone()]);
+    }
+
     pub(super) fn index_upsert_doc(&self, doc: &EnhancedDoc) {
         let mut index = self.index.write().unwrap();
         let docs = index.docs.entry(doc.session_id.clone()).or_default();
@@ -614,6 +713,9 @@ impl SessionStore {
                 .insert(session_id.to_string());
             changes.push((IndexEntity::Sessions, session_id.to_string()));
             changes.push((IndexEntity::SessionHeaders, session_id.to_string()));
+        }
+        if index.summaries.remove(session_id).is_some() {
+            changes.push((IndexEntity::Docs, session_id.to_string()));
         }
         if index.docs.remove(session_id).is_some() {
             changes.push((IndexEntity::Docs, session_id.to_string()));
@@ -1032,7 +1134,7 @@ mod tests {
         std::fs::write(dir.join("notes.md"), "# notes").unwrap();
         // A loose markdown file directly in the session dir is a user attachment,
         // not a document -- rebuild must leave it out of the index.
-        std::fs::write(dir.join("summary.md"), "user attachment body").unwrap();
+        std::fs::write(dir.join("minutes.md"), "user attachment body").unwrap();
         std::fs::write(
             dir.join("enhanced/doc-1.md"),
             hypr_vault_read::render_enhanced_file(&enhanced_doc("s1", "doc-1", 2)).unwrap(),
@@ -1075,7 +1177,7 @@ mod tests {
         assert_eq!(
             docs.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
             vec!["doc-1"],
-            "only enhanced/ docs are indexed; the loose summary.md attachment is ignored"
+            "only enhanced/ docs are indexed; the loose minutes.md attachment is ignored"
         );
 
         assert!(store.session_has_transcript("s1"));

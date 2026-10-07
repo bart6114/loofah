@@ -14,4 +14,10 @@ pub enum AudioImportEvent {
 
 pub trait AudioImportRuntime: Send + Sync {
     fn emit(&self, event: AudioImportEvent);
+    fn prepare_commit(&self, _session_id: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn finish_commit(&self, _session_id: &str) -> std::io::Result<()> {
+        Ok(())
+    }
 }

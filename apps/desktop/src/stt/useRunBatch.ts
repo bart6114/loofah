@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 
 import type { TranscriptionParams } from "@hypr/plugin-transcription";
-import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useListener } from "./contexts";
 import { useSTTConnection } from "./useSTTConnection";
@@ -17,9 +16,10 @@ import {
 } from "~/stt/capabilities";
 import { appendTranscriptWordsAndHints, createTranscript } from "~/stt/queries";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
-import { queueTagSuggestions } from "~/tags/suggestions";
+import { commands } from "~/types/tauri.gen";
 
 type RunOptions = {
+  imported?: boolean;
   handlePersist?: BatchPersistCallback;
   model?: string;
   baseUrl?: string;
@@ -30,24 +30,7 @@ type RunOptions = {
   maxSpeakers?: number;
 };
 
-type BatchTarget = {
-  provider: TranscriptionParams["provider"];
-  model: string;
-  baseUrl: string;
-  apiKey: string;
-  label: string;
-};
-
 export const STOPPED_TRANSCRIPTION_ERROR_MESSAGE = "Transcription stopped.";
-// STT is on-device only: this is the sole batch fallback target now — there
-// is no cloud/hosted alternative to fall back to.
-const LOCAL_SONIQO_BATCH_TARGET = {
-  provider: "soniqo",
-  model: "soniqo-parakeet-batch",
-  baseUrl: "soniqo://local",
-  apiKey: "",
-  label: "Soniqo batch transcription",
-} satisfies BatchTarget;
 
 // The only STT provider left is on-device "fmtr", so this just maps its
 // local model id prefix to the Rust-side batch provider identifier.
@@ -83,24 +66,6 @@ async function canUseBatchTarget(
   languages: readonly string[],
 ) {
   return isSupportedLanguagesBatch(provider, model, languages);
-}
-
-function selectedProviderLabel(
-  conn: { provider: string; model: string } | null,
-  modelOverride?: string,
-) {
-  if (!conn) {
-    return "the selected speech-to-text provider";
-  }
-
-  return modelOverride ?? conn.model ?? conn.provider;
-}
-
-function sameBatchTarget(
-  a: Pick<BatchTarget, "provider" | "model"> | null,
-  b: Pick<BatchTarget, "provider" | "model">,
-) {
-  return a?.provider === b.provider && a.model === b.model;
 }
 
 export function isStoppedTranscriptionError(error: unknown) {
@@ -154,34 +119,52 @@ export const useRunBatch = (sessionId: string) => {
               model: selectedModel,
               baseUrl: options?.baseUrl ?? conn.baseUrl,
               apiKey: options?.apiKey ?? conn.apiKey,
-              label: selectedModel,
             }
           : null;
-      const selectedTargetSupported = selectedTarget
-        ? await canUseBatchTarget(
-            selectedTarget.provider,
-            selectedTarget.model,
-            languages,
-          )
-        : false;
-      const fallbackTarget = LOCAL_SONIQO_BATCH_TARGET;
-      const shouldUseSelectedTarget =
-        selectedTargetSupported ||
-        sameBatchTarget(selectedTarget, fallbackTarget);
-      const target = shouldUseSelectedTarget
-        ? (selectedTarget ?? fallbackTarget)
-        : fallbackTarget;
-
-      if (!shouldUseSelectedTarget) {
-        sonnerToast.warning("Using a batch transcription provider", {
-          description: `${
-            selectedTarget
-              ? selectedProviderLabel(conn, selectedModel)
-              : selectedProviderLabel(conn)
-          } is not available for batch transcription. Using ${target.label} instead.`,
-        });
+      if (!selectedTarget) {
+        throw new Error(
+          "Select a transcription model in Settings before transcribing.",
+        );
       }
+      if (
+        !(await canUseBatchTarget(
+          selectedTarget.provider,
+          selectedTarget.model,
+          languages,
+        ))
+      ) {
+        throw new Error(
+          `${selectedTarget.model} cannot transcribe the selected meeting languages. Choose another model or change your spoken languages in Settings.`,
+        );
+      }
+      const target = selectedTarget;
 
+      const priorTranscripts =
+        options?.imported === undefined
+          ? await commands.sessionTranscripts(sessionId)
+          : null;
+      if (priorTranscripts?.status === "error") {
+        throw new Error(priorTranscripts.error);
+      }
+      const previousWords =
+        priorTranscripts?.data.flatMap(
+          (transcript) => transcript.words ?? [],
+        ) ?? [];
+      let captureSource = "unknown";
+      if (options?.imported !== undefined) {
+        captureSource = options.imported ? "import" : "recording";
+      } else if (
+        previousWords.some((word) => word.metadata?.capture_source === "import")
+      ) {
+        captureSource = "import";
+      } else if (
+        previousWords.length > 0 &&
+        previousWords.every(
+          (word) => word.metadata?.capture_source === "recording",
+        )
+      ) {
+        captureSource = "recording";
+      }
       const createdAt = new Date().toISOString();
       const memoMd = session?.raw_md ?? "";
       let transcriptId: string | null = null;
@@ -222,9 +205,10 @@ export const useRunBatch = (sessionId: string) => {
               start_ms: word.start_ms,
               end_ms: word.end_ms,
               channel: word.channel,
-              metadata: word.metadata
-                ? JSON.stringify(word.metadata)
-                : undefined,
+              metadata: JSON.stringify({
+                ...word.metadata,
+                capture_source: word.metadata?.capture_source ?? captureSource,
+              }),
             });
 
             newWordIds.push(wordId);
@@ -306,8 +290,6 @@ export const useRunBatch = (sessionId: string) => {
       }
 
       if (transcriptWriteError) throw transcriptWriteError;
-
-      await queueTagSuggestions(sessionId);
     },
     [conn, session, meetingLanguages, startTranscription, sessionId],
   );

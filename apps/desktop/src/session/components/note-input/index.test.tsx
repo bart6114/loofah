@@ -119,7 +119,7 @@ vi.mock("~/session/components/session-author-badge", () => ({
 }));
 
 vi.mock("~/session/components/session-people", () => ({
-  SessionPeopleFromTranscripts: () => <div data-testid="session-people" />,
+  SessionPeople: () => <div data-testid="session-people" />,
   useSessionPeopleTitleTrailer: () => ({
     element: document.createElement("div"),
     portal: null,
@@ -165,7 +165,9 @@ vi.mock("~/stt/contexts", () => ({
 }));
 
 vi.mock("~/stt/queries", () => ({
-  useSessionTranscripts: () => [],
+  useSessionTranscripts: () => {
+    throw new Error("Note chrome must not load transcript words");
+  },
 }));
 
 vi.mock("react-hotkeys-hook", () => ({

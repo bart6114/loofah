@@ -80,7 +80,15 @@ pub(crate) async fn transcribe_session(
     let model = resolve_soniqo_model(&config)?;
     ensure_soniqo_model_ready(&model)?;
 
+    let _audio_guard = store
+        .lock_session_audio(session_id)
+        .await
+        .map_err(|e| Error::operation(ACTION, e.to_string()))?;
     let params = BatchParams {
+        audio: store
+            .resolve_session_audio(session_id)
+            .await
+            .map_err(|e| Error::operation(ACTION, e.to_string()))?,
         session_id: session_id.to_string(),
         provider: BatchProvider::Soniqo,
         file_path: audio_path.to_string_lossy().into_owned(),
@@ -94,7 +102,7 @@ pub(crate) async fn transcribe_session(
         max_speakers: None,
     };
 
-    let output = run_batch(Arc::new(CliBatchRuntime), params)
+    let output = run_batch(Arc::new(CliBatchRuntime { _audio_guard }), params)
         .await
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
 
@@ -121,6 +129,7 @@ pub(crate) async fn transcribe_session(
         words: transcript.words.len(),
     };
 
+    crate::output::track_write(session_id)?;
     store
         .replace_session_transcripts(session_id, transcript)
         .await
@@ -215,18 +224,14 @@ fn ensure_soniqo_model_ready(model: &str) -> Result<()> {
             .map_err(|error: hypr_transcribe_soniqo::Error| {
                 Error::operation(ACTION, error.to_string())
             })?;
-    // Streaming models transcribe files with their batch sibling (the same
-    // mapping `run_soniqo_batch` applies), so check that model's cache.
-    let batch_model = parsed.batch_model();
-
-    let downloaded = hypr_transcribe_soniqo::is_model_downloaded(batch_model)
+    let downloaded = hypr_transcribe_soniqo::is_model_downloaded(parsed)
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
     if !downloaded {
         return Err(Error::operation(
             ACTION,
             format!(
                 "the {} model is not downloaded; open the desktop app once to download it",
-                batch_model.display_name()
+                parsed.display_name()
             ),
         ));
     }
@@ -244,7 +249,9 @@ pub(crate) fn find_session_audio(session_dir: &Path) -> Option<PathBuf> {
 /// Headless stand-in for the desktop's Tauri event forwarding: progress goes
 /// to stderr (stdout stays reserved for the command's result, `--json` or
 /// not); the final response is consumed from `run_batch`'s return value.
-struct CliBatchRuntime;
+struct CliBatchRuntime {
+    _audio_guard: tokio::sync::OwnedMutexGuard<()>,
+}
 
 impl BatchRuntime for CliBatchRuntime {
     fn emit(&self, event: BatchEvent) {

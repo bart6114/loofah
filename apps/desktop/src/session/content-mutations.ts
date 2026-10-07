@@ -1,10 +1,7 @@
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
-import { ensureTag } from "~/tags/queries";
-import { commands } from "~/types/tauri.gen";
+import { commands, type ScoredTagSuggestion } from "~/types/tauri.gen";
 
-// Markdown-based since D-3: `enhanced/<doc-id>.md` is the doc's canonical home, so the
-// compare-and-swap runs against the file's markdown body (the store rejects with a
-// "conflict:" error when `currentMarkdown` is stale), not against the SQL row.
+// Compare-and-swap rejects generated content if the summary changed while AI was running.
 export type SessionDocumentContentUpdate = {
   id: string;
   currentMarkdown: string;
@@ -15,71 +12,37 @@ export function persistGeneratedEnhancedNote({
   sessionId,
   ownerUserId: _ownerUserId,
   note,
-  tagNames,
+  suggestedTags,
+  signal,
 }: {
   sessionId: string;
   ownerUserId: string;
   note: SessionDocumentContentUpdate;
-  tagNames: string[];
+  suggestedTags?: ScoredTagSuggestion[];
+  signal?: AbortSignal;
 }): Promise<void> {
   return enqueueDatabaseWrite(`session:${sessionId}`, async () => {
-    const normalizedTagNames = [...new Set(tagNames)].filter(Boolean);
-
-    // File-first with the same staleness contract the old guarded SQL update had: a stale
-    // `currentMarkdown` (reset/regenerate replaced the summary meanwhile) rejects and
-    // nothing below runs. A missing doc file (session or doc deleted) rejects too,
-    // replacing the old `expectedRowsAffected`/`EXISTS(sessions)` guards.
-    const docWrite = await commands.sessionUpdateEnhancedDoc(
-      sessionId,
-      note.id,
-      {
-        markdown: note.nextMarkdown,
-        expected_markdown: note.currentMarkdown,
-      },
-    );
+    signal?.throwIfAborted();
+    // The Rust write applies suggestions only after the summary passes its stale-content guard.
+    const docWrite =
+      note.id === sessionId
+        ? await commands.sessionUpdateSummary(
+            sessionId,
+            note.nextMarkdown,
+            note.currentMarkdown,
+            true,
+            suggestedTags ?? null,
+          )
+        : await commands.sessionUpdateEnhancedDoc(sessionId, note.id, {
+            markdown: note.nextMarkdown,
+            reconcile_tasks: true,
+            suggested_tags: suggestedTags,
+            expected_markdown: note.currentMarkdown,
+          });
     if (docWrite.status === "error") {
       throw new Error(
         `Failed to persist generated summary ${note.id}: ${docWrite.error}`,
       );
-    }
-
-    // `_meta.json` is the only tag store now (the SQL tag tables have no readers left).
-    // Same additive semantics as the old tag/session_tags upserts: union the generated
-    // tags into whatever the session already carries, sorted for stable file content.
-    // The read-merge-write can't interleave with another tag writer: everything that
-    // mutates this session serializes through the `session:<id>` queue key.
-    if (normalizedTagNames.length > 0) {
-      const sessionRead = await commands.sessionGet(sessionId);
-      if (sessionRead.status === "error") {
-        throw new Error(
-          `Failed to read session ${sessionId} tags: ${sessionRead.error}`,
-        );
-      }
-      const currentTags = sessionRead.data?.meta.tags ?? [];
-      const mergedTags = [
-        ...new Set([...currentTags, ...normalizedTagNames]),
-      ].sort();
-
-      const result = await commands.sessionUpdateMeta(sessionId, {
-        tags: mergedTags,
-      });
-      if (result.status === "error") {
-        throw new Error(
-          `Failed to write tags into session ${sessionId} meta: ${result.error}`,
-        );
-      }
-
-      // Best-effort registry sync: the vault-root `tags.json` feeds the typeahead,
-      // but a registry failure must never fail the note write itself.
-      for (const tagName of mergedTags) {
-        void ensureTag(tagName).catch((error) => {
-          console.error(
-            "[content-mutations] failed to register tag in tags.json",
-            tagName,
-            error,
-          );
-        });
-      }
     }
   });
 }
@@ -121,14 +84,19 @@ export function applyGeneratedSessionTitle({
     // file-era equivalent of the old expectedRowsAffected rollback) throws here and the
     // store-canonical title write below never happens.
     for (const document of documents) {
-      const docWrite = await commands.sessionUpdateEnhancedDoc(
-        sessionId,
-        document.id,
-        {
-          markdown: document.nextMarkdown,
-          expected_markdown: document.currentMarkdown,
-        },
-      );
+      const docWrite =
+        document.id === sessionId
+          ? await commands.sessionUpdateSummary(
+              sessionId,
+              document.nextMarkdown,
+              document.currentMarkdown,
+              false,
+              null,
+            )
+          : await commands.sessionUpdateEnhancedDoc(sessionId, document.id, {
+              markdown: document.nextMarkdown,
+              expected_markdown: document.currentMarkdown,
+            });
       if (docWrite.status === "error") {
         throw new Error(
           `Failed to stamp title into summary ${document.id}: ${docWrite.error}`,

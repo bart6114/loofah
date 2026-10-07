@@ -26,7 +26,7 @@ fn real_speakers_have_stable_timestamped_labels() {
         );
         std::thread::sleep(Duration::from_millis(200));
     }
-    let mut reader = hound::WavReader::open(path).unwrap();
+    let mut reader = hound::WavReader::open(&path).unwrap();
     assert_eq!(reader.spec().sample_rate, 16000);
     assert_eq!(reader.spec().channels, 1);
     let samples = reader
@@ -36,6 +36,20 @@ fn real_speakers_have_stable_timestamped_labels() {
     let mut engine = Diarizer::load().unwrap();
     let start = Instant::now();
     let segments = engine.process(&samples, 16000).unwrap();
+    let prepared = hypr_audio_utils::PcmFile::prepare(&path, || false).unwrap();
+    let file_segments = engine.process_file(&prepared.descriptor.path, 0).unwrap();
+    assert_eq!(file_segments, segments);
+    let stereo = tempfile::NamedTempFile::new().unwrap();
+    let mut writer =
+        hound::WavWriter::create(stereo.path(), hypr_audio_utils::pcm_spec(2)).unwrap();
+    for &sample in &samples {
+        writer.write_sample(0.0_f32).unwrap();
+        writer.write_sample(sample).unwrap();
+    }
+    writer.finalize().unwrap();
+    assert_eq!(engine.process_file(stereo.path(), 1).unwrap(), segments);
+    assert!(engine.process_file(stereo.path(), 2).is_err());
+    assert!(engine.process_file(stereo.path(), 0).unwrap().is_empty());
     let speakers = segments
         .iter()
         .map(|s| s.speaker_index)

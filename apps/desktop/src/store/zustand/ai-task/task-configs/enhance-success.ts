@@ -1,19 +1,9 @@
 import { createTaskId, type TaskConfig } from ".";
 import {
-  appendTagLineToMarkdown,
-  extractEnhanceTagNames,
-} from "./summary-tags";
-import {
   getPersistableGeneratedTitle,
   persistGeneratedTitle,
 } from "./title-success";
 
-import { summaryNoteText } from "~/services/enhancer/source";
-import {
-  constrainSummaryLength,
-  countNormalizedCharacters,
-  getSummaryLengthPolicy,
-} from "~/services/enhancer/summary-length";
 import { persistGeneratedEnhancedNote } from "~/session/content-mutations";
 import { loadSessionContentSnapshot } from "~/session/content-queries";
 import { ensureMarkdownFirstLineTitle } from "~/session/title-content";
@@ -21,6 +11,7 @@ import { hasLiveSessionTitleDraft } from "~/store/zustand/live-title";
 
 const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   text,
+  result,
   args,
   transformedArgs,
   model,
@@ -28,17 +19,11 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   getTaskState,
   signal,
 }) => {
-  const lengthPolicy = getSummaryLengthPolicy(
-    transformedArgs.transcripts,
-    summaryNoteText(transformedArgs.postMeetingMemo),
-  );
-  const constrainedText = constrainSummaryLength(text, lengthPolicy);
-  if (!constrainedText) {
+  const summaryText = text.trim();
+  if (signal.aborted || !summaryText) {
     return;
   }
 
-  const tagNames = extractEnhanceTagNames(constrainedText, transformedArgs);
-  const textWithTags = appendTagLineToMarkdown(constrainedText, tagNames);
   const initialSnapshot = await loadSessionContentSnapshot(args.sessionId);
   if (!initialSnapshot) {
     throw new Error(`Session ${args.sessionId} no longer exists`);
@@ -60,7 +45,7 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
         taskType: "title",
         args: {
           sessionId: args.sessionId,
-          enhancedNote: textWithTags,
+          enhancedNote: summaryText,
           skipPersist: true,
         },
         onComplete: (title) => {
@@ -78,11 +63,13 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
   if (!snapshot) {
     throw new Error(`Session ${args.sessionId} no longer exists`);
   }
-  const note = snapshot.enhancedNotes.find(
-    (candidate) => candidate.id === args.enhancedNoteId,
+  const note = snapshot.enhancedNotes.find((candidate) =>
+    args.templateDocumentId
+      ? candidate.id === args.templateDocumentId
+      : candidate.kind === "summary",
   );
-  if (!note) {
-    throw new Error(`Summary ${args.enhancedNoteId} no longer exists`);
+  if (!note || transformedArgs.expectedMarkdown === null) {
+    throw new Error(`Summary ${args.sessionId} no longer exists`);
   }
 
   trimmedTitle = snapshot.title.trim();
@@ -95,47 +82,23 @@ const onSuccess: NonNullable<TaskConfig<"enhance">["onSuccess"]> = async ({
     shouldPersistGeneratedTitle = true;
   }
 
-  const titledText = ensureMarkdownFirstLineTitle(
-    constrainedText,
-    trimmedTitle,
-  );
-  const tagLine = appendTagLineToMarkdown("", tagNames);
-  const reservedTagCharacters = tagLine
-    ? countNormalizedCharacters(tagLine) + 1
-    : 0;
-  const persistableBody = constrainSummaryLength(
-    titledText,
-    lengthPolicy
-      ? {
-          ...lengthPolicy,
-          maxCharacters: Math.max(
-            0,
-            lengthPolicy.maxCharacters - reservedTagCharacters,
-          ),
-          maxSections: null,
-        }
-      : null,
-  );
+  const titledText = ensureMarkdownFirstLineTitle(summaryText, trimmedTitle);
   // A reset/regenerate aborts this run; a stale run that persisted anyway
   // would overwrite the replacement's summary with old content.
   if (signal.aborted) {
     return;
   }
 
-  // The summary's real home is `sessions/<id>/enhanced/<note.id>.md` -- one file per doc,
-  // templated or not -- written through the store inside persistGeneratedEnhancedNote (which
-  // also CASes on the file's current markdown so a stale run can't clobber a regenerated
-  // summary). No single-slot `summary.md` mirror and no shadow-row cleanup needed anymore.
-  const persistableText = appendTagLineToMarkdown(persistableBody, tagNames);
   await persistGeneratedEnhancedNote({
     sessionId: args.sessionId,
     ownerUserId: snapshot.ownerUserId,
     note: {
       id: note.id,
-      currentMarkdown: note.markdown,
-      nextMarkdown: persistableText,
+      currentMarkdown: transformedArgs.expectedMarkdown,
+      nextMarkdown: titledText,
     },
-    tagNames,
+    suggestedTags: result?.suggestedTags,
+    signal,
   });
 
   if (shouldPersistGeneratedTitle && !signal.aborted) {

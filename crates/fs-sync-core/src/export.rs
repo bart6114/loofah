@@ -89,13 +89,22 @@ pub fn write_file_atomic(
 /// vault content outright (Drive/iCloud-friendly, and it doubles as an undo
 /// buffer). No-ops (returns `Ok(None)`) if `path` doesn't exist.
 pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<PathBuf>> {
-    if !path.exists() {
-        return Ok(None);
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
     }
 
     let target = trash_destination(vault_base, path)?;
-    hypr_storage::fs::rename_with_retry(path, &target)?;
-    Ok(Some(target))
+    loop {
+        let candidate = unique_path(target.clone());
+        match hypr_storage::fs::rename_no_replace(path, &candidate) {
+            Ok(()) => return Ok(Some(candidate)),
+            // Another process may claim the candidate after unique_path checked it.
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
 }
 
 /// An overwrite backs up the old bytes without creating a gap at the live path.
@@ -108,28 +117,79 @@ pub fn copy_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
         }
     }
     let target = trash_destination(vault_base, path)?;
-    std::fs::copy(path, &target)?;
-    std::fs::OpenOptions::new()
-        .write(true)
-        .open(&target)?
-        .sync_all()?;
-    Ok(Some(target))
+    loop {
+        let candidate = unique_path(target.clone());
+        let mut backup = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(backup) => backup,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let result = (|| {
+            let mut source = std::fs::File::open(path)?;
+            std::io::copy(&mut source, &mut backup)?;
+            backup.sync_all()
+        })();
+        drop(backup);
+        if let Err(error) = result {
+            let _ = std::fs::remove_file(&candidate);
+            return Err(error.into());
+        }
+        return Ok(Some(candidate));
+    }
 }
 
 fn trash_destination(vault_base: &Path, path: &Path) -> crate::Result<PathBuf> {
-    let relative = path.strip_prefix(vault_base).unwrap_or(path);
-    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let mut target = vault_base.join(".trash").join(date).join(relative);
-
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
+    let relative = path.strip_prefix(vault_base).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "trash source is outside the vault",
+        )
+    })?;
+    if relative.as_os_str().is_empty()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "invalid trash source path",
+        )
+        .into());
     }
-    target = unique_path(target);
+    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let target = vault_base.join(".trash").join(date).join(relative);
+    let mut parent = vault_base.to_path_buf();
+    for component in target
+        .parent()
+        .unwrap()
+        .strip_prefix(vault_base)
+        .unwrap()
+        .components()
+    {
+        parent.push(component);
+        match std::fs::create_dir(&parent) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !std::fs::symlink_metadata(&parent)?.file_type().is_dir() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "trash parent is not a directory",
+                    )
+                    .into());
+                }
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
     Ok(target)
 }
 
 fn unique_path(path: PathBuf) -> PathBuf {
-    if !path.exists() {
+    if path.symlink_metadata().is_err() {
         return path;
     }
 
@@ -150,7 +210,7 @@ fn unique_path(path: PathBuf) -> PathBuf {
             None => format!("{stem}-{counter}"),
         };
         let candidate = path.with_file_name(candidate_name);
-        if !candidate.exists() {
+        if candidate.symlink_metadata().is_err() {
             return candidate;
         }
         counter += 1;
@@ -314,6 +374,28 @@ mod tests {
         assert_ne!(moved, moved_again);
         assert!(moved.exists());
         assert!(moved_again.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn move_to_trash_preserves_dangling_symlink_collisions() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("note.md");
+        let target = temp
+            .path()
+            .join(".trash")
+            .join(chrono::Utc::now().format("%Y-%m-%d").to_string())
+            .join("note.md");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("missing", &target).unwrap();
+        std::fs::write(&source, b"keep").unwrap();
+        let moved = move_to_trash(temp.path(), &source).unwrap().unwrap();
+        assert_ne!(moved, target);
+        assert_eq!(std::fs::read(moved).unwrap(), b"keep");
+        assert_eq!(
+            std::fs::read_link(target).unwrap(),
+            PathBuf::from("missing")
+        );
     }
 
     #[test]
