@@ -160,6 +160,15 @@ fn main() {
 
     let mut config = Config::new(&whisper_root);
 
+    // ggml's ARM kernels require Clang; Visual Studio otherwise defaults to cl.exe.
+    if cfg!(windows)
+        && target == "aarch64-pc-windows-msvc"
+        && env::var("CMAKE_GENERATOR")
+            .map_or(true, |generator| generator.starts_with("Visual Studio"))
+    {
+        config.generator_toolset("ClangCL");
+    }
+
     config
         .profile("Release")
         .define("BUILD_SHARED_LIBS", "OFF")

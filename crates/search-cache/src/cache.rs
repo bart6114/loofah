@@ -177,6 +177,9 @@ impl Cache {
         pointer
             .persist(self.root.join("CURRENT"))
             .map_err(|error| error.error)?;
+        // Windows cannot open a directory with File::open. The pointer itself
+        // is already flushed; directory fsync is available on Unix.
+        #[cfg(unix)]
         File::open(&self.root)?.sync_all()?;
         // Every reader holds the shared cache lock, so retired generations can now be removed.
         for entry in fs::read_dir(&generations)? {

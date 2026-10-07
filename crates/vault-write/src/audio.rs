@@ -252,7 +252,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(stored, source.to_str().unwrap());
+        assert_eq!(Path::new(&stored), source);
         assert!(source.is_file(), "the recording must survive cataloging");
         assert_eq!(std::fs::read(&source).unwrap(), b"mp3-bytes");
     }
@@ -271,8 +271,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            stored,
-            vault.path().join("sessions/s1/audio.mp3").to_str().unwrap()
+            Path::new(&stored),
+            vault.path().join("sessions/s1/audio.mp3")
         );
         assert!(!source.exists());
     }
