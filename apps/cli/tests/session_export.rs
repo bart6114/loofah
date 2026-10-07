@@ -19,8 +19,7 @@ fn run(vault: &Path, args: &[&str]) -> Output {
     ] {
         cmd.env_remove(key);
     }
-    cmd.env("TZ", "UTC")
-        .arg("--vault-path")
+    cmd.arg("--vault-path")
         .arg(vault)
         .args(args)
         .stdin(Stdio::null())
@@ -112,7 +111,14 @@ fn headless_formats_match_desktop_fixture_and_leave_vault_unchanged() {
         "../../../crates/export-core/tests/fixtures/desktop-export.json"
     ))
     .unwrap();
-    input.metadata.as_mut().unwrap().participants.clear();
+    let metadata = input.metadata.as_mut().unwrap();
+    metadata.participants.clear();
+    // Windows uses the system timezone even when the subprocess has TZ=UTC.
+    metadata.created_at = chrono::DateTime::parse_from_rfc3339("2026-09-18T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Local)
+        .format("%A, %B %-d, %Y at %-I:%M %p")
+        .to_string();
     input.transcript.as_mut().unwrap().items.pop();
     for (name, format) in [
         ("md", hypr_export_core::TextFormat::Md),
