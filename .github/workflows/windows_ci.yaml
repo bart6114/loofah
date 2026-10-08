@@ -59,7 +59,7 @@ jobs:
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |
-          Get-ChildItem target/debug/deps/*.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(loofah_desktop_lib|tauri_plugin_notify)-' } | ForEach-Object {
+          Get-ChildItem target/debug/deps/*.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(loofah_desktop_lib|tauri_plugin_notify|tauri_plugin_local_stt)-' } | ForEach-Object {
             node apps/desktop/src-tauri/scripts/check-windows-runtime.mjs $_.FullName
           }
       - name: Verify signing configuration contracts
