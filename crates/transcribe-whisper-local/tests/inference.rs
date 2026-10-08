@@ -106,8 +106,11 @@ async fn real_websocket_finalizes_and_recovers_from_cancellation() {
             .unwrap();
         let mut text = String::new();
         let mut terminals = 0;
+        let mut closed = false;
         while let Some(message) = socket.next().await {
-            let Message::Text(message) = message.unwrap() else {
+            let message = message.unwrap();
+            closed |= matches!(message, Message::Close(_));
+            let Message::Text(message) = message else {
                 continue;
             };
             let response: serde_json::Value = serde_json::from_str(&message).unwrap();
@@ -131,6 +134,7 @@ async fn real_websocket_finalizes_and_recovers_from_cancellation() {
                 terminals += 1;
             }
         }
+        assert!(closed, "server ended without a WebSocket close frame");
         assert_eq!(terminals, 1);
         assert!(text.to_lowercase().contains("hello"), "{text}");
         let (mut cancelled, _) = connect_async(&url).await.unwrap();
