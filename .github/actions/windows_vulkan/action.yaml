@@ -1,0 +1,11 @@
+name: Install Windows Vulkan SDK
+description: Provision a pinned native Vulkan SDK without installing a system runtime.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/loofah-vulkan-1.4.363.0-${{ runner.arch }}
+        key: windows-vulkan-1.4.363.0-${{ runner.arch }}
+    - run: ./.github/scripts/install_windows_vulkan.ps1
+      shell: pwsh

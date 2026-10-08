@@ -97,6 +97,13 @@ function inspect(file, depth = 0) {
     .includes(Buffer.from("Microsoft.Windows.Common-Controls"));
   console.log(`${file} (machine ${binary.machine})`);
   for (const entry of binary.imports) {
+    if (
+      process.argv.includes("--no-vulkan-loader") &&
+      entry.dll.toLowerCase() === "vulkan-1.dll"
+    ) {
+      console.error(`Mandatory Vulkan loader import in ${file}`);
+      failures++;
+    }
     if (/^(api|ext)-ms-/i.test(entry.dll)) continue;
     if (
       entry.dll.toLowerCase() === "comctl32.dll" &&

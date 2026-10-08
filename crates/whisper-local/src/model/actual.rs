@@ -20,12 +20,26 @@ lazy_static! {
     static ref TRAILING_DOTS: Regex = Regex::new(r"\.{2,}$").unwrap();
 }
 
+fn cpu_context_params() -> WhisperContextParameters<'static> {
+    let mut params = WhisperContextParameters::default();
+    params.use_gpu = false;
+    params.flash_attn = false;
+    params.dtw_parameters.mode = whisper_rs::DtwMode::None;
+    params
+}
+
 #[derive(Default)]
 pub struct LoadedWhisperBuilder {
     model_path: Option<String>,
+    use_gpu: Option<bool>,
 }
 
 impl LoadedWhisperBuilder {
+    pub fn use_gpu(mut self, use_gpu: bool) -> Self {
+        self.use_gpu = Some(use_gpu);
+        self
+    }
+
     pub fn model_path(mut self, model_path: impl Into<String>) -> Self {
         self.model_path = Some(model_path.into());
         self
@@ -34,11 +48,15 @@ impl LoadedWhisperBuilder {
     pub fn build(self) -> Result<LoadedWhisper, crate::Error> {
         unsafe { Self::suppress_log() };
 
+        let mut use_gpu = self
+            .use_gpu
+            .unwrap_or_else(|| std::env::var("LOOFAH_WHISPER_CPU").as_deref() != Ok("1"));
         let context_param = {
             let mut p = WhisperContextParameters {
                 gpu_device: 0,
-                use_gpu: true,
-                flash_attn: std::env::var("LOOFAH_WHISPER_FLASH_ATTN").as_deref() == Ok("1"),
+                use_gpu,
+                flash_attn: use_gpu
+                    && std::env::var("LOOFAH_WHISPER_FLASH_ATTN").as_deref() == Ok("1"),
                 ..Default::default()
             };
             p.dtw_parameters.mode = whisper_rs::DtwMode::None;
@@ -51,15 +69,28 @@ impl LoadedWhisperBuilder {
         }
 
         let start = std::time::Instant::now();
-        tracing::info!(model = ?std::path::Path::new(&model_path).file_name(), engine = whisper_rs::get_whisper_version(), gpu = context_param.use_gpu, metal = cfg!(feature = "metal"), flash_attn = context_param.flash_attn, "whisper_model_loading");
-        let ctx = WhisperContext::new_with_params(&model_path, context_param)?;
+        tracing::info!(model = ?std::path::Path::new(&model_path).file_name(), engine = whisper_rs::get_whisper_version(), gpu_requested = use_gpu, metal = cfg!(feature = "metal"), flash_attn = context_param.flash_attn, "whisper_model_loading");
+        let ctx = match WhisperContext::new_with_params(&model_path, context_param) {
+            Ok(ctx) => ctx,
+            Err(error) if cfg!(target_os = "windows") && use_gpu => {
+                tracing::warn!(error = %error, "whisper_gpu_model_load_failed_retrying_cpu");
+                use_gpu = false;
+                WhisperContext::new_with_params(&model_path, cpu_context_params())?
+            }
+            Err(error) => return Err(error.into()),
+        };
         tracing::info!(
             elapsed_ms = start.elapsed().as_millis(),
             "whisper_model_loaded"
         );
         let token_beg = ctx.token_beg();
 
-        Ok(LoadedWhisper { ctx, token_beg })
+        Ok(LoadedWhisper {
+            ctx,
+            token_beg,
+            model_path,
+            use_gpu,
+        })
     }
 
     unsafe fn suppress_log() {
@@ -101,6 +132,8 @@ impl WhisperBuilder {
 pub struct LoadedWhisper {
     ctx: WhisperContext,
     token_beg: WhisperTokenId,
+    model_path: String,
+    use_gpu: bool,
 }
 
 impl LoadedWhisper {
@@ -109,6 +142,22 @@ impl LoadedWhisper {
     }
 
     pub fn session(&self, languages: Vec<Language>) -> Result<Whisper, crate::Error> {
+        let state = match self.ctx.create_state() {
+            Ok(state) => state,
+            Err(error) if cfg!(target_os = "windows") && self.use_gpu => {
+                tracing::warn!(error = %error, "whisper_gpu_session_load_failed_retrying_cpu");
+                WhisperContext::new_with_params(&self.model_path, cpu_context_params())?
+                    .create_state()?
+            }
+            Err(error) => return Err(error.into()),
+        };
+        tracing::info!(backend = state.backend_name(), "whisper_session_loaded");
+        if self.use_gpu && state.backend_name() == "CPU" {
+            tracing::info!(
+                reason = "GPU unavailable or unsupported",
+                "whisper_cpu_fallback"
+            );
+        }
         Ok(Whisper {
             id: uuid::Uuid::new_v4().to_string(),
             index: 0,
@@ -125,7 +174,7 @@ impl LoadedWhisper {
             cancelled: Arc::new(AtomicBool::new(false)),
             dynamic_prompt: String::new(),
             initial_prompt: String::new(),
-            state: self.ctx.create_state()?,
+            state,
             token_beg: self.token_beg,
         })
     }
@@ -150,6 +199,9 @@ pub struct Whisper {
 }
 
 impl Whisper {
+    pub fn backend_name(&self) -> &str {
+        self.state.backend_name()
+    }
     pub fn set_native_timestamps(&mut self, enabled: bool) {
         self.native_timestamps = enabled;
     }
@@ -463,9 +515,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires LOOFAH_WHISPER_MODEL"]
     fn test_whisper() {
         let mut whisper = Whisper::builder()
-            .model_path(concat!(env!("CARGO_MANIFEST_DIR"), "/model.bin"))
+            .model_path(std::env::var("LOOFAH_WHISPER_MODEL").unwrap())
             .build()
             .unwrap();
 

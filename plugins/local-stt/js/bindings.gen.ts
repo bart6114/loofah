@@ -128,7 +128,7 @@ export type ServerStatus = "unreachable" | "loading" | "ready"
 export type ServerType = "internal"
 export type SoniqoModel = "onnx-parakeet-streaming" | "onnx-parakeet-batch" | "soniqo-parakeet-streaming" | "soniqo-parakeet-batch" | "soniqo-omnilingual"
 export type SttModelInfo = { key: LocalModel; display_name: string; description: string; size_bytes: number | null; model_type: SttModelType; supported_languages: string[] | null }
-export type SttModelType = "onnx" | "soniqo" | "whispercpp"
+export type SttModelType = "soniqo" | "onnx" | "whispercpp"
 export type WhisperModel = "whisper-large-v3" | "QuantizedTiny" | "QuantizedTinyEn" | "QuantizedBase" | "QuantizedBaseEn" | "QuantizedSmall" | "QuantizedSmallEn" | "QuantizedLargeTurbo"
 
 /** tauri-specta globals **/

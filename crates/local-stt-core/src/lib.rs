@@ -16,6 +16,12 @@ pub static SUPPORTED_MODELS: &[LocalModel] = &[
 pub static SUPPORTED_MODELS: &[LocalModel] = &[
     LocalModel::Soniqo(SoniqoModel::OnnxParakeetStreaming),
     LocalModel::Soniqo(SoniqoModel::OnnxParakeetBatch),
+    LocalModel::Whisper(WhisperModel::LargeV3),
+    LocalModel::Whisper(WhisperModel::QuantizedLargeTurbo),
+    LocalModel::Whisper(WhisperModel::QuantizedSmall),
+    LocalModel::Whisper(WhisperModel::QuantizedSmallEn),
+    LocalModel::Whisper(WhisperModel::QuantizedBase),
+    LocalModel::Whisper(WhisperModel::QuantizedBaseEn),
 ];
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -78,11 +84,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn whisper_catalog_has_six_models_with_consistent_language_metadata() {
+        let models = SUPPORTED_MODELS
+            .iter()
+            .filter_map(|model| match model {
+                LocalModel::Whisper(value) => Some((model, value)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(models.len(), 6);
+        for (model, value) in models {
+            let info = stt_model_info(model);
+            assert!(matches!(info.model_type, SttModelType::Whispercpp));
+            assert_eq!(info.key, *model);
+            assert_eq!(info.size_bytes, Some(value.model_size_bytes()));
+            let languages = info.supported_languages.unwrap();
+            if matches!(
+                value,
+                WhisperModel::QuantizedBaseEn | WhisperModel::QuantizedSmallEn
+            ) {
+                assert_eq!(languages, ["en"]);
+            } else {
+                assert!(languages.contains(&"en".to_string()));
+                assert!(languages.contains(&"nl".to_string()));
+            }
+        }
+    }
+
+    #[test]
     fn whisper_large_v3_has_platform_specific_availability_and_full_metadata() {
         let model = LocalModel::Whisper(WhisperModel::LargeV3);
+        assert!(SUPPORTED_MODELS.contains(&model));
         assert_eq!(
-            SUPPORTED_MODELS.contains(&model),
-            !cfg!(target_os = "windows")
+            model.is_available_on_current_platform(),
+            cfg!(target_os = "windows") || cfg!(all(target_os = "macos", target_arch = "aarch64"))
         );
         let info = stt_model_info(&model);
         assert!(matches!(info.model_type, SttModelType::Whispercpp));

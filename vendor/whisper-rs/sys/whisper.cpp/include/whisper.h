@@ -240,6 +240,8 @@ extern "C" {
 
     WHISPER_API struct whisper_state * whisper_init_state(struct whisper_context * ctx);
 
+    WHISPER_API const char * whisper_state_backend_name(const struct whisper_state * state);
+
     // Given a context, enable use of OpenVINO for encode inference.
     // model_path: Optional path to OpenVINO encoder IR model. If set to nullptr,
     //                      the path will be generated from the ggml model path that was passed

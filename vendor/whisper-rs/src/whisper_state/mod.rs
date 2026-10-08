@@ -31,6 +31,13 @@ impl Drop for WhisperState {
 }
 
 impl WhisperState {
+    /// The compute backend selected when this state was initialized.
+    pub fn backend_name(&self) -> &str {
+        unsafe { std::ffi::CStr::from_ptr(whisper_rs_sys::whisper_state_backend_name(self.ptr)) }
+            .to_str()
+            .unwrap_or("unknown")
+    }
+
     /// # Safety
     /// * `ptr` must be non-null
     /// * `ptr` must be a valid pointer to a `whisper_state`.

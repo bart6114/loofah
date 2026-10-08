@@ -48,13 +48,14 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm rebuild esbuild dprint
       - run: node .github/scripts/install_windows_deno.mjs
+      - uses: ./.github/actions/windows_vulkan
       - uses: ./.github/actions/rust_install
         with:
           platform: windows
       - run: pnpm -F ui build
       - run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
       - run: cargo check --locked -p desktop -p loof-cli
-      - run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-stt-core
+      - run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-model -p local-stt-core -p whisper-local -p transcribe-whisper-local -p tauri-plugin-local-stt
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |
@@ -101,7 +102,7 @@ jobs:
       matrix:
         runner: [windows-2025, windows-11-arm]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     defaults:
       run:
         shell: pwsh
@@ -110,9 +111,11 @@ jobs:
         with:
           lfs: true
           persist-credentials: false
+      - uses: ./.github/actions/windows_vulkan
       - uses: ./.github/actions/rust_install
         with:
           platform: windows
+      - run: ./.github/scripts/test_windows_whisper.ps1
       - name: Run real live and batch transcription
         run: cargo test --locked -p transcribe-onnx --test inference -- --ignored --nocapture
       - name: Run real speaker detection

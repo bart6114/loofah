@@ -164,7 +164,7 @@ export function SelectProviderAndModel({
       <div className="border-border flex flex-col gap-4 rounded-2xl border p-4">
         <div>
           <h3 className="text-sm font-semibold">
-            <Trans>Transcription runs on your Mac</Trans>
+            <Trans>Transcription runs on your device</Trans>
           </h3>
           <p className="text-muted-foreground mt-1 text-xs">
             <Trans>Works offline after downloading a model.</Trans>
@@ -236,7 +236,9 @@ export function SelectProviderAndModel({
           </>
         ) : (
           <p role="status" className="text-muted-foreground text-sm">
-            <Trans>No transcription models are available for this Mac.</Trans>
+            <Trans>
+              No transcription models are available for this device.
+            </Trans>
           </p>
         )}
       </div>

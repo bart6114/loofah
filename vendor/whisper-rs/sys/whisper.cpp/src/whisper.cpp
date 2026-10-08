@@ -1,3 +1,4 @@
+#include <memory>
 #include "whisper.h"
 #include "whisper-arch.h"
 
@@ -3437,13 +3438,13 @@ static std::string whisper_openvino_get_path_cache(std::string path_bin) {
 }
 #endif
 
-struct whisper_state * whisper_init_state(whisper_context * ctx) {
-    whisper_state * state = new whisper_state;
+static struct whisper_state * whisper_init_state_impl(whisper_context * ctx) {
+    std::unique_ptr<whisper_state, decltype(&whisper_free_state)> state_guard(new whisper_state{}, whisper_free_state);
+    whisper_state * state = state_guard.get();
 
     state->backends = whisper_backend_init(ctx->params);
     if (state->backends.empty()) {
         WHISPER_LOG_ERROR("%s: whisper_backend_init() failed\n", __func__);
-        whisper_free_state(state);
         return nullptr;
     }
 
@@ -3455,7 +3456,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
                 ctx->model.hparams.n_text_layer,
                 GGML_PAD(ctx->model.hparams.n_text_ctx, 256))) {
         WHISPER_LOG_ERROR("%s: whisper_kv_cache_init() failed for self-attention cache\n", __func__);
-        whisper_free_state(state);
         return nullptr;
     }
 
@@ -3469,7 +3469,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
                 ctx->model.hparams.n_text_layer,
                 GGML_PAD(ctx->model.hparams.n_audio_ctx, 256))) {
         WHISPER_LOG_ERROR("%s: whisper_kv_cache_init() failed for cross-attention cache\n", __func__);
-        whisper_free_state(state);
         return nullptr;
     }
 
@@ -3483,7 +3482,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
                 1,
                 GGML_PAD(ctx->model.hparams.n_audio_ctx, 256))) {
         WHISPER_LOG_ERROR("%s: whisper_kv_cache_init() failed for self-attention cache\n", __func__);
-        whisper_free_state(state);
         return nullptr;
     }
 
@@ -3496,7 +3494,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
     if (ctx->params.dtw_token_timestamps) {
         if (!aheads_masks_init(ctx->params, ctx->model.hparams, state->aheads_masks, state->backends[0])) {
             WHISPER_LOG_ERROR("%s: aheads_masks_init() failed for alignment heads masks\n", __func__);
-            whisper_free_state(state);
             return nullptr;
         }
         const size_t memory_size = aheads_masks_nbytes(state->aheads_masks);
@@ -3513,7 +3510,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
     if (!state->ctx_coreml) {
         WHISPER_LOG_ERROR("%s: failed to load Core ML model from '%s'\n", __func__, path_coreml.c_str());
 #ifndef WHISPER_COREML_ALLOW_FALLBACK
-        whisper_free_state(state);
         return nullptr;
 #endif
     } else {
@@ -3527,7 +3523,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
     state->ctx_vitisai = whisper_vitisai_init(path_vitisai.c_str());
     if (!state->ctx_vitisai) {
         WHISPER_LOG_ERROR("%s: failed to load Vitis AI model from '%s'\n", __func__, path_vitisai.c_str());
-        whisper_free_state(state);
         return nullptr;
     } else if (whisper_vitisai_has_cross_proj(state->ctx_vitisai)) {
         WHISPER_LOG_INFO("%s: Vitis AI encoder + cross projection model loaded\n", __func__);
@@ -3559,7 +3554,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
 
         if (!ok) {
             WHISPER_LOG_ERROR("%s: failed to init conv allocator\n", __func__);
-            whisper_free_state(state);
             return nullptr;
         }
 
@@ -3575,7 +3569,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
 
         if (!ok) {
             WHISPER_LOG_ERROR("%s: failed to init encoder allocator\n", __func__);
-            whisper_free_state(state);
             return nullptr;
         }
 
@@ -3591,7 +3584,6 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
 
         if (!ok) {
             WHISPER_LOG_ERROR("%s: failed to init cross allocator\n", __func__);
-            whisper_free_state(state);
             return nullptr;
         }
 
@@ -3615,15 +3607,34 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
 
         if (!ok) {
             WHISPER_LOG_ERROR("%s: failed to init decoder allocator\n", __func__);
-            whisper_free_state(state);
             return nullptr;
         }
 
         WHISPER_LOG_INFO("%s: compute buffer (decode) = %7.2f MB\n", __func__, whisper_sched_size(state->sched_decode) / 1e6);
     }
 
-    return state;
+    return state_guard.release();
 }
+
+struct whisper_state * whisper_init_state(whisper_context * ctx) {
+    // GPU allocation failures must reach Rust as errors so it can retry on CPU.
+    try {
+        return whisper_init_state_impl(ctx);
+    } catch (const std::exception & e) {
+        WHISPER_LOG_ERROR("%s: exception during state init: %s\n", __func__, e.what());
+    } catch (...) {
+        WHISPER_LOG_ERROR("%s: unknown exception during state init\n", __func__);
+    }
+    return nullptr;
+}
+
+const char * whisper_state_backend_name(const whisper_state * state) {
+    if (!state || state->backends.empty()) {
+        return "unknown";
+    }
+    return ggml_backend_name(state->backends.front());
+}
+
 
 int whisper_ctx_init_openvino_encoder_with_state(
         struct whisper_context * ctx,
@@ -3800,7 +3811,7 @@ struct whisper_context * whisper_init_with_params_no_state(struct whisper_model_
     WHISPER_LOG_INFO("%s: devices    = %zu\n", __func__, ggml_backend_dev_count());
     WHISPER_LOG_INFO("%s: backends   = %zu\n", __func__, ggml_backend_reg_count());
 
-    whisper_context * ctx = new whisper_context;
+    whisper_context * ctx = new whisper_context{};
     ctx->params = params;
 
     // A C++ exception escaping this extern "C" function aborts non-C++ callers
@@ -3820,7 +3831,7 @@ struct whisper_context * whisper_init_with_params_no_state(struct whisper_model_
     if (!model_loaded) {
         loader->close(loader->context);
         WHISPER_LOG_ERROR("%s: failed to load model\n", __func__);
-        delete ctx;
+        whisper_free(ctx);
         return nullptr;
     }
 
@@ -6915,7 +6926,7 @@ static bool whisper_vad(
     return true;
 }
 
-int whisper_full_with_state(
+static int whisper_full_with_state_impl(
         struct whisper_context * ctx,
           struct whisper_state * state,
     struct whisper_full_params   params,
@@ -7272,7 +7283,6 @@ int whisper_full_with_state(
                                 ctx->model.hparams.n_text_layer,
                                 GGML_PAD(ctx->model.hparams.n_text_ctx, 256)*factor)) {
                         WHISPER_LOG_ERROR("%s: whisper_kv_cache_init() failed for self-attention cache\n", __func__);
-                        whisper_free_state(state);
                         return -7;
                     }
 
@@ -7886,6 +7896,23 @@ int whisper_full_with_state(
     }
 
     return 0;
+}
+
+int whisper_full_with_state(
+        struct whisper_context * ctx,
+          struct whisper_state * state,
+    struct whisper_full_params   params,
+                   const float * samples,
+                           int   n_samples) {
+    // Surface driver/allocation failures without unwinding through the C ABI.
+    try {
+        return whisper_full_with_state_impl(ctx, state, params, samples, n_samples);
+    } catch (const std::exception & e) {
+        WHISPER_LOG_ERROR("%s: exception during inference: %s\n", __func__, e.what());
+    } catch (...) {
+        WHISPER_LOG_ERROR("%s: unknown exception during inference\n", __func__);
+    }
+    return -12;
 }
 
 int whisper_full(

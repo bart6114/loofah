@@ -65,6 +65,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm rebuild esbuild dprint
       - run: node .github/scripts/install_windows_deno.mjs
+      - uses: ./.github/actions/windows_vulkan
       - uses: ./.github/actions/rust_install
         with:
           platform: windows

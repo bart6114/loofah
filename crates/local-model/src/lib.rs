@@ -151,7 +151,7 @@ impl LocalModel {
 
         match self {
             LocalModel::Soniqo(model) => model.is_available_on_current_platform(),
-            LocalModel::Whisper(_) => is_apple_silicon,
+            LocalModel::Whisper(_) => is_apple_silicon || cfg!(target_os = "windows"),
             LocalModel::Diarizer(_) => is_apple_silicon || cfg!(target_os = "windows"),
         }
     }

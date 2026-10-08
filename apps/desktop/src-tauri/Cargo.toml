@@ -90,6 +90,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
+tauri-plugin-local-stt = { workspace = true, features = ["vulkan"] }
 sha2 = { workspace = true }
 winreg = "0.55"
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

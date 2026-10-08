@@ -211,7 +211,7 @@ fn main() {
         config.define("GGML_VULKAN", "ON");
         if cfg!(windows) {
             println!("cargo:rerun-if-env-changed=VULKAN_SDK");
-            println!("cargo:rustc-link-lib=vulkan-1");
+            // The Windows backend resolves the system loader at runtime.
             let vulkan_path = match env::var("VULKAN_SDK") {
                 Ok(path) => PathBuf::from(path),
                 Err(_) => panic!(

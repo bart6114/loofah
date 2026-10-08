@@ -1038,7 +1038,7 @@ msgid "No results found."
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
-msgid "No transcription models are available for this Mac."
+msgid "No transcription models are available for this device."
 msgstr ""
 
 #: src/settings/ai/stt/diarization-status.tsx
@@ -1785,7 +1785,7 @@ msgid "Transcription not set up"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
-msgid "Transcription runs on your Mac"
+msgid "Transcription runs on your device"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx

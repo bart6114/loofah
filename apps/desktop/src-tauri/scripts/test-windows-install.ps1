@@ -17,6 +17,8 @@ function Run-Installer($file, $arguments) {
 Run-Installer $installers[0].FullName "/S /D=$install"
 $executable = Join-Path $install "$($config.mainBinaryName).exe"
 if (-not (Test-Path $executable)) { throw 'Installed desktop executable missing' }
+& node "$PSScriptRoot/check-windows-runtime.mjs" $executable --no-vulkan-loader
+if ($LASTEXITCODE -ne 0) { throw 'Installed app runtime validation failed' }
 if (-not (Test-Path (Join-Path $install 'vcruntime140.dll'))) { throw 'Installed CRT missing' }
 & (Join-Path $install 'loof.exe') --version
 if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed to start' }
