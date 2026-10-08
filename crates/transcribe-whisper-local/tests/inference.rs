@@ -11,6 +11,10 @@ use tower::ServiceExt;
 use transcribe_whisper_local::TranscribeService;
 
 fn router() -> axum::Router {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("transcribe_whisper_local=debug,whisper_local=debug,model_manager=debug")
+        .with_test_writer()
+        .try_init();
     TranscribeService::builder()
         .model_path(
             std::env::var("LOOFAH_WHISPER_MODEL")
@@ -131,9 +135,14 @@ async fn real_websocket_finalizes_and_recovers_from_cancellation() {
         assert!(text.to_lowercase().contains("hello"), "{text}");
         let (mut cancelled, _) = connect_async(&url).await.unwrap();
         cancelled
-            .send(Message::Binary(hypr_data::english_2::AUDIO.to_vec().into()))
+            .send(Message::Binary(
+                hypr_data::english_2::AUDIO[..16000 * 2 * 10]
+                    .to_vec()
+                    .into(),
+            ))
             .await
             .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
         drop(cancelled);
         tokio::time::timeout(Duration::from_secs(15), async {
             let (mut replacement, _) = connect_async(&url).await.unwrap();
