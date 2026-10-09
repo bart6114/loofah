@@ -7,6 +7,10 @@ on:
         description: Download pinned models and run real CPU inference
         type: boolean
         default: false
+      bundle-only:
+        description: Build installers and test Whisper without repeating the full Rust check and unit-test suite
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -54,8 +58,10 @@ jobs:
           platform: windows
       - run: pnpm -F ui build
       - run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
-      - run: cargo check --locked -p desktop -p loof-cli
-      - run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-model -p local-stt-core -p whisper-local -p transcribe-whisper-local -p tauri-plugin-local-stt
+      - if: github.event_name != 'workflow_dispatch' || !inputs.bundle-only
+        run: cargo check --locked -p desktop -p loof-cli
+      - if: github.event_name != 'workflow_dispatch' || !inputs.bundle-only
+        run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-model -p local-stt-core -p whisper-local -p transcribe-whisper-local -p tauri-plugin-local-stt
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |
@@ -65,6 +71,8 @@ jobs:
       - name: Verify signing configuration contracts
         run: node --test apps/desktop/src-tauri/scripts/sign-windows.test.mjs
       - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
+      - if: github.event_name == 'workflow_dispatch' && inputs.bundle-only
+        run: ./.github/scripts/test_windows_whisper.ps1
       - id: bundle
         run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging
       - if: failure() && steps.bundle.outcome == 'failure'

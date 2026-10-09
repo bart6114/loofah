@@ -362,9 +362,23 @@ fn get_cpp_link_stdlib(target: &str) -> Option<&'static str> {
 
 fn add_link_search_path(dir: &std::path::Path) -> std::io::Result<()> {
     if dir.is_dir() {
-        println!("cargo:rustc-link-search={}", dir.display());
-        for entry in std::fs::read_dir(dir)? {
-            add_link_search_path(&entry?.path())?;
+        let entries = std::fs::read_dir(dir)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        // MSVC generates hundreds of bookkeeping directories. Exporting all of
+        // them exceeds Windows command limits and breaks Rust dependency lookup.
+        if entries.iter().any(|path| {
+            matches!(
+                path.extension().and_then(|ext| ext.to_str()),
+                Some("lib" | "a" | "so" | "dylib")
+            ) && path.is_file()
+        }) {
+            println!("cargo:rustc-link-search=native={}", dir.display());
+        }
+        for entry in entries {
+            if entry.is_dir() {
+                add_link_search_path(&entry)?;
+            }
         }
     }
     Ok(())
