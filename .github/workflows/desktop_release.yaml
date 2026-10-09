@@ -64,12 +64,11 @@ jobs:
     needs: resolve
     permissions:
       contents: write
-      # changelog.yaml dispatches docs-deploy after committing a new entry.
+      # changelog.yaml dispatches docs-deploy to publish the manual notes.
       actions: write
     uses: ./.github/workflows/changelog.yaml
     with:
       tag: ${{ needs.resolve.outputs.tag }}
-    secrets: inherit
 
   macos:
     needs: [resolve, changelog]
