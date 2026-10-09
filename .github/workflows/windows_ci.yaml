@@ -67,6 +67,10 @@ jobs:
       - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
       - id: bundle
         run: pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging
+      - if: failure() && steps.bundle.outcome == 'failure'
+        run: |
+          $env:RUSTC_LOG = 'rustc_metadata::locator=info'
+          pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.staging.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --features staging -- -vv
       - name: Check CLI
         run: |
           New-Item -ItemType Directory -Force artifacts/cli | Out-Null
