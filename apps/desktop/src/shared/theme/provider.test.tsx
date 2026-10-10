@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const themeState = vi.hoisted(() => ({
   settingsReady: false,
   theme: "system" as "light" | "dark" | "system",
+  designTheme: "default",
 }));
 
 const applyDocumentTheme = vi.hoisted(() =>
@@ -39,7 +40,8 @@ vi.mock("./use-settings-theme-ready", () => ({
 }));
 
 vi.mock("~/shared/config", () => ({
-  useConfigValue: () => themeState.theme,
+  useConfigValue: (key: string) =>
+    key === "design_theme" ? themeState.designTheme : themeState.theme,
 }));
 
 import { AppThemeProvider, applyThemePreference } from "./provider";
@@ -47,8 +49,10 @@ import { AppThemeProvider, applyThemePreference } from "./provider";
 describe("AppThemeProvider", () => {
   beforeEach(() => {
     cleanup();
+    document.documentElement.removeAttribute("data-design-theme");
     themeState.settingsReady = false;
     themeState.theme = "system";
+    themeState.designTheme = "default";
     applyDocumentTheme.mockClear();
     writeStoredThemePreference.mockClear();
     setDockIcon.mockClear();
@@ -165,5 +169,39 @@ describe("AppThemeProvider", () => {
     expect(applyDocumentTheme).toHaveBeenCalledWith("light");
     expect(writeStoredThemePreference).toHaveBeenCalledWith("light");
     expect(setDockIcon).toHaveBeenCalledWith("stable");
+  });
+
+  it("updates the design on config changes without changing appearance", () => {
+    themeState.settingsReady = true;
+    themeState.theme = "dark";
+    const { rerender } = render(
+      <AppThemeProvider>
+        <div>child</div>
+      </AppThemeProvider>,
+    );
+    themeState.designTheme = "workshop";
+    rerender(
+      <AppThemeProvider>
+        <div>child</div>
+      </AppThemeProvider>,
+    );
+    expect(document.documentElement.dataset.designTheme).toBe("workshop");
+    expect(applyDocumentTheme).toHaveBeenLastCalledWith("dark");
+  });
+
+  it("does not let a pending system selection overwrite a newer explicit selection", async () => {
+    let resolveNative!: (theme: string) => void;
+    nativeTheme.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveNative = resolve;
+        }),
+    );
+    const pending = applyThemePreference("system");
+    await applyThemePreference("light");
+    resolveNative("dark");
+    await pending;
+    expect(applyDocumentTheme).toHaveBeenCalledTimes(1);
+    expect(applyDocumentTheme).toHaveBeenCalledWith("light");
   });
 });

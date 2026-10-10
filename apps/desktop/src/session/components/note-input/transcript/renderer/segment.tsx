@@ -110,7 +110,7 @@ export const SegmentRenderer = memo(
 
         <div
           className={cn([
-            "overflow-wrap-anywhere mt-1.5 text-sm leading-relaxed wrap-break-word",
+            "overflow-wrap-anywhere mt-1.5 text-[15px] leading-[24px] wrap-break-word",
             "select-text-deep",
           ])}
         >

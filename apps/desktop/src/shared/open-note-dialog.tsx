@@ -100,7 +100,7 @@ function SnippetLine({ snippet }: { snippet: SearchSnippet }) {
   }
 
   return (
-    <span className="text-muted-foreground/80 truncate text-xs">
+    <span className="text-muted-foreground truncate text-xs">
       {segments.map((segment, index) =>
         segment.highlighted ? (
           <mark

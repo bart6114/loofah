@@ -131,6 +131,9 @@ function ItemBase({
   return (
     <div
       data-sidebar-timeline-session-id={timelineSessionId}
+      data-selected={selected || multiSelected || undefined}
+      data-live={isLive || undefined}
+      data-upcoming={isUpcoming || undefined}
       className="group/sidebar-live-item relative"
     >
       <InteractiveButton
@@ -146,7 +149,7 @@ function ItemBase({
           showTrailingStatus && "pr-10",
           "cursor-pointer",
           multiSelected && "bg-accent",
-          !multiSelected && selected && "bg-accent",
+          !multiSelected && selected && "bg-brand/12",
           !multiSelected && !selected && "hover:bg-accent/50",
           isUpcoming &&
             !isLive && [
@@ -157,12 +160,17 @@ function ItemBase({
             "bg-destructive text-destructive-foreground hover:bg-destructive/90",
             "focus-visible:ring-destructive/40 focus-visible:ring-2 focus-visible:outline-hidden",
           ],
-          muted && !isLive && !isUpcoming && "opacity-65",
+          muted && !isLive && !isUpcoming && "text-muted-foreground",
         ])}
         draggable={draggable}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <div className="pointer-events-none min-w-0 flex-1 truncate text-sm font-normal">
+          <div
+            className={cn([
+              "pointer-events-none min-w-0 flex-1 truncate text-sm",
+              selected || multiSelected ? "font-medium" : "font-normal",
+            ])}
+          >
             {title || t`Untitled`}
           </div>
           {author && (
@@ -171,8 +179,8 @@ function ItemBase({
               className={cn([
                 "flex shrink-0 items-center",
                 isLive
-                  ? "text-destructive-foreground/65"
-                  : "text-muted-foreground/70",
+                  ? "text-destructive-foreground"
+                  : "text-muted-foreground",
               ])}
             >
               <BotIcon
@@ -186,8 +194,8 @@ function ItemBase({
               className={cn([
                 "timecode shrink-0",
                 isLive
-                  ? "text-destructive-foreground/65"
-                  : "text-muted-foreground/70",
+                  ? "text-destructive-foreground"
+                  : "text-muted-foreground",
               ])}
             >
               {displayTime}
@@ -227,7 +235,7 @@ function ItemBase({
           }}
           className={cn([
             "absolute top-1/2 right-3 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm",
-            "text-destructive-foreground/80 hover:bg-destructive-foreground/15 hover:text-destructive-foreground transition-none",
+            "text-destructive-foreground hover:bg-destructive-foreground/15 transition-none",
             "focus-visible:ring-destructive-foreground/70 focus-visible:ring-2 focus-visible:outline-hidden",
           ])}
         >

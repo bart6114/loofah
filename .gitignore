@@ -36,3 +36,5 @@ internal
 docs/dist/
 docs/.astro/
 .wrangler/
+.dev.vars*
+apps/cloud/dist/

@@ -297,6 +297,10 @@ msgstr "Choose a model"
 msgid "Choose a model to finish setup"
 msgstr "Choose a model to finish setup"
 
+#: src/settings/general/theme.tsx
+msgid "Choose a style for your workspace. Default follows your appearance setting."
+msgstr "Choose a style for your workspace. Default follows your appearance setting."
+
 #: src/settings/ai/stt/select.tsx
 msgid "Choose another model"
 msgstr "Choose another model"
@@ -471,6 +475,10 @@ msgstr "Couldn't prepare export."
 msgid "Couldn’t remove attachment"
 msgstr "Couldn’t remove attachment"
 
+#: src/settings/general/theme.tsx
+msgid "Couldn't save your appearance. Please try again."
+msgstr "Couldn't save your appearance. Please try again."
+
 #: src/main/about-storage.tsx
 msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr "Couldn’t update storage. Showing the previous measurement."
@@ -518,6 +526,10 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
+
+#: src/settings/general/theme.tsx
+msgid "Design theme"
+msgstr "Design theme"
 
 #: src/main/about-dialog.tsx
 msgid "Diagnostics"
@@ -1644,10 +1656,6 @@ msgstr "Switching…"
 msgid "Symbolic links and their targets are excluded."
 msgstr "Symbolic links and their targets are excluded."
 
-#: src/settings/general/theme.tsx
-msgid "System"
-msgstr "System"
-
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
 msgid "System audio"
@@ -1824,6 +1832,10 @@ msgstr "Upload transcript"
 #: src/onboarding/permissions.tsx
 msgid "Use system audio to capture other speakers"
 msgstr "Use system audio to capture other speakers"
+
+#: src/settings/general/theme.tsx
+msgid "Use system setting"
+msgstr "Use system setting"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Use this connection"
