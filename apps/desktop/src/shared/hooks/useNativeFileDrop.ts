@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { platform } from "@tauri-apps/plugin-os";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { NativeEditorDragEvent } from "@hypr/editor/note";
@@ -111,6 +112,12 @@ export function nativeDragPointToCssPoint(
   position: Pick<PhysicalPosition, "x" | "y">,
 ): NativeDropPoint {
   // Wry reports macOS drag locations in AppKit points, which already match CSS pixels.
+  if (platform() === "windows") {
+    return {
+      x: position.x / window.devicePixelRatio,
+      y: position.y / window.devicePixelRatio,
+    };
+  }
   return { x: position.x, y: position.y };
 }
 

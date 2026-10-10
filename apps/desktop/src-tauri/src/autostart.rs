@@ -1,4 +1,11 @@
+#[cfg(not(target_os = "windows"))]
 use tauri_plugin_autostart::ManagerExt;
+
+#[cfg(target_os = "windows")]
+#[path = "autostart/windows.rs"]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::uninstall as uninstall_windows;
 
 const LEGACY_DEV_NAME: &str = "Free Meeting Transcriber Dev";
 const LEGACY_STABLE_NAME: &str = "Free Meeting Transcriber";
@@ -26,27 +33,40 @@ fn legacy_name(identifier: &str) -> Option<&'static str> {
 }
 
 pub fn plugin<R: tauri::Runtime>(identifier: &str) -> tauri::plugin::TauriPlugin<R> {
-    let builder = tauri_plugin_autostart::Builder::new()
-        .app_name(current_name(identifier))
-        .arg("--background");
-    #[cfg(target_os = "macos")]
-    let builder = builder.macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent);
-    builder.build()
+    #[cfg(target_os = "windows")]
+    {
+        let _ = identifier;
+        return windows::plugin();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let builder = tauri_plugin_autostart::Builder::new()
+            .app_name(current_name(identifier))
+            .arg("--background");
+        #[cfg(target_os = "macos")]
+        let builder = builder.macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent);
+        builder.build()
+    }
 }
 
 pub fn migrate<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let Some(legacy_name) = legacy_name(&app.config().identifier) else {
-        return;
-    };
+    #[cfg(target_os = "windows")]
+    let _ = app;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let Some(legacy_name) = legacy_name(&app.config().identifier) else {
+            return;
+        };
 
-    match remove_legacy_entry(legacy_name) {
-        Ok(true) => {
-            if let Err(error) = app.autolaunch().enable() {
-                tracing::warn!(%error, "failed to migrate the legacy autostart entry");
+        match remove_legacy_entry(legacy_name) {
+            Ok(true) => {
+                if let Err(error) = app.autolaunch().enable() {
+                    tracing::warn!(%error, "failed to migrate the legacy autostart entry");
+                }
             }
+            Ok(false) => {}
+            Err(error) => tracing::warn!(%error, "failed to remove the legacy autostart entry"),
         }
-        Ok(false) => {}
-        Err(error) => tracing::warn!(%error, "failed to remove the legacy autostart entry"),
     }
 }
 

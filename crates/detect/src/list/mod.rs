@@ -1,3 +1,8 @@
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::list_installed_apps;
+
 #[cfg(target_os = "macos")]
 mod macos;
 
@@ -10,7 +15,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub fn list_installed_apps() -> Vec<InstalledApp> {
     Vec::new()
 }
@@ -55,6 +60,10 @@ fn is_self_app(app: &InstalledApp) -> bool {
 
 pub fn list_mic_using_apps() -> Result<Vec<InstalledApp>, crate::Error> {
     let apps = {
+        #[cfg(target_os = "windows")]
+        {
+            windows::list_mic_using_apps()?
+        }
         #[cfg(target_os = "macos")]
         {
             macos::list_mic_using_apps()?
@@ -64,7 +73,7 @@ pub fn list_mic_using_apps() -> Result<Vec<InstalledApp>, crate::Error> {
             linux::list_mic_using_apps()?
         }
 
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
             Vec::<InstalledApp>::new()
         }

@@ -479,3 +479,24 @@ fn init_repairs_damaged_segment_contents_even_when_the_manifest_is_unchanged() {
     cache.initialize(&mut |_| {}).unwrap();
     assert_eq!(cache.search_fresh(query("content", 10)).unwrap().count, 1);
 }
+
+#[test]
+fn windows_executable_names_use_the_same_global_base_as_other_platforms() {
+    let data = tempfile::tempdir().unwrap();
+    for command in [
+        "loof-dev",
+        "loof-staging",
+        "loofah-dev",
+        "fmtr-staging",
+        "loof",
+    ] {
+        let expected = crate::default_global_base(data.path(), Some(std::ffi::OsStr::new(command)));
+        for extension in ["exe", "EXE"] {
+            let executable = format!("{command}.{extension}");
+            assert_eq!(
+                crate::default_global_base(data.path(), Some(std::ffi::OsStr::new(&executable))),
+                expected
+            );
+        }
+    }
+}

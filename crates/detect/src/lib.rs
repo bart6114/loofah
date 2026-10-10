@@ -3,11 +3,17 @@ mod app;
 mod error;
 #[cfg(all(target_os = "macos", feature = "language"))]
 mod language;
+#[cfg(all(target_os = "windows", feature = "language"))]
+#[path = "language_windows.rs"]
+mod language;
 #[cfg(feature = "list")]
 mod list;
 #[cfg(feature = "mic")]
 mod mic;
 #[cfg(all(target_os = "macos", feature = "sleep"))]
+mod sleep;
+#[cfg(all(target_os = "windows", feature = "sleep"))]
+#[path = "sleep_windows.rs"]
 mod sleep;
 
 mod utils;
@@ -18,14 +24,14 @@ pub use utils::BackgroundTask;
 
 #[cfg(feature = "app")]
 pub use app::*;
-#[cfg(all(target_os = "macos", feature = "language"))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "language"))]
 pub use language::*;
 #[cfg(feature = "list")]
 pub use list::*;
 #[cfg(feature = "mic")]
 pub use mic::*;
 
-#[cfg(all(target_os = "macos", feature = "sleep"))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
 pub use sleep::*;
 
 #[cfg(feature = "mic")]
@@ -33,7 +39,7 @@ pub use sleep::*;
 pub enum DetectEvent {
     MicStarted(Vec<InstalledApp>),
     MicStopped(Vec<InstalledApp>),
-    #[cfg(all(target_os = "macos", feature = "sleep"))]
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
     SleepStateChanged {
         value: bool,
     },
@@ -60,7 +66,7 @@ pub(crate) trait Observer: Send + Sync {
 #[derive(Default)]
 pub struct Detector {
     mic_detector: MicDetector,
-    #[cfg(all(target_os = "macos", feature = "sleep"))]
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
     sleep_detector: SleepDetector,
 }
 
@@ -69,14 +75,14 @@ impl Detector {
     pub fn start(&mut self, f: DetectCallback) {
         self.mic_detector.start(f.clone());
 
-        #[cfg(all(target_os = "macos", feature = "sleep"))]
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
         self.sleep_detector.start(f);
     }
 
     pub fn stop(&mut self) {
         self.mic_detector.stop();
 
-        #[cfg(all(target_os = "macos", feature = "sleep"))]
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "sleep"))]
         self.sleep_detector.stop();
     }
 }

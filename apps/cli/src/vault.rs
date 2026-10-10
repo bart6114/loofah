@@ -64,6 +64,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windows_channel_executables_find_the_matching_desktop_vault() {
+        let directory = tempfile::tempdir().unwrap();
+        for (command, folder) in [
+            ("loof.exe", "loofah"),
+            ("loof-staging.exe", "io.loofah.staging"),
+            ("loof-dev.EXE", "io.loofah.dev"),
+        ] {
+            assert_eq!(
+                resolve_default_path_for_command(directory.path(), Some(OsStr::new(command))),
+                directory.path().join(folder)
+            );
+        }
+    }
+
+    #[test]
     fn default_path_targets_the_app_data_vault() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(

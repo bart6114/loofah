@@ -76,6 +76,7 @@ const tauri: UserConfig = {
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   build: {
     outDir: "./dist",
+    rollupOptions: { input: ["index.html", "overlay.html"] },
     chunkSizeWarningLimit: 500 * 10,
     target:
       process.env.TAURI_ENV_PLATFORM == "windows" ? "chrome105" : "safari13",

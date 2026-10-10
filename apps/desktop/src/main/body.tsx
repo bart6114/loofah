@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { platform } from "@tauri-apps/plugin-os";
 import {
   ArrowLeftIcon,
   PanelLeftCloseIcon,
@@ -503,7 +504,7 @@ export function ClassicMainBody() {
           <SidebarActionRow
             icon={<PlusIcon className="size-4" />}
             label="New note"
-            kbd="⌘N"
+            kbd={platform() === "windows" ? "Ctrl+N" : "⌘N"}
             onClick={createNewNote}
           />
           <SidebarActionRow

@@ -31,6 +31,13 @@ impl Drop for WhisperState {
 }
 
 impl WhisperState {
+    /// The compute backend selected when this state was initialized.
+    pub fn backend_name(&self) -> &str {
+        unsafe { std::ffi::CStr::from_ptr(whisper_rs_sys::whisper_state_backend_name(self.ptr)) }
+            .to_str()
+            .unwrap_or("unknown")
+    }
+
     /// # Safety
     /// * `ptr` must be non-null
     /// * `ptr` must be a valid pointer to a `whisper_state`.
@@ -207,18 +214,32 @@ impl WhisperState {
         offset_ms: usize,
         threads: usize,
     ) -> Result<(i32, Vec<f32>), WhisperError> {
+        unsafe { self.lang_detect_with_abort(offset_ms, threads, None, std::ptr::null_mut()) }
+    }
+
+    /// # Safety
+    /// The callback must not unwind, and its data must remain valid for this call.
+    pub unsafe fn lang_detect_with_abort(
+        &self,
+        offset_ms: usize,
+        threads: usize,
+        abort_callback: crate::WhisperAbortCallback,
+        abort_data: *mut std::ffi::c_void,
+    ) -> Result<(i32, Vec<f32>), WhisperError> {
         if threads < 1 {
             return Err(WhisperError::InvalidThreadCount);
         }
 
         let mut lang_probs: Vec<f32> = vec![0.0; crate::standalone::get_lang_max_id() as usize + 1];
         let ret = unsafe {
-            whisper_rs_sys::whisper_lang_auto_detect_with_state(
+            whisper_rs_sys::whisper_lang_auto_detect_with_state_abort(
                 self.ctx.ctx,
                 self.ptr,
                 offset_ms as c_int,
                 threads as c_int,
                 lang_probs.as_mut_ptr(),
+                abort_callback,
+                abort_data,
             )
         };
         if ret < 0 {

@@ -27,7 +27,7 @@ objc2-app-kit = { workspace = true }
 objc2-foundation = { workspace = true }
 
 [dependencies]
-tauri = { workspace = true, features = ["test"] }
+tauri = { workspace = true, features = ["test", "image-png"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 
 base64 = { workspace = true }

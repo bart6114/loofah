@@ -13,7 +13,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "dotenvx run --ignore MISSING_ENV_FILE -f .env -- tauri",
-    "build:cli-sidecar": "bash ./src-tauri/scripts/build-cli-sidecar.sh",
+    "build:cli-sidecar": "node ./src-tauri/scripts/build-cli-sidecar.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "i18n:extract": "lingui extract",

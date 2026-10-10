@@ -177,6 +177,9 @@ impl Cache {
         pointer
             .persist(self.root.join("CURRENT"))
             .map_err(|error| error.error)?;
+        // Windows cannot open a directory with File::open. The pointer itself
+        // is already flushed; directory fsync is available on Unix.
+        #[cfg(unix)]
         File::open(&self.root)?.sync_all()?;
         // Every reader holds the shared cache lock, so retired generations can now be removed.
         for entry in fs::read_dir(&generations)? {
@@ -543,7 +546,18 @@ impl Cache {
 }
 
 pub fn default_global_base(data: &Path, command: Option<&std::ffi::OsStr>) -> PathBuf {
-    let (current, legacy) = match command.and_then(|name| name.to_str()) {
+    let command = command.and_then(|name| {
+        let path = Path::new(name);
+        if path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        {
+            path.file_stem().and_then(std::ffi::OsStr::to_str)
+        } else {
+            name.to_str()
+        }
+    });
+    let (current, legacy) = match command {
         Some("loof-dev" | "loofah-dev" | "fmtr-dev") => {
             ("io.loofah.dev", "org.freemeetingtranscriber.dev")
         }

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-overlay-snapshot"
+description = "Enables the overlay_snapshot command without any pre-configured scope."
+commands.allow = ["overlay_snapshot"]
+
+[[permission]]
+identifier = "deny-overlay-snapshot"
+description = "Denies the overlay_snapshot command without any pre-configured scope."
+commands.deny = ["overlay_snapshot"]

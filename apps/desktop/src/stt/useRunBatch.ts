@@ -42,7 +42,7 @@ export function getBatchProvider(
     return null;
   }
 
-  if (model.startsWith("soniqo-")) return "soniqo";
+  if (model.startsWith("soniqo-") || model.startsWith("onnx-")) return "soniqo";
   if (model.startsWith("whisper-") || model.startsWith("Quantized")) {
     return "whispercpp";
   }

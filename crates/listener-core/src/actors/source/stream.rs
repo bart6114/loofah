@@ -83,11 +83,6 @@ enum StreamResult {
 }
 
 async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) {
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    if mode == ChannelMode::MicOnly {
-        return;
-    }
-
     let sample_rate = crate::actors::SAMPLE_RATE;
     let chunk_size = chunk_size_for_stt(sample_rate);
 
@@ -140,6 +135,16 @@ fn handle_capture_item(
                 }
                 return StreamResult::Stop;
             }
+            StreamResult::Continue
+        }
+        Some(Err(hypr_audio::Error::CaptureRecovering {
+            microphone,
+            speaker,
+        })) => {
+            let _ = ctx.actor.cast(SourceMsg::RecoveryChanged {
+                microphone,
+                speaker,
+            });
             StreamResult::Continue
         }
         Some(Err(error)) => {

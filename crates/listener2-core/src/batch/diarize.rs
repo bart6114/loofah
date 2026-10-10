@@ -34,14 +34,13 @@ impl Diarizer for SoniqoDiarizer {
 }
 
 // Runs alongside ASR; every stamp point awaits the same task once and then
-// reuses the memoized result. Any failure resolves to an empty map, which
-// makes stamping a no-op.
+// reuses the memoized result, including failures so a retry keeps its recording.
 #[derive(Clone)]
 pub(super) struct SharedDiarization(Arc<tokio::sync::Mutex<DiarizationState>>);
 
 enum DiarizationState {
-    Pending(tokio::task::JoinHandle<ChannelSegments>),
-    Ready(Arc<ChannelSegments>),
+    Pending(tokio::task::JoinHandle<Result<ChannelSegments, String>>),
+    Ready(Result<Arc<ChannelSegments>, String>),
 }
 
 impl SharedDiarization {
@@ -62,11 +61,11 @@ impl SharedDiarization {
 
     pub(super) fn disabled() -> Self {
         Self(Arc::new(tokio::sync::Mutex::new(DiarizationState::Ready(
-            Arc::new(ChannelSegments::new()),
+            Ok(Arc::new(ChannelSegments::new())),
         ))))
     }
 
-    pub(super) async fn segments(&self) -> Arc<ChannelSegments> {
+    pub(super) async fn segments(&self) -> Result<Arc<ChannelSegments>, crate::BatchFailure> {
         let mut state = self.0.lock().await;
 
         if let DiarizationState::Pending(handle) = &mut *state {
@@ -74,14 +73,16 @@ impl SharedDiarization {
                 Ok(segments) => segments,
                 Err(error) => {
                     tracing::warn!(error = %format!("{error:?}"), "diarization_task_join_failed");
-                    ChannelSegments::new()
+                    Err(format!("Speaker detection task failed: {error}"))
                 }
             };
-            *state = DiarizationState::Ready(Arc::new(segments));
+            *state = DiarizationState::Ready(segments.map(Arc::new));
         }
 
         match &*state {
-            DiarizationState::Ready(segments) => segments.clone(),
+            DiarizationState::Ready(segments) => segments
+                .clone()
+                .map_err(|message| crate::BatchFailure::DiarizationFailed { message }),
             DiarizationState::Pending(_) => unreachable!(),
         }
     }
@@ -90,7 +91,7 @@ impl SharedDiarization {
 fn file_diarization(
     diarizer: &dyn Diarizer,
     pcm: &hypr_audio_utils::PcmDescriptor,
-) -> ChannelSegments {
+) -> Result<ChannelSegments, String> {
     let mut segments = ChannelSegments::new();
 
     for channel_index in channels_to_diarize(pcm.channels) {
@@ -110,11 +111,12 @@ fn file_diarization(
                     error = %error,
                     "diarization_channel_failed"
                 );
+                return Err(error);
             }
         }
     }
 
-    segments
+    Ok(segments)
 }
 
 fn channels_to_diarize(channel_count: usize) -> Vec<usize> {
@@ -412,18 +414,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_diarization_task_resolves_to_unassigned_fallback() {
+    async fn failed_diarization_task_is_preserved_for_every_consumer() {
         let shared = SharedDiarization(Arc::new(tokio::sync::Mutex::new(
             DiarizationState::Pending(tokio::spawn(async {
                 panic!("native detection task failed");
             })),
         )));
-        let segments = shared.segments().await;
-        assert!(segments.is_empty());
-        let original = batch_response(vec![vec![batch_word(0.0, 1.0, 0)]]);
-        let mut stamped = original.clone();
-        stamp_batch_response(&mut stamped, &segments);
-        assert_eq!(stamped, original);
+        for _ in 0..2 {
+            let error = shared.segments().await.unwrap_err();
+            assert_eq!(error.code(), crate::BatchErrorCode::DiarizationFailed);
+            assert!(error.to_string().contains("available to retry"));
+        }
+    }
+
+    #[test]
+    fn inference_failure_does_not_become_an_empty_success() {
+        struct FailingDiarizer;
+        impl Diarizer for FailingDiarizer {
+            fn is_ready(&self) -> bool {
+                true
+            }
+            fn diarize_file(
+                &self,
+                _: &hypr_audio_utils::PcmDescriptor,
+                _: usize,
+            ) -> Result<Vec<DiarizeSegment>, String> {
+                Err("model inference failed".to_string())
+            }
+        }
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer =
+            hound::WavWriter::create(file.path(), hypr_audio_utils::pcm_spec(1)).unwrap();
+        writer.write_sample(0.1_f32).unwrap();
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        assert_eq!(
+            file_diarization(&FailingDiarizer, &pcm).unwrap_err(),
+            "model inference failed"
+        );
     }
 
     #[tokio::test]
@@ -453,7 +481,7 @@ mod tests {
         .unwrap();
         let fake = Arc::new(FakeDiarizer::ready_with(vec![segment(0, 1000, 7)]));
         let shared = SharedDiarization::for_file(fake.clone(), prepared.clone());
-        let segments = shared.segments().await;
+        let segments = shared.segments().await.unwrap();
         assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![0]);
         let received = fake.diarized_first_samples.lock().unwrap();
         assert_eq!(received.len(), 1);
@@ -491,7 +519,7 @@ mod tests {
         .unwrap();
         let diarization =
             SharedDiarization::for_file(Arc::new(FakeDiarizer::not_ready()), prepared);
-        let segments = diarization.segments().await;
+        let segments = diarization.segments().await.unwrap();
         assert!(segments.is_empty());
 
         let original = batch_response(vec![vec![batch_word(0.0, 1.0, 0)]]);
@@ -544,7 +572,7 @@ mod tests {
         writer.write_sample(2.0_f32).unwrap();
         writer.finalize().unwrap();
         let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
-        let segments = file_diarization(&diarizer, &pcm);
+        let segments = file_diarization(&diarizer, &pcm).unwrap();
 
         assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![1]);
         assert_eq!(

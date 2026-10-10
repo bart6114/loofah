@@ -240,6 +240,8 @@ extern "C" {
 
     WHISPER_API struct whisper_state * whisper_init_state(struct whisper_context * ctx);
 
+    WHISPER_API const char * whisper_state_backend_name(const struct whisper_state * state);
+
     // Given a context, enable use of OpenVINO for encode inference.
     // model_path: Optional path to OpenVINO encoder IR model. If set to nullptr,
     //                      the path will be generated from the ggml model path that was passed
@@ -387,6 +389,16 @@ extern "C" {
                                int   offset_ms,
                                int   n_threads,
                              float * lang_probs);
+
+    // The callback and its data are borrowed only during this synchronous call.
+    WHISPER_API int whisper_lang_auto_detect_with_state_abort(
+            struct whisper_context * ctx,
+              struct whisper_state * state,
+                               int   offset_ms,
+                               int   n_threads,
+                             float * lang_probs,
+               ggml_abort_callback   abort_callback,
+                              void * abort_callback_data);
 
     WHISPER_API int whisper_n_len           (struct whisper_context * ctx); // mel length
     WHISPER_API int whisper_n_len_from_state(struct whisper_state * state); // mel length

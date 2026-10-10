@@ -262,15 +262,17 @@ async fn handle_websocket(
         cancelled: cancelled.clone(),
         producer: producer.abort_handle(),
     };
+    let mut closing_receiver = None;
+    let mut producer_done = false;
+    let mut completed = false;
     let conversation = async {
-        let mut producer_done = false;
         let mut first_text = true;
         loop {
             tokio::select! {
                 result = &mut producer, if !producer_done => {
                     producer_done = true;
                     match result {
-                        Ok(Ok(())) => {},
+                        Ok(Ok(receiver)) => closing_receiver = Some(receiver),
                         error => {
                             tracing::debug!(?error, "whisper_input_closed");
                             return;
@@ -286,6 +288,7 @@ async fn handle_websocket(
                             if !send_ws(&mut sender, &StreamResponse::UtteranceEndResponse { channel: vec![channel as u8], last_word_end: segment.start + segment.duration }).await { return; }
                         }
                         Some(Output::Finished { duration, finalized }) => {
+                            completed = true;
                             tracing::info!(elapsed_ms = started.elapsed().as_millis(), duration, finalized, "whisper_live_completed");
                             send_ws_best_effort(&mut sender, &StreamResponse::TerminalResponse {
                                 request_id: metadata.request_id.clone(), created: format_timestamp_now(), duration, channels: count as u32,
@@ -308,6 +311,13 @@ async fn handle_websocket(
         _ = conversation => {}
     }
     cancelled.store(true, Ordering::Release);
+    if completed && !producer_done {
+        if let Ok(Ok(Ok(receiver))) =
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut producer).await
+        {
+            closing_receiver = Some(receiver);
+        }
+    }
     producer.abort();
     // Dropping the receiver unblocks a worker stalled on output; completion never joins on Tokio.
     drop(output);
@@ -327,7 +337,18 @@ async fn handle_websocket(
         )
         .await;
     }
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), sender.close()).await;
+    // Dropping the read half before the close handshake can reset TCP on Windows.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        let _ = sender.close().await;
+        if let Some(mut receiver) = closing_receiver {
+            while let Some(Ok(message)) = receiver.next().await {
+                if matches!(message, axum::extract::ws::Message::Close(_)) {
+                    break;
+                }
+            }
+        }
+    })
+    .await;
 }
 
 #[cfg(test)]
