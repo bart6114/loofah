@@ -59,6 +59,11 @@ export const SETTING_DEFINITIONS = {
     path: ["general", "theme"],
     default: "system" as string,
   },
+  design_theme: {
+    type: "string",
+    path: ["general", "design_theme"],
+    default: "default" as string,
+  },
   notification_detect: {
     type: "boolean",
     path: ["notification", "detect"],

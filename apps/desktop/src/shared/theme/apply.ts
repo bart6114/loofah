@@ -1,3 +1,9 @@
+import { getDesignTheme, resolveThemeAppearance } from "./catalog";
+import {
+  applyDocumentDesignTheme,
+  readStoredDesignTheme,
+  writeStoredDesignTheme,
+} from "./design";
 import { resolveIsDarkMode, type ThemePreference } from "./resolve";
 
 import { getStoredSettingValues } from "~/settings/queries";
@@ -8,8 +14,11 @@ const THEME_BOOTSTRAP_TIMEOUT_MS = 150;
 /** Keep `public/theme-boot.js` aligned with normalizeThemePreference + resolveIsDarkMode. */
 
 export function readStoredThemePreference(): ThemePreference {
-  const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  return normalizeThemePreference(stored);
+  try {
+    return normalizeThemePreference(localStorage.getItem(THEME_STORAGE_KEY));
+  } catch {
+    return "system";
+  }
 }
 
 export function normalizeThemePreference(
@@ -40,8 +49,18 @@ export function applyDocumentTheme(
   theme: ThemePreference,
   prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches,
 ): boolean {
-  const isDark = resolveIsDarkMode(theme, prefersDark);
+  const designTheme = getDesignTheme(
+    document.documentElement.dataset.designTheme ?? readStoredDesignTheme(),
+  );
+  const isDark = resolveIsDarkMode(
+    resolveThemeAppearance(designTheme, theme),
+    prefersDark,
+  );
   document.documentElement.classList.toggle("dark", isDark);
+  applyDocumentDesignTheme(
+    document.documentElement.dataset.designTheme ?? readStoredDesignTheme(),
+    isDark,
+  );
   return isDark;
 }
 
@@ -51,6 +70,9 @@ async function loadThemeFromSettings(): Promise<void> {
     const preference = normalizeThemePreference(
       stored.hasValues.has("theme") ? (stored.values.theme ?? null) : null,
     );
+    const designTheme = getDesignTheme(stored.values.design_theme);
+    applyDocumentDesignTheme(designTheme.id);
+    writeStoredDesignTheme(designTheme.id);
     applyDocumentTheme(preference);
     writeStoredThemePreference(preference);
   } catch {

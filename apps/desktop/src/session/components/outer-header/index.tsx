@@ -39,6 +39,7 @@ export function OuterHeader({
 
   return (
     <div
+      data-session-toolbar
       data-tauri-drag-region
       className={cn([
         "relative flex w-full items-center",
