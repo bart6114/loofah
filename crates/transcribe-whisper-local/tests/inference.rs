@@ -94,7 +94,8 @@ async fn real_websocket_finalizes_and_recovers_from_cancellation() {
             "ws://{address}/v1/listen?language=en&channels=1&sample_rate=16000&encoding=linear16"
         );
         let (mut socket, _) = connect_async(&url).await.unwrap();
-        for chunk in hypr_data::english_2::AUDIO.chunks(16000 * 2) {
+        // Keep repeated CPU encoder passes bounded on portable ARM64 kernels.
+        for chunk in hypr_data::english_2::AUDIO[..16000 * 2 * 10].chunks(16000 * 2) {
             socket
                 .send(Message::Binary(chunk.to_vec().into()))
                 .await
