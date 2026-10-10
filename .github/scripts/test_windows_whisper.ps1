@@ -20,5 +20,7 @@ if ($RequireGpu) {
 $env:LOOFAH_WHISPER_CPU = '1'
 cargo test --locked --release -p whisper-local --features vulkan --test inference forced_cpu_transcribes_and_cancels -- --ignored --nocapture
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+cargo test --locked --release -p whisper-local --features vulkan --test inference cpu_language_detection_and_inference_abort_inside_native_graphs -- --ignored --nocapture
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 cargo test --locked --release -p transcribe-whisper-local --features vulkan --test inference -- --ignored --nocapture --test-threads=1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

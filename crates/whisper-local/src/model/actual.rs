@@ -231,14 +231,39 @@ impl Whisper {
             .filter(|n| [1, 2, 4].contains(n))
             .unwrap_or(self.detection_threads);
         self.detection_calls += 1;
+        tracing::info!(
+            threads,
+            samples = audio.len(),
+            backend = self.backend_name(),
+            "whisper_language_detection_started"
+        );
         self.state.pcm_to_mel(audio, threads)?;
         if self.cancelled.load(Ordering::Acquire) {
             return Err(crate::Error::Cancelled);
         }
-        let (_, probabilities) = self.state.lang_detect(0, threads)?;
+        unsafe extern "C" fn abort(data: *mut std::ffi::c_void) -> bool {
+            unsafe { (*(data as *const AtomicBool)).load(Ordering::Acquire) }
+        }
+        let detection = unsafe {
+            self.state.lang_detect_with_abort(
+                0,
+                threads,
+                Some(abort),
+                Arc::as_ptr(&self.cancelled) as *mut std::ffi::c_void,
+            )
+        };
         if self.cancelled.load(Ordering::Acquire) {
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_millis(),
+                "whisper_language_detection_cancelled"
+            );
             return Err(crate::Error::Cancelled);
         }
+        let (_, probabilities) = detection?;
+        tracing::info!(
+            elapsed_ms = started.elapsed().as_millis(),
+            "whisper_language_detection_completed"
+        );
         let scores = if self.languages.is_empty() {
             probabilities
                 .iter()
@@ -338,10 +363,11 @@ impl Whisper {
         };
 
         self.inference_calls += 1;
-        self.state.full(params, audio)?;
+        let inference = self.state.full(params, audio);
         if self.cancelled.load(Ordering::Acquire) {
             return Err(crate::Error::Cancelled);
         }
+        inference?;
         tracing::info!(
             elapsed_ms = started.elapsed().as_millis(),
             samples = audio.len(),
