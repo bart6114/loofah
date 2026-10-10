@@ -180,6 +180,13 @@ fn main() {
         .very_verbose(true)
         .pic(true);
 
+    if target == "aarch64-pc-windows-msvc" {
+        // Runner-native SVE instructions crash Windows ARM devices without SVE.
+        config
+            .define("GGML_NATIVE", "OFF")
+            .define("GGML_CPU_ARM_ARCH", "armv8-a");
+    }
+
     if cfg!(target_os = "windows") {
         // ClangCL needs exception handling enabled for ggml's try/catch blocks.
         config.cxxflag("/utf-8").cxxflag("/EHsc");
