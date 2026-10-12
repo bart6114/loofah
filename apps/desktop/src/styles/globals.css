@@ -10,6 +10,19 @@
 /* Space reserved for the macOS traffic lights; collapses when the window is
    fullscreen and the system hides them (data-fullscreen set by main-app-layout). */
 :root {
+  /* Keep type independent of spacing and the shared UI theme's rem scale. */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 19px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-lg: 17px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 26px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 30px;
   --traffic-lights-inset: 76px;
   /* Preserve size-7 at the app's 13px root font size. */
   --sidebar-chrome-button-size: 22.75px;
@@ -68,8 +81,17 @@
   --color-recording-foreground: hsl(var(--recording-foreground));
   --color-brand: hsl(var(--brand));
   --color-brand-foreground: hsl(var(--brand-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
 
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
   --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
 
   --kbd-press-shadow-outer: rgba(0, 0, 0, 0.1);
   --kbd-press-shadow-inset: rgba(255, 255, 255, 0.8);
@@ -151,11 +173,10 @@
 }
 
 @utility timecode {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 16px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   font-variant-numeric: tabular-nums;
 }
 
@@ -250,8 +271,7 @@
 
   /* https://github.com/gitbutlerapp/gitbutler/blob/master/apps/desktop/src/styles/styles.css */
 
-  /* 13px root shrinks the whole rem-based type/spacing scale ~19% for a
-     denser, quieter UI (text-sm 14px -> 11.4px, note body 15px -> 12.2px). */
+  /* Preserve compact desktop spacing; typography uses explicit role sizes. */
   html {
     font-size: 13px;
   }
@@ -282,6 +302,21 @@
 }
 
 @layer components {
+  .session-content-column {
+    width: 100%;
+    max-width: 72ch;
+    font-size: 16px;
+  }
+
+  [data-session-surface] {
+    container-type: inline-size;
+  }
+
+  .session-content-scroll {
+    padding-inline: clamp(20px, 4cqi, 48px);
+    padding-top: 24px;
+  }
+
   [data-settings-content] button,
   [data-settings-content] button:hover,
   [data-settings-content] [role="combobox"],

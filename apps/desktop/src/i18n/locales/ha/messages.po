@@ -297,6 +297,10 @@ msgstr ""
 msgid "Choose a model to finish setup"
 msgstr ""
 
+#: src/settings/general/theme.tsx
+msgid "Choose a style for your workspace. Default follows your appearance setting."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "Choose another model"
 msgstr ""
@@ -471,6 +475,10 @@ msgstr ""
 msgid "Couldn’t remove attachment"
 msgstr ""
 
+#: src/settings/general/theme.tsx
+msgid "Couldn't save your appearance. Please try again."
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr ""
@@ -517,6 +525,10 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
+msgstr ""
+
+#: src/settings/general/theme.tsx
+msgid "Design theme"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1644,10 +1656,6 @@ msgstr ""
 msgid "Symbolic links and their targets are excluded."
 msgstr ""
 
-#: src/settings/general/theme.tsx
-msgid "System"
-msgstr ""
-
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
 msgid "System audio"
@@ -1823,6 +1831,10 @@ msgstr ""
 
 #: src/onboarding/permissions.tsx
 msgid "Use system audio to capture other speakers"
+msgstr ""
+
+#: src/settings/general/theme.tsx
+msgid "Use system setting"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx

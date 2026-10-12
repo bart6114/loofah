@@ -145,7 +145,7 @@ function iconHeaderViewClassName(
           "dark:bg-accent dark:text-foreground dark:shadow-none",
         ]
       : [
-          "text-muted-foreground/70",
+          "text-muted-foreground",
           "hover:bg-background/60 hover:text-foreground",
           "dark:hover:bg-accent/80 dark:hover:text-foreground",
         ],
@@ -248,7 +248,11 @@ function HeaderViewRawButton({
       onClick={onClick}
       onContextMenu={onContextMenu}
       size={standalone ? "standalone" : "tray"}
-      className={standalone ? "border-0 shadow-none" : undefined}
+      className={
+        standalone
+          ? "border-0 bg-transparent shadow-none dark:bg-transparent"
+          : undefined
+      }
     />
   );
 }
@@ -753,13 +757,14 @@ export function Header({
       >
         <div data-tauri-drag-region className="relative min-w-0 flex-1">
           <div
+            data-session-view-switcher
             role="group"
             aria-label={t`Session note views`}
             data-tauri-drag-region="false"
             className={cn([
               "pointer-events-auto relative z-10 w-fit max-w-full overflow-visible",
               shouldUseViewSwitcher
-                ? "bg-foreground/10 dark:bg-accent/55 flex h-[30px] items-center gap-[2px] rounded-md p-[2px]"
+                ? "bg-muted dark:bg-accent/55 flex h-[30px] items-center gap-[2px] rounded-lg p-[2px]"
                 : null,
             ])}
           >

@@ -76,9 +76,12 @@ export function SettingsNav() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div
+      data-settings-nav
+      className="flex h-full w-full flex-col overflow-hidden"
+    >
       <CustomSidebarHeader title={<Trans>Settings</Trans>} />
-      <div className="scrollbar-hide flex-1 overflow-y-auto">
+      <div className="scrollbar-hide flex-1 overflow-y-auto px-[10px] pb-3">
         <div className="flex flex-col gap-4 pb-2">
           {groups.map((group) => (
             <div key={group.label} className="flex flex-col gap-0.5">
@@ -89,15 +92,17 @@ export function SettingsNav() {
                 return (
                   <button
                     key={item.id}
+                    aria-current={activeTab === item.id ? "page" : undefined}
                     onClick={() => {
                       setActiveTab(item.id as SettingsTab);
                     }}
                     className={cn([
-                      "flex w-full items-center gap-2 rounded-full px-3 py-2 text-left text-sm",
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
                       "transition-none",
+                      "focus-visible:ring-sidebar-ring focus-visible:ring-2 focus-visible:outline-hidden",
                       activeTab === item.id
-                        ? "bg-sidebar-accent text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     ])}
                   >
                     <item.icon size={15} className="shrink-0" />

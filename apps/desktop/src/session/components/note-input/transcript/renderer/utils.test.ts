@@ -7,9 +7,35 @@ import {
   getSegmentColorVars,
 } from "./utils";
 
+import { DESIGN_THEMES } from "~/shared/theme/catalog";
 import type { SegmentKey, SegmentWord } from "~/stt/live-segment";
 
 describe("transcript renderer utils", () => {
+  for (const theme of DESIGN_THEMES) {
+    it(`keeps every speaker label readable in ${theme.name}`, () => {
+      const palettes =
+        theme.appearance === "adaptive"
+          ? ([
+              ["light", theme.light],
+              ["dark", theme.dark],
+            ] as const)
+          : ([[theme.appearance, theme.palette]] as const);
+      for (const [mode, palette] of palettes) {
+        for (const channel of ["DirectMic", "RemoteParty"] as const) {
+          for (let speaker_index = 0; speaker_index < 6; speaker_index++) {
+            const color = getSegmentColor(
+              { channel, speaker_index, speaker_human_id: null },
+              mode,
+            );
+            expect(
+              chroma.contrast(color, palette.paper),
+              `${mode} ${channel} ${speaker_index}`,
+            ).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      }
+    });
+  }
   it("uses a brighter speaker color for dark mode", () => {
     const key: SegmentKey = {
       channel: "RemoteParty",

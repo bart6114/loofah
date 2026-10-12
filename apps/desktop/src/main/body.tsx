@@ -52,6 +52,7 @@ import {
   usesNoteSurfaceMinWidth,
 } from "~/shared/main/layout-widths";
 import { useOpenNoteDialog } from "~/shared/open-note-dialog";
+import { SidebarBrand } from "~/shared/theme/logo";
 import { useNewNote } from "~/shared/useNewNote";
 import { useSidebarUpcomingMeetingStatus } from "~/sidebar/timeline/upcoming-meeting";
 import {
@@ -499,7 +500,8 @@ export function ClassicMainBody() {
         ) : null}
       </div>
       {showSidebarTimeline ? (
-        <div className="flex flex-col px-2 pt-4 pb-1">
+        <div className="sidebar-actions flex flex-col px-2 pt-4 pb-1">
+          <SidebarBrand />
           <SidebarActionRow
             icon={<PlusIcon className="size-4" />}
             label="New note"
@@ -910,8 +912,12 @@ function SidebarActionRow({
       onClick={onClick}
       className={cn([
         "flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-left text-sm",
-        "hover:bg-sidebar-accent transition-none",
-        mutedLabel ? "text-muted-foreground/80" : "text-foreground/85",
+        "sidebar-action",
+        "hover:bg-sidebar-accent active:bg-sidebar-accent transition-none",
+        "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
+        mutedLabel
+          ? "sidebar-search text-muted-foreground"
+          : "sidebar-new-note text-foreground/85",
       ])}
     >
       <span className="text-muted-foreground flex size-4 shrink-0 items-center justify-center">
@@ -919,7 +925,7 @@ function SidebarActionRow({
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {kbd ? (
-        <span className="border-border bg-card text-muted-foreground/80 shrink-0 rounded border px-1 py-px text-[10px]">
+        <span className="border-border bg-card text-muted-foreground shrink-0 rounded border px-1 py-px text-[10px]">
           {kbd}
         </span>
       ) : null}
