@@ -167,7 +167,7 @@ function ThemeSwatch({
       style={designThemeTokens(theme, dark) as CSSProperties}
     >
       <span className="theme-swatch-sidebar">
-        <ThemeLogo />
+        <ThemeLogo themeId={theme.id} />
       </span>
       <span className="theme-swatch-note">
         <strong>Notes.</strong>

@@ -31,6 +31,16 @@
   border-radius: var(--theme-logo-radius);
 }
 
+.theme-logo-default {
+  background: transparent;
+}
+
+.theme-logo > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .theme-logo > span {
   width: 82%;
   height: 82%;
