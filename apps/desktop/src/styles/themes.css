@@ -80,7 +80,11 @@
   height: 100%;
   background: hsl(var(--sidebar-background));
   color: hsl(var(--sidebar-foreground));
-  border-right: 1px solid hsl(var(--sidebar-border));
+}
+
+[data-design-theme] [data-left-sidebar-resize-handle="true"] {
+  width: 1px;
+  background: hsl(var(--sidebar-border));
 }
 
 .sidebar-brand {
@@ -139,6 +143,7 @@
 [data-design-theme] [data-sidebar-timeline-scroll] {
   border-radius: 0;
   padding-inline: 10px;
+  margin-right: 2px;
 }
 
 [data-design-theme] [data-sidebar-timeline-group-toggle] {

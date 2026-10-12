@@ -636,8 +636,9 @@ export function ClassicMainBody() {
               </div>
             </ResizablePanel>
             <ResizableHandle
+              data-left-sidebar-resize-handle={showLeftSidebarPanel}
               className={cn([
-                "z-10 !bg-transparent after:w-2",
+                "z-10 bg-transparent after:w-2",
                 showLeftSidebarPanel && canResizeLeftSidebarPanel
                   ? "w-1"
                   : "pointer-events-none w-0 after:w-0",
