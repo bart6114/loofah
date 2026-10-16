@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as selectFile } from "@tauri-apps/plugin-dialog";
+import { platform } from "@tauri-apps/plugin-os";
 import {
   FileArchiveIcon,
   FileIcon,
@@ -227,7 +228,11 @@ export function Attachments({
         "[attachments] failed to open attachments directory",
         error,
       );
-      sonnerToast.error(t`Couldn’t open attachments in Finder`);
+      sonnerToast.error(
+        platform() === "windows"
+          ? t`Couldn’t open attachments in File Explorer`
+          : t`Couldn’t open attachments in Finder`,
+      );
     },
   });
 
@@ -302,7 +307,9 @@ export function Attachments({
             ) : (
               <FolderOpenIcon className="size-3.5" />
             )}
-            {t`Show in Finder`}
+            {platform() === "windows"
+              ? t`Show in File Explorer`
+              : t`Show in Finder`}
           </Button>
           <Button
             type="button"

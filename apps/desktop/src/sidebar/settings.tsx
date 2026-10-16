@@ -66,8 +66,8 @@ export function SettingsNav() {
     label: t`Advanced`,
     items: [{ id: "developers", label: t`Agents`, icon: Code2Icon }],
   });
-  const isMacos = platform() === "macos";
-  if (isMacos) {
+  const os = platform();
+  if (os === "macos" || os === "windows") {
     groups[0].items.push({
       id: "permissions" as const,
       label: t`Permissions`,

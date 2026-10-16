@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to build and attach the DMG to (defaults to the latest release)
+        description: Release tag to build desktop installers for (defaults to the latest release)
         required: false
         default: ""
 
@@ -22,6 +22,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       build_macos: ${{ steps.tag.outputs.build_macos }}
+      release_windows: ${{ steps.windows.outputs.release_windows }}
     steps:
       - name: Resolve release tag
         id: tag
@@ -59,6 +60,17 @@ jobs:
             echo "tag=$tag"
             echo "build_macos=$build_macos"
           } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          persist-credentials: false
+      - id: windows
+        run: |
+          if [ -f apps/desktop/src-tauri/scripts/sign-windows-azure.ps1 ]; then
+            echo 'release_windows=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'release_windows=false' >> "$GITHUB_OUTPUT"
+          fi
 
   changelog:
     needs: resolve
@@ -198,6 +210,19 @@ jobs:
             "$macos_dir"/*.app.tar.gz "$macos_dir"/*.app.tar.gz.sig "$macos_dir/latest.json" \
             "$cli_dir"/*.tar.gz "$cli_dir"/*.sha256 \
             --clobber
+
+  windows:
+    needs: [resolve, changelog]
+    if: needs.resolve.outputs.release_windows == 'true'
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/windows_release.yaml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+      publish: true
+    secrets: inherit
+
   publish-desktop-updater:
     needs: [resolve, changelog, macos]
     if: >-

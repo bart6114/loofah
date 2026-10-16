@@ -152,7 +152,9 @@ pub async fn set_recently_opened_sessions<R: tauri::Runtime>(
 pub async fn check_embedded_cli<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<EmbeddedCliStatus, String> {
-    Ok(crate::embedded_cli::check(&app))
+    tauri::async_runtime::spawn_blocking(move || crate::embedded_cli::check(&app))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -160,7 +162,9 @@ pub async fn check_embedded_cli<R: tauri::Runtime>(
 pub async fn install_embedded_cli<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<EmbeddedCliStatus, String> {
-    crate::embedded_cli::install(&app)
+    tauri::async_runtime::spawn_blocking(move || crate::embedded_cli::install(&app))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]

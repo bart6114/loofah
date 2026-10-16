@@ -99,7 +99,12 @@ impl AppWindow {
 
         #[cfg(target_os = "windows")]
         {
-            builder = builder.decorations(false);
+            use tauri::Manager;
+            let show_in_taskbar = app
+                .try_state::<crate::DockVisibilityState>()
+                .map(|state| state.show_app_in_dock())
+                .unwrap_or(true);
+            builder = builder.decorations(true).skip_taskbar(!show_in_taskbar);
         }
 
         #[cfg(target_os = "linux")]

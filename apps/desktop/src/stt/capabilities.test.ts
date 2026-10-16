@@ -279,6 +279,19 @@ describe("getTranscriptionLanguages", () => {
   });
 });
 
+test("supports Windows Parakeet and uses batch for non-English speech", () => {
+  expect(isSupportedLocalSttModel("onnx-parakeet-streaming")).toBe(true);
+  expect(getOnDeviceTranscriptionMode("onnx-parakeet-streaming", ["en"])).toBe(
+    "live",
+  );
+  expect(getOnDeviceTranscriptionMode("onnx-parakeet-streaming", ["nl"])).toBe(
+    "batch",
+  );
+  expect(getOnDeviceTranscriptionMode("onnx-parakeet-batch", ["en"])).toBe(
+    "batch",
+  );
+});
+
 test.each([
   "am-parakeet-v2",
   "am-parakeet-v3",
@@ -289,6 +302,7 @@ test.each([
   "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
   "HyprLLM",
   "soniqo-unknown",
+  "onnx-unknown",
   "whisper-unknown",
   "QuantizedUnknown",
 ])("rejects unsupported model %s", (model) => {

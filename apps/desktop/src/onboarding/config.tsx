@@ -11,12 +11,13 @@ export type OnboardingStep =
 
 function getOnboardingSteps(): OnboardingStep[] {
   const steps: OnboardingStep[] = [];
-  if (platform() === "macos") {
+  if (platform() === "macos" || platform() === "windows") {
     steps.push("permissions");
   }
-  // On-device STT models are only offered on aarch64, matching the arch gate
-  // in settings/ai/stt/select.tsx.
-  if (arch() === "aarch64") {
+  if (
+    (platform() === "macos" && arch() === "aarch64") ||
+    platform() === "windows"
+  ) {
     steps.push("stt-model");
   }
   steps.push("llm-provider", "final");

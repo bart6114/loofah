@@ -1,3 +1,6 @@
+#[cfg(any(target_os = "windows", test))]
+mod tracker;
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]

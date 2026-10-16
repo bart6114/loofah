@@ -1239,13 +1239,21 @@ mod tests {
             .append_transcript("s1", delta_with_words(&["second"]))
             .await
             .unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-        let json: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(vault.path().join("sessions/s1/transcript.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 2);
+        // Busy runners can finish the background write after the debounce delay expires.
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let json: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(vault.path().join("sessions/s1/transcript.json")).unwrap(),
+                )
+                .unwrap();
+                if json["transcripts"][0]["words"].as_array().unwrap().len() == 2 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the fresh debounce timer must persist the second word");
     }
 
     #[tokio::test]
