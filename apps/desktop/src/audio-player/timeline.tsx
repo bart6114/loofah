@@ -171,7 +171,7 @@ export function Timeline({
                   "flex items-center justify-center",
                   "h-5 rounded px-1",
                   "hover:bg-accent transition-none",
-                  "text-muted-foreground/80 font-mono text-[10px] select-none",
+                  "text-muted-foreground font-mono text-[10px] select-none",
                 ])}
               >
                 {playbackRate}x

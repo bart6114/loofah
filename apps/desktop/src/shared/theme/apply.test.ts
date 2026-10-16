@@ -7,10 +7,12 @@ vi.mock("~/settings/queries", () => ({
 }));
 
 import {
+  applyDocumentTheme,
   bootstrapThemeFromSettings,
   normalizeThemePreference,
   resolveBootIsDark,
 } from "./apply";
+import { applyDocumentDesignTheme } from "./design";
 
 function mockSystemTheme(prefersDark: boolean) {
   window.matchMedia = vi.fn().mockReturnValue({
@@ -30,6 +32,8 @@ beforeEach(() => {
   getStoredSettingValues.mockReset();
   localStorage.clear();
   document.documentElement.className = "";
+  document.documentElement.removeAttribute("data-design-theme");
+  document.documentElement.removeAttribute("style");
   mockSystemTheme(false);
 });
 
@@ -71,6 +75,27 @@ describe("resolveBootIsDark", () => {
 });
 
 describe("bootstrapThemeFromSettings", () => {
+  it("keeps fixed themes fixed and restores the Default appearance when returning", () => {
+    applyDocumentDesignTheme("signal");
+    expect(applyDocumentTheme("dark", true)).toBe(false);
+    applyDocumentDesignTheme("midnight");
+    expect(applyDocumentTheme("light", false)).toBe(true);
+    applyDocumentDesignTheme("default");
+    expect(applyDocumentTheme("system", true)).toBe(true);
+    expect(applyDocumentTheme("system", false)).toBe(false);
+  });
+  it("hydrates the design from config rather than trusting an old boot cache", async () => {
+    localStorage.setItem("loofah-design-theme", "forma");
+    getStoredSettingValues.mockResolvedValue({
+      values: { theme: "dark", design_theme: "signal" },
+      hasValues: new Set(["theme", "design_theme"]),
+    });
+    await bootstrapThemeFromSettings({ timeoutMs: 100 });
+    expect(document.documentElement.dataset.designTheme).toBe("signal");
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(localStorage.getItem("hypr-theme")).toBe("dark");
+    expect(localStorage.getItem("loofah-design-theme")).toBe("signal");
+  });
   it("applies persisted settings before resolving when load is prompt", async () => {
     getStoredSettingValues.mockResolvedValue({
       values: { theme: "dark" },

@@ -175,7 +175,7 @@ describe("OuterHeader", () => {
       "h-[calc(var(--sidebar-chrome-center-y)*2)]",
     );
     expect(header?.className).not.toContain("pb-1");
-    expect(titleWrapper?.classList.contains("w-full")).toBe(false);
+    expect(titleWrapper?.classList.contains("w-full")).toBe(true);
     expect(titleWrapper?.className).toContain("max-w-full");
     expect(titleWrapper?.className).not.toContain("max-w-[680px]");
     expect(titleSlot?.className).toContain(
@@ -221,6 +221,7 @@ describe("OuterHeader", () => {
     const titleSlot = title.parentElement?.parentElement;
 
     expect(titleSlot?.className).toContain("justify-center");
+    expect(title.parentElement?.classList.contains("w-full")).toBe(false);
   });
 
   it("keeps sidebar header controls hidden while the sidebar is expanded", () => {

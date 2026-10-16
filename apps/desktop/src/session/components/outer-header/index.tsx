@@ -39,6 +39,7 @@ export function OuterHeader({
 
   return (
     <div
+      data-session-toolbar
       data-tauri-drag-region
       className={cn([
         "relative flex w-full items-center",
@@ -68,7 +69,10 @@ export function OuterHeader({
         >
           <div
             data-tauri-drag-region
-            className="pointer-events-auto max-w-full min-w-0"
+            className={cn([
+              "pointer-events-auto max-w-full min-w-0",
+              !centerTitle && "w-full",
+            ])}
           >
             {title}
           </div>
