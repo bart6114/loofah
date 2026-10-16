@@ -19,7 +19,7 @@ I built Loofah on [anarlog](https://github.com/fastrepl/anarlog).
 
 <p align="center">
   <a href="docs/public/screenshots/loofah-primary.png">
-    <img src="docs/public/screenshots/loofah-primary.png" alt="Loofah showing a meeting brief, notes, and recent sessions in a local vault" />
+    <img src="docs/public/screenshots/loofah-primary.png" alt="Loofah in the Signal theme showing a sample meeting summary, action items, and recent sessions" />
   </a>
 </p>
 
