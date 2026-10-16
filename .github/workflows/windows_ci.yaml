@@ -68,8 +68,13 @@ jobs:
           Get-ChildItem target/debug/deps/*.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(loofah_desktop_lib|tauri_plugin_notify|tauri_plugin_local_stt)-' } | ForEach-Object {
             node apps/desktop/src-tauri/scripts/check-windows-runtime.mjs $_.FullName
           }
-      - name: Verify signing configuration contracts
-        run: node --test apps/desktop/src-tauri/scripts/sign-windows.test.mjs
+      - run: |
+          node --test apps/desktop/src-tauri/scripts/sign-windows.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path apps/desktop/src-tauri/scripts/sign-windows-azure.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
       - run: node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
       - if: github.event_name == 'workflow_dispatch' && inputs.bundle-only
         run: ./.github/scripts/test_windows_whisper.ps1

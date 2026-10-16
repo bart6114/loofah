@@ -12,20 +12,24 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGN_COMMAND");
         println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGNER_THUMBPRINT");
+        println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGNER_EKU");
         let config: serde_json::Value =
             serde_json::from_str(&std::env::var("TAURI_CONFIG").unwrap_or_else(|_| "{}".into()))
                 .expect("valid Tauri config");
         if config["identifier"].as_str() == Some("io.loofah.stable") {
-            for variable in [
-                "LOOFAH_WINDOWS_SIGN_COMMAND",
-                "LOOFAH_WINDOWS_SIGNER_THUMBPRINT",
-                "TAURI_SIGNING_PRIVATE_KEY",
-            ] {
+            for variable in ["LOOFAH_WINDOWS_SIGN_COMMAND", "TAURI_SIGNING_PRIVATE_KEY"] {
                 assert!(
                     std::env::var(variable).is_ok_and(|value| !value.trim().is_empty()),
                     "Stable Windows builds require {variable}; use the staging config for unsigned test installers"
                 );
             }
+            assert!(
+                ["LOOFAH_WINDOWS_SIGNER_EKU", "LOOFAH_WINDOWS_SIGNER_THUMBPRINT"]
+                    .iter()
+                    .any(|variable| std::env::var(variable)
+                        .is_ok_and(|value| !value.trim().is_empty())),
+                "Stable Windows builds require the expected signing profile EKU or certificate thumbprint"
+            );
             assert!(
                 config.pointer("/bundle/windows/signCommand").is_some(),
                 "Stable Windows builds require the verified Authenticode signing command"

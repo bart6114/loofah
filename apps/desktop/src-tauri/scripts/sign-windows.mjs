@@ -7,9 +7,23 @@ export function signingArguments(environment, file) {
     " ",
     "",
   ).toUpperCase();
-  if (!thumbprint || !/^[0-9A-F]{40}$/.test(thumbprint)) {
+  const profileEku = environment.LOOFAH_WINDOWS_SIGNER_EKU?.trim();
+  if (thumbprint && !/^[0-9A-F]{40}$/.test(thumbprint)) {
     throw new Error(
       "LOOFAH_WINDOWS_SIGNER_THUMBPRINT must identify the provisioned signing certificate",
+    );
+  }
+  if (
+    profileEku &&
+    !/^1\.3\.6\.1\.4\.1\.311\.97\.(?:\d+\.){3}\d+$/.test(profileEku)
+  ) {
+    throw new Error(
+      "LOOFAH_WINDOWS_SIGNER_EKU must identify a specific Azure Public Trust certificate profile",
+    );
+  }
+  if (!thumbprint && !profileEku) {
+    throw new Error(
+      "Provision LOOFAH_WINDOWS_SIGNER_EKU or LOOFAH_WINDOWS_SIGNER_THUMBPRINT before signing",
     );
   }
   let command;
@@ -39,13 +53,17 @@ export function signingArguments(environment, file) {
       .slice(1)
       .map((argument) => (argument === "%1" ? path.resolve(file) : argument)),
     thumbprint,
+    profileEku,
   };
 }
 
 export function signWindows(file) {
   if (process.platform !== "win32")
     throw new Error("Authenticode signing requires Windows");
-  const { command, args, thumbprint } = signingArguments(process.env, file);
+  const { command, args, thumbprint, profileEku } = signingArguments(
+    process.env,
+    file,
+  );
   const signed = spawnSync(command, args, { stdio: "inherit", shell: false });
   if (signed.error || signed.status !== 0)
     throw new Error("The configured Windows signing service failed");
@@ -60,13 +78,20 @@ export function signWindows(file) {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      "$signature = Get-AuthenticodeSignature -LiteralPath $env:LOOFAH_SIGNED_FILE; if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:LOOFAH_EXPECTED_SIGNER -or $null -eq $signature.TimeStamperCertificate) { throw 'Authenticode signature, publisher, or timestamp validation failed' }",
+      [
+        "$signature = Get-AuthenticodeSignature -LiteralPath $env:LOOFAH_SIGNED_FILE",
+        "if ($signature.Status -ne 'Valid' -or $null -eq $signature.TimeStamperCertificate) { throw 'Authenticode signature or timestamp validation failed' }",
+        "if ($env:LOOFAH_EXPECTED_SIGNER -and $signature.SignerCertificate.Thumbprint -ne $env:LOOFAH_EXPECTED_SIGNER) { throw 'Unexpected signing certificate' }",
+        "$eku = $signature.SignerCertificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }",
+        "if ($env:LOOFAH_EXPECTED_PROFILE_EKU -and $env:LOOFAH_EXPECTED_PROFILE_EKU -notin $eku.EnhancedKeyUsages.Value) { throw 'Unexpected signing certificate profile' }",
+      ].join("; "),
     ],
     {
       env: {
         ...process.env,
         LOOFAH_SIGNED_FILE: path.resolve(file),
-        LOOFAH_EXPECTED_SIGNER: thumbprint,
+        LOOFAH_EXPECTED_SIGNER: thumbprint || "",
+        LOOFAH_EXPECTED_PROFILE_EKU: profileEku || "",
       },
       stdio: "inherit",
     },
