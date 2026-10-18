@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/target
+**/dist
+**/.DS_Store
+.pnpm-store
+**/resources/codex
+.env
+.env.*
+**/.env
+**/.env.*
+.venv

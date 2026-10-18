@@ -3,7 +3,6 @@ import {
   useMutationState,
   useQueryClient,
 } from "@tanstack/react-query";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback } from "react";
 
 import {
@@ -12,6 +11,7 @@ import {
 } from "@hypr/plugin-fs-sync";
 
 import { sessionAttachmentPathsQueryKey } from "~/session/hooks/useAttachmentResolver";
+import { mediaSrc } from "~/shared/media-src";
 
 export type FileUploadCandidate =
   | { kind: "path"; path: string; name: string }
@@ -169,7 +169,7 @@ function toUploadResult(attachment: AttachmentInfo): FileUploadResult {
     attachment,
     path: attachment.path,
     attachmentId: attachment.attachmentId,
-    url: convertFileSrc(attachment.path),
+    url: mediaSrc(attachment.path),
   };
 }
 

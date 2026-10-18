@@ -63,16 +63,23 @@ tauri-plugin-updater2 = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-windows = { workspace = true }
 
+base64 = { workspace = true }
 hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-fs-format = { workspace = true }
-hypr-fs-sync-core = { workspace = true }
+hypr-fs-sync-core = { workspace = true, features = ["audio-processing"] }
 hypr-host = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-supervisor = { workspace = true }
 hypr-tauri-utils = { workspace = true }
+hypr-vault-access = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true, features = ["tauri-events"] }
+keyring = { workspace = true }
+reqwest = { workspace = true, features = ["json", "stream"] }
+sha2 = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 chrono = { workspace = true }
 dirs = { workspace = true }

@@ -15,6 +15,7 @@ import {
   type BatchState,
 } from "./batch";
 
+import { beginVaultProcessing } from "~/shared/company-vault";
 import { isActiveAudioImportSession } from "~/store/zustand/audio-import";
 import { createBatchCompletedNotificationKey } from "~/stt/batch-completed-notification";
 
@@ -81,6 +82,19 @@ export async function showBatchCompletedNotification(
 }
 
 export const runBatchSession = async <T extends BatchStore>(
+  get: StoreApi<T>["getState"],
+  sessionId: string,
+  params: TranscriptionParams,
+) => {
+  const release = await beginVaultProcessing();
+  try {
+    return await runBatch(get, sessionId, params);
+  } finally {
+    await release?.();
+  }
+};
+
+const runBatch = async <T extends BatchStore>(
   get: StoreApi<T>["getState"],
   sessionId: string,
   params: TranscriptionParams,

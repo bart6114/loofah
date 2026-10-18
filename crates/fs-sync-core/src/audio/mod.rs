@@ -1,10 +1,14 @@
 use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "audio-processing")]
 use std::time::UNIX_EPOCH;
 
+#[cfg(feature = "audio-processing")]
 use crate::error::AudioImportError;
+#[cfg(feature = "audio-processing")]
 use crate::runtime::{AudioImportEvent, AudioImportRuntime};
+#[cfg(feature = "audio-processing")]
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 
@@ -23,12 +27,15 @@ const AUDIO_ARTIFACTS: [&str; 9] = [
 
 const PEAKS_FILE: &str = "audio.peaks.json";
 const PEAKS_TMP_FILE: &str = "audio.peaks.json.tmp";
+#[cfg(feature = "audio-processing")]
 const PEAKS_VERSION: u32 = 1;
 /// Enough resolution for the widest plausible player (the renderer draws one bar per ~5px),
 /// while keeping the cache file and the IPC payload a few tens of KB.
+#[cfg(feature = "audio-processing")]
 const MAX_PEAK_BUCKETS: usize = 1500;
 /// Frames per accumulation window before downsampling (20ms at the source rate). Bounds the
 /// in-memory window vectors to ~50 entries per second of audio regardless of sample rate.
+#[cfg(feature = "audio-processing")]
 const PEAK_WINDOWS_PER_SECOND: usize = 50;
 
 #[derive(Clone, serde::Serialize, specta::Type)]
@@ -52,7 +59,7 @@ pub struct AudioFileMetadata {
 /// pulling the whole recording into the webview and decoding it there (seconds for an
 /// hour-long file) -- WaveSurfer accepts pre-decoded peaks plus a duration and renders
 /// immediately, while playback itself still streams through the media element.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioPeaks {
     pub duration_sec: f64,
@@ -61,6 +68,7 @@ pub struct AudioPeaks {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg(feature = "audio-processing")]
 struct PeaksCacheFile {
     version: u32,
     source_size_bytes: u64,
@@ -141,6 +149,7 @@ pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>
 /// source file's size + mtime, so a replaced recording recomputes. `None` means "no peaks
 /// available" (no recording, or one we can't decode) -- the player falls back to decoding
 /// in the webview.
+#[cfg(feature = "audio-processing")]
 pub fn peaks(session_dir: &Path) -> std::io::Result<Option<AudioPeaks>> {
     let Some(audio_path) = path(session_dir) else {
         return Ok(None);
@@ -183,6 +192,7 @@ pub fn peaks(session_dir: &Path) -> std::io::Result<Option<AudioPeaks>> {
     Ok(Some(peaks))
 }
 
+#[cfg(feature = "audio-processing")]
 fn read_peaks_cache(
     cache_path: &Path,
     source_size_bytes: u64,
@@ -199,6 +209,7 @@ fn read_peaks_cache(
         })
 }
 
+#[cfg(feature = "audio-processing")]
 fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
     let sample_rate = u32::from(source.sample_rate()) as usize;
     let channel_count = usize::from(u16::from(source.channels()));
@@ -248,6 +259,7 @@ fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
     })
 }
 
+#[cfg(feature = "audio-processing")]
 fn downsample_max(windows: &[f32], buckets: usize) -> Vec<f32> {
     if windows.len() <= buckets {
         return windows.iter().copied().map(round_peak).collect();
@@ -267,6 +279,7 @@ fn downsample_max(windows: &[f32], buckets: usize) -> Vec<f32> {
 
 /// Three decimal places is below what the ~24px-tall waveform can display, and it keeps the
 /// serialized cache compact.
+#[cfg(feature = "audio-processing")]
 fn round_peak(value: f32) -> f32 {
     (value * 1000.0).round() / 1000.0
 }
@@ -294,6 +307,7 @@ fn delete_with(
     Ok(true)
 }
 
+#[cfg(feature = "audio-processing")]
 pub fn source_metadata(source_path: &Path) -> std::io::Result<AudioSourceMetadata> {
     use hypr_audio_utils::Source;
 
@@ -312,6 +326,7 @@ pub fn source_metadata(source_path: &Path) -> std::io::Result<AudioSourceMetadat
     })
 }
 
+#[cfg(feature = "audio-processing")]
 pub fn import_to_session(
     runtime: &dyn AudioImportRuntime,
     session_id: &str,
@@ -382,6 +397,7 @@ pub fn import_to_session(
     }
 }
 
+#[cfg(feature = "audio-processing")]
 pub fn import_audio(
     source_path: &Path,
     tmp_path: &Path,
@@ -390,11 +406,12 @@ pub fn import_audio(
     hypr_audio_norm::normalize_file(source_path, tmp_path, target_path, None, None::<fn(f64)>)
 }
 
+#[cfg(feature = "audio-processing")]
 fn system_time_to_iso(time: std::time::SystemTime) -> String {
     DateTime::<Utc>::from(time).to_rfc3339()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "audio-processing"))]
 mod tests {
     use super::*;
     use assert_fs::TempDir;
@@ -641,7 +658,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "audio-processing"))]
 mod import_commit_tests {
     use super::*;
     use std::sync::Mutex;

@@ -4,12 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
+default = ["audio-processing"]
+audio-processing = ["dep:hypr-audio-norm", "dep:hypr-audio-utils"]
 tauri-event = ["dep:tauri-specta"]
 
 [dependencies]
-hypr-audio-norm = { workspace = true }
-hypr-audio-utils = { workspace = true }
+hypr-audio-norm = { workspace = true, optional = true }
+hypr-audio-utils = { workspace = true, optional = true }
 hypr-frontmatter = { workspace = true }
 hypr-fs-format = { workspace = true }
 hypr-storage = { workspace = true }
@@ -40,4 +41,5 @@ tempfile = { workspace = true }
 
 [[bench]]
 name = "audio_import"
+required-features = ["audio-processing"]
 harness = false

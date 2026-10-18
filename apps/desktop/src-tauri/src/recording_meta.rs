@@ -23,6 +23,33 @@ pub fn spawn(app: AppHandle) {
     let worker_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some((session_id, is_end, at)) = stamps_rx.recv().await {
+            if let Some(connection) =
+                worker_handle.try_state::<Arc<hypr_vault_access::connection::ConnectionState>>()
+            {
+                if connection.active() {
+                    let operation = if is_end {
+                        "session_mark_recording_ended"
+                    } else {
+                        "session_mark_recording_started"
+                    };
+                    if let Err(error) = connection
+                        .call(
+                            operation,
+                            serde_json::json!({"session_id":session_id,"at":at}),
+                            false,
+                        )
+                        .await
+                    {
+                        tracing::warn!(%error,"recording metadata remains queued for the company vault");
+                    }
+                    if is_end {
+                        connection
+                            .recording
+                            .store(false, std::sync::atomic::Ordering::Release);
+                    }
+                    continue;
+                }
+            }
             let store = worker_handle
                 .try_state::<Arc<SessionStore>>()
                 .map(|state| state.inner().clone());
@@ -59,8 +86,23 @@ pub fn spawn(app: AppHandle) {
             CaptureLifecycleEvent::Finalizing { .. } => return,
         };
 
+        if let Some(connection) =
+            handle.try_state::<Arc<hypr_vault_access::connection::ConnectionState>>()
+        {
+            if connection.active() {
+                connection
+                    .recording
+                    .store(!is_end, std::sync::atomic::Ordering::Release);
+            }
+        }
         // Protect whole-vault relocation before the asynchronous stamp is queued.
-        if !is_end && let Some(store) = handle.try_state::<Arc<SessionStore>>() {
+        let company = handle
+            .try_state::<Arc<hypr_vault_access::connection::ConnectionState>>()
+            .is_some_and(|state| state.active());
+        if !company
+            && !is_end
+            && let Some(store) = handle.try_state::<Arc<SessionStore>>()
+        {
             store.note_recording_active(&session_id);
         }
 

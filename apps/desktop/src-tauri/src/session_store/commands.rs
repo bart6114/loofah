@@ -33,6 +33,16 @@ pub async fn session_write_meta<R: tauri::Runtime>(
     app: AppHandle<R>,
     meta: SessionMeta,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_write_meta",
+        serde_json::json!({"meta": meta}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .write_meta(&meta)
         .await
@@ -46,6 +56,16 @@ pub async fn session_update_meta<R: tauri::Runtime>(
     session_id: String,
     patch: SessionMetaPatch,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_update_meta",
+        serde_json::json!({"session_id": session_id, "patch": patch}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .update_meta(&session_id, patch)
         .await
@@ -58,6 +78,16 @@ pub async fn session_tag_context<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<TagContext, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_tag_context",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .session_tag_context(&session_id)
         .await
@@ -71,6 +101,16 @@ pub async fn session_accept_tag_suggestion<R: tauri::Runtime>(
     session_id: String,
     name: String,
 ) -> Result<bool, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_accept_tag_suggestion",
+        serde_json::json!({"session_id": session_id, "name": name}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .accept_tag_suggestion(&session_id, &name)
         .await
@@ -84,6 +124,16 @@ pub async fn session_dismiss_tag_suggestion<R: tauri::Runtime>(
     session_id: String,
     name: String,
 ) -> Result<bool, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_dismiss_tag_suggestion",
+        serde_json::json!({"session_id": session_id, "name": name}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .dismiss_tag_suggestion(&session_id, &name)
         .await
@@ -97,6 +147,16 @@ pub async fn session_write_note<R: tauri::Runtime>(
     session_id: String,
     markdown: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_write_note",
+        serde_json::json!({"session_id": session_id, "markdown": markdown}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .write_note(&session_id, &markdown)
         .await
@@ -112,6 +172,16 @@ pub async fn session_save_note<R: tauri::Runtime>(
     markdown: String,
     title: Option<String>,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_save_note",
+        serde_json::json!({"session_id": session_id, "markdown": markdown, "title": title}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .save_note(&session_id, &markdown, title.as_deref())
         .await
@@ -125,6 +195,16 @@ pub async fn session_read_note<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Option<String>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_read_note",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .read_note(&session_id)
         .await
@@ -133,10 +213,20 @@ pub async fn session_read_note<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
-pub fn session_summary_get<R: tauri::Runtime>(
+pub async fn session_summary_get<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Option<String>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_summary_get",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.summary_get(&session_id))
 }
 
@@ -146,6 +236,16 @@ pub async fn session_ensure_summary<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<String, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_ensure_summary",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .ensure_summary(&session_id)
         .await
@@ -162,6 +262,8 @@ pub async fn session_update_summary<R: tauri::Runtime>(
     reconcile_tasks: Option<bool>,
     suggested_tags: Option<Vec<ScoredTagSuggestion>>,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(&app, "session_update_summary", serde_json::json!({"session_id": session_id, "markdown": markdown, "expected_markdown": expected_markdown, "reconcile_tasks": reconcile_tasks, "suggested_tags": suggested_tags})).await { return result; }
+
     let auto_apply_high_confidence_tags = app.settings().config().auto_apply_high_confidence_tags;
     store(&app)?
         .update_summary_with_suggestions(
@@ -185,6 +287,8 @@ pub async fn session_save_summary<R: tauri::Runtime>(
     expected_markdown: Option<String>,
     title: Option<String>,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(&app, "session_save_summary", serde_json::json!({"session_id": session_id, "markdown": markdown, "expected_markdown": expected_markdown, "title": title})).await { return result; }
+
     store(&app)?
         .save_summary(
             &session_id,
@@ -203,6 +307,16 @@ pub async fn session_delete_summary<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_delete_summary",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .delete_summary(&session_id)
         .await
@@ -216,6 +330,16 @@ pub async fn session_write_enhanced_doc<R: tauri::Runtime>(
     app: AppHandle<R>,
     doc: EnhancedDoc,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_write_enhanced_doc",
+        serde_json::json!({"doc": doc}),
+    )
+    .await
+    {
+        return result;
+    }
+
     if doc.kind == "summary" {
         return Err("Use session_ensure_summary for session summaries".into());
     }
@@ -234,6 +358,16 @@ pub async fn session_update_enhanced_doc<R: tauri::Runtime>(
     doc_id: String,
     patch: EnhancedDocPatch,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_update_enhanced_doc",
+        serde_json::json!({"session_id": session_id, "doc_id": doc_id, "patch": patch}),
+    )
+    .await
+    {
+        return result;
+    }
+
     if patch.kind.as_deref() == Some("summary") {
         return Err("Use session_ensure_summary for session summaries".into());
     }
@@ -259,6 +393,8 @@ pub async fn session_save_enhanced_doc<R: tauri::Runtime>(
     patch: EnhancedDocPatch,
     title: Option<String>,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(&app, "session_save_enhanced_doc", serde_json::json!({"session_id": session_id, "doc_id": doc_id, "patch": patch, "title": title})).await { return result; }
+
     if patch.kind.as_deref() == Some("summary") {
         return Err("Use session_ensure_summary for session summaries".into());
     }
@@ -283,6 +419,16 @@ pub async fn session_delete_enhanced_doc<R: tauri::Runtime>(
     session_id: String,
     doc_id: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_delete_enhanced_doc",
+        serde_json::json!({"session_id": session_id, "doc_id": doc_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .delete_enhanced_doc(&session_id, &doc_id)
         .await
@@ -297,6 +443,16 @@ pub async fn session_list_tasks<R: tauri::Runtime>(
     source_type: String,
     source_id: String,
 ) -> Result<Vec<TaskItem>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_list_tasks",
+        serde_json::json!({"source_type": source_type, "source_id": source_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .list_tasks(&source_type, &source_id)
         .await
@@ -311,6 +467,16 @@ pub async fn session_replace_tasks<R: tauri::Runtime>(
     source_id: String,
     tasks: Vec<TaskInput>,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_replace_tasks",
+        serde_json::json!({"source_type": source_type, "source_id": source_id, "tasks": tasks}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .replace_tasks(&source_type, &source_id, tasks)
         .await
@@ -325,6 +491,8 @@ pub async fn session_remove_tasks<R: tauri::Runtime>(
     source_id: String,
     task_ids: Vec<String>,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(&app, "session_remove_tasks", serde_json::json!({"source_type": source_type, "source_id": source_id, "task_ids": task_ids})).await { return result; }
+
     store(&app)?
         .remove_tasks(&source_type, &source_id, task_ids)
         .await
@@ -340,6 +508,8 @@ pub async fn session_move_tasks<R: tauri::Runtime>(
     source_id: String,
     insertion_order: i32,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(&app, "session_move_tasks", serde_json::json!({"task_ids": task_ids, "source_type": source_type, "source_id": source_id, "insertion_order": insertion_order})).await { return result; }
+
     store(&app)?
         .move_tasks(task_ids, &source_type, &source_id, insertion_order)
         .await
@@ -349,6 +519,10 @@ pub async fn session_move_tasks<R: tauri::Runtime>(
 #[tauri::command]
 #[specta::specta]
 pub async fn people_list<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<PersonItem>, String> {
+    if let Some(result) = crate::company::invoke(&app, "people_list", serde_json::json!({})).await {
+        return result;
+    }
+
     store(&app)?.list_people().await.map_err(|e| e.to_string())
 }
 
@@ -358,6 +532,12 @@ pub async fn people_ensure<R: tauri::Runtime>(
     app: AppHandle<R>,
     name: String,
 ) -> Result<PersonItem, String> {
+    if let Some(result) =
+        crate::company::invoke(&app, "people_ensure", serde_json::json!({"name": name})).await
+    {
+        return result;
+    }
+
     store(&app)?
         .ensure_person(&name)
         .await
@@ -367,6 +547,10 @@ pub async fn people_ensure<R: tauri::Runtime>(
 #[tauri::command]
 #[specta::specta]
 pub async fn tags_list<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<TagItem>, String> {
+    if let Some(result) = crate::company::invoke(&app, "tags_list", serde_json::json!({})).await {
+        return result;
+    }
+
     store(&app)?.list_tags().await.map_err(|e| e.to_string())
 }
 
@@ -376,6 +560,12 @@ pub async fn tags_ensure<R: tauri::Runtime>(
     app: AppHandle<R>,
     name: String,
 ) -> Result<TagItem, String> {
+    if let Some(result) =
+        crate::company::invoke(&app, "tags_ensure", serde_json::json!({"name": name})).await
+    {
+        return result;
+    }
+
     store(&app)?
         .ensure_tag(&name)
         .await
@@ -389,6 +579,16 @@ pub async fn session_append_transcript<R: tauri::Runtime>(
     session_id: String,
     delta: TranscriptDelta,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_append_transcript",
+        serde_json::json!({"session_id": session_id, "delta": delta}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .append_transcript(&session_id, delta)
         .await
@@ -401,6 +601,16 @@ pub async fn session_flush_transcript<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_flush_transcript",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .flush_transcript(&session_id)
         .await
@@ -414,6 +624,16 @@ pub async fn session_finish_transcript<R: tauri::Runtime>(
     session_id: String,
     transcript_id: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_finish_transcript",
+        serde_json::json!({"session_id": session_id, "transcript_id": transcript_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .finish_transcript(&session_id, &transcript_id)
         .await
@@ -427,6 +647,16 @@ pub async fn session_write_transcript<R: tauri::Runtime>(
     session_id: String,
     transcript: TranscriptWithData,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_write_transcript",
+        serde_json::json!({"session_id": session_id, "transcript": transcript}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .write_transcript(&session_id, transcript)
         .await
@@ -443,6 +673,8 @@ pub async fn session_assign_transcript_speaker<R: tauri::Runtime>(
     speaker_label: String,
     anchor_word_id: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(&app, "session_assign_transcript_speaker", serde_json::json!({"transcript_id": transcript_id, "channel": channel, "speaker_index": speaker_index, "speaker_label": speaker_label, "anchor_word_id": anchor_word_id})).await { return result; }
+
     store(&app)?
         .assign_transcript_speaker(
             &transcript_id,
@@ -462,6 +694,16 @@ pub async fn session_replace_transcripts<R: tauri::Runtime>(
     session_id: String,
     transcript: TranscriptWithData,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_replace_transcripts",
+        serde_json::json!({"session_id": session_id, "transcript": transcript}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .replace_session_transcripts(&session_id, transcript)
         .await
@@ -474,6 +716,16 @@ pub async fn session_delete<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<(), String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_delete",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .delete_session(&session_id)
         .await
@@ -487,6 +739,16 @@ pub async fn session_restore<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_restore",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .restore_session(&session_id)
         .await
@@ -514,6 +776,16 @@ pub async fn session_get<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Option<SessionRecord>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_get",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.session_get(&session_id))
 }
 
@@ -522,12 +794,22 @@ pub async fn session_get<R: tauri::Runtime>(
 pub async fn session_list_headers<R: tauri::Runtime>(
     app: AppHandle<R>,
 ) -> Result<Vec<SessionListHeader>, String> {
+    if let Some(result) =
+        crate::company::invoke(&app, "session_list_headers", serde_json::json!({})).await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.session_list_headers())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn vault_stats<R: tauri::Runtime>(app: AppHandle<R>) -> Result<VaultStats, String> {
+    if let Some(result) = crate::company::invoke(&app, "vault_stats", serde_json::json!({})).await {
+        return result;
+    }
+
     store(&app)?.vault_stats().await.map_err(|e| e.to_string())
 }
 
@@ -537,6 +819,16 @@ pub async fn vault_storage_stats<R: tauri::Runtime>(
     app: AppHandle<R>,
     refresh: bool,
 ) -> Result<super::VaultStorageStats, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "vault_storage_stats",
+        serde_json::json!({"refresh": refresh}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .vault_storage_stats(refresh)
         .await
@@ -546,6 +838,10 @@ pub async fn vault_storage_stats<R: tauri::Runtime>(
 #[tauri::command]
 #[specta::specta]
 pub async fn session_ids<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<String>, String> {
+    if let Some(result) = crate::company::invoke(&app, "session_ids", serde_json::json!({})).await {
+        return result;
+    }
+
     Ok(store(&app)?.session_ids())
 }
 
@@ -555,6 +851,16 @@ pub async fn session_is_empty<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_is_empty",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .session_is_empty(&session_id)
         .await
@@ -567,6 +873,16 @@ pub async fn session_has_transcript<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_has_transcript",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.session_has_transcript(&session_id))
 }
 
@@ -576,6 +892,16 @@ pub async fn session_enhanced_docs<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Vec<EnhancedDoc>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_enhanced_docs",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.session_enhanced_docs(&session_id))
 }
 
@@ -585,6 +911,16 @@ pub async fn enhanced_doc_get<R: tauri::Runtime>(
     app: AppHandle<R>,
     doc_id: String,
 ) -> Result<Option<EnhancedDoc>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "enhanced_doc_get",
+        serde_json::json!({"doc_id": doc_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.enhanced_doc_get(&doc_id))
 }
 
@@ -594,6 +930,16 @@ pub async fn session_transcript_metadata<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<SessionTranscriptMetadata, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_transcript_metadata",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.session_transcript_metadata(&session_id))
 }
 
@@ -603,6 +949,16 @@ pub async fn session_transcripts<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Vec<TranscriptWithData>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_transcripts",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .session_transcripts(&session_id)
         .await
@@ -615,6 +971,16 @@ pub async fn transcript_get<R: tauri::Runtime>(
     app: AppHandle<R>,
     transcript_id: String,
 ) -> Result<Option<TranscriptWithData>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "transcript_get",
+        serde_json::json!({"transcript_id": transcript_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .transcript_get(&transcript_id)
         .await
@@ -627,6 +993,16 @@ pub async fn session_find_by_tracking_id<R: tauri::Runtime>(
     app: AppHandle<R>,
     tracking_id: String,
 ) -> Result<Option<SessionMeta>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_find_by_tracking_id",
+        serde_json::json!({"tracking_id": tracking_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     Ok(store(&app)?.session_find_by_tracking_id(&tracking_id))
 }
 
@@ -637,6 +1013,22 @@ pub async fn session_store_audio<R: tauri::Runtime>(
     session_id: String,
     source_path: String,
 ) -> Result<String, String> {
+    if let Some(state) =
+        app.try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+    {
+        if state.active() {
+            let name = std::path::Path::new(&source_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or("invalid recording path")?;
+            state
+                .enqueue_upload(&session_id, std::path::Path::new(&source_path), name, true)
+                .map_err(|error| error.to_string())?;
+            crate::company::changed(&app, Some(&session_id));
+            return Ok(source_path);
+        }
+    }
+
     store(&app)?
         .store_audio(&session_id, &source_path)
         .await
@@ -649,6 +1041,16 @@ pub async fn session_list_audio<R: tauri::Runtime>(
     app: AppHandle<R>,
     session_id: String,
 ) -> Result<Vec<String>, String> {
+    if let Some(result) = crate::company::invoke(
+        &app,
+        "session_list_audio",
+        serde_json::json!({"session_id": session_id}),
+    )
+    .await
+    {
+        return result;
+    }
+
     store(&app)?
         .list_audio(&session_id)
         .await
@@ -662,6 +1064,22 @@ pub async fn session_delete_audio<R: tauri::Runtime>(
     session_id: String,
     filename: String,
 ) -> Result<(), String> {
+    if let Some(state) =
+        app.try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+        && state.active()
+    {
+        if !["audio.mp3", "audio.wav", "audio.ogg", "audio.peaks.json"].contains(&filename.as_str())
+        {
+            return Err("unsupported recording filename".into());
+        }
+        state
+            .remove_artifact(&session_id, &format!("sessions/{session_id}/{filename}"))
+            .await
+            .map_err(|error| error.to_string())?;
+        crate::company::changed(&app, Some(&session_id));
+        return Ok(());
+    }
+
     store(&app)?
         .delete_audio(&session_id, &filename)
         .await

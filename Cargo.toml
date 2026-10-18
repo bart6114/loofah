@@ -12,6 +12,7 @@ resolver = "2"
 members = [
   "apps/cli",
   "apps/desktop/src-tauri",
+  "apps/server",
   "crates/*",
   "plugins/*",
 ]
@@ -48,7 +49,7 @@ hypr-export-core = { path = "crates/export-core", package = "export-core" }
 hypr-file = { path = "crates/file", package = "file" }
 hypr-frontmatter = { path = "crates/frontmatter", package = "frontmatter" }
 hypr-fs-format = { path = "crates/fs-format", package = "fs-format" }
-hypr-fs-sync-core = { path = "crates/fs-sync-core", package = "fs-sync-core" }
+hypr-fs-sync-core = { path = "crates/fs-sync-core", package = "fs-sync-core", default-features = false }
 hypr-gbnf = { path = "crates/gbnf", package = "gbnf" }
 hypr-github-issues = { path = "crates/github-issues", package = "github-issues" }
 hypr-host = { path = "crates/host", package = "host" }
@@ -86,6 +87,7 @@ hypr-transcript = { path = "crates/transcript", package = "transcript" }
 hypr-transcription-core = { path = "crates/transcription-core", package = "transcription-core" }
 hypr-vad = { path = "crates/vad", package = "vad" }
 hypr-vad-masking = { path = "crates/vad-masking", package = "vad-masking" }
+hypr-vault-access = { path = "crates/vault-access", package = "vault-access" }
 hypr-vault-read = { path = "crates/vault-read", package = "vault-read" }
 hypr-vault-write = { path = "crates/vault-write", package = "vault-write" }
 hypr-whisper = { path = "crates/whisper", package = "whisper" }

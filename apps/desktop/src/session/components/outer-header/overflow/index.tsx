@@ -30,6 +30,7 @@ import { openFloatingMeetingPanel } from "~/meeting-float/host";
 import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
 import { useHasTranscript } from "~/session/components/shared";
 import { openStandaloneNoteWindow } from "~/session/window";
+import { useCompanyActive } from "~/shared/company-permissions";
 import { useConfigValue } from "~/shared/config";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 import { useListener } from "~/stt/contexts";
@@ -46,6 +47,7 @@ export function OverflowButton({
   sessionId: string;
   currentView: EditorView;
 }) {
+  const company = useCompanyActive();
   const [open, setOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [hasOpenedExportModal, setHasOpenedExportModal] = useState(false);
@@ -175,7 +177,7 @@ export function OverflowButton({
               </DropdownMenuItem>
             )}
             {hasMeetingActions && <DropdownMenuSeparator />}
-            {!standaloneWindow && (
+            {!standaloneWindow && !company && (
               <DropdownMenuItem
                 onClick={handleOpenStandaloneWindow}
                 className="cursor-pointer"
@@ -186,7 +188,7 @@ export function OverflowButton({
                 </span>
               </DropdownMenuItem>
             )}
-            <ShowInFinder sessionId={sessionId} />
+            {!company && <ShowInFinder sessionId={sessionId} />}
             <DeleteNote sessionId={sessionId} />
           </AppFloatingPanel>
         </DropdownMenuContent>

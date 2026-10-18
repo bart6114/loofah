@@ -17,6 +17,7 @@ tokio = { workspace = true, features = ["macros"] }
 
 [dependencies]
 hypr-storage = { workspace = true, features = ["specta"] }
+hypr-vault-access = { workspace = true }
 
 tauri = { workspace = true, features = ["test"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }

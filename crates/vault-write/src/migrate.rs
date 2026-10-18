@@ -2,7 +2,7 @@
 use super::{SessionStore, paths};
 use std::collections::HashMap;
 
-#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct MigrationReport {
     pub renamed: Vec<(String, String)>,
     pub skipped: Vec<String>,

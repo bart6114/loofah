@@ -12,6 +12,7 @@ hypr-fs-format = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-tiptap = { workspace = true }
+hypr-vault-access = { workspace = true }
 hypr-vault-read = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 

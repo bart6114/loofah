@@ -6,6 +6,19 @@ pub(crate) async fn search<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     request: SearchRequest,
 ) -> Result<SearchResult, String> {
+    use tauri::Manager;
+    if let Some(connection) =
+        app.try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+    {
+        if connection.active() {
+            let value = connection
+                .call("search", serde_json::json!({"request":request}), true)
+                .await
+                .map_err(|error| error.to_string())?;
+            return serde_json::from_value(value).map_err(|error| error.to_string());
+        }
+    }
+
     app.tantivy()
         .search(request)
         .await

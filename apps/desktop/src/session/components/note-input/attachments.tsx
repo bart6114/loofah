@@ -443,7 +443,9 @@ function AttachmentRow({
 
   const openMutation = useMutation({
     mutationFn: async () => {
-      const result = await openerCommands.openPath(attachment.path, null);
+      const result = /^https?:/.test(attachment.path)
+        ? await openerCommands.openUrl(attachment.path, null)
+        : await openerCommands.openPath(attachment.path, null);
       if (result.status === "error") {
         throw new Error(result.error);
       }

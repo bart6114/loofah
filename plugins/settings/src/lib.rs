@@ -43,7 +43,14 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             specta_builder.mount_events(app);
 
             let startup_vault_base = app.settings().resolve_startup_vault_base().unwrap();
-            let config_state = config::ConfigState::load_or_default(&startup_vault_base);
+            let company =
+                app.try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>();
+            let config_base = company
+                .as_ref()
+                .filter(|state| state.active())
+                .map(|state| state.root.join("preferences"))
+                .unwrap_or_else(|| startup_vault_base.clone());
+            let config_state = config::ConfigState::load_or_default(&config_base);
             let snapshot = state::StartupSnapshot::new(startup_vault_base);
             assert!(app.manage(snapshot));
             assert!(app.manage(config_state));

@@ -1,0 +1,34 @@
+name: server-ci
+
+on:
+  pull_request:
+    paths:
+      - apps/server/**
+      - crates/vault-access/**
+      - crates/vault-write/**
+      - crates/vault-read/**
+      - crates/fs-sync-core/**
+      - crates/search-cache/**
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/server_ci.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust_install
+      - run: cargo test --locked -p loofah-server -p vault-access
+      - run: cargo clippy --locked -p loofah-server -p vault-access --all-targets --no-deps -- -D warnings
+      - run: cargo build --locked --release -p loofah-server

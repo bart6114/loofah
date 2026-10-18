@@ -62,6 +62,20 @@ export const commands = {
   async chatgptCancelGeneration(requestId: string): Promise<void> {
     await TAURI_INVOKE("chatgpt_cancel_generation", { requestId });
   },
+  async companyAction(
+    operation: string,
+    args: JsonValue,
+  ): Promise<Result<JsonValue, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("company_action", { operation, args }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async getOnboardingNeeded(): Promise<Result<boolean, string>> {
     try {
       return {

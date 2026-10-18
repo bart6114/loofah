@@ -30,6 +30,7 @@ import {
   extractFirstLineTitle,
   documentTitlePlaceholder,
 } from "~/session/title-content";
+import { useCompanyReadOnly } from "~/shared/company-permissions";
 
 const extraNodeViews = { appLink: AppLinkView, session: SessionNodeView };
 
@@ -65,6 +66,7 @@ export const RawEditor = forwardRef<
     },
     ref,
   ) => {
+    const readOnly = useCompanyReadOnly();
     const draftKey = `session:${sessionId}:note`;
     const refreshContent = useRefreshSessionNote(sessionId);
     const resolveAttachment = useAttachmentResolver(sessionId);
@@ -112,6 +114,7 @@ export const RawEditor = forwardRef<
     const mentionConfig = useMentionConfig();
     return (
       <NoteEditor
+        readOnly={readOnly}
         ref={ref}
         className={cn(["session-note-editor", className])}
         key={`session-${sessionId}-raw`}

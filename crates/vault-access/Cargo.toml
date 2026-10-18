@@ -1,0 +1,20 @@
+[package]
+name = "vault-access"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = { workspace = true }
+fs4 = "0.13"
+reqwest = { workspace = true, features = ["json", "stream"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "sync", "rt"] }
+utoipa = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

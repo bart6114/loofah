@@ -78,7 +78,7 @@ fn summarize_stats(bytes: &[u8], mut transcripts: Vec<TranscriptStat>) -> Transc
     summary
 }
 
-#[derive(serde::Deserialize, specta::Type, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
 pub struct TranscriptDelta {
     pub transcript_id: String,
     pub new_words: Vec<TranscriptWord>,

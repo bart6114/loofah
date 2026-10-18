@@ -26,6 +26,7 @@ swift-rs = { workspace = true }
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 
 [dependencies]
+hypr-vault-access = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
