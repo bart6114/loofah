@@ -115,6 +115,8 @@ tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
+loofah-server = { path = "../../server" }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
 tauri = { workspace = true, features = ["test"] }

@@ -3506,6 +3506,7 @@ version = "0.0.0"
 dependencies = [
  "audio-actual",
  "audio-mock",
+ "axum",
  "base64 0.22.1",
  "camino",
  "chrono",
@@ -3515,6 +3516,7 @@ dependencies = [
  "host",
  "intercept",
  "keyring",
+ "loofah-server",
  "pico-args",
  "ractor",
  "reqwest 0.13.2",

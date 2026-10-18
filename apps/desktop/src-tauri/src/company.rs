@@ -40,11 +40,18 @@ impl CredentialStore for Keychain {
 pub async fn invoke<R: tauri::Runtime, T: serde::de::DeserializeOwned>(
     app: &tauri::AppHandle<R>,
     operation: &str,
-    args: Value,
+    mut args: Value,
 ) -> Option<Result<T, String>> {
     let state = app.try_state::<Arc<ConnectionState>>()?;
     if !state.active() {
         return None;
+    }
+    if matches!(
+        operation,
+        "session_update_summary" | "session_update_enhanced_doc" | "session_save_enhanced_doc"
+    ) {
+        args["auto_apply_high_confidence_tags"] =
+            json!(app.settings().config().auto_apply_high_confidence_tags);
     }
     let query = hypr_vault_write::access::is_query(operation);
     let result = state.call(operation, args.clone(), query).await;

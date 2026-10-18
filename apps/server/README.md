@@ -132,7 +132,8 @@ CI requires 90% aggregate line coverage across the service, client, filesystem
 adapter, recovery spool, native login protocol, and shared command adapter, with
 at least 85% in each production file. Test bodies are excluded. The desktop UI
 gate requires 90% lines/statements, 85% branches, and 80% functions in each company
-storage UI file. Native Tauri bridge tests also run in macOS CI.
+storage UI file. Native Tauri IPC round-trips against the real service also run in
+macOS CI, including conflict recovery and the client's tag-application setting.
 
 The suites exercise public HTTP contracts, owner/editor/viewer/outsider access,
 identity persistence, OIDC proof failures, concurrent refresh and role changes,
