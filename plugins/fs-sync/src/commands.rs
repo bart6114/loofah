@@ -26,6 +26,16 @@ fn resolve_session_dir<R: tauri::Runtime>(
     session_id: &str,
 ) -> Result<PathBuf, String> {
     use tauri::Manager;
+    if let Some(connection) = crate::company::connection(app) {
+        hypr_vault_access::validate_id(session_id).map_err(|error| error.to_string())?;
+        let path = connection
+            .scratch_base()
+            .ok_or("company vault changed")?
+            .join("sessions")
+            .join(session_id);
+        std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+        return Ok(path);
+    }
     if let Some(store) = app.try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>() {
         store.ensure_ready().map_err(|e| e.to_string())?;
     }
@@ -67,6 +77,10 @@ pub(crate) async fn write_json_batch<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     items: Vec<(Value, String)>,
 ) -> Result<(), String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     let base = app.settings().vault_base().map_err(|e| e.to_string())?;
     let base_path = base
         .as_std_path()
@@ -122,6 +136,10 @@ pub(crate) async fn write_document_batch<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     items: Vec<(ParsedDocument, String)>,
 ) -> Result<(), String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     let base = app.settings().vault_base().map_err(|e| e.to_string())?;
     let base_path = base
         .as_std_path()
@@ -195,6 +213,21 @@ pub(crate) async fn audio_exist<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        return connection
+            .artifacts(&session_id)
+            .await
+            .map(|items| {
+                items.iter().any(|item| {
+                    matches!(
+                        item["filename"].as_str(),
+                        Some("audio.mp3" | "audio.wav" | "audio.ogg")
+                    )
+                })
+            })
+            .map_err(|error| error.to_string());
+    }
+
     let session_dir = resolve_session_dir(&app, &session_id)?;
     crate::audio::exists(&session_dir).map_err(|e| e.to_string())
 }
@@ -205,6 +238,33 @@ pub(crate) async fn audio_delete<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<bool, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        if connection
+            .recording
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err("stop recording before deleting audio".into());
+        }
+        let items = connection
+            .artifacts(&session_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        let mut deleted = false;
+        for item in items {
+            if matches!(
+                item["filename"].as_str(),
+                Some("audio.mp3" | "audio.wav" | "audio.ogg" | "audio.peaks.json")
+            ) {
+                connection
+                    .remove_artifact(&session_id, item["key"].as_str().unwrap())
+                    .await
+                    .map_err(|error| error.to_string())?;
+                deleted = true;
+            }
+        }
+        return Ok(deleted);
+    }
+
     let _audio_guard = lock_audio_operation(&app, &session_id).await?;
     let session_dir = resolve_session_dir(&app, &session_id)?;
     let deleted = crate::audio::delete(&session_dir).map_err(|e| e.to_string())?;
@@ -225,6 +285,26 @@ pub(crate) async fn audio_metadata<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<Option<crate::audio::AudioFileMetadata>, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        let item = connection
+            .artifacts(&session_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|item| {
+                matches!(
+                    item["filename"].as_str(),
+                    Some("audio.mp3" | "audio.wav" | "audio.ogg")
+                )
+            });
+        return Ok(item.map(|item| crate::audio::AudioFileMetadata {
+            filename: item["filename"].as_str().unwrap().into(),
+            content_type: item["content_type"].as_str().unwrap().into(),
+            size_bytes: item["size"].as_u64().unwrap(),
+            sha256: item["version"].as_str().unwrap().into(),
+        }));
+    }
+
     let session_dir = resolve_session_dir(&app, &session_id)?;
     spawn_blocking!({ crate::audio::metadata(&session_dir).map_err(|e| e.to_string()) })
 }
@@ -235,6 +315,56 @@ pub(crate) async fn audio_peaks<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<Option<crate::audio::AudioPeaks>, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        let key = format!("sessions/{session_id}/audio.peaks.json");
+        let items = connection
+            .artifacts(&session_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if !items.iter().any(|item| item["key"] == key) {
+            if let Some(base) = connection.scratch_base() {
+                let directory = base.join("sessions").join(&session_id);
+                if crate::audio::path(&directory).is_some() {
+                    let local = directory.clone();
+                    let peaks = tokio::task::spawn_blocking(move || crate::audio::peaks(&local))
+                        .await
+                        .map_err(|error| error.to_string())?
+                        .map_err(|error| error.to_string())?;
+                    if let Some(audio) = crate::audio::path(&directory) {
+                        let audio_name = audio.file_name().unwrap().to_string_lossy().into_owned();
+                        let version = tokio::task::spawn_blocking(move || {
+                            hypr_vault_access::filesystem::file_version(&audio)
+                        })
+                        .await
+                        .map_err(|error| error.to_string())?
+                        .map_err(|error| error.to_string())?;
+                        if let Some(version) = version {
+                            let _ = connection
+                                .publish_peaks(
+                                    &session_id,
+                                    &directory.join("audio.peaks.json"),
+                                    &audio_name,
+                                    &version,
+                                )
+                                .await;
+                        }
+                    }
+                    return Ok(peaks);
+                }
+            }
+            return Ok(None);
+        }
+        let bytes = connection
+            .read_artifact(&session_id, &key)
+            .await
+            .map_err(|error| error.to_string())?;
+        let value: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        return serde_json::from_value(value)
+            .map(Some)
+            .map_err(|error| error.to_string());
+    }
+
     let session_dir = resolve_session_dir(&app, &session_id)?;
     spawn_blocking!({ crate::audio::peaks(&session_dir).map_err(|e| e.to_string()) })
 }
@@ -361,6 +491,25 @@ pub(crate) async fn audio_path<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<String, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        let item = connection
+            .artifacts(&session_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|item| {
+                matches!(
+                    item["filename"].as_str(),
+                    Some("audio.mp3" | "audio.wav" | "audio.ogg")
+                )
+            })
+            .ok_or("recording is not uploaded yet")?;
+        return connection
+            .media_url(&session_id, item["key"].as_str().unwrap())
+            .await
+            .map_err(|error| error.to_string());
+    }
+
     let session_dir = resolve_session_dir(&app, &session_id)?;
     crate::audio::path(&session_dir)
         .map(|p| p.to_string_lossy().to_string())
@@ -373,6 +522,10 @@ pub(crate) async fn session_dir<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<String, String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     resolve_session_dir(&app, &session_id).map(|p| p.to_string_lossy().to_string())
 }
 
@@ -382,6 +535,10 @@ pub(crate) async fn load_session_content<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<SessionContentData, String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     let session_dir = resolve_session_dir(&app, &session_id)?;
     spawn_blocking!({ Ok(load_session_content_from_fs(&session_id, &session_dir)) })
 }
@@ -392,6 +549,10 @@ pub(crate) async fn delete_session_folder<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<(), String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     let session_dir = resolve_session_dir(&app, &session_id)?;
     crate::session::delete_session_dir(&session_dir).map_err(|e| e.to_string())
 }
@@ -405,6 +566,10 @@ pub(crate) async fn scan_and_read<R: tauri::Runtime>(
     recursive: bool,
     path_filter: Option<String>,
 ) -> Result<ScanResult, String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     let base = app.settings().vault_base().map_err(|e| e.to_string())?;
     let base_path = base
         .as_std_path()
@@ -428,6 +593,10 @@ pub(crate) async fn entity_dir<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     dir_name: String,
 ) -> Result<String, String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     let base = app.settings().vault_base().map_err(|e| e.to_string())?;
     Ok(base.join(&dir_name).to_string())
 }
@@ -440,6 +609,23 @@ pub(crate) async fn attachment_save<R: tauri::Runtime>(
     data: Vec<u8>,
     filename: String,
 ) -> Result<crate::AttachmentSaveResult, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        let base = connection.root.join("attachment-inputs");
+        tokio::fs::create_dir_all(&base)
+            .await
+            .map_err(|error| error.to_string())?;
+        let path = base.join(uuid::Uuid::new_v4().to_string());
+        tokio::fs::write(&path, data)
+            .await
+            .map_err(|error| error.to_string())?;
+        let result = crate::company::save(&connection, &session_id, &path, &filename).await;
+        let _ = tokio::fs::remove_file(path).await;
+        return result.map(|item| crate::AttachmentSaveResult {
+            path: item.path,
+            attachment_id: item.attachment_id,
+        });
+    }
+
     spawn_blocking!({
         app.fs_sync()
             .attachment_save(&session_id, &data, &filename)
@@ -454,6 +640,15 @@ pub(crate) async fn attachment_import_path<R: tauri::Runtime>(
     session_id: String,
     source_path: String,
 ) -> Result<crate::AttachmentInfo, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        let source = std::path::Path::new(&source_path);
+        let name = source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("invalid attachment name")?;
+        return crate::company::save(&connection, &session_id, source, name).await;
+    }
+
     spawn_blocking!({
         app.fs_sync()
             .attachment_import_path(&session_id, std::path::Path::new(&source_path))
@@ -538,6 +733,10 @@ pub(crate) async fn attachment_dir<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<String, String> {
+    if crate::company::connection(&app).is_some() {
+        return Err("This filesystem action is unavailable for company vaults. Use the vault content commands.".into());
+    }
+
     spawn_blocking!({
         app.fs_sync()
             .attachment_dir(&session_id)
@@ -552,6 +751,25 @@ pub(crate) async fn attachment_list<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
 ) -> Result<Vec<crate::AttachmentInfo>, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        let mut result = Vec::new();
+        for artifact in connection
+            .artifacts(&session_id)
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            if artifact["key"]
+                .as_str()
+                .is_some_and(|key| key.contains("/attachments/"))
+            {
+                result.push(
+                    crate::company::attachment_info(&connection, &session_id, &artifact).await?,
+                );
+            }
+        }
+        return Ok(result);
+    }
+
     spawn_blocking!({
         app.fs_sync()
             .attachment_list(&session_id)
@@ -566,6 +784,16 @@ pub(crate) async fn attachment_read<R: tauri::Runtime>(
     session_id: String,
     attachment_id: String,
 ) -> Result<Vec<u8>, String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        return connection
+            .read_artifact(
+                &session_id,
+                &format!("sessions/{session_id}/attachments/{attachment_id}"),
+            )
+            .await
+            .map_err(|error| error.to_string());
+    }
+
     spawn_blocking!({
         app.fs_sync()
             .attachment_read(&session_id, &attachment_id)
@@ -580,6 +808,16 @@ pub(crate) async fn attachment_remove<R: tauri::Runtime>(
     session_id: String,
     attachment_id: String,
 ) -> Result<(), String> {
+    if let Some(connection) = crate::company::connection(&app) {
+        return connection
+            .remove_artifact(
+                &session_id,
+                &format!("sessions/{session_id}/attachments/{attachment_id}"),
+            )
+            .await
+            .map_err(|error| error.to_string());
+    }
+
     spawn_blocking!({
         app.fs_sync()
             .attachment_remove(&session_id, &attachment_id)

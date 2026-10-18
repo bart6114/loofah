@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback, useMemo } from "react";
 
 import type { AttachmentResolver } from "@hypr/editor/node-views";
@@ -8,12 +6,18 @@ import {
   commands as fsSyncCommands,
 } from "@hypr/plugin-fs-sync";
 
+import { useIndexQuery } from "~/shared/index-query";
+import { mediaSrc } from "~/shared/media-src";
+
 export function sessionAttachmentPathsQueryKey(sessionId: string) {
   return ["session", sessionId, "attachment-paths"] as const;
 }
 
 export function useSessionAttachments(sessionId: string) {
-  return useQuery({
+  return useIndexQuery({
+    entity: "artifacts",
+    refetchOnMount: "always",
+    ids: [sessionId],
     queryKey: sessionAttachmentPathsQueryKey(sessionId),
     queryFn: async () => {
       const result = await fsSyncCommands.attachmentList(sessionId);
@@ -22,6 +26,10 @@ export function useSessionAttachments(sessionId: string) {
       }
       return result.data;
     },
+    refetchInterval: (query) =>
+      query.state.data?.some((attachment) => /^https?:/.test(attachment.path))
+        ? 240_000
+        : false,
     retry: false,
   });
 }
@@ -35,7 +43,7 @@ export function useAttachmentResolver(sessionId: string): AttachmentResolver {
           attachment.attachmentId,
           {
             path: attachment.path,
-            src: convertFileSrc(attachment.path),
+            src: mediaSrc(attachment.path),
           },
         ]),
       ),

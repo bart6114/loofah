@@ -11,7 +11,7 @@ const MAX_ENTRIES: usize = 250_000;
 const MAX_DEPTH: usize = 64;
 const SCAN_BUDGET: Duration = Duration::from_secs(10);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum VaultStorageCategory {
     #[serde(rename = "mp3")]
@@ -24,14 +24,14 @@ pub enum VaultStorageCategory {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct VaultStorageBucket {
     pub category: VaultStorageCategory,
     pub bytes: u64,
     pub files: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct VaultStorageStats {
     pub total_bytes: u64,
     pub files: u64,

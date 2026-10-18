@@ -23,6 +23,7 @@ impl Serialize for Error {
     }
 }
 
+#[cfg(feature = "audio-processing")]
 #[derive(Debug, thiserror::Error)]
 pub enum AudioImportError {
     #[error(transparent)]

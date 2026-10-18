@@ -12,6 +12,7 @@ import {
 } from "./task-configs";
 
 import { getStoredSettingValues } from "~/settings/queries";
+import { beginVaultProcessing } from "~/shared/company-vault";
 
 export type TasksState = {
   tasks: Record<string, TaskState>;
@@ -337,8 +338,10 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
         );
       };
       streamFlushers.set(taskId, publishText);
+      let releaseVault: (() => Promise<void>) | undefined;
 
       try {
+        releaseVault = await beginVaultProcessing();
         set((state) =>
           mutate(state, (draft) => {
             draft.tasks[taskId] = {
@@ -532,6 +535,7 @@ export const createTasksSlice = <T extends TasksState & TasksActions>(
           );
         }
       } finally {
+        await releaseVault?.();
         clearTimeout(publishTimer);
         if (streamFlushers.get(taskId) === publishText)
           streamFlushers.delete(taskId);

@@ -167,6 +167,11 @@ export interface EditorCommands {
   replace: (params: SearchReplaceParams) => void;
 }
 
+const editorFlushers = new Set<() => void>();
+export function flushNoteEditors() {
+  for (const flush of editorFlushers) flush();
+}
+
 export interface NoteEditorRef {
   view: EditorView | null;
   commands: EditorCommands;
@@ -757,6 +762,19 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
     const onUpdate = useDebounceCallback(flushLatestChange, 500);
     const onUpdateRef = useRef(onUpdate);
     onUpdateRef.current = onUpdate;
+    const flushPendingChanges = useCallback(() => {
+      const view = viewRef.current;
+      onUpdate.cancel();
+      const save = saveStateRef.current;
+      if (view && save.revision !== save.acknowledgedRevision)
+        flushChangeRef.current(view.state.doc);
+    }, [onUpdate]);
+    useEffect(() => {
+      editorFlushers.add(flushPendingChanges);
+      return () => {
+        editorFlushers.delete(flushPendingChanges);
+      };
+    }, [flushPendingChanges]);
 
     useImperativeHandle(
       ref,
@@ -767,16 +785,9 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
         get commands() {
           return commandsRef.current;
         },
-        flushPendingChanges: () => {
-          const view = viewRef.current;
-          onUpdate.cancel();
-          const save = saveStateRef.current;
-          if (view && save.revision !== save.acknowledgedRevision) {
-            flushChangeRef.current(view.state.doc);
-          }
-        },
+        flushPendingChanges,
       }),
-      [onUpdate],
+      [flushPendingChanges],
     );
 
     const setCompositionActive = useCallback((active: boolean) => {

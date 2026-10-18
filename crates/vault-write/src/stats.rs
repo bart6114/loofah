@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use super::{SessionStore, StoreError, paths};
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct VaultYearStats {
     pub year: u32,
     pub sessions: u64,
@@ -23,7 +23,7 @@ pub struct VaultYearStats {
     pub duration_seconds: u64,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct VaultStats {
     pub sessions: u64,
     /// Sessions with a non-empty note.

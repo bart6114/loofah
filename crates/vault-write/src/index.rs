@@ -72,7 +72,7 @@ pub struct SessionEntry {
 /// always the note file's content (`notes.md`, or the pre-rename `_memo.md`) -- the
 /// SQL fallback's legacy bare-id row was a permanently-empty placeholder, so
 /// preferring the file loses nothing.
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct SessionRecord {
     pub meta: SessionMeta,
     pub note_markdown: Option<String>,
@@ -80,7 +80,7 @@ pub struct SessionRecord {
 
 /// One `session_list` entry: full meta plus the derived flags list consumers need
 /// without a per-session round-trip.
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct SessionListEntry {
     pub meta: SessionMeta,
     pub has_transcript_words: bool,
@@ -88,7 +88,7 @@ pub struct SessionListEntry {
 
 /// The slim `session_list_headers` row -- exactly what the always-mounted list
 /// subscribers (timeline, summaries, tags, float) consume.
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, specta::Type)]
 pub struct SessionListHeader {
     pub id: String,
     pub title: String,
@@ -125,7 +125,7 @@ pub struct TranscriptSummary {
     pub content_hash: u64,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct SessionTranscriptMetadata {
     pub speaker_labels: Vec<String>,
     pub started_at: Option<f64>,

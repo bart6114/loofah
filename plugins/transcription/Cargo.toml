@@ -21,8 +21,10 @@ hypr-storage = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
 hypr-transcript = { workspace = true }
 hypr-transcription-core = { workspace = true, features = ["specta", "tauri-event"] }
+hypr-vault-access = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
+serde_json = { workspace = true }
 
 owhisper-client = { workspace = true }
 owhisper-interface = { workspace = true }

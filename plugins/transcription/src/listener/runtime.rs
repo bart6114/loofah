@@ -22,6 +22,16 @@ impl hypr_storage::StorageRuntime for TauriRuntime {
     }
 
     fn vault_base(&self) -> Result<std::path::PathBuf, hypr_storage::Error> {
+        use tauri::Manager;
+        if let Some(connection) = self
+            .app
+            .try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+        {
+            if let Some(path) = connection.scratch_base() {
+                return Ok(path);
+            }
+        }
+
         self.app
             .settings()
             .vault_base()
@@ -91,6 +101,21 @@ impl ListenerRuntime for TauriRuntime {
                 audio_path,
                 error,
             } => {
+                use tauri::Manager;
+                if let Some(connection) = self
+                    .app
+                    .try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+                    && connection.active()
+                    && let Some(path) = audio_path.as_deref()
+                {
+                    let source = std::path::Path::new(path);
+                    if let Some(name) = source.file_name().and_then(|name| name.to_str())
+                        && let Err(error) =
+                            connection.enqueue_upload(&session_id, source, name, true)
+                    {
+                        tracing::error!(%error,"recording needs recovery before upload");
+                    }
+                }
                 let (requested_live_transcription, live_transcription_active) = self
                     .session_state_cache
                     .lock()

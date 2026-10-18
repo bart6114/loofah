@@ -153,7 +153,7 @@ fn load_config<E: std::fmt::Display>(
 }
 
 pub struct ConfigState {
-    path: PathBuf,
+    path: std::sync::RwLock<PathBuf>,
     config: std::sync::RwLock<AppConfig>,
     write_lock: tokio::sync::Mutex<()>,
 }
@@ -166,10 +166,25 @@ impl ConfigState {
         });
 
         Self {
-            path,
+            path: std::sync::RwLock::new(path),
             config: std::sync::RwLock::new(config),
             write_lock: tokio::sync::Mutex::new(()),
         }
+    }
+
+    pub async fn switch_base(&self, base: &Path) -> crate::Result<()> {
+        let _guard = self.write_lock.lock().await;
+        let path = hypr_storage::vault::compute_config_path(base);
+        let config = match std::fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str::<AppConfig>(&content)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => self.snapshot(),
+            Err(error) => return Err(error.into()),
+        };
+        hypr_storage::fs::atomic_write_async(&path, &serde_json::to_string_pretty(&config)?)
+            .await?;
+        *self.path.write().unwrap() = path;
+        *self.config.write().unwrap() = config;
+        Ok(())
     }
 
     pub fn snapshot(&self) -> AppConfig {
@@ -180,7 +195,7 @@ impl ConfigState {
         let _guard = self.write_lock.lock().await;
 
         // A failed startup parse must never turn a later partial save into data loss.
-        match std::fs::read_to_string(&self.path) {
+        match std::fs::read_to_string(&*self.path.read().unwrap()) {
             Ok(content) => {
                 serde_json::from_str::<AppConfig>(&content)?;
             }
@@ -199,7 +214,8 @@ impl ConfigState {
         let next: AppConfig = serde_json::from_value(value)?;
 
         let content = serde_json::to_string_pretty(&next)?;
-        hypr_storage::fs::atomic_write_async(&self.path, &content).await?;
+        let path = self.path.read().unwrap().clone();
+        hypr_storage::fs::atomic_write_async(&path, &content).await?;
 
         *self.config.write().unwrap() = next.clone();
         Ok(next)
@@ -210,7 +226,7 @@ impl ConfigState {
         let content = serde_json::to_string_pretty(&next)?;
 
         let mut guard = self.config.write().unwrap();
-        hypr_storage::fs::atomic_write(&self.path, &content)?;
+        hypr_storage::fs::atomic_write(&self.path.read().unwrap(), &content)?;
         *guard = next.clone();
         Ok(next)
     }

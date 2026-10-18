@@ -2,6 +2,8 @@ use serde::{Serialize, ser::Serializer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Company vaults currently open notes in the main window.")]
+    CompanyVaultSingleWindow,
     #[error(transparent)]
     TauriError(#[from] tauri::Error),
     #[error("failed to receive result from the main thread")]

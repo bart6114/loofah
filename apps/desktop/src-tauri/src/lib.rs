@@ -2,6 +2,7 @@ mod appearance;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod company;
 mod embedded_cli;
 mod ext;
 mod identifier_migration;
@@ -171,7 +172,18 @@ pub async fn main() {
 
     legacy_db::retire_app_db(&context.config().identifier);
 
+    let company_root = hypr_storage::global::compute_default_base(&context.config().identifier)
+        .expect("application data directory")
+        .join("company");
+    let company_state = std::sync::Arc::new(
+        hypr_vault_access::connection::ConnectionState::open(
+            company_root,
+            std::sync::Arc::new(company::Keychain(context.config().identifier.clone())),
+        )
+        .expect("company connection state"),
+    );
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
+        .manage(company_state)
         .manage(audio)
         .manage(chatgpt::ChatgptState::default());
 
@@ -337,6 +349,8 @@ pub async fn main() {
                     }
                 }
             }
+
+            company::spawn(app_handle.clone());
 
             if let (Some(ctx), Some(handle)) = (&root_supervisor_ctx, root_supervisor_handle) {
                 supervisor::monitor_supervisor(handle, ctx.is_exiting.clone(), app_handle.clone());
@@ -517,6 +531,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             chatgpt::chatgpt_models::<tauri::Wry>,
             chatgpt::chatgpt_generate::<tauri::Wry>,
             chatgpt::chatgpt_cancel_generation::<tauri::Wry>,
+            company::company_action::<tauri::Wry>,
             commands::get_onboarding_needed::<tauri::Wry>,
             commands::set_onboarding_needed::<tauri::Wry>,
             commands::get_dismissed_toasts::<tauri::Wry>,

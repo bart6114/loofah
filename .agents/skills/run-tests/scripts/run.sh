@@ -85,6 +85,7 @@ run_frontend() {
   run_step "UI build" pnpm -F ui build
   run_step "desktop typecheck" pnpm -F desktop typecheck
   run_step "desktop frontend tests" pnpm -F desktop test
+  run_step "company storage UI coverage" pnpm -F desktop test:storage
   run_step "desktop locale catalogs" pnpm -F desktop i18n:check
 }
 

@@ -124,6 +124,15 @@ impl WindowImpl for AppWindow {
         app: &tauri::AppHandle<tauri::Wry>,
     ) -> Result<tauri::WebviewWindow, crate::Error> {
         use tauri::LogicalSize;
+        use tauri::Manager;
+
+        if matches!(self, Self::Note(_))
+            && app
+                .try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+                .is_some_and(|state| state.active())
+        {
+            return Err(crate::Error::CompanyVaultSingleWindow);
+        }
 
         let window = match self {
             Self::Main => {

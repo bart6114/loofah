@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod access;
 pub mod agents_doc;
 pub mod attachments;
 pub mod audio;

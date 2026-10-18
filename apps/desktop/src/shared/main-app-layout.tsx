@@ -3,6 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 
+import { CompanyBoundary } from "./company-boundary";
 import { useNavigationEvents } from "./hooks/useNavigationEvents";
 
 import { DevtoolsFloatingPanelHost } from "~/devtools-panel/host";
@@ -12,7 +13,11 @@ export default function MainAppLayout() {
   useNavigationEvents();
   useFullscreenAttribute();
 
-  return <MainAppContent />;
+  return (
+    <CompanyBoundary>
+      <MainAppContent />
+    </CompanyBoundary>
+  );
 }
 
 function MainAppContent() {

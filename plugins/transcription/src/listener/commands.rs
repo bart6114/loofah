@@ -36,6 +36,45 @@ pub async fn start_capture<R: tauri::Runtime>(
 ) -> Result<(), String> {
     use tauri::Manager;
 
+    if let Some(connection) =
+        app.try_state::<std::sync::Arc<hypr_vault_access::connection::ConnectionState>>()
+    {
+        if connection.active() {
+            if connection
+                .recording
+                .swap(true, std::sync::atomic::Ordering::AcqRel)
+            {
+                return Err("a recording is already active".into());
+            }
+            let result = async {
+                connection
+                    .call(
+                        "session_prepare_recording",
+                        serde_json::json!({"session_id":params.session_id}),
+                        false,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let root = connection.scratch_base().ok_or("company vault changed")?;
+                hypr_vault_access::validate_id(&params.session_id)
+                    .map_err(|error| error.to_string())?;
+                tokio::fs::create_dir_all(root.join("sessions").join(&params.session_id))
+                    .await
+                    .map_err(|error| error.to_string())?;
+                app.listener()
+                    .start_capture(params)
+                    .await
+                    .map_err(|error| error.to_string())
+            }
+            .await;
+            if result.is_err() {
+                connection
+                    .recording
+                    .store(false, std::sync::atomic::Ordering::Release);
+            }
+            return result;
+        }
+    }
     // Acquire before capture opens files so whole-vault relocation cannot race it.
     let store = app
         .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()

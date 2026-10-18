@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   type ReactNode,
@@ -15,6 +15,7 @@ import WaveSurfer from "wavesurfer.js";
 import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 
 import { deleteSessionAudio } from "~/session/attachments";
+import { useIndexQuery } from "~/shared/index-query";
 import { listenerStore } from "~/store/zustand/listener/instance";
 
 const TIME_UPDATE_STEP_SECONDS = 0.1;
@@ -102,7 +103,9 @@ export function useAudioTime(): TimeSnapshot {
 // lets WaveSurfer skip fetching + WebAudio-decoding the whole file in the webview (seconds
 // for an hour-long recording); playback still streams through the media element.
 function useAudioPeaks(sessionId: string, enabled: boolean) {
-  const peaksQuery = useQuery({
+  const peaksQuery = useIndexQuery({
+    entity: "artifacts",
+    ids: [sessionId],
     enabled,
     queryKey: ["audio", sessionId, "peaks"],
     queryFn: () => fsSyncCommands.audioPeaks(sessionId),
@@ -117,7 +120,9 @@ function useAudioPeaks(sessionId: string, enabled: boolean) {
 }
 
 function useAudioExistence(sessionId: string) {
-  const audioExists = useQuery({
+  const audioExists = useIndexQuery({
+    entity: "artifacts",
+    ids: [sessionId],
     queryKey: ["audio", sessionId, "exist"],
     queryFn: () => fsSyncCommands.audioExist(sessionId),
     select: (result) => {
@@ -155,6 +160,7 @@ export function AudioPlayerProvider({
   const [playbackRate, setPlaybackRateState] = useState(1);
   const timeStoreRef = useRef(new TimeStore());
   const stopRequestedRef = useRef(false);
+  const remoteResume = useRef<{ time: number; playing: boolean } | null>(null);
   const { audioExists: audioExistsValue, audioExistsResolved } =
     useAudioExistence(sessionId);
   const { peaks, peaksResolved } = useAudioPeaks(sessionId, Boolean(url));
@@ -215,6 +221,12 @@ export function AudioPlayerProvider({
     };
 
     const handleReady = (dur: number) => {
+      const resume = remoteResume.current;
+      if (resume && /^https?:/.test(url)) {
+        remoteResume.current = null;
+        ws.setTime(Math.min(resume.time, dur || resume.time));
+        if (resume.playing) void ws.play();
+      }
       if (dur && isFinite(dur)) {
         store.setTotal(dur);
       }
@@ -277,6 +289,11 @@ export function AudioPlayerProvider({
 
     return () => {
       stopRequestedRef.current = false;
+      if (/^https?:/.test(url))
+        remoteResume.current = {
+          time: ws.getCurrentTime(),
+          playing: ws.isPlaying(),
+        };
       ws.destroy();
       setWavesurfer(null);
       audio.pause();

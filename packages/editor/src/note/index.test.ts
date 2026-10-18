@@ -22,6 +22,7 @@ import { extractTasksFromContent } from "../tasks";
 import type { JSONContent, NoteEditorRef } from "./index";
 import {
   createReadOnlyPlugin,
+  flushNoteEditors,
   getEditorCompositionWaitMs,
   NoteEditor,
   shouldReplaceEditorContent,
@@ -1027,4 +1028,43 @@ it("matches saved task identities before assigning identities to Markdown tasks"
   );
   expect(tasks).toHaveLength(1);
   expect(tasks[0]).toMatchObject({ taskId: "saved-task", status: "done" });
+});
+
+it("flushes all mounted editors before a storage destination changes", async () => {
+  const first = createRef<NoteEditorRef>();
+  const second = createRef<NoteEditorRef>();
+  const savedFirst = vi.fn();
+  const savedSecond = vi.fn();
+  render(
+    createElement(NoteEditor, {
+      ref: first,
+      initialContent: baseDoc,
+      handleChange: savedFirst,
+    }),
+  );
+  render(
+    createElement(NoteEditor, {
+      ref: second,
+      initialContent: baseDoc,
+      handleChange: savedSecond,
+    }),
+  );
+  await waitFor(() =>
+    expect(first.current?.view && second.current?.view).toBeTruthy(),
+  );
+  act(() => {
+    first.current!.view!.dispatch(
+      first.current!.view!.state.tr.insertText("first", 1),
+    );
+    second.current!.view!.dispatch(
+      second.current!.view!.state.tr.insertText("second", 1),
+    );
+  });
+  act(() => flushNoteEditors());
+  await waitFor(() => {
+    expect(savedFirst).toHaveBeenCalled();
+    expect(savedSecond).toHaveBeenCalled();
+  });
+  expect(JSON.stringify(savedFirst.mock.calls.at(-1))).toContain("first");
+  expect(JSON.stringify(savedSecond.mock.calls.at(-1))).toContain("second");
 });

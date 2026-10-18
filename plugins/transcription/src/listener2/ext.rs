@@ -30,9 +30,33 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
 
         let mut audio_guard = None;
         let mut batch_params: core::BatchParams = params.clone().into();
-        if let Some(store) = self
+        let company = self
             .manager
-            .try_state::<Arc<hypr_vault_write::SessionStore>>()
+            .try_state::<Arc<hypr_vault_access::connection::ConnectionState>>()
+            .filter(|state| state.active())
+            .map(|state| state.inner().clone());
+        if let Some(connection) = &company {
+            batch_params.file_path = connection
+                .processing_audio(&params.session_id)
+                .await
+                .map_err(|error| core::Error::BatchError(error.to_string()))?
+                .to_string_lossy()
+                .into_owned();
+            let record = connection
+                .call(
+                    "session_get",
+                    serde_json::json!({"session_id":params.session_id}),
+                    true,
+                )
+                .await
+                .map_err(|error| core::Error::BatchError(error.to_string()))?;
+            batch_params.audio =
+                serde_json::from_value(record["meta"]["audio"].clone()).unwrap_or_default();
+        }
+        if company.is_none()
+            && let Some(store) = self
+                .manager
+                .try_state::<Arc<hypr_vault_write::SessionStore>>()
         {
             audio_guard = Some(
                 store

@@ -19,7 +19,7 @@ const REBUILD_CONCURRENCY: usize = 8;
 /// from files* this pass, not the resulting index size. `errors` never aborts the scan --
 /// an unparseable file is logged here and its existing index entry is left untouched (see
 /// the hard rule in each match arm below: corruption must never look like deletion).
-#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct RebuildReport {
     pub sessions: usize,
     /// Documents read this pass -- the note (`notes.md`, or the pre-rename `_memo.md`)

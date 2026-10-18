@@ -1,5 +1,6 @@
 import {
   type QueryClient,
+  type UseQueryOptions,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -156,13 +157,16 @@ export function subscribeIndexChanged(
  * `transcripts` events carry *session* ids). Replaces the SQL live-query hooks:
  * consumers keep the same `{ data, isLoading, error }` contract.
  */
-export function useIndexQuery<TData>({
+export function useIndexQuery<TData, TSelected = TData>({
   entity,
   ids,
   queryKey,
   queryFn,
   enabled = true,
   refetchOnMount,
+  select,
+  refetchInterval,
+  retry,
 }: {
   entity: IndexEntity | readonly IndexEntity[];
   ids?: readonly string[];
@@ -170,9 +174,12 @@ export function useIndexQuery<TData>({
   queryFn: () => Promise<TData>;
   enabled?: boolean;
   refetchOnMount?: boolean | "always";
-}) {
+} & Pick<
+  UseQueryOptions<TData, Error, TSelected>,
+  "select" | "refetchInterval" | "retry"
+>) {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const query = useQuery<TData, Error, TSelected>({
     queryKey: queryKey as unknown[],
     queryFn: async () => {
       await ensureIndexChangedListener();
@@ -181,14 +188,15 @@ export function useIndexQuery<TData>({
     enabled,
     staleTime: Infinity,
     refetchOnMount,
+    ...(select === undefined ? {} : { select }),
+    ...(refetchInterval === undefined ? {} : { refetchInterval }),
+    ...(retry === undefined ? {} : { retry }),
     refetchOnWindowFocus: false,
     meta: {
       vaultIndex: { entities: Array.isArray(entity) ? entity : [entity], ids },
     },
-    // These queries read local vault state over Tauri IPC, not the network.
-    // The default "online" mode pauses (re)fetches whenever the webview
-    // reports itself offline, leaving the mounted view stuck with stale data
-    // until a remount -- there is no network to wait for here.
+    // Rust owns connectivity and recovery. Webview offline detection must not
+    // suspend IPC or leave the mounted vault view stuck with stale data.
     networkMode: "always",
   });
 

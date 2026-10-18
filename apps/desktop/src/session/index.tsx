@@ -1,5 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useRef } from "react";
 
 import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
@@ -31,6 +30,8 @@ import {
   useSession,
   useSessionRawMd,
 } from "~/session/queries";
+import { useIndexQuery } from "~/shared/index-query";
+import { mediaSrc } from "~/shared/media-src";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { useListener } from "~/stt/contexts";
 import { consumePendingUpload } from "~/stt/pending-upload";
@@ -50,15 +51,23 @@ export function TabContentNote({
   const queryClient = useQueryClient();
   const isCapturing = sessionMode === "active" || sessionMode === "finalizing";
 
-  const audioUrlQuery = useQuery({
+  const audioUrlQuery = useIndexQuery({
+    entity: "artifacts",
+    refetchOnMount: "always",
+    ids: [tab.id],
     enabled: !isCapturing,
     queryKey: ["audio", tab.id, "url"],
+    refetchInterval: (query) =>
+      query.state.data?.status === "ok" &&
+      /^https?:/.test(query.state.data.data)
+        ? 240_000
+        : false,
     queryFn: () => fsSyncCommands.audioPath(tab.id),
     select: (result) => {
       if (result.status === "error") {
         return null;
       }
-      return convertFileSrc(result.data);
+      return mediaSrc(result.data);
     },
   });
   // While capturing, cached url/peaks describe the previous recording; withholding the

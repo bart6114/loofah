@@ -32,6 +32,7 @@ import {
   extractFirstLineTitle,
   documentTitlePlaceholder,
 } from "~/session/title-content";
+import { useCompanyReadOnly } from "~/shared/company-permissions";
 
 const extraNodeViews = { appLink: AppLinkView, session: SessionNodeView };
 
@@ -87,6 +88,7 @@ const EnhancedEditorInner = forwardRef<
       [content, contentOverride, sessionTitle],
     );
     const persistChanges = contentOverride === undefined;
+    const readOnly = useCompanyReadOnly();
     const draftKey = `session:${sessionId}:enhanced:${enhancedNoteId}`;
     const { initialDraft, confirmedDraft } = usePendingNoteDraft(
       persistChanges ? draftKey : undefined,
@@ -141,6 +143,7 @@ const EnhancedEditorInner = forwardRef<
     return (
       <div className="relative h-full">
         <NoteEditor
+          readOnly={readOnly}
           ref={ref}
           className="session-note-editor enhanced-summary-editor"
           key={editorKey}

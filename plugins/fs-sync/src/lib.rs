@@ -1,4 +1,5 @@
 mod commands;
+mod company;
 mod ext;
 pub mod runtime;
 

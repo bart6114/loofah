@@ -1,0 +1,36 @@
+[package]
+name = "loofah-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-stream = { workspace = true }
+axum = { workspace = true, features = ["query"] }
+base64 = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
+futures-util = { workspace = true }
+hypr-fs-format = { workspace = true }
+hypr-search-cache = { workspace = true }
+hypr-vault-access = { workspace = true }
+hypr-vault-read = { workspace = true }
+hypr-vault-write = { workspace = true }
+openidconnect = "4"
+reqwest = { workspace = true, features = ["json", "stream"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true, features = ["io"] }
+tower-http = { workspace = true, features = ["limit", "set-header", "trace"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { workspace = true }
+utoipa = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { workspace = true, features = ["util"] }
+wiremock = { workspace = true }
