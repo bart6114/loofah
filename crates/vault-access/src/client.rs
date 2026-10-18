@@ -8,18 +8,25 @@ pub struct RemoteVault {
     pub access_token: String,
 }
 
+pub(crate) fn invoke_request(
+    client: &reqwest::Client,
+    base_url: &str,
+    vault_id: &str,
+    call: &Call,
+) -> reqwest::RequestBuilder {
+    client
+        .post(format!(
+            "{}/v1/vaults/{vault_id}/invoke",
+            base_url.trim_end_matches('/')
+        ))
+        .timeout(std::time::Duration::from_secs(30))
+        .json(call)
+}
+
 impl VaultAccess for RemoteVault {
     async fn invoke(&self, call: Call) -> Result<Reply> {
-        let response = self
-            .client
-            .post(format!(
-                "{}/v1/vaults/{}/invoke",
-                self.base_url.trim_end_matches('/'),
-                self.vault_id
-            ))
-            .timeout(std::time::Duration::from_secs(30))
+        let response = invoke_request(&self.client, &self.base_url, &self.vault_id, &call)
             .bearer_auth(&self.access_token)
-            .json(&call)
             .send()
             .await
             .map_err(|error| Error::new("unavailable", error.to_string()))?;

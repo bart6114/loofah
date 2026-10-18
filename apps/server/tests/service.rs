@@ -276,6 +276,57 @@ async fn real_http_client_roundtrip_and_vault_isolation() {
     task.abort();
 }
 
+#[tokio::test]
+async fn remote_adapter_reports_denied_malformed_and_disconnected_responses() {
+    use hypr_vault_access::{VaultAccess, client::RemoteVault};
+    let app = Router::new().route(
+        "/v1/vaults/{vault}/invoke",
+        axum::routing::post(
+            |axum::extract::Path(vault): axum::extract::Path<String>| async move {
+                match vault.as_str() {
+                    "denied" => (
+                        StatusCode::FORBIDDEN,
+                        r#"{"code":"forbidden","message":"membership removed"}"#,
+                    ),
+                    "gateway" => (StatusCode::BAD_GATEWAY, "<html>upstream unavailable</html>"),
+                    _ => (StatusCode::OK, "invalid JSON"),
+                }
+            },
+        ),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let task = tokio::spawn(axum::serve(listener, app).into_future());
+    let mut client = RemoteVault {
+        client: reqwest::Client::new(),
+        base_url: format!("http://{address}/"),
+        vault_id: String::new(),
+        access_token: "access".into(),
+    };
+    for (vault, code) in [
+        ("denied", "forbidden"),
+        ("gateway", "unavailable"),
+        ("malformed", "invalid_data"),
+    ] {
+        client.vault_id = vault.into();
+        let error = client
+            .invoke(Call::query("session_get", json!({"session_id":"s1"})))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, code);
+        if vault == "denied" {
+            assert_eq!(error.message, "membership removed");
+        }
+    }
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    let error = client
+        .invoke(Call::query("session_get", json!({"session_id":"s1"})))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "unavailable");
+}
+
 #[test]
 fn media_ranges_are_bounded() {
     use loofah_server::transfers::range;

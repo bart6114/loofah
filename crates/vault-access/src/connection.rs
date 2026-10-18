@@ -9,8 +9,8 @@ use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
 use crate::{
-    Call, Credentials, Error, Result, ServerInfo, Upload, VaultAccess, Versions,
-    client::RemoteVault,
+    Call, Credentials, Error, Result, ServerInfo, Upload, Versions,
+    client::invoke_request,
     filesystem::{atomic_json, file_version, safe_path},
     recovery::{Destination, PendingMutation, RecoverySpool},
 };
@@ -44,6 +44,12 @@ pub struct TransferJob {
 }
 
 impl Profile {
+    fn same_account(&self, other: &Self) -> bool {
+        self.server_id == other.server_id
+            && self.user_id == other.user_id
+            && self.base_url == other.base_url
+    }
+
     pub fn credential_key(&self) -> String {
         format!("{}:{}", self.server_id, self.user_id)
     }
@@ -315,6 +321,61 @@ impl ConnectionState {
         self.authenticated().await
     }
 
+    async fn send_authenticated(
+        &self,
+        profile: &Profile,
+        credentials: &Credentials,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response> {
+        let same_account = || {
+            self.profile()
+                .is_some_and(|current| current.same_account(profile))
+        };
+        if !same_account() {
+            return Err(Error::new(
+                "conflict",
+                "connection changed before sending the request",
+            ));
+        }
+        let retry = request.try_clone();
+        let response = request
+            .bearer_auth(&credentials.access_token)
+            .send()
+            .await
+            .map_err(|error| Error::new("unavailable", error.to_string()))?;
+        if response.status() != reqwest::StatusCode::UNAUTHORIZED {
+            return Ok(response);
+        }
+        if !same_account() {
+            return Err(Error::new(
+                "conflict",
+                "connection changed while the request was in flight",
+            ));
+        }
+        let refreshed = self
+            .refresh_rejected_access(&credentials.access_token)
+            .await;
+        if !same_account() {
+            return Err(Error::new(
+                "conflict",
+                "connection changed while refreshing credentials",
+            ));
+        }
+        let (current, credentials) = refreshed?;
+        if !current.same_account(profile) {
+            return Err(Error::new(
+                "conflict",
+                "refreshed credentials belong to another connection",
+            ));
+        }
+        retry
+            .ok_or_else(|| Error::new("unavailable", "request body cannot be retried"))?
+            .bearer_auth(credentials.access_token)
+            .send()
+            .await
+            .map_err(|error| Error::new("unavailable", error.to_string()))
+    }
+
     pub async fn request(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
         if !path.starts_with("/v1/")
             || path.contains("..")
@@ -329,15 +390,13 @@ impl ConnectionState {
         let mut request = self
             .http
             .request(method, format!("{}{}", profile.base_url, path))
-            .timeout(std::time::Duration::from_secs(60))
-            .bearer_auth(credentials.access_token);
+            .timeout(std::time::Duration::from_secs(60));
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|error| Error::new("unavailable", error.to_string()))?;
+        let response = self
+            .send_authenticated(&profile, &credentials, request)
+            .await?;
         decode(response).await
     }
 
@@ -409,8 +468,17 @@ impl ConnectionState {
             let mut call = Call::query(operation, args);
             let mut all_headers = Vec::new();
             loop {
-                let reply = self.send(call.clone()).await?;
+                let result = self.send(call.clone(), &destination).await;
                 let mut versions = self.versions.lock().await;
+                if self
+                    .profile()
+                    .and_then(|profile| profile.destination().ok())
+                    .as_ref()
+                    != Some(&destination)
+                {
+                    return Err(Error::new("conflict", "vault changed while reading"));
+                }
+                let reply = result?;
                 // An explicit reload resolves a conflict; background reads must not advance an editor's save baseline.
                 for (key, version) in reply.versions {
                     versions.entry(key).or_insert(version);
@@ -504,17 +572,20 @@ impl ConnectionState {
         self.perform(pending).await
     }
 
-    async fn send(&self, call: Call) -> Result<crate::Reply> {
+    async fn send(&self, call: Call, destination: &Destination) -> Result<crate::Reply> {
         let (profile, credentials) = self.authenticated().await?;
-        let remote = RemoteVault {
-            client: self.http.clone(),
-            base_url: profile.base_url,
-            vault_id: profile
-                .vault_id
-                .ok_or_else(|| Error::new("invalid_request", "select a vault"))?,
-            access_token: credentials.access_token,
-        };
-        remote.invoke(call).await
+        if profile.destination().ok().as_ref() != Some(destination) {
+            return Err(Error::new(
+                "conflict",
+                "vault changed before sending the request",
+            ));
+        }
+        let request = invoke_request(&self.http, &profile.base_url, &destination.vault_id, &call);
+        decode(
+            self.send_authenticated(&profile, &credentials, request)
+                .await?,
+        )
+        .await
     }
 
     fn spool(&self) -> Result<RecoverySpool> {
@@ -524,7 +595,7 @@ impl ConnectionState {
     async fn perform(&self, mut pending: PendingMutation) -> Result<Value> {
         pending.attempted = true;
         self.spool()?.save(&pending)?;
-        match self.send(pending.call.clone()).await {
+        match self.send(pending.call.clone(), &pending.destination).await {
             Ok(reply) => {
                 self.versions.lock().await.extend(reply.versions.clone());
                 for mut waiting in self.spool()?.list(&pending.destination)? {
@@ -900,16 +971,15 @@ impl ConnectionState {
                     "account changed during upload",
                 ));
             }
-            let response = self
+            let request = self
                 .http
                 .put(format!("{}{}", profile.base_url, prefix))
-                .bearer_auth(credentials.access_token)
                 .timeout(std::time::Duration::from_secs(60))
                 .header("Upload-Offset", upload.offset)
-                .body(bytes)
-                .send()
-                .await
-                .map_err(|error| Error::new("unavailable", error.to_string()))?;
+                .body(bytes);
+            let response = self
+                .send_authenticated(&current, &credentials, request)
+                .await?;
             upload = decode(response).await?;
             atomic_json(&state_path, &upload)?;
         }

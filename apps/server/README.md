@@ -136,6 +136,9 @@ storage UI file. Native Tauri IPC round-trips against the real service also run 
 macOS CI, including conflict recovery and the client's tag-application setting.
 Real event-stream tests cover token renewal, access removal, transport failures,
 and destination changes while stream reads or authentication refreshes are pending.
+HTTP client tests pause requests during token rotation and account/vault changes,
+verify one authentication retry preserves the original payload and mutation ID,
+and prevent stale replies from changing another vault's revision baselines.
 
 The suites exercise public HTTP contracts, owner/editor/viewer/outsider access,
 identity persistence, OIDC proof failures, concurrent refresh and role changes,
