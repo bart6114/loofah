@@ -364,6 +364,7 @@ pub async fn cancel(
         .clone();
     let _upload_gate = upload_lock.lock().await;
     let _gate = runtime.gate.write().await;
+    server.authorize(&user, &vault, true, false).await?;
     load(&server, &vault, &id, &user)?;
     std::fs::remove_dir_all(upload_path(&server, &vault, &id)?).map_err(Error::from)?;
     Ok(Json(Value::Null))

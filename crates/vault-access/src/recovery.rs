@@ -73,3 +73,6 @@ impl RecoverySpool {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

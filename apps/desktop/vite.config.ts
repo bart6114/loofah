@@ -51,6 +51,24 @@ export default defineConfig(() => ({
       return type === "stderr";
     },
     exclude: ["**/node_modules/**", "**/src-tauri/**"],
+    coverage: {
+      provider: "v8",
+      include: [
+        "src/settings/general/storage/company.tsx",
+        "src/shared/company-boundary.tsx",
+        "src/shared/company-vault.ts",
+        "src/shared/company-permissions.ts",
+      ],
+      reportsDirectory: "src-tauri/target/storage-ui-coverage",
+      reporter: ["text", "json-summary", "html"],
+      thresholds: {
+        perFile: true,
+        statements: 90,
+        branches: 85,
+        functions: 80,
+        lines: 90,
+      },
+    },
   },
   ...tauri,
 }));

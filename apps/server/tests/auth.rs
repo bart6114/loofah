@@ -82,7 +82,17 @@ async fn oidc_signature_nonce_pkce_handoff_refresh_and_logout() {
     let verifier = "a".repeat(64);
     let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .encode(Sha256::digest(verifier.as_bytes()));
-    for valid in [true, false] {
+    for failure in [
+        "valid",
+        "audience",
+        "issuer",
+        "nonce",
+        "expired",
+        "signature",
+        "missing-token",
+        "provider-error",
+        "pkce",
+    ] {
         let start=response(&app,"POST","/v1/auth/start",json!({"callback":"http://127.0.0.1:54321/native","challenge":challenge,"state":"native-state-123456789012345678901234567890"})).await;
         assert_eq!(start.status(), StatusCode::OK);
         let start = json_body(start).await;
@@ -96,20 +106,48 @@ async fn oidc_signature_nonce_pkce_handoff_refresh_and_logout() {
         let now = chrono::Utc::now().timestamp();
         let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(serde_json::to_vec(&json!({"alg":"EdDSA","kid":"test-key"})).unwrap());
-        let payload=base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"iss":issuer,"aud":if valid{"desktop"}else{"another-app"},"sub":"stable-subject","email":"person@example.com","name":"Person","iat":now,"exp":now+60,"nonce":nonce})).unwrap());
+        let mut claims = json!({"iss":issuer,"aud":"desktop","sub":"stable-subject","email":"person@example.com","name":"Person","iat":now,"exp":now+60,"nonce":nonce});
+        match failure {
+            "audience" => claims["aud"] = json!("another-app"),
+            "issuer" => claims["iss"] = json!("https://attacker.invalid"),
+            "nonce" => claims["nonce"] = json!("wrong-nonce"),
+            "expired" => claims["exp"] = json!(now - 60),
+            _ => {}
+        }
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&claims).unwrap());
         let signed = format!("{header}.{payload}");
-        let signature = signer
+        let mut signature = signer
             .sign(&CoreJwsSigningAlgorithm::EdDsa, signed.as_bytes())
             .unwrap();
+        if failure == "signature" {
+            signature[0] ^= 1;
+        }
         let jwt = format!(
             "{signed}.{}",
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature)
         );
+        let mut provider_response =
+            json!({"access_token":"upstream-access","token_type":"Bearer","id_token":jwt});
+        if failure == "missing-token" {
+            provider_response
+                .as_object_mut()
+                .unwrap()
+                .remove("id_token");
+        }
+        if failure == "provider-error" {
+            provider_response = json!({"error":"invalid_grant"});
+        }
         let _token = Mock::given(method("POST"))
             .and(path("/token"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                json!({"access_token":"upstream-access","token_type":"Bearer","id_token":jwt}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(if failure == "provider-error" {
+                    400
+                } else {
+                    200
+                })
+                .set_body_json(provider_response),
+            )
             .mount_as_scoped(&provider)
             .await;
         let callback = response(
@@ -119,8 +157,8 @@ async fn oidc_signature_nonce_pkce_handoff_refresh_and_logout() {
             Value::Null,
         )
         .await;
-        if !valid {
-            assert_eq!(callback.status(), StatusCode::UNAUTHORIZED);
+        if !matches!(failure, "valid" | "pkce") {
+            assert_eq!(callback.status(), StatusCode::UNAUTHORIZED, "{failure}");
             continue;
         }
         assert_eq!(callback.status(), StatusCode::SEE_OTHER);
@@ -132,6 +170,39 @@ async fn oidc_signature_nonce_pkce_handoff_refresh_and_logout() {
             .unwrap()
             .1
             .into_owned();
+        assert_eq!(
+            destination
+                .query_pairs()
+                .find(|(key, _)| key == "state")
+                .unwrap()
+                .1,
+            "native-state-123456789012345678901234567890"
+        );
+        if failure == "pkce" {
+            assert_eq!(
+                response(
+                    &app,
+                    "POST",
+                    "/v1/auth/exchange",
+                    json!({"code":grant,"verifier":"wrong-verifier"})
+                )
+                .await
+                .status(),
+                StatusCode::UNAUTHORIZED
+            );
+            assert_eq!(
+                response(
+                    &app,
+                    "POST",
+                    "/v1/auth/exchange",
+                    json!({"code":grant,"verifier":verifier})
+                )
+                .await
+                .status(),
+                StatusCode::UNAUTHORIZED
+            );
+            continue;
+        }
         let exchange = json!({"code":grant,"verifier":verifier});
         let tokens = response(&app, "POST", "/v1/auth/exchange", exchange.clone()).await;
         assert_eq!(tokens.status(), StatusCode::OK);
@@ -197,7 +268,29 @@ async fn oidc_signature_nonce_pkce_handoff_refresh_and_logout() {
         "https://attacker.example/callback",
         "http://127.0.0.1.attacker.example:1234/callback",
         "http://localhost:1234/callback",
+        "http://127.0.0.1/callback",
+        "http://user:password@127.0.0.1:1234/callback",
+        "http://127.0.0.1:1234/callback?state=injected",
+        "http://127.0.0.1:1234/callback#fragment",
     ] {
         assert_eq!(response(&app,"POST","/v1/auth/start",json!({"callback":callback,"challenge":challenge,"state":"native-state-123456789012345678901234567890"})).await.status(),StatusCode::BAD_REQUEST);
     }
+    for proof in [
+        ("a".repeat(42), "s".repeat(32)),
+        ("a".repeat(43), "s".repeat(31)),
+        ("a".repeat(43), "s".repeat(257)),
+    ] {
+        assert_eq!(response(&app,"POST","/v1/auth/start",json!({"callback":"http://127.0.0.1:1234/native","challenge":proof.0,"state":proof.1})).await.status(),StatusCode::BAD_REQUEST);
+    }
+    assert_eq!(
+        response(
+            &app,
+            "GET",
+            "/v1/auth/callback?code=unused&state=unknown",
+            Value::Null
+        )
+        .await
+        .status(),
+        StatusCode::UNAUTHORIZED
+    );
 }

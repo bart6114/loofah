@@ -305,6 +305,7 @@ async fn operation(
     hypr_vault_access::validate_id(&operation)?;
     let runtime = server.runtime(&vault).await?;
     let _gate = runtime.gate.write().await;
+    server.authorize(&user, &vault, false, false).await?;
     content::recover(&runtime).await?;
     Ok(Json(json!(
         runtime

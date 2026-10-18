@@ -108,11 +108,36 @@ WebDAV and S3 adapters, mobile integration, and processing servers are separate 
 ## Verification
 
 ```sh
-cargo test --locked -p loofah-server -p vault-access
+cargo test --locked -p loofah-server -p vault-access -p vault-write
 cargo clippy --locked -p loofah-server -p vault-access --all-targets --no-deps -- -D warnings
+pnpm -F desktop test:storage
 cargo test --locked -p loofah-server --test scale -- --ignored --nocapture
 ```
 
 The scale test creates 50,000 sessions and runs 50 simultaneous HTTP clients,
 reporting cold-index time and read/write latency percentiles. It is intentionally
 excluded from routine CI; `LOOFAH_PERF_SESSIONS` changes the fixture size.
+
+For the Rust production coverage gate, install `cargo-llvm-cov` 0.9.1 and the
+`llvm-tools-preview` toolchain component, then run:
+
+```sh
+cargo llvm-cov --locked -p loofah-server -p vault-access -p vault-write \
+  --ignore-filename-regex '(/tests/|/tests\.rs$)' \
+  --json --summary-only --output-path target/storage-coverage.json
+python3 scripts/check-storage-coverage.py target/storage-coverage.json
+```
+
+CI requires 90% aggregate line coverage across the service, client, filesystem
+adapter, recovery spool, native login protocol, and shared command adapter, with
+at least 85% in each production file. Test bodies are excluded. The desktop UI
+gate requires 90% lines/statements, 85% branches, and 80% functions in each company
+storage UI file. Native Tauri bridge tests also run in macOS CI.
+
+The suites exercise public HTTP contracts, owner/editor/viewer/outsider access,
+identity persistence, OIDC proof failures, concurrent refresh and role changes,
+lost upload responses, resumed transfers, corruption, media expiry, and local
+draft isolation. Journal tests interrupt writes and recovery at durability
+boundaries; process tests kill and restart the binary. Filesystem write reordering
+and power loss need a filesystem-level fault harness. Route tests use in-process
+Axum requests; SDK, callback, SSE, and process lifecycle tests use real sockets.

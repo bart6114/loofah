@@ -1,7 +1,7 @@
 import { Trans } from "@lingui/react/macro";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { CompanyStorageSettings } from "~/settings/general/storage/company";
 import {
@@ -34,16 +34,11 @@ export function CompanyBoundary({ children }: { children: React.ReactNode }) {
   const readOnly = Boolean(
     status.data?.active && role !== "owner" && role !== "editor",
   );
-  const revoked = useQuery({
-    queryKey: ["company", "revoked"],
-    queryFn: () => false,
-    initialData: false,
-    enabled: false,
-  });
+  const [revoked, setRevoked] = useState(false);
   useEffect(() => {
     const subscriptions = [
       listen("company-authenticated", () => {
-        queryClient.setQueryData(["company", "revoked"], false);
+        setRevoked(false);
         void queryClient.invalidateQueries({ queryKey: ["company"] });
       }),
       listen("company-status-changed", () => {
@@ -62,9 +57,9 @@ export function CompanyBoundary({ children }: { children: React.ReactNode }) {
         window.location.reload();
       }),
       listen("company-access-revoked", () => {
+        setRevoked(true);
         void queryClient.cancelQueries();
         queryClient.clear();
-        queryClient.setQueryData(["company", "revoked"], true);
       }),
     ];
     return () => {
@@ -72,7 +67,7 @@ export function CompanyBoundary({ children }: { children: React.ReactNode }) {
         void subscription.then((unlisten) => unlisten()).catch(() => {});
     };
   }, [queryClient]);
-  if (revoked.data)
+  if (revoked)
     return (
       <div className="bg-background fixed inset-0 z-50 overflow-auto p-10">
         <div className="mx-auto max-w-xl space-y-4">

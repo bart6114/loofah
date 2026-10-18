@@ -12,6 +12,7 @@ on:
       - Cargo.toml
       - Cargo.lock
       - .github/workflows/server_ci.yaml
+      - scripts/check-storage-coverage.py
   workflow_dispatch:
 
 permissions:
@@ -29,6 +30,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/rust_install
-      - run: cargo test --locked -p loofah-server -p vault-access
+      - run: rustup component add llvm-tools-preview
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - run: >-
+          cargo llvm-cov --locked -p loofah-server -p vault-access -p vault-write
+          --ignore-filename-regex '(/tests/|/tests\.rs$)'
+          --json --summary-only --output-path target/storage-coverage.json
+      - run: python3 scripts/check-storage-coverage.py target/storage-coverage.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-coverage
+          path: target/storage-coverage.json
+          if-no-files-found: ignore
       - run: cargo clippy --locked -p loofah-server -p vault-access --all-targets --no-deps -- -D warnings
       - run: cargo build --locked --release -p loofah-server

@@ -47,6 +47,13 @@ jobs:
       - run: pnpm -F ui build
       - run: pnpm -F desktop typecheck
       - run: pnpm -F desktop test
+      - run: pnpm -F desktop test:storage
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: company-storage-ui-coverage
+          path: apps/desktop/src-tauri/target/storage-ui-coverage
+          if-no-files-found: ignore
       - run: pnpm -F desktop i18n:check
 
   rust:

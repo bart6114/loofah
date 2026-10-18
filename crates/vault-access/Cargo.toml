@@ -11,7 +11,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["fs", "sync", "rt"] }
+tokio = { workspace = true, features = ["fs", "sync", "rt", "net", "io-util", "time"] }
 utoipa = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 

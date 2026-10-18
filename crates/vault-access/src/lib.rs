@@ -1,6 +1,7 @@
 pub mod client;
 pub mod connection;
 pub mod filesystem;
+pub mod login;
 pub mod recovery;
 
 use std::collections::BTreeMap;

@@ -73,8 +73,14 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
         }
         file.write_all(bytes)?;
         file.sync_all()?;
+        #[cfg(test)]
+        tests::crash_point();
         fs::rename(&staging, path)?;
+        #[cfg(test)]
+        tests::crash_point();
         File::open(parent)?.sync_all()?;
+        #[cfg(test)]
+        tests::crash_point();
         Ok(())
     })();
     if result.is_err() {
@@ -293,6 +299,8 @@ impl FilesystemStorage {
                     }
                 }
             }
+            #[cfg(test)]
+            tests::crash_point();
         }
         transaction.complete = true;
         atomic_json(&directory.join("transaction.json"), transaction)?;
@@ -360,6 +368,8 @@ impl VaultStorage for FilesystemStorage {
                     }
                     fs::hard_link(source, directory.join(&staged))?;
                     File::open(directory.join(&staged))?.sync_all()?;
+                    #[cfg(test)]
+                    tests::crash_point();
                     versions.insert(key.clone(), Some(checksum));
                     actions.push(Action::Write { key, staged });
                 }
@@ -400,147 +410,4 @@ impl VaultStorage for FilesystemStorage {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn storage(root: &Path) -> FilesystemStorage {
-        FilesystemStorage::new(root.join("content"), root.join("state")).unwrap()
-    }
-
-    #[test]
-    fn interrupted_batch_recovers_and_retries_preserve_the_recorded_outcome() {
-        let root = tempfile::tempdir().unwrap();
-        let store = storage(root.path());
-        fs::create_dir_all(store.content.join("second.md")).unwrap();
-        let error = store
-            .commit(
-                "op1",
-                "same",
-                &Versions::new(),
-                vec![
-                    Change::Write("first.md".into(), b"first".to_vec()),
-                    Change::Write("second.md".into(), b"second".to_vec()),
-                ],
-                json!("saved"),
-            )
-            .unwrap_err();
-        assert_eq!(error.code, "commit_pending");
-        assert_eq!(store.read("first.md").unwrap().unwrap(), b"first");
-        fs::remove_dir(store.content.join("second.md")).unwrap();
-        drop(store);
-        let store = storage(root.path());
-        assert_eq!(store.read("second.md").unwrap().unwrap(), b"second");
-        let reply = store
-            .commit(
-                "op1",
-                "same",
-                &Versions::new(),
-                vec![Change::Write("first.md".into(), b"wrong".to_vec())],
-                json!("wrong"),
-            )
-            .unwrap();
-        assert_eq!(reply.data, "saved");
-        assert_eq!(store.read("first.md").unwrap().unwrap(), b"first");
-        assert_eq!(
-            store
-                .commit("op1", "different", &Versions::new(), vec![], json!(null))
-                .unwrap_err()
-                .code,
-            "invalid_request"
-        );
-    }
-
-    #[test]
-    fn stale_replacement_changes_nothing_and_delete_restore_preserves_unknown_files() {
-        let root = tempfile::tempdir().unwrap();
-        let store = storage(root.path());
-        store
-            .commit(
-                "create",
-                "create",
-                &Versions::new(),
-                vec![Change::Write(
-                    "sessions/s1/notes.md".into(),
-                    b"one".to_vec(),
-                )],
-                json!(null),
-            )
-            .unwrap();
-        let expected = store.versions(&["sessions/s1/notes.md".into()]).unwrap();
-        store
-            .commit(
-                "edit",
-                "edit",
-                &expected,
-                vec![Change::Write(
-                    "sessions/s1/notes.md".into(),
-                    b"two".to_vec(),
-                )],
-                json!(null),
-            )
-            .unwrap();
-        assert_eq!(
-            store
-                .commit(
-                    "stale",
-                    "stale",
-                    &expected,
-                    vec![Change::Write(
-                        "sessions/s1/notes.md".into(),
-                        b"lost".to_vec()
-                    )],
-                    json!(null)
-                )
-                .unwrap_err()
-                .code,
-            "conflict"
-        );
-        fs::write(
-            store.content.join("sessions/s1/unrecognized.pdf"),
-            b"private attachment",
-        )
-        .unwrap();
-        store
-            .commit(
-                "delete",
-                "delete",
-                &Versions::new(),
-                vec![Change::DeleteSession("s1".into())],
-                json!(null),
-            )
-            .unwrap();
-        drop(store);
-        let store = storage(root.path());
-        assert!(store.deleted("s1").unwrap());
-        store
-            .commit(
-                "restore",
-                "restore",
-                &Versions::new(),
-                vec![Change::RestoreSession("s1".into())],
-                json!(true),
-            )
-            .unwrap();
-        assert_eq!(store.read("sessions/s1/notes.md").unwrap().unwrap(), b"two");
-        assert_eq!(
-            fs::read(store.content.join("sessions/s1/unrecognized.pdf")).unwrap(),
-            b"private attachment"
-        );
-    }
-
-    #[test]
-    fn exclusive_root_ownership_and_unsafe_paths_are_rejected() {
-        let root = tempfile::tempdir().unwrap();
-        let _owner = RootLock::acquire(root.path()).unwrap();
-        assert!(RootLock::acquire(root.path()).is_err());
-        for key in ["../secret", "/secret", "a/../../secret", "a\\secret"] {
-            assert!(safe_path(root.path(), key).is_err());
-        }
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink("/tmp", root.path().join("link")).unwrap();
-            assert!(safe_path(root.path(), "link/secret").is_err());
-        }
-    }
-}
+mod tests;

@@ -206,24 +206,12 @@ async fn action<R: tauri::Runtime>(
             app.opener()
                 .open_url(url, None::<&str>)
                 .map_err(|error| Error::new("unavailable", error.to_string()))?;
-            let code=tokio::time::timeout(std::time::Duration::from_secs(300),async {
-                use tokio::io::{AsyncReadExt,AsyncWriteExt};
-                loop {
-                    let (mut socket,_)=listener.accept().await?;
-                    let mut bytes=vec![0u8;8192];
-                    let count=tokio::time::timeout(std::time::Duration::from_secs(5),socket.read(&mut bytes)).await.map_err(|_|Error::new("unauthenticated","sign-in callback timed out"))??;
-                    let request=String::from_utf8_lossy(&bytes[..count]);
-                    let target=request.lines().next().and_then(|line|line.strip_prefix("GET ")).and_then(|line|line.split(' ').next()).unwrap_or("");
-                    let url=url::Url::parse(&format!("http://127.0.0.1{target}")).map_err(|_|Error::new("unauthenticated","invalid sign-in callback"))?;
-                    let expected_path=url::Url::parse(&callback).unwrap();
-                    let values=url.query_pairs().collect::<std::collections::HashMap<_,_>>();
-                    if url.path()!=expected_path.path() || values.get("state").map(|value|value.as_ref())!=Some(native_state.as_str()) { let _=socket.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n").await; continue; }
-                    let code=values.get("code").ok_or_else(||Error::new("unauthenticated","sign-in was declined"))?.to_string();
-                    let body="Sign-in complete. Return to Loofah.";
-                    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await?;
-                    break Ok::<_,Error>(code);
-                }
-            }).await.map_err(|_|Error::new("unauthenticated","company sign-in timed out"))??;
+            let code = tokio::time::timeout(
+                std::time::Duration::from_secs(300),
+                hypr_vault_access::login::receive_callback(&listener, &callback, &native_state),
+            )
+            .await
+            .map_err(|_| Error::new("unauthenticated", "company sign-in timed out"))??;
             let credentials: Credentials = decode(
                 state
                     .http
@@ -514,3 +502,6 @@ pub fn spawn(app: tauri::AppHandle) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests;

@@ -410,10 +410,13 @@ function DraftRecovery({ draft }: { draft: PendingCompanyDraft }) {
     queryKey: ["company", "preview", draft.call.mutation_id],
     queryFn: () =>
       companyAction<{
-        data: {
-          note_markdown?: string | null;
-          markdown?: string | null;
-        } | null;
+        data:
+          | {
+              note_markdown?: string | null;
+              markdown?: string | null;
+            }
+          | string
+          | null;
         versions: Record<string, string | null>;
       }>("preview", { id: draft.call.mutation_id }),
     enabled: Boolean(sessionId && draft.error?.code === "conflict"),
@@ -464,9 +467,11 @@ function DraftRecovery({ draft }: { draft: PendingCompanyDraft }) {
               className="bg-background min-h-24 rounded border p-2"
               readOnly
               value={
-                preview.data.data?.note_markdown ??
-                preview.data.data?.markdown ??
-                ""
+                typeof preview.data.data === "string"
+                  ? preview.data.data
+                  : (preview.data.data?.note_markdown ??
+                    preview.data.data?.markdown ??
+                    "")
               }
             />
           </label>
