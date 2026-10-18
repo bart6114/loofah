@@ -123,6 +123,10 @@ msgstr "Add files here or drop them anywhere in this area."
 msgid "Add language"
 msgstr "Add language"
 
+#: src/settings/general/storage/company.tsx
+msgid "Add member"
+msgstr "Add member"
+
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Add spoken language"
@@ -280,6 +284,10 @@ msgstr "Checking transcription download…"
 msgid "Checking transcription models…"
 msgstr "Checking transcription models…"
 
+#: src/settings/general/storage/company.tsx
+msgid "Choose a company user"
+msgstr "Choose a company user"
+
 #: src/settings/ai/llm/configure.tsx
 msgid "Choose a connection"
 msgstr "Choose a connection"
@@ -370,6 +378,14 @@ msgstr "commented on"
 msgid "comments"
 msgstr "comments"
 
+#: src/settings/general/storage/company.tsx
+msgid "Company server"
+msgstr "Company server"
+
+#: src/shared/company-boundary.tsx
+msgid "Company vault access is unavailable"
+msgstr "Company vault access is unavailable"
+
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
 msgstr "Confirm"
@@ -381,6 +397,10 @@ msgstr "Connect a service to create summaries of your meetings. You can also set
 #: src/settings/ai/llm/configure.tsx
 msgid "Connect an AI provider"
 msgstr "Connect an AI provider"
+
+#: src/settings/general/storage/company.tsx
+msgid "Connected to "
+msgstr "Connected to "
 
 #: src/settings/ai/llm/select.tsx
 msgid "Connection details"
@@ -483,6 +503,10 @@ msgstr "Couldn't save your appearance. Please try again."
 msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr "Couldn’t update storage. Showing the previous measurement."
 
+#: src/settings/general/storage/company.tsx
+msgid "Create vault"
+msgstr "Create vault"
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
 msgstr "Created"
@@ -538,6 +562,14 @@ msgstr "Diagnostics"
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
 msgstr "Discard changes"
+
+#: src/settings/general/storage/company.tsx
+msgid "Discard draft and reload"
+msgstr "Discard draft and reload"
+
+#: src/settings/general/storage/company.tsx
+msgid "Discard upload"
+msgstr "Discard upload"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard your unsaved instructions?"
@@ -643,9 +675,17 @@ msgstr "Expand all"
 msgid "Export"
 msgstr "Export"
 
+#: src/settings/general/storage/company.tsx
+msgid "Export draft"
+msgstr "Export draft"
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Export failed. Please try again."
 msgstr "Export failed. Please try again."
+
+#: src/settings/general/storage/company.tsx
+msgid "Export file"
+msgstr "Export file"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Exporting..."
@@ -678,6 +718,10 @@ msgstr "Finalizing transcript"
 #: src/shared/open-note-dialog.tsx
 msgid "Find a note..."
 msgstr "Find a note..."
+
+#: src/settings/general/storage/company.tsx
+msgid "Finish recording, transcription, and summaries before switching vaults."
+msgstr "Finish recording, transcription, and summaries before switching vaults."
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Finish signing in in your browser…"
@@ -873,6 +917,10 @@ msgstr "Loading…"
 msgid "Local AI app"
 msgstr "Local AI app"
 
+#: src/settings/general/storage/company.tsx
+msgid "Local folder"
+msgstr "Local folder"
+
 #: src/onboarding/permissions.tsx
 msgid "Loofah can hear others"
 msgstr "Loofah can hear others"
@@ -896,6 +944,10 @@ msgstr "Loofah will continue automatically when the vault is available."
 #: src/settings/ai/shared/index.tsx
 msgid "macOS cannot access your login Keychain. Repairing briefly locks it and asks for your Mac password before Loofah retries this API key."
 msgstr "macOS cannot access your login Keychain. Repairing briefly locks it and asks for your Mac password before Loofah retries this API key."
+
+#: src/settings/general/storage/company.tsx
+msgid "Manage shared vault"
+msgstr "Manage shared vault"
 
 #: src/main/about-storage.tsx
 msgid "Markdown"
@@ -983,6 +1035,10 @@ msgstr "Name"
 msgid "New Note"
 msgstr "New Note"
 
+#: src/settings/general/storage/company.tsx
+msgid "New shared vault"
+msgstr "New shared vault"
+
 #: src/session/components/note-input/search/bar.tsx
 msgid "Next match"
 msgstr "Next match"
@@ -1058,10 +1114,6 @@ msgstr "notes"
 msgid "Notes"
 msgstr "Notes"
 
-#: src/settings/general/storage/index.tsx
-msgid "Notes & recordings folder"
-msgstr "Notes & recordings folder"
-
 #: src/main/about-dialog.tsx
 msgid "Notes over time"
 msgstr "Notes over time"
@@ -1106,6 +1158,10 @@ msgstr "Open Loofah"
 #: src/task/resource-view.tsx
 msgid "Open on GitHub"
 msgstr "Open on GitHub"
+
+#: src/settings/general/storage/company.tsx
+msgid "Open your personal or shared vault on your company server. Content loads when you open it."
+msgstr "Open your personal or shared vault on your company server. Content loads when you open it."
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Opening your browser…"
@@ -1239,6 +1295,7 @@ msgid "Reminder preferences"
 msgstr "Reminder preferences"
 
 #: src/session/components/note-input/attachments.tsx
+#: src/settings/general/storage/company.tsx
 msgid "Remove"
 msgstr "Remove"
 
@@ -1266,6 +1323,10 @@ msgstr "Remove tag {tag}"
 msgid "Removing…"
 msgstr "Removing…"
 
+#: src/settings/general/storage/company.tsx
+msgid "Rename"
+msgstr "Rename"
+
 #: src/settings/ai/shared/index.tsx
 msgid "Repair Keychain Access"
 msgstr "Repair Keychain Access"
@@ -1277,6 +1338,10 @@ msgstr "Replace"
 #: src/session/components/note-input/search/bar.tsx
 msgid "Replace all"
 msgstr "Replace all"
+
+#: src/settings/general/storage/company.tsx
+msgid "Replace the displayed server version"
+msgstr "Replace the displayed server version"
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Replace with..."
@@ -1334,6 +1399,10 @@ msgstr "Retry"
 msgid "Retry {0}"
 msgstr "Retry {0}"
 
+#: src/settings/general/storage/company.tsx
+msgid "Retry saving"
+msgstr "Retry saving"
+
 #: src/settings/ai/shared/index.tsx
 #: src/settings/ai/stt/select.tsx
 msgid "Runs after the recording finishes, not during the meeting."
@@ -1342,6 +1411,10 @@ msgstr "Runs after the recording finishes, not during the meeting."
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Save"
 msgstr "Save"
+
+#: src/settings/general/storage/company.tsx
+msgid "Save as a separate note"
+msgstr "Save as a separate note"
 
 #: src/session/components/session-date.tsx
 msgid "Save date"
@@ -1354,6 +1427,10 @@ msgstr "Saved"
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 msgstr "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
+
+#: src/settings/general/storage/company.tsx
+msgid "Saved on the server"
+msgstr "Saved on the server"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saving..."
@@ -1413,6 +1490,10 @@ msgstr "Select..."
 #: src/settings/ai/shared/index.tsx
 msgid "Selected"
 msgstr "Selected"
+
+#: src/settings/general/storage/company.tsx
+msgid "Server address"
+msgstr "Server address"
 
 #: src/session/components/note-input/header.tsx
 msgid "Session note views"
@@ -1487,6 +1568,10 @@ msgstr "Show the transcript as you speak."
 msgid "Sign in · Beta"
 msgstr "Sign in · Beta"
 
+#: src/shared/company-boundary.tsx
+msgid "Sign in again or choose your local folder. Unsent work remains available for recovery."
+msgstr "Sign in again or choose your local folder. Unsent work remains available for recovery."
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Sign in with ChatGPT"
 msgstr "Sign in with ChatGPT"
@@ -1494,6 +1579,10 @@ msgstr "Sign in with ChatGPT"
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
 msgstr "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
+
+#: src/settings/general/storage/company.tsx
+msgid "Sign out"
+msgstr "Sign out"
 
 #: src/main/about-dialog.tsx
 msgid "since {since}"
@@ -1577,6 +1666,7 @@ msgstr "Stop transcription"
 #: src/main/about-dialog.tsx
 #: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
+#: src/settings/general/storage/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Storage"
 msgstr "Storage"
@@ -1806,6 +1896,10 @@ msgstr "Unlock your login Keychain in the macOS prompt. Loofah will retry saving
 msgid "Unsaved changes"
 msgstr "Unsaved changes"
 
+#: src/settings/general/storage/company.tsx
+msgid "Unsent edits and recordings stay on this device until the server confirms they are saved."
+msgstr "Unsent edits and recordings stay on this device until the server confirms they are saved."
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/title-input.tsx
 #: src/shared/open-note-dialog.tsx
@@ -1849,6 +1943,10 @@ msgstr "Use this folder for your vault?"
 msgid "Use your microphone to capture your voice"
 msgstr "Use your microphone to capture your voice"
 
+#: src/settings/general/storage/company.tsx
+msgid "Users appear after their first company sign-in."
+msgstr "Users appear after their first company sign-in."
+
 #: src/settings/ai/llm/select.tsx
 msgid "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 msgstr "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
@@ -1856,6 +1954,10 @@ msgstr "Uses your AI app's configured server. Choose an on-device model in that 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
 msgstr "Variables"
+
+#: src/settings/general/storage/company.tsx
+msgid "Vault location"
+msgstr "Vault location"
 
 #: src/main/about-storage.tsx
 msgid "Vault size by file type"
@@ -1894,6 +1996,10 @@ msgstr "Where your notes and recordings are stored"
 msgid "While recording"
 msgstr "While recording"
 
+#: src/settings/general/storage/company.tsx
+msgid "Work waiting to be saved"
+msgstr "Work waiting to be saved"
+
 #: src/settings/ai/stt/select.tsx
 msgid "Works offline after downloading a model."
 msgstr "Works offline after downloading a model."
@@ -1923,8 +2029,16 @@ msgid "Your current vault stays where it is — nothing is moved or deleted. You
 msgstr "Your current vault stays where it is — nothing is moved or deleted. You can switch back the same way."
 
 #: src/settings/general/storage/index.tsx
-msgid "Your notes, recordings, and attachments are saved as files in this folder."
-msgstr "Your notes, recordings, and attachments are saved as files in this folder."
+msgid "Your notes, recordings, and attachments are saved as files in your local folder."
+msgstr "Your notes, recordings, and attachments are saved as files in your local folder."
+
+#: src/settings/general/storage/index.tsx
+msgid "Your notes, recordings, and attachments are stored on your company server."
+msgstr "Your notes, recordings, and attachments are stored on your company server."
+
+#: src/settings/general/storage/company.tsx
+msgid "Your unsaved text"
+msgstr "Your unsaved text"
 
 #: src/main/about-dialog.tsx
 msgid "Your vault"
