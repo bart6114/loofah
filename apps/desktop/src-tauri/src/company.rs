@@ -402,6 +402,132 @@ fn require_main_only<R: tauri::Runtime>(
     Ok(())
 }
 
+async fn event_received<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &ConnectionState,
+    profile: &hypr_vault_access::connection::Profile,
+    rejected_access: &str,
+    message: &str,
+) -> bool {
+    let destination = profile.destination().ok();
+    if destination.is_none()
+        || state
+            .profile()
+            .and_then(|profile| profile.destination().ok())
+            != destination
+    {
+        return true;
+    }
+    let kind = message
+        .lines()
+        .find_map(|line| line.strip_prefix("event:").map(str::trim));
+    if kind == Some("unauthenticated") {
+        let result = state.refresh_rejected_access(rejected_access).await;
+        if state
+            .profile()
+            .and_then(|profile| profile.destination().ok())
+            != destination
+        {
+            return true;
+        }
+        match result {
+            Ok(_) => state.set_error(None),
+            Err(error) => {
+                if matches!(error.code.as_str(), "unauthenticated" | "forbidden") {
+                    let _ = app.emit("company-access-revoked", ());
+                }
+                state.set_error(Some(error));
+            }
+        }
+        let _ = app.emit("company-status-changed", ());
+        return true;
+    }
+    if kind == Some("revoked") {
+        let _ = app.emit("company-access-revoked", ());
+        return true;
+    }
+    if kind == Some("reset") {
+        changed(app, None);
+        let _ = app.emit("company-status-changed", ());
+    }
+    if kind == Some("change") {
+        use tauri_specta::Event;
+        if let Some(data) = message.lines().find_map(|line| line.strip_prefix("data: ")) {
+            if let Ok(event) = serde_json::from_str::<hypr_vault_access::ChangeEvent>(data) {
+                if matches!(event.entity.as_str(), "members" | "vaults") {
+                    let _ = app.emit("company-vault-list-changed", ());
+                }
+                if event.vault_id == profile.vault_id {
+                    if let Ok(entity) = serde_json::from_value(serde_json::json!(event.entity)) {
+                        let _ = crate::session_store::IndexChanged {
+                            entity,
+                            ids: event.ids,
+                        }
+                        .emit(app);
+                    }
+                }
+            }
+        }
+        let _ = app.emit("company-status-changed", ());
+    }
+    false
+}
+
+async fn receive_events<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &ConnectionState,
+    profile: &hypr_vault_access::connection::Profile,
+    credentials: &Credentials,
+    mut response: reqwest::Response,
+) {
+    if response.status().is_success() {
+        let mut buffer = String::new();
+        'stream: loop {
+            if state
+                .profile()
+                .and_then(|profile| profile.destination().ok())
+                != profile.destination().ok()
+            {
+                break;
+            }
+            let chunk =
+                tokio::time::timeout(std::time::Duration::from_secs(20), response.chunk()).await;
+            let Ok(Ok(Some(chunk))) = chunk else {
+                break;
+            };
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(position) = buffer.find("\n\n") {
+                let message = buffer[..position].to_string();
+                buffer.drain(..position + 2);
+                if event_received(app, state, profile, &credentials.access_token, &message).await {
+                    break 'stream;
+                }
+            }
+            if buffer.len() > 64 * 1024 {
+                break;
+            }
+        }
+    } else if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        event_received(
+            app,
+            state,
+            profile,
+            &credentials.access_token,
+            "event: unauthenticated",
+        )
+        .await;
+    } else if response.status() == reqwest::StatusCode::FORBIDDEN {
+        event_received(
+            app,
+            state,
+            profile,
+            &credentials.access_token,
+            "event: revoked",
+        )
+        .await;
+    }
+}
+
 pub fn spawn(app: tauri::AppHandle) {
     let worker = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -440,70 +566,11 @@ pub fn spawn(app: tauri::AppHandle) {
             let request = state
                 .http
                 .get(format!("{}/v1/events", profile.base_url))
-                .bearer_auth(credentials.access_token)
+                .bearer_auth(&credentials.access_token)
                 .send()
                 .await;
-            if let Ok(mut response) = request {
-                if response.status().is_success() {
-                    let mut buffer = String::new();
-                    loop {
-                        if state.profile().and_then(|p| p.vault_id) != profile.vault_id {
-                            break;
-                        }
-                        let chunk = tokio::time::timeout(
-                            std::time::Duration::from_secs(20),
-                            response.chunk(),
-                        )
-                        .await;
-                        let Ok(Ok(Some(chunk))) = chunk else {
-                            break;
-                        };
-                        buffer.push_str(&String::from_utf8_lossy(&chunk));
-                        while let Some(position) = buffer.find("\n\n") {
-                            let message = buffer[..position].to_string();
-                            buffer.drain(..position + 2);
-                            if message.contains("event: unauthenticated")
-                                || message.contains("event: revoked")
-                            {
-                                let _ = app.emit("company-access-revoked", ());
-                                break;
-                            }
-                            if message.contains("event: reset") {
-                                changed(&app, None);
-                                let _ = app.emit("company-status-changed", ());
-                            }
-                            if message.contains("event: change") {
-                                use tauri_specta::Event;
-                                if let Some(data) =
-                                    message.lines().find_map(|line| line.strip_prefix("data: "))
-                                {
-                                    if let Ok(event) =
-                                        serde_json::from_str::<hypr_vault_access::ChangeEvent>(data)
-                                    {
-                                        if matches!(event.entity.as_str(), "members" | "vaults") {
-                                            let _ = app.emit("company-vault-list-changed", ());
-                                        }
-                                        if event.vault_id == profile.vault_id {
-                                            if let Ok(entity) = serde_json::from_value(
-                                                serde_json::json!(event.entity),
-                                            ) {
-                                                let _ = crate::session_store::IndexChanged {
-                                                    entity,
-                                                    ids: event.ids,
-                                                }
-                                                .emit(&app);
-                                            }
-                                        }
-                                    }
-                                }
-                                let _ = app.emit("company-status-changed", ());
-                            }
-                        }
-                        if buffer.len() > 64 * 1024 {
-                            break;
-                        }
-                    }
-                }
+            if let Ok(response) = request {
+                receive_events(&app, &state, &profile, &credentials, response).await;
             }
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }

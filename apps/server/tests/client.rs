@@ -247,6 +247,33 @@ async fn recording_processing_and_account_guards_preserve_the_selected_destinati
 }
 
 #[tokio::test]
+async fn concurrent_access_rejections_refresh_once_and_stale_rejections_keep_the_new_credentials() {
+    let f = Live::new().await;
+    let (a, b) = tokio::join!(
+        f.client.refresh_rejected_access("access"),
+        f.client.refresh_rejected_access("access")
+    );
+    let a = a.unwrap().1;
+    let b = b.unwrap().1;
+    assert_eq!(a.access_token, b.access_token);
+    assert_ne!(a.access_token, "access");
+    assert_eq!(
+        f.client
+            .refresh_rejected_access("access")
+            .await
+            .unwrap()
+            .1
+            .access_token,
+        a.access_token
+    );
+    assert_eq!(
+        f.client.request("GET", "/v1/me", None).await.unwrap()["id"],
+        f.credentials.user.id
+    );
+    assert_eq!(f.server.registry.read().await.sessions.len(), 1);
+}
+
+#[tokio::test]
 async fn lost_chunk_reply_resumes_after_restart_without_resending_or_corrupting_committed_bytes() {
     let mut f = Live::new().await;
     let source = f.device.path().join("source.bin");

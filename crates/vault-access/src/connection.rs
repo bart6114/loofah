@@ -299,6 +299,22 @@ impl ConnectionState {
         Ok((profile, credentials))
     }
 
+    pub async fn refresh_rejected_access(&self, rejected: &str) -> Result<(Profile, Credentials)> {
+        let authenticated = self.authenticated().await?;
+        if authenticated.1.access_token != rejected {
+            return Ok(authenticated);
+        }
+        {
+            let mut current = self.credentials.lock().await;
+            if let Some(credentials) = current.as_mut()
+                && credentials.access_token == rejected
+            {
+                credentials.expires_at = 0;
+            }
+        }
+        self.authenticated().await
+    }
+
     pub async fn request(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
         if !path.starts_with("/v1/")
             || path.contains("..")

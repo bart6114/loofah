@@ -134,6 +134,8 @@ at least 85% in each production file. Test bodies are excluded. The desktop UI
 gate requires 90% lines/statements, 85% branches, and 80% functions in each company
 storage UI file. Native Tauri IPC round-trips against the real service also run in
 macOS CI, including conflict recovery and the client's tag-application setting.
+Real event-stream tests cover token renewal, access removal, transport failures,
+and destination changes while stream reads or authentication refreshes are pending.
 
 The suites exercise public HTTP contracts, owner/editor/viewer/outsider access,
 identity persistence, OIDC proof failures, concurrent refresh and role changes,
