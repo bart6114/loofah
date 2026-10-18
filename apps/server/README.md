@@ -138,6 +138,7 @@ The suites exercise public HTTP contracts, owner/editor/viewer/outsider access,
 identity persistence, OIDC proof failures, concurrent refresh and role changes,
 lost upload responses, resumed transfers, corruption, media expiry, and local
 draft isolation. Journal tests interrupt writes and recovery at durability
-boundaries; process tests kill and restart the binary. Filesystem write reordering
-and power loss need a filesystem-level fault harness. Route tests use in-process
+boundaries; process tests kill and restart the binary and restore backups into a
+different data directory. Filesystem write reordering and power loss need a
+filesystem-level fault harness. Route tests use in-process
 Axum requests; SDK, callback, SSE, and process lifecycle tests use real sockets.

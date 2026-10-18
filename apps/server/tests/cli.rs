@@ -391,3 +391,139 @@ async fn killed_process_restarts_with_the_same_identity_receipts_and_committed_f
     .unwrap();
     assert!(status.success());
 }
+
+#[tokio::test]
+async fn offline_backup_restores_into_a_new_directory_and_recovers_unfinished_transactions() {
+    use hypr_vault_access::filesystem::{Change, VaultStorage};
+    let root = tempfile::tempdir().unwrap();
+    let (config, path) = config(root.path());
+    let server = Server::open(config.clone()).unwrap();
+    let user = server
+        .provision("issuer", "subject", "Owner", "owner@example.com")
+        .await
+        .unwrap();
+    let member = server
+        .provision("issuer", "viewer", "Viewer", "viewer@example.com")
+        .await
+        .unwrap();
+    let vault = server.create_vault(&user, "Backed up").await.unwrap();
+    server
+        .update_member(
+            &user,
+            &vault.id,
+            &member.id,
+            Some(hypr_vault_access::Role::Viewer),
+        )
+        .await
+        .unwrap();
+    loofah_server::content::invoke(server.clone(),&user,&vault.id,Call::mutation("session_write_meta",json!({"meta":{"id":"s1","title":"Durable","created_at":"2026-10-18T10:00:00Z","tags":[]}}),Versions::new())).await.unwrap();
+    let runtime = server.runtime(&vault.id).await.unwrap();
+    let attachment = runtime.storage.content.join("sessions/s1/unknown.pdf");
+    std::fs::write(&attachment, b"preserve attachment").unwrap();
+    let blocker = runtime.storage.content.join("sessions/s1/summary.md");
+    std::fs::create_dir(&blocker).unwrap();
+    assert_eq!(
+        runtime
+            .storage
+            .commit(
+                "recovered-receipt",
+                "request-fingerprint",
+                &Versions::new(),
+                vec![
+                    Change::Write("sessions/s1/notes.md".into(), b"Recovered note".to_vec()),
+                    Change::Write(
+                        "sessions/s1/summary.md".into(),
+                        b"Recovered summary".to_vec()
+                    ),
+                ],
+                json!({"saved":true})
+            )
+            .unwrap_err()
+            .code,
+        "commit_pending"
+    );
+    std::fs::remove_dir(blocker).unwrap();
+    let identity = server.registry.read().await.server_id.clone();
+    let personal = server
+        .registry
+        .read()
+        .await
+        .vaults
+        .values()
+        .find(|v| v.personal && v.members.contains_key(&user.id))
+        .unwrap()
+        .id
+        .clone();
+    drop(runtime);
+    drop(server);
+    fn copy(source: &Path, destination: &Path) {
+        std::fs::create_dir_all(destination).unwrap();
+        for entry in source.read_dir().unwrap() {
+            let entry = entry.unwrap();
+            let target = destination.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
+    let mut restored = config;
+    restored.data_dir = root.path().join("restored-data");
+    copy(&root.path().join("data"), &restored.data_dir);
+    std::fs::write(&path, serde_json::to_vec(&restored).unwrap()).unwrap();
+    success(command(&path).arg("recover").output().unwrap());
+    let server = Server::open(restored).unwrap();
+    assert_eq!(server.registry.read().await.server_id, identity);
+    assert_eq!(
+        server
+            .provision("issuer", "subject", "Renamed", "new@example.com")
+            .await
+            .unwrap()
+            .id,
+        user.id
+    );
+    assert!(server.registry.read().await.vaults[&personal].personal);
+    assert_eq!(
+        server
+            .authorize(&member, &vault.id, false, false)
+            .await
+            .unwrap()
+            .members[&member.id],
+        hypr_vault_access::Role::Viewer
+    );
+    assert!(
+        server
+            .authorize(&member, &vault.id, true, false)
+            .await
+            .is_err()
+    );
+    let runtime = server.runtime(&vault.id).await.unwrap();
+    assert_eq!(
+        runtime
+            .store
+            .session_get("s1")
+            .unwrap()
+            .note_markdown
+            .as_deref(),
+        Some("Recovered note")
+    );
+    assert_eq!(
+        runtime.store.summary_get("s1").as_deref(),
+        Some("Recovered summary")
+    );
+    assert_eq!(
+        runtime
+            .storage
+            .operation("recovered-receipt", Some("request-fingerprint"))
+            .unwrap()
+            .unwrap()
+            .data,
+        json!({"saved":true})
+    );
+    assert_eq!(
+        std::fs::read(runtime.storage.content.join("sessions/s1/unknown.pdf")).unwrap(),
+        b"preserve attachment"
+    );
+    assert_eq!(std::fs::read(attachment).unwrap(), b"preserve attachment");
+}
