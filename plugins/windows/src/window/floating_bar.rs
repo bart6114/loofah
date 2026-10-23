@@ -168,3 +168,27 @@ pub fn hide() -> Result<(), Error> {
 pub fn update(state: FloatingBarState) -> Result<(), Error> {
     platform::update(state)
 }
+
+#[cfg(target_os = "macos")]
+pub fn show_meeting_nudge(recording_id: &str, text: &str) -> Result<String, Error> {
+    use swift_rs::{Bool, SRString, swift};
+    swift!(fn _floating_bar_nudge(json: &SRString) -> Bool);
+    let id = uuid::Uuid::new_v4().to_string();
+    let payload = serde_json::json!({ "id": id, "recordingId": recording_id, "text": text });
+    let json = SRString::from(payload.to_string().as_str());
+    if unsafe { _floating_bar_nudge(&json) } {
+        Ok(id)
+    } else {
+        Err(Error::PanelError("recording bar is unavailable".into()))
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn clear_meeting_nudge(recording_id: Option<&str>) {
+    use swift_rs::{Bool, SRString, swift};
+    swift!(fn _floating_bar_clear_nudge(recording_id: &SRString) -> Bool);
+    let id = SRString::from(recording_id.unwrap_or(""));
+    unsafe {
+        _floating_bar_clear_nudge(&id);
+    }
+}

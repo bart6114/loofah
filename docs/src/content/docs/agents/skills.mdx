@@ -33,7 +33,7 @@ Check loof --version and loof --json doctor to verify CLI and vault
 access. Missing or incompatible caches initialize automatically; use
 loof --json init for repair. If the CLI is unavailable, explain how to
 install it. Installing
-the skill does not install the CLI. Use MCP only as a read-only alternative
+the skill does not install the CLI. Use MCP as an alternative for reading and live recording nudges
 when you cannot run the CLI or I specifically ask for MCP.
 ```
 
@@ -47,8 +47,8 @@ The skill gives your agent a workflow for storing knowledge and finding context:
 2. Use `loof --json` for both reading and writing, including when MCP is connected.
 3. Resolve session IDs from list or search results.
 4. Read notes, summaries, and action items before requesting a transcript. Transcript commands return the complete transcript and can produce large responses.
-5. Write only through the CLI because the MCP server is read-only. You can create standalone knowledge notes, edit note bodies, add or remove tags, attach files, import audio into a new session or an existing one without a recording, and transcribe it.
-6. Use MCP as a read-only alternative when CLI access is unavailable or you explicitly request it.
+5. Write only through the CLI because MCP cannot change vault content. You can create standalone knowledge notes, edit note bodies, add or remove tags, attach files, import audio into a new session or an existing one without a recording, and transcribe it.
+6. Use MCP for reading and live recording nudges when CLI access is unavailable or you explicitly request it.
 7. Never crawl or modify vault files directly.
 
 Agent-created sessions record `--author <agent-name>` and, when a skill produced the note, `--skill <skill-name>`. Existing sessions keep their authorship. See [CLI for agents](/agents/cli) for examples.

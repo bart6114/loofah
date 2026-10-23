@@ -43,7 +43,7 @@ Use `--vault-path DIR` or `LOOFAH_VAULT_PATH` for subsequent commands targeting 
 
 ## Optional MCP connection
 
-Use MCP for read-only access when the client cannot run CLI commands or the user requests it. It is not required for the CLI workflow. The same `loof` executable provides the local stdio server:
+Use MCP for reading and live recording nudges when the client cannot run CLI commands or the user requests it. It is not required for the CLI workflow. The same `loof` executable provides the local stdio server:
 
 ```bash
 loof mcp

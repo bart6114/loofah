@@ -210,3 +210,6 @@ mod test {
         println!("version: {}", version);
     }
 }
+
+#[cfg(target_os = "macos")]
+pub use window::floating_bar::{clear_meeting_nudge, show_meeting_nudge};

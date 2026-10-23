@@ -1,6 +1,6 @@
 ---
 source: apps/cli/src/cli.rs
-assertion_line: 868
+assertion_line: 879
 expression: canonicalize_json(contract)
 ---
 {
@@ -624,7 +624,85 @@ expression: canonicalize_json(contract)
       "synopsis": "loof transcribe [-h] <id>"
     },
     {
-      "about": "Run the read-only Loofah MCP server over stdio",
+      "about": "Show a temporary coaching nudge in the active recording bar (macOS desktop required)",
+      "arguments": [
+        {
+          "name": "TEXT",
+          "required": true
+        }
+      ],
+      "name": "loof nudge",
+      "options": [
+        {
+          "flags": "--recording-id",
+          "is_flag": false,
+          "required": false,
+          "value_name": "RECORDING_ID"
+        },
+        {
+          "flags": "-h, --help",
+          "help": "Print help",
+          "is_flag": false,
+          "required": false
+        }
+      ],
+      "synopsis": "loof nudge [--recording-id] [-h] <text>"
+    },
+    {
+      "about": "Inspect the running desktop recording and incremental finalized transcript",
+      "name": "loof live",
+      "options": [
+        {
+          "flags": "-h, --help",
+          "help": "Print help",
+          "is_flag": false,
+          "required": false
+        }
+      ],
+      "subcommands": [
+        {
+          "about": "Discover the active recording, transcription mode, and nudge availability",
+          "name": "loof live status",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof live status [-h]"
+        },
+        {
+          "about": "Read finalized words and corrections; reuse the returned cursor every five seconds",
+          "name": "loof live transcript",
+          "options": [
+            {
+              "flags": "--recording-id",
+              "is_flag": false,
+              "required": true,
+              "value_name": "RECORDING_ID"
+            },
+            {
+              "flags": "--cursor",
+              "is_flag": false,
+              "required": false,
+              "value_name": "CURSOR"
+            },
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof live transcript <--recording-id> [--cursor] [-h]"
+        }
+      ],
+      "synopsis": "loof live [-h] <command>"
+    },
+    {
+      "about": "Run the Loofah MCP server over stdio (meeting reads and live recording nudges)",
       "name": "loof mcp",
       "options": [
         {

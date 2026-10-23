@@ -3,7 +3,7 @@ title: "MCP reference"
 description: "Tools, resources, limits, and transport details exposed by Loofah MCP."
 ---
 
-Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Tools do not change vault content. Every search, list, and resource-list request refreshes the shared local cache, including while the server stays running. Detail tools and resource reads use the current vault files. Startup automatically builds a missing or incompatible cache, reporting progress on stderr before the MCP connection is established. For corruption, run `loof --json init` to repair the cache.
+Run the server with `loof mcp`. It uses the MCP `2024-11-05` protocol over stdio. Tools do not change vault content. Every search, list, and resource-list request refreshes the shared local cache, including while the server stays running. Detail tools and resource reads use the current vault files. The first search, list, or resource-list request initializes a missing or incompatible cache. Live tools and detail reads do not wait for cache initialization. For corruption, run `loof --json init` to repair the cache.
 
 ## Tools
 
@@ -53,3 +53,29 @@ Returns `meeting_id` and `text`. The text uses one `[HH:MM:SS] Speaker: ...` lin
 Resource listing returns recent meeting resources in pages of 20. Its cursor is a numeric result offset.
 
 Previously issued `fmtr://meetings/...` resource URIs remain readable for client compatibility; new resource listings use `loofah://`.
+
+## Live recording tools
+
+These tools require the running macOS desktop app and the same vault and application channel as the CLI. They use a local Unix socket; no TCP port is opened. The agent chooses when to poll and nudge; Loofah does not run a coach automatically.
+
+### `get_active_meeting`
+
+Takes no parameters. Returns `active_meeting`, or `null` when idle. An active meeting includes `meeting_id`, `recording_id`, `title`, `state`, `live_transcription_available`, and `nudges_available`. A resumed recording gets a new `recording_id` even when its meeting ID is unchanged.
+
+### `get_live_transcript`
+
+Accepts required string `recording_id` and optional string `cursor`. First reads return a snapshot of the most recent five minutes, capped at 1,000 finalized words. Responses include `changes` (`upsert` words and `remove` IDs), `cursor`, `has_more`, `reset`, `truncated`, recording state, and live-transcription availability. Words include IDs, text, timestamps in milliseconds, channel, speaker index, and a display label. Provisional words are excluded; finalized words can still be corrected.
+
+Poll every five seconds using the returned cursor. Drain `has_more` pages immediately. Apply removals and upserts by word ID; when `reset` is true, replace the previous live context with the snapshot. The journal retains at most ten minutes or 10,000 changes and pages contain at most 500 changes. Expired cursors trigger a reset; malformed or cross-recording cursors fail. Finalized recording context remains readable for two minutes after stop. When live transcription is unavailable, the response says so rather than pretending that silence means no one is speaking.
+
+Use `get_meeting_transcript` for the complete saved transcript; it can produce a large response.
+
+### `nudge`
+
+Accepts required string `text` and optional string `recording_id`. Prefer supplying the recording ID from `get_active_meeting` so a delayed suggestion cannot land in another meeting. Without it, the nudge targets the currently active recording.
+
+Text is plain text, whitespace-normalized, and limited to 200 Unicode characters. A card appears beneath the recording pill without taking keyboard focus. It replaces the previous nudge, expires after 20 seconds of unhovered display time, and can be dismissed manually. It clears when recording stops or the bar is disabled. Enable **Show floating bar** in **Settings → App → Meetings** before using it.
+
+The result contains `nudge_id` and `recording_id`. Success means the native UI accepted the nudge, not that the person read it. Nudges are not saved in the vault. This tool has a UI side effect and is not idempotent. Do not automatically retry a timeout: the first nudge may already have appeared.
+
+Operational errors set `isError` and include an `error` object with `code` and `message`, including `desktop_unavailable`, `no_active_recording`, `recording_mismatch`, `recording_not_found`, `bar_disabled`, `bar_unavailable`, `invalid_input`, `invalid_cursor`, `incompatible_protocol`, and `delivery_timeout`.

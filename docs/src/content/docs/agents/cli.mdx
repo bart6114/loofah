@@ -76,7 +76,7 @@ Verify the redundant session's exact ID with `sessions get` before deleting it:
 loof --json sessions delete SESSION_ID
 ```
 
-This moves the complete session to recoverable vault trash. There is no prompt or confirmation flag, so only invoke it after the user authorizes removal. Keep the response's original `path`, `trash_path`, and `deleted_at` for recovery. A missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](/reference/cli#delete-and-recover-a-session) for failure behavior and recovery steps to give the user. MCP remains read-only.
+This moves the complete session to recoverable vault trash. There is no prompt or confirmation flag, so only invoke it after the user authorizes removal. Keep the response's original `path`, `trash_path`, and `deleted_at` for recovery. A missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](/reference/cli#delete-and-recover-a-session) for failure behavior and recovery steps to give the user. MCP cannot change vault content; its `nudge` tool can display a temporary recording hint.
 
 ## Export only when asked
 
