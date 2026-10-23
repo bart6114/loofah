@@ -3,6 +3,7 @@
 mod cli;
 mod commands;
 mod error;
+mod live;
 mod mcp;
 mod output;
 mod vault;
@@ -17,6 +18,16 @@ pub async fn run(args: Args) -> Result<u8> {
         return Ok(if ready { 0 } else { 1 });
     }
     let vault = vault::open(&args)?;
+    match &args.command {
+        cli::Command::Nudge { .. } | cli::Command::Live { .. } => {
+            return live::run(&vault, args.command, args.json).await;
+        }
+        cli::Command::Mcp => {
+            mcp::serve(vault).await?;
+            return Ok(0);
+        }
+        _ => {}
+    }
     let cache = hypr_search_cache::Cache::for_vault(&vault)?;
     let explicit_init = matches!(&args.command, cli::Command::Init);
     let worker = cache.clone();
@@ -183,7 +194,9 @@ async fn dispatch(
             .await;
         }
         cli::Command::Transcribe { id } => commands::transcribe::run(vault, &id, args.json).await?,
-        cli::Command::Mcp => mcp::serve(vault.to_path_buf(), cache.clone()).await?,
+        cli::Command::Mcp | cli::Command::Live { .. } | cli::Command::Nudge { .. } => {
+            unreachable!("live commands return before cache initialization")
+        }
         cli::Command::Tags { command } => commands::tags::run(cache, command, args.json).await?,
     }
 

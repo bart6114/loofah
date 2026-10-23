@@ -145,3 +145,18 @@ Run `loof --json sessions rename SESSION_ID "New title"` to change only the titl
 Titles are stored verbatim, including empty strings. The id, directory, other metadata,
 and content stay unchanged. JSON returns `command: "sessions.rename"` with `data` fields
 `id` and `title`. Missing sessions return `not_found` (exit 2). The `meetings` alias works too.
+
+## Live meetings and nudges
+
+Use the running macOS desktop app's channel and vault. These commands bypass the search cache:
+
+```sh
+loof --json live status
+loof --json live transcript --recording-id RECORDING_ID
+loof --json live transcript --recording-id RECORDING_ID --cursor CURSOR
+loof --json nudge "Ask who owns the rollout." --recording-id RECORDING_ID
+```
+
+Poll every five seconds, reuse the returned cursor, drain `has_more`, apply finalized word upserts/removals by ID, and replace accumulated context on `reset`. Check `live_transcription_available`; record-only capture has no live words. Initial snapshots are limited to five minutes/1,000 words and report `truncated`. Full saved transcripts remain available through `sessions transcript`.
+
+Prefer `--recording-id` for nudges so delayed suggestions cannot target another meeting. Text is limited to 200 Unicode characters. The card replaces the previous nudge and expires after 20 unhovered seconds; the bar must be enabled. Stop when recording ends. Success means UI acceptance, not that the person read it. Errors use exit 1 and the usual JSON error envelope. Never automatically retry `delivery_timeout`.

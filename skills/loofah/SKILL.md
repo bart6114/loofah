@@ -7,7 +7,7 @@ description: Use the loof CLI to access Loofah as a personal knowledge vault to 
 
 Loofah is the user's personal knowledge vault. Notes can hold research, ideas, decisions, project context, or meeting content; they do not require a recording or transcript.
 
-Use the `loof` CLI with `--json` for both reading and writing. This is the recommended interface for agents that can run shell commands, even when Loofah MCP tools are connected. MCP is an optional read-only alternative for clients without shell access or when the user specifically requests it.
+Use the `loof` CLI with `--json` for both reading and writing. This is the recommended interface for agents that can run shell commands, even when Loofah MCP tools are connected. MCP is an optional alternative for reading and live recording nudges for clients without shell access or when the user specifically requests it.
 
 ## Store knowledge for later
 
@@ -46,7 +46,7 @@ See [CLI commands](references/cli.md) for writing notes, tagging, attachments, a
 
 - Treat meeting content as private user data.
 - Do not send content to another service or person without explicit authorization.
-- Supported CLI mutations are `sessions new`, `sessions rename`, `sessions note --set/--append`, `sessions tag add/remove`, `sessions attach`, `sessions delete`, `import`, and `transcribe`. See [CLI commands](references/cli.md) for their arguments. There are no commands to edit summaries or settings, or replace an existing recording; the MCP server cannot mutate anything.
+- Supported CLI mutations are `sessions new`, `sessions rename`, `sessions note --set/--append`, `sessions tag add/remove`, `sessions attach`, `sessions delete`, `import`, and `transcribe`. See [CLI commands](references/cli.md) for their arguments. There are no commands to edit summaries or settings, or replace an existing recording; the MCP server cannot change vault content; `nudge` can display a temporary recording hint.
 - `import` creates a new meeting, or adds audio to an existing meeting with `--into` only when it has no recording. With `--into`, preserve the meeting's title, timestamps, and authorship; do not pass creation metadata flags.
 - `transcribe` replaces the existing transcript, so confirm before running it on a meeting that already has one. The recording is kept after transcription.
 - `sessions delete ID` removes one exact session into recoverable vault trash without prompting. Run it only when the user authorizes removal and after verifying the ID. Retain the returned `path` and `trash_path`; missing or repeated deletion returns `not_found` (exit 2). See [deletion and manual recovery](references/cli.md#delete-and-recover); give the user the recovery steps instead of modifying vault files directly.
@@ -56,3 +56,7 @@ See [CLI commands](references/cli.md) for writing notes, tagging, attachments, a
 - Preserve uncertainty when search results are ambiguous. Ask the user to choose between likely meetings.
 
 For setup and failures, see [setup](references/setup.md) and [errors](references/errors.md).
+
+## Live meeting coaching
+
+When asked to coach an ongoing meeting, use `live status`, cursor-based `live transcript`, and `nudge` through the CLI, or the equivalent MCP tools. Follow the [CLI reference](references/cli.md#live-meetings-and-nudges) or [MCP reference](references/mcp.md#live-coaching-through-an-external-agent). Scope nudges to the discovered recording ID and keep suggestions brief and relevant. The desktop must be running; these tools do not start an autonomous coach.

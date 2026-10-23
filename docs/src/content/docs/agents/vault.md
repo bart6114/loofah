@@ -132,7 +132,7 @@ output. Vault commands automatically initialize a missing or incompatible local 
 | `sessions export` | Export a session to Markdown or JSON. |
 | `import` | Import an audio file as a new session or into an existing one. |
 | `transcribe` | Transcribe a session's audio with the configured on-device model. |
-| `mcp` | Run the read-only MCP server over stdio. |
+| `mcp` | Run the MCP server for meeting reads and live recording tools over stdio. |
 | `tags list` | List every tag registered in the vault. |
 
 Per-command flags are documented at
@@ -148,10 +148,16 @@ The `meetings` alias also supports this command.
 
 ## Delete and recover
 
-Only remove a session when the user authorizes it. Verify its exact ID with `loof --json sessions get SESSION_ID`, then use `loof --json sessions delete SESSION_ID`. There is no confirmation flag or prompt, including in JSON mode. The response has `command: "sessions.delete"` and `data` fields `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and UTC RFC 3339 `deleted_at` observed after the move. Retain the response for recovery. Deletion validates the exact `_meta.json` identity without scanning the vault. MCP remains read-only.
+Only remove a session when the user authorizes it. Verify its exact ID with `loof --json sessions get SESSION_ID`, then use `loof --json sessions delete SESSION_ID`. There is no confirmation flag or prompt, including in JSON mode. The response has `command: "sessions.delete"` and `data` fields `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and UTC RFC 3339 `deleted_at` observed after the move. Retain the response for recovery. Deletion validates the exact `_meta.json` identity without scanning the vault. MCP cannot change vault content; its `nudge` tool can display a temporary recording hint.
 
 The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a numeric suffix on collisions. Notes, transcripts, recordings, summaries, tasks, attachments, unknown user files, and hidden files are preserved; existing trash is never overwritten or purged. `sessions get ID` returns `not_found` afterwards.
 
 There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
 
 A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
+
+## Live recording context and nudges
+
+For an external meeting coach, use `loof --json live status` to discover the active `recording_id`, then poll `loof --json live transcript --recording-id ID` every five seconds, passing `--cursor CURSOR` after the first response. Apply finalized word upserts/removals by ID, drain `has_more` pages, and replace accumulated context on `reset`. Snapshots are limited to five minutes/1,000 words and explicitly report truncation. Check live-transcription availability; record-only capture does not provide live text.
+
+Send a short suggestion with `loof --json nudge "Ask who owns the rollout." --recording-id ID`. The same capabilities are available as MCP tools `get_active_meeting`, `get_live_transcript`, and `nudge`. The matching macOS desktop must be running with this vault. Nudges require the floating bar, contain at most 200 Unicode characters, and expire after 20 seconds paused on hover. They replace previous nudges and are never saved to the vault. Stop nudging when recording ends; never automatically retry a delivery timeout. Success acknowledges UI acceptance, not that the person read it. Loofah provides tools; the external agent runs the coaching loop.

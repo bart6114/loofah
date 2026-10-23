@@ -6,7 +6,9 @@ final class FloatingBarManager {
   static let shared = FloatingBarManager()
 
   private var panel: NSPanel?
+  private var appliedLayout: FloatingBarWindowLayout?
   private let model = FloatingBarViewModel()
+  private let nudge = FloatingNudgeModel()
   private let settingsModel = FloatingOverlaySettingsModel.shared
   private let placement = FloatingPanelPositionController()
   private var displayChangeObserver: Any?
@@ -16,6 +18,9 @@ final class FloatingBarManager {
   private var cancellables = Set<AnyCancellable>()
 
   private init() {
+    nudge.$payload
+      .sink { [weak self] _ in self?.scheduleFrameUpdate() }
+      .store(in: &cancellables)
     model.$isExpanded
       .removeDuplicates()
       .sink { [weak self] _ in
@@ -67,6 +72,7 @@ final class FloatingBarManager {
       let hostingView = NSHostingView(
         rootView: FloatingBarView(
           model: self.model,
+          nudge: self.nudge,
           settings: self.settingsModel,
           panelOrigin: { [weak self] in self?.panel?.frame.origin },
           movePanel: { [weak self] origin in
@@ -87,19 +93,35 @@ final class FloatingBarManager {
       self.position(panel, force: true)
       panel.orderFrontRegardless()
       self.panel = panel
+      self.appliedLayout = self.currentLayout
       self.startFollowingActiveScreen()
     }
   }
 
   func hide() {
     DispatchQueue.main.async { [weak self] in
-      guard let self, let panel = self.panel else { return }
+      guard let self else { return }
+      self.nudge.clear()
+      guard let panel = self.panel else { return }
       self.stopFollowingActiveScreen()
       self.model.startedAt = nil
       panel.orderOut(nil)
       self.panel = nil
+      self.appliedLayout = nil
       self.placement.resetActiveScreen()
     }
+  }
+
+  func showNudge(_ payload: FloatingNudgePayload) -> Bool {
+    precondition(Thread.isMainThread)
+    guard panel?.isVisible == true, model.startedAt != nil else { return false }
+    nudge.show(payload)
+    return true
+  }
+
+  func clearNudge(recordingId: String?) {
+    precondition(Thread.isMainThread)
+    nudge.clear(recordingId: recordingId)
   }
 
   func update(state: FloatingBarStatePayload) {
@@ -177,11 +199,7 @@ final class FloatingBarManager {
     panel.minSize = size
     guard previousSize != size else { return false }
 
-    let previousLayout =
-      layout(matching: previousSize)
-      ?? FloatingBarWindowLayout(
-        isExpanded: !nextLayout.isExpanded,
-        showsExpand: model.liveCaptionToggleVisible)
+    let previousLayout = appliedLayout ?? nextLayout
     let previousAnchorOffset = controlAnchorOffset(for: previousLayout)
     let nextAnchorOffset = controlAnchorOffset(for: nextLayout)
     let anchor = placement.anchorPoint(for: panel, offset: previousAnchorOffset)
@@ -197,6 +215,8 @@ final class FloatingBarManager {
       animate: false,
       anchorOffset: nextAnchorOffset)
     panel.contentView?.frame = NSRect(origin: .zero, size: size)
+    appliedLayout = nextLayout
+    position(panel, force: true, layout: nextLayout)
     return true
   }
 
@@ -211,47 +231,36 @@ final class FloatingBarManager {
   private func layout(isExpanded: Bool) -> FloatingBarWindowLayout {
     FloatingBarWindowLayout(
       isExpanded: isExpanded,
-      showsExpand: model.liveCaptionToggleVisible
+      showsExpand: model.liveCaptionToggleVisible,
+      nudgeHeight: nudge.payload.map { FloatingBarLayout.nudgeHeight(text: $0.text) } ?? 0
     )
   }
 
   private func size(for layout: FloatingBarWindowLayout) -> NSSize {
-    FloatingBarLayout.containerSize(
+    let base = FloatingBarLayout.containerSize(
       isExpanded: layout.isExpanded,
       showsExpand: layout.showsExpand
     )
-  }
-
-  private func layout(matching size: NSSize) -> FloatingBarWindowLayout? {
-    let candidates = [
-      FloatingBarWindowLayout(isExpanded: true, showsExpand: true),
-      FloatingBarWindowLayout(isExpanded: true, showsExpand: false),
-      FloatingBarWindowLayout(isExpanded: false, showsExpand: true),
-      FloatingBarWindowLayout(isExpanded: false, showsExpand: false),
-    ]
-
-    return candidates.first { candidate in
-      let candidateSize = self.size(for: candidate)
-      return abs(candidateSize.width - size.width) < 0.5
-        && abs(candidateSize.height - size.height) < 0.5
-    }
+    guard layout.nudgeHeight > 0 else { return base }
+    return NSSize(
+      width: max(base.width, FloatingBarLayout.nudgeWidth + FloatingBarLayout.inset * 2),
+      height: base.height + layout.nudgeHeight + FloatingBarLayout.nudgeGap)
   }
 
   // Anchor at the pill's top-right corner so layout changes keep the resting
   // pill in place.
   private func controlAnchorOffset(for layout: FloatingBarWindowLayout) -> NSPoint {
+    let nudgeHeight = layout.nudgeHeight > 0 ? layout.nudgeHeight + FloatingBarLayout.nudgeGap : 0
     if layout.isExpanded {
       return NSPoint(
         x: FloatingBarLayout.inset + FloatingBarLayout.expandedWidth,
-        y: FloatingBarLayout.inset + FloatingBarLayout.expandedHeight
+        y: FloatingBarLayout.inset + FloatingBarLayout.expandedHeight + nudgeHeight
       )
     }
 
     return NSPoint(
-      x: FloatingBarLayout.inset
-        + FloatingBarLayout.compactPillWidth(
-          hovered: true, showsExpand: layout.showsExpand),
-      y: FloatingBarLayout.inset + FloatingBarLayout.compactHeight
+      x: size(for: layout).width - FloatingBarLayout.inset,
+      y: FloatingBarLayout.inset + FloatingBarLayout.compactHeight + nudgeHeight
     )
   }
 
@@ -288,4 +297,5 @@ final class FloatingBarManager {
 private struct FloatingBarWindowLayout {
   let isExpanded: Bool
   let showsExpand: Bool
+  var nudgeHeight: CGFloat = 0
 }

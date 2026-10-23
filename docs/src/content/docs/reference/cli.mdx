@@ -49,7 +49,7 @@ With `--json`, initialization streams NDJSON progress on stderr; stdout contains
 loof --vault-path /absolute/vault --json sessions delete SESSION_ID
 ```
 
-The exact ID is the confirmation in both human and JSON modes; this command never reads stdin or prompts. Resolve and verify the ID first. It validates `sessions/<ID>/_meta.json` directly without scanning the vault or matching titles. Directories without session metadata are refused. MCP remains read-only.
+The exact ID is the confirmation in both human and JSON modes; this command never reads stdin or prompts. Resolve and verify the ID first. It validates `sessions/<ID>/_meta.json` directly without scanning the vault or matching titles. Directories without session metadata are refused. MCP cannot change vault content; its `nudge` tool can display a temporary recording hint.
 
 The JSON envelope uses `command: "sessions.delete"` (also through the `meetings` alias). `data` contains `id`, `status: "deleted"`, `mode: "soft"`, absolute original `path`, absolute `trash_path`, and `deleted_at` (UTC RFC 3339 timestamp observed after the move).
 
@@ -123,7 +123,7 @@ Inside a vault it also restores the root [`AGENTS.md` agent guide](/agents/vault
 loof mcp
 ```
 
-Starts the read-only MCP server over stdio. Do not write other output to the server's stdout.
+Starts the MCP server for meeting reads and live recording tools over stdio. Do not write other output to the server's stdout.
 
 ## Help and version
 
@@ -158,3 +158,20 @@ Existing Markdown and JSON calls **without `--include`** keep their complete-ses
 For PDF/TXT/Org or any export with `--include`, `--json` reports separately from the artifact. With `--output`, the file contains only the requested format and stdout contains a versioned `meetings.export` response with `data.format`, `data.output`, and `data.bytes`. Without a file, text appears in `data.content` alongside `data.format`. `--format json --include ...` retains the existing session JSON schema but filters note, summary, and transcript content; session metadata and action items remain.
 
 Usage parsing errors return exit 2. Missing sessions return exit 2; existing destinations return exit 4. Rendering, invalid PDF destinations, unreadable source content, and other I/O failures return exit 1. With `--json`, errors go to stderr as the existing structured error response. Failed rendering leaves an existing destination intact.
+
+## Live meeting context and nudges
+
+These commands require the running macOS desktop app. Use the matching channel executable (`loof`, `loof-dev`, or `loof-staging`) and vault. They bypass the search cache and do not change vault content.
+
+```sh
+loof --json live status
+loof --json live transcript --recording-id RECORDING_ID
+loof --json live transcript --recording-id RECORDING_ID --cursor CURSOR
+loof --json nudge "Ask who owns the rollout." --recording-id RECORDING_ID
+```
+
+`live status` returns the active meeting and its recording-instance ID, or `active_meeting: null` when idle. `live transcript` returns finalized words and explicit corrections. Poll every five seconds with the returned cursor; drain `has_more` pages, apply changes by word ID, and replace accumulated context when `reset` is true. Initial and expired-cursor snapshots cover at most five minutes and 1,000 words; `truncated` reports omitted context. Use `sessions transcript` for the complete saved transcript, which can produce a large response.
+
+`nudge TEXT` displays a temporary card beneath the recording pill. `--recording-id` is optional but recommended to reject stale suggestions. Text is limited to 200 Unicode characters. New nudges replace old ones; the 20-second dismissal timer pauses on hover. The floating bar must be enabled. Success acknowledges native UI acceptance, not that the person read it.
+
+`--json` uses the existing schema envelope and writes machine-readable failures to stderr with exit code 1. Errors distinguish an unavailable desktop, stopped or mismatched recording, disabled/unavailable bar, invalid text/cursor, and protocol mismatch. Never automatically retry `delivery_timeout`, since the nudge may already have appeared. See the [live MCP contract](/reference/mcp#live-recording-tools) for response fields and retention limits.

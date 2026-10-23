@@ -11,7 +11,7 @@ The prompt checks whether the CLI is installed and can reach your vault. If need
 
 ## Optional: MCP
 
-Use MCP when your client cannot run shell commands or you want a read-only connection. Loofah's MCP server lets an agent search and read your local notes. It cannot create sessions, edit notes, or change the vault. The client-specific instructions below configure MCP.
+Use MCP when your client cannot run shell commands or you want a connection for reading and live recording nudges. Loofah's MCP server lets an agent search and read your local notes. It cannot create sessions, edit notes, or change the vault. The client-specific instructions below configure MCP.
 
 Install the [`loof` CLI](/installation) first, then check that it can find your vault:
 
@@ -106,7 +106,7 @@ Start with a session you recognize, such as the [launch-planning test](/quicksta
 
 If the answer needs wording from the conversation, explicitly ask for the transcript. MCP transcript tools return the **complete transcript**, which can produce a large response. Check important dates and decisions against the source.
 
-MCP access is read-only. If you want an agent to save a follow-up or create a research note, ask it to use the [CLI write commands](/agents/cli#store-agent-work). A local MCP server does not make a hosted agent private: the agent’s provider may receive the returned content.
+MCP does not write vault content. If you want an agent to save a follow-up or create a research note, ask it to use the [CLI write commands](/agents/cli#store-agent-work). A local MCP server does not make a hosted agent private: the agent’s provider may receive the returned content.
 
 ## Check the connection
 
@@ -115,7 +115,7 @@ Try one of these prompts after the client loads Loofah:
 - "List my five most recent meeting notes."
 - "Search my meeting notes for decisions about onboarding."
 
-The server communicates over stdio and opens no network port. Its tools are read-only. Your MCP client and the model behind it may still receive the note content returned by those tools, so check that client's data policy before using it with sensitive meetings. See [Data, privacy, and retention](/data-and-privacy) for Loofah's own data boundaries.
+The server communicates over stdio and opens no network port. Its meeting tools read vault content; `nudge` displays a temporary recording hint. Your MCP client and the model behind it may still receive the note content returned by those tools, so check that client's data policy before using it with sensitive meetings. See [Data, privacy, and retention](/data-and-privacy) for Loofah's own data boundaries.
 
 For tool names and parameters, read the [MCP reference](/reference/mcp). If the server fails to start, use the [error reference](/reference/errors).
 

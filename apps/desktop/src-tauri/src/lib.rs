@@ -7,6 +7,8 @@ mod ext;
 mod identifier_migration;
 mod legacy_db;
 mod legacy_llm;
+#[cfg(target_os = "macos")]
+mod meeting_live;
 mod recording_meta;
 mod search_index;
 mod session_store;
@@ -321,6 +323,8 @@ pub async fn main() {
                         store.set_startup_pending(true);
                         app_handle.manage(store.clone());
 
+                        #[cfg(target_os = "macos")]
+                        meeting_live::spawn(app_handle.clone(), store.clone());
                         search_index::spawn(app_handle.clone(), store.clone());
                         session_store::spawn_dispatcher(app_handle.clone());
                         startup::spawn(app_handle.clone(), store);
@@ -426,6 +430,10 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            #[cfg(target_os = "macos")]
+            if let Some(live) = app.try_state::<meeting_live::MeetingLive>() {
+                live.shutdown();
+            }
             app.state::<chatgpt::ChatgptState>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
