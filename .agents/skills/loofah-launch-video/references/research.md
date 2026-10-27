@@ -29,3 +29,7 @@ Refresh product claims, styling, channel requirements, and rendering APIs when r
 ## Music update
 
 The initial test export was silent despite being a launch film. The workflow now distinguishes sound-off legibility from a silent deliverable and includes licensed instrumental music by default. [music.md](music.md) contains the source trail and practical selection, editing, loudness, export, and listening checks, based on Wistia, Remotion, FFmpeg, and the source library's own license. It also distinguishes a measured technical check from an audible review.
+
+## Art direction update
+
+The user requested the character and craft of an independent animation studio. [art-direction.md](art-direction.md) adds a visual concept, recurring forms, transformations between scenes, expressive typography, varied motion weight, and integrated sound. This addresses the test film's reliance on repeated cards and rise/fade entrances. Primary process references are [Ordinary Folk](https://www.ordinaryfolk.co/process) and [Cub Studio](https://cubstudio.squarespace.com/animation-blog/animation-process); Loofah-specific visual suggestions are creative recommendations, not claims from those studios.

@@ -10,7 +10,7 @@ Start with a strong composition. Give titles generous negative space and reserve
 
 At 1080p, try 72–110 px titles and 30–42 px supporting text, then inspect the export at realistic viewing size. These are starting points. Keep crucial content within a generous margin and check the actual channel's current overlay/safe-area requirements for social exports.
 
-Motion should reveal hierarchy or connect states. Try entrances around 0.35–0.65 seconds, small translations, controlled easing, and near-zero overshoot. Let UI settle before viewers must read it. Avoid moving the camera, revealing text, and changing a UI state simultaneously. Simple cuts, subtle dissolves, and matching the next shot to the previous focus often suffice.
+Build motion around the concept in [art-direction.md](art-direction.md). Use motivated anticipation, distinct object weight, shared forms across scenes, and a few well-developed transformations. Overshoot, arcs, masks, perspective, and secondary motion are useful when they add character. Do not default every element to the same small translation/fade. Keep the main focus clear, and let text or UI settle before it must be read. Use deliberate bursts and holds instead of uniformly fast movement.
 
 Retain enough context when highlighting a detail. Cursors should move purposefully, click real controls, then get out of the way. Actual captures provide interaction proof; composited highlights are editorial annotations, not new app behavior.
 
@@ -45,7 +45,7 @@ Use actual entry point/composition names and confirm flags against installed ver
 
 ## Definition of done
 
-Render and inspect the opening, stable state of each proof, boundaries likely to clip/flash, and closing card. View a contact sheet or stills at output resolution. Check line breaks, font identity, overflow, small UI, contrast, aspect ratio, cursor position, and framing.
+Render and inspect the opening, stable state of each proof, intermediate transition poses, boundaries likely to clip/flash, and closing card. View a contact sheet or stills at output resolution. Check line breaks, font identity, overflow, small UI, contrast, aspect ratio, cursor position, framing, and the continuity of forms. Use a short motion proof to judge important transitions before the full render; it should reveal the intended choreography, not just confirm that the code compiles.
 
 Watch the full export in sequence using available playback tools. Review once without sound; if sound exists, review sync, level, and ending too. Stills cannot establish pacing. If playback is unavailable, inspect evenly spaced and boundary frames, report that limitation, and do not claim a full playback review.
 

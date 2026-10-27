@@ -22,11 +22,15 @@ and state assumptions briefly. Ask only about choices that materially alter
 the brief or prevent completion. If I requested only a prompt or script,
 deliver that stage without starting an unrequested video project.
 
-Show a recognizable product result early. Build one comprehensible workflow
-with real UI evidence. Use forest green, pale leaf accents, soft Fraunces
-titles, and quiet nature texture outside the captured app. Give readable UI
-shots time to settle. Vary shot scale and rhythm around the story. Keep
-copy short and specific, with one clear call to action.
+Develop a distinctive visual idea using the skill's art-direction reference.
+Build the film around a recurring form that transforms with the story, with
+crafted typography, original illustration, and purposeful transitions. Keep
+forest green, pale leaf accents, Fraunces, and canonical Loofah artwork as
+identity anchors, while giving each scene an intentional composition.
+Show a recognizable result early and use real UI evidence when showing an
+actual workflow. Give readable words and UI time to settle. Vary motion
+weight and rhythm, and plan picture and music together. Keep copy short
+and specific, with one clear call to action.
 
 Use the available renderer/editor. Remotion is a good default when starting
 from code. Avoid unnecessary changes to the desktop app. Use traceable assets
@@ -38,7 +42,7 @@ edit it to the story, and mix it with clean fades. Keep the film readable
 with sound off, and include the soundtrack in the exported file. Follow the
 skill's music reference for sourcing, mixing, and audio verification.
 
-Inspect representative rendered frames and the finished export. Deliver the
+Inspect style frames and a short transition proof, then the finished export. Deliver the
 MP4, editable source, render command, and relevant subtitle/credit files.
 State actual limitations plainly if rendering or audio is unavailable.
 ```
