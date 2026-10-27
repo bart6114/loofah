@@ -91,6 +91,8 @@ loof transcribe MEETING_ID
 
 Transcribes the meeting's audio recording on-device with the speech-to-text model configured in the desktop app and replaces the meeting's transcript, exactly as the app's own batch transcription does. Prints the new transcript id (`--json` returns the meeting id plus a `transcript` object). Progress is written to stderr. The recording is kept after transcription.
 
+Supported models include **Soniqo Parakeet Streaming**, **Soniqo Parakeet Batch**, and **Nemotron 3.5 ASR (Multilingual)**. Download and select the model in the desktop app first. Nemotron uses your configured meeting languages to guide recognition, including automatic language detection when multiple languages are selected.
+
 The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (only on-device `soniqo-*` models are), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription requires macOS on Apple Silicon.
 
 ## JSON response contract

@@ -31,6 +31,7 @@ Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crat
 
 ## Guidelines
 
+- For every change, assess whether documentation needs updating. Update affected docs in the same change so they match the implemented behavior.
 - Format via dprint after making changes.
 - JavaScript/TypeScript formatting runs through `oxfmt` via dprint's exec plugin.
 - Run `pnpm -r typecheck` after TypeScript changes, `cargo check` after Rust changes.
