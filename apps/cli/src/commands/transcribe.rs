@@ -323,6 +323,10 @@ mod tests {
     #[test]
     fn soniqo_models_resolve_to_their_configured_id() {
         let model =
+            resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-nemotron-3.5-streaming")))
+                .unwrap();
+        assert_eq!(model, "soniqo-nemotron-3.5-streaming");
+        let model =
             resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-parakeet-batch"))).unwrap();
         assert_eq!(model, "soniqo-parakeet-batch");
 

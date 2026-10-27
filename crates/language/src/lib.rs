@@ -18,6 +18,11 @@ pub const PARAKEET_TDT_V3_LANGUAGE_CODES: &[&str] = &[
     "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "uk",
 ];
 
+pub const NEMOTRON_3_5_LANGUAGE_CODES: &[&str] = &[
+    "ar", "bg", "cs", "da", "de", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja", "ko",
+    "nb", "nl", "pl", "pt", "ro", "ru", "sk", "sv", "tr", "uk", "vi", "zh",
+];
+
 #[derive(Debug, Clone, PartialEq, schemars::JsonSchema)]
 pub struct Language {
     #[schemars(
@@ -270,6 +275,14 @@ pub fn parakeet_tdt_v3_languages() -> Vec<Language> {
 
 pub fn is_parakeet_tdt_v3_language(language: &Language) -> bool {
     PARAKEET_TDT_V3_LANGUAGE_CODES.contains(&language.iso639_code())
+}
+
+pub fn is_nemotron_3_5_language(language: &Language) -> bool {
+    let code = match language.iso639_code() {
+        "no" => "nb",
+        code => code,
+    };
+    NEMOTRON_3_5_LANGUAGE_CODES.contains(&code)
 }
 
 pub fn is_parakeet_eou_language(language: &Language) -> bool {

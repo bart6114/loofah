@@ -368,7 +368,7 @@ async fn handle_listener_failure(
         tracing::warn!("listener_failed_stopping_session");
         stop_after_listener_failure(myself, state, degraded).await;
     } else {
-        let should_retry = should_retry_listener_failure(&degraded);
+        let should_retry = should_retry_listener_failure(state, &degraded);
         enter_batch_fallback(state, degraded).await;
         if should_retry {
             schedule_listener_retry(myself, state);
@@ -394,7 +394,7 @@ fn classify_listener_startup_failure(
         };
     }
 
-    if should_stop_on_listener_failure(state) {
+    if state.ctx.params.uses_local_soniqo_live_model() || should_stop_on_listener_failure(state) {
         DegradedError::StreamError {
             message: error.to_string(),
         }
@@ -405,8 +405,9 @@ fn classify_listener_startup_failure(
     }
 }
 
-fn should_retry_listener_failure(degraded: &DegradedError) -> bool {
-    !matches!(degraded, DegradedError::AuthenticationFailed { .. })
+fn should_retry_listener_failure(state: &SessionState, degraded: &DegradedError) -> bool {
+    !state.ctx.params.uses_local_soniqo_live_model()
+        && !matches!(degraded, DegradedError::AuthenticationFailed { .. })
 }
 
 fn schedule_listener_retry(myself: &ActorRef<SessionMsg>, state: &mut SessionState) {
@@ -454,15 +455,20 @@ async fn retry_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState) 
 }
 
 fn should_stop_on_listener_failure(state: &SessionState) -> bool {
-    state.ctx.params.uses_local_soniqo_live_model()
-        || matches!(
-            AdapterKind::from_url_and_languages(
-                &state.ctx.params.base_url,
-                &state.ctx.params.languages,
-                Some(&state.ctx.params.model),
-            ),
-            AdapterKind::Soniox
-        )
+    hypr_transcribe_soniqo::local_model_from_request(
+        &state.ctx.params.base_url,
+        &state.ctx.params.model,
+    )
+    .is_some_and(|model| {
+        model.supports_live() && model != hypr_transcribe_soniqo::SoniqoModel::NemotronStreaming
+    }) || matches!(
+        AdapterKind::from_url_and_languages(
+            &state.ctx.params.base_url,
+            &state.ctx.params.languages,
+            Some(&state.ctx.params.model),
+        ),
+        AdapterKind::Soniox
+    )
 }
 
 async fn stop_after_listener_failure(
@@ -740,6 +746,35 @@ mod tests {
     }
 
     #[test]
+    fn nemotron_listener_failure_preserves_recording_without_restarting_the_native_engine() {
+        for base_url in [
+            hypr_transcribe_soniqo::LOCAL_BASE_URL,
+            "http://localhost:1234",
+        ] {
+            let mut ctx = test_ctx();
+            ctx.params.base_url = base_url.to_string();
+            ctx.params.model = hypr_transcribe_soniqo::SoniqoModel::NemotronStreaming
+                .as_str()
+                .to_string();
+            let state = test_state(ctx);
+            assert!(!should_stop_on_listener_failure(&state));
+            assert!(!should_retry_listener_failure(
+                &state,
+                &DegradedError::ConnectionTimeout
+            ));
+            let degraded = classify_listener_startup_failure(
+                &state,
+                &ractor::SpawnErr::StartupFailed(Box::new(std::io::Error::other(
+                    "native inference failed",
+                ))),
+            );
+            assert!(
+                matches!(degraded, DegradedError::StreamError { message } if message.contains("native inference failed"))
+            );
+        }
+    }
+
+    #[test]
     fn direct_soniox_listener_failure_stops_session() {
         let mut ctx = test_ctx();
         ctx.params.base_url = "https://api.soniox.com".to_string();
@@ -769,6 +804,7 @@ mod tests {
     #[test]
     fn transient_listener_failures_retry_with_capped_backoff() {
         assert!(should_retry_listener_failure(
+            &test_state(test_ctx()),
             &DegradedError::ConnectionTimeout
         ));
         assert_eq!(listener_retry_delay(0), Duration::from_secs(2));
@@ -871,13 +907,14 @@ mod tests {
                 &state,
                 &ractor::SpawnErr::StartupFailed(Box::new(error)),
             );
-            assert!(should_retry_listener_failure(&degraded));
+            assert!(should_retry_listener_failure(&state, &degraded));
         }
     }
 
     #[test]
     fn authentication_failures_do_not_retry() {
         assert!(!should_retry_listener_failure(
+            &test_state(test_ctx()),
             &DegradedError::AuthenticationFailed {
                 provider: "test".to_string(),
             }

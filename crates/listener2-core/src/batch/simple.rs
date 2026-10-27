@@ -154,7 +154,7 @@ pub(super) async fn run_soniqo_batch(
             .languages
             .first()
             .map(hypr_language::Language::bcp47_code);
-        let language_hint = soniqo_language_hint(language.as_deref());
+        let language_hint = model.language_hint(&listen_params.languages);
         let language_label = language.as_deref().unwrap_or("auto").to_string();
         let language_hint_label = language_hint.as_deref().unwrap_or("auto").to_string();
         let started_at = Instant::now();
@@ -344,21 +344,12 @@ impl From<AudioChunk> for ChannelChunk {
     }
 }
 
-fn soniqo_language_hint(language: Option<&str>) -> Option<String> {
-    let language = language?.trim();
-    if language.is_empty() {
-        return None;
-    }
-
-    language
-        .split(['-', '_'])
-        .next()
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_lowercase())
-}
-
 fn uses_resilient_soniqo_chunking(model: hypr_transcribe_soniqo::SoniqoModel) -> bool {
-    matches!(model, hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch)
+    matches!(
+        model,
+        hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch
+            | hypr_transcribe_soniqo::SoniqoModel::NemotronStreaming
+    )
 }
 
 fn soniqo_batch_progress(completed_chunks: usize, total_chunks: usize) -> f64 {
@@ -820,15 +811,6 @@ mod tests {
 
         assert!(minimum_mel_frames > 2000);
         assert!(maximum_mel_frames <= 3000);
-    }
-
-    #[test]
-    fn soniqo_language_hint_uses_base_language_code() {
-        assert_eq!(soniqo_language_hint(Some("de-DE")).as_deref(), Some("de"));
-        assert_eq!(soniqo_language_hint(Some("en_US")).as_deref(), Some("en"));
-        assert_eq!(soniqo_language_hint(Some(" fr ")).as_deref(), Some("fr"));
-        assert_eq!(soniqo_language_hint(Some("")).as_deref(), None);
-        assert_eq!(soniqo_language_hint(None).as_deref(), None);
     }
 
     #[test]

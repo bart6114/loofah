@@ -87,6 +87,18 @@ fn soniqo_language_support(
         } else {
             parakeet_language_support(languages)
         }),
+        "soniqo-nemotron-3.5-streaming" => Some(
+            if languages
+                .iter()
+                .all(hypr_language::is_nemotron_3_5_language)
+            {
+                LanguageSupport::Supported {
+                    quality: LanguageQuality::NoData,
+                }
+            } else {
+                LanguageSupport::NotSupported
+            },
+        ),
         "soniqo-omnilingual" => Some(if live {
             LanguageSupport::NotSupported
         } else {

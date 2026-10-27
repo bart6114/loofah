@@ -8,7 +8,7 @@ use std::{
 };
 
 #[cfg(target_os = "macos")]
-const SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET: &str = "14.0";
+const SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET: &str = "15.0";
 #[cfg(target_os = "macos")]
 const SONIQO_METALLIB_MACOS_DEPLOYMENT_TARGET: &str = "15.0";
 
@@ -163,60 +163,6 @@ fn prepare_swift_package(swift_build_dir: &Path) {
         .arg(swift_build_dir)
         .arg("resolve");
     run_command(command, "resolving Soniqo Swift dependencies");
-
-    patch_speech_swift_manifest(swift_build_dir);
-}
-
-#[cfg(target_os = "macos")]
-fn patch_speech_swift_manifest(swift_build_dir: &Path) {
-    let manifest = swift_build_dir
-        .join("checkouts")
-        .join("speech-swift")
-        .join("Package.swift");
-    let target = format!(".macOS(\"{SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET}\")");
-    let contents = fs::read_to_string(&manifest).unwrap_or_else(|error| {
-        panic!(
-            "failed to read Soniqo speech-swift manifest {}: {error}",
-            manifest.display()
-        )
-    });
-
-    if contents.contains(&target) {
-        return;
-    }
-
-    let patched = contents.replace(".macOS(\"15.0\")", &target);
-    if patched == contents {
-        panic!(
-            "failed to patch Soniqo speech-swift manifest {}; expected macOS 15.0 platform declaration",
-            manifest.display()
-        );
-    }
-
-    let mut permissions = fs::metadata(&manifest)
-        .unwrap_or_else(|error| {
-            panic!(
-                "failed to read permissions for Soniqo speech-swift manifest {}: {error}",
-                manifest.display()
-            )
-        })
-        .permissions();
-    if permissions.readonly() {
-        permissions.set_readonly(false);
-        fs::set_permissions(&manifest, permissions).unwrap_or_else(|error| {
-            panic!(
-                "failed to make Soniqo speech-swift manifest writable {}: {error}",
-                manifest.display()
-            )
-        });
-    }
-
-    fs::write(&manifest, patched).unwrap_or_else(|error| {
-        panic!(
-            "failed to patch Soniqo speech-swift manifest {}: {error}",
-            manifest.display()
-        )
-    });
 }
 
 #[cfg(target_os = "macos")]
