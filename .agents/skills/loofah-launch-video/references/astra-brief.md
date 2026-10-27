@@ -32,6 +32,10 @@ actual workflow. Give readable words and UI time to settle. Vary motion
 weight and rhythm, and plan picture and music together. Keep copy short
 and specific, with one clear call to action.
 
+For a transcription illustration, animate audio activity becoming words;
+use descriptive example text and retain the completed transcript. Keep
+production disclaimers out of the film; document provenance in project notes.
+
 Use the available renderer/editor. Remotion is a good default when starting
 from code. Avoid unnecessary changes to the desktop app. Use traceable assets
 and synthetic demo content. Preserve actual product behavior and distinguish
@@ -60,6 +64,6 @@ A proposed creative structure, not a researched optimum or approved final script
 | 23–26 s | Reinforce choice | “Free. Open source.” | Calm product/identity composition. Omit if the central proof needs more room. |
 | 26–30 s | Next action | “Download free for macOS” / “loofah.io” | Stable forest end card, canonical icon and wordmark; readable for several seconds. |
 
-If only the existing summary screenshot is available, do not animate fabricated recording/transcription interactions. Build an honest result-led film from verified stills, obtain suitable captures, or state missing evidence and complete the supported portion. If music is unavailable after a focused search, label the output as a silent draft and explain what is missing.
+If suitable app footage is unavailable, use verified stills or conceptual illustration that supports current product behavior. Do not invent real app controls, fake inference results, or benchmark claims. An animated waveform becoming text is a valid explanatory device and does not need a production disclaimer. If music is unavailable after a focused search, label the delivered file as a silent draft and explain what is missing in the handoff.
 
 For 15 seconds, retain the opening, one proof, and CTA. For longer films, add useful evidence or human context. Reframe vertical versions around a readable detail instead of scaling down a landscape desktop window.

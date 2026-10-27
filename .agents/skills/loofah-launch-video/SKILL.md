@@ -21,7 +21,7 @@ Identify the audience, one takeaway, launch topic, destination, duration, and av
 
 Read [brand.md](references/brand.md) for verified styling, assets, and product claim boundaries. This is a repository-owned skill: the Loofah root is three directories above this skill directory. Resolve assets relative to that checkout, including when invoked from another working directory. Refresh relevant source files and visually inspect chosen assets. Current source and user direction take precedence over this snapshot.
 
-Use actual screenshots or recordings for product proof. The homepage contains a styled product illustration; it is not evidence that a particular interaction exists. Use synthetic meeting content for new captures. Never expose private meeting material merely to obtain a demo.
+Use actual screenshots or recordings when proving a specific app interaction. Conceptual animation can explain transcription, model choice, or ownership without pretending to be captured UI or a performance benchmark. The homepage's styled product illustration is not evidence of a particular interaction. Use synthetic meeting content for new captures. Never expose private meeting material merely to obtain a demo.
 
 ## Direct the story
 
@@ -35,6 +35,8 @@ For a request for more character or “oomph,” revise composition, choreograph
 
 Use plain, specific language. Let real proof carry the claim. Omit invented metrics, superlatives, launch dates, testimonials, and unsupported UI states. Show dependencies honestly when demonstrating generated summaries or time-consuming processing; make editorial time jumps clear.
 
+Keep viewer-facing copy about the product and its benefit. Do not add self-conscious production disclaimers such as “motion illustration,” “not an app capture,” or “simulated animation” by default. Use visual storytelling to make a conceptual demonstration clear, and keep asset provenance and production explanations in project notes. Add an on-screen qualification only when the brief asks for it or a specific claim materially needs it.
+
 Suggested timing and a reusable Astra assignment are in [astra-brief.md](references/astra-brief.md). Adapt the structure to the story; do not force every launch into it.
 
 ## Produce and finish
@@ -45,7 +47,7 @@ Read [music.md](references/music.md) when selecting, editing, mixing, or adding 
 
 Render representative style frames and a short motion proof of the most important transition before committing to a full export. Inspect actual output and revise weak moments. Then check the finished render for pacing, readable product proof, continuity, clean scene boundaries, correct claims, resolved fonts/assets, and a complete end card. Match verification to the video project; unrelated desktop changes or release workflows are unnecessary.
 
-Deliver the rendered file and editable source with reproducible render instructions. Include subtitles when narration is present, a poster when requested/useful, and asset attribution where needed. State any missing footage, absent audio, illustrative treatment, or verification limit. Do not call an unrendered project a finished video. Creating a video does not authorize publishing or scheduling it.
+Deliver the rendered file and editable source with reproducible render instructions. Include subtitles when narration is present, a poster when requested/useful, and asset attribution where needed. Record source provenance and illustrative treatments in project notes; report material missing assets or verification limits in the handoff. Do not call an unrendered project a finished video. Creating a video does not authorize publishing or scheduling it.
 
 ## Research
 

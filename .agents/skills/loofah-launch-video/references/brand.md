@@ -40,7 +40,7 @@ The full icon has a pale cream/sage squircle and dark botanical cross-section ma
 
 The homepage credits the forest clip to this [Pexels source](https://www.pexels.com/video/serene-sunlight-through-lush-forest-leaves-31883946/). Retain provenance when reusing it and check the relevant license for a new use. Keep nature footage subdued beneath text. The homepage uses dark directional overlays, strongest behind copy.
 
-Public fallbacks: [artwork gallery](https://loofah.io/artwork), [screenshot](https://loofah.io/screenshots/loofah-primary.png). If the checkout is unavailable, use public references and distinguish verified captures from illustrative reconstruction.
+Public fallbacks: [artwork gallery](https://loofah.io/artwork), [screenshot](https://loofah.io/screenshots/loofah-primary.png). If the checkout is unavailable, use public references and record which assets are captures or original illustrations in project notes.
 
 ## Product appearance
 
@@ -69,6 +69,6 @@ The screenshot's November beta text is synthetic meeting content, not a Loofah r
 
 ## Nemotron announcement direction
 
-For the Nemotron launch film, the approved announcement is that **Nemotron 3.5 ASR** has joined Loofah's offline transcription models. Preserve the **ASR** suffix in visible titles, model labels, and supporting copy; a shorter internal enum/display label is not a reason to drop it from the campaign name. Use English copy and example text. The closing explains Loofah: “All your meetings transcribed. Fully locally. Own your data.” with a clear “Free and open source” line and `loofah.io`. Keep the local claim tied to transcription; optional hosted summaries remain a separate choice.
+For the Nemotron launch film, the approved announcement is that **Nemotron 3.5 ASR** has joined Loofah's offline transcription models. Preserve the **ASR** suffix in visible titles, model labels, and supporting copy; a shorter internal enum/display label is not a reason to drop it from the campaign name. Use English copy and example text. Demonstrate speech becoming words with a descriptive sample such as “Every spoken word, written down.” rather than an apparent request to discuss next steps. Remove on-screen production disclaimers. The closing explains Loofah: “All your meetings transcribed. Fully locally. Own your data.” with a clear “Free and open source” line and `loofah.io`. Keep the local claim tied to transcription; optional hosted summaries remain a separate choice.
 
 These are campaign-specific decisions to retain when revising this film, not a mandatory script for every feature launch. Its soundtrack should feel positive and spirited; quiet forest visuals do not require a slow meditative cue.

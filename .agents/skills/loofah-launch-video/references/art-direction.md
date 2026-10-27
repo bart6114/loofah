@@ -30,13 +30,15 @@ Let rhythmic bursts alternate with composure. Arrivals can be energetic while te
 
 Use the word's meaning and hierarchy to choose its motion. Fraunces can arrive through a traveling mask, expand from a tightly composed block, or share a baseline with the next thought. Prefer whole words or short phrases that remain readable; endless letter-by-letter assembly is a poor default.
 
-Plan line breaks at final size. Check actual fonts, italic overhang, spaces around version numbers and **ASR**, and the text during its reveal as well as at rest. Reserve strong scale contrast and an accent color for what matters. Keep secondary labels quiet enough to serve the composition without becoming unreadable.
+Plan line breaks at final size. Check actual fonts, italic overhang, spaces around version numbers and **ASR**, and the text during its reveal as well as at rest. Reveal masks need room for horizontal ink overhang as well as vertical descenders; the CSS advance width alone may crop an italic final glyph. Remove a temporary reveal clip once settled when it serves no further purpose, and inspect a late hold at full resolution. Reserve strong scale contrast and an accent color for what matters. Keep secondary labels quiet enough to serve the composition without becoming unreadable.
+
+In a transcription demonstration, show a cause and result: active audio movement, words appearing progressively, then a quieter waveform with completed text retained. Choose a descriptive sample that cannot be mistaken for an instruction to the viewer. A short “Audio → text” label can make the sequence clear; a static sentence on a card does not communicate the transformation by itself. Keep the reveal illustrative rather than suggesting a measured latency result.
 
 ## Build convincing illustration and space
 
 Use original SVG, geometry, or code-native illustration when precise shapes and repeatability serve the concept. Apply one consistent perspective, line weight, corner language, shadow direction, and material logic. A small amount of dimensional layering or paper overlap can give a scene tactile presence without requiring a heavy 3D pipeline.
 
-Texture should be subtle and intentional. If using grain or incidental variation, keep it deterministic and inspect it at export size so it does not turn into compression noise. Preserve canonical logo proportions; animate the supplied mark as an object rather than redrawing or deforming it into a different logo. Clearly distinguish conceptual illustration from captured UI. A local-file metaphor must not imply unsupported encryption or other new features.
+Texture should be subtle and intentional. If using grain or incidental variation, keep it deterministic and inspect it at export size so it does not turn into compression noise. Preserve canonical logo proportions; animate the supplied mark as an object rather than redrawing or deforming it into a different logo. Keep conceptual illustration internally coherent without fabricating app behavior. Use its visual language to establish the treatment; do not add an automatic “not an app capture” disclaimer. A local-file metaphor must not imply unsupported encryption or other new features.
 
 ## Compose sound with picture
 
