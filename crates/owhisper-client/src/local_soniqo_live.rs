@@ -37,19 +37,19 @@ pub enum LocalSoniqoLiveError {
 
 pub struct LocalSoniqoLiveClient {
     model: hypr_transcribe_soniqo::SoniqoModel,
-    language: Option<String>,
+    language: hypr_transcribe_soniqo::LanguageConfig,
 }
 
 impl LocalSoniqoLiveClient {
     pub fn new(model: hypr_transcribe_soniqo::SoniqoModel) -> Self {
         Self {
             model,
-            language: None,
+            language: Default::default(),
         }
     }
 
     pub fn with_languages(mut self, languages: &[hypr_language::Language]) -> Self {
-        self.language = self.model.language_hint(languages);
+        self.language = self.model.language_config(languages);
         self
     }
 
@@ -328,13 +328,10 @@ async fn stop_after_finalize(
 
 async fn start_session(
     model: hypr_transcribe_soniqo::SoniqoModel,
-    language: Option<String>,
+    language: hypr_transcribe_soniqo::LanguageConfig,
 ) -> Result<hypr_transcribe_soniqo::LiveTranscriptionSession, LocalSoniqoLiveError> {
     tokio::task::spawn_blocking(move || {
-        hypr_transcribe_soniqo::LiveTranscriptionSession::start_with_language(
-            model,
-            language.as_deref(),
-        )
+        hypr_transcribe_soniqo::LiveTranscriptionSession::start_with_config(model, &language)
     })
     .await
     .map_err(|error| LocalSoniqoLiveError::StartJoin(error.to_string()))?

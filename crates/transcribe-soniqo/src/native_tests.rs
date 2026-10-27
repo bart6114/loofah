@@ -3,6 +3,23 @@ use std::time::Duration;
 
 #[test]
 #[ignore = "requires the downloaded Nemotron model and native CoreML inference"]
+fn nemotron_guidance_accepts_supported_language_pairs() {
+    let model = SoniqoModel::NemotronStreaming;
+    assert!(is_model_downloaded(model).unwrap());
+    for language in model.supported_language_codes().unwrap() {
+        if language == "en" {
+            continue;
+        }
+        let config = model.language_config(&["en".parse().unwrap(), language.parse().unwrap()]);
+        LiveTranscriptionSession::start_with_config(model, &config)
+            .unwrap_or_else(|error| panic!("guide for {language}: {error}"))
+            .stop()
+            .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "requires the downloaded Nemotron model and native CoreML inference"]
 fn nemotron_file_inference_allows_live_channels_to_progress() {
     let model = SoniqoModel::NemotronStreaming;
     assert!(is_model_downloaded(model).unwrap());
@@ -88,7 +105,16 @@ fn nemotron_download_file_and_dual_stream() {
     let path = std::env::var("LOOFAH_NEMOTRON_QA_AUDIO")
         .unwrap_or_else(|_| hypr_data::english_1::AUDIO_PATH.to_string());
     let hint = std::env::var("LOOFAH_NEMOTRON_QA_LANGUAGE").ok();
-    let batch = transcribe_file(model, &path, hint.as_deref()).unwrap();
+    let config = match std::env::var("LOOFAH_NEMOTRON_QA_LANGUAGES") {
+        Ok(languages) => model.language_config(
+            &languages
+                .split(',')
+                .map(|language| language.parse().unwrap())
+                .collect::<Vec<_>>(),
+        ),
+        Err(_) => LanguageConfig::single(hint.as_deref()),
+    };
+    let batch = transcribe_file_with_config(model, &path, &config).unwrap();
     eprintln!(
         "Nemotron batch ({:.2}s): {}",
         batch.duration_seconds, batch.text
@@ -101,8 +127,7 @@ fn nemotron_download_file_and_dual_stream() {
     let file = hypr_audio_utils::PcmFile::prepare(&path, || false).unwrap();
     let pcm = &file.descriptor;
     let samples = pcm.reader().unwrap().channel(0, 0..pcm.frames).unwrap();
-    let mut session =
-        LiveTranscriptionSession::start_with_language(model, hint.as_deref()).unwrap();
+    let mut session = LiveTranscriptionSession::start_with_config(model, &config).unwrap();
     let mut finals = [Vec::<LivePartial>::new(), Vec::new()];
     let mut partial_count = 0;
     let started = Instant::now();

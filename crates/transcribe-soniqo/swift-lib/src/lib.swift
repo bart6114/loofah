@@ -241,19 +241,52 @@ private enum SpeechModelKind: String, CaseIterable {
   }
 }
 
+private struct SpeechLanguageConfig: Decodable {
+  var language: String?
+  var expectedLanguages: [String] = []
+
+  static func decode(_ json: String) throws -> Self {
+    try JSONDecoder().decode(Self.self, from: Data(json.utf8))
+  }
+
+  func nemotronSession(for model: NemotronStreamingASRModel) throws
+    -> NemotronStreamingASR.StreamingSession
+  {
+    guard language != nil || !expectedLanguages.isEmpty else { return try model.createSession() }
+    let available = model.supportedLanguageGuideLanguages
+    func locale(for tag: String) -> String? {
+      if available.contains(tag) { return tag }
+      let prefix =
+        tag.split(separator: "-").first.map(String.init)?.lowercased() ?? tag.lowercased()
+      let candidates = available.filter { $0.lowercased().hasPrefix(prefix + "-") }
+      let slot = model.languages.slot(for: tag)
+      return candidates.first(where: { model.languages.slot(for: $0) == slot }) ?? candidates.first
+    }
+    if let language { return try model.createSession(language: locale(for: language) ?? language) }
+    var locales: [String] = []
+    for expected in expectedLanguages {
+      guard let locale = locale(for: expected) else {
+        throw LanguageGuideError.unsupportedLanguage(expected)
+      }
+      if !locales.contains(locale) { locales.append(locale) }
+    }
+    return try model.createSession(languageGuide: LanguageGuideConfig(expectedLanguages: locales))
+  }
+}
+
 private enum LoadedSpeechModel {
   case streaming(ParakeetStreamingASRModel)
   case parakeetBatch(ParakeetASRModel)
   case omnilingual(OmnilingualASRModel)
   case nemotron(NemotronStreamingASRModel)
 
-  func createLiveSession(language: String?) throws -> LiveSession {
+  func createLiveSession(config: SpeechLanguageConfig) throws -> LiveSession {
     try autoreleasepool {
       switch self {
       case .streaming(let model):
         return .parakeet(try model.createSession())
       case .nemotron(let model):
-        return .nemotron(try model.createSession(language: language))
+        return .nemotron(try config.nemotronSession(for: model))
       default:
         throw SoniqoBridgeError.message(
           "The selected model does not support realtime transcription.")
@@ -396,7 +429,7 @@ private actor SoniqoBridge {
   private var downloadStates: [SpeechModelKind: ModelDownloadPayload] = [:]
   private var activeStreamingSessions: [TranscriptSource: LiveSession] = [:]
   private var activeStreamingKind: SpeechModelKind?
-  private var activeStreamingLanguage: String?
+  private var activeStreamingLanguageConfig = SpeechLanguageConfig()
 
   func cacheDirectory(modelId: String) -> String {
     guard let kind = SpeechModelKind.resolve(modelId) else {
@@ -506,14 +539,13 @@ private actor SoniqoBridge {
       }
 
       let model = try await ensureModelLoaded(kind)
-      let hint = language.trimmingCharacters(in: .whitespacesAndNewlines)
-      let languageHint = hint.isEmpty ? nil : hint
+      let config = try SpeechLanguageConfig.decode(language)
       activeStreamingSessions = [
-        .microphone: try model.createLiveSession(language: languageHint),
-        .system: try model.createLiveSession(language: languageHint),
+        .microphone: try model.createLiveSession(config: config),
+        .system: try model.createLiveSession(config: config),
       ]
       activeStreamingKind = kind
-      activeStreamingLanguage = languageHint
+      activeStreamingLanguageConfig = config
       return encodeJSON(StatusPayload(running: true, error: nil))
     } catch {
       activeStreamingSessions = [:]
@@ -524,7 +556,7 @@ private actor SoniqoBridge {
   func stopLiveJSON() -> String {
     activeStreamingSessions = [:]
     activeStreamingKind = nil
-    activeStreamingLanguage = nil
+    activeStreamingLanguageConfig = SpeechLanguageConfig()
     return encodeJSON(StatusPayload(running: false, error: nil))
   }
 
@@ -561,7 +593,7 @@ private actor SoniqoBridge {
       }
       if activeStreamingKind == .nemotron, let model = loadedModels[.nemotron] {
         activeStreamingSessions[transcriptSource] = try model.createLiveSession(
-          language: activeStreamingLanguage
+          config: activeStreamingLanguageConfig
         )
       }
       return encodeJSON(LiveAppendPayload(partials: partials, error: nil))
@@ -577,7 +609,7 @@ private actor SoniqoBridge {
         throw SoniqoBridgeError.message("Unsupported Soniqo model: \(modelId)")
       }
 
-      let trimmedLanguage = language.trimmingCharacters(in: .whitespacesAndNewlines)
+      let config = try SpeechLanguageConfig.decode(language)
       let url = URL(fileURLWithPath: audioPath)
       let audio = try AudioFileLoader.load(
         url: url,
@@ -589,7 +621,7 @@ private actor SoniqoBridge {
         kind: kind,
         audio: audio,
         sampleRate: soniqoFileTranscriptionSampleRate,
-        language: trimmedLanguage.isEmpty ? nil : trimmedLanguage
+        language: config
       )
 
       return encodeJSON(
@@ -615,7 +647,7 @@ private actor SoniqoBridge {
     kind: SpeechModelKind,
     audio: [Float],
     sampleRate: Int,
-    language: String?
+    language: SpeechLanguageConfig
   ) async throws -> String {
     guard !audio.isEmpty else {
       return ""
@@ -681,7 +713,7 @@ private actor SoniqoBridge {
     kind: SpeechModelKind,
     audio: [Float],
     sampleRate: Int,
-    language: String?
+    language: SpeechLanguageConfig
   ) async throws -> String {
     let normalizedAudio = normalizedFileTranscriptionAudio(
       kind: kind,
@@ -689,7 +721,9 @@ private actor SoniqoBridge {
       sampleRate: sampleRate
     )
     if case .nemotron(let nemotron) = model {
-      let session = try autoreleasepool { try nemotron.createSession(language: language) }
+      let session = try autoreleasepool {
+        try language.nemotronSession(for: nemotron)
+      }
       let chunkSamples = nemotron.config.streaming.melFrames * nemotron.config.hopLength
       var text = ""
       for start in stride(from: 0, to: normalizedAudio.count, by: chunkSamples) {
@@ -705,7 +739,8 @@ private actor SoniqoBridge {
       return try autoreleasepool { try session.finalize().last?.text ?? text }
     }
     return try autoreleasepool {
-      try model.transcribe(audio: normalizedAudio, sampleRate: sampleRate, language: language)
+      try model.transcribe(
+        audio: normalizedAudio, sampleRate: sampleRate, language: language.language)
     }
   }
 

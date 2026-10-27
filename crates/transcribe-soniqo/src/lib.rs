@@ -69,6 +69,33 @@ pub enum SoniqoModel {
     Omnilingual,
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageConfig {
+    pub language: Option<String>,
+    pub expected_languages: Vec<String>,
+}
+
+impl LanguageConfig {
+    pub fn single(language: Option<&str>) -> Self {
+        Self {
+            language: language
+                .map(str::trim)
+                .filter(|language| !language.is_empty())
+                .map(str::to_string),
+            expected_languages: Vec::new(),
+        }
+    }
+}
+
+fn nemotron_language_tag(language: &hypr_language::Language) -> String {
+    if language.iso639_code() == "no" {
+        "nb-NO".to_string()
+    } else {
+        language.bcp47_code()
+    }
+}
+
 impl SoniqoModel {
     const ALL: &'static [Self] = &[
         Self::ParakeetStreaming,
@@ -183,14 +210,33 @@ impl SoniqoModel {
     pub fn language_hint(self, languages: &[hypr_language::Language]) -> Option<String> {
         if self == Self::NemotronStreaming {
             return match languages {
-                [language] if language.iso639_code() == "no" => Some("nb-NO".to_string()),
-                [language] => Some(language.bcp47_code()),
+                [language] => Some(nemotron_language_tag(language)),
                 _ => None,
             };
         }
         languages
             .first()
             .map(|language| language.iso639_code().to_string())
+    }
+
+    pub fn language_config(self, languages: &[hypr_language::Language]) -> LanguageConfig {
+        let language = self.language_hint(languages);
+        let expected_languages = if self == Self::NemotronStreaming && language.is_none() {
+            let mut expected = Vec::new();
+            for language in languages {
+                let tag = nemotron_language_tag(language);
+                if !expected.contains(&tag) {
+                    expected.push(tag);
+                }
+            }
+            expected
+        } else {
+            Vec::new()
+        };
+        LanguageConfig {
+            language,
+            expected_languages,
+        }
     }
 
     pub fn supports_languages(self, languages: &[hypr_language::Language]) -> bool {
@@ -407,10 +453,18 @@ pub fn transcribe_file(
     path: impl AsRef<Path>,
     language: Option<&str>,
 ) -> Result<FileTranscript> {
+    transcribe_file_with_config(model, path, &LanguageConfig::single(language))
+}
+
+pub fn transcribe_file_with_config(
+    model: SoniqoModel,
+    path: impl AsRef<Path>,
+    config: &LanguageConfig,
+) -> Result<FileTranscript> {
     ensure_supported_platform(model)?;
 
     let path = path.as_ref();
-    let language = language.unwrap_or_default();
+    let language = config.language.as_deref().unwrap_or_default();
     let language_label = if language.is_empty() {
         "auto"
     } else {
@@ -426,11 +480,12 @@ pub fn transcribe_file(
         fmtr.stt.provider.name = "soniqo",
         fmtr.stt.model = %model,
         fmtr.stt.language = %language_label,
+        fmtr.stt.expected_languages = ?config.expected_languages,
         file.extension = %file_extension,
         "soniqo_native_file_transcription_start"
     );
 
-    let result = platform::transcribe_file(model, path, language);
+    let result = platform::transcribe_file(model, path, config);
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
 
     match &result {
@@ -470,6 +525,10 @@ impl LiveTranscriptionSession {
     }
 
     pub fn start_with_language(model: SoniqoModel, language: Option<&str>) -> Result<Self> {
+        Self::start_with_config(model, &LanguageConfig::single(language))
+    }
+
+    pub fn start_with_config(model: SoniqoModel, config: &LanguageConfig) -> Result<Self> {
         ensure_supported_platform(model)?;
 
         if !model.supports_live() {
@@ -479,7 +538,9 @@ impl LiveTranscriptionSession {
             )));
         }
 
-        platform::live_start(model, language.unwrap_or_default())?;
+        tracing::info!(fmtr.stt.model = %model, fmtr.stt.language = ?config.language,
+            fmtr.stt.expected_languages = ?config.expected_languages, "soniqo_live_start");
+        platform::live_start(model, config)?;
         Ok(Self {
             model,
             stopped: false,
@@ -968,12 +1029,12 @@ mod platform {
     pub(super) fn transcribe_file(
         model: SoniqoModel,
         path: &Path,
-        language: &str,
+        config: &LanguageConfig,
     ) -> Result<FileTranscript> {
         autoreleasepool(|_| {
             let model_id = sr_string(model.as_str());
             let audio_path = sr_string(&path.to_string_lossy());
-            let language = sr_string(language);
+            let language = sr_string(&serde_json::to_string(config)?);
             let payload =
                 unsafe { _soniqo_transcribe_audio_file(&model_id, &audio_path, &language) };
             let result: FileTranscriptionPayload = serde_json::from_str(payload.as_str())?;
@@ -990,10 +1051,10 @@ mod platform {
         })
     }
 
-    pub(super) fn live_start(model: SoniqoModel, language: &str) -> Result<()> {
+    pub(super) fn live_start(model: SoniqoModel, config: &LanguageConfig) -> Result<()> {
         autoreleasepool(|_| {
             let model_id = sr_string(model.as_str());
-            let language = sr_string(language);
+            let language = sr_string(&serde_json::to_string(config)?);
             let payload = unsafe { _soniqo_live_start(&model_id, &language) };
             let result: StatusPayload = serde_json::from_str(payload.as_str())?;
 
@@ -1088,12 +1149,12 @@ mod platform {
     pub(super) fn transcribe_file(
         _model: SoniqoModel,
         _path: &Path,
-        _language: &str,
+        _config: &LanguageConfig,
     ) -> Result<FileTranscript> {
         Err(Error::UnsupportedPlatform)
     }
 
-    pub(super) fn live_start(_model: SoniqoModel, _language: &str) -> Result<()> {
+    pub(super) fn live_start(_model: SoniqoModel, _config: &LanguageConfig) -> Result<()> {
         Err(Error::UnsupportedPlatform)
     }
 
@@ -1187,6 +1248,30 @@ mod tests {
                 .as_deref(),
             Some("nl")
         );
+    }
+
+    #[test]
+    fn selected_languages_are_carried_to_the_native_guide() {
+        let model = SoniqoModel::NemotronStreaming;
+        let languages = ["en-GB".parse().unwrap(), "nl-BE".parse().unwrap()];
+        let config = model.language_config(&languages);
+        assert!(config.language.is_none());
+        assert_eq!(config.expected_languages, ["en-GB", "nl-BE"]);
+        assert_eq!(
+            serde_json::to_value(config).unwrap(),
+            serde_json::json!({
+                "language": null, "expectedLanguages": ["en-GB", "nl-BE"],
+            })
+        );
+        let single = model.language_config(&languages[1..]);
+        assert_eq!(single.language.as_deref(), Some("nl-BE"));
+        assert!(single.expected_languages.is_empty());
+        let automatic = model.language_config(&[]);
+        assert!(automatic.language.is_none());
+        assert!(automatic.expected_languages.is_empty());
+        let parakeet = SoniqoModel::ParakeetBatch.language_config(&languages);
+        assert_eq!(parakeet.language.as_deref(), Some("en"));
+        assert!(parakeet.expected_languages.is_empty());
     }
 
     #[test]
