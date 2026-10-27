@@ -328,3 +328,42 @@ test.each([undefined, "live", "batch"])(
     expect(isSupportedLanguagesLiveMock).not.toHaveBeenCalled();
   },
 );
+
+test("Nemotron keeps multilingual meetings in live mode and honors after-recording selection", async () => {
+  const model = "soniqo-nemotron-3.5-streaming";
+  const languages = ["nl-BE", "en-GB"];
+  expect(isSupportedLocalSttModel(model)).toBe(true);
+  expect(isConfiguredSttModel("fmtr", model)).toBe(true);
+  expect(getOnDeviceTranscriptionConfig(model, languages)).toEqual({
+    languages,
+    transcriptionMode: "live",
+  });
+  expect(
+    await getLiveTranscriptionConfig({ provider: "fmtr", model, languages }),
+  ).toEqual({
+    languages,
+    transcriptionMode: "live",
+  });
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model,
+      languages,
+      timing: "batch",
+    }),
+  ).toEqual({
+    languages,
+    transcriptionMode: "batch",
+  });
+});
+
+test("Nemotron respects backend language restrictions without switching models", async () => {
+  isSupportedLanguagesLiveMock.mockResolvedValue({ status: "ok", data: false });
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "soniqo-nemotron-3.5-streaming",
+      languages: ["el"],
+    }),
+  ).toEqual({ languages: ["el"], transcriptionMode: "batch" });
+});

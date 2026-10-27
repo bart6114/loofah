@@ -14889,6 +14889,7 @@ dependencies = [
  "audio-utils",
  "data",
  "language",
+ "objc2",
  "owhisper-interface",
  "serde",
  "serde_json",
@@ -14896,6 +14897,7 @@ dependencies = [
  "swift-rs 1.0.7 (git+https://github.com/yujonglee/swift-rs?rev=41a1605)",
  "thiserror 2.0.18",
  "tracing",
+ "vad",
 ]
 
 [[package]]

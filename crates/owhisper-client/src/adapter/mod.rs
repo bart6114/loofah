@@ -860,6 +860,19 @@ mod tests {
     }
 
     #[test]
+    fn test_fmtr_nemotron_language_coverage_matches_live_and_batch() {
+        let languages = ["nl-BE".parse().unwrap(), "en-GB".parse().unwrap()];
+        let model = Some("soniqo-nemotron-3.5-streaming");
+        assert!(AdapterKind::Fmtr.is_supported_languages_live(&languages, model));
+        assert!(AdapterKind::Fmtr.is_supported_languages_batch(&languages, model));
+        for language in ["el", "lt", "lv", "mt", "sl", "he", "th", "nn"] {
+            let languages = [language.parse().unwrap()];
+            assert!(!AdapterKind::Fmtr.is_supported_languages_live(&languages, model));
+            assert!(!AdapterKind::Fmtr.is_supported_languages_batch(&languages, model));
+        }
+    }
+
+    #[test]
     fn test_fmtr_soniqo_live_limits_parakeet_streaming_to_english() {
         use hypr_language::ISO639::*;
 

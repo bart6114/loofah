@@ -143,7 +143,8 @@ async fn spawn_soniqo_rx_task(
         let (tx, rx) =
             tokio::sync::mpsc::channel::<MixedMessage<(Bytes, Bytes), ControlMessage>>(32);
         let outbound = tokio_stream::wrappers::ReceiverStream::new(rx);
-        let client = owhisper_client::LocalSoniqoLiveClient::new(model);
+        let client =
+            owhisper_client::LocalSoniqoLiveClient::new(model).with_languages(&args.languages);
         let (listen_stream, handle) = match client.from_realtime_audio_dual(outbound).await {
             Ok(result) => result,
             Err(error) => {
@@ -183,7 +184,8 @@ async fn spawn_soniqo_rx_task(
 
         let (tx, rx) = tokio::sync::mpsc::channel::<MixedMessage<Bytes, ControlMessage>>(32);
         let outbound = tokio_stream::wrappers::ReceiverStream::new(rx);
-        let client = owhisper_client::LocalSoniqoLiveClient::new(model);
+        let client =
+            owhisper_client::LocalSoniqoLiveClient::new(model).with_languages(&args.languages);
         let (listen_stream, handle) =
             match client.from_realtime_audio_single(outbound, source).await {
                 Ok(result) => result,

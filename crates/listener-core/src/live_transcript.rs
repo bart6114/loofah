@@ -273,11 +273,18 @@ impl SoniqoTranscriptNormalizer {
             channel,
             channel_index,
             is_final,
+            metadata,
             ..
         } = response
         else {
             return;
         };
+
+        if metadata.model_info.name
+            == hypr_transcribe_soniqo::SoniqoModel::NemotronStreaming.as_str()
+        {
+            return;
+        }
 
         let Some(alternative) = channel.alternatives.first_mut() else {
             return;
@@ -684,6 +691,41 @@ mod tests {
     use owhisper_interface::stream::{Alternatives, Channel, Metadata, ModelInfo};
 
     use super::*;
+
+    #[test]
+    fn nemotron_preserves_repeated_utterances_and_replaces_cumulative_partials() {
+        use hypr_transcribe_soniqo::{SoniqoModel, stream_response_from_text};
+
+        let mut engine = LiveTranscriptEngine::new("soniqo", &[], None);
+        let response = |text: &str, start, duration, is_final| {
+            stream_response_from_text(
+                SoniqoModel::NemotronStreaming,
+                text.to_string(),
+                start,
+                duration,
+                is_final,
+                &[0, 2],
+            )
+        };
+        engine.process(&response("We will discuss", 0.0, 1.0, false));
+        let update = engine
+            .process(&response("We will discuss this tomorrow", 0.0, 2.0, false))
+            .unwrap();
+        assert_eq!(update.transcript_delta.partials.len(), 5);
+        let text = "We will discuss this tomorrow";
+        let first = engine.process(&response(text, 0.0, 3.0, true)).unwrap();
+        let second = engine.process(&response(text, 4.0, 3.0, true)).unwrap();
+        let tail = engine.flush().unwrap();
+        let words = first
+            .transcript_delta
+            .new_words
+            .into_iter()
+            .chain(second.transcript_delta.new_words)
+            .chain(tail.transcript_delta.new_words)
+            .map(|word| word.text.trim().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(words.join(" "), format!("{text} {text}"));
+    }
 
     fn transcript_response_at(
         transcript: &str,

@@ -154,9 +154,9 @@ pub(super) async fn run_soniqo_batch(
             .languages
             .first()
             .map(hypr_language::Language::bcp47_code);
-        let language_hint = soniqo_language_hint(language.as_deref());
+        let language_config = model.language_config(&listen_params.languages);
         let language_label = language.as_deref().unwrap_or("auto").to_string();
-        let language_hint_label = language_hint.as_deref().unwrap_or("auto").to_string();
+        let language_hint_label = language_config.language.as_deref().unwrap_or("auto").to_string();
         let started_at = Instant::now();
 
         tracing::info!(
@@ -164,6 +164,7 @@ pub(super) async fn run_soniqo_batch(
             fmtr.stt.model = %model,
             fmtr.stt.language = %language_label,
             fmtr.stt.language_hint = %language_hint_label,
+            fmtr.stt.expected_languages = ?language_config.expected_languages,
             file.extension = %file_extension,
             "soniqo_batch_start"
         );
@@ -181,7 +182,7 @@ pub(super) async fn run_soniqo_batch(
                 session_id,
                 cancelled,
             };
-            transcribe_soniqo_file(model, &file_path, language_hint.as_deref(), Some(&progress))
+            transcribe_soniqo_file(model, &file_path, &language_config, Some(&progress))
         })
         .await
         .map_err(|e| {
@@ -235,7 +236,7 @@ pub(super) async fn run_soniqo_batch(
 fn transcribe_soniqo_file(
     model: hypr_transcribe_soniqo::SoniqoModel,
     file_path: &str,
-    language: Option<&str>,
+    language: &hypr_transcribe_soniqo::LanguageConfig,
     progress: Option<&SoniqoProgressReporter>,
 ) -> std::result::Result<Vec<hypr_transcribe_soniqo::FileTranscript>, String> {
     let pcm_file = hypr_audio_utils::PcmFile::prepare(file_path, || {
@@ -253,7 +254,7 @@ fn transcribe_soniqo_file(
             fmtr.stt.model = %model,
             "soniqo_single_channel_native_inference_start"
         );
-        return hypr_transcribe_soniqo::transcribe_file(model, file_path, language)
+        return hypr_transcribe_soniqo::transcribe_file_with_config(model, file_path, language)
             .map(|transcript| {
                 if let Some(progress) = progress {
                     progress.emit(SONIQO_PROGRESS_MAX);
@@ -344,21 +345,12 @@ impl From<AudioChunk> for ChannelChunk {
     }
 }
 
-fn soniqo_language_hint(language: Option<&str>) -> Option<String> {
-    let language = language?.trim();
-    if language.is_empty() {
-        return None;
-    }
-
-    language
-        .split(['-', '_'])
-        .next()
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_lowercase())
-}
-
 fn uses_resilient_soniqo_chunking(model: hypr_transcribe_soniqo::SoniqoModel) -> bool {
-    matches!(model, hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch)
+    matches!(
+        model,
+        hypr_transcribe_soniqo::SoniqoModel::ParakeetBatch
+            | hypr_transcribe_soniqo::SoniqoModel::NemotronStreaming
+    )
 }
 
 fn soniqo_batch_progress(completed_chunks: usize, total_chunks: usize) -> f64 {
@@ -464,7 +456,7 @@ fn transcribe_soniqo_channel_chunks(
     model: hypr_transcribe_soniqo::SoniqoModel,
     plan: SoniqoChannelPlan,
     pcm: &hypr_audio_utils::PcmDescriptor,
-    language: Option<&str>,
+    language: &hypr_transcribe_soniqo::LanguageConfig,
     cancelled: impl Fn() -> bool,
     mut on_chunk_completed: impl FnMut(),
 ) -> std::result::Result<hypr_transcribe_soniqo::FileTranscript, String> {
@@ -598,7 +590,7 @@ fn transcribe_soniqo_channel_chunks(
 fn transcribe_soniqo_samples(
     model: hypr_transcribe_soniqo::SoniqoModel,
     samples: &[f32],
-    language: Option<&str>,
+    language: &hypr_transcribe_soniqo::LanguageConfig,
 ) -> std::result::Result<hypr_transcribe_soniqo::FileTranscript, String> {
     let file = tempfile::Builder::new()
         .prefix("soniqo_channel_")
@@ -620,7 +612,8 @@ fn transcribe_soniqo_samples(
         writer.finalize().map_err(|e| e.to_string())?;
     }
 
-    hypr_transcribe_soniqo::transcribe_file(model, file.path(), language).map_err(|e| e.to_string())
+    hypr_transcribe_soniqo::transcribe_file_with_config(model, file.path(), language)
+        .map_err(|e| e.to_string())
 }
 
 fn pack_speech_ranges(
@@ -820,15 +813,6 @@ mod tests {
 
         assert!(minimum_mel_frames > 2000);
         assert!(maximum_mel_frames <= 3000);
-    }
-
-    #[test]
-    fn soniqo_language_hint_uses_base_language_code() {
-        assert_eq!(soniqo_language_hint(Some("de-DE")).as_deref(), Some("de"));
-        assert_eq!(soniqo_language_hint(Some("en_US")).as_deref(), Some("en"));
-        assert_eq!(soniqo_language_hint(Some(" fr ")).as_deref(), Some("fr"));
-        assert_eq!(soniqo_language_hint(Some("")).as_deref(), None);
-        assert_eq!(soniqo_language_hint(None).as_deref(), None);
     }
 
     #[test]

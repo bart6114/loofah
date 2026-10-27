@@ -37,11 +37,20 @@ pub enum LocalSoniqoLiveError {
 
 pub struct LocalSoniqoLiveClient {
     model: hypr_transcribe_soniqo::SoniqoModel,
+    language: hypr_transcribe_soniqo::LanguageConfig,
 }
 
 impl LocalSoniqoLiveClient {
     pub fn new(model: hypr_transcribe_soniqo::SoniqoModel) -> Self {
-        Self { model }
+        Self {
+            model,
+            language: Default::default(),
+        }
+    }
+
+    pub fn with_languages(mut self, languages: &[hypr_language::Language]) -> Self {
+        self.language = self.model.language_config(languages);
+        self
     }
 
     pub async fn from_realtime_audio_single(
@@ -49,7 +58,7 @@ impl LocalSoniqoLiveClient {
         stream: impl Stream<Item = ListenClientInput> + Send + Unpin + 'static,
         source: hypr_transcribe_soniqo::TranscriptSource,
     ) -> Result<(LocalSoniqoLiveStream, LocalSoniqoLiveHandle), LocalSoniqoLiveError> {
-        let session = start_session(self.model).await?;
+        let session = start_session(self.model, self.language).await?;
         let (response_tx, response_rx) = tokio::sync::mpsc::channel(32);
         let (finalize_tx, finalize_rx) = tokio::sync::mpsc::channel(1);
 
@@ -75,7 +84,7 @@ impl LocalSoniqoLiveClient {
         self,
         stream: impl Stream<Item = ListenClientDualInput> + Send + Unpin + 'static,
     ) -> Result<(LocalSoniqoLiveStream, LocalSoniqoLiveHandle), LocalSoniqoLiveError> {
-        let session = start_session(self.model).await?;
+        let session = start_session(self.model, self.language).await?;
         let (response_tx, response_rx) = tokio::sync::mpsc::channel(32);
         let (finalize_tx, finalize_rx) = tokio::sync::mpsc::channel(1);
 
@@ -135,7 +144,8 @@ async fn run_single(
             }
             maybe_msg = stream.next() => {
                 let Some(msg) = maybe_msg else {
-                    stop_session(session).await;
+                    let result = finalize_single(session, model, source, &mut buffer, &mut cursor, &response_tx).await;
+                    stop_after_finalize(result).await;
                     return;
                 };
 
@@ -188,7 +198,8 @@ async fn run_dual(
             }
             maybe_msg = stream.next() => {
                 let Some(msg) = maybe_msg else {
-                    stop_session(session).await;
+                    let result = finalize_dual(session, model, &mut mic_buffer, &mut spk_buffer, &mut mic_cursor, &mut spk_cursor, &response_tx).await;
+                    stop_after_finalize(result).await;
                     return;
                 };
 
@@ -317,9 +328,10 @@ async fn stop_after_finalize(
 
 async fn start_session(
     model: hypr_transcribe_soniqo::SoniqoModel,
+    language: hypr_transcribe_soniqo::LanguageConfig,
 ) -> Result<hypr_transcribe_soniqo::LiveTranscriptionSession, LocalSoniqoLiveError> {
     tokio::task::spawn_blocking(move || {
-        hypr_transcribe_soniqo::LiveTranscriptionSession::start(model)
+        hypr_transcribe_soniqo::LiveTranscriptionSession::start_with_config(model, &language)
     })
     .await
     .map_err(|error| LocalSoniqoLiveError::StartJoin(error.to_string()))?
@@ -414,9 +426,21 @@ async fn finalize_source(
     for partial in partials {
         let response = partial.into_stream_response(model, start, 0.05);
         if response_tx.send(Ok(response)).await.is_err() {
-            break;
+            return Ok(session);
         }
     }
+    let mut acknowledgement = hypr_transcribe_soniqo::stream_response_from_text(
+        model,
+        String::new(),
+        start,
+        0.05,
+        true,
+        &[source.channel_index(), 2],
+    );
+    if let StreamResponse::TranscriptResponse { from_finalize, .. } = &mut acknowledgement {
+        *from_finalize = true;
+    }
+    let _ = response_tx.send(Ok(acknowledgement)).await;
 
     Ok(session)
 }
@@ -548,6 +572,60 @@ fn echo_score_at_lag(mic: &[f32], speaker: &[f32], lag: isize) -> Option<EchoSco
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[tokio::test]
+    #[ignore = "requires the downloaded Nemotron model and native CoreML inference"]
+    async fn nemotron_eof_flushes_text_and_acknowledges_both_channels() {
+        use hypr_transcribe_soniqo::SoniqoModel;
+
+        let model = SoniqoModel::NemotronStreaming;
+        assert!(hypr_transcribe_soniqo::is_model_downloaded(model).unwrap());
+        let file =
+            hypr_audio_utils::PcmFile::prepare(hypr_data::english_1::AUDIO_PATH, || false).unwrap();
+        let pcm = &file.descriptor;
+        let samples = pcm.reader().unwrap().channel(0, 0..pcm.frames).unwrap();
+        let audio = Bytes::from(
+            samples
+                .iter()
+                .flat_map(|sample| {
+                    ((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).to_le_bytes()
+                })
+                .collect::<Vec<_>>(),
+        );
+        let silence = Bytes::from(vec![0; audio.len()]);
+        let input = futures_util::stream::iter([MixedMessage::Audio((audio, silence))]);
+        let (mut stream, _handle) = LocalSoniqoLiveClient::new(model)
+            .with_languages(&["en-US".parse().unwrap()])
+            .from_realtime_audio_dual(input)
+            .await
+            .unwrap();
+        let mut acknowledgements = [0, 0];
+        let mut committed = String::new();
+        while let Some(response) = stream.next().await {
+            if let StreamResponse::TranscriptResponse {
+                from_finalize,
+                is_final,
+                channel_index,
+                channel,
+                ..
+            } = response.unwrap()
+            {
+                let source = channel_index[0] as usize;
+                if from_finalize {
+                    acknowledgements[source] += 1;
+                } else if is_final {
+                    assert_eq!(source, 0, "the silent channel must not produce text");
+                    committed.push_str(&channel.alternatives[0].transcript);
+                }
+            }
+        }
+        assert_eq!(acknowledgements, [1, 1]);
+        assert!(
+            !committed.trim().is_empty(),
+            "EOF discarded the final words"
+        );
+    }
 
     #[test]
     fn boosts_quiet_microphone_without_exceeding_gain_limit() {

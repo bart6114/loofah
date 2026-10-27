@@ -95,7 +95,14 @@ pub(crate) async fn transcribe_session(
         model: Some(model),
         base_url: hypr_transcribe_soniqo::LOCAL_BASE_URL.to_string(),
         api_key: String::new(),
-        languages: Vec::new(),
+        languages: config
+            .meeting_languages
+            .iter()
+            .map(|language| language.parse())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|error| {
+                Error::operation(ACTION, format!("invalid meeting language: {error}"))
+            })?,
         keywords: Vec::new(),
         num_speakers: None,
         min_speakers: None,
@@ -146,6 +153,8 @@ struct VaultConfig {
     current_stt_provider: Option<String>,
     #[serde(default)]
     current_stt_model: Option<String>,
+    #[serde(default)]
+    meeting_languages: Vec<String>,
 }
 
 fn read_vault_config(vault: &Path) -> Result<VaultConfig> {
@@ -274,7 +283,19 @@ mod tests {
         VaultConfig {
             current_stt_provider: provider.map(str::to_string),
             current_stt_model: model.map(str::to_string),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn vault_config_preserves_selected_meeting_languages() {
+        let config: VaultConfig = serde_json::from_value(serde_json::json!({
+            "current_stt_provider": "fmtr", "current_stt_model": "soniqo-nemotron-3.5-streaming",
+            "meeting_languages": ["en-GB", "nl-BE"],
+        }))
+        .unwrap();
+        assert_eq!(config.meeting_languages, ["en-GB", "nl-BE"]);
+        assert!(super::VaultConfig::default().meeting_languages.is_empty());
     }
 
     #[test]
@@ -322,6 +343,10 @@ mod tests {
 
     #[test]
     fn soniqo_models_resolve_to_their_configured_id() {
+        let model =
+            resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-nemotron-3.5-streaming")))
+                .unwrap();
+        assert_eq!(model, "soniqo-nemotron-3.5-streaming");
         let model =
             resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-parakeet-batch"))).unwrap();
         assert_eq!(model, "soniqo-parakeet-batch");
