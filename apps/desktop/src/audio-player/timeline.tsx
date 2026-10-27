@@ -38,7 +38,7 @@ export function CompactPlayButton() {
       {state === "playing" ? (
         <Pause className="text-background h-3 w-3" fill="currentColor" />
       ) : (
-        <Play className="text-background ml-px h-3 w-3" fill="currentColor" />
+        <Play className="text-background h-3 w-3" fill="currentColor" />
       )}
     </button>
   );
@@ -152,10 +152,7 @@ export function Timeline({
               fill="currentColor"
             />
           ) : (
-            <Play
-              className="text-background ml-px h-2.5 w-2.5"
-              fill="currentColor"
-            />
+            <Play className="text-background h-2.5 w-2.5" fill="currentColor" />
           )}
         </button>
       }
