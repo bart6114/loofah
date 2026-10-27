@@ -140,7 +140,7 @@ impl SoniqoModel {
         match self {
             Self::ParakeetStreaming => "Soniqo Parakeet Streaming",
             Self::ParakeetBatch => "Soniqo Parakeet Batch",
-            Self::NemotronStreaming => "Nemotron 3.5 (Multilingual)",
+            Self::NemotronStreaming => "Nemotron 3.5 ASR (Multilingual)",
             Self::Omnilingual => "Soniqo Omnilingual",
         }
     }
