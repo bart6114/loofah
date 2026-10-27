@@ -1,0 +1,4 @@
+interface:
+  display_name: "Loofah Launch Video"
+  short_description: "Create Loofah launch videos with Astra"
+  default_prompt: "Use $loofah-launch-video to create a polished 30-second Loofah launch video with real product visuals and a rendered MP4."
