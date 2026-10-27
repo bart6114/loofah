@@ -245,9 +245,9 @@ function TabContentNoteInner({
                   <div className="@container/audio-player min-w-6 flex-1">
                     <div
                       data-session-top-audio-player
-                      className="border-border bg-card h-7 w-full overflow-hidden rounded-full border @max-[14rem]/audio-player:hidden"
+                      className="h-7 w-full @max-[14rem]/audio-player:hidden"
                     >
-                      <AudioPlayer.Timeline contentClassName="gap-2 py-[3px] pr-2.5 pl-[3px]" />
+                      <AudioPlayer.Timeline contentClassName="gap-2.5" />
                     </div>
                     <div className="@[14rem]/audio-player:hidden">
                       <AudioPlayer.CompactPlayButton />
