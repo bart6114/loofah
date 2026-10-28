@@ -1,4 +1,10 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use axum::{
     Json,
@@ -48,6 +54,7 @@ pub(super) async fn handle_batch(
                 model.as_ref(),
                 &model_path,
                 None,
+                Arc::new(AtomicBool::new(false)),
             )
         }))
     })
@@ -93,31 +100,56 @@ pub(super) async fn handle_batch_sse(
     let params = params.clone();
     let (event_tx, event_rx) = mpsc::unbounded_channel::<BatchSseMessage>();
 
-    tokio::task::spawn_blocking(move || {
-        let message = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            transcribe_batch(
-                audio_file.path(),
-                &params,
-                model.as_ref(),
-                &model_path,
-                Some(event_tx.clone()),
-            )
-        })) {
-            Ok(Ok(response)) => BatchSseMessage::Result { response },
-            Ok(Err(error)) => BatchSseMessage::Error {
+    tokio::spawn(async move {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = cancelled.clone();
+        let worker_tx = event_tx.clone();
+        let worker = tokio::task::spawn_blocking(move || {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transcribe_batch(
+                    audio_file.path(),
+                    &params,
+                    model.as_ref(),
+                    &model_path,
+                    Some(worker_tx),
+                    worker_cancelled,
+                )
+            }))
+        });
+        let Some(result) = finish_batch_worker(worker, &event_tx, &cancelled).await else {
+            tracing::info!("whisper_batch_cancelled");
+            return;
+        };
+        let message = match result {
+            Ok(Ok(Ok(response))) => BatchSseMessage::Result { response },
+            Ok(Ok(Err(error))) => BatchSseMessage::Error {
                 error: "transcription_failed".to_string(),
                 detail: error.to_string(),
             },
-            Err(_) => BatchSseMessage::Error {
+            Ok(Err(_)) | Err(_) => BatchSseMessage::Error {
                 error: "transcription_failed".to_string(),
                 detail: "task panicked".to_string(),
             },
         };
-
         let _ = event_tx.send(message);
     });
 
     batch_sse_response(event_rx)
+}
+
+async fn finish_batch_worker<T>(
+    mut worker: tokio::task::JoinHandle<T>,
+    event_tx: &mpsc::UnboundedSender<BatchSseMessage>,
+    cancelled: &AtomicBool,
+) -> Option<Result<T, tokio::task::JoinError>> {
+    tokio::select! {
+        result = &mut worker => Some(result),
+        _ = event_tx.closed() => {
+            cancelled.store(true, Ordering::Release);
+            let _ = worker.await;
+            None
+        }
+    }
 }
 
 fn transcribe_batch(
@@ -126,8 +158,16 @@ fn transcribe_batch(
     loaded_model: &hypr_whisper_local::LoadedWhisper,
     model_path: &Path,
     event_tx: Option<mpsc::UnboundedSender<BatchSseMessage>>,
+    cancelled: Arc<AtomicBool>,
 ) -> Result<batch::Response, crate::Error> {
-    transcribe_source(audio_path, params, loaded_model, model_path, event_tx)
+    transcribe_source(
+        audio_path,
+        params,
+        loaded_model,
+        model_path,
+        event_tx,
+        cancelled,
+    )
 }
 
 pub(super) fn transcribe_recorded_file(
@@ -141,6 +181,7 @@ pub(super) fn transcribe_recorded_file(
         loaded_model,
         model_path,
         None,
+        Arc::new(AtomicBool::new(false)),
     )?;
     let words = response
         .results
@@ -169,6 +210,7 @@ fn transcribe_source(
     loaded_model: &hypr_whisper_local::LoadedWhisper,
     model_path: &Path,
     event_tx: Option<mpsc::UnboundedSender<BatchSseMessage>>,
+    cancelled: Arc<AtomicBool>,
 ) -> Result<batch::Response, crate::Error> {
     let pcm_file = hypr_audio_utils::PcmFile::prepare(audio_path, || {
         event_tx.as_ref().is_some_and(|tx| tx.is_closed())
@@ -191,6 +233,9 @@ fn transcribe_source(
     let mut models = (0..channel_count)
         .map(|_| build_model(loaded_model, params))
         .collect::<Result<Vec<_>, _>>()?;
+    for model in &mut models {
+        model.set_cancellation(cancelled.clone());
+    }
     let mut language = super::language::BatchLanguage::new(
         hypr_whisper_local::LanguageResolver::new(&languages),
         if languages.len() == 1 {
@@ -360,9 +405,15 @@ mod performance_tests {
         };
         for run in 0..4 {
             let started = std::time::Instant::now();
-            let response =
-                transcribe_source(Path::new(&audio_path), &params, &loaded, model_path, None)
-                    .unwrap();
+            let response = transcribe_source(
+                Path::new(&audio_path),
+                &params,
+                &loaded,
+                model_path,
+                None,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
             let elapsed = started.elapsed();
             let words: Vec<_> = response
                 .results
@@ -389,5 +440,40 @@ mod performance_tests {
                 .unwrap();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dropping_sse_body_cancels_and_finishes_blocking_worker() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = cancelled.clone();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let worker = tokio::task::spawn_blocking(move || {
+            started_tx.send(()).unwrap();
+            while !worker_cancelled.load(Ordering::Acquire) {
+                std::thread::park_timeout(std::time::Duration::from_millis(1));
+            }
+        });
+        started_rx.await.unwrap();
+        let response = batch_sse_response(rx);
+        drop(response);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            finish_batch_worker(worker, &tx, &cancelled),
+        )
+        .await;
+        let signalled = cancelled.load(Ordering::Acquire);
+        cancelled.store(true, Ordering::Release);
+        assert!(
+            result
+                .expect("disconnected batch left its blocking worker running")
+                .is_none()
+        );
+        assert!(signalled);
     }
 }

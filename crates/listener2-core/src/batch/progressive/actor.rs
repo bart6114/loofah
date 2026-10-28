@@ -129,7 +129,7 @@ pub(super) enum BatchMsg {
     StreamResponse { event: Box<BatchStreamEvent> },
     StreamError(crate::BatchFailure),
     StreamEnded,
-    DiarizationReady(Arc<ChannelSegments>),
+    DiarizationReady(Result<Arc<ChannelSegments>, crate::BatchFailure>),
     StreamStartFailed(crate::BatchFailure),
 }
 
@@ -288,7 +288,15 @@ impl Actor for BatchActor {
                 tracing::info!("batch_stream_ended");
                 state.stream_ended = true;
             }
-            BatchMsg::DiarizationReady(segments) => {
+            BatchMsg::DiarizationReady(result) => {
+                let segments = match result {
+                    Ok(segments) => segments,
+                    Err(error) => {
+                        state.final_result = Some(Err(error.into()));
+                        myself.stop(None);
+                        return Ok(());
+                    }
+                };
                 state.segments = Some(segments.clone());
                 while let Some(mut event) = state.pending.pop_front() {
                     stamp_stream_event(&mut event, &segments);
@@ -667,14 +675,14 @@ mod test {
         BatchActor
             .handle(
                 actor.clone(),
-                BatchMsg::DiarizationReady(Arc::new(ChannelSegments::from([(
+                BatchMsg::DiarizationReady(Ok(Arc::new(ChannelSegments::from([(
                     0,
                     vec![hypr_transcribe_soniqo::diarize::DiarizeSegment {
                         start_ms: 0,
                         end_ms: 1000,
                         speaker_index: 3,
                     }],
-                )]))),
+                )])))),
                 &mut state,
             )
             .await
@@ -703,12 +711,42 @@ mod test {
     }
 
     #[tokio::test]
+    async fn diarization_failure_stops_without_persisting_pending_transcripts() {
+        let (mut state, mut rx, actor, handle) = state().await;
+        state.pending.push_back(terminal());
+        BatchActor
+            .handle(
+                actor.clone(),
+                BatchMsg::DiarizationReady(Err(crate::BatchFailure::DiarizationFailed {
+                    message: "model inference failed".into(),
+                })),
+                &mut state,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            &state.final_result,
+            Some(Err(crate::Error::BatchFailed(
+                crate::BatchFailure::DiarizationFailed { .. }
+            )))
+        ));
+        assert!(rx.try_recv().is_err());
+        BatchActor
+            .post_stop(actor.clone(), &mut state)
+            .await
+            .unwrap();
+        assert!(state.pending.is_empty());
+        actor.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn diarization_first_finishes_only_after_asr_and_cancellation_drops_queue() {
         let (mut state, mut rx, actor, handle) = state().await;
         BatchActor
             .handle(
                 actor.clone(),
-                BatchMsg::DiarizationReady(Arc::new(ChannelSegments::new())),
+                BatchMsg::DiarizationReady(Ok(Arc::new(ChannelSegments::new()))),
                 &mut state,
             )
             .await
@@ -785,7 +823,7 @@ mod test {
         BatchActor
             .handle(
                 actor.clone(),
-                BatchMsg::DiarizationReady(Arc::new(ChannelSegments::new())),
+                BatchMsg::DiarizationReady(Ok(Arc::new(ChannelSegments::new()))),
                 &mut state,
             )
             .await

@@ -22,6 +22,9 @@ swift-rs = { workspace = true, features = ["build"] }
 objc2 = { workspace = true }
 swift-rs = { workspace = true }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+hypr-transcribe-onnx = { workspace = true }
+
 [dev-dependencies]
 hypr-audio-utils = { workspace = true }
 hypr-data = { workspace = true }

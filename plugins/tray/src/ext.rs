@@ -6,12 +6,11 @@ use std::sync::{
 use tauri::async_runtime::JoinHandle;
 use tauri::{
     AppHandle, Result,
-    image::Image,
     menu::{Menu, MenuItemKind, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
 };
 
-use crate::tray_icon::{RECORDING_FRAMES, TrayIconState};
+use crate::tray_icon::{RECORDING_FRAMES, TrayIconState, recording_frame};
 
 use crate::menu_items::{
     AppInfo, AppNew, HelpDocumentation, HelpReportBug, HelpSuggestFeature, MenuItemHandler,
@@ -214,7 +213,7 @@ impl<'a, M: tauri::Manager<tauri::Wry>> Tray<'a, tauri::Wry, M> {
                     loop {
                         interval.tick().await;
                         if let Some(tray) = app.tray_by_id(TRAY_ID)
-                            && let Ok(image) = Image::from_bytes(RECORDING_FRAMES[frame])
+                            && let Ok(image) = recording_frame(frame)
                         {
                             let _ = tray.set_icon(Some(image));
                         }

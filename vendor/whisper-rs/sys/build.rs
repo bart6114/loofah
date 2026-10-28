@@ -160,6 +160,15 @@ fn main() {
 
     let mut config = Config::new(&whisper_root);
 
+    // ggml's ARM kernels require Clang; Visual Studio otherwise defaults to cl.exe.
+    if cfg!(windows)
+        && target == "aarch64-pc-windows-msvc"
+        && env::var("CMAKE_GENERATOR")
+            .map_or(true, |generator| generator.starts_with("Visual Studio"))
+    {
+        config.generator_toolset("ClangCL");
+    }
+
     config
         .profile("Release")
         .define("BUILD_SHARED_LIBS", "OFF")
@@ -171,8 +180,16 @@ fn main() {
         .very_verbose(true)
         .pic(true);
 
+    if target == "aarch64-pc-windows-msvc" {
+        // Runner-native SVE instructions crash Windows ARM devices without SVE.
+        config
+            .define("GGML_NATIVE", "OFF")
+            .define("GGML_CPU_ARM_ARCH", "armv8-a");
+    }
+
     if cfg!(target_os = "windows") {
-        config.cxxflag("/utf-8");
+        // ClangCL needs exception handling enabled for ggml's try/catch blocks.
+        config.cxxflag("/utf-8").cxxflag("/EHsc");
         println!("cargo:rustc-link-lib=advapi32");
     }
 
@@ -201,7 +218,7 @@ fn main() {
         config.define("GGML_VULKAN", "ON");
         if cfg!(windows) {
             println!("cargo:rerun-if-env-changed=VULKAN_SDK");
-            println!("cargo:rustc-link-lib=vulkan-1");
+            // The Windows backend resolves the system loader at runtime.
             let vulkan_path = match env::var("VULKAN_SDK") {
                 Ok(path) => PathBuf::from(path),
                 Err(_) => panic!(
@@ -352,9 +369,23 @@ fn get_cpp_link_stdlib(target: &str) -> Option<&'static str> {
 
 fn add_link_search_path(dir: &std::path::Path) -> std::io::Result<()> {
     if dir.is_dir() {
-        println!("cargo:rustc-link-search={}", dir.display());
-        for entry in std::fs::read_dir(dir)? {
-            add_link_search_path(&entry?.path())?;
+        let entries = std::fs::read_dir(dir)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        // MSVC generates hundreds of bookkeeping directories. Exporting all of
+        // them exceeds Windows command limits and breaks Rust dependency lookup.
+        if entries.iter().any(|path| {
+            matches!(
+                path.extension().and_then(|ext| ext.to_str()),
+                Some("lib" | "a" | "so" | "dylib")
+            ) && path.is_file()
+        }) {
+            println!("cargo:rustc-link-search=native={}", dir.display());
+        }
+        for entry in entries {
+            if entry.is_dir() {
+                add_link_search_path(&entry)?;
+            }
         }
     }
     Ok(())

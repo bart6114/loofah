@@ -10,6 +10,8 @@
 
 **[Loofah](https://loofah.io) is a free, open-source meeting transcription app for Apple Silicon Macs running macOS 15 or later.** Record without a bot, transcribe on-device, and keep your notes as Markdown files.
 
+A native Windows 11 port for x64 and ARM64 is in preview. See the [Windows preview guide](docs/src/content/docs/windows-preview.mdx) for test builds, setup, and pending hardware validation.
+
 I wanted a meeting notetaker that did a few things well: transcribe locally,
 keep my notes as ordinary Markdown files, and stay out of the way. I couldn't
 find one without accounts, subscriptions, or a cloud service in the middle, so
@@ -65,13 +67,15 @@ Rust CLI (`apps/cli/`). There is no database: the files in the vault are the
 source of truth. The vault format lives in `crates/vault-read/`; the interface
 uses Zustand for state and TipTap for editing.
 
-To run it locally:
+To run it locally on macOS:
 
 ```sh
 pnpm install
 pnpm -F @hypr/desktop tauri:dev   # run the desktop app
 cargo build -p loof-cli              # build the loof CLI
 ```
+
+For Windows, the [native CI workflow](.github/workflows/windows_ci.yaml) contains the build and installer checks for both architectures, including the dependency setup needed for ARM64.
 
 See [AGENTS.md](./AGENTS.md) for development notes, including formatting,
 typechecking, and code-style conventions.

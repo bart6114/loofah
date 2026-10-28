@@ -5,7 +5,6 @@ import type { LocalModel } from "@hypr/plugin-local-stt";
 import { AppProviderIcon } from "~/settings/ai/shared";
 import { type ProviderRequirement } from "~/settings/ai/shared/eligibility";
 import { sortProviders } from "~/settings/ai/shared/sort-providers";
-import { isSupportedLocalSttModel } from "~/stt/capabilities";
 import { localSttQueries } from "~/stt/useLocalSttModel";
 
 export { localSttQueries as sttModelQueries };
@@ -25,22 +24,8 @@ type Provider = {
   };
 };
 
-// STT is on-device only (no hosted provider models left to alias), so this is
-// just an identity fallback for whatever id the local model reports.
-export const displayModelId = (model: string) => model;
-
 export function displayModelLabel(model: string, displayName?: string) {
-  if (isSupportedLocalSttModel(model)) {
-    return "On device";
-  }
-
-  return displayName ?? displayModelId(model);
-}
-
-export function displayModelTitle(model: string, displayName?: string) {
-  const title = displayName ?? displayModelId(model);
-
-  return displayModelLabel(model, displayName) === title ? undefined : title;
+  return displayName ?? model;
 }
 
 export function formatModelSize(sizeBytes?: number | null) {

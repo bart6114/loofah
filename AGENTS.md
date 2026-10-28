@@ -6,8 +6,9 @@ Files in the user's vault directory are the only source of truth — there is no
 
 ## Supported platform
 
-- The desktop app is macOS-only. Design, implement, and QA desktop features for macOS; do not add Windows or Linux compatibility paths unless explicitly requested.
-- Shared crates and the CLI may remain portable where they already are, but desktop work does not need cross-platform abstractions solely for hypothetical Windows or Linux support.
+- The desktop app targets macOS and Windows 11 (native x64 and ARM64, in preview). Preserve both implementations when changing shared desktop behavior. Linux desktop support is out of scope unless explicitly requested.
+- Windows changes require the native `windows-ci` checks on both architectures; a successful macOS build does not validate Windows-only code. Its `speech-models` dispatch option runs real CPU transcription and diarization separately from installer builds.
+- Shared crates and the CLI may remain portable where they already are; avoid abstractions solely for hypothetical additional platforms.
 
 ## Session directory ownership
 
@@ -51,6 +52,7 @@ Inside `sessions/<id>/` the app owns a fixed set of names (canonical list: `crat
 - Ship stable releases through the `desktop-release` skill (preflight, manual notes, trigger, verify). Prepare `packages/changelog/content/<version>.md` covering everything since the last shipped version and commit it to `main` with `[skip ci]` before building. The workflow's `changelog` job validates the file, fills the GitHub release body from it, dispatches the docs deployment, and gates the DMG build on success. Publish or backfill existing notes for any tag with `gh workflow run changelog -f tag=<tag>`. To fix notes, edit the content file on `main` (the app fetches it at runtime), never the release body — the workflow overwrites the body from the file.
 - That same workflow also builds the in-app updater artifact (`.app.tar.gz` + minisign `.sig`, signed with the `TAURI_SIGNING_PRIVATE_KEY` repo secret) and refreshes `latest.json` on the rolling `updater` prerelease — the endpoint stable builds poll (`tauri.conf.stable.json`). Never delete the `updater` release; the feed only moves forward (version-guarded against rebuilding old tags).
 - `desktop_build.yaml` is the separate staging lane: unversioned DMG artifact on every push to `main`.
+- `windows_ci.yaml` produces unsigned preview installers and CLI artifacts for x64 and ARM64. `desktop-release` calls `windows_release.yaml` to publish both architectures for tags containing Windows support. The Windows workflow also supports manual artifact-only builds (`publish: false`). Publisher signing defaults to `unsigned` while organization approval is pending; updater signing is always required. Select `azure` explicitly to use the `windows-signing` GitHub environment, restricted to `main`, with Azure OIDC secrets (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`), signing variables (`AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`, `LOOFAH_WINDOWS_SIGNER_EKU`), and the existing updater signing key. Pin the durable certificate-profile EKU, since Azure certificates renew daily. Its rolling feed is `latest-windows.json` on the existing `updater` release; preserve the macOS feed. The `windows-release.json` manifest records signing mode and artifact hashes. Complete tagged Windows assets are reused on retries; never replace partially published signed binaries with a fresh build.
 - Each push leaves a bot `chore(release)` commit on `main`, so local `main` is behind after every push — `git pull --rebase origin main` before pushing.
 
 ## Responsiveness
@@ -93,3 +95,5 @@ Naming rules:
 ## Misc
 
 - Do not create summary docs or example code files unless requested.
+
+Download statistics: run `python3 .github/scripts/download_stats.py` to report macOS, Windows x64, Windows ARM64, and combined Windows lifetime rolling-installer counts. Both Windows aliases archive their counts before replacement; preserve all metrics snapshots on the updater release.

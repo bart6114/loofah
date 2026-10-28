@@ -1,6 +1,6 @@
 import { Trans } from "@lingui/react/macro";
 import { useQuery } from "@tanstack/react-query";
-import { arch } from "@tauri-apps/plugin-os";
+import { arch, platform } from "@tauri-apps/plugin-os";
 import { Check, Loader2 } from "lucide-react";
 
 import type { LocalModel } from "@hypr/plugin-local-stt";
@@ -21,7 +21,7 @@ export function DiarizationStatus() {
     staleTime: Infinity,
   });
 
-  if (targetArch.data !== "aarch64") {
+  if (platform() !== "windows" && targetArch.data !== "aarch64") {
     return null;
   }
 
