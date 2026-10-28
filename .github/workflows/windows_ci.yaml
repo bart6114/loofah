@@ -56,6 +56,11 @@ jobs:
       - uses: ./.github/actions/rust_install
         with:
           platform: windows
+      - run: |
+          rustc --test apps/desktop/src-tauri/windows_release_policy.rs -o "$env:RUNNER_TEMP/windows-release-policy.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP/windows-release-policy.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: pnpm -F ui build
       - run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
       - if: github.event_name != 'workflow_dispatch' || !inputs.bundle-only

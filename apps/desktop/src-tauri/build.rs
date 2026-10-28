@@ -1,3 +1,5 @@
+mod windows_release_policy;
+
 #[cfg(target_os = "macos")]
 use std::{
     fs,
@@ -10,6 +12,10 @@ const MACOS_MINIMUM_SYSTEM_VERSION: &str = "15.0";
 
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rerun-if-env-changed=WINDOWS_SIGNING_MODE");
+        println!("cargo:rerun-if-env-changed=TAURI_SIGNING_PRIVATE_KEY");
+        println!("cargo:rerun-if-env-changed=TAURI_CONFIG");
+        println!("cargo:rerun-if-changed=windows_release_policy.rs");
         println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGN_COMMAND");
         println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGNER_THUMBPRINT");
         println!("cargo:rerun-if-env-changed=LOOFAH_WINDOWS_SIGNER_EKU");
@@ -17,23 +23,18 @@ fn main() {
             serde_json::from_str(&std::env::var("TAURI_CONFIG").unwrap_or_else(|_| "{}".into()))
                 .expect("valid Tauri config");
         if config["identifier"].as_str() == Some("io.loofah.stable") {
-            for variable in ["LOOFAH_WINDOWS_SIGN_COMMAND", "TAURI_SIGNING_PRIVATE_KEY"] {
-                assert!(
-                    std::env::var(variable).is_ok_and(|value| !value.trim().is_empty()),
-                    "Stable Windows builds require {variable}; use the staging config for unsigned test installers"
-                );
-            }
-            assert!(
-                ["LOOFAH_WINDOWS_SIGNER_EKU", "LOOFAH_WINDOWS_SIGNER_THUMBPRINT"]
-                    .iter()
-                    .any(|variable| std::env::var(variable)
-                        .is_ok_and(|value| !value.trim().is_empty())),
-                "Stable Windows builds require the expected signing profile EKU or certificate thumbprint"
-            );
-            assert!(
-                config.pointer("/bundle/windows/signCommand").is_some(),
-                "Stable Windows builds require the verified Authenticode signing command"
-            );
+            let present =
+                |variable| std::env::var(variable).is_ok_and(|value| !value.trim().is_empty());
+            windows_release_policy::validate(
+                &std::env::var("WINDOWS_SIGNING_MODE").unwrap_or_else(|_| "azure".into()),
+                present("TAURI_SIGNING_PRIVATE_KEY"),
+                present("LOOFAH_WINDOWS_SIGN_COMMAND"),
+                present("LOOFAH_WINDOWS_SIGNER_EKU") || present("LOOFAH_WINDOWS_SIGNER_THUMBPRINT"),
+                config
+                    .pointer("/bundle/windows/signCommand")
+                    .is_some_and(|value| !value.is_null()),
+            )
+            .expect("valid Windows release signing configuration");
             assert!(
                 config
                     .pointer("/plugins/updater/endpoints")
