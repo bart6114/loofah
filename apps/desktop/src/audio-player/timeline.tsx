@@ -38,7 +38,7 @@ export function CompactPlayButton() {
       {state === "playing" ? (
         <Pause className="text-background h-3 w-3" fill="currentColor" />
       ) : (
-        <Play className="text-background ml-px h-3 w-3" fill="currentColor" />
+        <Play className="text-background h-3 w-3" fill="currentColor" />
       )}
     </button>
   );
@@ -135,6 +135,9 @@ export function Timeline({
       leading={
         <button
           onClick={handleClick}
+          aria-label={
+            state === "playing" ? "Pause recording" : "Play recording"
+          }
           className={cn([
             "flex items-center justify-center",
             "h-5 w-5 rounded-full",
@@ -149,10 +152,7 @@ export function Timeline({
               fill="currentColor"
             />
           ) : (
-            <Play
-              className="text-background ml-px h-2.5 w-2.5"
-              fill="currentColor"
-            />
+            <Play className="text-background h-2.5 w-2.5" fill="currentColor" />
           )}
         </button>
       }
@@ -211,7 +211,7 @@ export function Timeline({
       main={
         <div
           ref={registerContainer}
-          className="h-5 min-w-0 flex-1"
+          className="h-7 min-w-0 flex-1 cursor-pointer"
           style={{ width: "100%" }}
         />
       }

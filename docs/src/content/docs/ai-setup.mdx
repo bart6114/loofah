@@ -16,11 +16,11 @@ Open **Settings → Transcription** or **Settings → Intelligence** to change t
 
 Transcription is on-device only. Download a model from **Settings → Transcription**, wait for it to finish, then select it under **Model being used**.
 
-A model marked **Live** can show text during a meeting. The streaming model supports English. If your language selection is not supported live, the app falls back to transcription after the recording. Models marked **After recording** always wait until you stop.
+A model marked **Live** can show text during a meeting. **Soniqo Parakeet Streaming** supports live English; **Nemotron 3.5 ASR (Multilingual)** supports live and after-recording transcription for 28 languages. Multilingual Whisper models also support live transcription. If your language selection is not supported live, the app falls back to transcription after the recording when the languages are supported in batch. Models marked **After recording** always wait until you stop.
 
 Configure the languages spoken in your meetings under **Settings → App → Language & Region**. See [Languages](/languages) for setup instructions and the supported language list for each bundled model.
 
-A downloaded on-device Soniqo model also powers transcription from the terminal: `loof transcribe MEETING_ID` uses it without opening the app. The CLI never downloads models itself, so complete the download here first. See the [CLI reference](/reference/cli).
+A downloaded on-device Soniqo model, including Nemotron, also powers transcription from the terminal: `loof transcribe MEETING_ID` uses it without opening the app. The CLI never downloads models itself, so complete the download here first. See the [CLI reference](/reference/cli).
 
 ## Speaker detection
 

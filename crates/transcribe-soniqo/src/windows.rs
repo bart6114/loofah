@@ -74,7 +74,11 @@ fn reset_inner(model: SoniqoModel) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn transcribe_file(model: SoniqoModel, path: &Path, _: &str) -> Result<FileTranscript> {
+pub(super) fn transcribe_file(
+    model: SoniqoModel,
+    path: &Path,
+    _: &LanguageConfig,
+) -> Result<FileTranscript> {
     let _operation = MODEL_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
     if backend_model(model)? != Model::Batch {
         return Err(Error::UnsupportedModel(model.to_string()));
@@ -105,7 +109,7 @@ pub(super) fn transcribe_file(model: SoniqoModel, path: &Path, _: &str) -> Resul
     ))
 }
 
-pub(super) fn live_start(model: SoniqoModel) -> Result<()> {
+pub(super) fn live_start(model: SoniqoModel, _: &LanguageConfig) -> Result<()> {
     let _operation = MODEL_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
     if backend_model(model)? != Model::Streaming {
         return Err(Error::UnsupportedModel(model.to_string()));
@@ -134,6 +138,8 @@ pub(super) fn live_append(source: TranscriptSource, samples: &[f32]) -> Result<V
             source: source.as_str().into(),
             text: partial.text,
             is_final: partial.is_final,
+            start_seconds: None,
+            duration_seconds: None,
         })
         .collect())
 }
@@ -152,6 +158,8 @@ pub(super) fn live_finalize(source: TranscriptSource) -> Result<Vec<LivePartial>
             source: source.as_str().into(),
             text: partial.text,
             is_final: partial.is_final,
+            start_seconds: None,
+            duration_seconds: None,
         })
         .collect())
 }

@@ -1,6 +1,6 @@
 ---
 title: "Supported meeting transcription languages"
-description: "Check Loofah’s on-device transcription languages, including live English and multilingual transcription with Whisper."
+description: "Check Loofah’s on-device transcription models and languages, including multilingual live transcription with Nemotron and Whisper."
 ---
 
 Tell Loofah which languages you expect **before you record or import audio**. The configured languages determine whether Loofah can transcribe the audio and whether the transcript can appear live.
@@ -16,20 +16,31 @@ If you do not add a spoken language, Loofah does not use it when checking model 
 
 ## Supported transcription languages
 
-The bundled models have different language coverage:
+The available models have different language coverage:
 
 | Model | Transcript timing | Supported languages |
 | --- | --- | --- |
 | **Soniqo Parakeet Streaming** | Live | English |
 | **Soniqo Parakeet Batch** | After recording | Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, and Ukrainian |
+| **Nemotron 3.5 ASR (Multilingual)** | Live or after recording | Arabic, Bulgarian, Chinese, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Hindi, Hungarian, Italian, Japanese, Korean, Norwegian Bokmål, Polish, Portuguese, Romanian, Russian, Slovak, Spanish, Swedish, Turkish, Ukrainian, and Vietnamese |
 | **Whisper Base, Small, Large Turbo, and Large V3 (Multilingual)** | Live or after recording | Whisper’s multilingual language set, including Dutch and English |
 | **Whisper Base and Small (English)** | Live or after recording | English |
 
-The streaming model is based on NVIDIA's [Parakeet Realtime EOU 120M](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1), which supports only English. The batch model is based on [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), which supports the 25 European languages listed above.
+The Parakeet streaming model is based on NVIDIA's [Parakeet Realtime EOU 120M](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1), which supports only English. The Parakeet batch model is based on [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), which supports the 25 European languages listed above.
 
 If **Soniqo Parakeet Streaming** is selected and every configured language is English, the transcript appears during the meeting. If you configure one or more of the other supported languages, Loofah automatically records first and uses the batch model after you stop.
 
 **Language & Region** includes more languages than the current transcription models support because the main language also controls generated responses. Every configured spoken language must be supported by your selected model. **Settings → Transcription** shows a warning when the selected model does not support it.
+
+## Use Nemotron for multilingual meetings
+
+Download **Nemotron 3.5 ASR (Multilingual)** in **Settings → Transcription**, then select it under **Model being used**. The download is about 612 MB and runs on-device on Apple Silicon Macs. No transcription API key is required.
+
+Nemotron supports all 28 languages listed above both **While recording** and **After recording** under **Transcription timing**. For a Dutch–English meeting, for example, set Dutch as your main language and add English under **Additional spoken languages**. Both languages remain supported live.
+
+With one configured language, Loofah guides recognition toward that language. With multiple configured languages, Nemotron detects the spoken language automatically, guided by your selection. Recognition of mixed-language speech still depends on the recording and model.
+
+Imported audio and after-recording transcription include speaker detection; live transcription does not separate speakers. Nemotron also works with `loof transcribe` after you download and select it in the desktop app.
 
 ## Choose a Whisper model
 
@@ -60,6 +71,6 @@ This language is used for generated summaries and titles. Changing it does not t
 
 Use **Additional spoken languages** when people may switch languages during a meeting. The app passes the full selection to the transcription model.
 
-Only add languages that are actually likely to be spoken. Every selected language must be supported by the model, and adding a non-English language changes the streaming model from live to after-recording transcription.
+Only add languages that are actually likely to be spoken. Every selected language must be supported by the model. Adding a non-English language changes **Soniqo Parakeet Streaming** to after-recording transcription; Nemotron and multilingual Whisper models can stay live when they support every selected language.
 
 Use [Customize meeting summaries](/customize-summaries) to control summary structure and wording.

@@ -157,6 +157,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn nemotron_supports_multilingual_live_and_batch() {
+        let languages = ["nl-BE".parse().unwrap(), "en-GB".parse().unwrap()];
+        let model = Some("soniqo-nemotron-3.5-streaming");
+        for provider in ["fmtr", "soniqo"] {
+            assert_eq!(
+                is_supported_languages_live(provider, model, &languages).unwrap(),
+                cfg!(all(target_os = "macos", target_arch = "aarch64"))
+            );
+            assert!(is_supported_languages_batch(provider, model, &languages).unwrap());
+            assert!(
+                !is_supported_languages_live(provider, model, &["el".parse().unwrap()]).unwrap()
+            );
+            assert!(
+                !is_supported_languages_batch(provider, model, &["el".parse().unwrap()]).unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn retired_providers_and_models_are_ineligible() {
         for provider in ["am", "argmax"] {
             assert!(is_supported_languages_live(provider, None, &[]).is_err());

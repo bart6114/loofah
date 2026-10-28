@@ -16,6 +16,12 @@ describe("local model icons", () => {
     expect(getLocalModelIcon("QuantizedSmall")?.imageSrc).toBe(
       "/assets/model-icons/openai-logo.svg",
     );
+    expect(getLocalModelIcon("soniqo-nemotron-3.5-streaming")?.title).toBe(
+      "NVIDIA Nemotron",
+    );
+    expect(getLocalModelIcon("soniqo-nemotron-3.5-streaming")?.imageSrc).toBe(
+      "/assets/model-icons/nvidia-logo.svg",
+    );
     expect(getLocalModelIcon("soniqo-parakeet-batch")?.imageSrc).toBe(
       "/assets/model-icons/nvidia-logo.svg",
     );

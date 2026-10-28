@@ -33,6 +33,16 @@ export function getLocalModelIcon(model: string): ModelIconSpec | null {
     };
   }
 
+  if (value.includes("nemotron")) {
+    return {
+      label: "N",
+      title: "NVIDIA Nemotron",
+      className: "border-border bg-card text-muted-foreground",
+      imageSrc: `${MODEL_ICON_ASSET_BASE}/nvidia-logo.svg`,
+      imageClassName: "size-4 object-cover object-left",
+    };
+  }
+
   if (value.includes("parakeet")) {
     return {
       label: "P",

@@ -15150,6 +15150,7 @@ dependencies = [
  "audio-utils",
  "data",
  "language",
+ "objc2",
  "owhisper-interface",
  "serde",
  "serde_json",
@@ -15158,6 +15159,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "transcribe-onnx",
+ "vad",
 ]
 
 [[package]]

@@ -21,6 +21,7 @@ export function isSupportedLocalSttModel(
       model === "soniqo-parakeet-batch" ||
       model === "onnx-parakeet-streaming" ||
       model === "onnx-parakeet-batch" ||
+      model === "soniqo-nemotron-3.5-streaming" ||
       model === "soniqo-omnilingual" ||
       model === "whisper-large-v3" ||
       /^Quantized(Tiny|Base|Small)(En)?$/.test(model) ||
@@ -54,6 +55,7 @@ export function isRealtimeLocalModel(model?: string | null) {
   return (
     model === "soniqo-parakeet-streaming" ||
     model === "onnx-parakeet-streaming" ||
+    model === "soniqo-nemotron-3.5-streaming" ||
     model === "whisper-large-v3" ||
     /^Quantized(Tiny|Base|Small)(En)?$/.test(model ?? "") ||
     model === "QuantizedLargeTurbo"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Loofah Launch Video"
+  short_description: "Art-directed Loofah launch films with Astra"
+  default_prompt: "Use $loofah-launch-video to create a distinctive 30-second Loofah launch film with expressive motion, licensed music, editable source, and a rendered MP4."
