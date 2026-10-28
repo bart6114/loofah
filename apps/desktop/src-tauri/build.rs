@@ -84,10 +84,17 @@ fn build_check_permissions() {
 
     println!("cargo:rerun-if-changed={}", build_rs.display());
     println!("cargo:rerun-if-changed={}", swift_src.display());
+    // A restored target cache does not include the staged sidecar.
+    println!("cargo:rerun-if-changed={}", dst.display());
 
     fs::create_dir_all(&binaries_dir).expect("create binaries/");
 
     if is_fresh(&dst, &[&build_rs, &swift_src]) {
+        return;
+    }
+
+    if is_fresh(&compiled, &[&build_rs, &swift_src]) {
+        fs::copy(&compiled, &dst).expect("restore check-permissions binary");
         return;
     }
 

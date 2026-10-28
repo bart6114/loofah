@@ -1,0 +1,25 @@
+name: Verify macOS bundle
+description: Check the signed app, embedded CLI and required native resources.
+inputs:
+  target-dir:
+    description: Cargo target directory containing the release bundle.
+    default: target
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TARGET_DIR: ${{ inputs.target-dir }}
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        apps=("$TARGET_DIR"/release/bundle/macos/*.app)
+        test "${#apps[@]}" -eq 1
+        app="${apps[0]}"
+        test -s "$app/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"
+        test -x "$app/Contents/MacOS/check-permissions"
+        test -x "$app/Contents/MacOS/loof"
+        "$app/Contents/MacOS/loof" --version | grep -F "$(jq -r .version package.json)"
+        codesign --verify --deep --strict --verbose=2 "$app"
+        xcrun stapler validate "$app"
+        spctl --assess --type execute --verbose=2 "$app"

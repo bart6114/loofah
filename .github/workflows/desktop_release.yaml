@@ -55,6 +55,8 @@ jobs:
             "FreeMeetingTranscriber_${version}_aarch64.dmg.sha256" \
             "FreeMeetingTranscriber_${version}_aarch64.app.tar.gz" \
             "FreeMeetingTranscriber_${version}_aarch64.app.tar.gz.sig" \
+            "loof-${version}-aarch64-apple-darwin.tar.gz" \
+            "loof-${version}-aarch64-apple-darwin.tar.gz.sha256" \
             latest.json; do
             if ! grep -Fxq "$asset" <<< "$assets"; then
               echo "Missing desktop asset: $asset"
@@ -90,7 +92,7 @@ jobs:
   macos:
     needs: [resolve, changelog]
     if: needs.resolve.outputs.build_macos == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26
     permissions:
       contents: write
     defaults:
@@ -102,16 +104,28 @@ jobs:
           ref: ${{ needs.resolve.outputs.tag }}
           lfs: true
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-ci
+          sparse-checkout: .github
+          persist-credentials: false
       - uses: ./.github/actions/pnpm_install
       - uses: denoland/setup-deno@v2
       - run: pnpm -F ui build
       - uses: ./.github/actions/install_desktop_deps
         with:
           target: macos
-      - uses: ./.github/actions/rust_install
+      - uses: ./.release-ci/.github/actions/macos_release_setup
+        id: release-setup
+      # Keep this at workflow scope: nested composite post actions lose their inputs.
+      # https://github.com/actions/runner/issues/2009
+      - uses: ./.release-ci/.github/actions/rust_install
         with:
-          platform: macos
-      - run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+          shared-key: ${{ steps.release-setup.outputs.shared-key }}
+          cache-workspace-crates: ${{ steps.release-setup.outputs.cache-workspace-crates }}
+          workspaces: ${{ steps.release-setup.outputs.workspaces }}
+      - run: python3 .release-ci/.github/scripts/native_cache_inventory.py restored
       - name: Prepare notarization key
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
@@ -121,9 +135,10 @@ jobs:
       - name: Prepare ChatGPT model catalog
         run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
 
-      - name: Build Loofah CLI sidecar
-        run: bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
-      - run: pnpm -F desktop tauri build --ci --bundles app,dmg --config ./src-tauri/tauri.conf.stable.json
+      - run: python3 .release-ci/.github/scripts/measure_build.py cli -- bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
+      - run: python3 .release-ci/.github/scripts/measure_build.py desktop -- pnpm -F desktop tauri build --ci --no-bundle --config ./src-tauri/tauri.conf.stable.json -- --timings
+      - run: python3 .release-ci/.github/scripts/native_cache_inventory.py built
+      - run: python3 .release-ci/.github/scripts/measure_build.py bundle -- pnpm -F desktop tauri bundle --ci --bundles app,dmg --config ./src-tauri/tauri.conf.stable.json
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -132,11 +147,12 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      - uses: ./.release-ci/.github/actions/verify_macos_bundle
       - name: Find DMG
         id: dmg
         run: |
           set -euo pipefail
-          bundle_dir="apps/desktop/src-tauri/target/release/bundle/dmg"
+          bundle_dir="target/release/bundle/dmg"
           shopt -s nullglob
           dmgs=("$bundle_dir"/*.dmg)
           if [ "${#dmgs[@]}" -ne 1 ]; then
@@ -145,7 +161,7 @@ jobs:
           fi
           echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
       - name: Notarize DMG
-        uses: ./.github/actions/macos_notarize_dmg
+        uses: ./.release-ci/.github/actions/macos_notarize_dmg
         with:
           dmg-path: ${{ steps.dmg.outputs.path }}
           signing-identity: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -174,7 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          bundle_dir="apps/desktop/src-tauri/target/release/bundle/dmg"
+          bundle_dir="target/release/bundle/dmg"
           asset="Loofah_${version}_aarch64.dmg"
           mv "$DMG_PATH" "$bundle_dir/$asset"
           (cd "$bundle_dir" && shasum -a 256 "$asset" > "$asset.sha256")
@@ -187,8 +203,11 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          macos_dir="apps/desktop/src-tauri/target/release/bundle/macos"
-          archive="$(ls "$macos_dir"/*.app.tar.gz | head -n1)"
+          macos_dir="target/release/bundle/macos"
+          shopt -s nullglob
+          archives=("$macos_dir"/*.app.tar.gz)
+          test "${#archives[@]}" -eq 1
+          archive="${archives[0]}"
           asset="Loofah_${version}_aarch64.app.tar.gz"
           mv "$archive" "$macos_dir/$asset"
           mv "$archive.sig" "$macos_dir/$asset.sig"
@@ -207,14 +226,20 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          bundle_dir="apps/desktop/src-tauri/target/release/bundle/dmg"
-          macos_dir="apps/desktop/src-tauri/target/release/bundle/macos"
+          bundle_dir="target/release/bundle/dmg"
+          macos_dir="target/release/bundle/macos"
           cli_dir="$RUNNER_TEMP/cli-release"
           gh release upload "$TAG" \
             "$bundle_dir"/*.dmg "$bundle_dir"/*.sha256 \
             "$macos_dir"/*.app.tar.gz "$macos_dir"/*.app.tar.gz.sig "$macos_dir/latest.json" \
             "$cli_dir"/*.tar.gz "$cli_dir"/*.sha256 \
             --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-release-timings-${{ github.run_id }}
+          path: ${{ runner.temp }}/build-metrics/
+          retention-days: 14
 
   windows:
     needs: [resolve, changelog]
@@ -323,16 +348,27 @@ jobs:
             --clobber
 
   cli:
-    needs: [resolve, changelog, macos]
+    needs: [resolve, changelog]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/cli_release.yaml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+      skip-apple-silicon: true
+      defer-publication: true
+
+  publish-cli:
+    needs: [resolve, changelog, macos, cli]
     if: >-
       ${{
         always() &&
         needs.resolve.result == 'success' &&
         needs.changelog.result == 'success' &&
+        needs.cli.result == 'success' &&
         (needs.macos.result == 'success' || needs.macos.result == 'skipped')
       }}
     permissions:
       contents: write
-    uses: ./.github/workflows/cli_release.yaml
+    uses: ./.github/workflows/cli_publish.yaml
     with:
       tag: ${{ needs.resolve.outputs.tag }}

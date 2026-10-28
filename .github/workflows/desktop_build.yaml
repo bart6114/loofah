@@ -2,12 +2,36 @@ name: desktop-build
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Source commit to build (empty uses the workflow commit)
+        default: ""
+      flavor:
+        description: Artifact-only build flavor
+        type: choice
+        options: [staging, stable]
+        default: staging
+      cache-namespace:
+        description: New name for a cold benchmark; reuse the same name for a warm run
+        default: release-v2
+      require-native-cache:
+        description: Require both native build variants to be restored before a warm benchmark
+        type: boolean
+        default: false
+      legacy-layout:
+        description: Benchmark separate target directories and dependency-only caching
+        type: boolean
+        default: false
   push:
     branches:
       - main
     paths:
       - .github/workflows/desktop_build.yaml
       - .github/actions/**
+      - .github/scripts/**
+      - apps/cli/**
+      - .cargo/**
+      - rust-toolchain.toml
       - apps/desktop/**
       - packages/**
       - plugins/**
@@ -19,19 +43,26 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.cache-namespace || 'release-v2' }}-${{ inputs.legacy-layout || false }}
   cancel-in-progress: true
 
 jobs:
   macos:
-    runs-on: macos-latest
+    runs-on: macos-26
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref || github.sha }}
           lfs: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-ci
+          sparse-checkout: .github
           persist-credentials: false
       - uses: ./.github/actions/pnpm_install
       - uses: denoland/setup-deno@v2
@@ -39,10 +70,40 @@ jobs:
       - uses: ./.github/actions/install_desktop_deps
         with:
           target: macos
-      - uses: ./.github/actions/rust_install
+      - uses: ./.release-ci/.github/actions/macos_release_setup
+        id: release-setup
         with:
-          platform: macos
-      - run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+          cache-namespace: ${{ inputs.cache-namespace || 'release-v2' }}
+          legacy-layout: ${{ inputs.legacy-layout || false }}
+      # Keep this at workflow scope: nested composite post actions lose their inputs.
+      # https://github.com/actions/runner/issues/2009
+      - uses: ./.release-ci/.github/actions/rust_install
+        with:
+          shared-key: ${{ steps.release-setup.outputs.shared-key }}
+          cache-workspace-crates: ${{ steps.release-setup.outputs.cache-workspace-crates }}
+          workspaces: ${{ steps.release-setup.outputs.workspaces }}
+      - env:
+          REQUIRE_NATIVE_CACHE: ${{ inputs.require-native-cache || false }}
+        run: |
+          required=0
+          if [ "$REQUIRE_NATIVE_CACHE" = true ]; then required=2; fi
+          python3 .release-ci/.github/scripts/native_cache_inventory.py restored --require-units "$required"
+      - id: flavor
+        env:
+          FLAVOR: ${{ inputs.flavor || 'staging' }}
+          LEGACY_LAYOUT: ${{ inputs.legacy-layout || false }}
+        run: |
+          set -euo pipefail
+          case "$FLAVOR" in staging|stable) ;; *) exit 1 ;; esac
+          echo "config=./src-tauri/tauri.conf.$FLAVOR.json" >> "$GITHUB_OUTPUT"
+          if [ "$FLAVOR" = staging ]; then
+            echo 'feature=staging' >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$LEGACY_LAYOUT" = true ]; then
+            echo 'target=apps/desktop/src-tauri/target' >> "$GITHUB_OUTPUT"
+          else
+            echo 'target=target' >> "$GITHUB_OUTPUT"
+          fi
       - name: Prepare notarization key
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
@@ -52,30 +113,69 @@ jobs:
       - name: Prepare ChatGPT model catalog
         run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
 
-      - name: Build Loofah CLI sidecar
-        run: bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
-      - run: pnpm -F desktop tauri build --ci --bundles app,dmg --config ./src-tauri/tauri.conf.staging.json --features staging
+      - run: python3 .release-ci/.github/scripts/measure_build.py cli -- bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
+      - env:
+          CONFIG: ${{ steps.flavor.outputs.config }}
+          FEATURE: ${{ steps.flavor.outputs.feature }}
+        run: |
+          features=()
+          if [ -n "$FEATURE" ]; then features=(--features "$FEATURE"); fi
+          python3 .release-ci/.github/scripts/measure_build.py desktop -- pnpm -F desktop tauri build --ci --no-bundle --config "$CONFIG" "${features[@]}" -- --timings
+      - run: python3 .release-ci/.github/scripts/native_cache_inventory.py built
+      - run: |
+          features=()
+          if [ -n "$FEATURE" ]; then features=(--features "$FEATURE"); fi
+          python3 .release-ci/.github/scripts/measure_build.py bundle -- pnpm -F desktop tauri bundle --ci --bundles app,dmg --config "$CONFIG" "${features[@]}"
         env:
+          CONFIG: ${{ steps.flavor.outputs.config }}
+          FEATURE: ${{ steps.flavor.outputs.feature }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      - name: Checksum
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      - uses: ./.release-ci/.github/actions/verify_macos_bundle
+        with:
+          target-dir: ${{ steps.flavor.outputs.target }}
+      - id: dmg
+        env:
+          TARGET_DIR: ${{ steps.flavor.outputs.target }}
         run: |
           set -euo pipefail
-          bundle_dir="apps/desktop/src-tauri/target/release/bundle/dmg"
-          dmg="$(ls "$bundle_dir"/*.dmg | head -n1)"
-          if [ -z "$dmg" ]; then
-            echo "No dmg found in $bundle_dir"
-            exit 1
-          fi
+          bundle_dir="$TARGET_DIR/release/bundle/dmg"
+          shopt -s nullglob
+          dmgs=("$bundle_dir"/*.dmg)
+          test "${#dmgs[@]}" -eq 1
+          dmg="${dmgs[0]}"
+          echo "path=$dmg" >> "$GITHUB_OUTPUT"
+      - if: inputs.flavor == 'stable'
+        uses: ./.release-ci/.github/actions/macos_notarize_dmg
+        with:
+          dmg-path: ${{ steps.dmg.outputs.path }}
+          signing-identity: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          api-key-path: ${{ runner.temp }}/AuthKey.p8
+          api-key-id: ${{ secrets.APPLE_API_KEY }}
+          api-issuer: ${{ secrets.APPLE_API_ISSUER }}
+      - env:
+          DMG: ${{ steps.dmg.outputs.path }}
+        run: |
+          bundle_dir="$(dirname "$DMG")"
+          dmg="$DMG"
           (cd "$bundle_dir" && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
       - uses: actions/upload-artifact@v4
         with:
           name: loofah-macos-arm64-dmg-${{ github.sha }}
           path: |
-            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
-            apps/desktop/src-tauri/target/release/bundle/dmg/*.sha256
+            ${{ steps.flavor.outputs.target }}/release/bundle/dmg/*.dmg
+            ${{ steps.flavor.outputs.target }}/release/bundle/dmg/*.sha256
+            ${{ steps.flavor.outputs.target }}/release/bundle/macos/*.app.tar.gz*
           if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-build-timings-${{ github.run_id }}
+          path: ${{ runner.temp }}/build-metrics/
           retention-days: 14

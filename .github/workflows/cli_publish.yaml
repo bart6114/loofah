@@ -1,0 +1,90 @@
+name: cli-publish
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: cli-feed
+  cancel-in-progress: false
+
+jobs:
+  publish-latest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          if ! gh release view updater >/dev/null 2>&1; then
+            gh release create updater --prerelease \
+              --title "Updater feed" \
+              --notes "Rolling release holding latest.json for the in-app updater and stable-named copies of the latest artifacts. Do not delete."
+          fi
+          feed_version="$(gh release download updater --pattern loof-latest-version.txt -O - 2>/dev/null || gh release download updater --pattern loofah-latest-version.txt -O - 2>/dev/null || gh release download updater --pattern fmtr-latest-version.txt -O - 2>/dev/null || echo "0.0.0")"
+          newest="$(printf '%s\n%s\n' "$feed_version" "$version" | sort -V | tail -n1)"
+          if [ "$newest" != "$version" ]; then
+            echo "CLI feed already at $feed_version; not downgrading to $version"
+            exit 0
+          fi
+          gh release download "$TAG" --pattern "loof-${version}-*.tar.gz*"
+          shopt -s nullglob
+          assets=(loof-"${version}"-*.tar.gz)
+          test "${#assets[@]}" -eq 4
+          for asset in "${assets[@]}"; do
+            triple="${asset#loof-"${version}"-}"
+            triple="${triple%.tar.gz}"
+            sha256sum -c "$asset.sha256"
+            latest="loof-latest-${triple}.tar.gz"
+            mv "$asset" "$latest"
+            sha256sum "$latest" > "$latest.sha256"
+          done
+          printf '%s\n' "$version" > loof-latest-version.txt
+          gh release upload updater loof-latest-* --clobber
+
+  verify:
+    needs: publish-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          case "$(uname -s)/$(uname -m)" in
+            Darwin/arm64) triple=aarch64-apple-darwin ;;
+            Darwin/x86_64) triple=x86_64-apple-darwin ;;
+            Linux/x86_64) triple=x86_64-unknown-linux-gnu ;;
+            Linux/aarch64) triple=aarch64-unknown-linux-gnu ;;
+            *) echo "unsupported verify host"; exit 1 ;;
+          esac
+          asset="loof-latest-${triple}.tar.gz"
+          base="https://github.com/$REPO/releases/download/updater"
+          curl -fsSL --proto '=https' --tlsv1.2 -O "$base/$asset" -O "$base/$asset.sha256"
+          if command -v sha256sum >/dev/null; then
+            sha256sum -c "$asset.sha256"
+          else
+            shasum -a 256 -c "$asset.sha256"
+          fi
+          tar -xzf "$asset"
+          ./loof --version
+          if [ "$(uname -s)" = "Linux" ]; then
+            max="$(objdump -T loof | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -n1)"
+            echo "max glibc symbol: $max"
+            test "$(printf '%s\n%s\n' "${max#GLIBC_}" 2.35 | sort -V | tail -n1)" = "2.35"
+          fi

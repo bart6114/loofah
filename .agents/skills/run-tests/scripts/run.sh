@@ -168,6 +168,7 @@ run_cli() {
 }
 
 run_workflows() {
+  run_step "release workflow helpers" python3 -m unittest discover -s .github/scripts -p 'test_*.py'
   command -v uvx >/dev/null 2>&1 || {
     echo "uvx is required to run the zizmor workflow check" >&2
     return 1
