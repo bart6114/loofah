@@ -62,7 +62,7 @@ Base, Small, and Large Turbo use 8-bit quantized weights to reduce storage. Choo
 
 ## Dutch–English meetings with Whisper
 
-Download **Whisper Large V3 (Multilingual)** in **Settings → Transcription** and select it. The download is about 3.1 GB. It runs on your Mac’s GPU and can show the transcript during recording. After-recording transcription and audio imports also use Loofah’s speaker detection. No transcription API key is required. Whisper is available in the desktop app; CLI transcription currently supports Soniqo models.
+Download **Whisper Large V3 (Multilingual)** in **Settings → Transcription** and select it. The download is about 3.1 GB. It uses Metal on Apple Silicon Macs, or Vulkan when available on Windows with a CPU fallback and can show the transcript during recording. After-recording transcription and audio imports also use Loofah’s speaker detection. No transcription API key is required. Whisper is available in the desktop app; CLI transcription currently supports Soniqo models.
 
 For Dutch meetings with English technical terms, set Dutch as your main language and add English under **Additional spoken languages**. Whisper transcribes speech in its original language, with translation disabled. Recognition of mixed-language speech still depends on the recording and model.
 
