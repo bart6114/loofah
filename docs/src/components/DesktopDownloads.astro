@@ -1,0 +1,23 @@
+---
+const base = "https://github.com/bart6114/loofah/releases/download/updater";
+---
+<div class="desktop-downloads">
+  <a class="home-hero__download" href={`${base}/Loofah_latest_aarch64.dmg`}>
+    <span><strong>Download for macOS</strong><small>Apple Silicon · macOS 15+ · Signed &amp; notarized</small></span>
+    <span aria-hidden="true">↓</span>
+  </a>
+  <a class="home-hero__download" href={`${base}/Loofah_latest_x86_64-setup.exe`}>
+    <span><strong>Windows preview · Intel/AMD</strong><small>Windows 11 · x64 · Unsigned</small></span>
+    <span aria-hidden="true">↓</span>
+  </a>
+  <a class="home-hero__download" href={`${base}/Loofah_latest_aarch64-setup.exe`}>
+    <span><strong>Windows preview · ARM64</strong><small>Windows 11 · ARM64 · Unsigned</small></span>
+    <span aria-hidden="true">↓</span>
+  </a>
+  <p>Windows publisher verification is pending. <a href="/windows-preview">Read the installation guide and known limitations</a>.</p>
+</div>
+<style>
+  .desktop-downloads { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .desktop-downloads > a { flex: 1 1 15rem; }
+  .desktop-downloads p { flex-basis: 100%; margin: 0; font-size: .875rem; }
+</style>

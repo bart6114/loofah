@@ -10,7 +10,7 @@
 
 **[Loofah](https://loofah.io) is a free, open-source meeting transcription app for Apple Silicon Macs running macOS 15 or later.** Record without a bot, transcribe on-device, and keep your notes as Markdown files.
 
-A native Windows 11 port for x64 and ARM64 is in preview. See the [Windows preview guide](docs/src/content/docs/windows-preview.mdx) for test builds, setup, and pending hardware validation.
+A native Windows 11 port for x64 and ARM64 is in preview. See the [Windows preview guide](docs/src/content/docs/windows-preview.mdx) for downloads, setup, and known limitations. Publisher signing is pending; in-app updates remain cryptographically verified.
 
 I wanted a meeting notetaker that did a few things well: transcribe locally,
 keep my notes as ordinary Markdown files, and stay out of the way. I couldn't
@@ -85,3 +85,4 @@ typechecking, and code-style conventions.
 MIT. See [LICENSE](./LICENSE) for the complete license and copyright history,
 including the original [anarlog](https://github.com/fastrepl/anarlog)
 copyright.
+
