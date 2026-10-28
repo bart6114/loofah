@@ -27,6 +27,14 @@ test/debug jobs remain separate. Older tags without resource-restoration support
 use dependency-only caches. Workflow helpers come from the workflow commit even
 when application sources come from an older tag.
 
+Keep `macos_release_setup` and `rust_install` as sibling workflow steps. Nested
+composite post actions can lose their inputs ([runner issue #2009](https://github.com/actions/runner/issues/2009)),
+which silently disables workspace-output retention when rust-cache saves. The
+`release-v2` namespace replaces those incomplete caches; existing entries are
+[immutable](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
+The `release-cache-check` workflow verifies the real action's save/restore behavior
+on separate runners using representative native files in an isolated cache family.
+
 Configure **Settings → Actions → General → Cache size eviction limit** to 50 GiB
 and an **Actions Cache Storage** budget of $5/month in account billing. At the
 current $0.07/GiB-month rate above the included 10 GiB, full utilization is
@@ -40,12 +48,15 @@ both comparisons. Set `legacy-layout: true` for separate target directories and
 dependency-only caching, and `false` for the shared layout and workspace caching.
 Use a fresh `cache-namespace` for each cold comparison, then repeat the same inputs
 on a fresh runner for a warm comparison. Both variants use the pinned toolchains;
-this isolates layout and cache-content improvements from runner-image churn.
+the hosted runner image can still change, so record its version and compare several
+runs. Set `require-native-cache: true` for the shared-layout warm run to require
+both native libraries and Metal outputs before compilation begins.
 The default namespace is reserved for normal staging/stable builds.
 
 The `macos-*-timings` artifacts contain per-stage elapsed times, Cargo HTML reports
 for the CLI and desktop, native phase timings in `native.tsv` (phase, milliseconds,
-Cargo output directory), and the selected toolchain. Native timings are emitted
+Cargo output directory), the selected toolchain, and native-output inventories
+before and after compilation. Native timings are emitted
 only when the native build script executes. Bundle time includes app signing and
 notarization; stable release jobs separately notarize the outer DMG. Compare build
 and cache time separately from runner queueing. Validate the bundled CLI, Metal

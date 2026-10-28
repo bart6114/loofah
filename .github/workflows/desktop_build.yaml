@@ -13,7 +13,11 @@ on:
         default: staging
       cache-namespace:
         description: New name for a cold benchmark; reuse the same name for a warm run
-        default: release-v1
+        default: release-v2
+      require-native-cache:
+        description: Require both native build variants to be restored before a warm benchmark
+        type: boolean
+        default: false
       legacy-layout:
         description: Benchmark separate target directories and dependency-only caching
         type: boolean
@@ -39,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.cache-namespace || 'release-v1' }}-${{ inputs.legacy-layout || false }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.cache-namespace || 'release-v2' }}-${{ inputs.legacy-layout || false }}
   cancel-in-progress: true
 
 jobs:
@@ -67,9 +71,23 @@ jobs:
         with:
           target: macos
       - uses: ./.release-ci/.github/actions/macos_release_setup
+        id: release-setup
         with:
-          cache-namespace: ${{ inputs.cache-namespace || 'release-v1' }}
+          cache-namespace: ${{ inputs.cache-namespace || 'release-v2' }}
           legacy-layout: ${{ inputs.legacy-layout || false }}
+      # Keep this at workflow scope: nested composite post actions lose their inputs.
+      # https://github.com/actions/runner/issues/2009
+      - uses: ./.release-ci/.github/actions/rust_install
+        with:
+          shared-key: ${{ steps.release-setup.outputs.shared-key }}
+          cache-workspace-crates: ${{ steps.release-setup.outputs.cache-workspace-crates }}
+          workspaces: ${{ steps.release-setup.outputs.workspaces }}
+      - env:
+          REQUIRE_NATIVE_CACHE: ${{ inputs.require-native-cache || false }}
+        run: |
+          required=0
+          if [ "$REQUIRE_NATIVE_CACHE" = true ]; then required=2; fi
+          python3 .release-ci/.github/scripts/native_cache_inventory.py restored --require-units "$required"
       - id: flavor
         env:
           FLAVOR: ${{ inputs.flavor || 'staging' }}
@@ -103,6 +121,7 @@ jobs:
           features=()
           if [ -n "$FEATURE" ]; then features=(--features "$FEATURE"); fi
           python3 .release-ci/.github/scripts/measure_build.py desktop -- pnpm -F desktop tauri build --ci --no-bundle --config "$CONFIG" "${features[@]}" -- --timings
+      - run: python3 .release-ci/.github/scripts/native_cache_inventory.py built
       - run: |
           features=()
           if [ -n "$FEATURE" ]; then features=(--features "$FEATURE"); fi

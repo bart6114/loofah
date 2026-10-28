@@ -1,12 +1,22 @@
 name: Prepare macOS release build
-description: Select the native toolchain and restore compatible release outputs.
+description: Select the native toolchain and describe compatible release outputs.
 inputs:
   cache-namespace:
     description: Use a new namespace for a cold benchmark, then reuse it for a warm run.
-    default: release-v1
+    default: release-v2
   legacy-layout:
     description: Benchmark the previous separate target directories and dependency-only cache.
     default: "false"
+outputs:
+  shared-key:
+    description: Cache family for the selected release layout.
+    value: macos-${{ inputs.cache-namespace }}-${{ inputs.legacy-layout }}
+  workspaces:
+    description: Cargo target directories to preserve.
+    value: ${{ steps.layout.outputs.workspaces }}
+  cache-workspace-crates:
+    description: Whether these sources support restoring native workspace outputs.
+    value: ${{ steps.layout.outputs.workspace-cache }}
 runs:
   using: composite
   steps:
@@ -48,8 +58,3 @@ runs:
         echo "workspace-cache=$workspace_cache" >> "$GITHUB_OUTPUT"
         mkdir -p "$RUNNER_TEMP/build-metrics"
         printf '%s\n' "$native_toolchain" > "$RUNNER_TEMP/build-metrics/toolchain.txt"
-    - uses: ./.release-ci/.github/actions/rust_install
-      with:
-        shared-key: macos-${{ inputs.cache-namespace }}-${{ inputs.legacy-layout }}
-        cache-workspace-crates: ${{ steps.layout.outputs.workspace-cache }}
-        workspaces: ${{ steps.layout.outputs.workspaces }}

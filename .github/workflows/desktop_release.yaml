@@ -117,6 +117,15 @@ jobs:
         with:
           target: macos
       - uses: ./.release-ci/.github/actions/macos_release_setup
+        id: release-setup
+      # Keep this at workflow scope: nested composite post actions lose their inputs.
+      # https://github.com/actions/runner/issues/2009
+      - uses: ./.release-ci/.github/actions/rust_install
+        with:
+          shared-key: ${{ steps.release-setup.outputs.shared-key }}
+          cache-workspace-crates: ${{ steps.release-setup.outputs.cache-workspace-crates }}
+          workspaces: ${{ steps.release-setup.outputs.workspaces }}
+      - run: python3 .release-ci/.github/scripts/native_cache_inventory.py restored
       - name: Prepare notarization key
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
@@ -128,6 +137,7 @@ jobs:
 
       - run: python3 .release-ci/.github/scripts/measure_build.py cli -- bash apps/desktop/src-tauri/scripts/build-cli-sidecar.sh
       - run: python3 .release-ci/.github/scripts/measure_build.py desktop -- pnpm -F desktop tauri build --ci --no-bundle --config ./src-tauri/tauri.conf.stable.json -- --timings
+      - run: python3 .release-ci/.github/scripts/native_cache_inventory.py built
       - run: python3 .release-ci/.github/scripts/measure_build.py bundle -- pnpm -F desktop tauri bundle --ci --bundles app,dmg --config ./src-tauri/tauri.conf.stable.json
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}

@@ -1,0 +1,71 @@
+name: release-cache-check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/actions/macos_release_setup/**
+      - .github/actions/rust_install/**
+      - .github/scripts/native_cache_inventory.py
+      - .github/workflows/release_cache_check.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  save:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/macos_release_setup
+        id: release-setup
+        with:
+          cache-namespace: retention-check-${{ github.run_id }}
+      - uses: ./.github/actions/rust_install
+        with:
+          shared-key: ${{ steps.release-setup.outputs.shared-key }}
+          cache-workspace-crates: ${{ steps.release-setup.outputs.cache-workspace-crates }}
+          workspaces: ${{ steps.release-setup.outputs.workspaces }}
+      # Representative OUT_DIR files exercise rust-cache cleanup without compiling Swift.
+      - shell: bash
+        env:
+          PROBE_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for hash in 1111111111111111 2222222222222222; do
+            profile="$CARGO_TARGET_DIR/release/build/transcribe-soniqo-$hash/out/swift-rs/soniqo-swift/release"
+            mkdir -p "$profile"
+            printf '%s\n' "$PROBE_ID" > "$profile/libsoniqo-swift.a"
+            printf '%s\n' "$PROBE_ID" > "$profile/mlx.metallib"
+          done
+          python3 .github/scripts/native_cache_inventory.py built --require-units 2
+
+  restore:
+    needs: save
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/macos_release_setup
+        id: release-setup
+        with:
+          cache-namespace: retention-check-${{ github.run_id }}
+      - uses: ./.github/actions/rust_install
+        with:
+          shared-key: ${{ steps.release-setup.outputs.shared-key }}
+          cache-workspace-crates: ${{ steps.release-setup.outputs.cache-workspace-crates }}
+          workspaces: ${{ steps.release-setup.outputs.workspaces }}
+      - shell: bash
+        env:
+          PROBE_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/native_cache_inventory.py restored --require-units 2
+          for hash in 1111111111111111 2222222222222222; do
+            profile="$CARGO_TARGET_DIR/release/build/transcribe-soniqo-$hash/out/swift-rs/soniqo-swift/release"
+            test "$(cat "$profile/libsoniqo-swift.a")" = "$PROBE_ID"
+            test "$(cat "$profile/mlx.metallib")" = "$PROBE_ID"
+          done
