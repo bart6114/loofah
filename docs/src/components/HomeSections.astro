@@ -1,18 +1,19 @@
 ---
-const { downloadUrl } = Astro.props;
+import DesktopDownloads from "./DesktopDownloads.astro";
+
 
 const features = [
   {
     number: "01",
     title: "Record without a meeting bot",
     description:
-      "Capture your microphone and the audio playing on your Mac. Loofah stays out of the participant list. Get permission to record, then start when you are ready.",
+      "Capture your microphone and the audio playing on your computer. Loofah stays out of the participant list. Get permission to record, then start when you are ready.",
     href: "/meetings",
     link: "How recording works",
   },
   {
     number: "02",
-    title: "Transcribe on your Mac",
+    title: "Transcribe on your computer",
     description:
       "Download a speech model once and use it offline. Follow meetings live with a model that supports your spoken languages, or transcribe after recording.",
     href: "/offline",
@@ -40,14 +41,14 @@ const questions = [
       "Yes, once you have downloaded the transcription model. Local summaries also need a downloaded language model and a running Ollama or LM Studio server. A hosted summary provider needs an internet connection.",
   },
   {
-    question: "Does my meeting data leave my Mac?",
+    question: "Does my meeting data leave my computer?",
     answer:
       "Recording and transcription run locally. If you choose a remote summary provider, the required meeting context goes to that provider. Connected agents can receive the notes you ask them to read, and a sync service can copy files if you configure one. Loofah has no cloud backend or telemetry.",
   },
   {
-    question: "Which Macs are supported?",
+    question: "Which computers are supported?",
     answer:
-      "The signed and notarized desktop download supports Apple Silicon Macs running macOS 15 or later. Download your models during setup and make a short test recording before your first meeting.",
+      "The signed and notarized macOS download supports Apple Silicon Macs running macOS 15 or later. The unsigned Windows preview supports Windows 11 on x64 and ARM64 PCs. Download your models during setup and make a short test recording before your first meeting.",
   },
   {
     question: "Can I transcribe an existing recording?",
@@ -219,11 +220,7 @@ const questions = [
     <p>
       Install Loofah, download a speech model, and try your first recording.
     </p>
-    <a class="home-hero__download" href={downloadUrl}>
-      <span><strong>Download free for macOS</strong><small>Apple Silicon · macOS
-          15+ · Signed &amp; notarized</small></span>
-      <span aria-hidden="true">↓</span>
-    </a>
+    <DesktopDownloads />
     <a
       class="section-link"
       href="/changelog"

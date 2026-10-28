@@ -3,6 +3,11 @@ title: "CLI for agents"
 description: "Use loof to search the local knowledge vault and create notes from agent work or external sources."
 ---
 
+:::note[Windows preview]
+Windows 11 installers are available for Intel/AMD x64 and ARM64. See the [Windows guide](/windows-preview) for installation, unsigned-publisher warnings, supported speech models, and CLI setup. Apple-specific models and permissions described below apply to macOS.
+:::
+
+
 We recommend the CLI for agents with shell access. Start with the [skill installation prompt](/agents/skills#install-with-a-prompt) to teach your agent the commands and ask it to remember to use Loofah through `loof` for persistent notes and saved knowledge. If needed, [install the CLI](/installation) too.
 
 Pass the global `--json` flag when software consumes CLI output. A successful response contains `schema_version`, `command`, `data`, and, for paginated commands, `pagination`.
@@ -65,7 +70,7 @@ loof --json transcribe SESSION_ID
 Only store content when the user asks. Respect the permissions and privacy boundary of the source tool, and do not send vault content elsewhere merely to re-import it.
 
 :::note
-On-device transcription requires macOS on Apple Silicon and the on-device Soniqo model configured in the desktop app. The CLI never downloads models, so open the desktop app once to download it.
+On-device transcription uses Soniqo models on Apple Silicon Macs and Parakeet ONNX models on Windows 11, configured in the desktop app. The CLI never downloads models, so open the desktop app once to download it.
 :::
 
 ## Remove a session when asked

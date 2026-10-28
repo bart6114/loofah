@@ -85,3 +85,5 @@ typechecking, and code-style conventions.
 MIT. See [LICENSE](./LICENSE) for the complete license and copyright history,
 including the original [anarlog](https://github.com/fastrepl/anarlog)
 copyright.
+
+Windows 11 preview downloads for x64 and ARM64 are available through the [Windows installation guide](https://loofah.io/windows-preview). Publisher signing is pending; in-app updates remain cryptographically verified.

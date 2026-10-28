@@ -5,13 +5,24 @@ description: "Install and test the Windows 11 preview on x64 and ARM64."
 
 Windows support is in preview. Use Windows 11 on an x64 or ARM64 computer with at least 16 GB of RAM. A dedicated GPU is not required. Performance and long-recording acceptance testing on both architectures is still pending.
 
-## Install a test build
+## Install the preview
 
-Download the artifact matching your processor from a successful [Windows CI run](https://github.com/bart6114/loofah/actions/workflows/windows_ci.yaml). GitHub requires you to sign in to download workflow artifacts. Choose `x86_64-pc-windows-msvc` for Intel or AMD PCs, or `aarch64-pc-windows-msvc` for ARM PCs.
+Download the installer for your PC. Check **Settings → System → About → System type** if you are unsure:
 
-Extract the artifact and run its `-setup.exe`. The installer works for your Windows account and includes the WebView2 installer. Preview installers are unsigned while publisher signing is being provisioned; Windows can show an unknown-publisher warning. These staging builds do not use the stable update feed.
+- [Intel or AMD (x64)](https://github.com/bart6114/loofah/releases/download/updater/Loofah_latest_x86_64-setup.exe)
+- [ARM64](https://github.com/bart6114/loofah/releases/download/updater/Loofah_latest_aarch64-setup.exe)
 
-The staging app has its own settings and default vault. To try existing notes, use a copy of your vault. You can choose that copy in Settings. Vault files use the same format on macOS and Windows.
+Run the downloaded `-setup.exe`. Installation is for your Windows account and includes WebView2. No GitHub account is needed.
+
+:::caution[Unsigned preview]
+Publisher verification is pending. Windows may show **Unknown publisher** or a SmartScreen warning. Only continue if you downloaded Loofah from the links above and trust the source. Smart App Control or your organization's policy may block installation entirely; contact your administrator or wait for a signed release. Do not disable security protection to install the preview.
+:::
+
+This is a public preview for user testing. Physical-device coverage, GPU acceleration, long recordings, Bluetooth changes, sleep recovery, mixed-DPI displays, and synced/UNC vaults are still being tested. An ARM virtual-machine test previously produced an empty Whisper transcript; try Parakeet and report your model and hardware if this happens.
+
+Loofah checks for updates in the app. Updates are cryptographically verified even while Windows publisher signing is pending. Future publisher-signed releases will use the same app and vault. Checksums are available beside each installer on the [release page](https://github.com/bart6114/loofah/releases/tag/updater).
+
+The public preview installs as **Loofah**. CI staging builds remain separate, with their own settings, default vault, and `loof-staging` CLI. Back up an existing vault before trying preview software; Windows and macOS share the same vault format.
 
 ## Recording and speech models
 
@@ -25,9 +36,10 @@ Download speech models in **Settings → Transcription** before going offline:
 
 - The streaming Parakeet model provides live English transcription.
 - The batch Parakeet model transcribes recordings and imports in the supported [25 European languages](/languages).
+- Whisper Base, Base English, Small, Small English, Large Turbo, and Large V3 support live and batch transcription. Whisper uses Vulkan when available and falls back to CPU.
 - Speaker detection downloads automatically alongside speech models and adds labels after transcription. Batch transcription still works if that download is missing or fails; its status and retry control are shown in Settings. Live speaker detection is unavailable.
 
-Windows runs these models locally on the CPU. Model files are checked against pinned checksums. Existing macOS model selections resolve to the corresponding Windows model when opening a shared vault; the app does not rewrite those selections merely because the platform changed.
+Windows runs Parakeet and speaker detection locally on the CPU. Nemotron 3.5 and Omnilingual use Apple-specific runtimes and are unavailable in the Windows preview. Model files are checked against pinned checksums. Existing macOS model selections resolve to the corresponding Windows model when opening a shared vault; the app does not rewrite those selections merely because the platform changed.
 
 AI summaries can use the same local or API-key providers as on macOS. API providers require a network connection.
 
@@ -38,12 +50,12 @@ Open **Settings → Agents** and install the bundled CLI. It lives under `%LOCAL
 Staging builds install `loof-staging`; stable builds use `loof`. For example:
 
 ```powershell
-loof-staging --version
-loof-staging --json doctor
-loof-staging mcp
+loof --version
+loof --json doctor
+loof mcp
 ```
 
-The artifact also includes a standalone `cli` directory. Keep its DLLs beside `loof-staging.exe` when moving or distributing it. The executable name selects the staging app's default vault. Use an absolute executable path when configuring an MCP client that cannot find the command on `PATH`.
+Versioned releases also include standalone CLI ZIPs. Keep their DLLs beside `loof.exe` when moving or distributing it. The executable name selects the staging app's default vault. Use an absolute executable path when configuring an MCP client that cannot find the command on `PATH`.
 
 App updates refresh an opted-in CLI. Uninstalling the app removes the managed CLI and its PATH entry when its files are unchanged. Modified files are preserved. Your vault is separate from this cleanup.
 
@@ -55,4 +67,4 @@ Meeting reminders use Windows notifications. Enable notifications for Loofah in 
 
 ## Report a preview issue
 
-Include your Windows build, processor architecture, audio-device names, whether the app was waking from sleep, and the workflow run that supplied the installer. For capture problems, describe which source stopped: microphone, system audio, or both. Avoid attaching private recordings or vault contents to a public issue.
+Include your Windows build, processor architecture, audio-device names, whether the app was waking from sleep, the app version, and the selected speech model. [Report an issue](https://github.com/bart6114/loofah/issues/new) with reproduction steps. For capture problems, describe which source stopped: microphone, system audio, or both. Avoid attaching private recordings or vault contents to a public issue.

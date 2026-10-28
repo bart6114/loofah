@@ -1,4 +1,5 @@
 ---
+import DesktopDownloads from "../components/DesktopDownloads.astro";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import squircleIcon from "../../../apps/desktop/src-tauri/icons/src/loofah-squircle-1024.png";
 import HomeSections from "../components/HomeSections.astro";
@@ -10,9 +11,9 @@ const downloadUrl =
 
 <StarlightPage
   frontmatter={{
-    title: "Free Meeting Transcription for Mac",
+    title: "Free Meeting Transcription for Mac and Windows",
     description:
-      "Free, open-source meeting transcription for Mac. Record without a bot, transcribe locally, and keep notes as Markdown. No account or subscription.",
+      "Free, open-source meeting transcription for Mac and Windows. Record without a bot, transcribe locally, and keep notes as Markdown. No account or subscription.",
     head: [
       { tag: "meta", attrs: { property: "og:type", content: "website" } },
       {
@@ -34,9 +35,9 @@ const downloadUrl =
               name: "Loofah",
               url: "https://loofah.io/",
               description:
-                "Free meeting transcription for Mac with local processing, Markdown notes, and CLI and MCP access.",
+                "Free meeting transcription for Mac and Windows with local processing, Markdown notes, and CLI and MCP access.",
               applicationCategory: "ProductivityApplication",
-              operatingSystem: "macOS 15 or later (Apple Silicon)",
+              operatingSystem: ["macOS 15 or later (Apple Silicon)", "Windows 11 (x64 and ARM64, preview)"],
               isAccessibleForFree: true,
               license: "https://github.com/bart6114/loofah/blob/main/LICENSE",
               downloadUrl,
@@ -94,19 +95,13 @@ const downloadUrl =
             Free meeting transcription. <span>Notes you own.</span>
           </h1>
           <p class="home-hero__lead">
-            Record meetings without a bot and transcribe audio on your Mac. Keep
+            Record meetings without a bot and transcribe audio on your computer. Keep
             notes as Markdown files, generate summaries with your choice of AI,
             and connect your agents. No account or subscription.
           </p>
 
           <div class="home-hero__actions">
-            <a class="home-hero__download" href={downloadUrl}>
-              <span>
-                <strong>Download free for macOS</strong>
-                <small>Apple Silicon · macOS 15+</small>
-              </span>
-              <span aria-hidden="true">↓</span>
-            </a>
+            <DesktopDownloads />
             <a class="home-hero__start" href="/quickstart">
               <span>
                 <strong>Get started</strong>

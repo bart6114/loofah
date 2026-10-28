@@ -3,6 +3,11 @@ title: "CLI reference"
 description: "Commands and global options available in the loof CLI."
 ---
 
+:::note[Windows preview]
+Windows 11 installers are available for Intel/AMD x64 and ARM64. See the [Windows guide](/windows-preview) for installation, unsigned-publisher warnings, supported speech models, and CLI setup. Apple-specific models and permissions described below apply to macOS.
+:::
+
+
 ## Global syntax
 
 ```text
@@ -93,7 +98,7 @@ Transcribes the meeting's audio recording on-device with the speech-to-text mode
 
 Supported models include **Soniqo Parakeet Streaming**, **Soniqo Parakeet Batch**, and **Nemotron 3.5 ASR (Multilingual)**. Download and select the model in the desktop app first. Nemotron uses your configured meeting languages to guide recognition, including automatic language detection when multiple languages are selected.
 
-The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (only on-device `soniqo-*` models are), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription requires macOS on Apple Silicon.
+The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (on-device Soniqo models on macOS and Parakeet ONNX models on Windows), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription supports Apple Silicon macOS and Windows 11 with their platform-specific models.
 
 ## JSON response contract
 
