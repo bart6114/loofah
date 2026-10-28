@@ -1,0 +1,55 @@
+name: Prepare macOS release build
+description: Select the native toolchain and restore compatible release outputs.
+inputs:
+  cache-namespace:
+    description: Use a new namespace for a cold benchmark, then reuse it for a warm run.
+    default: release-v1
+  legacy-layout:
+    description: Benchmark the previous separate target directories and dependency-only cache.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - id: layout
+      shell: bash
+      env:
+        LEGACY_LAYOUT: ${{ inputs.legacy-layout }}
+        NATIVE_SOURCES: ${{ hashFiles('**/Package.swift', '**/Package.resolved', '**/*.swift', '**/build.rs', 'vendor/whisper-rs/**', '!.release-ci/**') }}
+      run: |
+        set -euo pipefail
+        developer_dir=/Applications/Xcode_26.6.app/Contents/Developer
+        test -d "$developer_dir"
+        sudo xcode-select --switch "$developer_dir"
+        native_toolchain="$(xcodebuild -version; xcrun --sdk macosx --show-sdk-version; xcrun swift --version)"
+        native_key="$(printf '%s\n' "$native_toolchain" "$NATIVE_SOURCES" | shasum -a 256 | awk '{print $1}')"
+        {
+          echo "DEVELOPER_DIR=$developer_dir"
+          echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)"
+          echo "LOOFAH_NATIVE_CACHE=$native_key"
+          echo "LOOFAH_BUILD_METRICS=$RUNNER_TEMP/build-metrics/native.tsv"
+          if [ "$LEGACY_LAYOUT" != true ]; then
+            echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target"
+          fi
+        } >> "$GITHUB_ENV"
+        {
+          echo 'workspaces<<WORKSPACES'
+          echo '. -> target'
+          if [ "$LEGACY_LAYOUT" = true ]; then
+            echo 'apps/desktop/src-tauri -> target'
+          fi
+          echo WORKSPACES
+        } >> "$GITHUB_OUTPUT"
+        workspace_cache=false
+        if [ "$LEGACY_LAYOUT" != true ] &&
+          grep -Fq 'cargo:rerun-if-changed={}", destination.display()' crates/transcribe-soniqo/build.rs &&
+          grep -Fq 'cargo:rerun-if-changed={}", dst.display()' apps/desktop/src-tauri/build.rs; then
+          workspace_cache=true
+        fi
+        echo "workspace-cache=$workspace_cache" >> "$GITHUB_OUTPUT"
+        mkdir -p "$RUNNER_TEMP/build-metrics"
+        printf '%s\n' "$native_toolchain" > "$RUNNER_TEMP/build-metrics/toolchain.txt"
+    - uses: ./.release-ci/.github/actions/rust_install
+      with:
+        shared-key: macos-${{ inputs.cache-namespace }}-${{ inputs.legacy-layout }}
+        cache-workspace-crates: ${{ steps.layout.outputs.workspace-cache }}
+        workspaces: ${{ steps.layout.outputs.workspaces }}

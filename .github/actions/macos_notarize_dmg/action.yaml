@@ -40,6 +40,7 @@ runs:
         API_ISSUER: ${{ inputs.api-issuer }}
       run: |
         set -euo pipefail
+        started=$SECONDS
 
         if [[ ! -f "$DMG_PATH" ]]; then
           echo "::error::DMG not found at $DMG_PATH"
@@ -96,3 +97,7 @@ runs:
         xcrun stapler staple "$DMG_PATH"
         xcrun stapler validate "$DMG_PATH"
         spctl -a -t open -vvv --context context:primary-signature "$DMG_PATH"
+
+        mkdir -p "$RUNNER_TEMP/build-metrics"
+        printf '{"stage":"dmg-notarization","seconds":%s,"exit_code":0}\n' "$((SECONDS - started))" \
+          > "$RUNNER_TEMP/build-metrics/dmg-notarization.json"

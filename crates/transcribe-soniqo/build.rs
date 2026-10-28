@@ -1,10 +1,11 @@
 #[cfg(target_os = "macos")]
 use std::{
     collections::BTreeSet,
-    env, fs, io,
+    env, fs,
+    io::{self, Write},
     path::{Path, PathBuf},
     process::Command,
-    time::SystemTime,
+    time::{Instant, SystemTime},
 };
 
 #[cfg(target_os = "macos")]
@@ -145,6 +146,24 @@ fn run_command(mut command: Command, context: &str) {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[cfg(target_os = "macos")]
+fn measure_native<T>(phase: &str, build: impl FnOnce() -> T) -> T {
+    let started = Instant::now();
+    let result = build();
+    if let Some(path) = env::var_os("LOOFAH_BUILD_METRICS") {
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(
+                file,
+                "{}\t{}\t{}",
+                phase,
+                started.elapsed().as_millis(),
+                env::var("OUT_DIR").unwrap_or_default()
+            );
+        }
+    }
+    result
 }
 
 #[cfg(target_os = "macos")]
@@ -318,7 +337,8 @@ fn build_mlx_metallib() {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
     let swift_build_dir = out_dir.join("swift-rs").join("soniqo-swift");
     let profile = cargo_profile();
-    let built_metallib = compile_mlx_metallib(&swift_build_dir, profile);
+    let built_metallib =
+        measure_native("metal", || compile_mlx_metallib(&swift_build_dir, profile));
     let metallib = find_mlx_metallib(&swift_build_dir, profile).unwrap_or_else(|| {
         panic!(
             "Soniqo MLX metallib build completed but mlx.metallib was not found under {}",
@@ -329,6 +349,7 @@ fn build_mlx_metallib() {
 
     if let Some(target_dir) = profile_target_dir(&out_dir) {
         let destination = target_dir.join("mlx.metallib");
+        println!("cargo:rerun-if-changed={}", destination.display());
         copy_if_changed(&metallib, &destination).unwrap_or_else(|error| {
             panic!(
                 "failed to copy Soniqo MLX metallib to {}: {error}",
@@ -339,6 +360,8 @@ fn build_mlx_metallib() {
 
     if let Some(destination) = desktop_resource_metallib_path() {
         if destination.parent().is_some_and(Path::exists) {
+            // Cargo's cache does not restore resources outside OUT_DIR.
+            println!("cargo:rerun-if-changed={}", destination.display());
             copy_if_changed(&metallib, &destination).unwrap_or_else(|error| {
                 panic!(
                     "failed to copy Soniqo MLX metallib to {}: {error}",
@@ -361,11 +384,13 @@ fn main() {
 
         let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set by Cargo"));
         let swift_build_dir = out_dir.join("swift-rs").join("soniqo-swift");
-        prepare_swift_package(&swift_build_dir);
+        measure_native("swift-resolve", || prepare_swift_package(&swift_build_dir));
 
-        swift_rs::SwiftLinker::new(SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET)
-            .with_package("soniqo-swift", "./swift-lib/")
-            .link();
+        measure_native("swift-build", || {
+            swift_rs::SwiftLinker::new(SONIQO_SWIFT_MACOS_DEPLOYMENT_TARGET)
+                .with_package("soniqo-swift", "./swift-lib/")
+                .link();
+        });
 
         build_mlx_metallib();
 

@@ -5,6 +5,17 @@ inputs:
     description: Optional platform whose Rust targets and system dependencies should be installed.
     required: false
     default: ""
+  shared-key:
+    description: Cache family shared by compatible jobs.
+    default: ""
+  workspaces:
+    description: Cargo workspace to target directory mappings.
+    default: |
+      . -> target
+      apps/desktop/src-tauri -> target
+  cache-workspace-crates:
+    description: Preserve workspace libraries and their native build outputs.
+    default: "false"
 runs:
   using: "composite"
   steps:
@@ -73,13 +84,26 @@ runs:
       with:
         toolchain: ${{ steps.toolchain.outputs.channel }}
         components: ${{ steps.toolchain.outputs.components }}
+    # Hosted images include an unrelated stable toolchain; rust-cache hashes it too.
+    - if: runner.environment == 'github-hosted'
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ steps.toolchain.outputs.channel }}
+      run: |
+        set -euo pipefail
+        rustup default "$TOOLCHAIN"
+        active="$(rustup show active-toolchain | awk '{print $1}')"
+        while read -r toolchain _; do
+          if [ "$toolchain" != "$active" ]; then
+            rustup toolchain uninstall "$toolchain"
+          fi
+        done < <(rustup toolchain list)
     - uses: Swatinem/rust-cache@v2
       with:
         cache-targets: "true"
         cache-on-failure: ${{ inputs.platform == 'windows' }}
         prefix-key: v0-rust${{ steps.cache-key.outputs.suffix }}
-        # src-tauri/.cargo/config.toml redirects its target dir outside the
-        # default cached path; without this entry every tauri build is cold.
-        workspaces: |
-          . -> target
-          apps/desktop/src-tauri -> target
+        shared-key: ${{ inputs.shared-key }}
+        cache-workspace-crates: ${{ inputs.cache-workspace-crates }}
+        env-vars: SDKROOT DEVELOPER_DIR LOOFAH_NATIVE_CACHE
+        workspaces: ${{ inputs.workspaces }}
