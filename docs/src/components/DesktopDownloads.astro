@@ -1,23 +1,92 @@
 ---
+const { dark = false } = Astro.props;
 const base = "https://github.com/bart6114/loofah/releases/download/updater";
 ---
-<div class="desktop-downloads">
-  <a class="home-hero__download" href={`${base}/Loofah_latest_aarch64.dmg`}>
-    <span><strong>Download for macOS</strong><small>Apple Silicon · macOS 15+ · Signed &amp; notarized</small></span>
-    <span aria-hidden="true">↓</span>
-  </a>
-  <a class="home-hero__download" href={`${base}/Loofah_latest_x86_64-setup.exe`}>
-    <span><strong>Windows preview · Intel/AMD</strong><small>Windows 11 · x64 · Unsigned</small></span>
-    <span aria-hidden="true">↓</span>
-  </a>
-  <a class="home-hero__download" href={`${base}/Loofah_latest_aarch64-setup.exe`}>
-    <span><strong>Windows preview · ARM64</strong><small>Windows 11 · ARM64 · Unsigned</small></span>
-    <span aria-hidden="true">↓</span>
-  </a>
-  <p>Windows publisher verification is pending. <a href="/windows-preview">Read the installation guide and known limitations</a>.</p>
+
+<div class:list={["desktop-downloads", { "desktop-downloads--dark": dark }]}>
+  <div class="download-option">
+    <a class="download-button download-button--mac" href={`${base}/Loofah_latest_aarch64.dmg`}>
+      <span><strong>Download for macOS</strong><small>Apple Silicon · macOS 15+</small></span>
+      <span class="download-arrow" aria-hidden="true">↓</span>
+    </a>
+    <p class="download-detail">Signed &amp; notarized</p>
+  </div>
+  <div class="download-option">
+    <a class="download-button download-button--windows" href={`${base}/Loofah_latest_x86_64-setup.exe`}>
+      <span><strong>Windows preview</strong><small>Intel / AMD · Windows 11</small></span>
+      <span class="download-arrow" aria-hidden="true">↓</span>
+    </a>
+    <p class="download-detail">
+      <a href={`${base}/Loofah_latest_aarch64-setup.exe`}>ARM64 download</a>
+      <span aria-hidden="true">·</span>
+      <a href="/windows-preview">Unsigned · Install guide</a>
+    </p>
+  </div>
 </div>
+
 <style>
-  .desktop-downloads { display: flex; flex-wrap: wrap; gap: 1rem; }
-  .desktop-downloads > a { flex: 1 1 15rem; }
-  .desktop-downloads p { flex-basis: 100%; margin: 0; font-size: .875rem; }
+  .desktop-downloads {
+    --download-muted: #4d604e;
+    --download-border: #8c9d87;
+    --download-surface: #eef2e8;
+    --download-text: #193c2c;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    width: 100%;
+    max-width: 38rem;
+    text-align: left;
+  }
+  .desktop-downloads--dark {
+    --download-muted: #d5dfd2;
+    --download-border: #879a80;
+    --download-surface: rgb(12 32 19 / 65%);
+    --download-text: #f8faf0;
+  }
+  .download-option { min-width: 0; }
+  a.download-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    min-height: 5rem;
+    padding: .9rem 1.1rem;
+    border: 1px solid var(--download-border);
+    border-radius: .7rem;
+    background: var(--download-surface);
+    color: var(--download-text);
+    text-decoration: none;
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+  a.download-button--mac {
+    border-color: #d7edaa;
+    background: #d7edaa;
+    color: #193c2c;
+  }
+  .download-button > span:first-child { display: grid; gap: .2rem; }
+  .download-button strong { font-size: .96rem; font-weight: 650; line-height: 1.4; }
+  .download-button small { font-size: .72rem; line-height: 1.5; opacity: .85; }
+  .download-arrow { font-size: 1.4rem; flex-shrink: 0; }
+  p.download-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    margin: .6rem .15rem 0;
+    color: var(--download-muted);
+    font-size: .7rem;
+    line-height: 1.6;
+  }
+  .download-detail a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: .2em;
+  }
+  .download-detail a:hover { text-decoration-color: currentColor; }
+  .download-button:hover { border-color: #b4cd99; }
+  .download-button--mac:hover { background: #e2f3c1; }
+  a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+  @media (max-width: 30rem) {
+    .desktop-downloads { grid-template-columns: 1fr; gap: 1rem; }
+  }
 </style>
