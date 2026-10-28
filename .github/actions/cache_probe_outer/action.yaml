@@ -1,0 +1,16 @@
+name: Nested cache probe
+description: Reproduce release setup input forwarding without building the app.
+runs:
+  using: composite
+  steps:
+    - id: layout
+      shell: bash
+      run: echo 'workspace-cache=true' >> "$GITHUB_OUTPUT"
+    - uses: ./.github/actions/cache_probe_inner
+      with:
+        label: nested-dynamic
+        cache-workspace-crates: ${{ steps.layout.outputs.workspace-cache }}
+    - uses: ./.github/actions/cache_probe_inner
+      with:
+        label: nested-literal
+        cache-workspace-crates: "true"

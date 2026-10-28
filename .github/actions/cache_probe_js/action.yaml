@@ -1,0 +1,12 @@
+name: Main and post input probe
+description: Observe cache options in both action lifecycle stages.
+inputs:
+  label:
+    description: Probe case identifier.
+  cache-workspace-crates:
+    description: Cache option read separately in main and post.
+    default: "false"
+runs:
+  using: node24
+  main: main.cjs
+  post: post.cjs

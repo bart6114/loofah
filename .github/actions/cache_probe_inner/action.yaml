@@ -1,0 +1,15 @@
+name: Cache input forwarding probe
+description: Forward cache options through one composite layer.
+inputs:
+  label:
+    description: Probe case identifier.
+  cache-workspace-crates:
+    description: Whether native workspace outputs should be retained.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/cache_probe_js
+      with:
+        label: ${{ inputs.label }}
+        cache-workspace-crates: ${{ inputs.cache-workspace-crates }}

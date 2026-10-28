@@ -1,0 +1,23 @@
+name: cache-post-probe
+on:
+  push:
+    branches: [chore/cache-post-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: ./.github/actions/cache_probe_outer
+      - id: layout
+        shell: bash
+        run: echo 'workspace-cache=true' >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/cache_probe_inner
+        with:
+          label: sibling-dynamic
+          cache-workspace-crates: ${{ steps.layout.outputs.workspace-cache }}
