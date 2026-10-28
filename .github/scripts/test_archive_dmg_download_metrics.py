@@ -17,6 +17,30 @@ spec.loader.exec_module(module)
 
 
 class ArchiveDmgDownloadMetricsTests(unittest.TestCase):
+    def test_platform_totals_preserve_history_without_double_counting(self):
+        def row(asset_id, name, count):
+            return {"asset_id": asset_id, "asset_name": name, "downloads": count}
+
+        mac = "Loofah_latest_aarch64.dmg"
+        x64 = "Loofah_latest_x86_64-setup.exe"
+        arm = "Loofah_latest_aarch64-setup.exe"
+        snapshots = [row(1, mac, 10), row(2, x64, 4), row(2, x64, 7), row(3, arm, 5)]
+        current = [
+            row(1, mac, 12),
+            row(4, x64, 2),
+            row(3, arm, 6),
+            row(5, "latest-windows.json", 99),
+        ]
+        self.assertEqual(
+            module.platform_totals(snapshots, current),
+            {
+                "macos": 12,
+                "windows_x64": 9,
+                "windows_arm64": 6,
+                "windows": 15,
+            },
+        )
+
     def test_builds_immutable_snapshot(self) -> None:
         snapshot = module.build_snapshot(
             asset_id=123,

@@ -3,6 +3,11 @@ name: desktop-release
 on:
   workflow_dispatch:
     inputs:
+      windows-signing-mode:
+        description: Windows publisher signing
+        type: choice
+        options: [unsigned, azure]
+        default: unsigned
       tag:
         description: Release tag to build desktop installers for (defaults to the latest release)
         required: false
@@ -221,6 +226,7 @@ jobs:
     with:
       tag: ${{ needs.resolve.outputs.tag }}
       publish: true
+      signing-mode: ${{ inputs.windows-signing-mode }}
     secrets: inherit
 
   publish-desktop-updater:

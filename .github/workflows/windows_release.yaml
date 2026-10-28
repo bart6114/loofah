@@ -6,6 +6,9 @@ on:
       tag:
         required: true
         type: string
+      signing-mode:
+        default: unsigned
+        type: string
       publish:
         default: true
         type: boolean
@@ -15,8 +18,13 @@ on:
         description: Existing stable release tag containing Windows support
         required: true
         type: string
+      signing-mode:
+        description: Windows publisher signing
+        type: choice
+        options: [unsigned, azure]
+        default: unsigned
       publish:
-        description: Attach signed assets and advance the Windows updater feed
+        description: Attach Windows assets and advance the Windows updater feed
         default: false
         type: boolean
 
@@ -39,13 +47,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
+          SIGNING_MODE: ${{ inputs.signing-mode }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'A stable vX.Y.Z tag is required'; exit 1; }
           gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq 'select(.isDraft or .isPrerelease) | error("An existing stable release is required")'
+          [[ "$SIGNING_MODE" == unsigned || "$SIGNING_MODE" == azure ]] || exit 1
           version="${RELEASE_TAG#v}"
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-          expected=(latest-windows.json)
+          expected=(latest-windows.json windows-release.json)
           for arch in x86_64 aarch64; do
             installer="Loofah_${version}_${arch}-setup.exe"
             cli="loof-${version}-${arch}-pc-windows-msvc.zip"
@@ -58,6 +68,8 @@ jobs:
           if [ "$found" -eq 0 ]; then
             echo 'build=true' >> "$GITHUB_OUTPUT"
           elif [ "$found" -eq "${#expected[@]}" ]; then
+            gh release download "$RELEASE_TAG" --pattern windows-release.json -O manifest.json
+            jq -e --arg mode "$SIGNING_MODE" --arg version "$version" '.version == $version and .signing_mode == $mode' manifest.json >/dev/null
             echo 'build=false' >> "$GITHUB_OUTPUT"
           else
             echo '::error::Partial Windows release: recover the original signed artifacts before retrying; existing signed binaries must not be replaced.'
@@ -67,7 +79,7 @@ jobs:
   build:
     needs: resolve
     if: needs.resolve.outputs.build == 'true'
-    environment: windows-signing
+    environment: ${{ inputs.signing-mode == 'azure' && 'windows-signing' || 'windows-preview' }}
     permissions:
       contents: read
       id-token: write
@@ -85,6 +97,7 @@ jobs:
         shell: pwsh
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      WINDOWS_SIGNING_MODE: ${{ inputs.signing-mode }}
       AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
       AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
       AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
@@ -107,12 +120,15 @@ jobs:
           if ($env:RELEASE_TAG -ne "v$version") { throw 'Tag and package version differ' }
           $release = gh release view $env:RELEASE_TAG --json isDraft,isPrerelease | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $release.isDraft -or $release.isPrerelease) { throw 'An existing stable release is required' }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Updater signing key is required' }
+          if ($env:WINDOWS_SIGNING_MODE -eq 'azure') {
           foreach ($name in @('AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_SIGNING_ENDPOINT', 'AZURE_SIGNING_ACCOUNT', 'AZURE_SIGNING_PROFILE', 'LOOFAH_WINDOWS_SIGNER_EKU', 'TAURI_SIGNING_PRIVATE_KEY')) {
             if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Provision $name before building a stable installer" }
           }
           $signer = (Resolve-Path apps/desktop/src-tauri/scripts/sign-windows-azure.ps1).Path
           $signCommand = ConvertTo-Json -Compress -InputObject @('pwsh', '-NoLogo', '-NoProfile', '-NonInteractive', '-File', $signer, '%1')
           "LOOFAH_WINDOWS_SIGN_COMMAND=$signCommand" >> $env:GITHUB_ENV
+          }
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -128,8 +144,10 @@ jobs:
           platform: windows
       - run: pnpm -F ui build
       - run: node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
-      - run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.20 -Force -Repository PSGallery
+      - if: inputs.signing-mode == 'azure'
+        run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.20 -Force -Repository PSGallery
       - uses: azure/login@v2
+        if: inputs.signing-mode == 'azure'
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -138,11 +156,15 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          node apps/desktop/src-tauri/scripts/prepare-windows-signing.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $signingArgs = @()
+          if ($env:WINDOWS_SIGNING_MODE -eq 'azure') {
+            node apps/desktop/src-tauri/scripts/prepare-windows-signing.mjs
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $signingArgs = @('--config', "$env:RUNNER_TEMP/loofah-signing.json")
+          }
           node apps/desktop/src-tauri/scripts/build-cli-sidecar.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.stable.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --config ./src-tauri/tauri.windows.stable.conf.json --config "$env:RUNNER_TEMP/loofah-signing.json"
+          pnpm -F desktop tauri build --ci --bundles nsis --config ./src-tauri/tauri.conf.stable.json --config ./src-tauri/tauri.windows.conf.json --config ./src-tauri/tauri.windows.bundle.conf.json --config ./src-tauri/tauri.windows.stable.conf.json @signingArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - env:
           RELEASE_TARGET: ${{ matrix.target }}
@@ -150,7 +172,7 @@ jobs:
         run: node apps/desktop/src-tauri/scripts/package-windows-release.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: signed-windows-${{ matrix.target }}
+          name: release-windows-${{ matrix.target }}
           path: artifacts/windows-release/
           if-no-files-found: error
           retention-days: 30
@@ -164,10 +186,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         if: needs.build.result == 'success'
         with:
-          pattern: signed-windows-*
+          pattern: release-windows-*
           path: artifacts
           merge-multiple: true
       - env:
@@ -185,12 +210,21 @@ jobs:
               ([.[].platforms | keys[]] | sort == ["windows-aarch64", "windows-x86_64"])
             ' artifacts/platform-*.json >/dev/null
             jq -s '.[0] * .[1]' artifacts/platform-*.json > artifacts/latest-windows.json
+            jq -s '{version: .[0].version, signing_mode: .[0].signing_mode, artifacts: (map(.artifacts) | add)}' artifacts/manifest-*.json > artifacts/windows-release.json
+            jq -r '.artifacts | to_entries[] | "\(.value)  \(.key)"' artifacts/windows-release.json > artifacts/manifest.sha256
+            (cd artifacts && sha256sum -c manifest.sha256)
+            gh release upload "$RELEASE_TAG" artifacts/windows-release.json
             gh release upload "$RELEASE_TAG" artifacts/*.exe artifacts/*.sig artifacts/*.zip artifacts/*.sha256
             gh release upload "$RELEASE_TAG" artifacts/latest-windows.json
           else
             mkdir -p artifacts
             gh release download "$RELEASE_TAG" --pattern latest-windows.json --dir artifacts
-            gh release download "$RELEASE_TAG" --pattern 'Loofah_*-setup.exe' --dir artifacts
+            gh release download "$RELEASE_TAG" --pattern windows-release.json --dir artifacts
+            while IFS= read -r asset; do
+              gh release download "$RELEASE_TAG" --pattern "$asset" --dir artifacts
+            done < <(jq -r '.artifacts | keys[]' artifacts/windows-release.json)
+            jq -r '.artifacts | to_entries[] | "\(.value)  \(.key)"' artifacts/windows-release.json > artifacts/manifest.sha256
+            (cd artifacts && sha256sum -c manifest.sha256)
           fi
           jq -e --arg version "$version" '.version == $version and (.platforms | keys == ["windows-aarch64", "windows-x86_64"])' artifacts/latest-windows.json >/dev/null
           assets="$(gh release view updater --json assets --jq '.assets[].name')"
@@ -206,5 +240,8 @@ jobs:
           for arch in x86_64 aarch64; do
             cp "artifacts/Loofah_${version}_${arch}-setup.exe" "artifacts/Loofah_latest_${arch}-setup.exe"
             (cd artifacts && sha256sum "Loofah_latest_${arch}-setup.exe" > "Loofah_latest_${arch}-setup.exe.sha256")
+          done
+          for arch in x86_64 aarch64; do
+            bash .github/scripts/archive_download_count.sh "Loofah_latest_${arch}-setup.exe" windows-download-metrics
           done
           gh release upload updater artifacts/Loofah_latest_* artifacts/latest-windows.json --clobber

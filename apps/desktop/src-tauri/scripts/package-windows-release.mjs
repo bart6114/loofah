@@ -106,3 +106,26 @@ writeFileSync(
     2,
   ),
 );
+
+const signingMode = process.env.WINDOWS_SIGNING_MODE;
+if (!["unsigned", "azure"].includes(signingMode))
+  throw new Error("Invalid signing mode");
+writeFileSync(
+  path.join(output, `manifest-${architecture}.json`),
+  JSON.stringify(
+    {
+      version,
+      signing_mode: signingMode,
+      artifacts: Object.fromEntries(
+        [installer, archive].map((name) => [
+          name,
+          createHash("sha256")
+            .update(readFileSync(path.join(output, name)))
+            .digest("hex"),
+        ]),
+      ),
+    },
+    null,
+    2,
+  ),
+);
