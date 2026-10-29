@@ -130,7 +130,10 @@ final class NotificationLifetimeTests: XCTestCase {
     let notification = makeNotification()
     notification.startDismissTimer(timeoutSeconds: 0.03)
     let timer = notification.dismissTimer!
-    RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    let timeout = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in timedOutNotificationKeys.contains(notification.key) },
+      object: nil)
+    wait(for: [timeout], timeout: 2)
 
     XCTAssertNil(notification.dismissTimer)
     XCTAssertFalse(timer.isValid)

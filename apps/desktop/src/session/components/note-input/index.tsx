@@ -1,3 +1,4 @@
+import { Trans } from "@lingui/react/macro";
 import {
   forwardRef,
   type MouseEventHandler,
@@ -34,6 +35,7 @@ import {
 import { SessionTags } from "~/session/components/session-tags";
 import { useCurrentNoteTab } from "~/session/components/shared";
 import { TitleInput } from "~/session/components/title-input";
+import { useSummaryEditLock } from "~/session/hooks/useSummaryEditLock";
 import { useScrollPreservation } from "~/shared/hooks/useScrollPreservation";
 import type { SessionMode } from "~/store/zustand/listener/general";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
@@ -161,6 +163,7 @@ const NoteInputContent = forwardRef<
     const internalEditorRef = useRef<NoteEditorRef>(null);
     const attachmentsDropTargetRef = useRef<HTMLDivElement>(null);
     const sessionId = tab.id;
+    const summaryEditLock = useSummaryEditLock(sessionId);
     const renderedCurrentTab = currentTab;
     const renderedCurrentTabKey =
       renderedCurrentTab.type === "enhanced"
@@ -281,13 +284,16 @@ const NoteInputContent = forwardRef<
 
     const search = useSearch();
     const showSearchBar = search?.isVisible ?? false;
-    const isEditableTab =
+    const isEditorTab =
       renderedCurrentTab.type === "enhanced" ||
       renderedCurrentTab.type === "raw";
 
+    const isEditableTab =
+      isEditorTab && (renderedCurrentTab.type === "raw" || !summaryEditLock);
+
     useEffect(() => {
       resetFileDrag();
-    }, [renderedCurrentTabKey, resetFileDrag]);
+    }, [renderedCurrentTabKey, summaryEditLock, resetFileDrag]);
 
     useEffect(() => {
       search?.close();
@@ -401,7 +407,7 @@ const NoteInputContent = forwardRef<
           </div>
         )}
 
-        {showSearchBar && isEditableTab && (
+        {showSearchBar && isEditorTab && (
           <div className="px-3 pt-1">
             <SearchBar editorRef={internalEditorRef} />
           </div>
@@ -434,12 +440,40 @@ const NoteInputContent = forwardRef<
                   : "session-content-column",
               ])}
             >
-              {isEditableTab && (
+              {isEditorTab && (
                 <div className="mb-0.5">
                   <SessionDate sessionId={sessionId} />
                 </div>
               )}
               {peopleTrailer.portal}
+              {summaryEditLock &&
+                (renderedCurrentTab.type === "enhanced" ||
+                  renderedCurrentTab.type === "summary") && (
+                  <div
+                    role="status"
+                    className="text-muted-foreground mb-3 flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span>
+                      {summaryEditLock === "recording" ? (
+                        <Trans>
+                          Summary is read-only while recording. Add text and
+                          images in Note.
+                        </Trans>
+                      ) : (
+                        <Trans>
+                          Summary is read-only while processing finishes.
+                        </Trans>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-foreground underline underline-offset-2"
+                      onClick={() => handleTabChange({ type: "raw" })}
+                    >
+                      <Trans>Open Note</Trans>
+                    </button>
+                  </div>
+                )}
               {renderedCurrentTab.type === "summary" && (
                 <EmptySummary
                   sessionId={sessionId}
@@ -452,6 +486,7 @@ const NoteInputContent = forwardRef<
                   sessionId={sessionId}
                   sessionTitle={sessionTitle}
                   enhancedNoteId={renderedCurrentTab.id}
+                  readOnly={Boolean(summaryEditLock)}
                   fileHandlerConfig={fileHandlerConfig}
                   onNavigateToTitle={onNavigateToTitle}
                   titleTrailerElement={peopleTrailer.element}

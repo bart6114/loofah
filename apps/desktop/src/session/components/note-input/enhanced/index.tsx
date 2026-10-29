@@ -18,6 +18,7 @@ export const Enhanced = forwardRef<
   {
     sessionId: string;
     sessionTitle: string;
+    readOnly?: boolean;
     enhancedNoteId: string;
     fileHandlerConfig?: FileHandlerConfig;
     onNavigateToTitle?: (pixelWidth?: number) => void;
@@ -30,6 +31,7 @@ export const Enhanced = forwardRef<
     {
       sessionId,
       sessionTitle,
+      readOnly,
       enhancedNoteId,
       fileHandlerConfig,
       onNavigateToTitle,
@@ -102,6 +104,7 @@ export const Enhanced = forwardRef<
     return (
       <EnhancedEditor
         ref={ref}
+        readOnly={readOnly}
         sessionId={sessionId}
         sessionTitle={sessionTitle}
         enhancedNoteId={enhancedNoteId}

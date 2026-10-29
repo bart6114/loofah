@@ -1115,6 +1115,10 @@ msgstr ""
 msgid "Open Loofah"
 msgstr ""
 
+#: src/session/components/note-input/index.tsx
+msgid "Open Note"
+msgstr ""
+
 #: src/task/resource-view.tsx
 msgid "Open on GitHub"
 msgstr ""
@@ -1641,6 +1645,14 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
+msgstr ""
+
+#: src/session/components/note-input/index.tsx
+msgid "Summary is read-only while processing finishes."
+msgstr ""
+
+#: src/session/components/note-input/index.tsx
+msgid "Summary is read-only while recording. Add text and images in Note."
 msgstr ""
 
 #: src/settings/general/main-language.tsx

@@ -229,6 +229,7 @@ function TabContentNoteInner({
           <OuterHeader
             sessionId={sessionId}
             currentView={currentView}
+            onStartRecording={() => handleTabChange({ type: "raw" })}
             standaloneWindow={standaloneWindow}
             title={
               <div className="flex min-w-0 items-center gap-3">

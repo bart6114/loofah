@@ -170,6 +170,15 @@ describe("useNoteFileHandlerConfig", () => {
     expect(result).toEqual({ remainingFiles: [attachment] });
   });
 
+  it("ignores native drops into a read-only editor", () => {
+    const view = createEditorView(7);
+    Object.defineProperty(view, "editable", { value: false });
+    render(<Harness view={view} />);
+    act(() => mocks.nativeCallbacks.onDrop(["/tmp/image.png"], { x: 1, y: 1 }));
+    expect(mocks.handleNativeFileDrop).not.toHaveBeenCalled();
+    expect(mocks.processAudioPath).not.toHaveBeenCalled();
+  });
+
   it("reports upload failures using the candidate name", () => {
     render(<Harness />);
     mocks.config?.onFileUploadError?.(
@@ -202,6 +211,7 @@ function Harness({ view = createEditorView(null) }: { view?: EditorView }) {
 
 function createEditorView(pos: number | null) {
   return {
+    editable: true,
     posAtCoords: vi.fn(() => (pos === null ? null : { inside: 0, pos })),
     state: { doc: { content: { size: 42 } } },
   } as unknown as EditorView;

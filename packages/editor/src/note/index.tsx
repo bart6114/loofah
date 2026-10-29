@@ -27,6 +27,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -76,6 +77,7 @@ import {
   setSearchState,
   taskIdentityPlugin,
 } from "../plugins";
+import { cancelPendingFileUploads } from "../plugins/file-handler";
 import { TaskSourceProvider } from "../task-source";
 import { useTaskStorageOptional } from "../task-storage";
 import {
@@ -337,9 +339,10 @@ function createCompositionStatePlugin(
   });
 }
 
-export function createReadOnlyPlugin() {
+export function createReadOnlyPlugin(isReadOnly: () => boolean = () => true) {
   return new Plugin({
-    filterTransaction: (transaction) => !transaction.docChanged,
+    filterTransaction: (transaction) =>
+      !isReadOnly() || !transaction.docChanged,
   });
 }
 
@@ -786,11 +789,20 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
       };
     }, []);
 
+    const readOnlyRef = useRef(readOnly);
+    readOnlyRef.current = readOnly;
+    useLayoutEffect(() => {
+      if (readOnly) {
+        onUpdate.flush();
+        if (viewRef.current) cancelPendingFileUploads(viewRef.current);
+      }
+    }, [readOnly, onUpdate]);
+
     const plugins = useMemo(
       () => [
         reactKeys(),
         createCompositionStatePlugin(setCompositionActive),
-        ...(readOnly ? [createReadOnlyPlugin()] : []),
+        createReadOnlyPlugin(() => readOnlyRef.current),
         docChangeListenerPlugin((doc) => {
           saveStateRef.current.revision += 1;
           draftChangeRef.current?.(() => doc.toJSON() as JSONContent);

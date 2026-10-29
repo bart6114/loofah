@@ -90,6 +90,7 @@ scope.
 - If live transcription stalls, the expected behavior is a warning while audio
   keeps recording, followed by batch repair after stop. Missing transcript text
   after finalization is a failure.
+- Click **Resume** from both the header and overflow menu, including a standalone note window. PASS when **Note** opens and stays editable; **Summary** remains readable but rejects edits, task toggles, image pastes, and file drops throughout recording and post-recording processing. Verify a pasted image in **Note** survives regeneration, and summary editing returns after completion, cancellation, a skipped summary, or failure.
 - Click **Resume** on the finished session, record another distinct passage,
   and stop again. PASS when the transcript is extended without duplication and
   any existing automatic summary is regenerated from the updated transcript.

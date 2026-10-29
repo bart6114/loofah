@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useMemo } from "react";
 
 import { cn } from "@hypr/utils";
 
@@ -35,9 +35,6 @@ import { SpeakerLabelManager } from "~/stt/segment/shared";
 import { isTranscriptWordSeekable } from "~/stt/timing";
 
 export function RenderTranscript({
-  scrollElement,
-  isLastTranscript,
-  shouldScrollToEnd,
   transcriptId,
   transcript,
   transcripts,
@@ -49,9 +46,6 @@ export function RenderTranscript({
   startPlayback,
   audioExists,
 }: {
-  scrollElement: HTMLDivElement | null;
-  isLastTranscript: boolean;
-  shouldScrollToEnd: boolean;
   transcriptId: string;
   transcript: TranscriptRecord | null;
   transcripts: readonly TranscriptRecord[];
@@ -91,10 +85,8 @@ export function RenderTranscript({
       )}
       <SegmentsList
         segments={segments}
-        scrollElement={scrollElement}
         transcriptId={transcriptId}
         offsetMs={offsetMs}
-        shouldScrollToEnd={isLastTranscript && shouldScrollToEnd}
         currentMs={currentMs}
         seek={seek}
         startPlayback={startPlayback}
@@ -111,10 +103,8 @@ export function RenderTranscript({
 const SegmentsList = memo(
   ({
     segments,
-    scrollElement,
     transcriptId,
     offsetMs,
-    shouldScrollToEnd,
     currentMs,
     seek,
     startPlayback,
@@ -125,10 +115,8 @@ const SegmentsList = memo(
     recording,
   }: {
     segments: Segment[];
-    scrollElement: HTMLDivElement | null;
     transcriptId: string;
     offsetMs: number;
-    shouldScrollToEnd: boolean;
     currentMs: number;
     seek: (sec: number) => void;
     startPlayback: () => void;
@@ -186,19 +174,6 @@ const SegmentsList = memo(
       [audioExists, offsetMs, seek, startPlayback],
     );
 
-    useEffect(() => {
-      if (!scrollElement || !shouldScrollToEnd) {
-        return;
-      }
-      const raf = requestAnimationFrame(() => {
-        scrollElement.scrollTo({
-          top: scrollElement.scrollHeight,
-          behavior: "auto",
-        });
-      });
-      return () => cancelAnimationFrame(raf);
-    }, [scrollElement, segments.length, shouldScrollToEnd]);
-
     return (
       <div>
         {segments.map((segment, index) => (
@@ -237,9 +212,7 @@ const SegmentsList = memo(
   (prevProps, nextProps) => {
     return (
       prevProps.transcriptId === nextProps.transcriptId &&
-      prevProps.scrollElement === nextProps.scrollElement &&
       prevProps.offsetMs === nextProps.offsetMs &&
-      prevProps.shouldScrollToEnd === nextProps.shouldScrollToEnd &&
       prevProps.currentMs === nextProps.currentMs &&
       prevProps.audioExists === nextProps.audioExists &&
       prevProps.maxSpeakerNumber === nextProps.maxSpeakerNumber &&

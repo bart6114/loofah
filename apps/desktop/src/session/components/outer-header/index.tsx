@@ -24,12 +24,14 @@ export function OuterHeader({
   standaloneWindow = false,
   title,
   centerTitle = false,
+  onStartRecording,
 }: {
   sessionId: string;
   currentView: EditorView;
   standaloneWindow?: boolean;
   title?: React.ReactNode;
   centerTitle?: boolean;
+  onStartRecording?: () => void;
 }) {
   const { leftsidebar } = useShell();
   const sessionMode = useListener((state) => state.getSessionMode(sessionId));
@@ -82,11 +84,16 @@ export function OuterHeader({
         data-tauri-drag-region
         className="relative z-10 ml-auto flex shrink-0 items-center gap-0 pr-1"
       >
-        <HeaderMeetingControl sessionId={sessionId} sessionMode={sessionMode} />
+        <HeaderMeetingControl
+          sessionId={sessionId}
+          sessionMode={sessionMode}
+          onStartRecording={onStartRecording}
+        />
         <OverflowButton
           standaloneWindow={standaloneWindow}
           sessionId={sessionId}
           currentView={currentView}
+          onStartRecording={onStartRecording}
         />
       </div>
     </div>
@@ -96,9 +103,11 @@ export function OuterHeader({
 function HeaderMeetingControl({
   sessionId,
   sessionMode,
+  onStartRecording,
 }: {
   sessionId: string;
   sessionMode: string;
+  onStartRecording?: () => void;
 }) {
   const startListening = useStartListening(sessionId);
   const { stop, stopTranscription } = useListener((state) => ({
@@ -110,13 +119,14 @@ function HeaderMeetingControl({
   const canResume = audioExists || hasTranscript;
   const { t } = useLingui();
   const start = useCallback(() => {
+    onStartRecording?.();
     if (!isMainWebviewWindow()) {
       void requestMainListenerControl("start", sessionId);
       return;
     }
 
     void startListening();
-  }, [sessionId, startListening]);
+  }, [onStartRecording, sessionId, startListening]);
   const stopListening = useCallback(() => {
     if (!isMainWebviewWindow()) {
       void requestMainListenerControl("stop", sessionId);
