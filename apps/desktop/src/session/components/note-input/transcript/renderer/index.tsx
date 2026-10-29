@@ -1,5 +1,5 @@
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import { type RefObject, useCallback, useRef, useState } from "react";
+import { type RefObject, useCallback, useRef } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { cn } from "@hypr/utils";
@@ -8,11 +8,7 @@ import { usePlaybackHighlight } from "./playback-highlight";
 import { SelectionMenu } from "./selection-menu";
 import { TranscriptSeparator } from "./separator";
 import { RenderTranscript } from "./transcript";
-import {
-  useAutoScroll,
-  usePlaybackAutoScroll,
-  useScrollDetection,
-} from "./viewport-hooks";
+import { usePlaybackAutoScroll, useTranscriptScroll } from "./viewport-hooks";
 
 import { useAudioPlayer } from "~/audio-player";
 import { useAudioTime } from "~/audio-player/provider";
@@ -35,27 +31,17 @@ export function TranscriptViewer({
 }) {
   const people = usePeople();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
-    null,
-  );
+  const contentRef = useRef<HTMLDivElement>(null);
   const handleContainerRef = useCallback(
     (node: HTMLDivElement | null) => {
       containerRef.current = node;
-      setScrollElement(node);
       scrollRef.current = node;
     },
     [scrollRef],
   );
 
-  const {
-    isAtTop,
-    isAtBottom,
-    isNearBottom,
-    canScroll,
-    autoScrollEnabled,
-    scrollToTop,
-    scrollToBottom,
-  } = useScrollDetection(containerRef, currentActive);
+  const { isAtTop, isAtBottom, canScroll, scrollToTop, scrollToBottom } =
+    useTranscriptScroll(containerRef, contentRef, currentActive);
 
   const {
     state: playerState,
@@ -82,13 +68,6 @@ export function TranscriptViewer({
     { enableOnFormTags: false },
   );
 
-  const shouldAutoScroll = currentActive && autoScrollEnabled;
-  const shouldScrollLastTranscriptToEnd = currentActive && isNearBottom;
-  useAutoScroll(
-    containerRef,
-    [transcripts, liveSegments, shouldAutoScroll],
-    shouldAutoScroll,
-  );
   const visibleTranscripts: Array<TranscriptRecord | null> =
     transcripts.length > 0
       ? [...transcripts]
@@ -114,33 +93,39 @@ export function TranscriptViewer({
           "pb-[calc(4rem+env(safe-area-inset-bottom))]",
         ])}
       >
-        {visibleTranscripts.map((transcript, index) => {
-          const transcriptId = transcript?.id ?? LIVE_TRANSCRIPT_PLACEHOLDER_ID;
-          return (
-            <div key={transcriptId} className="flex flex-col gap-8">
-              <RenderTranscript
-                scrollElement={scrollElement}
-                isLastTranscript={index === visibleTranscripts.length - 1}
-                shouldScrollToEnd={shouldScrollLastTranscriptToEnd}
-                transcriptId={transcriptId}
-                transcript={transcript}
-                transcripts={transcripts}
-                people={people}
-                recording={currentActive}
-                liveSegments={
-                  index === visibleTranscripts.length - 1 && currentActive
-                    ? liveSegments
-                    : []
-                }
-                currentMs={0}
-                seek={seek}
-                startPlayback={start}
-                audioExists={audioExists}
-              />
-              {index < visibleTranscripts.length - 1 && <TranscriptSeparator />}
-            </div>
-          );
-        })}
+        <div
+          ref={contentRef}
+          data-transcript-content
+          className="flex shrink-0 flex-col gap-8"
+        >
+          {visibleTranscripts.map((transcript, index) => {
+            const transcriptId =
+              transcript?.id ?? LIVE_TRANSCRIPT_PLACEHOLDER_ID;
+            return (
+              <div key={transcriptId} className="flex flex-col gap-8">
+                <RenderTranscript
+                  transcriptId={transcriptId}
+                  transcript={transcript}
+                  transcripts={transcripts}
+                  people={people}
+                  recording={currentActive}
+                  liveSegments={
+                    index === visibleTranscripts.length - 1 && currentActive
+                      ? liveSegments
+                      : []
+                  }
+                  currentMs={0}
+                  seek={seek}
+                  startPlayback={start}
+                  audioExists={audioExists}
+                />
+                {index < visibleTranscripts.length - 1 && (
+                  <TranscriptSeparator />
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         <SelectionMenu
           containerRef={containerRef}

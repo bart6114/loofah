@@ -7,15 +7,13 @@ import { TranscriptViewer } from "./index";
 import type { TranscriptRecord } from "~/stt/queries";
 
 const mocks = vi.hoisted(() => ({
+  useTranscriptScroll: vi.fn(),
   scrollToBottom: vi.fn(),
   scrollToTop: vi.fn(),
   scrollDetection: {
     isAtTop: true,
     isAtBottom: true,
-    isNearBottom: true,
     canScroll: false,
-    autoScrollEnabled: true,
-    scrollTarget: null as "top" | "bottom" | null,
   },
 }));
 
@@ -49,30 +47,22 @@ vi.mock("./selection-menu", () => ({
 vi.mock("./transcript", () => ({
   RenderTranscript: ({
     liveSegments,
-    shouldScrollToEnd,
     transcriptId,
   }: {
     liveSegments: unknown[];
-    shouldScrollToEnd: boolean;
     transcriptId: string;
   }) => (
     <div
       data-testid="render-transcript"
       data-live-segment-count={String(liveSegments.length)}
-      data-should-scroll-to-end={String(shouldScrollToEnd)}
       data-transcript-id={transcriptId}
     />
   ),
 }));
 
 vi.mock("./viewport-hooks", () => ({
-  useAutoScroll: vi.fn(),
   usePlaybackAutoScroll: vi.fn(),
-  useScrollDetection: () => ({
-    ...mocks.scrollDetection,
-    scrollToBottom: mocks.scrollToBottom,
-    scrollToTop: mocks.scrollToTop,
-  }),
+  useTranscriptScroll: mocks.useTranscriptScroll,
 }));
 
 describe("TranscriptViewer", () => {
@@ -87,14 +77,16 @@ describe("TranscriptViewer", () => {
 
   beforeEach(() => {
     cleanup();
+    mocks.useTranscriptScroll.mockReset().mockImplementation(() => ({
+      ...mocks.scrollDetection,
+      scrollToBottom: mocks.scrollToBottom,
+      scrollToTop: mocks.scrollToTop,
+    }));
     mocks.scrollToBottom.mockReset();
     mocks.scrollToTop.mockReset();
     mocks.scrollDetection.isAtTop = true;
     mocks.scrollDetection.isAtBottom = true;
-    mocks.scrollDetection.isNearBottom = true;
     mocks.scrollDetection.canScroll = false;
-    mocks.scrollDetection.autoScrollEnabled = true;
-    mocks.scrollDetection.scrollTarget = null;
   });
 
   it("does not pin inactive transcript sessions to the bottom on open", () => {
@@ -107,11 +99,7 @@ describe("TranscriptViewer", () => {
       />,
     );
 
-    expect(
-      screen
-        .getByTestId("render-transcript")
-        .getAttribute("data-should-scroll-to-end"),
-    ).toBe("false");
+    expect(mocks.useTranscriptScroll.mock.lastCall?.[2]).toBe(false);
   });
 
   it("keeps active transcript sessions pinned to the bottom", () => {
@@ -124,17 +112,10 @@ describe("TranscriptViewer", () => {
       />,
     );
 
-    expect(
-      screen
-        .getByTestId("render-transcript")
-        .getAttribute("data-should-scroll-to-end"),
-    ).toBe("true");
+    expect(mocks.useTranscriptScroll.mock.lastCall?.[2]).toBe(true);
   });
 
-  it("keeps active transcript sessions pinned near the exact bottom edge", () => {
-    mocks.scrollDetection.isAtBottom = false;
-    mocks.scrollDetection.isNearBottom = true;
-
+  it("observes a content wrapper containing the transcript", () => {
     render(
       <TranscriptViewer
         transcripts={[transcript]}
@@ -144,11 +125,16 @@ describe("TranscriptViewer", () => {
       />,
     );
 
+    const [containerRef, contentRef] = mocks.useTranscriptScroll.mock.lastCall!;
+    expect(containerRef.current).toBe(
+      document.querySelector("[data-transcript-container]"),
+    );
+    expect(contentRef.current).toBe(
+      document.querySelector("[data-transcript-content]"),
+    );
     expect(
-      screen
-        .getByTestId("render-transcript")
-        .getAttribute("data-should-scroll-to-end"),
-    ).toBe("true");
+      contentRef.current.contains(screen.getByTestId("render-transcript")),
+    ).toBe(true);
   });
 
   it("renders live segments before a transcript row exists", () => {

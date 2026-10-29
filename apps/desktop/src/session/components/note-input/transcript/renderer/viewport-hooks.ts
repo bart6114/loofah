@@ -1,5 +1,4 @@
 import {
-  type DependencyList,
   type RefObject,
   useCallback,
   useEffect,
@@ -7,212 +6,131 @@ import {
   useState,
 } from "react";
 
-export function useScrollDetection(
+export function useTranscriptScroll(
   containerRef: RefObject<HTMLDivElement | null>,
-  active = true,
+  contentRef: RefObject<HTMLDivElement | null>,
+  active: boolean,
 ) {
   const [isAtTop, setIsAtTop] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [isNearBottom, setIsNearBottom] = useState(true);
   const [canScroll, setCanScroll] = useState(false);
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
-  const [scrollTarget, setScrollTarget] = useState<"top" | "bottom" | null>(
-    null,
-  );
-  const lastScrollTopRef = useRef(0);
-  const userScrolledAwayRef = useRef(false);
-  const wasActiveRef = useRef(active);
+  const followingRef = useRef(true);
+  const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const element = containerRef.current;
-    if (!element) {
-      return;
-    }
+    const content = contentRef.current;
+    if (!element || !content) return;
 
-    lastScrollTopRef.current = element.scrollTop;
+    let lastScrollTop = element.scrollTop;
+    let lastTouchY: number | undefined;
 
-    const updateScrollState = () => {
-      const bottomThreshold = 100;
-      const distanceToBottom =
+    const updateEdges = () => {
+      const distance =
         element.scrollHeight - element.scrollTop - element.clientHeight;
       const hasOverflow = element.scrollHeight - element.clientHeight > 1;
-      const isNearBottom = distanceToBottom < bottomThreshold;
-      const isAtExactTop = element.scrollTop <= 1;
-      const isAtExactBottom = !isAtExactTop && distanceToBottom <= 1;
       setCanScroll(hasOverflow);
-      setIsAtTop(!hasOverflow || isAtExactTop);
-      setIsAtBottom(!hasOverflow || isAtExactBottom);
-      setIsNearBottom(!hasOverflow || isNearBottom);
-
-      return isNearBottom;
+      setIsAtTop(!hasOverflow || element.scrollTop <= 1);
+      setIsAtBottom(!hasOverflow || distance <= 1);
+      return distance;
     };
 
-    const handleScroll = () => {
-      const isNearBottom = updateScrollState();
-
-      const currentTop = element.scrollTop;
-      const prevTop = lastScrollTopRef.current;
-      lastScrollTopRef.current = currentTop;
-
-      const scrolledUp = currentTop < prevTop - 2;
-      const scrolledDown = currentTop > prevTop + 2;
-      if (scrolledUp) {
-        userScrolledAwayRef.current = true;
-        setAutoScrollEnabled(false);
-        setScrollTarget("bottom");
-      }
-
-      if (scrolledDown) {
-        setScrollTarget("top");
-      }
-
-      if (isNearBottom && !userScrolledAwayRef.current) {
-        setAutoScrollEnabled(true);
-      }
-    };
-
-    element.addEventListener("scroll", handleScroll);
-    handleScroll();
-
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateScrollState);
-    resizeObserver?.observe(element);
-
-    const mutationObserver =
-      typeof MutationObserver === "undefined"
-        ? null
-        : new MutationObserver(updateScrollState);
-    mutationObserver?.observe(element, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-    });
-
-    return () => {
-      element.removeEventListener("scroll", handleScroll);
-      resizeObserver?.disconnect();
-      mutationObserver?.disconnect();
-    };
-  }, [containerRef]);
-
-  useEffect(() => {
-    if (active && !wasActiveRef.current && !userScrolledAwayRef.current) {
-      setAutoScrollEnabled(true);
-      setScrollTarget(null);
-    }
-
-    wasActiveRef.current = active;
-  }, [active]);
-
-  const scrollToBottom = () => {
-    const element = containerRef.current;
-    if (!element) {
-      return;
-    }
-    userScrolledAwayRef.current = false;
-    setAutoScrollEnabled(true);
-    setScrollTarget(null);
-    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
-  };
-
-  const scrollToTop = () => {
-    const element = containerRef.current;
-    if (!element) {
-      return;
-    }
-    setScrollTarget(null);
-    element.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  return {
-    isAtTop,
-    isAtBottom,
-    isNearBottom,
-    canScroll,
-    autoScrollEnabled,
-    scrollTarget,
-    scrollToTop,
-    scrollToBottom,
-  };
-}
-
-export function useAutoScroll(
-  containerRef: RefObject<HTMLElement | null>,
-  deps: DependencyList,
-  enabled = true,
-) {
-  const rafRef = useRef<number | null>(null);
-  const lastHeightRef = useRef(0);
-  const initialFlushRef = useRef(enabled);
-  const previousEnabledRef = useRef(enabled);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) {
-      return;
-    }
-
-    lastHeightRef.current = element.scrollHeight;
-
-    const isPinned = () => {
-      const distanceToBottom =
-        element.scrollHeight - element.scrollTop - element.clientHeight;
-      return distanceToBottom < 80;
-    };
-
-    const flush = () => {
-      element.scrollTop = element.scrollHeight;
-    };
-
-    const schedule = (force = false) => {
-      if (!force && (!enabled || !isPinned())) {
-        return;
-      }
-
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-      }
-
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = requestAnimationFrame(flush);
+    const schedule = () => {
+      updateEdges();
+      if (!active || !followingRef.current || frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        if (!followingRef.current) return;
+        element.scrollTop = element.scrollHeight;
+        lastScrollTop = element.scrollTop;
+        updateEdges();
       });
     };
 
-    if (initialFlushRef.current) {
-      initialFlushRef.current = false;
-      schedule(true);
-    } else if (enabled && !previousEnabledRef.current) {
-      schedule(true);
-    } else {
-      schedule(enabled);
-    }
-    previousEnabledRef.current = enabled;
-
-    const resizeObserver = new ResizeObserver(() => {
-      const nextHeight = element.scrollHeight;
-      if (nextHeight === lastHeightRef.current) {
-        return;
-      }
-      lastHeightRef.current = nextHeight;
-      schedule(enabled);
-    });
-
-    const targets = new Set<Element>([element]);
-    element
-      .querySelectorAll<HTMLElement>("[data-virtual-root]")
-      .forEach((target) => targets.add(target));
-    targets.forEach((target) => resizeObserver.observe(target));
-
-    return () => {
-      resizeObserver.disconnect();
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
+    const pauseFollowing = () => {
+      if (element.scrollHeight > element.clientHeight) {
+        followingRef.current = false;
       }
     };
-  }, deps);
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) pauseFollowing();
+      else if (event.deltaY > 0 && !followingRef.current && updateEdges() <= 2)
+        followingRef.current = true;
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const nextY = event.touches[0]?.clientY;
+      if (
+        lastTouchY !== undefined &&
+        nextY !== undefined &&
+        nextY > lastTouchY
+      ) {
+        pauseFollowing();
+      }
+      lastTouchY = nextY;
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, [contenteditable='true']")
+      )
+        return;
+      if (
+        ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
+        (event.key === " " && event.shiftKey)
+      ) {
+        pauseFollowing();
+      }
+    };
+    const handleScroll = () => {
+      const distance = updateEdges();
+      // Layout and scroll anchoring can move scrollTop upward without user input.
+      if (element.scrollTop > lastScrollTop + 1 && distance <= 2) {
+        followingRef.current = true;
+      }
+      lastScrollTop = element.scrollTop;
+    };
+
+    element.addEventListener("scroll", handleScroll, { passive: true });
+    element.addEventListener("wheel", handleWheel, { passive: true });
+    element.addEventListener("touchstart", handleTouchStart, { passive: true });
+    element.addEventListener("touchmove", handleTouchMove, { passive: true });
+    element.addEventListener("keydown", handleKeyDown);
+
+    const observer = new ResizeObserver(schedule);
+    observer.observe(element);
+    observer.observe(content);
+    schedule();
+
+    return () => {
+      element.removeEventListener("scroll", handleScroll);
+      element.removeEventListener("wheel", handleWheel);
+      element.removeEventListener("touchstart", handleTouchStart);
+      element.removeEventListener("touchmove", handleTouchMove);
+      element.removeEventListener("keydown", handleKeyDown);
+      observer.disconnect();
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [containerRef, contentRef, active]);
+
+  const scrollToBottom = useCallback(() => {
+    followingRef.current = true;
+    const element = containerRef.current;
+    element?.scrollTo({ top: element.scrollHeight, behavior: "auto" });
+  }, [containerRef]);
+
+  const scrollToTop = useCallback(() => {
+    followingRef.current = false;
+    containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [containerRef]);
+
+  return { isAtTop, isAtBottom, canScroll, scrollToTop, scrollToBottom };
 }
 
 export function usePlaybackAutoScroll(
