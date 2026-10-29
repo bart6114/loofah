@@ -78,6 +78,9 @@ jobs:
           path: .release-ci
           sparse-checkout: .github
           persist-credentials: false
+      - uses: ./.release-ci/.github/actions/cli_native_setup
+        with:
+          target: ${{ matrix.triple }}
       - uses: ./.release-ci/.github/actions/rust_install
       - run: cargo build --locked --release -p loof-cli --timings
       - uses: actions/upload-artifact@v4
@@ -99,6 +102,14 @@ jobs:
             codesign -s - -f "$bin"
           else
             strip "$bin"
+            LD_BIND_NOW=1 "$bin" --version | grep -F "$version"
+            glibc="$(readelf --version-info "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -n1)"
+            test -n "$glibc"
+            test "$(printf '%s\n' 2.35 "${glibc#GLIBC_}" | sort -V | tail -n1)" = 2.35
+            if readelf --dynamic "$bin" | grep -Eq 'NEEDED.*lib(stdc\+\+|onnxruntime)'; then
+              echo '::error::The Linux CLI must bundle its C++ and ONNX runtimes statically.'
+              exit 1
+            fi
           fi
           "$bin" --version | grep -F "$version"
           asset="loof-${version}-${TRIPLE}.tar.gz"
