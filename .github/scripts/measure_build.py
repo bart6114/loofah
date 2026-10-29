@@ -35,6 +35,14 @@ def main():
         timings = target / "cargo-timings"
         if timings.exists():
             shutil.copytree(timings, root / stage, dirs_exist_ok=True)
+        # Cargo hides successful build-script output, including Swift's compile log.
+        for unit in target.glob("release/build/transcribe-soniqo-*"):
+            for name in ("output", "stderr"):
+                source = unit / name
+                if source.is_file():
+                    destination = root / stage / "native-logs" / unit.name / name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, destination)
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
         summary.write(f"- {stage}: {duration:.1f}s (exit {result.returncode})\n")
     return result.returncode

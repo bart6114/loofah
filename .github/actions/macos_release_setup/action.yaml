@@ -31,7 +31,9 @@ runs:
         test -d "$developer_dir"
         sudo xcode-select --switch "$developer_dir"
         native_toolchain="$(xcodebuild -version; xcrun --sdk macosx --show-sdk-version; xcrun swift --version)"
-        native_key="$(printf '%s\n' "$native_toolchain" "$NATIVE_SOURCES" | shasum -a 256 | awk '{print $1}')"
+        # Swift build databases also depend on SDK/toolchain file metadata in the image.
+        runner_image="${ImageOS:?Missing hosted runner image}-${ImageVersion:?Missing hosted runner image version}"
+        native_key="$(printf '%s\n' "$runner_image" "$native_toolchain" "$NATIVE_SOURCES" | shasum -a 256 | awk '{print $1}')"
         {
           echo "DEVELOPER_DIR=$developer_dir"
           echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)"
@@ -58,3 +60,4 @@ runs:
         echo "workspace-cache=$workspace_cache" >> "$GITHUB_OUTPUT"
         mkdir -p "$RUNNER_TEMP/build-metrics"
         printf '%s\n' "$native_toolchain" > "$RUNNER_TEMP/build-metrics/toolchain.txt"
+        printf '%s\n' "$runner_image" > "$RUNNER_TEMP/build-metrics/runner-image.txt"

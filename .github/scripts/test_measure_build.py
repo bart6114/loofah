@@ -51,6 +51,27 @@ class BuildMeasurementTests(unittest.TestCase):
                     stage,
                 )
 
+    def test_native_logs_survive_failed_build_and_remain_separate_per_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target"
+            unit = "transcribe-soniqo-123"
+            logs = target / "release/build" / unit
+            logs.mkdir(parents=True)
+            for stage in ("cli", "desktop"):
+                (logs / "output").write_text(f"Swift compiled {stage}")
+                (logs / "stderr").write_text("diagnostic")
+                result = self.measure(
+                    root, stage, "raise SystemExit(7)", CARGO_TARGET_DIR=str(target)
+                )
+                self.assertEqual(result.returncode, 7, result.stderr)
+            for stage in ("cli", "desktop"):
+                saved = root / "runner/build-metrics" / stage / "native-logs" / unit
+                self.assertEqual(
+                    (saved / "output").read_text(), f"Swift compiled {stage}"
+                )
+                self.assertEqual((saved / "stderr").read_text(), "diagnostic")
+
     def test_legacy_desktop_target(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
