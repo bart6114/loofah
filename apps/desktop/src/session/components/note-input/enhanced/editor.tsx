@@ -40,6 +40,7 @@ const EnhancedEditorInner = forwardRef<
   {
     sessionId: string;
     sessionTitle: string;
+    readOnly?: boolean;
     enhancedNoteId: string;
     content: string;
     generationId?: string;
@@ -55,6 +56,7 @@ const EnhancedEditorInner = forwardRef<
     {
       sessionId,
       sessionTitle,
+      readOnly = false,
       enhancedNoteId,
       content,
       generationId,
@@ -142,6 +144,7 @@ const EnhancedEditorInner = forwardRef<
       <div className="relative h-full">
         <NoteEditor
           ref={ref}
+          readOnly={readOnly}
           className="session-note-editor enhanced-summary-editor"
           key={editorKey}
           initialContent={initialContent}
@@ -152,10 +155,12 @@ const EnhancedEditorInner = forwardRef<
           onDraftChange={persistChanges ? handleDraftChange : undefined}
           placeholderComponent={documentTitlePlaceholder}
           mentionConfig={mentionConfig}
-          sessionMentionDropConfig={sessionMentionDropConfig}
+          sessionMentionDropConfig={
+            readOnly ? undefined : sessionMentionDropConfig
+          }
           onNavigateToTitle={onNavigateToTitle}
           onLinkOpen={openEditorLink}
-          fileHandlerConfig={fileHandlerConfig}
+          fileHandlerConfig={readOnly ? undefined : fileHandlerConfig}
           taskSource={
             persistChanges
               ? {

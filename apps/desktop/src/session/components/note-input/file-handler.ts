@@ -118,7 +118,7 @@ export function useNoteFileHandlerConfig(
     onHoverEnd: resetFileDrag,
     onDrop: (paths, point) => {
       const view = editorRef.current?.view;
-      if (!view) return;
+      if (!view?.editable) return;
       const pos =
         view.posAtCoords({ left: point.x, top: point.y })?.pos ??
         view.state.doc.content.size;

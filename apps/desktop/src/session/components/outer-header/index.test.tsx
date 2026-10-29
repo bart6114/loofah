@@ -359,11 +359,13 @@ describe("OuterHeader", () => {
   });
 
   it("shows resume when an inactive session already has a transcript", () => {
+    const onStartRecording = vi.fn();
     mocks.hasTranscriptBySession = { "session-1": true };
 
     render(
       <OuterHeader
         sessionId="session-1"
+        onStartRecording={onStartRecording}
         currentView={{ type: "transcript" } as EditorView}
         title={<span>Session title</span>}
       />,
@@ -377,6 +379,7 @@ describe("OuterHeader", () => {
     expect(screen.queryByRole("button", { name: "Record" })).toBeNull();
     expect(screen.getByTestId("recording-icon")).not.toBeNull();
     expect(mocks.startListening).toHaveBeenCalledTimes(1);
+    expect(onStartRecording).toHaveBeenCalledBefore(mocks.startListening);
   });
 
   it("shows resume when an inactive session has audio without a transcript", () => {

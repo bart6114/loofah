@@ -6,6 +6,7 @@ import { useListener } from "./contexts";
 import { useSTTConnection } from "./useSTTConnection";
 
 import { useSession } from "~/session/queries";
+import { beginSummaryActivity } from "~/session/summary-activity";
 import { useConfigValue } from "~/shared/config";
 import { id } from "~/shared/utils";
 import type { BatchPersistCallback } from "~/store/zustand/listener/transcript";
@@ -99,197 +100,205 @@ export const useRunBatch = (sessionId: string) => {
 
   return useCallback(
     async (filePath: string, options?: RunOptions) => {
-      if (!startTranscription) {
-        throw new Error(
-          "STT connection is not available. Please configure your speech-to-text provider.",
-        );
-      }
-
-      const languages =
-        options?.languages ?? getTranscriptionLanguages(meetingLanguages);
-      const selectedModel = options?.model ?? conn?.model;
-      const selectedProvider =
-        conn && selectedModel
-          ? getBatchProvider(conn.provider, selectedModel)
-          : null;
-      const selectedTarget =
-        conn && selectedModel && selectedProvider
-          ? {
-              provider: selectedProvider,
-              model: selectedModel,
-              baseUrl: options?.baseUrl ?? conn.baseUrl,
-              apiKey: options?.apiKey ?? conn.apiKey,
-            }
-          : null;
-      if (!selectedTarget) {
-        throw new Error(
-          "Select a transcription model in Settings before transcribing.",
-        );
-      }
-      if (
-        !(await canUseBatchTarget(
-          selectedTarget.provider,
-          selectedTarget.model,
-          languages,
-        ))
-      ) {
-        throw new Error(
-          `${selectedTarget.model} cannot transcribe the selected meeting languages. Choose another model or change your spoken languages in Settings.`,
-        );
-      }
-      const target = selectedTarget;
-
-      const priorTranscripts =
-        options?.imported === undefined
-          ? await commands.sessionTranscripts(sessionId)
-          : null;
-      if (priorTranscripts?.status === "error") {
-        throw new Error(priorTranscripts.error);
-      }
-      const previousWords =
-        priorTranscripts?.data.flatMap(
-          (transcript) => transcript.words ?? [],
-        ) ?? [];
-      let captureSource = "unknown";
-      if (options?.imported !== undefined) {
-        captureSource = options.imported ? "import" : "recording";
-      } else if (
-        previousWords.some((word) => word.metadata?.capture_source === "import")
-      ) {
-        captureSource = "import";
-      } else if (
-        previousWords.length > 0 &&
-        previousWords.every(
-          (word) => word.metadata?.capture_source === "recording",
-        )
-      ) {
-        captureSource = "recording";
-      }
-      const createdAt = new Date().toISOString();
-      const memoMd = session?.raw_md ?? "";
-      let transcriptId: string | null = null;
-      const inferredNumSpeakers =
-        options?.numSpeakers === undefined &&
-        options?.minSpeakers === undefined &&
-        options?.maxSpeakers === undefined
-          ? getSessionSpeakerCount([], session?.user_id)
-          : undefined;
-
-      const handlePersist: BatchPersistCallback | undefined =
-        options?.handlePersist;
-      let lastTranscriptWrite = Promise.resolve();
-      let transcriptWriteError: unknown;
-      const trackTranscriptWrite = (write: Promise<void>) => {
-        lastTranscriptWrite = write.catch((error) => {
-          transcriptWriteError = error;
-          console.error("[runBatch] failed to persist transcript", error);
-        });
-      };
-
-      const persist =
-        handlePersist ??
-        ((words, hints, persistOptions) => {
-          if (words.length === 0) {
-            return;
-          }
-
-          const newWords: WordWithId[] = [];
-          const newWordIds: string[] = [];
-
-          words.forEach((word) => {
-            const wordId = id();
-
-            newWords.push({
-              id: wordId,
-              text: word.text,
-              start_ms: word.start_ms,
-              end_ms: word.end_ms,
-              channel: word.channel,
-              metadata: JSON.stringify({
-                ...word.metadata,
-                capture_source: word.metadata?.capture_source ?? captureSource,
-              }),
-            });
-
-            newWordIds.push(wordId);
-          });
-
-          const newHints: SpeakerHintWithId[] = [];
-
-          hints.forEach((hint) => {
-            if (hint.data.type !== "provider_speaker_index") {
-              return;
-            }
-
-            const wordId = newWordIds[hint.wordIndex];
-            const word = words[hint.wordIndex];
-
-            if (!wordId || !word) {
-              return;
-            }
-
-            newHints.push({
-              id: id(),
-              word_id: wordId,
-              type: "provider_speaker_index",
-              value: JSON.stringify({
-                provider: hint.data.provider ?? target.provider,
-                channel: hint.data.channel ?? word.channel,
-                speaker_index: hint.data.speaker_index,
-              }),
-            });
-          });
-
-          if (!transcriptId) {
-            transcriptId = id();
-            trackTranscriptWrite(
-              createTranscript({
-                id: transcriptId,
-                sessionId,
-                ownerUserId: session?.user_id ?? "",
-                createdAt,
-                startedAt: Date.now(),
-                memo: memoMd,
-                source: "batch_transcription",
-                provider: target.provider,
-                model: target.model,
-                words: newWords,
-                speakerHints: newHints,
-                replaceSession: true,
-              }),
-            );
-          } else {
-            trackTranscriptWrite(
-              appendTranscriptWordsAndHints(
-                transcriptId,
-                newWords,
-                newHints,
-                persistOptions,
-              ),
-            );
-          }
-        });
-
-      const params: TranscriptionParams = {
-        session_id: sessionId,
-        provider: target.provider,
-        file_path: filePath,
-        model: target.model,
-        base_url: target.baseUrl,
-        api_key: target.apiKey,
-        languages,
-        num_speakers: options?.numSpeakers ?? inferredNumSpeakers,
-        min_speakers: options?.minSpeakers,
-        max_speakers: options?.maxSpeakers,
-      };
-
+      const activity = beginSummaryActivity(sessionId, "processing");
       try {
-        await startTranscription(params, { handlePersist: persist });
-      } finally {
-        await lastTranscriptWrite;
-      }
+        if (!startTranscription) {
+          throw new Error(
+            "STT connection is not available. Please configure your speech-to-text provider.",
+          );
+        }
 
-      if (transcriptWriteError) throw transcriptWriteError;
+        const languages =
+          options?.languages ?? getTranscriptionLanguages(meetingLanguages);
+        const selectedModel = options?.model ?? conn?.model;
+        const selectedProvider =
+          conn && selectedModel
+            ? getBatchProvider(conn.provider, selectedModel)
+            : null;
+        const selectedTarget =
+          conn && selectedModel && selectedProvider
+            ? {
+                provider: selectedProvider,
+                model: selectedModel,
+                baseUrl: options?.baseUrl ?? conn.baseUrl,
+                apiKey: options?.apiKey ?? conn.apiKey,
+              }
+            : null;
+        if (!selectedTarget) {
+          throw new Error(
+            "Select a transcription model in Settings before transcribing.",
+          );
+        }
+        if (
+          !(await canUseBatchTarget(
+            selectedTarget.provider,
+            selectedTarget.model,
+            languages,
+          ))
+        ) {
+          throw new Error(
+            `${selectedTarget.model} cannot transcribe the selected meeting languages. Choose another model or change your spoken languages in Settings.`,
+          );
+        }
+        const target = selectedTarget;
+
+        const priorTranscripts =
+          options?.imported === undefined
+            ? await commands.sessionTranscripts(sessionId)
+            : null;
+        if (priorTranscripts?.status === "error") {
+          throw new Error(priorTranscripts.error);
+        }
+        const previousWords =
+          priorTranscripts?.data.flatMap(
+            (transcript) => transcript.words ?? [],
+          ) ?? [];
+        let captureSource = "unknown";
+        if (options?.imported !== undefined) {
+          captureSource = options.imported ? "import" : "recording";
+        } else if (
+          previousWords.some(
+            (word) => word.metadata?.capture_source === "import",
+          )
+        ) {
+          captureSource = "import";
+        } else if (
+          previousWords.length > 0 &&
+          previousWords.every(
+            (word) => word.metadata?.capture_source === "recording",
+          )
+        ) {
+          captureSource = "recording";
+        }
+        const createdAt = new Date().toISOString();
+        const memoMd = session?.raw_md ?? "";
+        let transcriptId: string | null = null;
+        const inferredNumSpeakers =
+          options?.numSpeakers === undefined &&
+          options?.minSpeakers === undefined &&
+          options?.maxSpeakers === undefined
+            ? getSessionSpeakerCount([], session?.user_id)
+            : undefined;
+
+        const handlePersist: BatchPersistCallback | undefined =
+          options?.handlePersist;
+        let lastTranscriptWrite = Promise.resolve();
+        let transcriptWriteError: unknown;
+        const trackTranscriptWrite = (write: Promise<void>) => {
+          lastTranscriptWrite = write.catch((error) => {
+            transcriptWriteError = error;
+            console.error("[runBatch] failed to persist transcript", error);
+          });
+        };
+
+        const persist =
+          handlePersist ??
+          ((words, hints, persistOptions) => {
+            if (words.length === 0) {
+              return;
+            }
+
+            const newWords: WordWithId[] = [];
+            const newWordIds: string[] = [];
+
+            words.forEach((word) => {
+              const wordId = id();
+
+              newWords.push({
+                id: wordId,
+                text: word.text,
+                start_ms: word.start_ms,
+                end_ms: word.end_ms,
+                channel: word.channel,
+                metadata: JSON.stringify({
+                  ...word.metadata,
+                  capture_source:
+                    word.metadata?.capture_source ?? captureSource,
+                }),
+              });
+
+              newWordIds.push(wordId);
+            });
+
+            const newHints: SpeakerHintWithId[] = [];
+
+            hints.forEach((hint) => {
+              if (hint.data.type !== "provider_speaker_index") {
+                return;
+              }
+
+              const wordId = newWordIds[hint.wordIndex];
+              const word = words[hint.wordIndex];
+
+              if (!wordId || !word) {
+                return;
+              }
+
+              newHints.push({
+                id: id(),
+                word_id: wordId,
+                type: "provider_speaker_index",
+                value: JSON.stringify({
+                  provider: hint.data.provider ?? target.provider,
+                  channel: hint.data.channel ?? word.channel,
+                  speaker_index: hint.data.speaker_index,
+                }),
+              });
+            });
+
+            if (!transcriptId) {
+              transcriptId = id();
+              trackTranscriptWrite(
+                createTranscript({
+                  id: transcriptId,
+                  sessionId,
+                  ownerUserId: session?.user_id ?? "",
+                  createdAt,
+                  startedAt: Date.now(),
+                  memo: memoMd,
+                  source: "batch_transcription",
+                  provider: target.provider,
+                  model: target.model,
+                  words: newWords,
+                  speakerHints: newHints,
+                  replaceSession: true,
+                }),
+              );
+            } else {
+              trackTranscriptWrite(
+                appendTranscriptWordsAndHints(
+                  transcriptId,
+                  newWords,
+                  newHints,
+                  persistOptions,
+                ),
+              );
+            }
+          });
+
+        const params: TranscriptionParams = {
+          session_id: sessionId,
+          provider: target.provider,
+          file_path: filePath,
+          model: target.model,
+          base_url: target.baseUrl,
+          api_key: target.apiKey,
+          languages,
+          num_speakers: options?.numSpeakers ?? inferredNumSpeakers,
+          min_speakers: options?.minSpeakers,
+          max_speakers: options?.maxSpeakers,
+        };
+
+        try {
+          await startTranscription(params, { handlePersist: persist });
+        } finally {
+          await lastTranscriptWrite;
+        }
+
+        if (transcriptWriteError) throw transcriptWriteError;
+      } finally {
+        activity.finish();
+      }
     },
     [conn, session, meetingLanguages, startTranscription, sessionId],
   );

@@ -40,11 +40,13 @@ export function OverflowButton({
   standaloneWindow = false,
   sessionId,
   currentView,
+  onStartRecording,
 }: {
   allowListening?: boolean;
   standaloneWindow?: boolean;
   sessionId: string;
   currentView: EditorView;
+  onStartRecording?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -130,6 +132,7 @@ export function OverflowButton({
               <Listening
                 sessionId={sessionId}
                 resume={audioExists || hasTranscript}
+                onStartRecording={onStartRecording}
               />
             )}
             {showRetranscribeAction && (

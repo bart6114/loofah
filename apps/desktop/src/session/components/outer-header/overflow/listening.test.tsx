@@ -58,11 +58,19 @@ describe("Listening", () => {
   });
 
   it("resumes listening when the session already has content", () => {
-    render(<Listening sessionId="session-1" resume />);
+    const onStartRecording = vi.fn();
+    render(
+      <Listening
+        sessionId="session-1"
+        resume
+        onStartRecording={onStartRecording}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Resume listening" }));
 
     expect(startListeningMock).toHaveBeenCalledTimes(1);
+    expect(onStartRecording).toHaveBeenCalledBefore(startListeningMock);
   });
 
   it("starts listening directly in the main window before transcript exists", () => {
@@ -77,7 +85,14 @@ describe("Listening", () => {
   it("delegates standalone start requests to the main window before transcript exists", () => {
     isMainWebviewWindowMock.mockReturnValue(false);
 
-    render(<Listening sessionId="session-1" resume={false} />);
+    const onStartRecording = vi.fn();
+    render(
+      <Listening
+        sessionId="session-1"
+        resume={false}
+        onStartRecording={onStartRecording}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Start listening" }));
 
@@ -86,6 +101,9 @@ describe("Listening", () => {
       "session-1",
     );
     expect(startListeningMock).not.toHaveBeenCalled();
+    expect(onStartRecording).toHaveBeenCalledBefore(
+      requestMainListenerControlMock,
+    );
   });
 
   it("delegates standalone stop requests to the main window", () => {

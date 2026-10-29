@@ -19,7 +19,12 @@ const hoisted = vi.hoisted(() => ({
   rawEditorProps: [] as Record<string, unknown>[],
   resetFileDrag: vi.fn(),
   sessionMode: "inactive",
+  summaryEditLock: null as null | "recording" | "processing",
   updateSessionTabState: vi.fn(),
+}));
+
+vi.mock("~/session/hooks/useSummaryEditLock", () => ({
+  useSummaryEditLock: () => hoisted.summaryEditLock,
 }));
 
 vi.mock("./enhanced", async () => {
@@ -247,6 +252,7 @@ describe("NoteInput tab selection", () => {
     hoisted.rawEditorProps = [];
     hoisted.resetFileDrag.mockClear();
     hoisted.sessionMode = "inactive";
+    hoisted.summaryEditLock = null;
     hoisted.updateSessionTabState.mockClear();
   });
 
@@ -454,5 +460,43 @@ describe("NoteInput tab selection", () => {
 
     expect(wasNotCancelled).toBe(true);
     expect(hoisted.focusAtTrailingEmptyLine).not.toHaveBeenCalled();
+  });
+});
+
+describe("summary editing during capture", () => {
+  afterEach(() => {
+    cleanup();
+    hoisted.summaryEditLock = null;
+  });
+  it.each(["recording", "processing"] as const)(
+    "locks the summary during %s and offers Note",
+    (phase) => {
+      hoisted.summaryEditLock = phase;
+      const { handleTabChange } = renderNoteInput({
+        currentTab: { type: "enhanced", id: "session-1" },
+      });
+      expect(
+        hoisted.enhancedEditorProps[hoisted.enhancedEditorProps.length - 1]
+          ?.readOnly,
+      ).toBe(true);
+      expect(screen.getByRole("status").textContent).toContain(
+        "Summary is read-only",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Open Note" }));
+      expect(handleTabChange).toHaveBeenCalledWith({ type: "raw" });
+      expect(hoisted.flushPendingChanges).toHaveBeenCalled();
+    },
+  );
+  it("keeps Note editable during recording", () => {
+    hoisted.summaryEditLock = "recording";
+    renderNoteInput();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(
+      hoisted.rawEditorProps[hoisted.rawEditorProps.length - 1]
+        ?.fileHandlerConfig,
+    ).toBeDefined();
+    expect(
+      hoisted.rawEditorProps[hoisted.rawEditorProps.length - 1]?.readOnly,
+    ).not.toBe(true);
   });
 });
