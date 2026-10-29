@@ -20,7 +20,7 @@ first so the desktop can reuse compatible dependencies. Bundles are under
 `target/release/bundle/`; local development keeps its existing target layout.
 
 The release cache preserves workspace libraries and native Swift/MLX build outputs.
-Its identity includes the Rust toolchain, Cargo configuration, Xcode/SDK, native
+Its identity includes the Rust toolchain, Cargo configuration, Xcode/SDK, hosted runner image revision, native
 sources and Swift package locks. Unused preinstalled Rust toolchains are removed
 only on ephemeral GitHub-hosted runners. Staging and stable share a cache family;
 test/debug jobs remain separate. Older tags without resource-restoration support
@@ -34,6 +34,11 @@ which silently disables workspace-output retention when rust-cache saves. The
 [immutable](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
 The `release-cache-check` workflow verifies the real action's save/restore behavior
 on separate runners using representative native files in an isolated cache family.
+Those marker-only fixtures use a fixed image identity so runner rollouts do not
+prevent testing retention. Real builds isolate each image revision: Swift may
+invalidate compiled outputs across images even when compiler versions match.
+Each new image needs one seed build; exact cache hits are immutable and cannot
+save outputs rebuilt for a different image.
 
 Configure **Settings → Actions → General → Cache size eviction limit** to 50 GiB
 and an **Actions Cache Storage** budget of $5/month in account billing. At the
@@ -56,7 +61,9 @@ The default namespace is reserved for normal staging/stable builds.
 The `macos-*-timings` artifacts contain per-stage elapsed times, Cargo HTML reports
 for the CLI and desktop, native phase timings in `native.tsv` (phase, milliseconds,
 Cargo output directory), the selected toolchain, and native-output inventories
-before and after compilation. Native timings are emitted
+before and after compilation. `cli/native-logs/` and `desktop/native-logs/`
+preserve Soniqo build-script stdout/stderr, including successful Swift compile
+output that Cargo normally hides. Native timings are emitted
 only when the native build script executes. Bundle time includes app signing and
 notarization; stable release jobs separately notarize the outer DMG. Compare build
 and cache time separately from runner queueing. Validate the bundled CLI, Metal
