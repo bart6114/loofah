@@ -749,6 +749,7 @@ button.danger {
 }
 .ai-consent {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   gap: 12px;
 }
