@@ -3,7 +3,7 @@ title: "Privacy policy"
 description: "How Loofah handles your notes, recordings, and other data on Mac and iPhone."
 ---
 
-**Effective date: September 30, 2026.** Loofah is a free app maintained by Bart Smeets. Contact [hi@barts.space](mailto:hi@barts.space) about this policy or a privacy request.
+**Effective date: November 1, 2026.** Loofah is a free app maintained by Bart Smeets. Contact [hi@barts.space](mailto:hi@barts.space) about this policy or a privacy request.
 
 ## What stays on your device
 
@@ -16,11 +16,23 @@ The iPhone app stores any API key you enter in the iPhone Keychain. The Mac app 
 ## When data leaves your device
 
 - **Sync that you choose.** If you connect the iPhone app to an iCloud Drive vault, notes, transcripts, summaries, attachments, settings, and recordings are copied through your Apple iCloud account. A local copy remains on your iPhone. On Mac, you can place your vault in a folder managed by a sync service you choose. That service handles the files under its own terms and privacy policy.
-- **AI providers that you choose.** If you enable a hosted summary provider, Loofah sends the instructions and relevant session context, which can include notes, transcript text, titles, and participant information, to that provider. On iPhone, a summary can be sent automatically after transcription once a provider is enabled. Generating a title can send the summary to the same provider. The provider may process or retain what you send according to its own policy. If you connect LM Studio, Ollama, or another server you control, the request goes to the server address you configure; that server may be on another device.
+- **AI providers that you choose.** If you enable a hosted summary provider, Loofah sends the instructions and relevant session context, which can include notes, transcript text, titles, and participant information, to that provider. On iPhone, AI sharing is off until you explicitly give permission in Settings → Summaries. The disclosure names the selected provider and server and explains the data sent. After you give permission, a summary can be sent automatically after transcription or when you request one. Permission applies to that provider, server, and model on that installation; changing any of them requires fresh permission. Existing or synced provider settings do not grant permission. Generating a title can send the summary to the same provider. The provider may process or retain what you send according to its own policy. If you connect LM Studio, Ollama, or another server you control, the request goes to the server address you configure; that server may be on another device.
 - **Speech model downloads.** When you ask the iPhone app to download a transcription model, it connects to Hugging Face to obtain the model files. The download does not include your recordings or transcripts. The download host can receive ordinary connection data such as your IP address.
 - **Support messages.** If you email us, we receive the address and information you include. Please avoid sending recordings or sensitive notes unless needed to explain your request.
 
 Loofah does not sell your data. It has no in-app purchases, paid features, or subscriptions. A provider or sync service you choose may have its own charges.
+
+## Optional AI sharing on iPhone
+
+The summary request includes the selected note's text, transcript text and speaker names, note title, tags, session dates, and summary instructions, including any custom instructions saved in your vault. A title request sends the generated summary and title instructions to the same provider. Audio recordings and attachment files are not included. Requests go directly from your iPhone to the configured endpoint; Loofah does not receive or relay them. The endpoint also receives ordinary connection information, such as your IP address, and your API key to authenticate the request. Loading the model list sends authentication and connection information, but no note or transcript content.
+
+The recipient depends on your selection: OpenAI, Anthropic, Google (Gemini), Mistral, Microsoft (Azure OpenAI or Azure AI Foundry), Cloudflare (Workers AI), or OpenRouter. OpenRouter also forwards requests to the model provider selected by its routing; review its [provider data policies](https://openrouter.ai/providers/). For Custom, LM Studio, and Ollama connections, the operator of the server address you enter is the recipient. A server on your Mac is still a separate device from your iPhone.
+
+Third-party protection must be at least equivalent to the protections in this policy: use data only for the purposes you authorize, protect it against unauthorized access, and provide retention and deletion controls. Before connecting a provider or custom server, review its applicable API terms, privacy policy, and account settings. Retention, training use, and onward processing vary by provider and account; Loofah cannot verify or override the operator's practices. If those protections are not available, leave AI sharing off. Loofah does not authorize providers to sell your content or use it for advertising.
+
+You can review the providers' policies: [OpenAI](https://openai.com/policies/privacy-policy/), [Anthropic](https://www.anthropic.com/legal/privacy), [Google](https://policies.google.com/privacy), [Mistral](https://legal.mistral.ai/terms/privacy-policy), [Microsoft](https://privacy.microsoft.com/privacystatement), [Cloudflare](https://www.cloudflare.com/privacypolicy/), and [OpenRouter](https://openrouter.ai/privacy/). For a custom or self-hosted server, obtain the policy from its operator.
+
+To withdraw permission for future requests, clear the AI sharing checkbox and save in Settings → Summaries, or select Off and save. Recording, transcription, and editing notes remain available without consent. Revoking permission cannot recall data already sent; contact the recipient to request deletion under its policy.
 
 ## Retention and your choices
 
