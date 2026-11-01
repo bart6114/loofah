@@ -39,8 +39,8 @@ pub fn tmp_sibling_path(path: &Path) -> PathBuf {
 /// holds byte-identical content, so callers replaying unchanged state never
 /// generate spurious filesystem events.
 ///
-/// When `path` exists with **different** content, the existing file is moved
-/// to `<vault_base>/.trash/<date>/...` (via `move_to_trash`) *before* the new
+/// When `path` exists with **different** content, the existing file is copied
+/// to `<vault_base>/.trash/<date>/...` (via `copy_to_trash`) *before* the new
 /// content is written — never silently overwritten. Writes are projections
 /// of what the caller currently models: a legacy or hand-edited vault file
 /// can carry frontmatter keys or JSON fields the caller doesn't know how to
@@ -66,23 +66,19 @@ pub fn write_file_atomic(
         })?;
     }
 
-    if let Ok(existing) = std::fs::read(path) {
-        if existing == content {
-            return Ok(false);
+    match std::fs::read(path) {
+        Ok(existing) if existing == content => return Ok(false),
+        Ok(_) => {
+            copy_to_trash(vault_base, path)?;
         }
-        move_to_trash(vault_base, path)?;
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
 
     if let Some(parent) = tmp_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    {
-        use std::io::Write;
-        let mut file = std::fs::File::create(tmp_path)?;
-        file.write_all(content)?;
-        file.sync_all()?;
-    }
-    std::fs::rename(tmp_path, path)?;
+    hypr_storage::fs::write_staged_file(path, tmp_path, content)?;
     Ok(true)
 }
 
@@ -99,6 +95,54 @@ pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
         Err(error) => return Err(error.into()),
     }
 
+    let target = trash_destination(vault_base, path)?;
+    loop {
+        let candidate = unique_path(target.clone());
+        match hypr_storage::fs::rename_no_replace(path, &candidate) {
+            Ok(()) => return Ok(Some(candidate)),
+            // Another process may claim the candidate after unique_path checked it.
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+/// An overwrite backs up the old bytes without creating a gap at the live path.
+/// A failed replacement (including a Windows sharing violation) leaves them readable.
+pub fn copy_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<PathBuf>> {
+    match std::fs::metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        result => {
+            result?;
+        }
+    }
+    let target = trash_destination(vault_base, path)?;
+    loop {
+        let candidate = unique_path(target.clone());
+        let mut backup = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(backup) => backup,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let result = (|| {
+            let mut source = std::fs::File::open(path)?;
+            std::io::copy(&mut source, &mut backup)?;
+            backup.sync_all()
+        })();
+        drop(backup);
+        if let Err(error) = result {
+            let _ = std::fs::remove_file(&candidate);
+            return Err(error.into());
+        }
+        return Ok(Some(candidate));
+    }
+}
+
+fn trash_destination(vault_base: &Path, path: &Path) -> crate::Result<PathBuf> {
     let relative = path.strip_prefix(vault_base).map_err(|_| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -141,15 +185,7 @@ pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
             Err(error) => return Err(error.into()),
         }
     }
-    loop {
-        let candidate = unique_path(target.clone());
-        match hypr_storage::fs::rename_no_replace(path, &candidate) {
-            Ok(()) => return Ok(Some(candidate)),
-            // Another process may claim the candidate after unique_path checked it.
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
-        }
-    }
+    Ok(target)
 }
 
 fn unique_path(path: PathBuf) -> PathBuf {
@@ -188,6 +224,24 @@ mod tests {
     fn write_via_tmp(vault_base: &Path, path: &Path, content: &[u8]) -> crate::Result<bool> {
         let tmp_path = tmp_sibling_path(path);
         write_file_atomic(vault_base, path, &tmp_path, content)
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn an_unreadable_file_is_not_replaced_even_when_its_handle_allows_delete() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let vault = tempfile::tempdir().unwrap();
+        let path = vault.path().join("notes.md");
+        std::fs::write(&path, b"original notes").unwrap();
+        let locked = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(2 | 4)
+            .open(&path)
+            .unwrap();
+        assert!(write_via_tmp(vault.path(), &path, b"replacement").is_err());
+        drop(locked);
+        assert_eq!(std::fs::read(&path).unwrap(), b"original notes");
+        assert_eq!(std::fs::read_dir(vault.path()).unwrap().count(), 1);
     }
 
     #[test]

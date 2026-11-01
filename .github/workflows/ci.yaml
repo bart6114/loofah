@@ -21,8 +21,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Test release metrics archiver
-        run: python3 .github/scripts/test_archive_dmg_download_metrics.py
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - uses: pnpm/action-setup@v4
         with:
           run_install: false

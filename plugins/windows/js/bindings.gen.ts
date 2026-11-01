@@ -110,6 +110,17 @@ async setShowAppInDock(show: boolean) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async overlaySnapshot() : Promise<OverlaySnapshot> {
+    return await TAURI_INVOKE("plugin:windows|overlay_snapshot");
+},
+async overlaySetSettingsOpen(open: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin:windows|overlay_set_settings_open", { open }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async floatingBarShow() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("plugin:windows|floating_bar_show") };
@@ -225,6 +236,8 @@ export type LiveCaptionPosition = "topCenter" | "topLeft" | "topRight" | "bottom
 export type LiveCaptionState = { text: string; opacity: number; width: number; lineCount: number; position: LiveCaptionPosition; minimized: boolean }
 export type Navigate = { path: string; search: Partial<{ [key in string]: JsonValue }> | null }
 export type OpenTab = { tab: TabInput }
+export type OverlaySnapshot = { revision: number; state: OverlayState | null }
+export type OverlayState = { type: "floatingBar"; state: FloatingBarState } | { type: "transcript"; state: FloatingBarState } | { type: "settings"; state: FloatingBarState } | { type: "liveCaption"; state: LiveCaptionState } | { type: "devtools" }
 export type SessionsState = { view: EditorView | null; autoStart: boolean | null }
 export type SettingsState = { tab: string | null }
 export type TabInput = { type: "sessions"; id: string; state?: SessionsState | null } | { type: "contacts"; state?: ContactsState | null } | { type: "templates"; state?: TemplatesState | null } | { type: "extensions"; state?: ExtensionsState | null } | { type: "humans"; id: string } | { type: "organizations"; id: string } | { type: "folders"; id: string | null } | { type: "empty" } | { type: "extension"; extensionId: string; state?: Partial<{ [key in string]: JsonValue }> | null } | { type: "changelog"; state: ChangelogState } | { type: "settings"; state?: SettingsState | null } | { type: "onboarding" }

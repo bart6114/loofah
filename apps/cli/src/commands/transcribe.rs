@@ -95,7 +95,14 @@ pub(crate) async fn transcribe_session(
         model: Some(model),
         base_url: hypr_transcribe_soniqo::LOCAL_BASE_URL.to_string(),
         api_key: String::new(),
-        languages: Vec::new(),
+        languages: config
+            .meeting_languages
+            .iter()
+            .map(|language| language.parse())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|error| {
+                Error::operation(ACTION, format!("invalid meeting language: {error}"))
+            })?,
         keywords: Vec::new(),
         num_speakers: None,
         min_speakers: None,
@@ -129,6 +136,7 @@ pub(crate) async fn transcribe_session(
         words: transcript.words.len(),
     };
 
+    crate::output::track_write(session_id)?;
     store
         .replace_session_transcripts(session_id, transcript)
         .await
@@ -145,6 +153,8 @@ struct VaultConfig {
     current_stt_provider: Option<String>,
     #[serde(default)]
     current_stt_model: Option<String>,
+    #[serde(default)]
+    meeting_languages: Vec<String>,
 }
 
 fn read_vault_config(vault: &Path) -> Result<VaultConfig> {
@@ -205,7 +215,7 @@ fn resolve_soniqo_model(config: &VaultConfig) -> Result<String> {
         return Err(Error::operation(
             ACTION,
             format!(
-                "speech-to-text model '{model}' is not supported by the CLI yet; open the desktop app to select a supported Soniqo model under Settings → Transcription"
+                "speech-to-text model '{model}' is not supported by the CLI yet; open the desktop app to select a supported on-device Parakeet model under Settings → Transcription"
             ),
         ));
     }
@@ -223,18 +233,14 @@ fn ensure_soniqo_model_ready(model: &str) -> Result<()> {
             .map_err(|error: hypr_transcribe_soniqo::Error| {
                 Error::operation(ACTION, error.to_string())
             })?;
-    // Streaming models transcribe files with their batch sibling (the same
-    // mapping `run_soniqo_batch` applies), so check that model's cache.
-    let batch_model = parsed.batch_model();
-
-    let downloaded = hypr_transcribe_soniqo::is_model_downloaded(batch_model)
+    let downloaded = hypr_transcribe_soniqo::is_model_downloaded(parsed)
         .map_err(|error| Error::operation(ACTION, error.to_string()))?;
     if !downloaded {
         return Err(Error::operation(
             ACTION,
             format!(
                 "the {} model is not downloaded; open the desktop app once to download it",
-                batch_model.display_name()
+                parsed.display_name()
             ),
         ));
     }
@@ -277,7 +283,19 @@ mod tests {
         VaultConfig {
             current_stt_provider: provider.map(str::to_string),
             current_stt_model: model.map(str::to_string),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn vault_config_preserves_selected_meeting_languages() {
+        let config: VaultConfig = serde_json::from_value(serde_json::json!({
+            "current_stt_provider": "fmtr", "current_stt_model": "soniqo-nemotron-3.5-streaming",
+            "meeting_languages": ["en-GB", "nl-BE"],
+        }))
+        .unwrap();
+        assert_eq!(config.meeting_languages, ["en-GB", "nl-BE"]);
+        assert!(super::VaultConfig::default().meeting_languages.is_empty());
     }
 
     #[test]
@@ -325,6 +343,10 @@ mod tests {
 
     #[test]
     fn soniqo_models_resolve_to_their_configured_id() {
+        let model =
+            resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-nemotron-3.5-streaming")))
+                .unwrap();
+        assert_eq!(model, "soniqo-nemotron-3.5-streaming");
         let model =
             resolve_soniqo_model(&config(Some("fmtr"), Some("soniqo-parakeet-batch"))).unwrap();
         assert_eq!(model, "soniqo-parakeet-batch");

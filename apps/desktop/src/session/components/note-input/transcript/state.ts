@@ -59,8 +59,7 @@ export function useTranscriptScreen({
     sessionMode === "active" || sessionMode === "finalizing";
   const captureMode = getLiveCaptureUiMode(live);
   const isRecordOnlyMode = sessionMode === "active" && captureMode !== "live";
-  const hasVisibleTranscriptState =
-    hasTranscriptWords || liveSegments.length > 0 || !!batchError;
+  const hasTranscriptContent = hasTranscriptWords || liveSegments.length > 0;
 
   if (sessionMode === "running_batch") {
     return {
@@ -78,14 +77,14 @@ export function useTranscriptScreen({
     };
   }
 
-  if (currentActive && !hasVisibleTranscriptState) {
+  if (currentActive && !hasTranscriptContent && !batchError) {
     return {
       kind: "listening",
       status: sessionMode === "finalizing" ? "finalizing" : "listening",
     };
   }
 
-  if (!hasVisibleTranscriptState) {
+  if (!hasTranscriptContent) {
     return {
       kind: "empty",
       hasAudio: audioExists,

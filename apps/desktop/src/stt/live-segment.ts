@@ -182,13 +182,13 @@ export const SegmentKeyUtils = {
 
     if (ctx && assignedHumanId != null) {
       const human = ctx.getHumanName(assignedHumanId);
+      if (assignedHumanId === ctx.getSelfHumanId()) {
+        return human?.trim() && human !== assignedHumanId ? human : "You";
+      }
       if (human) {
         return human;
       }
-      // An unresolved id still labels the segment (hints store ids; the raw value
-      // is the designed fallback) — except the self heuristic's id, which is the
-      // owner UUID and must render as "You", never leak raw.
-      return assignedHumanId === ctx.getSelfHumanId() ? "You" : assignedHumanId;
+      return assignedHumanId;
     }
 
     const heuristicsGated =
@@ -204,7 +204,9 @@ export const SegmentKeyUtils = {
       const selfHumanId = ctx.getSelfHumanId();
       if (selfHumanId) {
         const selfHuman = ctx.getHumanName(selfHumanId);
-        return selfHuman || "You";
+        return selfHuman?.trim() && selfHuman !== selfHumanId
+          ? selfHuman
+          : "You";
       }
     }
 

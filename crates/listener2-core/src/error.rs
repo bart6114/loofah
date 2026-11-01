@@ -18,6 +18,8 @@ pub enum BatchFailure {
     ProgressiveBatchUnsupported { provider: String },
     #[error("{message}")]
     DirectRequestFailed { provider: String, message: String },
+    #[error("Speaker detection did not finish. Your recording is available to retry. {message}")]
+    DiarizationFailed { message: String },
     #[error("{message}")]
     ProgressiveActorSpawnFailed { provider: String, message: String },
     #[error("Progressive batch stream start cancelled unexpectedly.")]
@@ -43,6 +45,7 @@ impl BatchFailure {
             Self::DirectBatchUnsupported { .. } => BatchErrorCode::DirectBatchUnsupported,
             Self::ProgressiveBatchUnsupported { .. } => BatchErrorCode::ProgressiveBatchUnsupported,
             Self::DirectRequestFailed { .. } => BatchErrorCode::DirectRequestFailed,
+            Self::DiarizationFailed { .. } => BatchErrorCode::DiarizationFailed,
             Self::ProgressiveActorSpawnFailed { .. } => BatchErrorCode::ProgressiveActorSpawnFailed,
             Self::ProgressiveStartCancelled => BatchErrorCode::ProgressiveStartCancelled,
             Self::ProgressiveStoppedWithoutCompletionSignal => {
@@ -80,5 +83,16 @@ impl Serialize for Error {
         S: Serializer,
     {
         serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+impl From<hypr_audio_utils::Error> for Error {
+    fn from(error: hypr_audio_utils::Error) -> Self {
+        Self::BatchError(error.to_string())
+    }
+}
+impl From<hypr_audio_chunking::Error> for Error {
+    fn from(error: hypr_audio_chunking::Error) -> Self {
+        Self::BatchError(error.to_string())
     }
 }

@@ -229,6 +229,7 @@ function TabContentNoteInner({
           <OuterHeader
             sessionId={sessionId}
             currentView={currentView}
+            onStartRecording={() => handleTabChange({ type: "raw" })}
             standaloneWindow={standaloneWindow}
             title={
               <div className="flex min-w-0 items-center gap-3">
@@ -242,17 +243,17 @@ function TabContentNoteInner({
                   />
                 </div>
                 {showTopAudioPlayer ? (
-                  <>
+                  <div className="@container/audio-player min-w-6 flex-1">
                     <div
                       data-session-top-audio-player
-                      className="border-border bg-card h-7 w-56 shrink-0 overflow-hidden rounded-full border @max-[36rem]:hidden"
+                      className="h-7 w-full @max-[14rem]/audio-player:hidden"
                     >
-                      <AudioPlayer.Timeline contentClassName="gap-2 py-[3px] pr-2.5 pl-[3px]" />
+                      <AudioPlayer.Timeline contentClassName="gap-2.5" />
                     </div>
-                    <div className="shrink-0 @[36rem]:hidden">
+                    <div className="@[14rem]/audio-player:hidden">
                       <AudioPlayer.CompactPlayButton />
                     </div>
-                  </>
+                  </div>
                 ) : null}
               </div>
             }

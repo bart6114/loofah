@@ -5,6 +5,8 @@ use futures_util::{Stream, StreamExt};
 use hypr_audio_interface::AsyncSource;
 
 mod error;
+mod file_pcm;
+pub use file_pcm::*;
 mod pcm;
 mod vorbis;
 

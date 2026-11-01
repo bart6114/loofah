@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/loof"],
+    "resources": { "resources/windows-runtime/": "./" }
+  }
+}

@@ -180,6 +180,7 @@ export const generalSchema = z.object({
   timezone: z.string().optional(),
   week_start: z.string().optional(),
   theme: z.enum(["light", "dark", "system"]).default("system"),
+  design_theme: z.string().default("default"),
 });
 
 export const aiProviderSchema = z

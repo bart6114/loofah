@@ -141,7 +141,10 @@ mod tests {
             "soniqo-parakeet-streaming",
             TranscriptionMode::Live,
         );
-        let expected = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        let expected = if cfg!(any(
+            target_os = "windows",
+            all(target_os = "macos", target_arch = "aarch64")
+        )) {
             TranscriptionMode::Live
         } else {
             TranscriptionMode::Batch

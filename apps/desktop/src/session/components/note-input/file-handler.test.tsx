@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   config: null as FileHandlerConfig | null,
   fileUpload: vi.fn(),
   handleNativeFileDrop: vi.fn(),
+  handleNativeEditorDrag: vi.fn(),
   nativeCallbacks: null as any,
   processAudioFile: vi.fn(),
   processAudioPath: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@hypr/editor/note", () => ({
   handleNativeFileDrop: mocks.handleNativeFileDrop,
+  handleNativeEditorDrag: mocks.handleNativeEditorDrag,
 }));
 
 vi.mock("@hypr/ui/components/ui/toast", () => ({
@@ -62,6 +64,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useNoteFileHandlerConfig", () => {
+  it("routes internal native drags to the editor without uploading files", () => {
+    const view = createEditorView(7);
+    render(<Harness view={view} />);
+    const event = { type: "drop", point: { x: 12, y: 34 } };
+
+    act(() => mocks.nativeCallbacks.onInternalDrag(event));
+
+    expect(mocks.handleNativeEditorDrag).toHaveBeenCalledWith(view, event);
+    expect(mocks.handleNativeFileDrop).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
   it("shows native attachment, audio, and mixed hover hints", () => {
     render(<Harness />);
 
@@ -157,6 +170,15 @@ describe("useNoteFileHandlerConfig", () => {
     expect(result).toEqual({ remainingFiles: [attachment] });
   });
 
+  it("ignores native drops into a read-only editor", () => {
+    const view = createEditorView(7);
+    Object.defineProperty(view, "editable", { value: false });
+    render(<Harness view={view} />);
+    act(() => mocks.nativeCallbacks.onDrop(["/tmp/image.png"], { x: 1, y: 1 }));
+    expect(mocks.handleNativeFileDrop).not.toHaveBeenCalled();
+    expect(mocks.processAudioPath).not.toHaveBeenCalled();
+  });
+
   it("reports upload failures using the candidate name", () => {
     render(<Harness />);
     mocks.config?.onFileUploadError?.(
@@ -189,6 +211,7 @@ function Harness({ view = createEditorView(null) }: { view?: EditorView }) {
 
 function createEditorView(pos: number | null) {
   return {
+    editable: true,
     posAtCoords: vi.fn(() => (pos === null ? null : { inside: 0, pos })),
     state: { doc: { content: { size: 42 } } },
   } as unknown as EditorView;

@@ -1,3 +1,4 @@
+import AVFoundation
 import FluidAudio
 import Foundation
 import SwiftRs
@@ -84,7 +85,42 @@ private actor DiarizeBridge {
 
   func diarizeJSON(samplesData: Data, sampleRate: Int) async -> String {
     do {
-      let samples = try decodeFloatSamples(from: samplesData)
+      return await diarizeJSON(
+        samples: try decodeFloatSamples(from: samplesData), sampleRate: sampleRate)
+    } catch {
+      return encodeJSON(DiarizeRunPayload(segments: [], error: error.localizedDescription))
+    }
+  }
+
+  func diarizeFileJSON(path: String, channel: Int) async -> String {
+    do {
+      let file = try AVAudioFile(
+        forReading: URL(fileURLWithPath: path), commonFormat: .pcmFormatFloat32, interleaved: false)
+      let format = file.processingFormat
+      guard format.sampleRate == 16000, channel >= 0, channel < Int(format.channelCount) else {
+        throw DiarizeBridgeError.message("Invalid speaker detection PCM format or channel.")
+      }
+      guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else {
+        throw DiarizeBridgeError.message("Cannot allocate speaker detection buffer.")
+      }
+      var samples: [Float] = []
+      samples.reserveCapacity(Int(file.length))
+      while file.framePosition < file.length {
+        try file.read(into: buffer, frameCount: 8192)
+        guard buffer.frameLength > 0, let data = buffer.floatChannelData else {
+          throw DiarizeBridgeError.message("Truncated speaker detection audio.")
+        }
+        samples.append(
+          contentsOf: UnsafeBufferPointer(start: data[channel], count: Int(buffer.frameLength)))
+      }
+      return await diarizeJSON(samples: samples, sampleRate: 16000)
+    } catch {
+      return encodeJSON(DiarizeRunPayload(segments: [], error: error.localizedDescription))
+    }
+  }
+
+  private func diarizeJSON(samples: [Float], sampleRate: Int) async -> String {
+    do {
       guard !samples.isEmpty else {
         return encodeJSON(DiarizeRunPayload(segments: [], error: nil))
       }
@@ -279,5 +315,13 @@ public func _diarize_run(samples: SRData, sampleRateHz: Int) -> SRString {
         samplesData: Data(samples.toArray()),
         sampleRate: sampleRateHz
       )
+    })
+}
+
+@_cdecl("_diarize_file")
+public func _diarize_file(path: SRString, channel: Int) -> SRString {
+  SRString(
+    waitForValue {
+      await DiarizeBridge.shared.diarizeFileJSON(path: path.toString(), channel: channel)
     })
 }

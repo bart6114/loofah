@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { getPostCaptureAction, useStartListening } from "./useStartListening";
 
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
+import { useSummaryActivity } from "~/session/summary-activity";
 
 const {
   queueAutoEnhanceMock,
@@ -1215,4 +1216,52 @@ describe("useStartListening", () => {
       transcription_mode: undefined,
     });
   });
+  test("keeps summary editing locked while stopped audio is cataloged and transcription runs", async () => {
+    const sessionId = "summary-lock-lifecycle";
+    let releaseCatalog!: (path: string) => void;
+    catalogLocalSessionAudioMock.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseCatalog = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useStartListening(sessionId));
+    await act(async () => {
+      await result.current();
+    });
+    expect(useSummaryActivity.getState().sessions[sessionId]).toBe("recording");
+    const stopped = startMock.mock.calls[0][1].onStopped(sessionId, {
+      durationSeconds: 42,
+      audioPath: "/tmp/audio.wav",
+      requestedLiveTranscription: false,
+      liveTranscriptionActive: false,
+      needsBatchRepair: false,
+    });
+    expect(useSummaryActivity.getState().sessions[sessionId]).toBe(
+      "processing",
+    );
+    await vi.waitFor(() => expect(releaseCatalog).toBeDefined());
+    runBatchMock.mockImplementationOnce(async () => {
+      expect(useSummaryActivity.getState().sessions[sessionId]).toBe(
+        "processing",
+      );
+    });
+    releaseCatalog("/vault/audio.mp3");
+    await stopped;
+    expect(useSummaryActivity.getState().sessions[sessionId]).toBeUndefined();
+  });
+
+  test.each([false, new Error("capture failed")])(
+    "releases the summary lock when start fails: %s",
+    async (outcome) => {
+      const sessionId = "summary-lock-failure";
+      if (outcome instanceof Error) startMock.mockRejectedValueOnce(outcome);
+      else startMock.mockResolvedValueOnce(outcome);
+      const { result } = renderHook(() => useStartListening(sessionId));
+      await act(async () => {
+        await result.current().catch(() => {});
+      });
+      expect(useSummaryActivity.getState().sessions[sessionId]).toBeUndefined();
+    },
+  );
 });

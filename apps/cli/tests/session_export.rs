@@ -6,6 +6,10 @@ use std::{
 };
 
 fn run(vault: &Path, args: &[&str]) -> Output {
+    let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+    if !cache.status().ready {
+        cache.initialize(&mut |_| {}).unwrap();
+    }
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_loof"));
     for key in [
         "LOOFAH_BASE",
@@ -15,8 +19,7 @@ fn run(vault: &Path, args: &[&str]) -> Output {
     ] {
         cmd.env_remove(key);
     }
-    cmd.env("TZ", "UTC")
-        .arg("--vault-path")
+    cmd.arg("--vault-path")
         .arg(vault)
         .args(args)
         .stdin(Stdio::null())
@@ -108,7 +111,14 @@ fn headless_formats_match_desktop_fixture_and_leave_vault_unchanged() {
         "../../../crates/export-core/tests/fixtures/desktop-export.json"
     ))
     .unwrap();
-    input.metadata.as_mut().unwrap().participants.clear();
+    let metadata = input.metadata.as_mut().unwrap();
+    metadata.participants.clear();
+    // Windows uses the system timezone even when the subprocess has TZ=UTC.
+    metadata.created_at = chrono::DateTime::parse_from_rfc3339("2026-09-18T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Local)
+        .format("%A, %B %-d, %Y at %-I:%M %p")
+        .to_string();
     input.transcript.as_mut().unwrap().items.pop();
     for (name, format) in [
         ("md", hypr_export_core::TextFormat::Md),
@@ -267,7 +277,7 @@ fn file_output_is_atomic_protected_and_reporting_is_separate() {
         ],
     ));
     let legacy: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-    assert_eq!(legacy["schema_version"], "1");
+    assert_eq!(legacy["schema_version"], "2");
     assert_eq!(legacy["data"]["id"], "demo");
     assert_eq!(std::fs::read_dir(out.path()).unwrap().count(), 1);
     let note = vault.path().join("sessions/demo/notes.md");

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -43,15 +43,21 @@ vi.mock("@hypr/ui/components/ui/toast", () => ({
   },
 }));
 
+import { TranscriptionModelLanguageSupport } from "./language-support";
 import { TranscriptionLanguageWarningToast } from "./select";
 
 import { localSttKeys } from "~/stt/useLocalSttModel";
 
 const models = [
-  { key: "soniqo-parakeet-batch", display_name: "Soniqo Parakeet Batch" },
+  {
+    key: "soniqo-parakeet-batch",
+    display_name: "Soniqo Parakeet Batch",
+    supported_languages: ["en", "nl", "fr"],
+  },
   {
     key: "soniqo-parakeet-streaming",
     display_name: "Soniqo Parakeet Streaming",
+    supported_languages: ["en"],
   },
   { key: "whisper-large-v3", display_name: "Whisper Large V3 (Multilingual)" },
 ];
@@ -90,14 +96,18 @@ beforeEach(() => {
   mocks.isSupportedLanguagesBatch.mockImplementation(
     async (_provider: string, model: string, languages: string[]) => ({
       status: "ok",
-      data: model === "whisper-large-v3" || !languages.includes("zh"),
+      data:
+        model === "whisper-large-v3" ||
+        (model === "soniqo-parakeet-streaming"
+          ? languages.every((language) => language === "en")
+          : !languages.includes("zh")),
     }),
   );
 });
 
 afterEach(cleanup);
 
-test("does not warn about unavailable streaming when the user chose after recording", async () => {
+test("warns about unsupported Dutch even when the user chose after recording", async () => {
   mocks.config.current_stt_model = "soniqo-parakeet-streaming";
   mocks.config.meeting_languages = ["nl"];
   mocks.config.transcription_timing = "batch";
@@ -109,7 +119,14 @@ test("does not warn about unavailable streaming when the user chose after record
       ["nl"],
     ),
   );
-  expect(mocks.warning).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(mocks.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Soniqo Parakeet Streaming can't transcribe Dutch",
+      ),
+      expect.any(Object),
+    ),
+  );
   expect(mocks.info).not.toHaveBeenCalled();
 });
 
@@ -167,18 +184,20 @@ test("refreshes and clears the warning when meeting languages change", async () 
   );
 });
 
-test("uses an informational batch fallback for Dutch meetings with streaming", async () => {
+test("warns that the selected streaming model cannot transcribe Dutch", async () => {
   mocks.config.current_stt_model = "soniqo-parakeet-streaming";
   mocks.config.meeting_languages = ["nl"];
   renderWarning();
 
   await waitFor(() =>
-    expect(mocks.info).toHaveBeenCalledWith(
-      expect.stringContaining("Live transcription isn't available for Dutch"),
+    expect(mocks.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Soniqo Parakeet Streaming can't transcribe Dutch",
+      ),
       expect.any(Object),
     ),
   );
-  expect(mocks.warning).not.toHaveBeenCalled();
+  expect(mocks.info).not.toHaveBeenCalled();
 });
 
 test("does not warn about Chinese when a multilingual Whisper model supports it", async () => {
@@ -251,4 +270,40 @@ test("defaults to English without warning about unsupported legacy languages", a
   );
   expect(mocks.warning).not.toHaveBeenCalled();
   expect(mocks.info).not.toHaveBeenCalled();
+});
+
+test("shows persistent model language support beside the language settings and updates on model changes", async () => {
+  mocks.config.current_stt_model = "soniqo-parakeet-streaming";
+  mocks.config.meeting_languages = ["nl-BE"];
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const element = () => (
+    <QueryClientProvider client={client}>
+      <TranscriptionModelLanguageSupport />
+    </QueryClientProvider>
+  );
+  const view = render(element());
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain(
+      "can't transcribe Dutch",
+    ),
+  );
+  expect(
+    screen.getByText(
+      "Supported languages for Soniqo Parakeet Streaming: English.",
+    ),
+  ).toBeTruthy();
+  mocks.config.current_stt_model = "soniqo-parakeet-batch";
+  view.rerender(element());
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(
+    screen.getByText(
+      "Supported languages for Soniqo Parakeet Batch: English, Dutch, French.",
+    ),
+  ).toBeTruthy();
+  mocks.config.current_stt_model = "soniqo-parakeet-streaming";
+  mocks.config.meeting_languages = ["en-GB"];
+  view.rerender(element());
+  expect(screen.queryByRole("alert")).toBeNull();
 });

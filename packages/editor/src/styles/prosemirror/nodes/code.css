@@ -32,3 +32,20 @@
     font-family: var(--font-mono);
   }
 }
+
+.prosemirror-editor.session-note-editor,
+.prosemirror-editor.enhanced-summary-editor {
+  code {
+    font-size: 0.875em;
+  }
+
+  pre {
+    font-size: 14px;
+    line-height: 1.6;
+
+    code {
+      font-size: inherit;
+      line-height: inherit;
+    }
+  }
+}

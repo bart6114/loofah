@@ -279,6 +279,19 @@ describe("getTranscriptionLanguages", () => {
   });
 });
 
+test("supports Windows Parakeet and uses batch for non-English speech", () => {
+  expect(isSupportedLocalSttModel("onnx-parakeet-streaming")).toBe(true);
+  expect(getOnDeviceTranscriptionMode("onnx-parakeet-streaming", ["en"])).toBe(
+    "live",
+  );
+  expect(getOnDeviceTranscriptionMode("onnx-parakeet-streaming", ["nl"])).toBe(
+    "batch",
+  );
+  expect(getOnDeviceTranscriptionMode("onnx-parakeet-batch", ["en"])).toBe(
+    "batch",
+  );
+});
+
 test.each([
   "am-parakeet-v2",
   "am-parakeet-v3",
@@ -289,6 +302,7 @@ test.each([
   "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
   "HyprLLM",
   "soniqo-unknown",
+  "onnx-unknown",
   "whisper-unknown",
   "QuantizedUnknown",
 ])("rejects unsupported model %s", (model) => {
@@ -328,3 +342,42 @@ test.each([undefined, "live", "batch"])(
     expect(isSupportedLanguagesLiveMock).not.toHaveBeenCalled();
   },
 );
+
+test("Nemotron keeps multilingual meetings in live mode and honors after-recording selection", async () => {
+  const model = "soniqo-nemotron-3.5-streaming";
+  const languages = ["nl-BE", "en-GB"];
+  expect(isSupportedLocalSttModel(model)).toBe(true);
+  expect(isConfiguredSttModel("fmtr", model)).toBe(true);
+  expect(getOnDeviceTranscriptionConfig(model, languages)).toEqual({
+    languages,
+    transcriptionMode: "live",
+  });
+  expect(
+    await getLiveTranscriptionConfig({ provider: "fmtr", model, languages }),
+  ).toEqual({
+    languages,
+    transcriptionMode: "live",
+  });
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model,
+      languages,
+      timing: "batch",
+    }),
+  ).toEqual({
+    languages,
+    transcriptionMode: "batch",
+  });
+});
+
+test("Nemotron respects backend language restrictions without switching models", async () => {
+  isSupportedLanguagesLiveMock.mockResolvedValue({ status: "ok", data: false });
+  expect(
+    await getLiveTranscriptionConfig({
+      provider: "fmtr",
+      model: "soniqo-nemotron-3.5-streaming",
+      languages: ["el"],
+    }),
+  ).toEqual({ languages: ["el"], transcriptionMode: "batch" });
+});

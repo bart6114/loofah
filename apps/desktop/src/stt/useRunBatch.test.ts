@@ -82,8 +82,12 @@ test("routes Whisper Large V3 through progressive local batch transcription", ()
 });
 
 describe("getBatchProvider", () => {
-  test("maps local soniqo models to the soniqo batch provider", () => {
-    expect(getBatchProvider("fmtr", "soniqo-parakeet-batch")).toBe("soniqo");
+  test.each([
+    "soniqo-parakeet-batch",
+    "onnx-parakeet-streaming",
+    "onnx-parakeet-batch",
+  ])("routes %s through the native Parakeet batch engine", (model) => {
+    expect(getBatchProvider("fmtr", model)).toBe("soniqo");
   });
 
   test("rejects retired models", () => {
@@ -255,7 +259,6 @@ describe("useRunBatch", () => {
     });
 
     expect(handlePersist).toHaveBeenCalledTimes(1);
-    expect(createTranscriptMock).not.toHaveBeenCalled();
     expect(appendTranscriptWordsAndHintsMock).not.toHaveBeenCalled();
   });
 
@@ -346,7 +349,28 @@ describe("useRunBatch", () => {
     );
   });
 
-  test("falls back to local Soniqo batch when the selected on-device model is not batch-capable", async () => {
+  test("uses the selected streaming model for supported file transcription", async () => {
+    useSTTConnectionMock.mockReturnValue({
+      conn: {
+        provider: "fmtr",
+        model: "soniqo-parakeet-streaming",
+        baseUrl: "soniqo://local",
+        apiKey: "",
+      },
+    });
+    const { result } = renderHook(() => useRunBatch("session-1"));
+    await result.current("/tmp/session.wav", { languages: ["en"] });
+    expect(startTranscriptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "soniqo-parakeet-streaming",
+        provider: "soniqo",
+        languages: ["en"],
+      }),
+      expect.any(Object),
+    );
+  });
+
+  test("rejects unsupported languages without switching the selected model", async () => {
     useSTTConnectionMock.mockReturnValue({
       conn: {
         provider: "fmtr",
@@ -356,53 +380,21 @@ describe("useRunBatch", () => {
       },
     });
     isSupportedLanguagesBatchMock.mockResolvedValue(false);
-    startTranscriptionMock.mockResolvedValue(undefined);
-
     const { result } = renderHook(() => useRunBatch("session-1"));
-
-    await act(async () => {
-      await result.current("/tmp/session.wav");
-    });
-
-    expect(startTranscriptionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "soniqo",
-        model: "soniqo-parakeet-batch",
-        base_url: "soniqo://local",
-        api_key: "",
-      }),
-      expect.any(Object),
+    await expect(result.current("/tmp/session.wav")).rejects.toThrow(
+      "soniqo-parakeet-streaming cannot transcribe the selected meeting languages",
     );
-    expect(sonnerToastWarningMock).toHaveBeenCalledWith(
-      "Using a batch transcription provider",
-      expect.objectContaining({
-        description:
-          "soniqo-parakeet-streaming is not available for batch transcription. Using Soniqo batch transcription instead.",
-      }),
-    );
+    expect(startTranscriptionMock).not.toHaveBeenCalled();
+    expect(sonnerToastWarningMock).not.toHaveBeenCalled();
   });
 
-  // STT is on-device only: there is no cloud/hosted fallback left, so an
-  // absent connection always resolves to the local Soniqo batch target.
-  test("always falls back to the local Soniqo target when there is no STT connection", async () => {
+  test("requires a selected model instead of choosing a fallback when no connection exists", async () => {
     useSTTConnectionMock.mockReturnValue({ conn: null });
-    startTranscriptionMock.mockResolvedValue(undefined);
-
     const { result } = renderHook(() => useRunBatch("session-1"));
-
-    await act(async () => {
-      await result.current("/tmp/session.wav");
-    });
-
-    expect(startTranscriptionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "soniqo",
-        model: "soniqo-parakeet-batch",
-        base_url: "soniqo://local",
-        api_key: "",
-      }),
-      expect.any(Object),
+    await expect(result.current("/tmp/session.wav")).rejects.toThrow(
+      "Select a transcription model in Settings",
     );
+    expect(startTranscriptionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -428,6 +420,7 @@ test.each([
   "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
   "HyprLLM",
   "soniqo-unknown",
+  "onnx-unknown",
   "whisper-unknown",
   "QuantizedUnknown",
 ])("rejects unsupported model %s", (model) => {

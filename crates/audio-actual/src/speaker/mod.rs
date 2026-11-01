@@ -248,6 +248,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[tokio::test]
     #[serial]
+    #[ignore = "requires an active Windows audio output device"]
     async fn test_windows() {
         let input = match SpeakerInput::new() {
             Ok(input) => input,

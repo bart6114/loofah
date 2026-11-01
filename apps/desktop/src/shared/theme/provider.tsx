@@ -4,27 +4,48 @@ import type { ReactNode } from "react";
 import { commands as iconCommands } from "@hypr/plugin-icon";
 
 import { applyDocumentTheme, writeStoredThemePreference } from "./apply";
+import { getDesignTheme } from "./catalog";
+import { applyDocumentDesignTheme, writeStoredDesignTheme } from "./design";
 import type { ThemePreference } from "./resolve";
 import { useSettingsThemeReady } from "./use-settings-theme-ready";
 
 import { useConfigValue } from "~/shared/config";
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
 
+let appearanceRevision = 0;
+
 export function AppThemeProvider({ children }: { children: ReactNode }) {
   const theme = useConfigValue("theme") as ThemePreference;
+  const designTheme = getDesignTheme(useConfigValue("design_theme")).id;
   const settingsReady = useSettingsThemeReady();
 
   return (
     <>
-      {settingsReady ? <ThemeSync key={theme} theme={theme} /> : null}
+      {settingsReady ? (
+        <ThemeSync
+          key={`${theme}:${designTheme}`}
+          theme={theme}
+          designTheme={designTheme}
+        />
+      ) : null}
       {children}
     </>
   );
 }
 
-function ThemeSync({ theme }: { theme: ThemePreference }) {
+function ThemeSync({
+  theme,
+  designTheme,
+}: {
+  theme: ThemePreference;
+  designTheme: string;
+}) {
   useMountEffect(() => {
-    if (theme !== "system") {
+    applyDesignThemePreference(designTheme);
+    if (
+      theme !== "system" ||
+      getDesignTheme(designTheme).appearance !== "adaptive"
+    ) {
       applyAppTheme(theme);
       return;
     }
@@ -68,22 +89,35 @@ function ThemeSync({ theme }: { theme: ThemePreference }) {
   return null;
 }
 
+export function applyDesignThemePreference(id: string) {
+  applyDocumentDesignTheme(id);
+  writeStoredDesignTheme(id);
+}
+
 export async function applyThemePreference(theme: ThemePreference) {
-  if (theme !== "system") {
+  const revision = ++appearanceRevision;
+  if (
+    theme !== "system" ||
+    getDesignTheme(document.documentElement.dataset.designTheme).appearance !==
+      "adaptive"
+  ) {
     applyAppTheme(theme);
     return;
   }
 
   try {
     const systemTheme = await getCurrentWindow().theme();
+    if (revision !== appearanceRevision) return;
     applyAppTheme(theme, systemTheme === "dark");
   } catch (error) {
+    if (revision !== appearanceRevision) return;
     console.error("[theme] failed to read system appearance", error);
     applyAppTheme(theme);
   }
 }
 
 function applyAppTheme(theme: ThemePreference, prefersDark?: boolean) {
+  appearanceRevision += 1;
   const isDark =
     prefersDark === undefined
       ? applyDocumentTheme(theme)

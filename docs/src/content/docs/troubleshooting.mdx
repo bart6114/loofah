@@ -14,7 +14,7 @@ If macOS shows either permission as denied, use the button beside it to open Sys
 
 ## The transcript is not live
 
-Open **Settings → Transcription** and inspect the selected model. A model marked **After recording** does not produce text until you stop. The live streaming model supports English, so other selected languages also cause the app to transcribe after recording.
+Open **Settings → Transcription** and inspect the selected model and **Transcription timing**. **After recording** does not produce text until you stop. **Soniqo Parakeet Streaming** supports live English, so other supported languages cause it to transcribe after recording. For multilingual live text, select **Nemotron 3.5 ASR (Multilingual)** or a multilingual Whisper model that supports all your [configured languages](/languages), and choose **While recording**.
 
 If no transcript appears at all, confirm that the model download finished and that it supports the selected spoken languages. See [Languages](/languages).
 
@@ -57,3 +57,7 @@ paths may need updating.
 [Open a GitHub issue](https://github.com/bart6114/loofah/issues) and include the app version, what you expected, and what happened.
 
 For CLI and MCP failures, use the [error reference](/reference/errors).
+
+## CLI search cache needs repair
+
+Missing or incompatible caches initialize automatically on first CLI/MCP use. For cache errors, run `loof --json doctor`, then `loof --json init` to repair the local cache. For `cache_busy`, retry after the other operation finishes. If an error says `write_persisted: true`, the vault write succeeded: fix the reported issue and refresh the cache without repeating the write.

@@ -163,7 +163,7 @@ function StartupScreen({ status }: { status: StartupStatus | null }) {
         </p>
 
         {status?.vaultPath ? (
-          <p className="text-muted-foreground/80 mt-3 max-w-full truncate font-mono text-xs">
+          <p className="text-muted-foreground mt-3 max-w-full truncate font-mono text-xs">
             {status.vaultPath}
           </p>
         ) : null}

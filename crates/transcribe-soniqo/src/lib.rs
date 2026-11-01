@@ -5,6 +5,9 @@ use std::time::Instant;
 use owhisper_interface::{batch, stream};
 
 pub mod diarize;
+mod endpoint;
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+mod native_tests;
 
 pub const LOCAL_BASE_URL: &str = "soniqo://local";
 const SYNTHETIC_BATCH_WORD_SECONDS: f64 = 0.4;
@@ -56,35 +59,93 @@ pub fn local_model_from_request(base_url: &str, model: &str) -> Option<SoniqoMod
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, Eq, Hash, PartialEq,
 )]
 pub enum SoniqoModel {
+    #[serde(rename = "onnx-parakeet-streaming")]
+    OnnxParakeetStreaming,
+    #[serde(rename = "onnx-parakeet-batch")]
+    OnnxParakeetBatch,
     #[serde(rename = "soniqo-parakeet-streaming")]
     ParakeetStreaming,
     #[serde(rename = "soniqo-parakeet-batch")]
     ParakeetBatch,
+    #[serde(rename = "soniqo-nemotron-3.5-streaming")]
+    NemotronStreaming,
     #[serde(rename = "soniqo-omnilingual")]
     Omnilingual,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageConfig {
+    pub language: Option<String>,
+    pub expected_languages: Vec<String>,
+}
+
+impl LanguageConfig {
+    pub fn single(language: Option<&str>) -> Self {
+        Self {
+            language: language
+                .map(str::trim)
+                .filter(|language| !language.is_empty())
+                .map(str::to_string),
+            expected_languages: Vec::new(),
+        }
+    }
+}
+
+fn nemotron_language_tag(language: &hypr_language::Language) -> String {
+    if language.iso639_code() == "no" {
+        "nb-NO".to_string()
+    } else {
+        language.bcp47_code()
+    }
 }
 
 impl SoniqoModel {
     const ALL: &'static [Self] = &[
         Self::ParakeetStreaming,
         Self::ParakeetBatch,
+        Self::NemotronStreaming,
         Self::Omnilingual,
     ];
 
-    const SELECTABLE: &'static [Self] = &[Self::ParakeetStreaming, Self::ParakeetBatch];
+    const KNOWN: &'static [Self] = &[
+        Self::OnnxParakeetStreaming,
+        Self::OnnxParakeetBatch,
+        Self::ParakeetStreaming,
+        Self::ParakeetBatch,
+        Self::NemotronStreaming,
+        Self::Omnilingual,
+    ];
+
+    const SELECTABLE: &'static [Self] = &[
+        Self::ParakeetStreaming,
+        Self::ParakeetBatch,
+        Self::NemotronStreaming,
+    ];
 
     pub const fn all() -> &'static [Self] {
-        Self::ALL
+        if cfg!(target_os = "windows") {
+            Self::selectable()
+        } else {
+            Self::ALL
+        }
     }
 
     pub const fn selectable() -> &'static [Self] {
-        Self::SELECTABLE
+        if cfg!(target_os = "windows") {
+            &[Self::OnnxParakeetStreaming, Self::OnnxParakeetBatch]
+        } else {
+            Self::SELECTABLE
+        }
     }
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ParakeetStreaming => "soniqo-parakeet-streaming",
+            Self::OnnxParakeetStreaming => "onnx-parakeet-streaming",
+            Self::OnnxParakeetBatch => "onnx-parakeet-batch",
             Self::ParakeetBatch => "soniqo-parakeet-batch",
+            Self::NemotronStreaming => "soniqo-nemotron-3.5-streaming",
             Self::Omnilingual => "soniqo-omnilingual",
         }
     }
@@ -92,7 +153,10 @@ impl SoniqoModel {
     pub const fn repo(self) -> &'static str {
         match self {
             Self::ParakeetStreaming => "aufklarer/Parakeet-EOU-120M-CoreML-INT8",
+            Self::OnnxParakeetStreaming => "altunenes/parakeet-rs",
+            Self::OnnxParakeetBatch => "istupakov/parakeet-tdt-0.6b-v3-onnx",
             Self::ParakeetBatch => "aufklarer/Parakeet-TDT-v3-CoreML-INT8",
+            Self::NemotronStreaming => "aufklarer/Nemotron-3.5-ASR-Streaming-0.6B-CoreML-INT8",
             Self::Omnilingual => "aufklarer/Omnilingual-ASR-CTC-300M-CoreML-INT8-10s",
         }
     }
@@ -100,15 +164,25 @@ impl SoniqoModel {
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::ParakeetStreaming => "Soniqo Parakeet Streaming",
+            Self::OnnxParakeetStreaming => "Parakeet Streaming",
+            Self::OnnxParakeetBatch => "Parakeet Batch",
             Self::ParakeetBatch => "Soniqo Parakeet Batch",
+            Self::NemotronStreaming => "Nemotron 3.5 ASR (Multilingual)",
             Self::Omnilingual => "Soniqo Omnilingual",
         }
     }
 
     pub const fn description(self) -> &'static str {
         match self {
-            Self::ParakeetStreaming => "Realtime English transcription.",
-            Self::ParakeetBatch => "Batch transcription for 25 European languages.",
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => {
+                "Realtime English transcription."
+            }
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => {
+                "Batch transcription for 25 European languages."
+            }
+            Self::NemotronStreaming => {
+                "Live and batch transcription for 28 languages with automatic language detection."
+            }
             Self::Omnilingual => "Multilingual batch transcription.",
         }
     }
@@ -116,17 +190,53 @@ impl SoniqoModel {
     pub const fn size_bytes(self) -> u64 {
         match self {
             Self::ParakeetStreaming => 120 * 1024 * 1024,
+            Self::OnnxParakeetStreaming => 480708981,
+            Self::OnnxParakeetBatch => 670479942,
             Self::ParakeetBatch => 600 * 1024 * 1024,
+            Self::NemotronStreaming => 612_000_000,
             Self::Omnilingual => 300 * 1024 * 1024,
         }
     }
 
     pub const fn supports_live(self) -> bool {
-        matches!(self, Self::ParakeetStreaming)
+        matches!(
+            self,
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming | Self::NemotronStreaming
+        )
     }
 
     pub const fn is_available_on_current_platform(self) -> bool {
         cfg!(all(target_os = "macos", target_arch = "aarch64"))
+            || (cfg!(all(
+                target_os = "windows",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )) && matches!(
+                self,
+                Self::ParakeetStreaming
+                    | Self::ParakeetBatch
+                    | Self::OnnxParakeetStreaming
+                    | Self::OnnxParakeetBatch
+            ))
+    }
+
+    pub const fn resolved(self) -> Self {
+        match self {
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => {
+                if cfg!(target_os = "windows") {
+                    Self::OnnxParakeetStreaming
+                } else {
+                    Self::ParakeetStreaming
+                }
+            }
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => {
+                if cfg!(target_os = "windows") {
+                    Self::OnnxParakeetBatch
+                } else {
+                    Self::ParakeetBatch
+                }
+            }
+            model => model,
+        }
     }
 
     pub const fn supports_live_on_current_platform(self) -> bool {
@@ -136,7 +246,27 @@ impl SoniqoModel {
     pub const fn batch_model(self) -> Self {
         match self {
             Self::ParakeetStreaming => Self::ParakeetBatch,
+            Self::OnnxParakeetStreaming => Self::OnnxParakeetBatch,
             model => model,
+        }
+    }
+
+    pub fn supported_language_codes(self) -> Option<Vec<String>> {
+        match self {
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => Some(vec!["en".to_string()]),
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => Some(
+                hypr_language::parakeet_tdt_v3_languages()
+                    .iter()
+                    .map(|language| language.iso639_code().to_string())
+                    .collect(),
+            ),
+            Self::NemotronStreaming => Some(
+                hypr_language::NEMOTRON_3_5_LANGUAGE_CODES
+                    .iter()
+                    .map(|code| if *code == "nb" { "no" } else { code }.to_string())
+                    .collect(),
+            ),
+            Self::Omnilingual => None,
         }
     }
 
@@ -144,9 +274,46 @@ impl SoniqoModel {
         match self {
             // Parakeet-EOU-120M uses an English-only BPE vocabulary; it decodes
             // other languages into English-shaped gibberish or nothing at all.
-            Self::ParakeetStreaming => hypr_language::is_parakeet_eou_language(language),
-            Self::ParakeetBatch => hypr_language::is_parakeet_tdt_v3_language(language),
+            Self::ParakeetStreaming | Self::OnnxParakeetStreaming => {
+                hypr_language::is_parakeet_eou_language(language)
+            }
+            Self::ParakeetBatch | Self::OnnxParakeetBatch => {
+                hypr_language::is_parakeet_tdt_v3_language(language)
+            }
+            Self::NemotronStreaming => hypr_language::is_nemotron_3_5_language(language),
             Self::Omnilingual => true,
+        }
+    }
+
+    pub fn language_hint(self, languages: &[hypr_language::Language]) -> Option<String> {
+        if self == Self::NemotronStreaming {
+            return match languages {
+                [language] => Some(nemotron_language_tag(language)),
+                _ => None,
+            };
+        }
+        languages
+            .first()
+            .map(|language| language.iso639_code().to_string())
+    }
+
+    pub fn language_config(self, languages: &[hypr_language::Language]) -> LanguageConfig {
+        let language = self.language_hint(languages);
+        let expected_languages = if self == Self::NemotronStreaming && language.is_none() {
+            let mut expected = Vec::new();
+            for language in languages {
+                let tag = nemotron_language_tag(language);
+                if !expected.contains(&tag) {
+                    expected.push(tag);
+                }
+            }
+            expected
+        } else {
+            Vec::new()
+        };
+        LanguageConfig {
+            language,
+            expected_languages,
         }
     }
 
@@ -167,7 +334,7 @@ impl FromStr for SoniqoModel {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
-        Self::ALL
+        Self::KNOWN
             .iter()
             .copied()
             .find(|model| value == model.as_str() || value == model.repo())
@@ -242,7 +409,6 @@ pub enum TranscriptSource {
 }
 
 impl TranscriptSource {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     const fn as_str(self) -> &'static str {
         match self {
             Self::Microphone => "microphone",
@@ -264,6 +430,10 @@ pub struct LivePartial {
     pub source: String,
     pub text: String,
     pub is_final: bool,
+    #[serde(default)]
+    pub start_seconds: Option<f64>,
+    #[serde(default)]
+    pub duration_seconds: Option<f64>,
 }
 
 impl LivePartial {
@@ -284,8 +454,8 @@ impl LivePartial {
         stream_response_from_text(
             model,
             self.text,
-            start,
-            duration,
+            self.start_seconds.unwrap_or(start),
+            self.duration_seconds.unwrap_or(duration),
             self.is_final,
             &[source.channel_index(), 2],
         )
@@ -296,7 +466,7 @@ impl LivePartial {
 pub enum Error {
     #[error("unsupported Soniqo model: {0}")]
     UnsupportedModel(String),
-    #[error("Soniqo is only available on macOS Apple Silicon")]
+    #[error("On-device speech requires macOS Apple Silicon or Windows x64/ARM64")]
     UnsupportedPlatform,
     #[error("Soniqo bridge failed: {0}")]
     Bridge(String),
@@ -308,8 +478,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn ensure_supported_platform(_model: SoniqoModel) -> Result<()> {
-    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+fn ensure_supported_platform(model: SoniqoModel) -> Result<()> {
+    if !model.is_available_on_current_platform() {
         return Err(Error::UnsupportedPlatform);
     }
 
@@ -318,22 +488,22 @@ fn ensure_supported_platform(_model: SoniqoModel) -> Result<()> {
 
 pub fn model_cache_dir(model: SoniqoModel) -> Result<PathBuf> {
     ensure_supported_platform(model)?;
-    platform::model_cache_dir(model)
+    platform::model_cache_dir(model.resolved())
 }
 
 pub fn model_download_state(model: SoniqoModel) -> Result<ModelDownloadState> {
     ensure_supported_platform(model)?;
-    platform::model_download_state(model)
+    platform::model_download_state(model.resolved())
 }
 
 pub fn start_model_download(model: SoniqoModel) -> Result<()> {
     ensure_supported_platform(model)?;
-    platform::start_model_download(model)
+    platform::start_model_download(model.resolved())
 }
 
 pub fn reset_model(model: SoniqoModel) -> Result<()> {
     ensure_supported_platform(model)?;
-    platform::reset_model(model)
+    platform::reset_model(model.resolved())
 }
 
 pub fn is_model_downloaded(model: SoniqoModel) -> Result<bool> {
@@ -344,6 +514,13 @@ pub fn is_model_downloading(model: SoniqoModel) -> Result<bool> {
     Ok(model_download_state(model)?.status == "downloading")
 }
 
+#[cfg(target_os = "windows")]
+pub fn delete_model(model: SoniqoModel) -> Result<()> {
+    ensure_supported_platform(model)?;
+    platform::delete_model(model.resolved())
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn delete_model(model: SoniqoModel) -> Result<()> {
     reset_model(model)?;
 
@@ -360,10 +537,18 @@ pub fn transcribe_file(
     path: impl AsRef<Path>,
     language: Option<&str>,
 ) -> Result<FileTranscript> {
+    transcribe_file_with_config(model, path, &LanguageConfig::single(language))
+}
+
+pub fn transcribe_file_with_config(
+    model: SoniqoModel,
+    path: impl AsRef<Path>,
+    config: &LanguageConfig,
+) -> Result<FileTranscript> {
     ensure_supported_platform(model)?;
 
     let path = path.as_ref();
-    let language = language.unwrap_or_default();
+    let language = config.language.as_deref().unwrap_or_default();
     let language_label = if language.is_empty() {
         "auto"
     } else {
@@ -379,11 +564,12 @@ pub fn transcribe_file(
         fmtr.stt.provider.name = "soniqo",
         fmtr.stt.model = %model,
         fmtr.stt.language = %language_label,
+        fmtr.stt.expected_languages = ?config.expected_languages,
         file.extension = %file_extension,
         "soniqo_native_file_transcription_start"
     );
 
-    let result = platform::transcribe_file(model, path, language);
+    let result = platform::transcribe_file(model.resolved(), path, config);
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
 
     match &result {
@@ -414,10 +600,19 @@ pub fn transcribe_file(
 pub struct LiveTranscriptionSession {
     model: SoniqoModel,
     stopped: bool,
+    endpoints: Option<[endpoint::Endpoint; 2]>,
 }
 
 impl LiveTranscriptionSession {
     pub fn start(model: SoniqoModel) -> Result<Self> {
+        Self::start_with_language(model, None)
+    }
+
+    pub fn start_with_language(model: SoniqoModel, language: Option<&str>) -> Result<Self> {
+        Self::start_with_config(model, &LanguageConfig::single(language))
+    }
+
+    pub fn start_with_config(model: SoniqoModel, config: &LanguageConfig) -> Result<Self> {
         ensure_supported_platform(model)?;
 
         if !model.supports_live() {
@@ -427,10 +622,14 @@ impl LiveTranscriptionSession {
             )));
         }
 
-        platform::live_start(model)?;
+        tracing::info!(fmtr.stt.model = %model, fmtr.stt.language = ?config.language,
+            fmtr.stt.expected_languages = ?config.expected_languages, "soniqo_live_start");
+        platform::live_start(model.resolved(), config)?;
         Ok(Self {
             model,
             stopped: false,
+            endpoints: (model == SoniqoModel::NemotronStreaming)
+                .then(|| std::array::from_fn(|_| endpoint::Endpoint::new())),
         })
     }
 
@@ -439,11 +638,40 @@ impl LiveTranscriptionSession {
         source: TranscriptSource,
         samples: &[f32],
     ) -> Result<Vec<LivePartial>> {
-        platform::live_append(source, samples)
+        let Some(endpoints) = &mut self.endpoints else {
+            return platform::live_append(source, samples);
+        };
+        let actions = endpoints[source.channel_index() as usize].push(samples);
+        Self::apply_actions(source, actions)
     }
 
     pub fn finalize(&mut self, source: TranscriptSource) -> Result<Vec<LivePartial>> {
-        platform::live_finalize(source)
+        let Some(endpoints) = &mut self.endpoints else {
+            return platform::live_finalize(source);
+        };
+        let actions = endpoints[source.channel_index() as usize].finish();
+        Self::apply_actions(source, actions)
+    }
+
+    fn apply_actions(
+        source: TranscriptSource,
+        actions: Vec<endpoint::Action>,
+    ) -> Result<Vec<LivePartial>> {
+        let mut output = Vec::new();
+        for action in actions {
+            let partials = if action.is_final {
+                platform::live_finalize(source)?
+            } else {
+                platform::live_append(source, &action.samples)?
+            };
+            output.extend(partials.into_iter().map(|mut partial| {
+                partial.start_seconds = Some(action.start_sample as f64 / 16_000.0);
+                partial.duration_seconds =
+                    Some((action.end_sample - action.start_sample) as f64 / 16_000.0);
+                partial
+            }));
+        }
+        Ok(output)
     }
 
     pub fn model(&self) -> SoniqoModel {
@@ -563,7 +791,7 @@ fn metadata(model: SoniqoModel) -> stream::Metadata {
     stream::Metadata {
         model_info: stream::ModelInfo {
             name: model.as_str().to_string(),
-            version: "0.0.9".to_string(),
+            version: "0.0.29".to_string(),
             arch: "soniqo".to_string(),
         },
         extra: Some(stream::Extra::default().into()),
@@ -789,6 +1017,8 @@ fn synthetic_text_duration(text: &str) -> f64 {
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod platform {
     use super::*;
+    // Rust worker threads have no Cocoa run loop to drain swift-rs temporary objects.
+    use objc2::rc::autoreleasepool;
     use swift_rs::{Bool, SRData, SRString, swift};
 
     swift!(fn _soniqo_model_cache_dir(model_id: &SRString) -> SRString);
@@ -800,7 +1030,7 @@ mod platform {
         audio_path: &SRString,
         language: &SRString
     ) -> SRString);
-    swift!(fn _soniqo_live_start(model_id: &SRString) -> SRString);
+    swift!(fn _soniqo_live_start(model_id: &SRString, language: &SRString) -> SRString);
     swift!(fn _soniqo_live_append(source: &SRString, samples: &SRData) -> SRString);
     swift!(fn _soniqo_live_finalize(source: &SRString) -> SRString);
     swift!(fn _soniqo_live_stop() -> SRString);
@@ -826,125 +1056,145 @@ mod platform {
     }
 
     pub(super) fn model_cache_dir(model: SoniqoModel) -> Result<PathBuf> {
-        let model_id = sr_string(model.as_str());
-        let path = unsafe { _soniqo_model_cache_dir(&model_id) };
-        let path = path.as_str().to_string();
+        autoreleasepool(|_| {
+            let model_id = sr_string(model.as_str());
+            let path = unsafe { _soniqo_model_cache_dir(&model_id) };
+            let path = path.as_str().to_string();
 
-        if path.is_empty() {
-            return Err(Error::Bridge(format!(
-                "cache path unavailable for {}",
-                model.as_str()
-            )));
-        }
+            if path.is_empty() {
+                return Err(Error::Bridge(format!(
+                    "cache path unavailable for {}",
+                    model.as_str()
+                )));
+            }
 
-        Ok(PathBuf::from(path))
+            Ok(PathBuf::from(path))
+        })
     }
 
     pub(super) fn model_download_state(model: SoniqoModel) -> Result<ModelDownloadState> {
-        let model_id = sr_string(model.as_str());
-        let payload = unsafe { _soniqo_model_download_state(&model_id) };
-        let state: ModelDownloadState = serde_json::from_str(payload.as_str())?;
+        autoreleasepool(|_| {
+            let model_id = sr_string(model.as_str());
+            let payload = unsafe { _soniqo_model_download_state(&model_id) };
+            let state: ModelDownloadState = serde_json::from_str(payload.as_str())?;
 
-        Ok(state)
+            Ok(state)
+        })
     }
 
     pub(super) fn start_model_download(model: SoniqoModel) -> Result<()> {
-        let model_id = sr_string(model.as_str());
-        if unsafe { _soniqo_model_start_download(&model_id) } {
-            Ok(())
-        } else {
-            Err(Error::Bridge(format!(
-                "failed to start Soniqo download for {}",
-                model.as_str()
-            )))
-        }
+        autoreleasepool(|_| {
+            let model_id = sr_string(model.as_str());
+            if unsafe { _soniqo_model_start_download(&model_id) } {
+                Ok(())
+            } else {
+                Err(Error::Bridge(format!(
+                    "failed to start Soniqo download for {}",
+                    model.as_str()
+                )))
+            }
+        })
     }
 
     pub(super) fn reset_model(model: SoniqoModel) -> Result<()> {
-        let model_id = sr_string(model.as_str());
-        if unsafe { _soniqo_model_reset(&model_id) } {
-            Ok(())
-        } else {
-            Err(Error::Bridge(format!(
-                "failed to reset Soniqo model {}",
-                model.as_str()
-            )))
-        }
+        autoreleasepool(|_| {
+            let model_id = sr_string(model.as_str());
+            if unsafe { _soniqo_model_reset(&model_id) } {
+                Ok(())
+            } else {
+                Err(Error::Bridge(format!(
+                    "failed to reset Soniqo model {}",
+                    model.as_str()
+                )))
+            }
+        })
     }
 
     pub(super) fn transcribe_file(
         model: SoniqoModel,
         path: &Path,
-        language: &str,
+        config: &LanguageConfig,
     ) -> Result<FileTranscript> {
-        let model_id = sr_string(model.as_str());
-        let audio_path = sr_string(&path.to_string_lossy());
-        let language = sr_string(language);
-        let payload = unsafe { _soniqo_transcribe_audio_file(&model_id, &audio_path, &language) };
-        let result: FileTranscriptionPayload = serde_json::from_str(payload.as_str())?;
+        autoreleasepool(|_| {
+            let model_id = sr_string(model.as_str());
+            let audio_path = sr_string(&path.to_string_lossy());
+            let language = sr_string(&serde_json::to_string(config)?);
+            let payload =
+                unsafe { _soniqo_transcribe_audio_file(&model_id, &audio_path, &language) };
+            let result: FileTranscriptionPayload = serde_json::from_str(payload.as_str())?;
 
-        if let Some(error) = result.error {
-            return Err(Error::Bridge(error));
-        }
+            if let Some(error) = result.error {
+                return Err(Error::Bridge(error));
+            }
 
-        Ok(FileTranscript {
-            text: result.text,
-            duration_seconds: result.duration_seconds,
-            chunks: Vec::new(),
+            Ok(FileTranscript {
+                text: result.text,
+                duration_seconds: result.duration_seconds,
+                chunks: Vec::new(),
+            })
         })
     }
 
-    pub(super) fn live_start(model: SoniqoModel) -> Result<()> {
-        let model_id = sr_string(model.as_str());
-        let payload = unsafe { _soniqo_live_start(&model_id) };
-        let result: StatusPayload = serde_json::from_str(payload.as_str())?;
+    pub(super) fn live_start(model: SoniqoModel, config: &LanguageConfig) -> Result<()> {
+        autoreleasepool(|_| {
+            let model_id = sr_string(model.as_str());
+            let language = sr_string(&serde_json::to_string(config)?);
+            let payload = unsafe { _soniqo_live_start(&model_id, &language) };
+            let result: StatusPayload = serde_json::from_str(payload.as_str())?;
 
-        if result.running {
-            Ok(())
-        } else {
-            Err(Error::Bridge(result.error.unwrap_or_else(|| {
-                "failed to start Soniqo live session".to_string()
-            })))
-        }
+            if result.running {
+                Ok(())
+            } else {
+                Err(Error::Bridge(result.error.unwrap_or_else(|| {
+                    "failed to start Soniqo live session".to_string()
+                })))
+            }
+        })
     }
 
     pub(super) fn live_append(
         source: TranscriptSource,
         samples: &[f32],
     ) -> Result<Vec<LivePartial>> {
-        let source = sr_string(source.as_str());
-        let samples = floats_to_sr_data(samples);
-        let payload = unsafe { _soniqo_live_append(&source, &samples) };
-        let result: LiveAppendPayload = serde_json::from_str(payload.as_str())?;
+        autoreleasepool(|_| {
+            let source = sr_string(source.as_str());
+            let samples = floats_to_sr_data(samples);
+            let payload = unsafe { _soniqo_live_append(&source, &samples) };
+            let result: LiveAppendPayload = serde_json::from_str(payload.as_str())?;
 
-        if let Some(error) = result.error {
-            return Err(Error::Bridge(error));
-        }
+            if let Some(error) = result.error {
+                return Err(Error::Bridge(error));
+            }
 
-        Ok(result.partials)
+            Ok(result.partials)
+        })
     }
 
     pub(super) fn live_finalize(source: TranscriptSource) -> Result<Vec<LivePartial>> {
-        let source = sr_string(source.as_str());
-        let payload = unsafe { _soniqo_live_finalize(&source) };
-        let result: LiveAppendPayload = serde_json::from_str(payload.as_str())?;
+        autoreleasepool(|_| {
+            let source = sr_string(source.as_str());
+            let payload = unsafe { _soniqo_live_finalize(&source) };
+            let result: LiveAppendPayload = serde_json::from_str(payload.as_str())?;
 
-        if let Some(error) = result.error {
-            return Err(Error::Bridge(error));
-        }
+            if let Some(error) = result.error {
+                return Err(Error::Bridge(error));
+            }
 
-        Ok(result.partials)
+            Ok(result.partials)
+        })
     }
 
     pub(super) fn live_stop() -> Result<()> {
-        let payload = unsafe { _soniqo_live_stop() };
-        let result: StatusPayload = serde_json::from_str(payload.as_str())?;
+        autoreleasepool(|_| {
+            let payload = unsafe { _soniqo_live_stop() };
+            let result: StatusPayload = serde_json::from_str(payload.as_str())?;
 
-        if let Some(error) = result.error {
-            return Err(Error::Bridge(error));
-        }
+            if let Some(error) = result.error {
+                return Err(Error::Bridge(error));
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     fn sr_string(value: &str) -> SRString {
@@ -960,7 +1210,14 @@ mod platform {
     }
 }
 
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+#[cfg(target_os = "windows")]
+#[path = "windows.rs"]
+mod platform;
+
+#[cfg(not(any(
+    target_os = "windows",
+    all(target_os = "macos", target_arch = "aarch64")
+)))]
 mod platform {
     use super::*;
 
@@ -983,12 +1240,12 @@ mod platform {
     pub(super) fn transcribe_file(
         _model: SoniqoModel,
         _path: &Path,
-        _language: &str,
+        _config: &LanguageConfig,
     ) -> Result<FileTranscript> {
         Err(Error::UnsupportedPlatform)
     }
 
-    pub(super) fn live_start(_model: SoniqoModel) -> Result<()> {
+    pub(super) fn live_start(_model: SoniqoModel, _config: &LanguageConfig) -> Result<()> {
         Err(Error::UnsupportedPlatform)
     }
 
@@ -1039,11 +1296,16 @@ mod tests {
 
     #[test]
     fn all_includes_available_model_variants() {
+        if cfg!(target_os = "windows") {
+            assert_eq!(SoniqoModel::all(), SoniqoModel::selectable());
+            return;
+        }
         assert_eq!(
             SoniqoModel::all(),
             &[
                 SoniqoModel::ParakeetStreaming,
                 SoniqoModel::ParakeetBatch,
+                SoniqoModel::NemotronStreaming,
                 SoniqoModel::Omnilingual,
             ]
         );
@@ -1052,9 +1314,123 @@ mod tests {
     #[test]
     fn selectable_includes_advertised_models() {
         assert_eq!(
-            SoniqoModel::selectable(),
-            &[SoniqoModel::ParakeetStreaming, SoniqoModel::ParakeetBatch]
+            SoniqoModel::selectable()
+                .iter()
+                .copied()
+                .filter(|model| *model != SoniqoModel::NemotronStreaming)
+                .collect::<Vec<_>>(),
+            &[
+                SoniqoModel::ParakeetStreaming.resolved(),
+                SoniqoModel::ParakeetBatch.resolved()
+            ]
         );
+    }
+
+    #[test]
+    fn saved_models_resolve_without_changing_their_serialized_ids() {
+        let mac = "soniqo-parakeet-batch".parse::<SoniqoModel>().unwrap();
+        let windows = "onnx-parakeet-batch".parse::<SoniqoModel>().unwrap();
+        assert_eq!(mac.resolved(), windows.resolved());
+        assert_eq!(mac.as_str(), "soniqo-parakeet-batch");
+        assert_eq!(windows.as_str(), "onnx-parakeet-batch");
+        assert!(windows.supports_language(&"nl".parse().unwrap()));
+        assert!(!windows.supports_language(&"ko".parse().unwrap()));
+    }
+
+    #[test]
+    fn nemotron_language_policy_preserves_regions_and_uses_auto_for_multiple_languages() {
+        let model = SoniqoModel::NemotronStreaming;
+        let languages = ["nl-BE".parse().unwrap(), "en-GB".parse().unwrap()];
+        assert_eq!(
+            model.language_hint(&languages[..1]).as_deref(),
+            Some("nl-BE")
+        );
+        assert_eq!(model.language_hint(&languages), None);
+        assert_eq!(model.language_hint(&[]), None);
+        assert_eq!(
+            model.language_hint(&["no".parse().unwrap()]).as_deref(),
+            Some("nb-NO")
+        );
+        assert_eq!(
+            SoniqoModel::ParakeetBatch
+                .language_hint(&languages)
+                .as_deref(),
+            Some("nl")
+        );
+    }
+
+    #[test]
+    fn selected_languages_are_carried_to_the_native_guide() {
+        let model = SoniqoModel::NemotronStreaming;
+        let languages = ["en-GB".parse().unwrap(), "nl-BE".parse().unwrap()];
+        let config = model.language_config(&languages);
+        assert!(config.language.is_none());
+        assert_eq!(config.expected_languages, ["en-GB", "nl-BE"]);
+        assert_eq!(
+            serde_json::to_value(config).unwrap(),
+            serde_json::json!({
+                "language": null, "expectedLanguages": ["en-GB", "nl-BE"],
+            })
+        );
+        let single = model.language_config(&languages[1..]);
+        assert_eq!(single.language.as_deref(), Some("nl-BE"));
+        assert!(single.expected_languages.is_empty());
+        let automatic = model.language_config(&[]);
+        assert!(automatic.language.is_none());
+        assert!(automatic.expected_languages.is_empty());
+        let parakeet = SoniqoModel::ParakeetBatch.language_config(&languages);
+        assert_eq!(parakeet.language.as_deref(), Some("en"));
+        assert!(parakeet.expected_languages.is_empty());
+    }
+
+    #[test]
+    fn nemotron_excludes_adaptation_only_languages() {
+        let model = SoniqoModel::NemotronStreaming;
+        let codes = model.supported_language_codes().unwrap();
+        assert_eq!(codes.len(), 28);
+        assert!(codes.contains(&"no".to_string()));
+        for language in ["nl-BE", "en-GB", "fr-CA", "ja", "ko", "nb", "no", "zh-CN"] {
+            assert!(
+                model.supports_language(&language.parse().unwrap()),
+                "{language}"
+            );
+        }
+        for language in ["el", "lt", "lv", "mt", "sl", "he", "th", "nn"] {
+            assert!(
+                !model.supports_language(&language.parse().unwrap()),
+                "{language}"
+            );
+        }
+        assert!(model.supports_live());
+        assert_eq!(model.as_str().parse::<SoniqoModel>().unwrap(), model);
+        assert_eq!(model.repo().parse::<SoniqoModel>().unwrap(), model);
+        assert_eq!(
+            serde_json::from_str::<SoniqoModel>(&serde_json::to_string(&model).unwrap()).unwrap(),
+            model
+        );
+    }
+
+    #[test]
+    fn nemotron_partial_uses_segment_offsets_and_keeps_utterance_finals_distinct() {
+        let partial: LivePartial = serde_json::from_value(serde_json::json!({
+            "source": "system", "text": "Hallo wereld", "isFinal": true,
+            "startSeconds": 12.0, "durationSeconds": 3.0,
+        }))
+        .unwrap();
+        let response = partial.into_stream_response(SoniqoModel::NemotronStreaming, 14.75, 0.25);
+        let stream::StreamResponse::TranscriptResponse {
+            start,
+            duration,
+            from_finalize,
+            channel_index,
+            ..
+        } = response
+        else {
+            panic!("expected transcript")
+        };
+        assert_eq!((start, duration), (12.0, 3.0));
+        assert!(!from_finalize);
+        assert_eq!(channel_index, vec![1, 2]);
     }
 
     #[test]
@@ -1077,11 +1453,6 @@ mod tests {
         assert!(SoniqoModel::ParakeetStreaming.supports_language(&english));
         assert!(!SoniqoModel::ParakeetStreaming.supports_language(&french));
         assert!(!SoniqoModel::ParakeetStreaming.supports_language(&dutch));
-        assert!(
-            SoniqoModel::ParakeetStreaming
-                .batch_model()
-                .supports_language(&dutch)
-        );
     }
 
     #[test]
@@ -1103,21 +1474,12 @@ mod tests {
     fn live_support_is_gated_by_platform() {
         assert_eq!(
             SoniqoModel::ParakeetStreaming.supports_live_on_current_platform(),
-            cfg!(all(target_os = "macos", target_arch = "aarch64")),
+            cfg!(any(
+                target_os = "windows",
+                all(target_os = "macos", target_arch = "aarch64")
+            )),
         );
         assert!(!SoniqoModel::ParakeetBatch.supports_live_on_current_platform());
-    }
-
-    #[test]
-    fn streaming_model_uses_batch_model_for_file_transcription() {
-        assert_eq!(
-            SoniqoModel::ParakeetStreaming.batch_model(),
-            SoniqoModel::ParakeetBatch
-        );
-        assert_eq!(
-            SoniqoModel::ParakeetBatch.batch_model(),
-            SoniqoModel::ParakeetBatch
-        );
     }
 
     #[test]
@@ -1298,6 +1660,8 @@ mod tests {
             source: "system".to_string(),
             text: "hello".to_string(),
             is_final: true,
+            start_seconds: None,
+            duration_seconds: None,
         };
 
         let response = partial.into_stream_response(SoniqoModel::ParakeetStreaming, 0.0, 0.5);

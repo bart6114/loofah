@@ -1,7 +1,10 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { platform } from "@tauri-apps/plugin-os";
 import { useEffect, useRef, useState, type RefObject } from "react";
+
+import type { NativeEditorDragEvent } from "@hypr/editor/note";
 
 export type NativeDropPoint = { x: number; y: number };
 
@@ -11,6 +14,7 @@ export function useNativeFileDrop(
     onDrop: (paths: string[], point: NativeDropPoint) => void;
     onHoverPaths?: (paths: string[]) => void;
     onHoverEnd?: () => void;
+    onInternalDrag?: (event: NativeEditorDragEvent) => void;
   },
 ) {
   const callbacksRef = useRef(callbacks);
@@ -36,11 +40,31 @@ export function useNativeFileDrop(
           pathsRef.current = [];
           setIsHovering(false);
           callbacksRef.current.onHoverEnd?.();
+          callbacksRef.current.onInternalDrag?.({ type: "leave" });
           return;
         }
 
         const point = nativeDragPointToCssPoint(payload.position);
         const inside = isPointInsideElement(targetRef.current, point);
+        if (payload.type === "enter") {
+          pathsRef.current = [...payload.paths];
+        }
+        const paths =
+          payload.type === "drop" ? payload.paths : pathsRef.current;
+        if (paths.length === 0) {
+          if (hoveringRef.current) callbacksRef.current.onHoverEnd?.();
+          hoveringRef.current = false;
+          setIsHovering(false);
+          callbacksRef.current.onInternalDrag?.(
+            inside
+              ? {
+                  type: payload.type === "drop" ? "drop" : "over",
+                  point,
+                }
+              : { type: "leave" },
+          );
+          return;
+        }
         const enteredTarget = inside && !hoveringRef.current;
         const leftTarget = !inside && hoveringRef.current;
         hoveringRef.current = inside;
@@ -48,7 +72,6 @@ export function useNativeFileDrop(
         if (leftTarget) callbacksRef.current.onHoverEnd?.();
 
         if (payload.type === "enter") {
-          pathsRef.current = [...payload.paths];
           if (inside) callbacksRef.current.onHoverPaths?.(pathsRef.current);
           return;
         }
@@ -89,6 +112,12 @@ export function nativeDragPointToCssPoint(
   position: Pick<PhysicalPosition, "x" | "y">,
 ): NativeDropPoint {
   // Wry reports macOS drag locations in AppKit points, which already match CSS pixels.
+  if (platform() === "windows") {
+    return {
+      x: position.x / window.devicePixelRatio,
+      y: position.y / window.devicePixelRatio,
+    };
+  }
   return { x: position.x, y: position.y };
 }
 

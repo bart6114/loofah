@@ -7,6 +7,9 @@ pub struct LoadedWhisperBuilder {}
 pub struct LoadedWhisper {}
 
 impl LoadedWhisperBuilder {
+    pub fn use_gpu(self, _use_gpu: bool) -> Self {
+        self
+    }
     pub fn model_path(self, _model_path: impl Into<String>) -> Self {
         self
     }
@@ -62,6 +65,9 @@ impl WhisperBuilder {
 }
 
 impl Whisper {
+    pub fn backend_name(&self) -> &str {
+        "CPU (mock)"
+    }
     pub fn counters(&self) -> (usize, usize) {
         (0, 0)
     }

@@ -76,6 +76,21 @@ describe("config-backed settings", () => {
     expect(stored.values.theme).toBeUndefined();
   });
 
+  it("reads a design theme independently of appearance from the Rust config snapshot", async () => {
+    mocks.getConfig.mockResolvedValue({
+      status: "ok",
+      data: appConfig({ design_theme: "signal", theme: "dark" }),
+    });
+    const stored = await getStoredSettingValues();
+    expect(stored.values.design_theme).toBe("signal");
+    expect(stored.values.theme).toBe("dark");
+    await setSettingValues({ design_theme: "midnight", theme: "dark" });
+    expect(mocks.setConfigValues).toHaveBeenCalledWith({
+      design_theme: "midnight",
+      theme: "dark",
+    });
+  });
+
   it("ignores retired audio settings from existing vaults", async () => {
     mocks.getConfig.mockResolvedValue({
       status: "ok",

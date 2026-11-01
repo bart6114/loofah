@@ -70,6 +70,10 @@ msgstr "{added} attachments added"
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
 msgstr "{model} can't transcribe {0}. Try another model or change your spoken languages."
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+msgstr "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
 msgstr "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
@@ -293,6 +297,10 @@ msgstr "Choose a model"
 msgid "Choose a model to finish setup"
 msgstr "Choose a model to finish setup"
 
+#: src/settings/general/theme.tsx
+msgid "Choose a style for your workspace. Default follows your appearance setting."
+msgstr "Choose a style for your workspace. Default follows your appearance setting."
+
 #: src/settings/ai/stt/select.tsx
 msgid "Choose another model"
 msgstr "Choose another model"
@@ -367,6 +375,10 @@ msgid "Confirm"
 msgstr "Confirm"
 
 #: src/onboarding/index.tsx
+msgid "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+msgstr "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+
+#: src/onboarding/index.tsx
 msgid "Connect a service to create summaries of your meetings. You can also set this up later."
 msgstr "Connect a service to create summaries of your meetings. You can also set this up later."
 
@@ -389,6 +401,14 @@ msgstr "Context always provided"
 #: src/onboarding/llm-provider.tsx
 msgid "Continue"
 msgstr "Continue"
+
+#: src/main/about-debug.tsx
+msgid "Copied"
+msgstr "Copied"
+
+#: src/main/about-debug.tsx
+msgid "Copy debug information"
+msgstr "Copy debug information"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Copy failed"
@@ -426,9 +446,17 @@ msgstr "Couldn’t calculate vault storage."
 msgid "Couldn’t choose attachments"
 msgstr "Couldn’t choose attachments"
 
+#: src/main/about-debug.tsx
+msgid "Couldn’t copy debug information. Try again."
+msgstr "Couldn’t copy debug information. Try again."
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
 msgstr "Couldn’t load attachments."
+
+#: src/main/about-debug.tsx
+msgid "Couldn’t load debug information."
+msgstr "Couldn’t load debug information."
 
 #: src/session/components/note-input/transcript/loading.tsx
 msgid "Couldn't load transcript."
@@ -438,6 +466,10 @@ msgstr "Couldn't load transcript."
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
 msgstr "Couldn’t open “{0}”"
+
+#: src/session/components/note-input/attachments.tsx
+msgid "Couldn’t open attachments in File Explorer"
+msgstr "Couldn’t open attachments in File Explorer"
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
@@ -450,6 +482,10 @@ msgstr "Couldn't prepare export."
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
 msgstr "Couldn’t remove attachment"
+
+#: src/settings/general/theme.tsx
+msgid "Couldn't save your appearance. Please try again."
+msgstr "Couldn't save your appearance. Please try again."
 
 #: src/main/about-storage.tsx
 msgid "Couldn’t update storage. Showing the previous measurement."
@@ -498,6 +534,14 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
+
+#: src/settings/general/theme.tsx
+msgid "Design theme"
+msgstr "Design theme"
+
+#: src/main/about-dialog.tsx
+msgid "Diagnostics"
+msgstr "Diagnostics"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Discard changes"
@@ -771,6 +815,10 @@ msgstr "Keep editing"
 msgid "Keep Loofah available from the menu bar."
 msgstr "Keep Loofah available from the menu bar."
 
+#: src/settings/general/app-settings.tsx
+msgid "Keep Loofah available from the notification area."
+msgstr "Keep Loofah available from the notification area."
+
 #: src/settings/general/main-language.tsx
 msgid "Language for summaries and generated titles"
 msgstr "Language for summaries and generated titles"
@@ -807,6 +855,10 @@ msgstr "Loading"
 #: src/settings/ai/llm/select.tsx
 msgid "Loading connection…"
 msgstr "Loading connection…"
+
+#: src/main/about-debug.tsx
+msgid "Loading debug information…"
+msgstr "Loading debug information…"
 
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
@@ -998,8 +1050,8 @@ msgid "No results found."
 msgstr "No results found."
 
 #: src/settings/ai/stt/select.tsx
-msgid "No transcription models are available for this Mac."
-msgstr "No transcription models are available for this Mac."
+msgid "No transcription models are available for this device."
+msgstr "No transcription models are available for this device."
 
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Not downloaded"
@@ -1063,6 +1115,10 @@ msgstr "Open in New Window"
 msgid "Open Loofah"
 msgstr "Open Loofah"
 
+#: src/session/components/note-input/index.tsx
+msgid "Open Note"
+msgstr "Open Note"
+
 #: src/task/resource-view.tsx
 msgid "Open on GitHub"
 msgstr "Open on GitHub"
@@ -1100,6 +1156,7 @@ msgstr "PDFs"
 msgid "Peak: {0}"
 msgstr "Peak: {0}"
 
+#: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Permissions"
@@ -1116,6 +1173,10 @@ msgstr "Preparing export..."
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr "Preparing transcript..."
+
+#: src/main/about-debug.tsx
+msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
+msgstr "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Previous match"
@@ -1413,12 +1474,22 @@ msgid "Show app in Dock"
 msgstr "Show app in Dock"
 
 #: src/settings/general/app-settings.tsx
+msgid "Show app in taskbar"
+msgstr "Show app in taskbar"
+
+#: src/settings/general/app-settings.tsx
 msgid "Show floating recording controls"
 msgstr "Show floating recording controls"
 
 #: src/session/components/memo-image-strip.tsx
 msgid "Show image in note"
 msgstr "Show image in note"
+
+#: src/session/components/note-input/attachments.tsx
+#: src/settings/ai/stt/select.tsx
+#: src/sidebar/timeline/item.tsx
+msgid "Show in File Explorer"
+msgstr "Show in File Explorer"
 
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/ai/stt/select.tsx
@@ -1435,9 +1506,17 @@ msgstr "Show in menu bar"
 msgid "Show Loofah in the Dock and app switcher."
 msgstr "Show Loofah in the Dock and app switcher."
 
+#: src/settings/general/app-settings.tsx
+msgid "Show Loofah in the taskbar and app switcher."
+msgstr "Show Loofah in the taskbar and app switcher."
+
 #: src/settings/ai/stt/timing.tsx
 msgid "Show the transcript as you speak."
 msgstr "Show the transcript as you speak."
+
+#: src/settings/general/app-settings.tsx
+msgid "Show tray icon"
+msgstr "Show tray icon"
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Sign in · Beta"
@@ -1568,6 +1647,14 @@ msgstr "Summary"
 msgid "Summary instructions"
 msgstr "Summary instructions"
 
+#: src/session/components/note-input/index.tsx
+msgid "Summary is read-only while processing finishes."
+msgstr "Summary is read-only while processing finishes."
+
+#: src/session/components/note-input/index.tsx
+msgid "Summary is read-only while recording. Add text and images in Note."
+msgstr "Summary is read-only while recording. Add text and images in Note."
+
 #: src/settings/general/main-language.tsx
 msgid "Summary language"
 msgstr "Summary language"
@@ -1583,6 +1670,10 @@ msgstr "Summary prompt cannot be empty."
 #: src/onboarding/setup-status.tsx
 msgid "Summary service selected"
 msgstr "Summary service selected"
+
+#: src/settings/ai/stt/language-support.tsx
+msgid "Supported languages for {model}: {languages}."
+msgstr "Supported languages for {model}: {languages}."
 
 #: src/settings/general/storage/change-location.tsx
 msgid "Switch"
@@ -1607,10 +1698,6 @@ msgstr "Switching…"
 #: src/main/about-storage.tsx
 msgid "Symbolic links and their targets are excluded."
 msgstr "Symbolic links and their targets are excluded."
-
-#: src/settings/general/theme.tsx
-msgid "System"
-msgstr "System"
 
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
@@ -1654,8 +1741,8 @@ msgid "This folder already has files in it"
 msgstr "This folder already has files in it"
 
 #: src/settings/ai/stt/timing.tsx
-msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
-msgstr "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgid "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
+msgstr "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
 
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."
@@ -1718,8 +1805,8 @@ msgid "Transcription not set up"
 msgstr "Transcription not set up"
 
 #: src/settings/ai/stt/select.tsx
-msgid "Transcription runs on your Mac"
-msgstr "Transcription runs on your Mac"
+msgid "Transcription runs on your device"
+msgstr "Transcription runs on your device"
 
 #: src/settings/ai/stt/timing.tsx
 msgid "Transcription timing"
@@ -1788,6 +1875,10 @@ msgstr "Upload transcript"
 #: src/onboarding/permissions.tsx
 msgid "Use system audio to capture other speakers"
 msgstr "Use system audio to capture other speakers"
+
+#: src/settings/general/theme.tsx
+msgid "Use system setting"
+msgstr "Use system setting"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Use this connection"

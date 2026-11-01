@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::{Error, Result};
 use hypr_agent_access::Pagination;
 
-pub const JSON_SCHEMA_VERSION: &str = "1";
+pub const JSON_SCHEMA_VERSION: &str = "2";
 
 #[derive(Serialize)]
 struct JsonResponse<'a, T> {
@@ -35,8 +35,71 @@ pub fn raw_json(value: &impl Serialize) -> Result<String> {
         .map_err(|error| Error::operation("serialize output", error.to_string()))
 }
 
+struct PendingWrite {
+    cache: hypr_search_cache::Cache,
+    output: Vec<String>,
+    sources: std::collections::BTreeMap<String, hypr_search_cache::SourceState>,
+}
+
+tokio::task_local! {
+    static PENDING_OUTPUT: std::cell::RefCell<PendingWrite>;
+}
+
+pub async fn capture<T>(
+    cache: hypr_search_cache::Cache,
+    operation: impl std::future::Future<Output = T>,
+) -> (
+    T,
+    Vec<String>,
+    std::collections::BTreeMap<String, hypr_search_cache::SourceState>,
+) {
+    PENDING_OUTPUT
+        .scope(
+            std::cell::RefCell::new(PendingWrite {
+                cache,
+                output: Vec::new(),
+                sources: Default::default(),
+            }),
+            async {
+                let result = operation.await;
+                PENDING_OUTPUT.with(|buffer| {
+                    let mut pending = buffer.borrow_mut();
+                    (
+                        result,
+                        std::mem::take(&mut pending.output),
+                        std::mem::take(&mut pending.sources),
+                    )
+                })
+            },
+        )
+        .await
+}
+
+pub fn track_write(id: &str) -> Result<()> {
+    PENDING_OUTPUT
+        .try_with(|buffer| {
+            let mut pending = buffer.borrow_mut();
+            if !pending.sources.contains_key(id) {
+                let sources = pending
+                    .cache
+                    .sources_for(&[id.to_owned()])
+                    .map_err(|error| {
+                        Error::operation("inspect write sources", error.to_string())
+                    })?;
+                pending.sources.insert(id.to_owned(), sources);
+            }
+            Ok(())
+        })
+        .unwrap_or(Ok(()))
+}
+
 pub fn emit(text: &str) {
-    println!("{text}");
+    if PENDING_OUTPUT
+        .try_with(|buffer| buffer.borrow_mut().output.push(text.to_owned()))
+        .is_err()
+    {
+        println!("{text}");
+    }
 }
 
 pub fn write_or_emit(text: &str, path: Option<&Path>, force: bool) -> Result<()> {
@@ -94,7 +157,7 @@ mod tests {
         .unwrap();
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
-        assert_eq!(response["schema_version"], "1");
+        assert_eq!(response["schema_version"], "2");
         assert_eq!(response["command"], "meetings.list");
         assert_eq!(response["data"][0]["id"], "meeting-1");
         assert_eq!(response["pagination"]["offset"], 20);

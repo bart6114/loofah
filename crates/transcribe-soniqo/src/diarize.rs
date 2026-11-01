@@ -27,8 +27,16 @@ pub fn diarize_samples(samples: &[f32], sample_rate_hz: u32) -> Result<Vec<Diari
     platform::diarize_samples(samples, sample_rate_hz)
 }
 
+pub fn diarize_file(path: &std::path::Path, channel: usize) -> Result<Vec<DiarizeSegment>> {
+    ensure_supported_platform()?;
+    platform::diarize_file(path, channel)
+}
+
 fn ensure_supported_platform() -> Result<()> {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+    if cfg!(any(
+        target_os = "windows",
+        all(target_os = "macos", target_arch = "aarch64")
+    )) {
         Ok(())
     } else {
         Err(Error::UnsupportedPlatform)
@@ -63,6 +71,7 @@ mod platform {
 
     swift!(fn _diarize_model_download_state() -> SRString);
     swift!(fn _diarize_start_model_download() -> Bool);
+    swift!(fn _diarize_file(path: &SRString, channel: Int) -> SRString);
     swift!(fn _diarize_run(samples: &SRData, sample_rate_hz: Int) -> SRString);
 
     pub(super) fn model_download_state() -> Result<ModelDownloadState> {
@@ -92,6 +101,15 @@ mod platform {
         parse_run_payload(payload.as_str())
     }
 
+    pub(super) fn diarize_file(
+        path: &std::path::Path,
+        channel: usize,
+    ) -> Result<Vec<DiarizeSegment>> {
+        let path: SRString = path.to_string_lossy().as_ref().into();
+        let payload = unsafe { _diarize_file(&path, channel as Int) };
+        parse_run_payload(payload.as_str())
+    }
+
     fn floats_to_sr_data(samples: &[f32]) -> SRData {
         let bytes = samples
             .iter()
@@ -101,7 +119,76 @@ mod platform {
     }
 }
 
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+#[cfg(target_os = "windows")]
+mod platform {
+    use super::*;
+    use hypr_transcribe_onnx::{
+        diarize::Diarizer,
+        models::{self, Model},
+    };
+    static OPERATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    pub(super) fn model_download_state() -> Result<ModelDownloadState> {
+        let state = models::state(Model::Diarizer).map_err(|e| Error::Bridge(e.to_string()))?;
+        Ok(ModelDownloadState {
+            status: state.status,
+            current_file: state.current_file,
+            progress_percent: state.progress_percent,
+            local_path: state.local_path,
+            error: state.error,
+        })
+    }
+    pub(super) fn start_model_download() -> Result<()> {
+        models::start(Model::Diarizer).map_err(|e| Error::Bridge(e.to_string()))
+    }
+    pub(super) fn diarize_file(
+        path: &std::path::Path,
+        channel: usize,
+    ) -> Result<Vec<DiarizeSegment>> {
+        let _operation = OPERATION.lock().unwrap_or_else(|error| error.into_inner());
+        Diarizer::load()
+            .and_then(|mut engine| engine.process_file(path, channel))
+            .map(|segments| {
+                segments
+                    .into_iter()
+                    .map(|segment| DiarizeSegment {
+                        start_ms: segment.start_ms,
+                        end_ms: segment.end_ms,
+                        speaker_index: segment.speaker_index,
+                    })
+                    .collect()
+            })
+            .map_err(|error| Error::Bridge(error.to_string()))
+    }
+
+    pub(super) fn diarize_samples(
+        samples: &[f32],
+        sample_rate_hz: u32,
+    ) -> Result<Vec<DiarizeSegment>> {
+        let _operation = OPERATION.lock().unwrap_or_else(|e| e.into_inner());
+        let run =
+            || Diarizer::load().and_then(|mut engine| engine.process(samples, sample_rate_hz));
+        // Release the model after each job so batch transcription and local summaries
+        // do not leave several idle engines resident on a 16 GB machine.
+        run()
+            .map(|segments| {
+                segments
+                    .into_iter()
+                    .map(|s| DiarizeSegment {
+                        start_ms: s.start_ms,
+                        end_ms: s.end_ms,
+                        speaker_index: s.speaker_index,
+                    })
+                    .collect()
+            })
+            .map_err(|e| Error::Bridge(e.to_string()))
+    }
+}
+
+#[cfg(not(any(
+    target_os = "windows",
+    all(target_os = "macos", target_arch = "aarch64")
+)))]
 mod platform {
     use super::*;
 
@@ -110,6 +197,13 @@ mod platform {
     }
 
     pub(super) fn start_model_download() -> Result<()> {
+        Err(Error::UnsupportedPlatform)
+    }
+
+    pub(super) fn diarize_file(
+        _path: &std::path::Path,
+        _channel: usize,
+    ) -> Result<Vec<DiarizeSegment>> {
         Err(Error::UnsupportedPlatform)
     }
 
@@ -174,5 +268,23 @@ mod tests {
             parse_run_payload("not json"),
             Err(Error::ResponseParse(_))
         ));
+    }
+}
+
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+mod native_tests {
+    use super::*;
+    #[test]
+    #[ignore = "requires downloaded speaker detection models"]
+    fn file_and_sample_bridge_preserve_whole_recording_speakers() {
+        assert!(is_ready());
+        let file =
+            hypr_audio_utils::PcmFile::prepare(hypr_data::english_1::AUDIO_PATH, || false).unwrap();
+        let pcm = &file.descriptor;
+        let samples = pcm.reader().unwrap().channel(0, 0..pcm.frames).unwrap();
+        let old = diarize_samples(&samples, 16000).unwrap();
+        let new = diarize_file(&pcm.path, 0).unwrap();
+        assert!(!new.is_empty());
+        assert_eq!(new, old);
     }
 }

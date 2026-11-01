@@ -37,10 +37,21 @@ export type FileHandlerConfig = {
 };
 
 type UploadDecorationMeta =
+  | { type: "clear" }
   | { type: "add"; decorations: Decoration[] }
   | { type: "replace"; clientId: string; decoration: Decoration | null };
 
 const fileHandlerKey = new PluginKey<DecorationSet>("fileHandler");
+export function cancelPendingFileUploads(view: EditorView) {
+  if (fileHandlerKey.getState(view.state)?.find().length) {
+    view.dispatch(
+      view.state.tr.setMeta(fileHandlerKey, {
+        type: "clear",
+      } satisfies UploadDecorationMeta),
+    );
+  }
+}
+
 const IMAGE_EXTENSIONS = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
 function isImageCandidate(candidate: FileUploadCandidate) {
@@ -233,7 +244,7 @@ async function uploadCandidate(
   clientId: string,
   preview: ReturnType<typeof makePreview>,
 ) {
-  if (!config.onFileUpload) return;
+  if (!view.editable || !config.onFileUpload) return;
 
   try {
     const result = await config.onFileUpload(candidate, clientId);
@@ -246,7 +257,9 @@ async function uploadCandidate(
       preview?.dispose();
       return;
     }
-    const node = createAttachmentNode(view, candidate, result);
+    const node = view.editable
+      ? createAttachmentNode(view, candidate, result)
+      : null;
     const tr = node
       ? view.state.tr.insert(decoration.from, node)
       : view.state.tr;
@@ -286,7 +299,7 @@ function handleCandidates(
   candidates: FileUploadCandidate[],
   pos?: number,
 ) {
-  if (candidates.length === 0) return false;
+  if (!view.editable || candidates.length === 0) return false;
   if (!config.onFileUpload) return false;
 
   const insertPos = pos ?? view.state.selection.from;
@@ -337,7 +350,7 @@ export function handleFileDrop(
   pos?: number,
   items?: DataTransferItemList,
 ) {
-  if (files.length === 0) return false;
+  if (!view.editable || files.length === 0) return false;
   let remaining = files;
   if (config.onDrop) {
     const result = config.onDrop(files, pos, items);
@@ -359,6 +372,7 @@ export function handleNativeFileDrop(
   candidates: FileUploadCandidate[],
   pos?: number,
 ) {
+  if (!view.editable) return false;
   let remaining = candidates;
   if (config.onNativeDrop) {
     const result = config.onNativeDrop(candidates, pos);
@@ -380,6 +394,7 @@ export function fileHandlerPlugin(config: FileHandlerConfig) {
           | UploadDecorationMeta
           | undefined;
         if (!meta) return next;
+        if (meta.type === "clear") return DecorationSet.empty;
         if (meta.type === "add") {
           // DecorationSet building mutates its input, while React may replay this reducer.
           return next.add(transaction.doc, meta.decorations.slice());
@@ -415,6 +430,7 @@ export function fileHandlerPlugin(config: FileHandlerConfig) {
         );
       },
       handlePaste(view, event) {
+        if (!view.editable) return false;
         const files = Array.from(event.clipboardData?.files ?? []);
         if (files.length === 0) return false;
         let remaining = files;

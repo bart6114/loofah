@@ -70,6 +70,10 @@ msgstr ""
 msgid "{model} can't transcribe {0}. Try another model or change your spoken languages."
 msgstr ""
 
+#: src/settings/ai/stt/language-support.tsx
+msgid "{model} can't transcribe {unsupported}. Choose another model or change your spoken languages."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "{model} can't transcribe all selected languages together. Try another model or use fewer spoken languages."
 msgstr ""
@@ -293,6 +297,10 @@ msgstr ""
 msgid "Choose a model to finish setup"
 msgstr ""
 
+#: src/settings/general/theme.tsx
+msgid "Choose a style for your workspace. Default follows your appearance setting."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "Choose another model"
 msgstr ""
@@ -367,6 +375,10 @@ msgid "Confirm"
 msgstr ""
 
 #: src/onboarding/index.tsx
+msgid "Connect a microphone and allow desktop apps to use it in Windows Settings. You can skip this step to use notes and import recordings, then set up recording later."
+msgstr ""
+
+#: src/onboarding/index.tsx
 msgid "Connect a service to create summaries of your meetings. You can also set this up later."
 msgstr ""
 
@@ -388,6 +400,14 @@ msgstr ""
 
 #: src/onboarding/llm-provider.tsx
 msgid "Continue"
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Copied"
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Copy debug information"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -426,8 +446,16 @@ msgstr ""
 msgid "Couldn’t choose attachments"
 msgstr ""
 
+#: src/main/about-debug.tsx
+msgid "Couldn’t copy debug information. Try again."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t load attachments."
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Couldn’t load debug information."
 msgstr ""
 
 #: src/session/components/note-input/transcript/loading.tsx
@@ -440,6 +468,10 @@ msgid "Couldn’t open “{0}”"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+msgid "Couldn’t open attachments in File Explorer"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open attachments in Finder"
 msgstr ""
 
@@ -449,6 +481,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t remove attachment"
+msgstr ""
+
+#: src/settings/general/theme.tsx
+msgid "Couldn't save your appearance. Please try again."
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -497,6 +533,14 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
+msgstr ""
+
+#: src/settings/general/theme.tsx
+msgid "Design theme"
+msgstr ""
+
+#: src/main/about-dialog.tsx
+msgid "Diagnostics"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -771,6 +815,10 @@ msgstr ""
 msgid "Keep Loofah available from the menu bar."
 msgstr ""
 
+#: src/settings/general/app-settings.tsx
+msgid "Keep Loofah available from the notification area."
+msgstr ""
+
 #: src/settings/general/main-language.tsx
 msgid "Language for summaries and generated titles"
 msgstr ""
@@ -806,6 +854,10 @@ msgstr ""
 
 #: src/settings/ai/llm/select.tsx
 msgid "Loading connection…"
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Loading debug information…"
 msgstr ""
 
 #: src/settings/ai/shared/model-combobox.tsx
@@ -998,7 +1050,7 @@ msgid "No results found."
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
-msgid "No transcription models are available for this Mac."
+msgid "No transcription models are available for this device."
 msgstr ""
 
 #: src/settings/ai/stt/diarization-status.tsx
@@ -1063,6 +1115,10 @@ msgstr ""
 msgid "Open Loofah"
 msgstr ""
 
+#: src/session/components/note-input/index.tsx
+msgid "Open Note"
+msgstr ""
+
 #: src/task/resource-view.tsx
 msgid "Open on GitHub"
 msgstr ""
@@ -1100,6 +1156,7 @@ msgstr ""
 msgid "Peak: {0}"
 msgstr ""
 
+#: src/onboarding/index.tsx
 #: src/settings/general/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Permissions"
@@ -1115,6 +1172,10 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
+msgstr ""
+
+#: src/main/about-debug.tsx
+msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
@@ -1413,11 +1474,21 @@ msgid "Show app in Dock"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
+msgid "Show app in taskbar"
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
 msgid "Show floating recording controls"
 msgstr ""
 
 #: src/session/components/memo-image-strip.tsx
 msgid "Show image in note"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
+#: src/settings/ai/stt/select.tsx
+#: src/sidebar/timeline/item.tsx
+msgid "Show in File Explorer"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -1435,8 +1506,16 @@ msgstr ""
 msgid "Show Loofah in the Dock and app switcher."
 msgstr ""
 
+#: src/settings/general/app-settings.tsx
+msgid "Show Loofah in the taskbar and app switcher."
+msgstr ""
+
 #: src/settings/ai/stt/timing.tsx
 msgid "Show the transcript as you speak."
+msgstr ""
+
+#: src/settings/general/app-settings.tsx
+msgid "Show tray icon"
 msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
@@ -1568,6 +1647,14 @@ msgstr ""
 msgid "Summary instructions"
 msgstr ""
 
+#: src/session/components/note-input/index.tsx
+msgid "Summary is read-only while processing finishes."
+msgstr ""
+
+#: src/session/components/note-input/index.tsx
+msgid "Summary is read-only while recording. Add text and images in Note."
+msgstr ""
+
 #: src/settings/general/main-language.tsx
 msgid "Summary language"
 msgstr ""
@@ -1582,6 +1669,10 @@ msgstr ""
 
 #: src/onboarding/setup-status.tsx
 msgid "Summary service selected"
+msgstr ""
+
+#: src/settings/ai/stt/language-support.tsx
+msgid "Supported languages for {model}: {languages}."
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -1606,10 +1697,6 @@ msgstr ""
 
 #: src/main/about-storage.tsx
 msgid "Symbolic links and their targets are excluded."
-msgstr ""
-
-#: src/settings/general/theme.tsx
-msgid "System"
 msgstr ""
 
 #: src/onboarding/permissions.tsx
@@ -1654,7 +1741,7 @@ msgid "This folder already has files in it"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
-msgid "This model transcribes after recording for the selected meeting languages. Live transcription supports English only."
+msgid "This model supports English only. Choose another model or change your spoken languages to transcribe these meetings."
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
@@ -1718,7 +1805,7 @@ msgid "Transcription not set up"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
-msgid "Transcription runs on your Mac"
+msgid "Transcription runs on your device"
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
@@ -1787,6 +1874,10 @@ msgstr ""
 
 #: src/onboarding/permissions.tsx
 msgid "Use system audio to capture other speakers"
+msgstr ""
+
+#: src/settings/general/theme.tsx
+msgid "Use system setting"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx

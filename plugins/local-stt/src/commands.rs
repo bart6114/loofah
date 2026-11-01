@@ -143,3 +143,27 @@ pub async fn get_servers<R: tauri::Runtime>(
         .await
         .map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn advertised_whisper_models_require_a_compiled_backend() {
+        let models = list_supported_models().await.unwrap();
+        let whisper_count = models
+            .iter()
+            .filter(|info| matches!(info.key, LocalModel::Whisper(_)))
+            .count();
+        let supported_platform =
+            cfg!(target_os = "windows") || cfg!(all(target_os = "macos", target_arch = "aarch64"));
+        assert_eq!(
+            whisper_count,
+            if supported_platform && cfg!(feature = "whisper-cpp") {
+                6
+            } else {
+                0
+            }
+        );
+    }
+}

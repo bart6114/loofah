@@ -46,6 +46,29 @@ def lifetime_total(
     return sum(downloads_by_asset.values())
 
 
+def platform_totals(
+    snapshots: list[dict], current_assets: list[dict]
+) -> dict[str, int]:
+    names = {
+        "Loofah_latest_aarch64.dmg": "macos",
+        "Loofah_latest_x86_64-setup.exe": "windows_x64",
+        "Loofah_latest_aarch64-setup.exe": "windows_arm64",
+    }
+    counts: dict[int, tuple[str, int]] = {}
+    for record in snapshots + current_assets:
+        platform = names.get(record["asset_name"])
+        if platform is None:
+            continue
+        asset_id = record["asset_id"]
+        previous = counts.get(asset_id, (platform, 0))[1]
+        counts[asset_id] = (platform, max(previous, record["downloads"]))
+    totals = dict.fromkeys(names.values(), 0)
+    for platform, count in counts.values():
+        totals[platform] += count
+    totals["windows"] = totals["windows_x64"] + totals["windows_arm64"]
+    return totals
+
+
 def write_snapshot(
     path: Path,
     *,

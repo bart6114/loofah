@@ -3,11 +3,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const version = "0.154.0";
+const version = "0.160.0";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const resources = path.join(root, "resources/codex");
 const catalogHash =
-  "f3b8104396daf6381bed9d7c4b154a8664f9b5089b44b01a9d54f421566ec9a7";
+  "fd219bd9f061278275f528939f82f54d2eb97df4b25c23b022adbe48813d920b";
 const source = `https://raw.githubusercontent.com/openai/codex/rust-v${version}`;
 
 async function download(url, sha256) {

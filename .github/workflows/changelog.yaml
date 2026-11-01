@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to write notes for (defaults to the latest release)
+        description: Release tag to publish manual notes for (defaults to the latest release)
         required: false
         default: ""
   workflow_call:
     inputs:
       tag:
-        description: Release tag to write notes for
+        description: Release tag to publish manual notes for
         required: true
         type: string
 
@@ -24,18 +24,16 @@ jobs:
       contents: write
       actions: write
     concurrency:
-      group: changelog-commit
+      group: changelog-publish
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
-          # The notes file must land on main (the app fetches it from raw main),
-          # but `git log <base>..<tag>` needs full history and tags.
+          # The app fetches notes from main; tags identify the comparison base.
           ref: main
           fetch-depth: 0
-          persist-credentials: true
-      - name: Resolve tag, version, and log range
-        id: meta
+          persist-credentials: false
+      - id: meta
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -63,113 +61,38 @@ jobs:
           else
             base="$(git tag -l 'v*' | sort -V | awk -v t="$tag" '$0 == t { print prev; exit } { prev = $0 }')"
           fi
-          if [ -n "$base" ]; then
-            range="$base..$tag"
-          else
-            range="$tag"
-          fi
-
-          exists=false
-          [ -f "packages/changelog/content/$version.md" ] && exists=true
-
           {
             echo "tag=$tag"
             echo "version=$version"
             echo "base=$base"
-            echo "range=$range"
-            echo "exists=$exists"
-            echo "today=$(date -u +%F)"
           } >> "$GITHUB_OUTPUT"
 
-      - if: steps.meta.outputs.exists != 'true'
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          show_full_output: true
-          prompt: |
-            Write the release notes for version ${{ steps.meta.outputs.version }} of Loofah, covering both the desktop app and the CLI.
-
-            Create exactly one new file: packages/changelog/content/${{ steps.meta.outputs.version }}.md
-            Do not modify any other file. Do not run git commit or git push — a
-            later workflow step commits the file.
-
-            How to do it:
-            1. Read packages/changelog/content/AGENTS.md — it defines the authoring rules.
-            2. Read the two or three highest-numbered files in packages/changelog/content/
-               as style examples.
-            3. Review the changes with `git log --format='%h %s%n%b' ${{ steps.meta.outputs.range }}`,
-               and use `git show <sha>` / `git diff` on commits whose subject alone
-               is unclear. This range spans everything since the last version users
-               actually received, which may cover several tagged versions — the
-               notes must cover all of it.
-            4. Write the file. Requirements:
-               - Frontmatter with both fields, exactly this shape:
-                 ---
-                 date: "${{ steps.meta.outputs.today }}"
-                 summary: "Version ${{ steps.meta.outputs.version }} <one concise, plain-text, user-facing sentence>."
-                 ---
-               - Include user-facing desktop and CLI changes, including new CLI commands
-                 and changes to their behavior. Label CLI-specific entries clearly.
-                 Omit internal maintenance, CI, infrastructure, and automatic version bumps.
-               - Never use em dashes (—) anywhere in the file; rephrase or use a
-                 comma, period, or parentheses instead.
-               - Use "## New" / "## Fixes" style sections like the existing files.
-               - Only use the custom <banner> tag (per AGENTS.md) for genuinely
-                 important announcements.
-          claude_args: |
-            --model claude-opus-5
-            --allowedTools "Bash(git log:*),Bash(git show:*),Bash(git diff:*),Read,Write,Glob,Grep"
-
-      - name: Validate and commit
-        if: steps.meta.outputs.exists != 'true'
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
+      - env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           file="packages/changelog/content/$VERSION.md"
 
-          # Claude must have created exactly this one file and nothing else.
-          status="$(git status --porcelain)"
-          [ "$status" = "?? $file" ] || { echo "unexpected working tree state:"; echo "$status"; exit 1; }
+          if [ ! -f "$file" ]; then
+            echo "::error::Missing $file. Prepare manual release notes, commit to main with [skip ci], then rerun this workflow. See .agents/skills/desktop-release/SKILL.md."
+            exit 1
+          fi
 
-          head -n1 "$file" | grep -qx -- '---'
-          grep -qE '^date: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$' "$file"
-          grep -qE '^summary: ".+"$' "$file"
-          # Closing --- and a non-empty body after it.
-          awk 'NR>1 && /^---$/ { f=1; next } f && NF { found=1 } END { exit !found }' "$file"
+          if ! head -n1 "$file" | grep -qx -- '---' \
+            || ! grep -qE '^date: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$' "$file" \
+            || ! grep -qE '^summary: ".+"$' "$file" \
+            || ! awk 'NR>1 && /^---$/ { f=1; next } f && NF { found=1 } END { exit !found }' "$file"; then
+            echo "::error::Invalid $file. Require date and summary in quoted frontmatter, a closing ---, and a non-empty body."
+            exit 1
+          fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$file"
-          git commit -m "docs: changelog for $TAG [skip ci]"
-
-          # Race with concurrent pushes to main. The commit only adds a new
-          # file, so the rebase is always clean.
-          for attempt in 1 2 3; do
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            echo "push rejected (attempt $attempt), rebasing on fresh main"
-            git fetch origin main
-            git rebase origin/main
-          done
-          echo "gave up after 3 attempts"
-          exit 1
-
-      # The commit above carries [skip ci], so the push does not trigger the
-      # path-filtered docs-deploy workflow; dispatch it so the release notes
-      # page on the docs site picks up the new entry.
-      - name: Deploy docs with the new entry
-        if: steps.meta.outputs.exists != 'true'
-        env:
+      # Manual notes commits carry [skip ci], so dispatch the docs deployment.
+      - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: gh workflow run docs-deploy
 
-      - name: Sync release body from notes
-        env:
+      - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.meta.outputs.tag }}

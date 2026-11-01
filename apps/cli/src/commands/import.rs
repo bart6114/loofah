@@ -81,6 +81,7 @@ pub async fn run(
         }
     };
     let session_id = meta.id.clone();
+    crate::output::track_write(&session_id)?;
 
     let audio_guard = store
         .lock_session_audio(&session_id)

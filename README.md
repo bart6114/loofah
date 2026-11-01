@@ -10,6 +10,8 @@
 
 **[Loofah](https://loofah.io) is a free, open-source meeting transcription app for Apple Silicon Macs running macOS 15 or later.** Record without a bot, transcribe on-device, and keep your notes as Markdown files.
 
+A native Windows 11 port for x64 and ARM64 is in preview. See the [Windows preview guide](docs/src/content/docs/windows-preview.mdx) for downloads, setup, and known limitations. Publisher signing is pending; in-app updates remain cryptographically verified.
+
 I wanted a meeting notetaker that did a few things well: transcribe locally,
 keep my notes as ordinary Markdown files, and stay out of the way. I couldn't
 find one without accounts, subscriptions, or a cloud service in the middle, so
@@ -17,7 +19,7 @@ I built Loofah on [anarlog](https://github.com/fastrepl/anarlog).
 
 <p align="center">
   <a href="docs/public/screenshots/loofah-primary.png">
-    <img src="docs/public/screenshots/loofah-primary.png" alt="Loofah showing a meeting brief, notes, and recent sessions in a local vault" />
+    <img src="docs/public/screenshots/loofah-primary.png" alt="Loofah in the Signal theme showing a sample meeting summary, action items, and recent sessions" />
   </a>
 </p>
 
@@ -65,13 +67,15 @@ Rust CLI (`apps/cli/`). There is no database: the files in the vault are the
 source of truth. The vault format lives in `crates/vault-read/`; the interface
 uses Zustand for state and TipTap for editing.
 
-To run it locally:
+To run it locally on macOS:
 
 ```sh
 pnpm install
 pnpm -F @hypr/desktop tauri:dev   # run the desktop app
 cargo build -p loof-cli              # build the loof CLI
 ```
+
+For Windows, the [native CI workflow](.github/workflows/windows_ci.yaml) contains the build and installer checks for both architectures, including the dependency setup needed for ARM64.
 
 See [AGENTS.md](./AGENTS.md) for development notes, including formatting,
 typechecking, and code-style conventions.
@@ -81,3 +85,4 @@ typechecking, and code-style conventions.
 MIT. See [LICENSE](./LICENSE) for the complete license and copyright history,
 including the original [anarlog](https://github.com/fastrepl/anarlog)
 copyright.
+

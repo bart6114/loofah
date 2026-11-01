@@ -12,6 +12,7 @@ import {
   loadSessionContentSnapshot,
   type SessionContentSnapshot,
 } from "~/session/content-queries";
+import { beginSummaryActivity } from "~/session/summary-activity";
 import { flushDatabaseWrites } from "~/shared/write-queue";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 import type { TasksActions } from "~/store/zustand/ai-task/tasks";
@@ -106,7 +107,10 @@ export function initEnhancerService(deps: EnhancerDeps): EnhancerService {
 
 export class EnhancerService {
   private pendingEnhance = new Map<string, Promise<EnhanceResult>>();
-  private activeAutoEnhance = new Set<string>();
+  private activeAutoEnhance = new Map<
+    string,
+    ReturnType<typeof beginSummaryActivity>
+  >();
   private pendingRetries = new Map<string, ReturnType<typeof setTimeout>>();
   private unsubscribe: (() => void) | null = null;
   private eventListeners = new Set<(event: EnhancerEvent) => void>();
@@ -118,7 +122,7 @@ export class EnhancerService {
       const { status, sessionId } = state.live;
 
       if (status === "active" && sessionId) {
-        this.activeAutoEnhance.delete(sessionId);
+        this.finishAutoEnhance(sessionId);
         this.clearRetry(sessionId);
       }
     });
@@ -129,6 +133,7 @@ export class EnhancerService {
     this.unsubscribe = null;
     for (const timer of this.pendingRetries.values()) clearTimeout(timer);
     this.pendingRetries.clear();
+    for (const activity of this.activeAutoEnhance.values()) activity.finish();
     this.activeAutoEnhance.clear();
     this.eventListeners.clear();
     if (instance === this) instance = null;
@@ -150,10 +155,14 @@ export class EnhancerService {
 
   queueAutoEnhance(sessionId: string, regenerate = true) {
     if (this.activeAutoEnhance.has(sessionId)) return;
-    this.activeAutoEnhance.add(sessionId);
-    void this.tryAutoEnhance(sessionId, 0, regenerate).catch((error) => {
-      this.handleAutoEnhanceError(sessionId, error);
-    });
+    const activity = beginSummaryActivity(sessionId, "processing");
+    this.activeAutoEnhance.set(sessionId, activity);
+    void this.tryAutoEnhance(sessionId, 0, regenerate, activity).catch(
+      (error) => {
+        if (this.activeAutoEnhance.get(sessionId) === activity)
+          this.handleAutoEnhanceError(sessionId, error);
+      },
+    );
   }
 
   async queueAutoEnhanceIfSummaryEmpty(
@@ -181,27 +190,32 @@ export class EnhancerService {
     sessionId: string,
     attempt: number,
     regenerate: boolean,
+    activity: ReturnType<typeof beginSummaryActivity>,
   ) {
-    if (!this.activeAutoEnhance.has(sessionId)) return;
+    if (this.activeAutoEnhance.get(sessionId) !== activity) return;
 
     const eligibility = await this.checkEligibility(sessionId);
-    if (!this.activeAutoEnhance.has(sessionId)) return;
+    if (this.activeAutoEnhance.get(sessionId) !== activity) return;
 
     if (!eligibility.eligible) {
       if (attempt < 20) {
         const timer = setTimeout(() => {
           this.pendingRetries.delete(sessionId);
-          void this.tryAutoEnhance(sessionId, attempt + 1, regenerate).catch(
-            (error) => {
+          void this.tryAutoEnhance(
+            sessionId,
+            attempt + 1,
+            regenerate,
+            activity,
+          ).catch((error) => {
+            if (this.activeAutoEnhance.get(sessionId) === activity)
               this.handleAutoEnhanceError(sessionId, error);
-            },
-          );
+          });
         }, 500);
         this.pendingRetries.set(sessionId, timer);
         return;
       }
 
-      this.activeAutoEnhance.delete(sessionId);
+      this.finishAutoEnhance(sessionId);
       this.emit({
         type: "auto-enhance-skipped",
         sessionId,
@@ -212,15 +226,15 @@ export class EnhancerService {
     }
 
     const result = await this.enhance(sessionId, { isAuto: true, regenerate });
-    if (!this.activeAutoEnhance.has(sessionId)) return;
+    if (this.activeAutoEnhance.get(sessionId) !== activity) return;
 
     if (result.type === "no_model") {
-      this.activeAutoEnhance.delete(sessionId);
+      this.finishAutoEnhance(sessionId);
       this.emit({ type: "auto-enhance-no-model", sessionId });
       return;
     }
 
-    this.activeAutoEnhance.delete(sessionId);
+    this.finishAutoEnhance(sessionId);
     this.emit({
       type: "auto-enhance-started",
       sessionId,
@@ -229,7 +243,7 @@ export class EnhancerService {
   }
 
   private handleAutoEnhanceError(sessionId: string, error: unknown) {
-    this.activeAutoEnhance.delete(sessionId);
+    this.finishAutoEnhance(sessionId);
     this.clearRetry(sessionId);
     const reason = error instanceof Error ? error.message : String(error);
     console.error("[enhancer] auto-enhance failed", error);
@@ -239,6 +253,12 @@ export class EnhancerService {
       reason,
       reasonCode: "error",
     });
+  }
+
+  private finishAutoEnhance(sessionId: string) {
+    const activity = this.activeAutoEnhance.get(sessionId);
+    this.activeAutoEnhance.delete(sessionId);
+    activity?.finish();
   }
 
   private clearRetry(sessionId: string) {
@@ -263,11 +283,13 @@ export class EnhancerService {
     const key = `${sessionId}:${opts?.targetNoteId ?? "default"}`;
     const pending = this.pendingEnhance.get(key);
     if (pending) return pending;
+    const activity = beginSummaryActivity(sessionId, "processing");
     const request = this.startEnhance(sessionId, opts);
     this.pendingEnhance.set(key, request);
     try {
       return await request;
     } finally {
+      activity.finish();
       if (this.pendingEnhance.get(key) === request)
         this.pendingEnhance.delete(key);
     }
@@ -296,6 +318,7 @@ export class EnhancerService {
       targetNote ??
       selectSummaryDocument(snapshot.enhancedNotes) ??
       (await ensureSummaryDocument(sessionId));
+    await flushDatabaseWrites([`enhanced-note:${note.id}`]);
     const enhanceTaskId = createTaskId(
       note.kind === "summary" ? sessionId : note.id,
       "enhance",

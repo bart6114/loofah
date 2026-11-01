@@ -72,9 +72,13 @@
     }
 
     li {
-      align-items: center;
+      align-items: flex-start;
       display: flex;
       margin-bottom: 0.25rem;
+
+      > .task-checkbox-label {
+        height: 1lh;
+      }
 
       > div {
         flex: 1 1 auto;

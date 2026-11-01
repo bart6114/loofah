@@ -17,6 +17,7 @@ use hypr_model_manager::{ModelManager, ModelManagerBuilder};
 use hypr_ws_utils::ConnectionManager;
 use owhisper_interface::ListenParams;
 use owhisper_interface::stream::StreamResponse;
+use tokio::io::AsyncWriteExt;
 use tower::Service;
 
 use super::batch;
@@ -160,37 +161,59 @@ impl Service<Request<Body>> for TranscribeService {
                     .and_then(|value| value.to_str().ok())
                     .unwrap_or("")
                     .to_string();
-                let body = match axum::body::to_bytes(req.into_body(), 100 * 1024 * 1024).await {
-                    Ok(body) => body,
-                    Err(error) => {
-                        return Ok((StatusCode::BAD_REQUEST, error.to_string()).into_response());
-                    }
+                let audio_file = match receive_audio(req.into_body(), &content_type).await {
+                    Ok(file) => file,
+                    Err(response) => return Ok(response),
                 };
 
-                if body.is_empty() {
-                    return Ok((StatusCode::BAD_REQUEST, "request body is empty").into_response());
-                }
-
                 if accept.contains("text/event-stream") {
-                    Ok(
-                        batch::handle_batch_sse(
-                            body,
-                            &content_type,
-                            &params,
-                            &manager,
-                            &model_path,
-                        )
-                        .await,
-                    )
+                    Ok(batch::handle_batch_sse(audio_file, &params, &manager, &model_path).await)
                 } else {
-                    Ok(
-                        batch::handle_batch(body, &content_type, &params, &manager, &model_path)
-                            .await,
-                    )
+                    Ok(batch::handle_batch(audio_file, &params, &manager, &model_path).await)
                 }
             }
         })
     }
+}
+
+async fn receive_audio(
+    body: Body,
+    content_type: &str,
+) -> Result<tempfile::NamedTempFile, Response> {
+    let extension = hypr_audio_utils::content_type_to_extension(content_type);
+    let file = tokio::task::spawn_blocking(move || {
+        tempfile::Builder::new()
+            .prefix("whisper_local_batch_")
+            .suffix(&format!(".{extension}"))
+            .tempfile()
+    })
+    .await
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?;
+    let writer = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(file.path())
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?;
+    let mut writer = tokio::io::BufWriter::with_capacity(64 * 1024, writer);
+    let mut stream = body.into_data_stream();
+    let mut empty = true;
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()).into_response())?;
+        empty &= chunk.is_empty();
+        writer.write_all(&chunk).await.map_err(|error| {
+            (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+        })?;
+    }
+    writer
+        .flush()
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response())?;
+    if empty {
+        return Err((StatusCode::BAD_REQUEST, "request body is empty").into_response());
+    }
+    Ok(file)
 }
 
 struct ConnectionTasks {
@@ -239,15 +262,17 @@ async fn handle_websocket(
         cancelled: cancelled.clone(),
         producer: producer.abort_handle(),
     };
+    let mut closing_receiver = None;
+    let mut producer_done = false;
+    let mut completed = false;
     let conversation = async {
-        let mut producer_done = false;
         let mut first_text = true;
         loop {
             tokio::select! {
                 result = &mut producer, if !producer_done => {
                     producer_done = true;
                     match result {
-                        Ok(Ok(())) => {},
+                        Ok(Ok(receiver)) => closing_receiver = Some(receiver),
                         error => {
                             tracing::debug!(?error, "whisper_input_closed");
                             return;
@@ -263,6 +288,7 @@ async fn handle_websocket(
                             if !send_ws(&mut sender, &StreamResponse::UtteranceEndResponse { channel: vec![channel as u8], last_word_end: segment.start + segment.duration }).await { return; }
                         }
                         Some(Output::Finished { duration, finalized }) => {
+                            completed = true;
                             tracing::info!(elapsed_ms = started.elapsed().as_millis(), duration, finalized, "whisper_live_completed");
                             send_ws_best_effort(&mut sender, &StreamResponse::TerminalResponse {
                                 request_id: metadata.request_id.clone(), created: format_timestamp_now(), duration, channels: count as u32,
@@ -285,6 +311,13 @@ async fn handle_websocket(
         _ = conversation => {}
     }
     cancelled.store(true, Ordering::Release);
+    if completed && !producer_done {
+        if let Ok(Ok(Ok(receiver))) =
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut producer).await
+        {
+            closing_receiver = Some(receiver);
+        }
+    }
     producer.abort();
     // Dropping the receiver unblocks a worker stalled on output; completion never joins on Tokio.
     drop(output);
@@ -304,13 +337,57 @@ async fn handle_websocket(
         )
         .await;
     }
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), sender.close()).await;
+    // Dropping the read half before the close handshake can reset TCP on Windows.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        let _ = sender.close().await;
+        if let Some(mut receiver) = closing_receiver {
+            while let Some(Ok(message)) = receiver.next().await {
+                if matches!(message, axum::extract::ws::Message::Close(_)) {
+                    break;
+                }
+            }
+        }
+    })
+    .await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::service::build_metadata;
+
+    #[tokio::test]
+    async fn batch_upload_spools_more_than_previous_limits_and_cleans_up() {
+        let chunk = bytes::Bytes::from(vec![7; 1024 * 1024]);
+        let chunks = futures_util::stream::iter(
+            (0..251).map(move |_| Ok::<_, std::io::Error>(chunk.clone())),
+        );
+        let file = receive_audio(Body::from_stream(chunks), "audio/wav")
+            .await
+            .unwrap();
+        let path = file.path().to_path_buf();
+        assert_eq!(
+            tokio::fs::metadata(&path).await.unwrap().len(),
+            251 * 1024 * 1024
+        );
+        assert_eq!(path.extension().unwrap(), "wav");
+        drop(file);
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn empty_or_interrupted_uploads_are_rejected() {
+        let empty = receive_audio(Body::empty(), "audio/wav").await.unwrap_err();
+        assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+        let chunks = futures_util::stream::iter([
+            Ok(bytes::Bytes::from_static(b"partial audio")),
+            Err(std::io::Error::other("upload interrupted")),
+        ]);
+        let interrupted = receive_audio(Body::from_stream(chunks), "audio/wav")
+            .await
+            .unwrap_err();
+        assert_eq!(interrupted.status(), StatusCode::BAD_REQUEST);
+    }
 
     #[test]
     fn health_and_listen_paths_are_stable() {

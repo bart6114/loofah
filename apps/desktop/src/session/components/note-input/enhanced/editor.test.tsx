@@ -262,3 +262,20 @@ describe("EnhancedEditor", () => {
     ).toBeUndefined();
   });
 });
+
+it("passes read-only to the editor and removes attachment drop configuration", () => {
+  render(
+    <EnhancedEditor
+      sessionId="locked"
+      enhancedNoteId="locked"
+      content='{"type":"doc","content":[]}'
+      readOnly
+      fileHandlerConfig={{ onFileUpload: vi.fn() }}
+    />,
+  );
+  const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
+  expect(props?.readOnly).toBe(true);
+  expect(props?.fileHandlerConfig).toBeUndefined();
+  expect(props?.sessionMentionDropConfig).toBeUndefined();
+  cleanup();
+});

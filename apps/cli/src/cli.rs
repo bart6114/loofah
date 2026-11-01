@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use hypr_agent_access::{DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, SearchKind};
+use hypr_agent_access::{DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -39,6 +39,8 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Build or repair the local search cache for the existing vault
+    Init,
     /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
     Doctor,
     /// Browse, create, edit, and export sessions
@@ -146,22 +148,10 @@ pub enum MeetingCommand {
         #[arg(long, help = "Only meetings without any tags")]
         untagged: bool,
     },
-    /// Search across meeting titles, notes, summaries, and transcripts
-    #[command(group = clap::ArgGroup::new("criteria").required(true).multiple(true).args(["query", "speaker"]))]
+    /// Search sessions using desktop full-text matching and relevance ranking
     Search {
-        /// Case-insensitive terms that must all occur
-        query: Option<String>,
-        #[arg(
-            long,
-            help = "Person id or name substring; limits hits to meetings where that person spoke"
-        )]
-        speaker: Option<String>,
-        #[arg(
-            long,
-            value_enum,
-            help = "Restrict to a source; repeatable, defaults to all"
-        )]
-        kind: Vec<SearchKindArg>,
+        /// Words, quoted phrases, and trailing word prefixes
+        query: String,
         #[arg(long, default_value_t = DEFAULT_SEARCH_LIMIT, value_parser = clap::value_parser!(u32).range(1..=MAX_SEARCH_LIMIT as i64), help = "Maximum hits (1-50)")]
         limit: u32,
         #[arg(long, default_value_t = 0, help = "Number of hits to skip")]
@@ -306,25 +296,6 @@ pub enum TagCommand {
         #[arg(required = true, value_name = "TAG", value_parser = parse_tag)]
         tags: Vec<String>,
     },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub enum SearchKindArg {
-    Title,
-    Note,
-    Summary,
-    Transcript,
-}
-
-impl From<SearchKindArg> for SearchKind {
-    fn from(kind: SearchKindArg) -> Self {
-        match kind {
-            SearchKindArg::Title => Self::Title,
-            SearchKindArg::Note => Self::Note,
-            SearchKindArg::Summary => Self::Summary,
-            SearchKindArg::Transcript => Self::Transcript,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
@@ -551,37 +522,17 @@ mod tests {
     }
 
     #[test]
-    fn parses_search_filters_and_requires_query_or_speaker() {
-        let Command::Sessions { command } = Args::parse_from([
-            "loof",
-            "meetings",
-            "search",
-            "--speaker",
-            "bob",
-            "--kind",
-            "transcript",
-        ])
-        .command
-        else {
-            panic!("expected meetings command");
-        };
-        let MeetingCommand::Search {
-            query,
-            speaker,
-            kind,
-            limit,
-            offset,
-        } = command
-        else {
-            panic!("expected search command");
-        };
-        assert_eq!(query, None);
-        assert_eq!(speaker.as_deref(), Some("bob"));
-        assert_eq!(kind, vec![SearchKindArg::Transcript]);
-        assert_eq!(limit, 20);
-        assert_eq!(offset, 0);
-
-        assert!(Args::try_parse_from(["loof", "meetings", "search"]).is_err());
+    fn search_requires_query_and_rejects_retired_filters() {
+        assert!(Args::try_parse_from(["loof", "sessions", "search", "planning"]).is_ok());
+        assert!(Args::try_parse_from(["loof", "sessions", "search"]).is_err());
+        assert!(
+            Args::try_parse_from(["loof", "sessions", "search", "planning", "--speaker", "bob"])
+                .is_err()
+        );
+        assert!(
+            Args::try_parse_from(["loof", "sessions", "search", "planning", "--kind", "title"])
+                .is_err()
+        );
     }
 
     #[test]

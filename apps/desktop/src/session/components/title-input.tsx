@@ -86,7 +86,7 @@ export const TitleInput = forwardRef<
               "text-muted-foreground animate-pulse",
               variant === "breadcrumb"
                 ? "text-sm leading-5"
-                : "text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.01em]",
+                : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
             ])}
           >
             <Trans>Generating title...</Trans>
@@ -109,7 +109,7 @@ export const TitleInput = forwardRef<
               "animate-reveal-left whitespace-nowrap",
               variant === "breadcrumb"
                 ? "text-sm leading-5"
-                : "text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.01em]",
+                : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
             ])}
           >
             {generatedTitle}
@@ -373,7 +373,7 @@ const TitleInputInner = memo(
             "group/title-input relative flex max-w-full items-center overflow-hidden",
             variant === "breadcrumb"
               ? "h-5 text-sm leading-5"
-              : "h-[1.75rem] text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.01em]",
+              : "session-title-heading h-[34px] text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
           ])}
         >
           <input
@@ -416,7 +416,7 @@ const TitleInputInner = memo(
               "placeholder:text-muted-foreground text-left",
               variant === "breadcrumb"
                 ? "text-muted-foreground h-5 appearance-none p-0 text-sm leading-5 focus:underline"
-                : "text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.01em]",
+                : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
               variant === "breadcrumb" &&
                 (isTitleFocused
                   ? "overflow-x-auto whitespace-nowrap"
@@ -435,7 +435,7 @@ const TitleInputInner = memo(
                   "group-hover/title-input:animate-title-hover-scroll whitespace-nowrap group-hover/title-input:will-change-transform",
                   variant === "breadcrumb"
                     ? "text-sm leading-5"
-                    : "text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.01em]",
+                    : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
                 ])}
               >
                 {title}

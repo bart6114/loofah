@@ -1,6 +1,7 @@
 (function () {
-  // Fast path before React boots. `main.tsx` re-reads settings.json and syncs this key.
-  var stored = localStorage.getItem("hypr-theme");
+  // A startup cache; the Rust-backed config.json is authoritative after hydration.
+  var stored;
+  try { stored = localStorage.getItem("hypr-theme"); } catch { stored = null; }
   var theme =
     stored === "light" || stored === "dark" || stored === "system"
       ? stored

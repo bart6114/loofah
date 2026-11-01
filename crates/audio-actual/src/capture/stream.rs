@@ -18,6 +18,7 @@ use crate::mic::MicInput;
 use crate::speaker::SpeakerInput;
 
 use super::joiner::Joiner;
+use super::recovery::CaptureHealth;
 
 pub(crate) type ChunkStream =
     Pin<Box<dyn Stream<Item = Result<Vec<f32>, hypr_resampler::Error>> + Send>>;
@@ -101,6 +102,7 @@ pub(crate) fn open_dual(
     mic_stream: ChunkStream,
     speaker_stream: ChunkStream,
     enable_aec: bool,
+    health: Option<Arc<CaptureHealth>>,
 ) -> CaptureStream {
     let cancel_token = CancellationToken::new();
     let (tx, rx) = tokio::sync::mpsc::channel(32);
@@ -111,6 +113,7 @@ pub(crate) fn open_dual(
         enable_aec,
         mic_stream,
         speaker_stream,
+        health,
     ));
 
     CaptureStream::new(CaptureStreamInner {
@@ -126,7 +129,11 @@ pub(crate) enum CaptureSide {
     Speaker,
 }
 
-pub(crate) fn open_single(chunk_stream: ChunkStream, side: CaptureSide) -> CaptureStream {
+pub(crate) fn open_single(
+    chunk_stream: ChunkStream,
+    side: CaptureSide,
+    health: Option<Arc<CaptureHealth>>,
+) -> CaptureStream {
     let cancel_token = CancellationToken::new();
     let (tx, rx) = tokio::sync::mpsc::channel(32);
     let task = tokio::spawn(run_single_loop(
@@ -134,6 +141,7 @@ pub(crate) fn open_single(chunk_stream: ChunkStream, side: CaptureSide) -> Captu
         cancel_token.clone(),
         chunk_stream,
         side,
+        health,
     ));
 
     CaptureStream::new(CaptureStreamInner {
@@ -156,10 +164,12 @@ async fn run_dual_loop(
     enable_aec: bool,
     mut mic_stream: ChunkStream,
     mut speaker_stream: ChunkStream,
+    health: Option<Arc<CaptureHealth>>,
 ) {
     let mut joiner = Joiner::new();
     let mut aec = if enable_aec { build_aec() } else { None };
     let mut linear_echo_gain = None;
+    let mut last_health = (0, 0);
     let mut aec_reference = if aec.is_some() {
         Some(AecReferenceAligner::new(sample_rate))
     } else {
@@ -179,6 +189,11 @@ async fn run_dual_loop(
 
         match result {
             StreamResult::Continue => {
+                if report_health(&tx, &health, &mut last_health).await {
+                    aec = if enable_aec { build_aec() } else { None };
+                    linear_echo_gain = None;
+                    aec_reference = aec.as_ref().map(|_| AecReferenceAligner::new(sample_rate));
+                }
                 while let Some((raw_mic, raw_speaker)) = joiner.pop_pair() {
                     let raw_mic = Arc::<[f32]>::from(raw_mic);
                     let raw_speaker = Arc::<[f32]>::from(raw_speaker);
@@ -457,13 +472,16 @@ async fn run_single_loop(
     cancel_token: CancellationToken,
     mut chunk_stream: ChunkStream,
     side: CaptureSide,
+    health: Option<Arc<CaptureHealth>>,
 ) {
+    let mut last_health = (0, 0);
     loop {
         tokio::select! {
             _ = cancel_token.cancelled() => return,
             item = chunk_stream.next() => {
                 match item {
                     Some(Ok(data)) => {
+                        report_health(&tx, &health, &mut last_health).await;
                         let data = Arc::<[f32]>::from(data);
                         let silence = Arc::<[f32]>::from(vec![0.0f32; data.len()]);
                         let frame = match side {
@@ -502,6 +520,32 @@ async fn run_single_loop(
             }
         }
     }
+}
+
+async fn report_health(
+    tx: &tokio::sync::mpsc::Sender<Result<CaptureFrame, Error>>,
+    health: &Option<Arc<CaptureHealth>>,
+    previous: &mut (u8, usize),
+) -> bool {
+    use std::sync::atomic::Ordering;
+    let Some(health) = health else {
+        return false;
+    };
+    let current = (
+        health.recovering.load(Ordering::SeqCst),
+        health.generation.load(Ordering::SeqCst),
+    );
+    if previous.0 != current.0 {
+        let _ = tx
+            .send(Err(Error::CaptureRecovering {
+                microphone: current.0 & 1 != 0,
+                speaker: current.0 & 2 != 0,
+            }))
+            .await;
+    }
+    let reset = previous.1 != current.1;
+    *previous = current;
+    reset
 }
 
 fn handle_stream_item(

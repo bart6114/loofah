@@ -118,7 +118,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Notify<'a, R, M> {
         let mut guard = state.own_writes.lock().unwrap();
         let now = std::time::Instant::now();
         for path in paths {
-            guard.insert(path.clone(), now);
+            guard.insert(hypr_storage::fs::relative_path_key(path).into_owned(), now);
         }
     }
 }

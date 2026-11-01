@@ -179,7 +179,7 @@ export function AudioPlayerProvider({
 
     const ws = WaveSurfer.create({
       container,
-      height: 20,
+      height: 28,
       waveColor: "#e5e5e5",
       progressColor: "#a8a8a8",
       cursorColor: "#737373",
@@ -192,8 +192,8 @@ export function AudioPlayerProvider({
       dragToSeek: true,
       normalize: true,
       splitChannels: [
-        { waveColor: "#e8d5d5", progressColor: "#c9a3a3", overlay: true },
-        { waveColor: "#d5dde8", progressColor: "#a3b3c9", overlay: true },
+        { waveColor: "#d6b8b8", progressColor: "#a77474", overlay: true },
+        { waveColor: "#b7c6d8", progressColor: "#748fae", overlay: true },
       ],
       ...(peaks ? { peaks: peaks.channels, duration: peaks.durationSec } : {}),
     });

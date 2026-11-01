@@ -1,6 +1,8 @@
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 use std::{
     collections::HashMap,
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::Stdio,
     sync::{
@@ -44,7 +46,7 @@ fn runtime_error() -> ChatgptError {
 fn codex_missing() -> ChatgptError {
     failure(
         "runtime_missing",
-        "Install Codex CLI 0.153.4 or later on this Mac, then try signing in again.",
+        "Install Codex CLI 0.153.4 or later on this computer, then try signing in again.",
     )
 }
 
@@ -53,48 +55,62 @@ fn codex_in_paths(paths: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
         .into_iter()
         .filter(|path| path.is_absolute())
         .find_map(|path| {
-            let binary = path.join("codex");
-            let metadata = binary.metadata().ok()?;
-            (metadata.is_file() && metadata.permissions().mode() & 0o111 != 0).then_some(binary)
+            #[cfg(windows)]
+            let names = ["codex.exe", "codex.cmd"];
+            #[cfg(not(windows))]
+            let names = ["codex"];
+            names.into_iter().find_map(|name| {
+                let binary = path.join(name);
+                let metadata = binary.metadata().ok()?;
+                #[cfg(unix)]
+                if metadata.permissions().mode() & 0o111 == 0 {
+                    return None;
+                }
+                metadata.is_file().then_some(binary)
+            })
         })
 }
 
 async fn installed_codex() -> Result<PathBuf, ChatgptError> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let mut paths: Vec<_> = std::env::split_paths(&path).collect();
+    #[cfg(not(windows))]
     paths.extend([
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/usr/local/bin"),
     ]);
-    if let Some(home) = std::env::var_os("HOME") {
-        paths.push(PathBuf::from(home).join(".local/bin"));
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".local/bin"));
     }
     if let Some(binary) = codex_in_paths(paths) {
         return Ok(binary);
     }
-    // Finder does not inherit shell PATH entries such as nvm's active Node installation.
-    let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
-    let output = tokio::time::timeout(
-        Duration::from_secs(5),
-        Command::new(shell)
-            .args(["-ilc", "command -v codex"])
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .map_err(|_| codex_missing())?
-    .map_err(|_| codex_missing())?;
-    if output.status.success() {
-        if let Some(path) = String::from_utf8_lossy(&output.stdout).lines().last() {
-            let path = PathBuf::from(path.trim());
-            if path.file_name().is_some_and(|name| name == "codex") {
-                if let Some(binary) = path
-                    .parent()
-                    .and_then(|parent| codex_in_paths([parent.to_path_buf()]))
-                {
-                    return Ok(binary);
+    #[cfg(not(windows))]
+    {
+        // Finder does not inherit shell PATH entries such as nvm's active Node installation.
+        let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
+        let output = tokio::time::timeout(
+            Duration::from_secs(5),
+            Command::new(shell)
+                .args(["-ilc", "command -v codex"])
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .map_err(|_| codex_missing())?
+        .map_err(|_| codex_missing())?;
+        if output.status.success() {
+            if let Some(path) = String::from_utf8_lossy(&output.stdout).lines().last() {
+                let path = PathBuf::from(path.trim());
+                if path.file_name().is_some_and(|name| name == "codex") {
+                    if let Some(binary) = path
+                        .parent()
+                        .and_then(|parent| codex_in_paths([parent.to_path_buf()]))
+                    {
+                        return Ok(binary);
+                    }
                 }
             }
         }
@@ -140,6 +156,11 @@ async fn check_codex_version(binary: &std::path::Path) -> Result<(), ChatgptErro
 
 fn codex_path(binary: &std::path::Path) -> std::ffi::OsString {
     let mut paths = vec![binary.parent().unwrap().to_path_buf()];
+    #[cfg(windows)]
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    #[cfg(not(windows))]
     paths.extend(
         [
             "/opt/homebrew/bin",
@@ -160,7 +181,11 @@ fn provider_error(value: &Value) -> ChatgptError {
     if text.contains("keyring") || text.contains("keychain") {
         failure(
             "keychain",
-            "macOS couldn't access your login Keychain. Unlock it and reconnect ChatGPT.",
+            if cfg!(windows) {
+                "Windows couldn't access your saved credentials. Reconnect ChatGPT."
+            } else {
+                "macOS couldn't access your login Keychain. Unlock it and reconnect ChatGPT."
+            },
         )
     } else if text.contains("401")
         || text.contains("unauthorized")
@@ -424,6 +449,13 @@ impl Client {
             "USER",
             "LOGNAME",
             "TMPDIR",
+            "SYSTEMROOT",
+            "WINDIR",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "TEMP",
+            "TMP",
             "SSL_CERT_FILE",
             "CODEX_CA_CERTIFICATE",
             "HTTPS_PROXY",
@@ -622,6 +654,8 @@ pub async fn chatgpt_login<R: tauri::Runtime>(
             if *cancel.borrow() { return Err(failure("cancelled", "Sign-in cancelled.")); }
             let url = login["authUrl"].as_str().ok_or_else(runtime_error)?;
             if !url.starts_with("https://auth.openai.com/") && !url.starts_with("https://chatgpt.com/") { return Err(runtime_error()); }
+            #[cfg(not(windows))]
+            {
             // Await Launch Services dispatch so launcher failures reach the UI.
             let mut opener = Command::new("/usr/bin/open");
             opener
@@ -636,6 +670,21 @@ pub async fn chatgpt_login<R: tauri::Runtime>(
             };
             if !status.is_ok_and(|status| status.success()) {
                 return Err(failure("browser", "Couldn't open your browser. Try signing in again."));
+            }
+            }
+            #[cfg(windows)]
+            {
+                use tauri_plugin_opener::OpenerExt;
+                let app = app.clone();
+                let url = url.to_string();
+                let open = tokio::task::spawn_blocking(move || app.opener().open_url(url, None::<&str>));
+                let result = tokio::select! {
+                    _ = cancel.changed() => return Err(failure("cancelled", "Sign-in cancelled.")),
+                    result = open => result,
+                };
+                if !matches!(result, Ok(Ok(()))) {
+                    return Err(failure("browser", "Couldn't open your browser. Try signing in again."));
+                }
             }
             tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "chatgpt_login_browser_dispatched");
             let _ = on_browser_opened.send(());
@@ -902,6 +951,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn discovery_skips_non_executables_and_preserves_path_order() {
         let root = tempfile::tempdir().unwrap();
         let paths: Vec<_> = ["not-executable", "first", "second"]
@@ -921,6 +971,28 @@ mod tests {
         assert_eq!(
             codex_in_paths([paths[0].clone(), root.path().join("missing")]),
             None
+        );
+        assert_eq!(codex_in_paths([PathBuf::from(".")]), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn discovery_prefers_native_windows_executables_and_accepts_npm_shims() {
+        let root = tempfile::tempdir().unwrap();
+        let first = root.path().join("first");
+        let second = root.path().join("second");
+        std::fs::create_dir_all(first.join("codex.exe")).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(first.join("codex.cmd"), "@echo off").unwrap();
+        std::fs::write(second.join("codex.exe"), "native").unwrap();
+        assert_eq!(
+            codex_in_paths([first.clone(), second.clone()]),
+            Some(first.join("codex.cmd"))
+        );
+        std::fs::write(second.join("codex.cmd"), "@echo off").unwrap();
+        assert_eq!(
+            codex_in_paths([second.clone()]),
+            Some(second.join("codex.exe"))
         );
         assert_eq!(codex_in_paths([PathBuf::from(".")]), None);
     }
@@ -949,6 +1021,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn version_probe_reports_actionable_errors() {
         let root = tempfile::tempdir().unwrap();
         let binary = root.path().join("codex");
@@ -968,7 +1041,30 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
     #[tokio::test]
+    async fn version_probe_supports_windows_npm_shims_in_paths_with_spaces() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("npm bin");
+        std::fs::create_dir(&directory).unwrap();
+        let binary = directory.join("codex.cmd");
+        for (version, supported) in [("0.153.3", false), ("0.153.4", true)] {
+            std::fs::write(
+                &binary,
+                format!("@echo off\r\necho codex-cli {version}\r\n"),
+            )
+            .unwrap();
+            let result = check_codex_version(&binary).await;
+            if supported {
+                result.unwrap();
+            } else {
+                assert_eq!(result.unwrap_err().code, "runtime_incompatible");
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
     async fn npm_entry_point_can_find_its_node_runtime() {
         let root = tempfile::tempdir().unwrap();
         let binary = root.path().join("codex");
@@ -1009,6 +1105,7 @@ mod tests {
         client.stop();
     }
 
+    #[cfg(unix)]
     fn fixture(script: &str) -> Arc<Client> {
         let child = Command::new("/bin/sh")
             .arg("-c")
@@ -1023,6 +1120,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn correlates_out_of_order_responses() {
         let client = fixture(
             r#"read -r first
@@ -1040,6 +1138,7 @@ read -r hold"#,
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn unexpected_tool_request_stops_runtime_and_fails_pending_work() {
         let client = fixture(
             r#"read -r request
@@ -1057,6 +1156,7 @@ read -r hold"#,
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn process_exit_fails_request_without_waiting_for_timeout() {
         let client = fixture("read -r request; exit 0");
         let result = tokio::time::timeout(
@@ -1068,6 +1168,7 @@ read -r hold"#,
         assert_eq!(result.unwrap_err().code, "runtime");
     }
 
+    #[cfg(unix)]
     fn generation() -> ChatgptGeneration {
         ChatgptGeneration {
             request_id: "request".into(),
@@ -1080,6 +1181,7 @@ read -r hold"#,
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn streams_final_text_and_usage_without_commentary() {
         let client = fixture(
             r#"read -r thread
@@ -1121,6 +1223,7 @@ read -r hold"#,
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn cancellation_interrupts_the_active_turn() {
         let client = fixture(
             r#"read -r thread

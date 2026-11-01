@@ -1,0 +1,65 @@
+name: Prepare CLI native libraries
+description: Pin ONNX Runtime builds compatible with the supported CLI platforms.
+inputs:
+  target:
+    description: Rust target triple.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        # ort's default Linux archives exceed our glibc floor; Intel macOS has no default archive.
+        # Custom static linking: https://ort.pyke.io/setup/linking
+        case "$TARGET" in
+          x86_64-unknown-linux-gnu)
+            archive=onnxruntime-linux-x64-static_lib-1.28.0-glibc2_28.zip
+            checksum=204cd1ea7efdc76057974afe6a97141666fbed8cf5614fc52b305667a621c119
+            ;;
+          aarch64-unknown-linux-gnu)
+            archive=onnxruntime-linux-aarch64-static_lib-1.28.0-glibc2_28.zip
+            checksum=31c56eaa8c79723555e2284b251e09a9924bf106560a2d6e4e93da6ddf44b4f2
+            ;;
+          x86_64-apple-darwin)
+            archive=onnxruntime-osx-x86_64-static_lib-1.28.0.zip
+            checksum=88c6037c0eb9a7f0013729e0181feec4fb9ef30ca37769aa7b69d2478450c415
+            ;;
+          aarch64-apple-darwin) exit 0 ;;
+          *) echo "Unsupported CLI target: $TARGET" >&2; exit 1 ;;
+        esac
+        destination="$RUNNER_TEMP/cli-onnxruntime"
+        mkdir -p "$destination"
+        curl --proto '=https' --tlsv1.2 --location --fail --retry 5 \
+          "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.0/$archive" \
+          --output "$destination/$archive"
+        printf '%s  %s\n' "$checksum" "$destination/$archive" | shasum -a 256 -c -
+        unzip -q "$destination/$archive" -d "$destination"
+        library_dir="$destination/${archive%.zip}/lib"
+        test -s "$library_dir/libonnxruntime.a"
+        {
+          echo "ORT_LIB_PATH=$library_dir"
+          echo "LOOFAH_NATIVE_CACHE=onnxruntime-$checksum"
+        } >> "$GITHUB_ENV"
+        if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+          if ! command -v g++-14 >/dev/null; then
+            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+            sudo apt-get update
+            sudo apt-get install -y g++-14
+          fi
+          # Bundle the newer C++ runtime so Ubuntu 22.04 users do not need a toolchain upgrade.
+          cxx_library="$(g++-14 -print-file-name=libstdc++.a)"
+          test -s "$cxx_library"
+          cxx_hash="$(shasum -a 256 "$cxx_library" | awk '{print $1}')"
+          target_env="$(printf '%s' "$TARGET" | tr 'a-z-' 'A-Z_')"
+          {
+            echo "CC=gcc-14"
+            echo "CXX=g++-14"
+            echo "CARGO_TARGET_${target_env}_LINKER=gcc-14"
+            echo "ORT_CXX_STDLIB=static=stdc++"
+            echo "RUSTFLAGS=${RUSTFLAGS:-} -L native=$(dirname "$cxx_library")"
+            echo "LOOFAH_NATIVE_CACHE=onnxruntime-$checksum-static-cxx-$cxx_hash"
+          } >> "$GITHUB_ENV"
+        fi

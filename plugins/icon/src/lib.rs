@@ -5,6 +5,8 @@ mod ext;
 pub mod overlay;
 #[cfg(not(feature = "examples"))]
 mod overlay;
+#[cfg(any(target_os = "windows", test))]
+mod windows;
 
 pub use error::{Error, Result};
 pub use ext::*;
@@ -27,9 +29,15 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     let specta_builder = make_specta_builder();
 
-    tauri::plugin::Builder::new(PLUGIN_NAME)
-        .invoke_handler(specta_builder.invoke_handler())
-        .build()
+    let builder =
+        tauri::plugin::Builder::new(PLUGIN_NAME).invoke_handler(specta_builder.invoke_handler());
+    #[cfg(target_os = "windows")]
+    let builder = builder.on_window_ready(|window| {
+        if let Err(error) = windows::apply(&window) {
+            eprintln!("Could not update the taskbar icon: {error}");
+        }
+    });
+    builder.build()
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 ---
 source: apps/cli/src/cli.rs
+assertion_line: 868
 expression: canonicalize_json(contract)
 ---
 {
@@ -39,6 +40,19 @@ expression: canonicalize_json(contract)
     }
   ],
   "subcommands": [
+    {
+      "about": "Build or repair the local search cache for the existing vault",
+      "name": "loof init",
+      "options": [
+        {
+          "flags": "-h, --help",
+          "help": "Print help",
+          "is_flag": false,
+          "required": false
+        }
+      ],
+      "synopsis": "loof init [-h]"
+    },
     {
       "about": "Check vault access and layout; refresh the vault guide. Open desktop to migrate",
       "name": "loof doctor",
@@ -113,36 +127,16 @@ expression: canonicalize_json(contract)
           "synopsis": "loof sessions list [-q] [--limit] [--offset] [--tag] [--untagged] [-h]"
         },
         {
-          "about": "Search across meeting titles, notes, summaries, and transcripts",
+          "about": "Search sessions using desktop full-text matching and relevance ranking",
           "arguments": [
             {
-              "help": "Case-insensitive terms that must all occur",
+              "help": "Words, quoted phrases, and trailing word prefixes",
               "name": "QUERY",
-              "required": false
+              "required": true
             }
           ],
           "name": "loof sessions search",
           "options": [
-            {
-              "flags": "--speaker",
-              "help": "Person id or name substring; limits hits to meetings where that person spoke",
-              "is_flag": false,
-              "required": false,
-              "value_name": "SPEAKER"
-            },
-            {
-              "flags": "--kind",
-              "help": "Restrict to a source; repeatable, defaults to all",
-              "is_flag": false,
-              "possible_values": [
-                "title",
-                "note",
-                "summary",
-                "transcript"
-              ],
-              "required": false,
-              "value_name": "KIND"
-            },
             {
               "default": "20",
               "flags": "--limit",
@@ -166,7 +160,7 @@ expression: canonicalize_json(contract)
               "required": false
             }
           ],
-          "synopsis": "loof sessions search [--speaker] [--kind] [--limit] [--offset] [-h] [query]"
+          "synopsis": "loof sessions search [--limit] [--offset] [-h] <query>"
         },
         {
           "about": "Show meeting metadata, notes, summaries, and action items",

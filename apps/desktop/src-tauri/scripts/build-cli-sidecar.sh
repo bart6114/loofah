@@ -11,10 +11,10 @@ target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 
 cd "$repo_root"
 if [ "$triple" = "$host_triple" ]; then
-  cargo build --locked --release -p loof-cli
+  cargo build --locked --release -p loof-cli --timings
   built="$target_dir/release/loof"
 else
-  cargo build --locked --release -p loof-cli --target "$triple"
+  cargo build --locked --release -p loof-cli --timings --target "$triple"
   built="$target_dir/$triple/release/loof"
 fi
 

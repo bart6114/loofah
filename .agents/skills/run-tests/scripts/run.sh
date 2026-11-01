@@ -7,15 +7,10 @@ cd "$repo_root"
 
 readonly rust_excludes=(
   desktop
-  email
-  mac
   notification-macos
-  notification-macos2
   tcc
-  apple-note
   notification-linux
   aec
-  agc
   whisper
   whisper-local
   whisper-local-model
@@ -31,7 +26,6 @@ readonly rust_excludes=(
   audio-device
   transcribe-whisper-local
   device-monitor
-  local-stt-server
   tauri-plugin-deeplink2
   tauri-plugin-detect
   tauri-plugin-fs-sync
@@ -115,10 +109,12 @@ run_rust() {
 
 run_cli() {
   run_step "export-core tests" cargo test --locked -p export-core
+  run_step "search-cache tests" cargo test --locked -p search-cache
   run_step "agent-access tests" cargo test --locked -p agent-access
   run_step "CLI tests" cargo test --locked -p loof-cli
   run_step "TipTap tests" cargo test --locked -p tiptap
   run_step "CLI clippy" cargo clippy --locked \
+    -p search-cache \
     -p agent-access \
     -p export-core \
     -p loof-cli \
@@ -172,6 +168,7 @@ run_cli() {
 }
 
 run_workflows() {
+  run_step "release workflow helpers" python3 -m unittest discover -s .github/scripts -p 'test_*.py'
   command -v uvx >/dev/null 2>&1 || {
     echo "uvx is required to run the zizmor workflow check" >&2
     return 1

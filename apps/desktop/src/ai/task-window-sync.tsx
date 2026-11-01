@@ -4,6 +4,10 @@ import { useEffect } from "react";
 import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
 
 import { type EnhanceResult, getEnhancerService } from "~/services/enhancer";
+import {
+  useSummaryActivity,
+  type SummaryActivity,
+} from "~/session/summary-activity";
 import { createAsyncListenerScope } from "~/shared/async-listener-scope";
 import type { AITaskStore } from "~/store/zustand/ai-task";
 import type { RemoteTaskState, TaskState } from "~/store/zustand/ai-task/tasks";
@@ -16,12 +20,14 @@ const TASK_ENHANCE_RESULT_EVENT = "hypr:ai-task-enhance-result";
 type TaskEnhanceResultPayload = {
   requestId: string;
   result?: EnhanceResult;
+  queued?: boolean;
   error?: string;
 };
 
 type TaskSyncPayload = {
   sourceLabel: string;
   tasks: Record<string, RemoteTaskState>;
+  summaryActivity: Record<string, SummaryActivity>;
 };
 
 type TaskSyncRequestPayload = {
@@ -57,13 +63,23 @@ export async function requestMainEnhance(
   sessionId: string,
   opts?: TaskEnhancePayload["opts"],
 ) {
+  const response = await requestEnhance(sessionId, { opts });
+  if (!response.result)
+    throw new Error("Summary did not start. Please try again.");
+  return response.result;
+}
+
+async function requestEnhance(
+  sessionId: string,
+  request: Pick<TaskEnhancePayload, "auto" | "opts">,
+) {
   const requestId = crypto.randomUUID();
   const sourceLabel = getCurrentWebviewWindowLabel();
   let active = true;
   let unlisten: UnlistenFn | undefined;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await new Promise<EnhanceResult>((resolve, reject) => {
+    return await new Promise<TaskEnhanceResultPayload>((resolve, reject) => {
       timeout = setTimeout(
         () => reject(new Error("Summary did not start. Please try again.")),
         30_000,
@@ -73,7 +89,7 @@ export async function requestMainEnhance(
         ({ payload }) => {
           if (payload.requestId !== requestId) return;
           if (payload.error) reject(new Error(payload.error));
-          else if (payload.result) resolve(payload.result);
+          else if (payload.result || payload.queued) resolve(payload);
         },
       )
         .then(async (stop) => {
@@ -84,7 +100,7 @@ export async function requestMainEnhance(
           unlisten = stop;
           await emitTo("main", TASK_ENHANCE_EVENT, {
             sessionId,
-            opts,
+            ...request,
             requestId,
             sourceLabel,
           } satisfies TaskEnhancePayload);
@@ -102,10 +118,7 @@ export async function requestMainAutoEnhance(
   sessionId: string,
   auto: NonNullable<TaskEnhancePayload["auto"]>,
 ) {
-  await emitTo("main", TASK_ENHANCE_EVENT, {
-    sessionId,
-    auto,
-  } satisfies TaskEnhancePayload);
+  await requestEnhance(sessionId, { auto });
 }
 
 export function AITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
@@ -127,6 +140,7 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
       void emit(TASK_SYNC_EVENT, {
         sourceLabel,
         tasks: serializeEnhanceTasks(store.getState().tasks),
+        summaryActivity: useSummaryActivity.getState().sessions,
       } satisfies TaskSyncPayload);
     };
 
@@ -145,6 +159,7 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
       previousTasks = nextTasks;
       emitSnapshot();
     });
+    const unsubscribeActivity = useSummaryActivity.subscribe(emitSnapshot);
     emitSnapshot();
 
     void scope
@@ -157,6 +172,7 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
           void emitTo(event.payload.sourceLabel, TASK_SYNC_EVENT, {
             sourceLabel,
             tasks: serializeEnhanceTasks(store.getState().tasks),
+            summaryActivity: useSummaryActivity.getState().sessions,
           } satisfies TaskSyncPayload);
         }),
       )
@@ -209,6 +225,12 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
                 } satisfies TaskEnhanceResultPayload);
               }
             }
+            if (auto && requestId && sourceLabel) {
+              await emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
+                requestId,
+                queued: true,
+              } satisfies TaskEnhanceResultPayload);
+            }
           })().catch((error) => {
             console.error("[enhancer] remote enhancement failed", error);
             if (requestId && sourceLabel) {
@@ -227,6 +249,7 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
     return () => {
       scope.dispose();
       unsubscribe();
+      unsubscribeActivity();
     };
   }, [store]);
 
@@ -250,6 +273,10 @@ function RemoteAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
           }
 
           store.getState().syncRemoteTasks(event.payload.tasks);
+          useSummaryActivity.setState({
+            remoteSessions: event.payload.summaryActivity,
+            remoteReady: true,
+          });
         }),
       )
       .then(() => {
@@ -301,7 +328,12 @@ function isTaskSyncPayload(payload: unknown): payload is TaskSyncPayload {
   return (
     typeof candidate.sourceLabel === "string" &&
     Boolean(candidate.tasks) &&
-    typeof candidate.tasks === "object"
+    typeof candidate.tasks === "object" &&
+    Boolean(candidate.summaryActivity) &&
+    typeof candidate.summaryActivity === "object" &&
+    Object.values(candidate.summaryActivity!).every(
+      (phase) => phase === "recording" || phase === "processing",
+    )
   );
 }
 

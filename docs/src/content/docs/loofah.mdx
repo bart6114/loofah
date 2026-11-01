@@ -3,24 +3,18 @@ title: "How Loofah works"
 description: "Explore Loofah’s free Mac app for meeting transcription, Markdown notes, and agent-assisted research in a local knowledge vault."
 ---
 
+import DesktopDownloads from "../../components/DesktopDownloads.astro";
+
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 Loofah is a free, local-first Mac app for notes and meeting transcription. It records your microphone and system audio without sending a bot into the call, transcribes on your Mac, and saves your notes as ordinary Markdown files on your local filesystem wherever possible.
 
-<div class="download-cta">
-  <a href="https://github.com/bart6114/loofah/releases/download/updater/Loofah_latest_aarch64.dmg">
-    <span class="cta-label">
-      <span class="cta-title">Download for macOS</span>
-      <span class="cta-subtitle">Apple Silicon · Signed and notarized</span>
-    </span>
-    <span class="cta-arrow">↓</span>
-  </a>
-</div>
+<DesktopDownloads />
 
 <img
   class="homepage-screenshot"
   src="/screenshots/loofah-primary.png"
-  alt="Loofah showing a meeting brief, notes, and recent sessions in a local vault"
+  alt="Loofah in the Signal theme showing a sample meeting summary, action items, and recent sessions"
 />
 
 Loofah started as the meeting notetaker I wanted: local transcription, ordinary files, and no service getting between me and my notes. It has since become the place where I keep more of my working knowledge.

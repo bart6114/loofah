@@ -1,7 +1,10 @@
 pub(crate) mod devtools_panel;
 pub(crate) mod floating_bar;
 pub(crate) mod live_caption;
+pub(crate) mod overlay;
 mod v1;
+#[cfg(target_os = "windows")]
+pub(crate) mod windows_native;
 
 pub type AppWindow = v1::AppWindow;
 

@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use hypr_audio_utils::Source;
-use hypr_transcribe_core::{TARGET_SAMPLE_RATE, split_resampled_channels};
 use hypr_transcribe_soniqo::diarize::DiarizeSegment;
 use owhisper_interface::batch_stream::BatchStreamEvent;
 use owhisper_interface::stream::StreamResponse;
@@ -11,7 +9,11 @@ pub(super) type ChannelSegments = BTreeMap<i32, Vec<DiarizeSegment>>;
 
 pub(super) trait Diarizer: Send + Sync + 'static {
     fn is_ready(&self) -> bool;
-    fn diarize(&self, samples: &[f32], sample_rate_hz: u32) -> Result<Vec<DiarizeSegment>, String>;
+    fn diarize_file(
+        &self,
+        pcm: &hypr_audio_utils::PcmDescriptor,
+        channel: usize,
+    ) -> Result<Vec<DiarizeSegment>, String>;
 }
 
 pub(super) struct SoniqoDiarizer;
@@ -21,21 +23,24 @@ impl Diarizer for SoniqoDiarizer {
         hypr_transcribe_soniqo::diarize::is_ready()
     }
 
-    fn diarize(&self, samples: &[f32], sample_rate_hz: u32) -> Result<Vec<DiarizeSegment>, String> {
-        hypr_transcribe_soniqo::diarize::diarize_samples(samples, sample_rate_hz)
+    fn diarize_file(
+        &self,
+        pcm: &hypr_audio_utils::PcmDescriptor,
+        channel: usize,
+    ) -> Result<Vec<DiarizeSegment>, String> {
+        hypr_transcribe_soniqo::diarize::diarize_file(&pcm.path, channel)
             .map_err(|error| error.to_string())
     }
 }
 
 // Runs alongside ASR; every stamp point awaits the same task once and then
-// reuses the memoized result. Any failure resolves to an empty map, which
-// makes stamping a no-op.
+// reuses the memoized result, including failures so a retry keeps its recording.
 #[derive(Clone)]
 pub(super) struct SharedDiarization(Arc<tokio::sync::Mutex<DiarizationState>>);
 
 enum DiarizationState {
-    Pending(tokio::task::JoinHandle<ChannelSegments>),
-    Ready(Arc<ChannelSegments>),
+    Pending(tokio::task::JoinHandle<Result<ChannelSegments, String>>),
+    Ready(Result<Arc<ChannelSegments>, String>),
 }
 
 impl SharedDiarization {
@@ -47,9 +52,8 @@ impl SharedDiarization {
             return Self::disabled();
         }
 
-        let handle = tokio::task::spawn_blocking(move || {
-            file_diarization(&*diarizer, &prepared.path.to_string_lossy())
-        });
+        let handle =
+            tokio::task::spawn_blocking(move || file_diarization(&*diarizer, &prepared.pcm));
         Self(Arc::new(tokio::sync::Mutex::new(
             DiarizationState::Pending(handle),
         )))
@@ -57,11 +61,11 @@ impl SharedDiarization {
 
     pub(super) fn disabled() -> Self {
         Self(Arc::new(tokio::sync::Mutex::new(DiarizationState::Ready(
-            Arc::new(ChannelSegments::new()),
+            Ok(Arc::new(ChannelSegments::new())),
         ))))
     }
 
-    pub(super) async fn segments(&self) -> Arc<ChannelSegments> {
+    pub(super) async fn segments(&self) -> Result<Arc<ChannelSegments>, crate::BatchFailure> {
         let mut state = self.0.lock().await;
 
         if let DiarizationState::Pending(handle) = &mut *state {
@@ -69,46 +73,29 @@ impl SharedDiarization {
                 Ok(segments) => segments,
                 Err(error) => {
                     tracing::warn!(error = %format!("{error:?}"), "diarization_task_join_failed");
-                    ChannelSegments::new()
+                    Err(format!("Speaker detection task failed: {error}"))
                 }
             };
-            *state = DiarizationState::Ready(Arc::new(segments));
+            *state = DiarizationState::Ready(segments.map(Arc::new));
         }
 
         match &*state {
-            DiarizationState::Ready(segments) => segments.clone(),
+            DiarizationState::Ready(segments) => segments
+                .clone()
+                .map_err(|message| crate::BatchFailure::DiarizationFailed { message }),
             DiarizationState::Pending(_) => unreachable!(),
         }
     }
 }
 
-fn file_diarization(diarizer: &dyn Diarizer, file_path: &str) -> ChannelSegments {
-    let source = match hypr_audio_utils::source_from_path(file_path) {
-        Ok(source) => source,
-        Err(error) => {
-            tracing::warn!(error = %error, "diarization_audio_decode_failed");
-            return ChannelSegments::new();
-        }
-    };
-    let channel_count = u16::from(source.channels()).max(1) as usize;
-
-    let samples = match hypr_audio_utils::resample_audio(source, TARGET_SAMPLE_RATE) {
-        Ok(samples) => samples,
-        Err(error) => {
-            tracing::warn!(error = %error, "diarization_audio_resample_failed");
-            return ChannelSegments::new();
-        }
-    };
-
-    let channels = split_resampled_channels(&samples, channel_count);
-    diarize_channels(diarizer, &channels)
-}
-
-fn diarize_channels(diarizer: &dyn Diarizer, channels: &[Vec<f32>]) -> ChannelSegments {
+fn file_diarization(
+    diarizer: &dyn Diarizer,
+    pcm: &hypr_audio_utils::PcmDescriptor,
+) -> Result<ChannelSegments, String> {
     let mut segments = ChannelSegments::new();
 
-    for channel_index in channels_to_diarize(channels.len()) {
-        match diarizer.diarize(&channels[channel_index], TARGET_SAMPLE_RATE) {
+    for channel_index in channels_to_diarize(pcm.channels) {
+        match diarizer.diarize_file(pcm, channel_index) {
             Ok(channel_segments) if !channel_segments.is_empty() => {
                 tracing::info!(
                     channel.index = channel_index,
@@ -124,11 +111,12 @@ fn diarize_channels(diarizer: &dyn Diarizer, channels: &[Vec<f32>]) -> ChannelSe
                     error = %error,
                     "diarization_channel_failed"
                 );
+                return Err(error);
             }
         }
     }
 
-    segments
+    Ok(segments)
 }
 
 fn channels_to_diarize(channel_count: usize) -> Vec<usize> {
@@ -264,11 +252,16 @@ mod tests {
             self.ready
         }
 
-        fn diarize(
+        fn diarize_file(
             &self,
-            samples: &[f32],
-            _sample_rate_hz: u32,
+            pcm: &hypr_audio_utils::PcmDescriptor,
+            channel: usize,
         ) -> Result<Vec<DiarizeSegment>, String> {
+            let samples = pcm
+                .reader()
+                .unwrap()
+                .channel(channel, 0..pcm.frames)
+                .unwrap();
             self.diarized_first_samples
                 .lock()
                 .unwrap()
@@ -421,6 +414,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_diarization_task_is_preserved_for_every_consumer() {
+        let shared = SharedDiarization(Arc::new(tokio::sync::Mutex::new(
+            DiarizationState::Pending(tokio::spawn(async {
+                panic!("native detection task failed");
+            })),
+        )));
+        for _ in 0..2 {
+            let error = shared.segments().await.unwrap_err();
+            assert_eq!(error.code(), crate::BatchErrorCode::DiarizationFailed);
+            assert!(error.to_string().contains("available to retry"));
+        }
+    }
+
+    #[test]
+    fn inference_failure_does_not_become_an_empty_success() {
+        struct FailingDiarizer;
+        impl Diarizer for FailingDiarizer {
+            fn is_ready(&self) -> bool {
+                true
+            }
+            fn diarize_file(
+                &self,
+                _: &hypr_audio_utils::PcmDescriptor,
+                _: usize,
+            ) -> Result<Vec<DiarizeSegment>, String> {
+                Err("model inference failed".to_string())
+            }
+        }
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer =
+            hound::WavWriter::create(file.path(), hypr_audio_utils::pcm_spec(1)).unwrap();
+        writer.write_sample(0.1_f32).unwrap();
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        assert_eq!(
+            file_diarization(&FailingDiarizer, &pcm).unwrap_err(),
+            "model inference failed"
+        );
+    }
+
+    #[tokio::test]
     async fn imported_stereo_diarizes_the_prepared_conversation_once() {
         let file = tempfile::Builder::new().suffix(".wav").tempfile().unwrap();
         let mut writer = hound::WavWriter::create(
@@ -447,7 +481,7 @@ mod tests {
         .unwrap();
         let fake = Arc::new(FakeDiarizer::ready_with(vec![segment(0, 1000, 7)]));
         let shared = SharedDiarization::for_file(fake.clone(), prepared.clone());
-        let segments = shared.segments().await;
+        let segments = shared.segments().await.unwrap();
         assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![0]);
         let received = fake.diarized_first_samples.lock().unwrap();
         assert_eq!(received.len(), 1);
@@ -485,7 +519,7 @@ mod tests {
         .unwrap();
         let diarization =
             SharedDiarization::for_file(Arc::new(FakeDiarizer::not_ready()), prepared);
-        let segments = diarization.segments().await;
+        let segments = diarization.segments().await.unwrap();
         assert!(segments.is_empty());
 
         let original = batch_response(vec![vec![batch_word(0.0, 1.0, 0)]]);
@@ -531,9 +565,14 @@ mod tests {
     #[test]
     fn two_channel_audio_diarizes_only_system_channel() {
         let diarizer = FakeDiarizer::ready_with(vec![segment(0, 2000, 0)]);
-        let channels = vec![vec![1.0f32; 16_000], vec![2.0f32; 16_000]];
-
-        let segments = diarize_channels(&diarizer, &channels);
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut writer =
+            hound::WavWriter::create(file.path(), hypr_audio_utils::pcm_spec(2)).unwrap();
+        writer.write_sample(1.0_f32).unwrap();
+        writer.write_sample(2.0_f32).unwrap();
+        writer.finalize().unwrap();
+        let pcm = hypr_audio_utils::PcmDescriptor::open(file.path()).unwrap();
+        let segments = file_diarization(&diarizer, &pcm).unwrap();
 
         assert_eq!(segments.keys().copied().collect::<Vec<_>>(), vec![1]);
         assert_eq!(
@@ -576,5 +615,79 @@ mod tests {
             response.results.channels[0].alternatives[0].words[0].speaker,
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod lifetime_tests {
+    use super::*;
+    struct BlockingDiarizer {
+        started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release: std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    }
+    impl Diarizer for BlockingDiarizer {
+        fn is_ready(&self) -> bool {
+            true
+        }
+        fn diarize_file(
+            &self,
+            _: &hypr_audio_utils::PcmDescriptor,
+            _: usize,
+        ) -> Result<Vec<DiarizeSegment>, String> {
+            self.started
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .send(())
+                .unwrap();
+            self.release
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .blocking_recv()
+                .unwrap();
+            Err("Native detection failed".into())
+        }
+    }
+    #[tokio::test]
+    async fn cancelling_waiter_keeps_pcm_until_blocking_diarizer_returns() {
+        let source = tempfile::NamedTempFile::new().unwrap();
+        let mut writer =
+            hound::WavWriter::create(source.path(), hypr_audio_utils::pcm_spec(1)).unwrap();
+        writer.write_sample(0.2_f32).unwrap();
+        writer.finalize().unwrap();
+        let prepared = super::super::audio::PreparedAudio::prepare(
+            source.path().to_string_lossy().into_owned(),
+            Default::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let path = prepared.path.clone();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let shared = SharedDiarization::for_file(
+            Arc::new(BlockingDiarizer {
+                started: std::sync::Mutex::new(Some(started_tx)),
+                release: std::sync::Mutex::new(Some(release_rx)),
+            }),
+            prepared,
+        );
+        let waiter = tokio::spawn(async move { shared.segments().await });
+        started_rx.await.unwrap();
+        waiter.abort();
+        let _ = waiter.await;
+        assert!(path.exists());
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while path.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(source.path().exists());
     }
 }

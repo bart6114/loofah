@@ -176,6 +176,9 @@ if (Vulkan_FOUND)
 
     ExternalProject_Add(
         vulkan-shaders-gen
+        # MSVC's file tracker cannot handle the default nested build path.
+        PREFIX ${CMAKE_BINARY_DIR}/vk-gen
+        BINARY_DIR ${CMAKE_BINARY_DIR}/vk-gen/build
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/$<CONFIG>
                    -DCMAKE_INSTALL_BINDIR=.

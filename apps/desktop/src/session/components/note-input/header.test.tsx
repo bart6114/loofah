@@ -348,7 +348,7 @@ describe("Header", () => {
     expect(viewSwitcher.className).toContain("h-[30px]");
     expect(viewSwitcher.className).toContain("p-[2px]");
     expect(viewSwitcher.className).toContain("gap-[2px]");
-    expect(viewSwitcher.className).toContain("bg-foreground/10");
+    expect(viewSwitcher.className).toContain("bg-muted");
     expect(viewSwitcher.className).toContain("dark:bg-accent/55");
     expect(summaryTab.getAttribute("aria-current")).toBeNull();
     expect(memoTab.getAttribute("aria-current")).toBe("page");
@@ -438,11 +438,11 @@ describe("Header", () => {
     });
 
     expect(viewSwitcher.className).not.toContain("h-[30px]");
-    expect(viewSwitcher.className).not.toContain("bg-foreground/10");
+    expect(viewSwitcher.className).not.toContain("bg-muted");
     expect(viewSwitcher.className).not.toContain("rounded-full");
     expect(memoTab.textContent).toBe("Note");
     expect(memoTab.className).toContain("h-7");
-    expect(memoTab.className).toContain("bg-card");
+    expect(memoTab.className).toContain("bg-transparent");
     expect(memoTab.className).toContain("border-0");
     expect(memoTab.className).not.toContain("border-border");
     expect(memoTab.className).toContain("shadow-none");
@@ -817,7 +817,7 @@ describe("Header", () => {
     const transcriptTab = screen.getByRole("button", { name: "Transcript" });
 
     expect(screen.getByTestId("dancing-sticks")).not.toBeNull();
-    expect(transcriptTab.className).toContain("text-muted-foreground/70");
+    expect(transcriptTab.className).toContain("text-muted-foreground");
     expect(transcriptTab.className).toContain("hover:bg-background/60");
     expect(transcriptTab.className).not.toContain("bg-recording/10");
     expect(transcriptTab.className).not.toContain("text-recording");

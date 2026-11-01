@@ -1,4 +1,5 @@
 import { Trans } from "@lingui/react/macro";
+import { platform } from "@tauri-apps/plugin-os";
 import { useCallback } from "react";
 
 import { Kbd } from "@hypr/ui/components/ui/kbd";
@@ -47,12 +48,16 @@ function EmptyView() {
       <div className="flex min-w-[280px] flex-col gap-1 text-center">
         <ActionItem
           label={<Trans>New Note</Trans>}
-          shortcut={["⌘", "N"]}
+          shortcut={[platform() === "windows" ? "Ctrl" : "⌘", "N"]}
           onClick={newNote}
         />
         <ActionItem
           label={<Trans>Start Recording</Trans>}
-          shortcut={["⌘", "⇧", "N"]}
+          shortcut={[
+            platform() === "windows" ? "Ctrl" : "⌘",
+            platform() === "windows" ? "Shift" : "⇧",
+            "N",
+          ]}
           onClick={newNoteAndListen}
         />
         <ActionItem
@@ -62,7 +67,7 @@ function EmptyView() {
         <div className="bg-accent my-1 h-px" />
         <ActionItem
           label={<Trans>Settings</Trans>}
-          shortcut={["⌘", ","]}
+          shortcut={[platform() === "windows" ? "Ctrl" : "⌘", ","]}
           onClick={openSettings}
         />
       </div>

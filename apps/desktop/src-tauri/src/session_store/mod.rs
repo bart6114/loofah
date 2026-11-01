@@ -39,10 +39,3 @@ pub fn spawn_dispatcher(app: tauri::AppHandle) {
         .await;
     });
 }
-
-/// Shared test constructor: a store over `vault`. Files (plus the in-memory index they
-/// hydrate) are the only store there is.
-#[cfg(test)]
-pub(crate) async fn new_test_store(vault: std::path::PathBuf) -> SessionStore {
-    SessionStore::new(vault)
-}

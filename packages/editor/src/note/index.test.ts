@@ -1028,3 +1028,66 @@ it("matches saved task identities before assigning identities to Markdown tasks"
   expect(tasks).toHaveLength(1);
   expect(tasks[0]).toMatchObject({ taskId: "saved-task", status: "done" });
 });
+
+it("locks an already-mounted editor, flushes accepted edits, and unlocks without losing content", async () => {
+  const ref = createRef<NoteEditorRef>();
+  const handleChange = vi.fn();
+  const props = {
+    ref,
+    initialContent: baseDoc,
+    handleChange,
+    enforceTitleHeading: false,
+  };
+  const mounted = render(createElement(NoteEditor, props));
+  await waitFor(() => expect(ref.current?.view).toBeTruthy());
+  act(() =>
+    ref.current!.view!.dispatch(
+      ref.current!.view!.state.tr.insertText(" accepted", 4),
+    ),
+  );
+  mounted.rerender(createElement(NoteEditor, { ...props, readOnly: true }));
+  expect(handleChange).toHaveBeenCalledOnce();
+  expect(mounted.getByRole("document").getAttribute("contenteditable")).toBe(
+    "false",
+  );
+  const before = ref.current!.view!.state.doc.toJSON();
+  act(() =>
+    ref.current!.view!.dispatch(
+      ref.current!.view!.state.tr.insertText("blocked", 1),
+    ),
+  );
+  expect(ref.current!.view!.state.doc.toJSON()).toEqual(before);
+  act(() =>
+    ref.current!.view!.dispatch(
+      ref.current!.view!.state.tr.setSelection(
+        TextSelection.create(ref.current!.view!.state.doc, 2),
+      ),
+    ),
+  );
+  expect(ref.current!.view!.state.selection.from).toBe(2);
+  mounted.rerender(createElement(NoteEditor, props));
+  act(() =>
+    ref.current!.view!.dispatch(
+      ref.current!.view!.state.tr.insertText("unlocked", 1),
+    ),
+  );
+  expect(ref.current!.view!.state.doc.textContent).toContain("unlocked");
+});
+
+it("blocks summary task toggles while read-only", async () => {
+  const ref = createRef<NoteEditorRef>();
+  const handleChange = vi.fn();
+  const mounted = render(
+    createElement(NoteEditor, {
+      ref,
+      initialContent: md2json("# Summary\n\n- [ ] Keep this task open"),
+      readOnly: true,
+      handleChange,
+    }),
+  );
+  await waitFor(() => expect(ref.current?.view).toBeTruthy());
+  const before = ref.current!.view!.state.doc.toJSON();
+  fireEvent.click(mounted.getByRole("checkbox"));
+  expect(ref.current!.view!.state.doc.toJSON()).toEqual(before);
+  expect(handleChange).not.toHaveBeenCalled();
+});

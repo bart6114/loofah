@@ -13,6 +13,7 @@ import {
 } from "@hypr/ui/components/ui/dialog";
 import { cn } from "@hypr/utils";
 
+import { DebugSection } from "./about-debug";
 import { StorageSection } from "./about-storage";
 
 import { useAboutDialog } from "~/store/zustand/about-dialog";
@@ -41,6 +42,8 @@ function AboutContent() {
   const info = useQuery({
     queryKey: ["about", "device-info"],
     staleTime: Infinity,
+    networkMode: "always",
+    retry: false,
     queryFn: async () => {
       const [result, identifier] = await Promise.all([
         miscCommands.getDeviceInfo(navigator.language),
@@ -109,7 +112,7 @@ function AboutContent() {
         aria-label={t`About Loofah`}
         className="bg-muted mx-6 mb-4 flex shrink-0 gap-1 rounded-lg p-1"
       >
-        {(["overview", "storage"] as const).map((value) => (
+        {(["overview", "storage", "debug"] as const).map((value) => (
           <button
             key={value}
             role="tab"
@@ -130,22 +133,29 @@ function AboutContent() {
               )
                 return;
               event.preventDefault();
+              const tabs = ["overview", "storage", "debug"];
+              const index = tabs.indexOf(value);
               const next =
-                event.key === "Home"
-                  ? "overview"
-                  : event.key === "End"
-                    ? "storage"
-                    : value === "overview"
-                      ? "storage"
-                      : "overview";
+                tabs[
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? tabs.length - 1
+                      : (index +
+                          (event.key === "ArrowRight" ? 1 : -1) +
+                          tabs.length) %
+                        tabs.length
+                ];
               setTab(next);
               document.getElementById(`${tabId}-${next}-tab`)?.focus();
             }}
           >
             {value === "overview" ? (
               <Trans>Overview</Trans>
-            ) : (
+            ) : value === "storage" ? (
               <Trans>Storage</Trans>
+            ) : (
+              <Trans>Diagnostics</Trans>
             )}
           </button>
         ))}
@@ -158,8 +168,10 @@ function AboutContent() {
         >
           {tab === "overview" ? (
             <VaultSection stats={stats.data} loading={stats.isPending} />
-          ) : (
+          ) : tab === "storage" ? (
             <StorageSection />
+          ) : (
+            <DebugSection device={info.data} deviceError={info.isError} />
           )}
         </div>
       </div>

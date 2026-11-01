@@ -543,12 +543,14 @@ export const TimelineView = memo(function TimelineView({
             <button
               key={mode}
               type="button"
+              aria-pressed={mode === groupBy}
               onClick={() => void setSettingValue("sidebar_group_by", mode)}
               className={cn([
-                "text-[10px] font-semibold tracking-[0.09em] uppercase transition-none",
+                "rounded-sm text-[11px] font-medium transition-none",
+                "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-hidden",
                 mode === groupBy
                   ? "text-foreground"
-                  : "text-muted-foreground/50 hover:text-muted-foreground",
+                  : "text-muted-foreground hover:text-foreground",
               ])}
             >
               {mode === "date" ? t`By date` : t`By tag`}
@@ -562,7 +564,7 @@ export const TimelineView = memo(function TimelineView({
               onClick={toggleAllTagsExpanded}
               className={cn([
                 "mr-3 ml-auto",
-                "text-muted-foreground/50 hover:text-muted-foreground transition-none",
+                "text-muted-foreground hover:text-foreground transition-none",
               ])}
             >
               {anyTagExpanded ? (
@@ -723,8 +725,8 @@ function TimelineVirtualRow({
               bucket.depth ? { paddingLeft: bucket.depth * 12 } : undefined
             }
             className={cn([
-              "text-muted-foreground/70 hover:text-foreground flex w-full items-center gap-1",
-              "pt-2 text-[10px] font-semibold tracking-[0.09em] uppercase transition-none",
+              "text-muted-foreground hover:text-foreground flex w-full items-center gap-1",
+              "pt-2 text-[11px] font-semibold transition-none",
             ])}
           >
             {expandedTagSet.has(bucket.id) ? (
@@ -738,7 +740,7 @@ function TimelineVirtualRow({
             </span>
           </button>
         ) : (
-          <div className="text-muted-foreground/70 pt-2 text-[10px] font-semibold tracking-[0.09em] uppercase">
+          <div className="text-muted-foreground pt-2 text-[11px] font-semibold">
             {bucket.label}
           </div>
         )}

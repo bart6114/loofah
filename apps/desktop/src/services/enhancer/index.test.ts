@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EnhancerService } from ".";
 import { selectSummaryDocument } from "./storage";
 
+import { useSummaryActivity } from "~/session/summary-activity";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 
 const mocks = vi.hoisted(() => ({
@@ -439,7 +440,15 @@ describe("EnhancerService", () => {
     service.on(event);
 
     service.queueAutoEnhance("session-1");
-    await vi.advanceTimersByTimeAsync(10_500);
+    expect(useSummaryActivity.getState().sessions["session-1"]).toBe(
+      "processing",
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    expect(useSummaryActivity.getState().sessions["session-1"]).toBe(
+      "processing",
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(useSummaryActivity.getState().sessions["session-1"]).toBeUndefined();
 
     expect(event).toHaveBeenCalledWith({
       type: "auto-enhance-skipped",
@@ -477,5 +486,29 @@ describe("EnhancerService", () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+  it("drains accepted summary writes before generating a replacement", async () => {
+    snapshot = createSnapshot({ notes: [createNote()] });
+    const ai = createMockAITaskStore();
+    const service = new EnhancerService(createDeps({ aiTaskStore: ai.store }));
+    let release!: () => void;
+    const pending = enqueueDatabaseWrite(
+      "enhanced-note:note-1",
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const generation = service.enhance("session-1", { regenerate: true });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(ai.generate).not.toHaveBeenCalled();
+    expect(useSummaryActivity.getState().sessions["session-1"]).toBe(
+      "processing",
+    );
+    release();
+    await pending;
+    await generation;
+    expect(ai.generate).toHaveBeenCalledOnce();
+    expect(useSummaryActivity.getState().sessions["session-1"]).toBeUndefined();
   });
 });

@@ -210,6 +210,9 @@ struct TauriBatchRuntime {
 }
 
 impl core::BatchRuntime for TauriBatchRuntime {
+    fn is_cancelled(&self) -> bool {
+        self.control.cancellation_token.is_cancelled()
+    }
     fn emit(&self, event: core::BatchEvent) {
         if !should_emit_event(&self.control, &event) {
             return;
@@ -351,7 +354,10 @@ fn stop_batch_session(
 fn batch_idle_timeout(params: &TranscriptionParams) -> Option<Duration> {
     let batch_params: core::BatchParams = params.clone().into();
 
-    core::expects_progressive_batch(&batch_params).then_some(BATCH_IDLE_TIMEOUT)
+    // Local Whisper measures connection liveness at the SSE byte stream, including keepalives.
+    (!matches!(batch_params.provider, core::BatchProvider::WhisperLocal)
+        && core::expects_progressive_batch(&batch_params))
+    .then_some(BATCH_IDLE_TIMEOUT)
 }
 
 fn spawn_idle_timeout_monitor(
@@ -603,13 +609,13 @@ mod tests {
     }
 
     #[test]
-    fn batch_idle_timeout_applies_to_local_whisper_batch() {
+    fn batch_idle_timeout_skips_local_whisper_batch() {
         let params = transcription_params(
             core::BatchProvider::WhisperLocal,
             "http://localhost:50060/v1",
             Some("QuantizedTiny"),
         );
 
-        assert_eq!(batch_idle_timeout(&params), Some(BATCH_IDLE_TIMEOUT));
+        assert_eq!(batch_idle_timeout(&params), None);
     }
 }

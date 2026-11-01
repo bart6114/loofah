@@ -9,6 +9,7 @@ struct DoctorReport {
     cli_version: &'static str,
     ready: bool,
     vault: VaultReport,
+    cache: Option<hypr_search_cache::CacheStatus>,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,10 +81,18 @@ fn inspect(args: &Args) -> Result<DoctorReport> {
         }
     }
 
+    let cache = if report.is_directory {
+        Some(hypr_search_cache::Cache::for_vault(&path)?.status())
+    } else {
+        None
+    };
     Ok(DoctorReport {
         cli_version: env!("LOOFAH_VERSION"),
-        ready: report.is_directory && report.sessions.is_some(),
+        ready: report.is_directory
+            && report.sessions.is_some()
+            && cache.as_ref().is_some_and(|cache| cache.ready),
         vault: report,
+        cache,
     })
 }
 
@@ -96,6 +105,13 @@ fn render(report: &DoctorReport) -> String {
         format!("Exists: {}", status(report.vault.exists)),
         format!("Directory: {}", status(report.vault.is_directory)),
     ];
+    if let Some(cache) = &report.cache {
+        lines.push(format!("Search cache: {}", cache.path.display()));
+        lines.push(format!("Cache ready: {}", status(cache.ready)));
+        if let Some(error) = &cache.error {
+            lines.push(format!("Cache issue: {error}"));
+        }
+    }
     if let Some(sessions) = report.vault.sessions {
         lines.push(format!("Sessions: {sessions}"));
     }
@@ -153,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_a_scannable_vault_as_ready() {
+    fn reports_ready_only_after_cache_initialization() {
         let dir = tempfile::tempdir().unwrap();
         let session_dir = dir.path().join("sessions/meeting-1");
         std::fs::create_dir_all(&session_dir).unwrap();
@@ -173,7 +189,13 @@ mod tests {
 
         let report = inspect(&args(dir.path().to_path_buf())).unwrap();
 
-        assert!(report.ready);
+        assert!(!report.ready);
+        assert!(!report.cache.unwrap().ready);
+        hypr_search_cache::Cache::for_vault(dir.path())
+            .unwrap()
+            .initialize(&mut |_| {})
+            .unwrap();
+        assert!(inspect(&args(dir.path().to_path_buf())).unwrap().ready);
         assert!(report.vault.is_directory);
         assert_eq!(report.vault.sessions, Some(1));
         assert!(report.vault.error.is_none());

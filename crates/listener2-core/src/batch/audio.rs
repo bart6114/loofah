@@ -13,7 +13,8 @@ use crate::{BatchEvent, BatchRuntime};
 pub(super) struct PreparedAudio {
     pub path: PathBuf,
     pub audio: SessionAudio,
-    _temporary: Option<tempfile::NamedTempFile>,
+    pub pcm: hypr_audio_utils::PcmDescriptor,
+    _temporary: tempfile::NamedTempFile,
     _runtime: Option<Arc<dyn BatchRuntime>>,
 }
 
@@ -49,38 +50,42 @@ impl PreparedAudio {
         mut audio: SessionAudio,
         cancelled: &AtomicBool,
     ) -> Result<Self, String> {
-        let mut source = hypr_audio_utils::source_from_path(path).map_err(|e| e.to_string())?;
+        let source = hypr_audio_utils::source_from_path(path).map_err(|e| e.to_string())?;
         let channels = usize::from(u16::from(source.channels()));
-        let sample_rate = u32::from(source.sample_rate());
-        if channels == 1 {
-            audio.layout = AudioLayout::Mixed;
-            return Ok(Self {
-                path: path.into(),
-                audio,
-                _temporary: None,
-                _runtime: None,
-            });
-        }
+        let temporary = tempfile::Builder::new()
+            .prefix("loofah-analysis-")
+            .suffix(".wav")
+            .tempfile()
+            .map_err(|e| e.to_string())?;
         let mut energy = vec![0.0_f64; channels];
         let mut cross = 0.0_f64;
         let mut difference = 0.0_f64;
         let mut frames = 0_u64;
-        let mut frame = vec![0.0_f32; channels];
-        while read_frame(&mut source, &mut frame)? {
-            for (e, sample) in energy.iter_mut().zip(&frame) {
-                *e += f64::from(*sample).powi(2);
-            }
-            if channels == 2 {
-                cross += f64::from(frame[0]) * f64::from(frame[1]);
-                difference += f64::from((frame[0] - frame[1]).abs());
-            }
-            frames += 1;
-            if frames % 8192 == 0 && cancelled.load(Ordering::Relaxed) {
-                return Err("Audio preparation cancelled".into());
-            }
-        }
-        if frames == 0 {
-            return Err("Audio file is empty".into());
+        let pcm = hypr_audio_utils::decode_to_pcm(
+            source,
+            temporary.path(),
+            || cancelled.load(Ordering::Relaxed),
+            |frame| {
+                for (e, sample) in energy.iter_mut().zip(frame) {
+                    *e += f64::from(*sample).powi(2);
+                }
+                if channels == 2 {
+                    cross += f64::from(frame[0]) * f64::from(frame[1]);
+                    difference += f64::from((frame[0] - frame[1]).abs());
+                }
+                frames += 1;
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        if channels == 1 {
+            audio.layout = AudioLayout::Mixed;
+            return Ok(Self {
+                path: pcm.path.clone(),
+                pcm,
+                audio,
+                _temporary: temporary,
+                _runtime: None,
+            });
         }
         let duplicate_native = audio.layout == AudioLayout::MicSystem
             && channels == 2
@@ -90,9 +95,10 @@ impl PreparedAudio {
                 return Err("Microphone/system audio must have two channels".into());
             }
             return Ok(Self {
-                path: path.into(),
+                path: pcm.path.clone(),
+                pcm,
                 audio,
-                _temporary: None,
+                _temporary: temporary,
                 _runtime: None,
             });
         }
@@ -102,28 +108,33 @@ impl PreparedAudio {
             && energy[1] > 0.0
             && cross / (energy[0] * energy[1]).sqrt() <= -0.95;
         let active = energy.iter().filter(|e| **e > 0.0).count().max(1) as f32;
-        let temporary = tempfile::Builder::new()
-            .prefix("loofah-analysis-")
+        let mixed_temporary = tempfile::Builder::new()
+            .prefix("loofah-analysis-mixed-")
             .suffix(".wav")
             .tempfile()
             .map_err(|e| e.to_string())?;
         let mut writer = hound::WavWriter::create(
-            temporary.path(),
+            mixed_temporary.path(),
             hound::WavSpec {
                 channels: 1,
-                sample_rate,
+                sample_rate: hypr_audio_utils::PCM_SAMPLE_RATE,
                 bits_per_sample: 32,
                 sample_format: hound::SampleFormat::Float,
             },
         )
         .map_err(|e| e.to_string())?;
-        let mut source = hypr_audio_utils::source_from_path(path).map_err(|e| e.to_string())?;
+        let mut source =
+            hypr_audio_utils::source_from_path(&pcm.path).map_err(|e| e.to_string())?;
+        let mut frame = vec![0.0; channels];
         let mut written = 0_u64;
         while read_frame(&mut source, &mut frame)? {
             if inverted {
                 frame[1] = -frame[1];
             }
             let mixed = frame.iter().sum::<f32>() / active;
+            if !mixed.is_finite() {
+                return Err("Mixed audio contains non-finite samples".into());
+            }
             writer.write_sample(mixed).map_err(|e| e.to_string())?;
             written += 1;
             if written % 8192 == 0 && cancelled.load(Ordering::Relaxed) {
@@ -133,9 +144,11 @@ impl PreparedAudio {
         writer.finalize().map_err(|e| e.to_string())?;
         tracing::info!(source_channels = channels, prepared_channels = 1, ?audio.layout, inverted, "batch_audio_prepared");
         Ok(Self {
-            path: temporary.path().into(),
+            path: mixed_temporary.path().into(),
+            pcm: hypr_audio_utils::PcmDescriptor::open(mixed_temporary.path())
+                .map_err(|e| e.to_string())?,
             audio,
-            _temporary: Some(temporary),
+            _temporary: mixed_temporary,
             _runtime: None,
         })
     }
@@ -189,6 +202,9 @@ pub(super) struct PreparedRuntime {
     pub prepared: Arc<PreparedAudio>,
 }
 impl BatchRuntime for PreparedRuntime {
+    fn is_cancelled(&self) -> bool {
+        self.inner.is_cancelled()
+    }
     fn emit(&self, mut event: BatchEvent) {
         if let BatchEvent::BatchResponseStreamed { event, .. } = &mut event {
             self.prepared.stamp_event(event);

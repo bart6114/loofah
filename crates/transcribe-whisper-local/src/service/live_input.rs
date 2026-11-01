@@ -98,7 +98,7 @@ async fn run_input(
     redemption: Duration,
     started: tokio::sync::oneshot::Sender<()>,
     observations: Evidence,
-) -> Result<(), String> {
+) -> Result<SplitStream<WebSocket>, String> {
     let mut channels = (0..count)
         .map(|_| {
             LiveSpeechChunker::new(redemption, MAX_MESSAGE_SAMPLES).map(|vad| Channel {
@@ -209,7 +209,8 @@ async fn run_input(
         duration,
         finalized,
     })
-    .await
+    .await?;
+    Ok(socket)
 }
 
 pub(super) async fn run(
@@ -217,7 +218,7 @@ pub(super) async fn run(
     tx: mpsc::Sender<Job>,
     count: usize,
     redemption: Duration,
-) -> Result<(), String> {
+) -> Result<SplitStream<WebSocket>, String> {
     let (started, speech) = tokio::sync::oneshot::channel();
     let observations = Arc::new(Mutex::new(EvidenceWindow {
         channels: vec![Vec::new(); count],

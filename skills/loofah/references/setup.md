@@ -29,6 +29,8 @@ Run the Loofah desktop app at least once so its local vault exists. Homebrew and
 
 ## Locate and verify the vault
 
+Vault commands automatically initialize a missing or incompatible cache. Use `loof --json init` for explicit setup or repair of an existing vault.
+
 Run `loof --json doctor` to discover the configured local vault and check access. Read the resolved vault path and `ready` flag from its response. The CLI automatically follows the app's configured vault location, including a relocated vault; keep using that default when it is ready.
 
 If discovery fails or the user wants a different vault, ask them for its path. If no vault exists yet, ask them to open Loofah once. Verify a user-provided path with:

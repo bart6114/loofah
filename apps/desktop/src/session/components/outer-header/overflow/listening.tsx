@@ -12,9 +12,11 @@ import {
 export function Listening({
   sessionId,
   resume,
+  onStartRecording,
 }: {
   sessionId: string;
   resume: boolean;
+  onStartRecording?: () => void;
 }) {
   const { mode, stop } = useListener((state) => ({
     mode: state.getSessionMode(sessionId),
@@ -29,6 +31,8 @@ export function Listening({
     if (isBatching) {
       return;
     }
+
+    if (!isListening) onStartRecording?.();
 
     if (!isMainWebviewWindow()) {
       void requestMainListenerControl(

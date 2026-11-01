@@ -109,8 +109,8 @@ describe("TitleInput", () => {
     const input = screen.getByPlaceholderText("Untitled");
     expect(input.parentElement?.className).toContain("relative");
     expect(input.parentElement?.className).toContain("max-w-full");
-    expect(input.parentElement?.className).toContain("text-[1.375rem]");
-    expect(input.parentElement?.className).toContain("font-medium");
+    expect(input.parentElement?.className).toContain("text-[26px]");
+    expect(input.parentElement?.className).toContain("font-semibold");
     expect(input.parentElement?.classList.contains("w-full")).toBe(false);
     expect(input.className).toContain("text-left");
     expect(

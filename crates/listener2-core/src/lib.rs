@@ -99,14 +99,14 @@ pub fn is_supported_languages_batch(
             .parse::<hypr_transcribe_soniqo::SoniqoModel>()
             .map_err(|e| e.to_string())?;
 
-        return Ok(model.batch_model().supports_languages(languages));
+        return Ok(model.supports_languages(languages));
     }
 
     if provider == "fmtr" {
         if let Some(model) =
             model.and_then(|model| model.parse::<hypr_transcribe_soniqo::SoniqoModel>().ok())
         {
-            return Ok(model.batch_model().supports_languages(languages));
+            return Ok(model.supports_languages(languages));
         }
 
         return Ok(model == Some("cloud"));
@@ -155,6 +155,25 @@ pub fn list_documented_language_codes_batch() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nemotron_supports_multilingual_live_and_batch() {
+        let languages = ["nl-BE".parse().unwrap(), "en-GB".parse().unwrap()];
+        let model = Some("soniqo-nemotron-3.5-streaming");
+        for provider in ["fmtr", "soniqo"] {
+            assert_eq!(
+                is_supported_languages_live(provider, model, &languages).unwrap(),
+                cfg!(all(target_os = "macos", target_arch = "aarch64"))
+            );
+            assert!(is_supported_languages_batch(provider, model, &languages).unwrap());
+            assert!(
+                !is_supported_languages_live(provider, model, &["el".parse().unwrap()]).unwrap()
+            );
+            assert!(
+                !is_supported_languages_batch(provider, model, &["el".parse().unwrap()]).unwrap()
+            );
+        }
+    }
 
     #[test]
     fn retired_providers_and_models_are_ineligible() {
@@ -224,6 +243,36 @@ mod tests {
     }
 
     #[test]
+    fn batch_language_support_preserves_the_selected_soniqo_model() {
+        for provider in ["fmtr", "soniqo"] {
+            assert!(
+                !is_supported_languages_batch(
+                    provider,
+                    Some("soniqo-parakeet-streaming"),
+                    &["nl".parse().unwrap()]
+                )
+                .unwrap()
+            );
+            assert!(
+                is_supported_languages_batch(
+                    provider,
+                    Some("soniqo-parakeet-streaming"),
+                    &["en".parse().unwrap()]
+                )
+                .unwrap()
+            );
+            assert!(
+                is_supported_languages_batch(
+                    provider,
+                    Some("soniqo-parakeet-batch"),
+                    &["nl".parse().unwrap()]
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn soniqo_batch_accepts_documented_european_languages_for_parakeet() {
         let languages = vec!["fr".parse().unwrap()];
 
@@ -275,7 +324,13 @@ mod tests {
     #[test]
     fn fmtr_soniqo_live_respects_platform_support() {
         let languages = vec!["en".parse().unwrap()];
-        let expected = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+        let expected = cfg!(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(
+                target_os = "windows",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )
+        ));
 
         assert_eq!(
             is_supported_languages_live("fmtr", Some("soniqo-parakeet-streaming"), &languages)
@@ -285,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn fmtr_soniqo_streaming_demotes_non_english_to_batch() {
+    fn fmtr_soniqo_streaming_rejects_non_english_in_both_modes() {
         let languages = vec!["nl".parse().unwrap()];
 
         assert_eq!(
@@ -294,7 +349,7 @@ mod tests {
             false
         );
         assert!(
-            is_supported_languages_batch("fmtr", Some("soniqo-parakeet-streaming"), &languages)
+            !is_supported_languages_batch("fmtr", Some("soniqo-parakeet-streaming"), &languages)
                 .unwrap()
         );
     }

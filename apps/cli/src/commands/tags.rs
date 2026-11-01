@@ -1,16 +1,13 @@
-use std::path::Path;
-
 use crate::cli::TagsCommand;
 use crate::{Error, Result, output};
-use hypr_vault_write::SessionStore;
 
-pub async fn run(vault: &Path, command: TagsCommand, json: bool) -> Result<()> {
+pub async fn run(cache: &hypr_search_cache::Cache, command: TagsCommand, json: bool) -> Result<()> {
     match command {
         TagsCommand::List => {
-            let tags = SessionStore::new(vault.to_path_buf())
-                .list_tags()
+            let cache = cache.clone();
+            let tags = tokio::task::spawn_blocking(move || cache.tags_fresh())
                 .await
-                .map_err(|error| Error::operation("list tags", error.to_string()))?;
+                .map_err(|error| Error::operation("list tags", error.to_string()))??;
             let rendered = if json {
                 output::json("tags.list", &tags, None)?
             } else if tags.is_empty() {

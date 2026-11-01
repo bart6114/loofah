@@ -9,6 +9,9 @@ Without `--json`, CLI errors are written to standard error as human-readable tex
 | --- | --- | --- | --- |
 | `0` | None | Success | Consume stdout. |
 | `1` | `operation_failed` | Vault read, write, or transcription failure, an unsupported import format, or an unhealthy `doctor` report | Check the reported action or inspect the diagnostic report and confirm app and CLI compatibility. |
+| `1` | `cache_not_ready`, `cache_corrupt` | Cache unavailable or corrupt; missing/incompatible caches normally initialize automatically | Run `loof --json init` to repair. |
+| `1` | `cache_busy`, `cache_reconciliation_failed` | Another writer or a source-read failure | Retry when idle, or fix the reported source issue. |
+| `1` | `write_persisted` | Vault write saved, command completion failed | Use the reported session IDs; refresh with `init` without repeating the write. |
 | `2` | `not_found` | Meeting, audio file, or other requested data not found | List meetings again and use a returned ID, or verify the file path you passed. |
 | `3` | `vault_not_found` | Vault not found at the resolved path | Start Loofah once or pass `--vault-path`. |
 | `4` | `output_exists` | Export output already exists | Choose another path or explicitly pass `--force` to replace the file. |

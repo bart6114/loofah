@@ -26,6 +26,23 @@ export function getPreferredProviderModel(
   models: ModelEntry[],
   options?: PreferredProviderModelOptions,
 ) {
+  const equivalentModel = savedModel?.replace(
+    /^(soniqo|onnx)-parakeet-/,
+    "parakeet-",
+  );
+  const platformChoice = models.find(
+    (model) =>
+      model.id.replace(/^(soniqo|onnx)-parakeet-/, "parakeet-") ===
+      equivalentModel,
+  );
+  if (
+    platformChoice &&
+    (options?.keepUnavailableSavedModel ||
+      platformChoice.isDownloaded !== false)
+  ) {
+    return platformChoice.id;
+  }
+
   const selectableModels = models.filter((model) => model.isDownloaded ?? true);
 
   if (

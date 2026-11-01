@@ -4,9 +4,11 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "./styles/globals.css";
 import "./styles/cursor.css";
+import "./styles/themes.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { platform } from "@tauri-apps/plugin-os";
 import { StrictMode, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 
@@ -33,8 +35,9 @@ import { ErrorComponent, NotFoundComponent } from "./shared/control";
 import { startPerformanceDiagnostics } from "./shared/performance";
 import { StartupBoundary } from "./shared/startup-boundary";
 import { bootstrapThemeFromSettings } from "./shared/theme/apply";
+import { normalizeThemePreference } from "./shared/theme/apply";
+import { getDesignTheme, resolveThemeAppearance } from "./shared/theme/catalog";
 import { AppThemeProvider } from "./shared/theme/provider";
-import type { ThemePreference } from "./shared/theme/resolve";
 import { createAITaskStore } from "./store/zustand/ai-task";
 import { listenerStore } from "./store/zustand/listener/instance";
 
@@ -72,7 +75,10 @@ function App() {
 }
 
 function AppRoot() {
-  const theme = useConfigValue("theme") as ThemePreference;
+  const theme = resolveThemeAppearance(
+    getDesignTheme(useConfigValue("design_theme")),
+    normalizeThemePreference(useConfigValue("theme")),
+  );
   useRemoteSessionDeletionUndoListener(isMainWindow);
 
   return (
@@ -93,6 +99,7 @@ function AppRoot() {
 }
 
 initWindowsPlugin();
+document.documentElement.dataset.platform = platform();
 
 const isMainWindow = getCurrentWebviewWindowLabel() === "main";
 

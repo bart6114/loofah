@@ -74,6 +74,41 @@ mod tests {
     use super::*;
     use crate::{initial_resolved_until, next_resolved_until};
 
+    #[test]
+    #[ignore = "requires LOOFAH_PCM_VAD_QA_AUDIO; compares complete long-recording VAD ranges"]
+    fn file_vad_matches_complete_recording() {
+        let pcm = hypr_audio_utils::PcmDescriptor::open(
+            std::env::var("LOOFAH_PCM_VAD_QA_AUDIO").unwrap(),
+        )
+        .unwrap();
+        let samples = pcm.reader().unwrap().channel(0, 0..pcm.frames).unwrap();
+        let start = std::time::Instant::now();
+        let legacy = chunk_channel_audio::<hypr_audio_chunking::Error>(&samples).unwrap();
+        let legacy_ms = start.elapsed().as_millis();
+        let expected: Vec<_> = legacy
+            .iter()
+            .map(|chunk| (chunk.sample_start, chunk.sample_end))
+            .collect();
+        drop(legacy);
+        drop(samples);
+        let start = std::time::Instant::now();
+        let ranges = chunk_pcm_channel::<Box<dyn std::error::Error>>(&pcm, 0, || false).unwrap();
+        let file_ms = start.elapsed().as_millis();
+        assert_eq!(
+            ranges
+                .iter()
+                .map(|chunk| (chunk.sample_start, chunk.sample_end))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(ranges.iter().all(|chunk| chunk.samples.is_empty()));
+        println!(
+            "duration={} ranges={} legacy_vad_ms={legacy_ms} file_vad_ms={file_ms}",
+            pcm.duration(),
+            ranges.len()
+        );
+    }
+
     struct FakeChunker {
         chunks: Vec<AudioChunk>,
     }
@@ -171,4 +206,45 @@ mod tests {
         assert_eq!(next_resolved_until(&chunks, 0, 20.0), 8.0);
         assert_eq!(next_resolved_until(&chunks, 1, 20.0), 20.0);
     }
+}
+
+pub fn chunk_pcm_channel<E>(
+    pcm: &hypr_audio_utils::PcmDescriptor,
+    channel: usize,
+    cancelled: impl Fn() -> bool,
+) -> Result<Vec<AudioChunk>, E>
+where
+    E: From<hypr_audio_chunking::Error> + From<hypr_audio_utils::Error>,
+{
+    let mut reader = pcm.reader()?;
+    let mut chunker =
+        hypr_audio_chunking::LiveSpeechChunker::ranges(DEFAULT_SPEECH_REDEMPTION_TIME)?;
+    let mut ranges = Vec::new();
+    let mut retain = |chunks: Vec<AudioChunk>| {
+        for chunk in chunks {
+            for start in (chunk.sample_start..chunk.sample_end).step_by(MAX_CHUNK_SAMPLES) {
+                ranges.push(AudioChunk {
+                    sample_start: start,
+                    sample_end: (start + MAX_CHUNK_SAMPLES).min(chunk.sample_end),
+                    samples: Vec::new(),
+                });
+            }
+        }
+    };
+    for start in (0..pcm.frames).step_by(hypr_audio_utils::PCM_BLOCK_FRAMES) {
+        if cancelled() {
+            return Err(hypr_audio_utils::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "Transcription cancelled",
+            ))
+            .into());
+        }
+        let samples = reader.channel(
+            channel,
+            start..(start + hypr_audio_utils::PCM_BLOCK_FRAMES).min(pcm.frames),
+        )?;
+        retain(chunker.push(&samples)?);
+    }
+    retain(chunker.finish()?);
+    Ok(ranges)
 }

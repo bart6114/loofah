@@ -38,6 +38,10 @@ fn import_persists_mixed_layout_even_with_recording_timestamps() {
         vec!["--into", "existing"],
         vec!["--started-at", "2026-01-01T00:00:00Z"],
     ] {
+        hypr_search_cache::Cache::for_vault(&vault)
+            .unwrap()
+            .initialize(&mut |_| {})
+            .unwrap();
         let output = Command::new(env!("CARGO_BIN_EXE_loof"))
             .arg("--vault-path")
             .arg(&vault)

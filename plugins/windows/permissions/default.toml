@@ -14,6 +14,8 @@ permissions = [
     "allow-window-expand-width",
     "allow-window-restore-width",
     "allow-set-show-app-in-dock",
+    "allow-overlay-snapshot",
+    "allow-overlay-set-settings-open",
     "allow-floating-bar-show",
     "allow-floating-bar-hide",
     "allow-floating-bar-update",

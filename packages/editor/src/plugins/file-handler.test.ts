@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { schema } from "../note/schema";
 import {
+  cancelPendingFileUploads,
   type FileHandlerConfig,
   fileHandlerPlugin,
   handleFileDrop,
@@ -391,5 +392,67 @@ describe("image preview ownership", () => {
     h.reject();
     await settle();
     expect(h.revoke).toHaveBeenCalledOnce();
+  });
+});
+
+describe("read-only attachments", () => {
+  it("rejects paste, browser drop, and native drop before any upload callbacks", () => {
+    const config = {
+      onFileUpload: createUploader(),
+      onPaste: vi.fn(),
+      onDrop: vi.fn(),
+      onNativeDrop: vi.fn(),
+    };
+    const view = createView(config);
+    view.setProps({ editable: () => false });
+    const file = new File(["png"], "image.png", { type: "image/png" });
+    expect(handleFileDrop(view, config, [file])).toBe(false);
+    expect(
+      handleNativeFileDrop(view, config, [
+        { kind: "file", file, name: file.name },
+      ]),
+    ).toBe(false);
+    view.someProp("handlePaste", (handle) =>
+      handle(
+        view,
+        { clipboardData: { files: [file] } } as unknown as ClipboardEvent,
+        null as never,
+      ),
+    );
+    for (const callback of Object.values(config))
+      expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("does not insert an upload that completed after the editor was locked and reopened", async () => {
+    let finish!: (result: {
+      url: string;
+      attachmentId: string;
+      path: string;
+    }) => void;
+    const config = {
+      onFileUpload: vi.fn(
+        () =>
+          new Promise<{ url: string; attachmentId: string; path: string }>(
+            (resolve) => {
+              finish = resolve;
+            },
+          ),
+      ),
+    };
+    const view = createView(config);
+    const file = new File(["png"], "image.png", { type: "image/png" });
+    handleFileDrop(view, config, [file]);
+    view.setProps({ editable: () => false });
+    cancelPendingFileUploads(view);
+    view.setProps({ editable: () => true });
+    const before = view.state.doc.toJSON();
+    finish({
+      url: "asset:/image.png",
+      attachmentId: "image.png",
+      path: "/vault/attachments/image.png",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(view.state.doc.toJSON()).toEqual(before);
   });
 });
