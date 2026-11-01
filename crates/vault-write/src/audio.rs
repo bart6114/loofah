@@ -86,22 +86,25 @@ impl SessionStore {
             .join(self.session_dir_locked(&guard, session_id).await?);
         let source_path = PathBuf::from(source_path);
 
-        let result = tokio::task::spawn_blocking(move || -> Result<String, StoreError> {
-            let file_name = canonical_audio_file_name(&source_path)?;
-            let dest_dir = resolved_dir_abs;
-            let dest_abs = dest_dir.join(&file_name);
+        let vault = self.vault_base.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            super::sync_write(&vault, || -> Result<String, StoreError> {
+                let file_name = canonical_audio_file_name(&source_path)?;
+                let dest_dir = resolved_dir_abs;
+                let dest_abs = dest_dir.join(&file_name);
 
-            if !is_same_file_path(&source_path, &dest_abs) {
-                std::fs::create_dir_all(&dest_dir).map_err(|e| {
-                    StoreError::Io(format!("failed to create session directory: {}", e))
-                })?;
-                move_or_copy_delete(&source_path, &dest_abs, plain_rename)?;
-            }
+                if !is_same_file_path(&source_path, &dest_abs) {
+                    std::fs::create_dir_all(&dest_dir).map_err(|e| {
+                        StoreError::Io(format!("failed to create session directory: {}", e))
+                    })?;
+                    move_or_copy_delete(&source_path, &dest_abs, plain_rename)?;
+                }
 
-            dest_abs
-                .to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| StoreError::Io("invalid destination path".to_string()))
+                dest_abs
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| StoreError::Io("invalid destination path".to_string()))
+            })
         })
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;

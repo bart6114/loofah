@@ -1,3 +1,5 @@
+name: Install pnpm dependencies
+description: Set up pnpm and Node.js and install locked workspace dependencies.
 runs:
   using: "composite"
   steps:

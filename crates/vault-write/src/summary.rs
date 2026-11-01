@@ -56,8 +56,10 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, None, None, false)
-            .await
+        self.update_summary_impl(
+            session_id, markdown, expected, false, None, None, false, false,
+        )
+        .await
     }
 
     pub async fn save_summary(
@@ -67,8 +69,10 @@ impl SessionStore {
         expected: Option<&str>,
         title: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, false, title, None, false)
-            .await
+        self.update_summary_impl(
+            session_id, markdown, expected, false, title, None, false, false,
+        )
+        .await
     }
 
     pub async fn update_generated_summary(
@@ -77,7 +81,18 @@ impl SessionStore {
         markdown: &str,
         expected: Option<&str>,
     ) -> Result<(), StoreError> {
-        self.update_summary_impl(session_id, markdown, expected, true, None, None, false)
+        self.update_summary_impl(
+            session_id, markdown, expected, true, None, None, false, false,
+        )
+        .await
+    }
+
+    pub async fn create_generated_summary(
+        &self,
+        session_id: &str,
+        markdown: &str,
+    ) -> Result<(), StoreError> {
+        self.update_summary_impl(session_id, markdown, None, true, None, None, false, true)
             .await
     }
 
@@ -98,6 +113,7 @@ impl SessionStore {
             None,
             suggested_tags,
             auto_apply_high_confidence_tags,
+            false,
         )
         .await
     }
@@ -111,6 +127,7 @@ impl SessionStore {
         title: Option<&str>,
         suggested_tags: Option<Vec<ScoredTagSuggestion>>,
         auto_apply_high_confidence_tags: bool,
+        create_only: bool,
     ) -> Result<(), StoreError> {
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
@@ -141,14 +158,27 @@ impl SessionStore {
             hypr_vault_read::summary::locate_in(&vault, &read_dir, &id)
         })
         .await
-        .map_err(join_error)??
-        .ok_or_else(|| StoreError::Conflict("summary was deleted".into()))?;
-        if expected.is_some_and(|expected| expected != summary.markdown)
-            && !(suggested_tags.is_none() && reconcile_tasks && markdown == summary.markdown)
-        {
-            return Err(StoreError::Conflict(
-                "summary changed since it was read".into(),
-            ));
+        .map_err(join_error)??;
+        match &summary {
+            Some(_) if create_only => {
+                return Err(StoreError::Conflict(
+                    "summary was created during generation".into(),
+                ));
+            }
+            None if !create_only => {
+                return Err(StoreError::Conflict("summary was deleted".into()));
+            }
+            Some(summary)
+                if expected.is_some_and(|expected| expected != summary.markdown)
+                    && !(suggested_tags.is_none()
+                        && reconcile_tasks
+                        && markdown == summary.markdown) =>
+            {
+                return Err(StoreError::Conflict(
+                    "summary changed since it was read".into(),
+                ));
+            }
+            _ => {}
         }
         let changed_meta = changed_title || suggested_tags.is_some();
         let auto_applied = suggested_tags
@@ -168,21 +198,25 @@ impl SessionStore {
         } else {
             None
         };
-        let bytes = if let Some(legacy_id) = summary.legacy_id {
-            let mut doc = self
-                .read_enhanced_doc(session_id, &legacy_id)
-                .await?
-                .ok_or_else(|| StoreError::Conflict("legacy summary was deleted".into()))?;
-            doc.markdown = markdown.to_owned();
-            hypr_vault_read::render_enhanced_file(&doc)?.into_bytes()
-        } else {
-            markdown.as_bytes().to_vec()
-        };
         for name in &auto_applied {
             self.ensure_tag_locked(&guard, name).await?;
         }
-        self.write_file_locked(&guard, summary.relative_path, bytes)
-            .await?;
+        if let Some(summary) = summary {
+            let bytes = if let Some(legacy_id) = summary.legacy_id {
+                let mut doc = self
+                    .read_enhanced_doc(session_id, &legacy_id)
+                    .await?
+                    .ok_or_else(|| StoreError::Conflict("legacy summary was deleted".into()))?;
+                doc.markdown = markdown.to_owned();
+                hypr_vault_read::render_enhanced_file(&doc)?.into_bytes()
+            } else {
+                markdown.as_bytes().to_vec()
+            };
+            self.write_file_locked(&guard, summary.relative_path, bytes)
+                .await?;
+        } else {
+            self.publish_summary_locked(&guard, &dir, markdown).await?;
+        }
         let task_result = if let Some(tasks) = tasks {
             self.persist_generated_tasks(&guard, session_id, &tasks)
                 .await
@@ -218,15 +252,21 @@ impl SessionStore {
             .await?;
         let vault = self.vault_base.clone();
         let id = session_id.to_owned();
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
-            if let Some(summary) = hypr_vault_read::summary::locate_in(&vault, &dir, &id)? {
-                hypr_fs_sync_core::export::move_to_trash(
-                    &vault,
-                    &vault.join(summary.relative_path),
-                )
-                .map_err(|e| StoreError::Io(e.to_string()))?;
-            }
-            Ok(())
+        tokio::task::spawn_blocking(move || {
+            super::sync_write(&vault, || -> Result<(), StoreError> {
+                if let Some(summary) = hypr_vault_read::summary::locate_in(&vault, &dir, &id)? {
+                    let trashed = hypr_fs_sync_core::export::move_to_trash(
+                        &vault,
+                        &vault.join(&summary.relative_path),
+                    )
+                    .map_err(|e| StoreError::Io(e.to_string()))?;
+                    if trashed.is_some() {
+                        hypr_vault_sync::record_deletion(&vault, &summary.relative_path)
+                            .map_err(|e| StoreError::Io(e.to_string()))?;
+                    }
+                }
+                Ok(())
+            })
         })
         .await
         .map_err(join_error)??;
@@ -722,6 +762,51 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[tokio::test]
+    async fn first_generated_summary_persists_tasks_and_rejects_existing_content() {
+        let (vault, store) = setup().await;
+        let generated = "# Actions\n- [ ] Send proposal";
+        store
+            .create_generated_summary("s1", generated)
+            .await
+            .unwrap();
+        assert_eq!(store.summary_get("s1").as_deref(), Some(generated));
+        let tasks = store.list_tasks("session_summary", "s1").await.unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].text, "Send proposal");
+        assert!(matches!(
+            store.create_generated_summary("s1", "Stale output").await,
+            Err(StoreError::Conflict(_))
+        ));
+        let restarted = SessionStore::new(vault.path().to_owned());
+        restarted.rebuild_index().await.unwrap();
+        assert_eq!(restarted.summary_get("s1").as_deref(), Some(generated));
+        assert_eq!(
+            restarted.list_tasks("session_summary", "s1").await.unwrap(),
+            tasks
+        );
+        assert!(
+            store
+                .create_generated_summary("missing", generated)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_tasks_do_not_publish_first_generated_summary() {
+        let (vault, store) = setup().await;
+        std::fs::write(vault.path().join("sessions/s1/tasks.json"), "invalid").unwrap();
+        assert!(
+            store
+                .create_generated_summary("s1", "- [ ] Send proposal")
+                .await
+                .is_err()
+        );
+        assert_eq!(store.read_summary("s1").await.unwrap(), None);
+        assert!(!vault.path().join("sessions/s1/summary.md").exists());
     }
 
     #[tokio::test]

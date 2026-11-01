@@ -12,6 +12,7 @@ resolver = "2"
 members = [
   "apps/cli",
   "apps/desktop/src-tauri",
+  "apps/mobile/src-tauri",
   "crates/*",
   "plugins/*",
 ]
@@ -88,6 +89,7 @@ hypr-transcription-core = { path = "crates/transcription-core", package = "trans
 hypr-vad = { path = "crates/vad", package = "vad" }
 hypr-vad-masking = { path = "crates/vad-masking", package = "vad-masking" }
 hypr-vault-read = { path = "crates/vault-read", package = "vault-read" }
+hypr-vault-sync = { path = "crates/vault-sync", package = "vault-sync" }
 hypr-vault-write = { path = "crates/vault-write", package = "vault-write" }
 hypr-whisper = { path = "crates/whisper", package = "whisper" }
 hypr-whisper-local = { path = "crates/whisper-local", package = "whisper-local" }
@@ -95,6 +97,7 @@ hypr-whisper-local-model = { path = "crates/whisper-local-model", package = "whi
 hypr-ws-client = { path = "crates/ws-client", package = "ws-client" }
 hypr-ws-utils = { path = "crates/ws-utils", package = "ws-utils" }
 keyring = "4.1.4"
+tauri-plugin-mobile-native = { path = "plugins/mobile-native" }
 
 openai-transcription = { path = "crates/openai-transcription", package = "openai-transcription" }
 owhisper-client = { path = "crates/owhisper-client", package = "owhisper-client" }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = { workspace = true }
 hypr-frontmatter = { workspace = true }
 hypr-fs-format = { workspace = true }
 

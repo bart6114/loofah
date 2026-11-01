@@ -308,12 +308,19 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let relative = paths::enhanced_doc_path_in(&session_dir, doc_id);
 
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
-            let abs = vault_base.join(relative);
-            hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs).map_err(|e| {
-                StoreError::Io(format!("failed to move enhanced doc to trash: {e}"))
-            })?;
-            Ok(())
+        tokio::task::spawn_blocking(move || {
+            super::sync_write(&vault_base, || -> Result<(), StoreError> {
+                let abs = vault_base.join(&relative);
+                let trashed =
+                    hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs).map_err(|e| {
+                        StoreError::Io(format!("failed to move enhanced doc to trash: {e}"))
+                    })?;
+                if trashed.is_some() {
+                    hypr_vault_sync::record_deletion(&vault_base, &relative)
+                        .map_err(|e| StoreError::Io(e.to_string()))?;
+                }
+                Ok(())
+            })
         })
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;

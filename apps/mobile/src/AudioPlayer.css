@@ -1,0 +1,115 @@
+.recording-player {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 16px 0;
+  background: var(--wash);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.recording-player audio {
+  display: none;
+}
+.recording-player-toggle {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--action-ink);
+  background: var(--action);
+}
+.recording-player-toggle:active {
+  background: var(--action);
+}
+.recording-player-track {
+  flex: 1;
+  min-width: 80px;
+}
+.recording-player-seek {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.recording-player-seek::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    var(--action) var(--recording-progress),
+    var(--line) var(--recording-progress)
+  );
+}
+.recording-player-seek::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 20px;
+  width: 20px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: var(--action);
+  box-shadow: 0 0 0 3px var(--wash);
+}
+.recording-player-seek:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.recording-player-times {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.647rem;
+  font-variant-numeric: tabular-nums;
+}
+.recording-player-rate {
+  width: 62px;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--action);
+  font-size: 0.765rem;
+  font-weight: 600;
+}
+.recording-player-status {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 0.706rem;
+}
+.recording-player-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--danger);
+  font-size: 0.765rem;
+}
+.recording-player-error span {
+  flex: 1;
+}
+.recording-player-error button {
+  padding: 8px 10px;
+}
+.recording-player-spinner {
+  animation: recording-player-spin 1s linear infinite;
+}
+@keyframes recording-player-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recording-player-spinner {
+    animation: none;
+  }
+}

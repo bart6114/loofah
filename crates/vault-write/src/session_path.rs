@@ -1,4 +1,5 @@
 use super::{SessionStore, StoreError, WriteGuard, paths, validate_session_id};
+use hypr_vault_read::{AudioLayout, AudioSource, SessionAudio};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
@@ -44,6 +45,15 @@ impl SessionStore {
     /// Count reservations so a failed duplicate start releases only its own attempt.
     /// The write lock also serializes acquisition with whole-vault relocation.
     pub async fn prepare_recording(&self, id: &str) -> Result<PathBuf, StoreError> {
+        self.prepare_recording_with_layout(id, AudioLayout::MicSystem)
+            .await
+    }
+
+    pub async fn prepare_recording_with_layout(
+        &self,
+        id: &str,
+        layout: AudioLayout,
+    ) -> Result<PathBuf, StoreError> {
         let _audio_guard = self.lock_session_audio(id).await?;
         let dir = self.session_dir(id).await?;
         let guard = self.lock_writes().await;
@@ -72,7 +82,11 @@ impl SessionStore {
             }
             meta.extra.insert(
                 "audio".into(),
-                serde_json::json!({"source": "recording", "layout": "mic_system"}),
+                serde_json::to_value(SessionAudio {
+                    source: AudioSource::Recording,
+                    layout,
+                })
+                .unwrap(),
             );
             self.write_meta_locked(&guard, &meta).await?;
         }
@@ -101,5 +115,87 @@ impl SessionStore {
             }
             None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn fixture() -> (SessionStore, tempfile::TempDir) {
+        let vault = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(vault.path().into());
+        let meta = serde_json::from_value(serde_json::json!({
+            "id": "capture", "title": "Capture", "created_at": "2026-01-01T00:00:00Z", "tags": []
+        }))
+        .unwrap();
+        store.create_session_meta(&meta).await.unwrap();
+        (store, vault)
+    }
+
+    #[tokio::test]
+    async fn mixed_capture_tracks_one_lifecycle_reservation_and_preserves_start() {
+        let (store, _vault) = fixture().await;
+        store
+            .prepare_recording_with_layout("capture", AudioLayout::Mixed)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.resolve_session_audio("capture").await.unwrap(),
+            SessionAudio {
+                source: AudioSource::Recording,
+                layout: AudioLayout::Mixed
+            }
+        );
+        assert!(store.is_recording("capture"));
+        store
+            .mark_recording_started("capture", "2026-01-01T01:00:00Z")
+            .await
+            .unwrap();
+        store
+            .mark_recording_started("capture", "2026-01-01T02:00:00Z")
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .read_meta("capture")
+                .await
+                .unwrap()
+                .unwrap()
+                .started_at
+                .as_deref(),
+            Some("2026-01-01T01:00:00Z")
+        );
+        store
+            .mark_recording_ended("capture", "2026-01-01T03:00:00Z")
+            .await
+            .unwrap();
+        assert!(!store.is_recording("capture"));
+    }
+
+    #[tokio::test]
+    async fn desktop_default_and_failed_attempt_release_keep_counted_reservations() {
+        let (store, _vault) = fixture().await;
+        store.prepare_recording("capture").await.unwrap();
+        assert_eq!(
+            store.resolve_session_audio("capture").await.unwrap().layout,
+            AudioLayout::MicSystem
+        );
+        store
+            .prepare_recording_with_layout("capture", AudioLayout::Mixed)
+            .await
+            .unwrap();
+        store.release_recording_prepare("capture").await.unwrap();
+        assert!(store.is_recording("capture"));
+        store.release_recording_prepare("capture").await.unwrap();
+        assert!(!store.is_recording("capture"));
+        store.begin_audio_import("capture").await.unwrap();
+        assert!(
+            store
+                .prepare_recording_with_layout("capture", AudioLayout::Mixed)
+                .await
+                .is_err()
+        );
+        assert!(!store.is_recording("capture"));
     }
 }

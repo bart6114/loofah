@@ -219,16 +219,22 @@ impl SessionStore {
         let journal_relative = relative_str.clone();
 
         let hash = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&parent_path)
-                .map_err(|e| StoreError::Io(format!("failed to create parent directory: {}", e)))?;
+            sync_write(&vault_base, || {
+                std::fs::create_dir_all(&parent_path).map_err(|e| {
+                    StoreError::Io(format!("failed to create parent directory: {}", e))
+                })?;
 
-            trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
+                trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
 
-            let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
-            hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes)
-                .map_err(|e| StoreError::Io(format!("failed to write file atomically: {}", e)))?;
+                let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
+                hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes).map_err(|e| {
+                    StoreError::Io(format!("failed to write file atomically: {}", e))
+                })?;
 
-            Ok::<String, StoreError>(sha256(&bytes))
+                hypr_vault_sync::record_write(&vault_base, std::path::Path::new(&journal_relative))
+                    .map_err(|e| StoreError::Io(e.to_string()))?;
+                Ok::<String, StoreError>(sha256(&bytes))
+            })
         })
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
@@ -275,6 +281,18 @@ impl SessionStore {
             ));
         }
         Ok(VaultMoveGuard { _guard: guard })
+    }
+}
+
+pub(crate) fn sync_write<T>(
+    root: &std::path::Path,
+    operation: impl FnOnce() -> Result<T, StoreError>,
+) -> Result<T, StoreError> {
+    if hypr_vault_sync::participation_enabled(root) {
+        hypr_vault_sync::coordinate(root, true, operation)
+            .map_err(|e| StoreError::Io(e.to_string()))?
+    } else {
+        operation()
     }
 }
 

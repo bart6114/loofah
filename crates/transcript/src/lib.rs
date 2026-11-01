@@ -1,3 +1,4 @@
+pub mod batch;
 mod channel_state;
 mod label;
 mod postprocessor;

@@ -3,6 +3,8 @@
 //! owns every write path and reuses the types and pure parse/render functions from here;
 //! `crates/agent-access` (loof CLI/MCP) reads vaults exclusively through this crate.
 
+pub mod attachments;
+pub mod audio;
 pub mod enhanced;
 pub mod layout;
 pub mod meta;
@@ -15,6 +17,7 @@ pub mod tags;
 pub mod tasks;
 pub mod transcript;
 
+pub use attachments::{AttachmentInfo, read_session_attachments};
 pub use enhanced::{ENHANCED_KINDS, EnhancedDoc, parse_enhanced_file, render_enhanced_file};
 pub use layout::{
     SessionDirKind, SessionDiscovery, SessionDiscoveryError, SessionLocation, SessionLookupError,

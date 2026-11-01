@@ -1,0 +1,20 @@
+[package]
+name = "tauri-plugin-mobile-native"
+version = "0.1.0"
+edition = "2024"
+exclude = ["/js", "/node_modules"]
+links = "tauri-plugin-mobile-native"
+description = "Native iPhone audio, local speech recognition, and device secrets"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+specta = { workspace = true, features = ["derive"] }
+tauri = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dev-dependencies]
+specta-typescript = { workspace = true }
