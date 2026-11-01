@@ -747,7 +747,7 @@ button.danger {
 .provider-address {
   overflow-wrap: anywhere;
 }
-.ai-consent {
+.card .ai-consent {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
