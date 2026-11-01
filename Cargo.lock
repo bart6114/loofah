@@ -7588,8 +7588,8 @@ dependencies = [
  "tracing-subscriber",
  "transcribe-core",
  "transcribe-soniqo",
- "transcript",
  "transcribe-whisper-local",
+ "transcript",
  "whisper-local-model",
 ]
 

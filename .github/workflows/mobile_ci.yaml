@@ -15,6 +15,7 @@ on:
       - .github/actions/pnpm_install/**
       - .github/actions/rust_install/**
       - apps/mobile/**
+      - packages/design-theme/**
       - apps/desktop/src-tauri/icons/src/loofah-fullbleed-1024.png
       - plugins/mobile-native/**
       - crates/vault-sync/**
@@ -33,6 +34,7 @@ on:
       - .github/actions/pnpm_install/**
       - .github/actions/rust_install/**
       - apps/mobile/**
+      - packages/design-theme/**
       - apps/desktop/src-tauri/icons/src/loofah-fullbleed-1024.png
       - plugins/mobile-native/**
       - crates/vault-sync/**

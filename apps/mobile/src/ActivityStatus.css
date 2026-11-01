@@ -39,7 +39,7 @@
   font-variant-numeric: tabular-nums;
 }
 .activity-warning {
-  color: #92531a;
+  color: var(--warning);
 }
 .activity-spinner {
   animation: activity-spin 1.2s linear infinite;
@@ -53,10 +53,10 @@
   white-space: nowrap;
 }
 .activity-active {
-  color: var(--green, #365943);
+  color: var(--action, #365943);
 }
 .activity-attention {
-  color: #92531a;
+  color: var(--warning);
 }
 .activity-panel {
   position: absolute;
@@ -66,9 +66,9 @@
   max-height: min(65dvh, 520px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--border, #e1e3da);
+  border: 1px solid var(--line, #e1e3da);
   border-radius: 16px;
-  background: #fff;
+  background: var(--paper);
   box-shadow: 0 10px 35px #26282324;
   padding: 8px 16px;
   z-index: 20;
@@ -87,7 +87,7 @@
 .activity-dismiss {
   border: 0;
   background: transparent;
-  color: var(--muted, #72746b);
+  color: var(--text-muted, #72746b);
   font-size: 0.765rem;
   padding: 8px;
 }
@@ -98,7 +98,7 @@
 }
 .activity-job {
   padding: 12px 0;
-  border-top: 1px solid var(--border, #e1e3da);
+  border-top: 1px solid var(--line, #e1e3da);
 }
 .activity-note {
   border: 0;
@@ -116,13 +116,13 @@
   justify-content: space-between;
   gap: 8px;
   margin: 4px 0 8px;
-  color: var(--muted, #72746b);
+  color: var(--text-muted, #72746b);
   font-size: 0.765rem;
 }
 .activity-job progress {
   width: 100%;
   height: 6px;
-  accent-color: var(--green, #365943);
+  accent-color: var(--action, #365943);
 }
 .activity-action {
   margin-top: 8px;
@@ -135,10 +135,10 @@
   overflow-wrap: anywhere;
 }
 .activity-error {
-  color: #a52a25;
+  color: var(--danger);
 }
 .activity-hint {
-  color: var(--muted, #72746b);
+  color: var(--text-muted, #72746b);
 }
 @keyframes activity-spin {
   to {

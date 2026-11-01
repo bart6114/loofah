@@ -40,6 +40,7 @@ const session: Session = {
   audio_url: null,
 };
 const snapshot: Snapshot = {
+  appearance: { theme: "system", design_theme: "default" },
   vault: {
     local_path: "/app/Library/Application Support/io.loofah.notes/vault",
     icloud_path: null,
@@ -92,7 +93,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 beforeEach(() => {
-  vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+  vi.mocked(window.scrollTo).mockClear();
   vi.mocked(invoke).mockReset();
   vi.mocked(listModels).mockReset();
   vi.mocked(listModels).mockResolvedValue({
@@ -226,7 +227,7 @@ describe("iPhone navigation", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Original/ }));
     await screen.findByLabelText("Notes");
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await screen.findByLabelText("Transcription model");
+    await screen.findByRole("navigation", { name: "Settings sections" });
     fireEvent.click(screen.getByRole("button", { name: "Back to note" }));
     expect(await screen.findByLabelText("Notes")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
@@ -237,11 +238,10 @@ describe("iPhone navigation", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Summary" }));
     fireEvent.click(screen.getByRole("button", { name: "Set up summaries" }));
     expect(
-      await screen.findByRole("heading", { name: "Settings" }),
+      await screen.findByRole("heading", { name: "Summaries", level: 1 }),
     ).toBeTruthy();
-    await waitFor(() =>
-      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled(),
-    );
+    await waitFor(() => expect(window.scrollTo).toHaveBeenCalledWith(0, 0));
+    fireEvent.click(screen.getByRole("button", { name: "Back to settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Back to note" }));
     expect(await screen.findByRole("tab", { name: "Summary" })).toHaveProperty(
       "ariaSelected",
@@ -473,8 +473,9 @@ describe("desktop-aligned mobile note views", () => {
       wrapper,
     });
     await screen.findByText("Saved summary");
+    expect(screen.getByLabelText("Note title").tagName).toBe("TEXTAREA");
     fireEvent.change(screen.getByLabelText("Note title"), {
-      target: { value: "A long wrapped meeting title" },
+      target: { value: "A long wrapped\nmeeting title" },
     });
     fireEvent.blur(screen.getByLabelText("Note title"));
     await waitFor(() =>
@@ -500,7 +501,7 @@ describe("desktop-aligned mobile note views", () => {
       </QueryClientProvider>,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    await screen.findByLabelText("Transcription model");
+    await screen.findByRole("navigation", { name: "Settings sections" });
     expect(screen.queryByRole("button", { name: "Record" })).toBeNull();
     state = {
       ...snapshot,

@@ -226,9 +226,10 @@ impl SessionStore {
 
                 trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
 
-            let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
-            hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes)
-                .map_err(|e| StoreError::Io(format!("failed to write file atomically: {}", e)))?;
+                let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
+                hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes).map_err(|e| {
+                    StoreError::Io(format!("failed to write file atomically: {}", e))
+                })?;
 
                 hypr_vault_sync::record_write(&vault_base, std::path::Path::new(&journal_relative))
                     .map_err(|e| StoreError::Io(e.to_string()))?;

@@ -30,6 +30,10 @@ pub async fn mobile_snapshot(
     let summary = json!({"available":summary_error.is_none(),"reason":summary_error});
     let config =
         hypr_storage::config::read_config(state.store.vault_base()).map_err(|e| e.to_string())?;
+    let appearance = json!({
+        "theme": config.theme,
+        "design_theme": config.extra.get("design_theme").and_then(Value::as_str).unwrap_or("default")
+    });
     let mut connections = serde_json::Map::new();
     for (id, provider) in config.ai_providers {
         if let Some(id) = id.strip_prefix("llm:") {
@@ -54,8 +58,55 @@ pub async fn mobile_snapshot(
         json!({ "vault": {"local_path": state.store.vault_base(), "icloud_path": cloud_folder}, "sessions": state.store.session_list_headers().into_iter().rev().collect::<Vec<_>>(),
         "recording": recording::status(), "jobs": state.jobs.lock().unwrap().iter().map(|j|json!({"session_id":j.session_id,"kind":j.kind,"state":j.state,"progress":j.progress,"error":j.error})).collect::<Vec<_>>(), "model": {"ready":model.ready,"downloading":model.downloading || state.model_busy.load(std::sync::atomic::Ordering::Acquire),"model_id":model.model_id,"revision":model.revision,"downloaded_bytes":model.downloaded_bytes,"total_bytes":model.total_bytes,"phase":model.phase},
         "startup_errors": *state.startup_errors.lock().unwrap(),
-        "summary": summary, "sync": sync_status, "settings": settings }),
+        "summary": summary, "sync": sync_status, "settings": settings, "appearance": appearance }),
     )
+}
+
+#[tauri::command]
+pub async fn mobile_save_appearance(
+    app: tauri::AppHandle,
+    theme: String,
+    design_theme: String,
+) -> Result<(), String> {
+    let state = app.state::<MobileState>();
+    let _guard = state.operation.lock().await;
+    save_appearance(state.store.vault_base(), &theme, &design_theme).await?;
+    state.changed(&app);
+    Ok(())
+}
+
+async fn save_appearance(
+    vault: &std::path::Path,
+    theme: &str,
+    design_theme: &str,
+) -> Result<(), String> {
+    if !matches!(theme, "light" | "dark" | "system") || design_theme.len() > 64 {
+        return Err("Unsupported appearance".into());
+    }
+    hypr_storage::config::update_config_values(
+        vault,
+        std::collections::HashMap::from([
+            ("theme".into(), json!(theme)),
+            ("design_theme".into(), json!(design_theme)),
+        ]),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mobile_apply_appearance(
+    app: tauri::AppHandle,
+    appearance: String,
+) -> Result<(), String> {
+    if !matches!(appearance.as_str(), "light" | "dark" | "system") {
+        return Err("Unsupported appearance".into());
+    }
+    app.mobile_native()
+        .set_appearance(&appearance)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -779,6 +830,61 @@ async fn save_settings(state: &MobileState, settings: &Settings) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn appearance_save_preserves_ai_settings_and_device_consent() {
+        let vault = tempfile::tempdir().unwrap();
+        let device = tempfile::tempdir().unwrap();
+        let settings = Settings::default();
+        providers::save_consent(device.path(), &settings, true).unwrap();
+        let consent = std::fs::read(device.path().join("ai-consent.json")).unwrap();
+        std::fs::write(
+            vault.path().join("config.json"),
+            serde_json::to_vec(&json!({
+                "current_llm_provider": "openrouter", "current_llm_model": "test/model",
+                "ai_language": "nl", "custom_summary_instructions": "Keep decisions",
+                "mobile": { "transcription_model": "parakeet-v2" },
+                "future_setting": { "keep": true }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        save_appearance(vault.path(), "dark", "midnight")
+            .await
+            .unwrap();
+        let config = hypr_storage::config::read_config(vault.path()).unwrap();
+        assert_eq!(config.theme, "dark");
+        assert_eq!(config.extra["design_theme"], "midnight");
+        assert_eq!(config.current_llm_provider.as_deref(), Some("openrouter"));
+        assert_eq!(config.ai_language, "nl");
+        assert_eq!(config.custom_summary_instructions, "Keep decisions");
+        assert_eq!(config.extra["mobile"]["transcription_model"], "parakeet-v2");
+        assert_eq!(config.extra["future_setting"]["keep"], true);
+        assert_eq!(
+            std::fs::read(device.path().join("ai-consent.json")).unwrap(),
+            consent
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_appearance_and_damaged_config_are_never_written() {
+        let vault = tempfile::tempdir().unwrap();
+        let path = vault.path().join("config.json");
+        std::fs::write(&path, "{broken").unwrap();
+        assert!(
+            save_appearance(vault.path(), "light", "default")
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{broken");
+        std::fs::write(&path, "{}").unwrap();
+        assert!(
+            save_appearance(vault.path(), "unknown", "default")
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{}");
+    }
 
     #[test]
     fn preview_selects_only_the_sessions_visible_attachment_inventory() {

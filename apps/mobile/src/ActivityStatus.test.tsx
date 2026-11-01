@@ -15,6 +15,7 @@ import type { Snapshot } from "./api";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const snapshot: Snapshot = {
+  appearance: { theme: "system", design_theme: "default" },
   vault: {
     local_path: "/app/Library/Application Support/io.loofah.notes/vault",
     icloud_path: null,

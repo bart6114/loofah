@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 
 export type Snapshot = {
+  appearance: { theme: "light" | "dark" | "system"; design_theme: string };
   vault: { local_path: string; icloud_path: string | null };
   startup_errors?: string[];
   sessions: {

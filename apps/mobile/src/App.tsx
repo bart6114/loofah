@@ -40,8 +40,16 @@ import {
   type Session,
   type Snapshot,
 } from "./api";
+import { useAppearance } from "./appearance";
+import { AppearanceSettings } from "./AppearanceSettings";
 import { AudioPlayer } from "./AudioPlayer";
 import { NoteActions } from "./NoteActions";
+import { NoteLibrary } from "./NoteLibrary";
+import {
+  SettingsHome,
+  settingsTitles,
+  type SettingsSection,
+} from "./SettingsHome";
 import { SummarySettings } from "./SummarySettings";
 import { Transcript } from "./Transcript";
 
@@ -92,9 +100,8 @@ export function App() {
     tab: "notes" | "transcript" | "summary";
   } | null>(null);
   const [settings, setSettings] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<
-    "summaries" | "transcription" | null
-  >(null);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection | null>(null);
   const [dirty, setDirty] = useState(false);
   const [navigation, setNavigation] = useState<{ action: () => void } | null>(
     null,
@@ -111,7 +118,7 @@ export function App() {
     } else if (dirty) setNavigation({ action });
     else action();
   };
-  const openSettings = (section: "summaries" | "transcription" | null) =>
+  const openSettings = (section: SettingsSection | null) =>
     leave(() => {
       setSettingsSection(section);
       setSettings(true);
@@ -134,19 +141,10 @@ export function App() {
   const imported = useCommand<string | null>("mobile_import_audio");
   const [search, setSearch] = useState("");
   const data = snapshot.data;
-  const hasSettingsContent = !!data;
+  useAppearance(data?.appearance);
   useEffect(() => {
-    if (settings && settingsSection) {
-      if (!hasSettingsContent) return;
-      document
-        .getElementById(
-          settingsSection === "summaries"
-            ? "summary-settings"
-            : "transcription-settings",
-        )
-        ?.scrollIntoView();
-    } else window.scrollTo(0, 0);
-  }, [hasSettingsContent, selected, settings, settingsSection]);
+    window.scrollTo(0, 0);
+  }, [selected, settings, settingsSection]);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -167,16 +165,13 @@ export function App() {
     };
   }, []);
   const home = !settings && !selected;
-  const sessions =
-    data?.sessions.filter((s) =>
-      (s.title || "Untitled note")
-        .toLocaleLowerCase()
-        .includes(search.trim().toLocaleLowerCase()),
-    ) ?? [];
   return (
     <div
       className={cn([
         "app",
+        home && "library-screen",
+        settings && "settings-screen",
+        selected && !settings && "detail-screen",
         (data?.recording.session_id || home) && "has-capture",
         data?.recording.session_id && "has-active-capture",
       ])}
@@ -184,23 +179,40 @@ export function App() {
       <header>
         <button
           className="icon back-button"
-          aria-label={settings && selected ? "Back to note" : "Back to notes"}
+          aria-label={
+            settings && settingsSection
+              ? "Back to settings"
+              : settings && selected
+                ? "Back to note"
+                : "Back to notes"
+          }
           hidden={!selected && !settings}
           onClick={() =>
             leave(() => {
-              if (settings) setSettings(false);
+              if (settings && settingsSection) setSettingsSection(null);
+              else if (settings) setSettings(false);
               else setSelected(null);
             })
           }
         >
           <ArrowLeft size={22} />
-          <span>{settings && selected ? "Note" : "Notes"}</span>
+          <span>
+            {settings && settingsSection
+              ? "Settings"
+              : settings && selected
+                ? "Note"
+                : "Notes"}
+          </span>
         </button>
         {selected && !settings ? (
           <div className="navigation-title" />
         ) : (
           <h1 className={cn(["navigation-title", home && "home-title"])}>
-            {settings ? "Settings" : "loofah"}
+            {settings
+              ? settingsSection
+                ? settingsTitles[settingsSection]
+                : "Settings"
+              : "loofah"}
           </h1>
         )}
         {home && (
@@ -224,7 +236,7 @@ export function App() {
         {data && (
           <ActivityStatus
             snapshot={data}
-            compact={home}
+            compact
             onOpenTranscriptionSettings={() => openSettings("transcription")}
             onSelectSession={(id) =>
               selected === id && !settings
@@ -256,7 +268,15 @@ export function App() {
             )}
           </div>
         ) : settings ? (
-          <Setup snapshot={data} onDirty={setDirty} />
+          settingsSection ? (
+            <Setup
+              snapshot={data}
+              section={settingsSection}
+              onDirty={setDirty}
+            />
+          ) : (
+            <SettingsHome snapshot={data} onSelect={setSettingsSection} />
+          )
         ) : selected ? (
           <Detail
             key={selected}
@@ -303,48 +323,12 @@ export function App() {
                 <ChevronRight size={18} />
               </button>
             )}
-            <input
-              className="search"
-              type="search"
-              aria-label="Search note titles"
-              placeholder="Search note titles"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <NoteLibrary
+              sessions={data.sessions}
+              search={search}
+              onSearch={setSearch}
+              onSelect={setSelected}
             />
-            <div className="session-list">
-              {sessions.map((s) => (
-                <button
-                  className="session-row"
-                  key={s.id}
-                  onClick={() => setSelected(s.id)}
-                >
-                  <span>
-                    <strong>{s.title || "Untitled note"}</strong>
-                    <small>
-                      {new Date(s.created_at).toLocaleDateString(undefined, {
-                        day: "numeric",
-                        month: "short",
-                      })}
-                      {s.has_transcript_words && " · Transcribed"}
-                    </small>
-                  </span>
-                  <ChevronRight size={18} />
-                </button>
-              ))}
-            </div>
-            {!data.sessions.length && (
-              <div className="empty">
-                <h2>A little space to think.</h2>
-                <p>Write a note or record a conversation.</p>
-              </div>
-            )}
-            {data.sessions.length > 0 && sessions.length === 0 && (
-              <div className="empty" role="status">
-                <h2>No matching notes</h2>
-                <p>Try another title or clear your search.</p>
-                <button onClick={() => setSearch("")}>Clear search</button>
-              </div>
-            )}
             <button
               className="import-link"
               disabled={imported.isPending || !!data.recording.session_id}
@@ -983,7 +967,9 @@ export function Editor({
     },
   });
   const notesField = useRef<HTMLTextAreaElement>(null);
+  const titleField = useRef<HTMLTextAreaElement>(null);
   const notesValue = useStore(form.store, (state) => state.values.notes);
+  const titleValue = useStore(form.store, (state) => state.values.title);
   const isDirty = useStore(form.store, (state) => state.isDirty);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const commit = useCallback(async () => {
@@ -1003,7 +989,10 @@ export function Editor({
   }, [commit, onSaveReady]);
   useLayoutEffect(() => {
     const resize = () => {
-      for (const field of [showNotes ? notesField.current : null]) {
+      for (const field of [
+        titleField.current,
+        showNotes ? notesField.current : null,
+      ]) {
         if (field) {
           field.style.height = "auto";
           field.style.height = `${field.scrollHeight}px`;
@@ -1012,8 +1001,17 @@ export function Editor({
     };
     resize();
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, [isDirty, notesValue, showNotes]);
+    document.fonts?.addEventListener("loadingdone", resize);
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+    if (titleField.current?.parentElement)
+      observer?.observe(titleField.current.parentElement);
+    return () => {
+      window.removeEventListener("resize", resize);
+      document.fonts?.removeEventListener("loadingdone", resize);
+      observer?.disconnect();
+    };
+  }, [isDirty, titleValue, notesValue, showNotes]);
   useEffect(() => {
     onDirty(isDirty);
     return () => onDirty(false);
@@ -1038,13 +1036,23 @@ export function Editor({
         >
           <form.Field name="title">
             {(field) => (
-              <input
-                type="text"
+              <textarea
+                ref={titleField}
+                rows={1}
+                enterKeyHint="done"
                 aria-label="Note title"
                 className="title-input"
                 value={field.state.value}
                 placeholder="Untitled note"
-                onChange={(e) => field.handleChange(e.target.value)}
+                onChange={(e) =>
+                  field.handleChange(e.target.value.replace(/[\r\n]+/g, " "))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
                 onBlur={() => {
                   field.handleBlur();
                   void commit().catch(() => {});
@@ -1096,9 +1104,11 @@ export function Editor({
 export function Setup({
   snapshot,
   onDirty,
+  section,
 }: {
   snapshot: Snapshot;
   onDirty?: (dirty: boolean) => void;
+  section?: SettingsSection;
 }) {
   const download = useCommand("mobile_download_model");
   const select = useCommand("mobile_select_model");
@@ -1138,180 +1148,195 @@ export function Setup({
         : `${percent}% · ${megabytes(downloaded)} / ${megabytes(total)} MB`;
   return (
     <>
-      <section className="card">
-        <h2>Notes &amp; recordings</h2>
-        <div className="vault-location">
-          <strong>On this iPhone</strong>
-          <span>Saved as files in Loofah app storage</span>
-        </div>
-        {snapshot.vault.icloud_path && (
-          <p className="caption">
-            A local copy stays on this iPhone for offline access.
-          </p>
-        )}
-        <details className="vault-path">
-          <summary>Show folder path</summary>
-          <p>{snapshot.vault.local_path}</p>
-        </details>
-        <h3>iCloud sync</h3>
-        {snapshot.vault.icloud_path ? (
-          <>
-            <div className="vault-location">
-              <strong>
-                {snapshot.vault.icloud_path.split("/").filter(Boolean).at(-1)}
-              </strong>
-              <span>iCloud Drive</span>
-            </div>
-            <details className="vault-path">
-              <summary>Show iCloud folder path</summary>
-              <p>{snapshot.vault.icloud_path}</p>
-            </details>
-            <p className="status">
-              {snapshot.sync.connected
-                ? syncLabel(snapshot.sync.state)
-                : "Sync unavailable · changes are saved on this iPhone"}
-              {snapshot.sync.pending > 0
-                ? ` · ${snapshot.sync.pending} pending`
-                : ""}
-            </p>
-          </>
-        ) : (
-          <p className="muted">Off · saved only on this iPhone</p>
-        )}
-        <p className="caption">
-          {snapshot.vault.icloud_path
-            ? "Notes, transcripts, summaries and recordings sync with this folder. Audio downloads when needed."
-            : "Connect the same iCloud Drive folder as your Mac to sync notes and recordings."}
-        </p>
-        <ErrorText error={snapshot.sync.error} />
-        <CommandButton command="mobile_connect_vault" disabled={busy}>
-          {snapshot.vault.icloud_path
-            ? "Reconnect iCloud folder"
-            : "Connect iCloud folder"}
-        </CommandButton>
-        {snapshot.sync.connected && (
-          <CommandButton command="mobile_sync" disabled={busy}>
-            Sync now
-          </CommandButton>
-        )}
-        {busy && (
-          <p className="caption">
-            Finish the current activity before changing iCloud sync.
-          </p>
-        )}
-        {snapshot.sync.conflicts.map((c) => (
-          <div className="conflict" key={c.id}>
-            <strong>Conflicting changes</strong>
-            <p>{c.path}</p>
+      {(!section || section === "appearance") && (
+        <AppearanceSettings snapshot={snapshot} />
+      )}
+      {(!section || section === "storage") && (
+        <section className="card">
+          <h2>Notes &amp; recordings</h2>
+          <div className="vault-location">
+            <strong>On this iPhone</strong>
+            <span>Saved as files in Loofah app storage</span>
+          </div>
+          {snapshot.vault.icloud_path && (
             <p className="caption">
-              Choose which version to keep, or keep a copy of both.
+              A local copy stays on this iPhone for offline access.
             </p>
-            {(["local", "remote", "both"] as const).map((resolution) => (
-              <CommandButton
-                key={resolution}
-                command="mobile_resolve_conflict"
-                args={{ conflictId: c.id, resolution }}
-                disabled={busy}
-              >
-                {resolution === "local"
-                  ? "Keep iPhone"
-                  : resolution === "remote"
-                    ? "Keep iCloud"
-                    : "Keep both"}
-              </CommandButton>
-            ))}
-          </div>
-        ))}
-      </section>
-      <section id="transcription-settings" className="card">
-        <h2>On-device transcription</h2>
-        <p>
-          Transcription runs on this iPhone. Download a model once to start.
-        </p>
-        <label>
-          Transcription model
-          <select
-            value={current.settings.transcription_model}
-            disabled={busy}
-            onChange={(event) => select.mutate({ modelId: event.target.value })}
-          >
-            <option value="parakeet-v3">Parakeet v3 — Multilingual</option>
-            <option value="parakeet-v2">Parakeet v2 — English only</option>
-          </select>
-        </label>
-        {current.recording.session_id ? (
+          )}
+          <details className="vault-path">
+            <summary>Show folder path</summary>
+            <p>{snapshot.vault.local_path}</p>
+          </details>
+          <h3>iCloud sync</h3>
+          {snapshot.vault.icloud_path ? (
+            <>
+              <div className="vault-location">
+                <strong>
+                  {snapshot.vault.icloud_path.split("/").filter(Boolean).at(-1)}
+                </strong>
+                <span>iCloud Drive</span>
+              </div>
+              <details className="vault-path">
+                <summary>Show iCloud folder path</summary>
+                <p>{snapshot.vault.icloud_path}</p>
+              </details>
+              <p className="status">
+                {snapshot.sync.connected
+                  ? syncLabel(snapshot.sync.state)
+                  : "Sync unavailable · changes are saved on this iPhone"}
+                {snapshot.sync.pending > 0
+                  ? ` · ${snapshot.sync.pending} pending`
+                  : ""}
+              </p>
+            </>
+          ) : (
+            <p className="muted">Off · saved only on this iPhone</p>
+          )}
           <p className="caption">
-            Stop recording to change the transcription model.
+            {snapshot.vault.icloud_path
+              ? "Notes, transcripts, summaries and recordings sync with this folder. Audio downloads when needed."
+              : "Connect the same iCloud Drive folder as your Mac to sync notes and recordings."}
           </p>
-        ) : current.jobs.some(
-            (job) => job.state === "queued" || job.state === "running",
-          ) ? (
-          <p className="caption">
-            Wait for processing to finish before changing the transcription
-            model.
+          <ErrorText error={snapshot.sync.error} />
+          <CommandButton command="mobile_connect_vault" disabled={busy}>
+            {snapshot.vault.icloud_path
+              ? "Reconnect iCloud folder"
+              : "Connect iCloud folder"}
+          </CommandButton>
+          {snapshot.sync.connected && (
+            <CommandButton command="mobile_sync" disabled={busy}>
+              Sync now
+            </CommandButton>
+          )}
+          {busy && (
+            <p className="caption">
+              Finish the current activity before changing iCloud sync.
+            </p>
+          )}
+          {snapshot.sync.conflicts.map((c) => (
+            <div className="conflict" key={c.id}>
+              <strong>Conflicting changes</strong>
+              <p>{c.path}</p>
+              <p className="caption">
+                Choose which version to keep, or keep a copy of both.
+              </p>
+              {(["local", "remote", "both"] as const).map((resolution) => (
+                <CommandButton
+                  key={resolution}
+                  command="mobile_resolve_conflict"
+                  args={{ conflictId: c.id, resolution }}
+                  disabled={busy}
+                >
+                  {resolution === "local"
+                    ? "Keep iPhone"
+                    : resolution === "remote"
+                      ? "Keep iCloud"
+                      : "Keep both"}
+                </CommandButton>
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
+      {(!section || section === "transcription") && (
+        <section id="transcription-settings" className="card">
+          <h2>On-device transcription</h2>
+          <p>
+            Transcription runs on this iPhone. Download a model once to start.
           </p>
-        ) : select.isPending ? (
-          <p className="caption" role="status">
-            Selecting model…
-          </p>
-        ) : null}
-        <ErrorText error={select.error} />
-        {total > 0 && (
-          <p className="caption">Download size: {megabytes(total)} MB</p>
-        )}
-        <button
-          disabled={model.ready || busy}
-          onClick={() => download.mutate({})}
-        >
-          {downloading
-            ? model.phase === "verifying"
-              ? "Verifying model…"
-              : "Downloading model…"
-            : model.ready
-              ? "Model ready"
-              : download.isError
-                ? "Retry download"
-                : "Download model"}
-        </button>
-        <ErrorText error={download.error} />
-        {downloading && (
-          <div className="model-progress">
-            <progress
-              aria-label="Model download"
-              aria-valuetext={downloadStatus}
-              max={total > 0 ? total : undefined}
-              value={
-                total > 0 && model.phase !== "verifying"
-                  ? Math.min(downloaded, total)
-                  : undefined
+          <label>
+            Transcription model
+            <select
+              value={current.settings.transcription_model}
+              disabled={busy}
+              onChange={(event) =>
+                select.mutate({ modelId: event.target.value })
               }
-            />
-            <p className="caption" role="status">
-              {downloadStatus}
+            >
+              <option value="parakeet-v3">Parakeet v3 — Multilingual</option>
+              <option value="parakeet-v2">Parakeet v2 — English only</option>
+            </select>
+          </label>
+          {current.recording.session_id ? (
+            <p className="caption">
+              Stop recording to change the transcription model.
             </p>
-          </div>
-        )}
-        {model.ready && (
-          <>
-            <button disabled={busy} onClick={() => remove.mutate({})}>
-              {remove.isPending ? "Deleting model…" : "Delete downloaded model"}
-            </button>
-            <ErrorText error={remove.error} />
-          </>
-        )}
-      </section>
-      <SummarySettings snapshot={snapshot} onDirty={onDirty} />
-      <section className="card">
-        <h2>Privacy</h2>
-        <p>
-          Your recordings and notes stay on this iPhone unless you choose iCloud
-          sync or a summary provider.
-        </p>
-        <button type="button" onClick={() => privacyPolicy.mutate()}>
-          Read privacy policy
-        </button>
-        <ErrorText error={privacyPolicy.error} />
-      </section>
+          ) : current.jobs.some(
+              (job) => job.state === "queued" || job.state === "running",
+            ) ? (
+            <p className="caption">
+              Wait for processing to finish before changing the transcription
+              model.
+            </p>
+          ) : select.isPending ? (
+            <p className="caption" role="status">
+              Selecting model…
+            </p>
+          ) : null}
+          <ErrorText error={select.error} />
+          {total > 0 && (
+            <p className="caption">Download size: {megabytes(total)} MB</p>
+          )}
+          <button
+            disabled={model.ready || busy}
+            onClick={() => download.mutate({})}
+          >
+            {downloading
+              ? model.phase === "verifying"
+                ? "Verifying model…"
+                : "Downloading model…"
+              : model.ready
+                ? "Model ready"
+                : download.isError
+                  ? "Retry download"
+                  : "Download model"}
+          </button>
+          <ErrorText error={download.error} />
+          {downloading && (
+            <div className="model-progress">
+              <progress
+                aria-label="Model download"
+                aria-valuetext={downloadStatus}
+                max={total > 0 ? total : undefined}
+                value={
+                  total > 0 && model.phase !== "verifying"
+                    ? Math.min(downloaded, total)
+                    : undefined
+                }
+              />
+              <p className="caption" role="status">
+                {downloadStatus}
+              </p>
+            </div>
+          )}
+          {model.ready && (
+            <>
+              <button disabled={busy} onClick={() => remove.mutate({})}>
+                {remove.isPending
+                  ? "Deleting model…"
+                  : "Delete downloaded model"}
+              </button>
+              <ErrorText error={remove.error} />
+            </>
+          )}
+        </section>
+      )}
+      {(!section || section === "summaries") && (
+        <SummarySettings snapshot={snapshot} onDirty={onDirty} />
+      )}
+      {(!section || section === "privacy") && (
+        <section className="card">
+          <h2>Privacy</h2>
+          <p>
+            Your recordings and notes stay on this iPhone unless you choose
+            iCloud sync or a summary provider.
+          </p>
+          <button type="button" onClick={() => privacyPolicy.mutate()}>
+            Read privacy policy
+          </button>
+          <ErrorText error={privacyPolicy.error} />
+        </section>
+      )}
     </>
   );
 }

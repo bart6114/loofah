@@ -14,6 +14,7 @@ Keep notes and recordings together on your iPhone. Loofah lets you write while y
 
 - Record audio with a clear recording indicator and controls you can reach from the Lock Screen.
 - Take notes during a recording and edit them afterward.
+- Make Loofah your own with eight design themes. Default follows your iPhone’s light or dark appearance; literary, colorful, and dark themes bring their own palettes and typography. Find them in Settings → Appearance.
 - Import an audio file to transcribe an existing conversation.
 - Download a speech model once, then transcribe on your iPhone without sending the recording to a transcription service.
 - Keep your notes in a private local vault, or connect an iCloud Drive vault to sync with Loofah on Mac.

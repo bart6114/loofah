@@ -11,7 +11,7 @@ final class PluginCommandTests: XCTestCase {
       "modelStatus", "downloadModel", "deleteModel",
       "transcribeWindow", "previewFile", "protectRecordingFile", "audioDuration",
       "importAudio", "selectICloudVault", "restoreICloudVault",
-      "disconnectICloudVault", "downloadICloudItem", "setApiKey", "readApiKey",
+      "disconnectICloudVault", "downloadICloudItem", "setApiKey", "readApiKey", "setAppearance",
     ]
     for command in commands {
       let selectors = [command + ":", command + ":error:", command + ":completionHandler:"]

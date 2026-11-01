@@ -63,6 +63,29 @@ class MobileNativePlugin: Plugin {
     observers.forEach { NotificationCenter.default.removeObserver($0) }
   }
 
+  @objc public func setAppearance(_ invoke: Invoke) throws {
+    struct Args: Decodable { let appearance: String }
+    let args = try invoke.parseArgs(Args.self)
+    let style: UIUserInterfaceStyle
+    switch args.appearance {
+    case "light": style = .light
+    case "dark": style = .dark
+    case "system": style = .unspecified
+    default:
+      invoke.reject("Unsupported appearance")
+      return
+    }
+    DispatchQueue.main.async {
+      guard let controller = self.manager.viewController, let window = controller.view.window else {
+        invoke.reject("The app window is not ready")
+        return
+      }
+      window.overrideUserInterfaceStyle = style
+      controller.setNeedsStatusBarAppearanceUpdate()
+      invoke.resolve()
+    }
+  }
+
   @objc public func startRecording(_ invoke: Invoke) {
     AVAudioApplication.requestRecordPermission { allowed in
       guard allowed else {

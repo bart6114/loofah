@@ -319,6 +319,8 @@ pub fn run() {
             commands::mobile_import_audio,
             commands::mobile_summarize,
             commands::mobile_save_settings,
+            commands::mobile_save_appearance,
+            commands::mobile_apply_appearance,
             providers::mobile_provider_api_key,
             providers::mobile_summary_bridge_ready,
             providers::mobile_summary_complete,

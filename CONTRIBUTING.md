@@ -12,6 +12,26 @@ See [README.md](./README.md) for setup, and the
 [GitHub repository](https://github.com/bart6114/loofah) for
 issues.
 
+## iPhone appearance
+
+The desktop and iPhone apps share palettes, typography, and geometry through
+`packages/design-theme`. Keep theme definitions there; platform styles adapt the
+tokens to their navigation and controls. The iPhone picker is under Settings →
+Appearance. Default supports System, Light, and Dark; the other seven themes use
+their own light or dark appearance.
+
+The vault's `theme` and `design_theme` settings are authoritative. The iPhone
+caches them only for startup, updates native appearance for the status bar and
+system sheets, and restores the previous appearance if saving fails. Appearance
+changes must preserve AI provider settings and device-local sharing consent.
+
+Run `pnpm -F @hypr/mobile test`, `pnpm -F @hypr/mobile build`,
+`pnpm -F @hypr/desktop test src/shared/theme`, and `cargo test -p mobile` when
+changing the shared theme contract. Check all eight themes, Default light/dark,
+320px and 390px layouts, enlarged text, and the iOS simulator. Use
+`pnpm -F @hypr/mobile ios:build --target aarch64-sim --debug --ci` to build the
+simulator app after `ios:init` has prepared the Xcode project.
+
 ## Release build caching
 
 macOS staging and stable builds use `macos-26` with Xcode 26.6, the pinned Rust

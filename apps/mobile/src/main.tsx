@@ -2,7 +2,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { restoreAppearance } from "./appearance";
 import { SummaryProviderBridge } from "./SummaryProviderBridge";
+restoreAppearance();
+
 const client = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 10_000, retry: 1 },

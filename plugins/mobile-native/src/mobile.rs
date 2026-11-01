@@ -29,6 +29,14 @@ pub struct MobileNative<R: Runtime>(
 );
 
 impl<R: Runtime> MobileNative<R> {
+    pub async fn set_appearance(&self, appearance: &str) -> crate::Result<()> {
+        self.call(
+            "setAppearance",
+            serde_json::json!({"appearance": appearance}),
+        )
+        .await
+    }
+
     async fn call<T: DeserializeOwned>(
         &self,
         command: &str,

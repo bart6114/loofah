@@ -33,7 +33,9 @@
     "@fontsource-variable/literata": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@handlewithcare/react-prosemirror": "^3.2.6",
+    "@hypr/ai-providers": "workspace:*",
     "@hypr/changelog": "workspace:^",
+    "@hypr/design-theme": "workspace:*",
     "@hypr/editor": "workspace:^",
     "@hypr/plugin-deeplink2": "workspace:*",
     "@hypr/plugin-detect": "workspace:*",
@@ -94,8 +96,7 @@
     "usehooks-ts": "^3.1.1",
     "wavesurfer.js": "^7.12.6",
     "zod": "^4.3.6",
-    "zustand": "^5.0.12",
-    "@hypr/ai-providers": "workspace:*"
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@dotenvx/dotenvx": "^1.61.0",
