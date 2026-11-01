@@ -101,6 +101,7 @@ mod tests {
         std::fs::write(attachments.join("image.png"), b"image").unwrap();
         std::fs::write(attachments.join(".hidden.png"), b"hidden").unwrap();
         std::fs::write(attachments.join("nested/deep.txt"), b"nested").unwrap();
+        #[cfg(unix)]
         std::fs::write(attachments.join("unsafe\\name.txt"), b"ambiguous path").unwrap();
         let mut listed = read_session_attachments(root.path(), "s1").unwrap();
         listed.sort_by(|a, b| a.attachment_id.cmp(&b.attachment_id));
