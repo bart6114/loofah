@@ -23,7 +23,10 @@ pub async fn mobile_snapshot(
     } else {
         false
     };
-    let summary_error = providers::validate(&selected, has_api_key).err();
+    let ai_sharing_allowed = providers::has_consent(&state.state_dir, &selected);
+    let summary_error = providers::validate(&selected, has_api_key)
+        .and_then(|_| providers::require_consent(&state.state_dir, &selected))
+        .err();
     let summary = json!({"available":summary_error.is_none(),"reason":summary_error});
     let config =
         hypr_storage::config::read_config(state.store.vault_base()).map_err(|e| e.to_string())?;
@@ -41,6 +44,7 @@ pub async fn mobile_snapshot(
     }
     let mut settings = serde_json::to_value(selected).map_err(|e| e.to_string())?;
     settings["has_api_key"] = json!(has_api_key);
+    settings["ai_sharing_allowed"] = json!(ai_sharing_allowed);
     settings["providers"] = Value::Object(connections);
     let (sync_status, cloud_folder) = {
         let sync = state.sync.lock().unwrap();
@@ -631,6 +635,7 @@ pub async fn mobile_save_settings(
     summary_language: String,
     summary_model: String,
     summary_base_url: String,
+    ai_sharing_allowed: bool,
     api_key: Option<String>,
 ) -> Result<(), String> {
     if summary_language.len() > 64
@@ -671,6 +676,8 @@ pub async fn mobile_save_settings(
     }
     let config =
         hypr_storage::config::read_config(state.store.vault_base()).map_err(|e| e.to_string())?;
+    providers::save_consent(&state.state_dir, &settings, false)?;
+    providers::abort_active(&app);
     if enabled && api_key.is_some() {
         app.mobile_native()
             .set_api_key(&settings.summary_provider, next_key)
@@ -742,6 +749,7 @@ pub async fn mobile_save_settings(
         return Err(error);
     }
     *state.settings.lock().unwrap() = Settings::load(state.store.vault_base())?;
+    providers::save_consent(&state.state_dir, &settings, enabled && ai_sharing_allowed)?;
     state.changed(&app);
     Ok(())
 }

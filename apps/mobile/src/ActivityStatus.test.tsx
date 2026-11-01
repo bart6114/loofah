@@ -57,6 +57,7 @@ const snapshot: Snapshot = {
     summary_base_url: "",
     providers: {},
     has_api_key: false,
+    ai_sharing_allowed: false,
   },
 };
 const jobs: Snapshot["jobs"] = [

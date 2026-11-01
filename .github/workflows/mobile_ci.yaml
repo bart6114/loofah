@@ -2,6 +2,11 @@ name: mobile-ci
 
 on:
   workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: Upload a signed build to TestFlight after mobile checks pass
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -88,3 +93,12 @@ jobs:
           xcodebuild test -scheme tauri-plugin-mobile-native \
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -derivedDataPath "$RUNNER_TEMP/mobile-native-tests" CODE_SIGNING_ALLOWED=NO
+
+  testflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.upload_testflight
+    needs: mobile-ci
+    uses: ./.github/workflows/mobile_testflight.yaml
+    secrets:
+      APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}

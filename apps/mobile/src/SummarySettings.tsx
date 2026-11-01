@@ -2,6 +2,7 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
 
 import { listModels, PROVIDERS } from "@hypr/ai-providers";
@@ -29,12 +30,16 @@ export function SummarySettings({
   snapshot: Snapshot;
   onDirty?: (dirty: boolean) => void;
 }) {
+  const privacy = useMutation({
+    mutationFn: () => openUrl("https://loofah.io/privacy-policy"),
+  });
   const save = useCommand("mobile_save_settings");
   const [defaults, setDefaults] = useState({
     summaryProvider: snapshot.settings.summary_provider,
     summaryModel: snapshot.settings.summary_model,
     summaryBaseUrl: snapshot.settings.summary_base_url,
     summaryLanguage: snapshot.settings.summary_language,
+    aiSharingAllowed: snapshot.settings.ai_sharing_allowed,
     apiKey: "",
   });
   const form = useForm({
@@ -108,6 +113,7 @@ export function SummarySettings({
         summaryModel: snapshot.settings.summary_model,
         summaryBaseUrl: snapshot.settings.summary_base_url,
         summaryLanguage: snapshot.settings.summary_language,
+        aiSharingAllowed: snapshot.settings.ai_sharing_allowed,
         apiKey: "",
       };
       setDefaults(synced);
@@ -119,6 +125,7 @@ export function SummarySettings({
     snapshot.settings.summary_model,
     snapshot.settings.summary_base_url,
     snapshot.settings.summary_language,
+    snapshot.settings.ai_sharing_allowed,
   ]);
   return (
     <section id="summary-settings" className="card">
@@ -142,6 +149,7 @@ export function SummarySettings({
                   onChange={(event) => {
                     const id = event.target.value;
                     field.handleChange(id);
+                    form.setFieldValue("aiSharingAllowed", false);
                     const next = PROVIDERS.find(
                       (candidate) => candidate.id === id,
                     );
@@ -198,11 +206,50 @@ export function SummarySettings({
           ) : (
             providerId !== "none" && (
               <>
-                <p className="notice">
-                  By saving {provider?.displayName}, you allow notes and
-                  transcripts to be sent to this provider when you create a
-                  summary. Your API key is stored in the iPhone Keychain.
-                </p>
+                <div
+                  className="notice"
+                  role="note"
+                  aria-label="AI data sharing"
+                >
+                  <strong>AI summaries send data off your iPhone</strong>
+                  <p>
+                    Your selected provider, {provider?.displayName}, receives
+                    this note’s text, transcript (including speaker names),
+                    title, tags, dates, and summary instructions. Generated
+                    summaries are sent to the same provider to create titles.
+                    Audio recordings and attachments are not sent for AI
+                    summaries.
+                  </p>
+                  <p>
+                    Recipient server:{" "}
+                    <span className="provider-address">
+                      {baseUrl.trim() || "Enter a server URL below"}
+                    </span>
+                    .
+                    {providerId === "openrouter" &&
+                      " OpenRouter also forwards requests to the model provider it routes to."}
+                    {localServer &&
+                      " This is the computer running your server, not on-device AI."}
+                    {providerId === "custom" &&
+                      " The operator of this server receives your data."}
+                  </p>
+                  <p>
+                    With permission, summaries run automatically after
+                    transcription and when you request them. The provider may
+                    retain data under its privacy policy. Your API key
+                    authenticates requests and is stored in the iPhone Keychain.
+                    Loading models sends your API key and connection
+                    information, but no notes or transcripts.
+                  </p>
+                  <p>
+                    Recording and transcription work without AI sharing. To stop
+                    future sharing, clear the permission below and save, or
+                    choose Off. Data already sent cannot be recalled.{" "}
+                    <button type="button" onClick={() => privacy.mutate()}>
+                      Privacy policy
+                    </button>
+                  </p>
+                </div>
                 {localServer && (
                   <>
                     <p className="muted">
@@ -234,6 +281,7 @@ export function SummarySettings({
                         }
                         onChange={(event) => {
                           field.handleChange(event.target.value);
+                          form.setFieldValue("aiSharingAllowed", false);
                           models.reset();
                         }}
                       />
@@ -256,6 +304,7 @@ export function SummarySettings({
                         }
                         onChange={(event) => {
                           field.handleChange(event.target.value);
+                          form.setFieldValue("aiSharingAllowed", false);
                           models.reset();
                         }}
                       />
@@ -288,9 +337,10 @@ export function SummarySettings({
                                 ? field.state.value
                                 : ""
                             }
-                            onChange={(event) =>
-                              field.handleChange(event.target.value)
-                            }
+                            onChange={(event) => {
+                              field.handleChange(event.target.value);
+                              form.setFieldValue("aiSharingAllowed", false);
+                            }}
                           >
                             <option value="" disabled>
                               Choose a model
@@ -313,12 +363,32 @@ export function SummarySettings({
                               ? "provider/model"
                               : "Model or deployment ID"
                           }
-                          onChange={(event) =>
-                            field.handleChange(event.target.value)
-                          }
+                          onChange={(event) => {
+                            field.handleChange(event.target.value);
+                            form.setFieldValue("aiSharingAllowed", false);
+                          }}
                         />
                       </label>
                     </>
+                  )}
+                </form.Field>
+                <form.Field name="aiSharingAllowed">
+                  {(field) => (
+                    <label className="ai-consent">
+                      <input
+                        type="checkbox"
+                        checked={field.state.value}
+                        onChange={(event) =>
+                          field.handleChange(event.target.checked)
+                        }
+                      />
+                      <span>
+                        I allow the data described above to be sent to{" "}
+                        {provider?.displayName} at the selected server for
+                        summaries and titles, including automatically after
+                        transcription.
+                      </span>
+                    </label>
                   )}
                 </form.Field>
                 {models.isSuccess && !models.data?.models.length && (
@@ -362,6 +432,11 @@ export function SummarySettings({
             {save.isPending ? "Saving…" : "Save summary settings"}
           </button>
         </fieldset>
+        {privacy.error && (
+          <p className="error" role="alert">
+            {errorMessage(privacy.error)}
+          </p>
+        )}
         {save.error && (
           <p className="error" role="alert">
             {errorMessage(save.error)}

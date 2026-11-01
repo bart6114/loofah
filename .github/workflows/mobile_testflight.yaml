@@ -2,6 +2,14 @@ name: mobile-testflight
 
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      APPLE_API_KEY_CONTENT:
+        required: true
+      APPLE_API_KEY:
+        required: true
+      APPLE_API_ISSUER:
+        required: true
 
 permissions:
   contents: read
@@ -12,14 +20,13 @@ concurrency:
 
 jobs:
   upload:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/chore/iphone-beta')
     runs-on: macos-26
     defaults:
       run:
         shell: bash
     env:
       APPLE_DEVELOPMENT_TEAM: L8GUHT98B4
-      MOBILE_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +35,7 @@ jobs:
       - uses: ./.github/actions/rust_install
         with:
           platform: ios
+      - run: echo "MOBILE_BUILD_NUMBER=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_ENV"
       - run: pnpm -F @hypr/mobile typecheck
       - run: pnpm -F @hypr/mobile test
       - run: pnpm -F @hypr/mobile build

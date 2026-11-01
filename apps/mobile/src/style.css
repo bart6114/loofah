@@ -743,3 +743,18 @@ button.danger {
     animation: none;
   }
 }
+
+.provider-address {
+  overflow-wrap: anywhere;
+}
+.ai-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.ai-consent input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  margin: 0;
+}

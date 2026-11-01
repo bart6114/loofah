@@ -77,6 +77,7 @@ const snapshot: Snapshot = {
     summary_base_url: "",
     providers: {},
     has_api_key: false,
+    ai_sharing_allowed: false,
   },
 };
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -1048,6 +1049,7 @@ describe("shared summary languages", () => {
           summaryModel: "",
           summaryBaseUrl: "",
           apiKey: null,
+          aiSharingAllowed: false,
         }),
       );
     },
@@ -1093,7 +1095,7 @@ describe("API summary consent", () => {
       target: { value: "openrouter" },
     });
     expect(
-      screen.getByText(/allow notes and transcripts to be sent/),
+      screen.getByText(/AI summaries send data off your iPhone/),
     ).toBeTruthy();
     expect(invoke).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Model ID"), {
@@ -1102,6 +1104,8 @@ describe("API summary consent", () => {
     fireEvent.change(screen.getByLabelText("OpenRouter API key"), {
       target: { value: "test-key" },
     });
+    expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(
       screen.getByRole("button", { name: "Save summary settings" }),
     );
@@ -1112,6 +1116,7 @@ describe("API summary consent", () => {
         summaryModel: "test/model",
         summaryBaseUrl: "https://openrouter.ai/api/v1",
         apiKey: "test-key",
+        aiSharingAllowed: true,
       }),
     );
     await waitFor(() =>
@@ -1235,6 +1240,7 @@ describe("mobile provider connections", () => {
         summaryBaseUrl: "https://api.anthropic.com/v1",
         summaryLanguage: "nl",
         apiKey: null,
+        aiSharingAllowed: false,
       }),
     );
   });
@@ -1417,6 +1423,7 @@ describe("mobile provider connections", () => {
           summaryModel: "my-model",
           summaryBaseUrl: "http://192.168.1.10:1234/v1",
           apiKey: null,
+          aiSharingAllowed: false,
         }),
       ),
     );
@@ -1709,5 +1716,77 @@ describe("vault location", () => {
     expect(
       screen.queryByRole("button", { name: "Connect iCloud folder" }),
     ).toBeNull();
+  });
+});
+
+describe("explicit AI sharing permission", () => {
+  const configured = {
+    ...snapshot,
+    settings: {
+      ...snapshot.settings,
+      summary_provider: "ollama",
+      summary_model: "local-model",
+      summary_base_url: "http://192.168.1.20:11434/v1",
+    },
+  };
+  it("saves a configured provider without granting permission implicitly", async () => {
+    render(<SummarySettings snapshot={configured} />, { wrapper });
+    expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save summary settings" }),
+    );
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "mobile_save_settings",
+        expect.objectContaining({ aiSharingAllowed: false }),
+      ),
+    );
+  });
+  it.each(["Provider", "Server URL", "Model ID"])(
+    "requires fresh consent after changing %s",
+    (field) => {
+      render(
+        <SummarySettings
+          snapshot={{
+            ...configured,
+            settings: { ...configured.settings, ai_sharing_allowed: true },
+          }}
+        />,
+        { wrapper },
+      );
+      expect(screen.getByRole("checkbox")).toHaveProperty("checked", true);
+      fireEvent.change(screen.getByLabelText(field), {
+        target: {
+          value:
+            field === "Provider"
+              ? "openrouter"
+              : field === "Server URL"
+                ? "https://another.example/v1"
+                : "another-model",
+        },
+      });
+      expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+    },
+  );
+  it("allows saved permission to be revoked", async () => {
+    render(
+      <SummarySettings
+        snapshot={{
+          ...configured,
+          settings: { ...configured.settings, ai_sharing_allowed: true },
+        }}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save summary settings" }),
+    );
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "mobile_save_settings",
+        expect.objectContaining({ aiSharingAllowed: false }),
+      ),
+    );
   });
 });

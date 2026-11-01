@@ -51,6 +51,7 @@ export type Snapshot = {
     providers: Record<string, { base_url: string; has_api_key: boolean }>;
     summary_language: string;
     has_api_key: boolean;
+    ai_sharing_allowed: boolean;
   };
 };
 export type Session = {

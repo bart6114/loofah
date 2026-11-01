@@ -73,7 +73,63 @@ pub fn validate(settings: &Settings, has_key: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize, serde::Deserialize, PartialEq)]
+struct Consent {
+    version: u32,
+    provider: String,
+    base_url: String,
+    model: String,
+}
+
+impl Consent {
+    fn for_settings(settings: &Settings) -> Self {
+        Self {
+            version: 1,
+            provider: settings.summary_provider.clone(),
+            base_url: settings
+                .summary_base_url
+                .trim()
+                .trim_end_matches('/')
+                .into(),
+            model: settings.summary_model.trim().into(),
+        }
+    }
+}
+
+pub fn has_consent(directory: &std::path::Path, settings: &Settings) -> bool {
+    // Permission belongs to this installation, never to a synced vault or queued job.
+    std::fs::read(directory.join("ai-consent.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Option<Consent>>(&bytes).ok())
+        .flatten()
+        .is_some_and(|consent| consent == Consent::for_settings(settings))
+}
+
+pub fn save_consent(
+    directory: &std::path::Path,
+    settings: &Settings,
+    allowed: bool,
+) -> Result<(), String> {
+    super::persist::write_json(
+        &directory.join("ai-consent.json"),
+        &allowed.then(|| Consent::for_settings(settings)),
+    )
+}
+
+pub fn require_consent(directory: &std::path::Path, settings: &Settings) -> Result<(), String> {
+    if !has_consent(directory, settings) {
+        return Err("Review AI data sharing and give permission in Settings before creating summaries or titles.".into());
+    }
+    Ok(())
+}
+
 pub async fn availability(app: &tauri::AppHandle, settings: &Settings) -> Result<(), String> {
+    let state = app.state::<MobileState>();
+    require_consent(&state.state_dir, settings)?;
+    if Settings::load(state.store.vault_base())? != *settings {
+        return Err("Summary settings changed. Retry with the selected provider.".into());
+    }
+
     let key = if definition(&settings.summary_provider).is_some() {
         app.mobile_native()
             .has_api_key(&settings.summary_provider)
@@ -122,6 +178,13 @@ impl Bridge {
     }
 }
 
+pub fn abort_active(app: &tauri::AppHandle) {
+    let pending = app.state::<Bridge>().pending.lock().unwrap().take();
+    if let Some(pending) = pending {
+        let _ = app.emit("mobile-summary-abort", &pending.id);
+    }
+}
+
 #[tauri::command]
 pub fn mobile_summary_bridge_ready(app: tauri::AppHandle, ready: bool) {
     let bridge = app.state::<Bridge>();
@@ -157,6 +220,8 @@ pub async fn generate(
     input: &str,
     max_output_tokens: Option<u32>,
 ) -> Result<Option<String>, String> {
+    let state = app.state::<MobileState>();
+    let operation = state.operation.lock().await;
     availability(app, settings).await?;
     let key = app
         .mobile_native()
@@ -202,6 +267,7 @@ pub async fn generate(
         "connection": { "providerId": settings.summary_provider, "modelId": settings.summary_model,
             "baseUrl": settings.summary_base_url, "apiKey": key.unwrap_or_default() }
     })).map_err(|e| e.to_string())?;
+    drop(operation);
     let timeout = tokio::time::sleep(std::time::Duration::from_secs(240));
     tokio::pin!(timeout);
     loop {
@@ -217,7 +283,7 @@ pub async fn generate(
                     || !recording::FOREGROUND.load(Ordering::Acquire)
                     || state.jobs.lock().unwrap().iter().any(|job| job.session_id == session_id && job.kind != "transcribe" && job.manual_pause)
                 { return Ok(None); }
-                if *state.settings.lock().unwrap() != *settings {
+                if *state.settings.lock().unwrap() != *settings || !has_consent(&state.state_dir, settings) {
                     return Err("Summary settings changed. Retry with the selected provider.".into());
                 }
             }
@@ -228,6 +294,40 @@ pub async fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consent_is_explicit_local_revocable_and_bound_to_the_recipient() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            summary_provider: "openrouter".into(),
+            summary_model: "provider/model".into(),
+            summary_base_url: "https://openrouter.ai/api/v1".into(),
+            ..Default::default()
+        };
+        assert!(require_consent(directory.path(), &settings).is_err());
+        save_consent(directory.path(), &settings, true).unwrap();
+        assert!(require_consent(directory.path(), &settings).is_ok());
+        let other_device = tempfile::tempdir().unwrap();
+        assert!(!has_consent(other_device.path(), &settings));
+        let mut changed = settings.clone();
+        changed.summary_model = "other/model".into();
+        assert!(!has_consent(directory.path(), &changed));
+        changed = settings.clone();
+        changed.summary_base_url = "https://another.example/v1".into();
+        assert!(!has_consent(directory.path(), &changed));
+        changed = settings.clone();
+        changed.summary_provider = "custom".into();
+        assert!(!has_consent(directory.path(), &changed));
+        save_consent(directory.path(), &settings, false).unwrap();
+        assert!(require_consent(directory.path(), &settings).is_err());
+        std::fs::write(directory.path().join("ai-consent.json"), b"broken").unwrap();
+        assert!(!has_consent(directory.path(), &settings));
+        let mut old = Consent::for_settings(&settings);
+        old.version = 0;
+        super::super::persist::write_json(&directory.path().join("ai-consent.json"), &Some(old))
+            .unwrap();
+        assert!(!has_consent(directory.path(), &settings));
+    }
 
     #[test]
     fn stale_reply_cannot_complete_a_new_request() {
