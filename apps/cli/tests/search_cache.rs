@@ -109,7 +109,7 @@ fn doctor_does_not_initialize_and_explicit_init_streams_progress_separately() {
 }
 
 #[test]
-fn mcp_first_start_initializes_without_polluting_the_protocol_stream() {
+fn mcp_first_search_initializes_without_polluting_the_protocol_stream() {
     use std::io::{BufRead, Write};
     let vault = tempfile::tempdir().unwrap();
     seed(vault.path());
@@ -139,6 +139,12 @@ fn mcp_first_start_initializes_without_polluting_the_protocol_stream() {
         let initialized = receiver
             .recv_timeout(std::time::Duration::from_secs(15))
             .map_err(|error| error.to_string())??;
+        assert!(
+            !hypr_search_cache::Cache::for_vault(vault.path())
+                .unwrap()
+                .status()
+                .ready
+        );
         writeln!(
             stdin,
             "{}",
@@ -161,12 +167,13 @@ fn mcp_first_start_initializes_without_polluting_the_protocol_stream() {
         responses[1]["result"]["structuredContent"]["hits"][0]["session_id"],
         "a"
     );
-    let events: Vec<Value> = std::fs::read_to_string(stderr.path())
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert_eq!(events.last().unwrap()["phase"], "ready");
+    assert!(std::fs::read_to_string(stderr.path()).unwrap().is_empty());
+    assert!(
+        hypr_search_cache::Cache::for_vault(vault.path())
+            .unwrap()
+            .status()
+            .ready
+    );
 }
 
 #[test]
@@ -190,19 +197,17 @@ fn incompatible_cache_is_rebuilt_automatically_but_corruption_requires_repair() 
     assert_eq!(response(&search)["data"][0]["session_id"], "a");
     assert!(!search.stderr.is_empty());
     std::fs::write(&pointer, "../invalid").unwrap();
-    for args in [vec!["sessions", "list"], vec!["mcp"]] {
-        let output = run(vault.path(), &args);
-        assert!(!output.status.success());
-        assert!(output.stdout.is_empty());
-        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(error["error"]["code"], "cache_corrupt");
-        assert!(
-            error["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("loof init")
-        );
-    }
+    let output = run(vault.path(), &["sessions", "list"]);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "cache_corrupt");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loof init")
+    );
     response(&run(vault.path(), &["init"]));
     assert!(cache.status().ready);
 }

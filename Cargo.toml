@@ -59,6 +59,7 @@ hypr-listener-core = { path = "crates/listener-core", package = "listener-core" 
 hypr-listener2-core = { path = "crates/listener2-core", package = "listener2-core" }
 hypr-local-model = { path = "crates/local-model", package = "local-model" }
 hypr-local-stt-core = { path = "crates/local-stt-core", package = "local-stt-core" }
+hypr-meeting-live = { path = "crates/meeting-live", package = "meeting-live" }
 hypr-model-downloader = { path = "crates/model-downloader", package = "model-downloader" }
 hypr-model-manager = { path = "crates/model-manager", package = "model-manager" }
 hypr-mp3 = { path = "crates/mp3", package = "mp3" }

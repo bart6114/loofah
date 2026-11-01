@@ -23,6 +23,7 @@ let package = Package(
         .product(name: "SwiftRs", package: "swift-rs")
       ],
       path: "src"
-    )
+    ),
+    .testTarget(name: "FloatingNudgeTests", dependencies: ["swift-lib"], path: "tests"),
   ]
 )

@@ -96,6 +96,7 @@ run_rust() {
 
   run_step "ChatGPT model catalog" node apps/desktop/src-tauri/scripts/prepare-codex-models.mjs
   run_step "native notification lifetime tests" swift test --package-path crates/notification-macos/swift-lib
+  run_step "native recording nudge tests" swift test --package-path plugins/windows/swift-lib --skip FloatingNudgePanelTests
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 

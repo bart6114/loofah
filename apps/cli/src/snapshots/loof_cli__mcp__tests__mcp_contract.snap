@@ -1,9 +1,10 @@
 ---
 source: apps/cli/src/mcp.rs
+assertion_line: 544
 expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": info.protocol_version, \"instructions\":\n    info.instructions, \"tools\": tools, \"resource_templates\": templates,\n}))"
 ---
 {
-  "instructions": "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
+  "instructions": "Local access to Loofah meeting data and live recording tools. For external coaching, discover get_active_meeting, poll get_live_transcript every five seconds with its cursor, and use nudge sparingly with the recording_id. Nudges affect the desktop UI but never change vault content. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
   "protocol_version": "2024-11-05",
   "resource_templates": [
     {
@@ -20,6 +21,50 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
     }
   ],
   "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Discover the active desktop recording and whether live transcription and nudges are available. Use its recording_id with live tools to avoid targeting another meeting.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_active_meeting"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read finalized live words and explicit corrections for a recording. Poll every five seconds using the returned cursor; drain has_more pages first. On reset replace previous context with the returned snapshot. Does not include provisional speech. Requires running macOS desktop.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "cursor": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recording_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recording_id"
+        ],
+        "title": "TranscriptInput",
+        "type": "object"
+      },
+      "name": "get_live_transcript"
+    },
     {
       "annotations": {
         "destructiveHint": false,
@@ -127,6 +172,36 @@ expression: "canonicalize_json(serde_json::json!({\n    \"protocol_version\": in
         "type": "object"
       },
       "name": "list_meetings"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Display a plain-text coaching nudge of 1–200 characters in the active recording bar for 20 seconds, paused on hover. Replaces the previous nudge. Supply recording_id from get_active_meeting. Requires running macOS desktop with the floating bar enabled. Success means UI accepted, not that the person read it. Do not automatically retry timeouts.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "recording_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "NudgeInput",
+        "type": "object"
+      },
+      "name": "nudge"
     },
     {
       "annotations": {

@@ -112,7 +112,18 @@ pub enum Command {
         /// Meeting id whose audio should be transcribed
         id: String,
     },
-    /// Run the read-only Loofah MCP server over stdio
+    /// Show a temporary coaching nudge in the active recording bar (macOS desktop required)
+    Nudge {
+        text: String,
+        #[arg(long)]
+        recording_id: Option<String>,
+    },
+    /// Inspect the running desktop recording and incremental finalized transcript
+    Live {
+        #[command(subcommand)]
+        command: LiveCommand,
+    },
+    /// Run the Loofah MCP server over stdio (meeting reads and live recording nudges)
     Mcp,
     /// Browse the vault's tag registry
     Tags {
@@ -919,4 +930,17 @@ mod tests {
             assert_options_are_documented(subcommand, docs);
         }
     }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LiveCommand {
+    /// Discover the active recording, transcription mode, and nudge availability
+    Status,
+    /// Read finalized words and corrections; reuse the returned cursor every five seconds
+    Transcript {
+        #[arg(long)]
+        recording_id: String,
+        #[arg(long)]
+        cursor: Option<String>,
+    },
 }

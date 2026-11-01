@@ -2,6 +2,15 @@ import AppKit
 import SwiftUI
 
 enum FloatingBarLayout {
+  static let nudgeWidth: CGFloat = 320
+  static func nudgeHeight(text: String) -> CGFloat {
+    let bounds = (text as NSString).boundingRect(
+      with: NSSize(width: nudgeWidth - 24, height: .greatestFiniteMagnitude),
+      options: [.usesLineFragmentOrigin, .usesFontLeading],
+      attributes: [.font: NSFont.systemFont(ofSize: 13)])
+    return max(90, ceil(bounds.height) + 64)
+  }
+  static let nudgeGap: CGFloat = 6
   static let inset: CGFloat = 4
   static let screenMargin: CGFloat = 8
   static let compactHeight: CGFloat = 38
@@ -66,6 +75,7 @@ enum FloatingBarLayout {
 
 struct FloatingBarView: View {
   @ObservedObject var model: FloatingBarViewModel
+  @ObservedObject var nudge: FloatingNudgeModel
   @ObservedObject var settings: FloatingOverlaySettingsModel
   let panelOrigin: () -> NSPoint?
   let movePanel: (NSPoint) -> Void
@@ -76,11 +86,14 @@ struct FloatingBarView: View {
   private let transcriptBottomAnchorId = "floating-transcript-bottom-anchor"
 
   var body: some View {
-    Group {
+    VStack(alignment: .trailing, spacing: FloatingBarLayout.nudgeGap) {
       if model.isExpanded {
         expandedPanel
       } else {
         compactPill
+      }
+      if let payload = nudge.payload {
+        nudgeCard(payload)
       }
     }
     .padding(FloatingBarLayout.inset)
@@ -88,6 +101,46 @@ struct FloatingBarView: View {
     // trailing edge; hover and drag are scoped to the visible surfaces so the
     // window's empty leading strip stays inert.
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+  }
+
+  private func nudgeCard(_ payload: FloatingNudgePayload) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text("Nudge")
+          .font(.system(size: 11, weight: .semibold))
+        Spacer()
+        Button {
+          nudge.clear()
+        } label: {
+          Image(systemName: "xmark")
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Dismiss nudge")
+      }
+      Text(payload.text)
+        .font(.system(size: 13))
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.disabled)
+      Spacer(minLength: 0)
+    }
+    .foregroundStyle(primaryContentColor)
+    .padding(12)
+    .frame(
+      width: FloatingBarLayout.nudgeWidth,
+      height: FloatingBarLayout.nudgeHeight(text: payload.text), alignment: .topLeading
+    )
+    .background {
+      ZStack {
+        VisualEffectBlur(colorScheme: model.colorScheme, cornerRadius: 16)
+        RoundedRectangle(cornerRadius: 16).fill(surfaceTintColor)
+      }
+    }
+    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(outerStrokeColor, lineWidth: 0.5))
+    .clipShape(RoundedRectangle(cornerRadius: 16))
+    .onHover { nudge.setHovering($0) }
+    .accessibilityElement(children: .contain)
   }
 
   private var compactPill: some View {

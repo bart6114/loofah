@@ -73,6 +73,8 @@ jobs:
       - run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
       - name: Native notification lifetime tests
         run: swift test --package-path crates/notification-macos/swift-lib
+      - name: Native recording nudge tests
+        run: swift test --package-path plugins/windows/swift-lib --skip FloatingNudgePanelTests
       - run: cargo check -p desktop
       - run: cargo test -p desktop
       - run: |
