@@ -1,3 +1,2 @@
-- Cross-platform: Linux, macOS (requires CN_API_KEY_WEBDRIVER), Windows.
-- See `scripts/setup-desktop-e2e.sh` for Linux setup.
+- Supported desktop platforms: macOS (requires CN_API_KEY_WEBDRIVER) and Windows.
 - macOS requires building with `--features automation`.

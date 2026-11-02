@@ -198,16 +198,6 @@ export class TranscriptAccumulator {
   }
 }
 
-export function applyLiveTranscriptDelta(
-  store: TranscriptStore,
-  transcriptId: string,
-  delta: LiveTranscriptDelta,
-): void {
-  const accumulator = createTranscriptAccumulator(store, transcriptId);
-  accumulator.applyLiveDelta(delta);
-  accumulator.dispose();
-}
-
 function markTranscriptAccumulatorDirty(transcriptId: string): void {
   if (activeAccumulatorCounts.has(transcriptId)) {
     dirtyAccumulatorTranscriptIds.add(transcriptId);

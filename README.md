@@ -65,7 +65,7 @@ Read the [first-meeting guide](https://loofah.io/quickstart/), prepare an
 This is a pnpm workspace containing a Tauri desktop app (`apps/desktop/`) and a
 Rust CLI (`apps/cli/`). There is no database: the files in the vault are the
 source of truth. The vault format lives in `crates/vault-read/`; the interface
-uses Zustand for state and TipTap for editing.
+uses Zustand for state and ProseMirror for editing.
 
 To run it locally on macOS:
 

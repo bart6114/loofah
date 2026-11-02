@@ -6,24 +6,6 @@ export type ProviderRequirement =
   | { kind: "requires_config"; fields: ConfigField[] }
   | { kind: "requires_platform"; platform: "apple_silicon" };
 
-export function requiresEntitlement(
-  requirements: readonly ProviderRequirement[],
-  entitlement: "pro",
-): boolean {
-  return requirements.some(
-    (r) => r.kind === "requires_entitlement" && r.entitlement === entitlement,
-  );
-}
-
-export function requiresConfigField(
-  requirements: readonly ProviderRequirement[],
-  field: ConfigField,
-): boolean {
-  return requirements.some(
-    (r) => r.kind === "requires_config" && r.fields.includes(field),
-  );
-}
-
 export function getRequiredConfigFields(
   requirements: readonly ProviderRequirement[],
 ): ConfigField[] {

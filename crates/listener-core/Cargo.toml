@@ -26,7 +26,6 @@ owhisper-interface = { workspace = true }
 
 hound = { workspace = true }
 hypr-mp3 = { workspace = true }
-vorbis_rs = { workspace = true }
 
 ractor = { workspace = true, features = ["async-trait"] }
 
@@ -36,7 +35,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 specta = { workspace = true, optional = true }
 tauri-specta = { workspace = true, optional = true, features = ["derive"] }
-thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true }

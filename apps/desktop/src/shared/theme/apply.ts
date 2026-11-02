@@ -11,16 +11,6 @@ import { getStoredSettingValues } from "~/settings/queries";
 const THEME_STORAGE_KEY = "hypr-theme";
 const THEME_BOOTSTRAP_TIMEOUT_MS = 150;
 
-/** Keep `public/theme-boot.js` aligned with normalizeThemePreference + resolveIsDarkMode. */
-
-export function readStoredThemePreference(): ThemePreference {
-  try {
-    return normalizeThemePreference(localStorage.getItem(THEME_STORAGE_KEY));
-  } catch {
-    return "system";
-  }
-}
-
 export function normalizeThemePreference(
   stored: string | null,
 ): ThemePreference {

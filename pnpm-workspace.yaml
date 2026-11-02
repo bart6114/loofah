@@ -3,7 +3,6 @@ packages:
   - docs
   - packages/*
   - plugins/*
-  - examples/plugins/*
   - e2e/*
 
 publicHoistPattern:

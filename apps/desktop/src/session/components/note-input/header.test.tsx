@@ -153,10 +153,6 @@ vi.mock("~/ai/hooks", () => ({
   useLLMConnectionStatus: () => "connected",
 }));
 
-vi.mock("~/session/enhance-config", () => ({
-  shouldShowEmptySummaryConfigError: () => false,
-}));
-
 vi.mock("~/session/components/shared", () => ({
   useHasTranscript: () => hoisted.hasTranscript,
   useCanShowTranscript: (

@@ -12,9 +12,6 @@ app = ["mic"]
 sleep = ["mic"]
 
 [dependencies]
-isolang = { workspace = true }
-lazy_static = { workspace = true }
-regex = { workspace = true }
 sysinfo = { workspace = true }
 thiserror = { workspace = true }
 

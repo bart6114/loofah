@@ -150,23 +150,3 @@ export function LocalModelLabel({
     </div>
   );
 }
-
-export function LocalModelBackendBadge({ model }: { model: string }) {
-  const badge = getLocalModelBackendBadge(model);
-
-  if (!badge) {
-    return null;
-  }
-
-  return (
-    <span
-      title={badge.title}
-      className={cn([
-        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none font-medium",
-        badge.className,
-      ])}
-    >
-      {badge.label}
-    </span>
-  );
-}

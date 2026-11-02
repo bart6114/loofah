@@ -5,9 +5,8 @@ edition = "2024"
 
 [features]
 default = ["rodio"]
-rodio = ["dep:dasp", "dep:rodio"]
+rodio = ["dep:rodio"]
 
 [dependencies]
-dasp = { workspace = true, optional = true }
 futures-util = { workspace = true }
 rodio = { workspace = true, optional = true }

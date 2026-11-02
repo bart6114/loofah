@@ -3,10 +3,15 @@ name = "transcribe-whisper-local"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.cargo-machete]
+# Used for the DirectML feature's ONNX provider activation.
+ignored = ["hypr-onnx"]
+
 [features]
 default = []
 coreml = ["hypr-whisper-local/coreml"]
-directml = ["hypr-pyannote-local/directml"]
+# Preserve ONNX provider activation for callers of the existing feature.
+directml = ["dep:hypr-onnx", "hypr-onnx/directml"]
 cuda = ["hypr-whisper-local/cuda"]
 hipblas = ["hypr-whisper-local/hipblas"]
 openblas = ["hypr-whisper-local/openblas"]
@@ -24,10 +29,9 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dependencies]
 hypr-audio-chunking = { workspace = true }
-hypr-audio-interface = { workspace = true }
 hypr-audio-utils = { workspace = true }
 hypr-model-manager = { workspace = true, features = ["whisper-local"] }
-hypr-pyannote-local = { workspace = true }
+hypr-onnx = { workspace = true, optional = true }
 hypr-transcribe-core = { workspace = true }
 hypr-whisper = { workspace = true }
 hypr-whisper-local = { workspace = true }
@@ -46,5 +50,3 @@ tokio = { workspace = true, features = ["fs", "io-util"] }
 tokio-util = { workspace = true }
 tower = { workspace = true }
 tracing = { workspace = true }
-
-rodio = { workspace = true }

@@ -12,13 +12,11 @@ tauri-event = ["specta", "dep:tauri-specta"]
 hypr-audio-chunking = { workspace = true }
 hypr-audio-utils = { workspace = true }
 hypr-fs-format = { workspace = true }
-hypr-host = { workspace = true }
 hypr-language = { workspace = true }
 hypr-transcribe-core = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
 hypr-whisper-local-model = { workspace = true }
 
-bytes = { workspace = true }
 hound = { workspace = true }
 
 owhisper-client = { workspace = true, features = ["local"] }
@@ -36,7 +34,6 @@ ractor = { workspace = true, features = ["async-trait"] }
 
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tokio-stream = { workspace = true }
 tracing = { workspace = true }
 
 aspasia = "0.2.1"

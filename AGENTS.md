@@ -2,7 +2,7 @@
 
 Tauri desktop note-taking app (`apps/desktop/`) and a CLI (`apps/cli/`).
 Uses pnpm workspaces.
-Files in the user's vault directory are the only source of truth — there is no database. The vault format lives in `crates/vault-read/`; the desktop write path and in-memory index are `apps/desktop/src-tauri/src/session_store/`. App settings are a `config.json` in the vault, not rows. Zustand is used for UI state, and TipTap powers the editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
+Files in the user's vault directory are the only source of truth — there is no database. The vault format lives in `crates/vault-read/`; the desktop write path and in-memory index are `apps/desktop/src-tauri/src/session_store/`. App settings are a `config.json` in the vault, not rows. Zustand is used for UI state, and ProseMirror powers the editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
 
 ## Supported platform
 

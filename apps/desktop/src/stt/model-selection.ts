@@ -14,13 +14,6 @@ export function getDefaultSttModel(_provider?: string | null) {
   return undefined;
 }
 
-export function normalizeStoredSttModel(
-  _provider: string | undefined,
-  model: string | undefined,
-) {
-  return model;
-}
-
 export function getPreferredProviderModel(
   savedModel: string | undefined,
   models: ModelEntry[],
