@@ -34,7 +34,6 @@ serde_json = { workspace = true }
 
 strum = { workspace = true, features = ["derive"] }
 url = { workspace = true, features = ["serde"] }
-uuid = { workspace = true, features = ["v4"] }
 
 specta = { workspace = true, features = ["serde_json"] }
 tauri = { workspace = true, features = ["test", "macos-private-api"] }

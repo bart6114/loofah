@@ -111,11 +111,7 @@ jobs:
           sparse-checkout: .github
           persist-credentials: false
       - uses: ./.github/actions/pnpm_install
-      - uses: denoland/setup-deno@v2
       - run: pnpm -F ui build
-      - uses: ./.github/actions/install_desktop_deps
-        with:
-          target: macos
       - uses: ./.release-ci/.github/actions/macos_release_setup
         id: release-setup
       # Keep this at workflow scope: nested composite post actions lose their inputs.

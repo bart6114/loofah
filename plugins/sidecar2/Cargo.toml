@@ -7,6 +7,10 @@ exclude = ["/js", "/node_modules"]
 links = "tauri-plugin-sidecar2"
 description = ""
 
+[package.metadata.cargo-machete]
+# Required by the expansion of tauri_specta::collect_commands![].
+ignored = ["specta"]
+
 [build-dependencies]
 tauri-plugin = { workspace = true, features = ["build"] }
 

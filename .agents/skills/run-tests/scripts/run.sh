@@ -17,7 +17,6 @@ readonly rust_excludes=(
   vad
   vad-masking
   onnx
-  pyannote-local
   bundle
   host
   intercept

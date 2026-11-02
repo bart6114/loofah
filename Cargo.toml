@@ -67,7 +67,6 @@ hypr-notification-interface = { path = "crates/notification-interface", package 
 hypr-observability = { path = "crates/observability", package = "observability" }
 hypr-onnx = { path = "crates/onnx", package = "onnx" }
 hypr-openrouter = { path = "crates/openrouter", package = "openrouter" }
-hypr-pyannote-local = { path = "crates/pyannote-local", package = "pyannote-local" }
 hypr-resampler = { path = "crates/resampler", package = "resampler" }
 hypr-s3 = { path = "crates/s3", package = "s3" }
 hypr-search-cache = { path = "crates/search-cache", package = "search-cache" }
@@ -113,7 +112,6 @@ tauri-plugin-opener = "2.5"
 tauri-plugin-os = "2.3"
 tauri-plugin-prevent-default = "4"
 tauri-plugin-process = "2.3"
-tauri-plugin-sentry = "0.5"
 tauri-plugin-shell = "2.3"
 tauri-plugin-single-instance = "2.4"
 tauri-plugin-store = "2.4"
@@ -147,7 +145,6 @@ tauri-plugin-updater2 = { path = "plugins/updater2" }
 tauri-plugin-windows = { path = "plugins/windows" }
 
 async-stream = "0.3.6"
-futures-channel = "0.3.31"
 futures-util = "0.3.31"
 hypr-supervisor = { path = "crates/supervisor", package = "supervisor" }
 pico-args = "0.5"
@@ -175,7 +172,6 @@ dirs = "6.0.0"
 http = "1"
 indoc = "2"
 isolang = "2.4"
-itertools = "0.14.0"
 lazy_static = "1.5.0"
 open = "5"
 regex = "1.12"
@@ -203,7 +199,6 @@ testcontainers-modules = "0.12.1"
 wiremock = "0.6"
 
 axum = "0.8"
-axum-extra = "0.12"
 tower = "0.5"
 tower-http = "0.6"
 utoipa = { version = "5", features = ["axum_extras"] }
@@ -227,9 +222,6 @@ opentelemetry_sdk = "0.30"
 tracing = "0.1"
 tracing-opentelemetry = "0.31"
 tracing-subscriber = "0.3"
-
-apalis = "1.0.0-rc.7"
-apalis-cron = "1.0.0-rc.7"
 
 specta = "2.0.0-rc.22"
 specta-typescript = "0.0.9"
