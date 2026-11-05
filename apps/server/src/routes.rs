@@ -312,27 +312,12 @@ async fn sessions(
     ApiQuery(page): ApiQuery<PageQuery>,
 ) -> Result<Json<SessionPage>> {
     let _access = service.catalog.access(&identity, &id, false).await?;
-    if page.limit == 0 || page.limit > 200 {
-        return Err(ApiError::new(
-            ErrorCode::Validation,
-            "Page size must be between 1 and 200",
-        ));
-    }
-    let context = service.vault(&id).await?;
-    let mut sessions: Vec<_> = context
-        .store
-        .session_list()
-        .into_iter()
-        .map(|entry| entry.meta)
-        .collect();
-    sessions.sort_by(|a, b| a.id.cmp(&b.id));
-    sessions.retain(|session| page.after.as_ref().is_none_or(|after| session.id > *after));
-    let next_cursor = (sessions.len() > page.limit).then(|| sessions[page.limit - 1].id.clone());
-    sessions.truncate(page.limit);
-    Ok(Json(SessionPage {
-        sessions,
-        next_cursor,
-    }))
+    Ok(Json(
+        service
+            .vault(&id)
+            .await?
+            .session_page(page.limit, page.after.as_deref())?,
+    ))
 }
 async fn session(
     State(service): State<Arc<Service>>,
@@ -398,40 +383,9 @@ async fn search(
     ApiJson(request): ApiJson<hypr_search_cache::SearchRequest>,
 ) -> Result<Json<hypr_search_cache::SearchResult>> {
     let _access = service.catalog.access(&identity, &id, false).await?;
-    if request.limit == 0
-        || request.limit > 200
-        || request.query.len() > 4096
-        || request
-            .options
-            .distance
-            .is_some_and(|distance| distance > 2)
-        || request
-            .options
-            .snippet_max_chars
-            .is_some_and(|length| length > 4096)
-        || request.options.phrase_slop.is_some_and(|slop| slop > 100)
-        || request
-            .collection
-            .as_deref()
-            .is_some_and(|value| value != "default")
-    {
-        return Err(ApiError::new(
-            ErrorCode::Validation,
-            "Invalid search query or limit",
-        ));
-    }
-    let context = service.vault(&id).await?;
-    let result = context
-        .search
-        .search(request)
-        .await
-        .map_err(|cause| match cause {
-            hypr_loofah_core::search::SearchError::Cache(
-                hypr_search_cache::Error::InvalidInput(_),
-            ) => ApiError::new(ErrorCode::Validation, "Search query is invalid"),
-            _ => ApiError::new(ErrorCode::Unavailable, "Search projection is not ready"),
-        })?;
-    Ok(Json(result))
+    Ok(Json(
+        service.vault(&id).await?.search_sessions(request).await?,
+    ))
 }
 
 async fn events(

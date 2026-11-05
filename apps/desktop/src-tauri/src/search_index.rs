@@ -32,7 +32,7 @@ pub fn spawn(app: tauri::AppHandle, store: Arc<SessionStore>) {
                 &startup,
                 changes,
                 Default::default(),
-                || {},
+                || crate::application::publish(&app, hypr_loofah_protocol::Change::SearchReady),
             )
             .await;
     });

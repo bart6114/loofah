@@ -32,6 +32,13 @@ pub fn spawn_dispatcher(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         index::run_index_change_dispatcher(rx, move |event| {
             use tauri_specta::Event;
+            crate::application::publish(
+                &app,
+                hypr_loofah_protocol::Change::IndexChanged {
+                    entity: event.entity,
+                    ids: event.ids.clone(),
+                },
+            );
             if let Err(error) = event.emit(&app) {
                 tracing::warn!(%error, "index events: failed to emit index-changed");
             }

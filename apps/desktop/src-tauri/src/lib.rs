@@ -1,4 +1,5 @@
 mod appearance;
+mod application;
 mod autostart;
 mod chatgpt;
 mod commands;
@@ -336,9 +337,23 @@ pub async fn main() {
                         ));
                         store.set_startup_pending(true);
                         app_handle.manage(store.clone());
+                        use sha2::{Digest, Sha256};
+                        let canonical_base = std::fs::canonicalize(base.as_std_path())
+                            .unwrap_or_else(|_| base.as_std_path().to_path_buf());
+                        let vault_key: String =
+                            Sha256::digest(canonical_base.as_os_str().as_encoded_bytes())
+                                .iter()
+                                .map(|byte| format!("{byte:02x}"))
+                                .collect();
+                        let operation_root = app_handle
+                            .path()
+                            .app_local_data_dir()?
+                            .join("backend")
+                            .join(&vault_key)
+                            .join("creates");
                         app_handle.manage(std::sync::Arc::new(
                             hypr_loofah_core::VaultContext::new(
-                                "local".into(),
+                                format!("local:{vault_key}"),
                                 store.clone(),
                                 startup,
                                 app_handle
@@ -349,7 +364,8 @@ pub async fn main() {
                                     .state::<tauri_plugin_tantivy::IndexState>()
                                     .service
                                     .clone(),
-                            ),
+                            )
+                            .with_operation_storage(operation_root),
                         ));
 
                         search_index::spawn(app_handle.clone(), store.clone());
@@ -539,6 +555,13 @@ fn get_onboarding_flag() -> Option<bool> {
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
+            application::application_scope::<tauri::Wry>,
+            application::application_sessions::<tauri::Wry>,
+            application::application_session::<tauri::Wry>,
+            application::application_create_session::<tauri::Wry>,
+            application::application_read_note::<tauri::Wry>,
+            application::application_save_note::<tauri::Wry>,
+            application::application_search::<tauri::Wry>,
             remote::remote_connect::<tauri::Wry>,
             remote::remote_login::<tauri::Wry>,
             remote::remote_cancel_login::<tauri::Wry>,
@@ -621,6 +644,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             session_store::commands::session_find_by_tracking_id::<tauri::Wry>,
         ])
         .events(tauri_specta::collect_events![
+            application::ApplicationChanged,
             session_store::IndexChanged,
             startup::StartupProgress
         ])

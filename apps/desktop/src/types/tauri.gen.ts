@@ -5,6 +5,98 @@
 /** user-defined commands **/
 
 export const commands = {
+  async applicationScope(): Promise<Result<string, ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("application_scope") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSessions(
+    limit: number,
+    after: string | null,
+  ): Promise<Result<SessionPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_sessions", { limit, after }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSession(
+    sessionId: string,
+  ): Promise<Result<SessionDocument, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_session", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCreateSession(
+    requestId: string,
+    input: CreateSessionRequest,
+  ): Promise<Result<SessionDocument, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_create_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReadNote(
+    sessionId: string,
+  ): Promise<Result<NoteSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_note", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveNote(
+    sessionId: string,
+    input: SaveNoteRequest,
+  ): Promise<Result<NoteSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_note", { sessionId, input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSearch(
+    input: SearchRequest,
+  ): Promise<Result<SearchResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_search", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async remoteConnect(
     server: string,
   ): Promise<Result<RemoteConnectionInfo, ApplicationError>> {
@@ -1010,9 +1102,11 @@ export const commands = {
 /** user-defined events **/
 
 export const events = __makeEvents__<{
+  applicationChanged: ApplicationChanged;
   indexChanged: IndexChanged;
   startupProgress: StartupProgress;
 }>({
+  applicationChanged: "application-changed",
   indexChanged: "index-changed",
   startupProgress: "startup-progress",
 });
@@ -1021,6 +1115,7 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type ApplicationChanged = { event: ChangeEvent };
 export type ApplicationError = {
   code: ErrorCode;
   message: string;

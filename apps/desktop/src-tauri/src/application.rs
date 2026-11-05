@@ -1,0 +1,103 @@
+use std::sync::Arc;
+
+use hypr_loofah_core::VaultContext;
+use hypr_loofah_protocol::{
+    ApplicationError, CreateSessionRequest, ErrorCode, NoteSaveOutcome, NoteSnapshot,
+    SaveNoteRequest, SessionDocument, SessionPage,
+};
+use tauri::Manager;
+
+fn context<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<Arc<VaultContext>, ApplicationError> {
+    app.try_state::<Arc<VaultContext>>()
+        .map(|state| state.inner().clone())
+        .ok_or_else(|| {
+            hypr_loofah_client::failure(
+                ErrorCode::Unavailable,
+                "Vault startup is still in progress",
+            )
+        })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn application_sessions<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    limit: u32,
+    after: Option<String>,
+) -> Result<SessionPage, ApplicationError> {
+    context(&app)?.session_page(limit as usize, after.as_deref())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_session<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<SessionDocument, ApplicationError> {
+    context(&app)?.session_document(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_create_session<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request_id: String,
+    input: CreateSessionRequest,
+) -> Result<SessionDocument, ApplicationError> {
+    context(&app)?
+        .create_session("desktop".into(), request_id, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_read_note<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<NoteSnapshot, ApplicationError> {
+    context(&app)?.read_note(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_save_note<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: SaveNoteRequest,
+) -> Result<NoteSaveOutcome, ApplicationError> {
+    context(&app)?.save_note(&session_id, input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_search<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_search_cache::SearchRequest,
+) -> Result<hypr_search_cache::SearchResult, ApplicationError> {
+    context(&app)?.search_sessions(input).await
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct ApplicationChanged {
+    pub event: hypr_loofah_protocol::ChangeEvent,
+}
+
+pub fn publish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, change: hypr_loofah_protocol::Change) {
+    use tauri_specta::Event;
+    if let Some(context) = app.try_state::<Arc<VaultContext>>() {
+        let event = context.events.publish(change);
+        if let Err(error) = (ApplicationChanged { event }).emit(app) {
+            tracing::warn!(%error, "failed to emit application change");
+        }
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn application_scope<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<String, ApplicationError> {
+    Ok(context(&app)?.events.vault_id())
+}

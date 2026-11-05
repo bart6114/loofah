@@ -204,3 +204,47 @@ mod tests {
             .unwrap();
     }
 }
+
+impl crate::VaultContext {
+    pub async fn search_sessions(
+        &self,
+        request: SearchRequest,
+    ) -> Result<SearchResult, hypr_loofah_protocol::ApplicationError> {
+        use crate::vault::error;
+        use hypr_loofah_protocol::ErrorCode;
+        self.store
+            .ensure_ready()
+            .map_err(|_| error(ErrorCode::Unavailable, "Vault is not ready"))?;
+        if request.limit == 0
+            || request.limit > 200
+            || request.query.len() > 4096
+            || request
+                .options
+                .distance
+                .is_some_and(|distance| distance > 2)
+            || request
+                .options
+                .snippet_max_chars
+                .is_some_and(|length| length > 4096)
+            || request.options.phrase_slop.is_some_and(|slop| slop > 100)
+            || request
+                .collection
+                .as_deref()
+                .is_some_and(|value| value != "default")
+        {
+            return Err(error(
+                ErrorCode::Validation,
+                "Invalid search query or limit",
+            ));
+        }
+        self.search
+            .search(request)
+            .await
+            .map_err(|cause| match cause {
+                SearchError::Cache(hypr_search_cache::Error::InvalidInput(_)) => {
+                    error(ErrorCode::Validation, "Search query is invalid")
+                }
+                _ => error(ErrorCode::Unavailable, "Search projection is not ready"),
+            })
+    }
+}

@@ -39,6 +39,36 @@ impl VaultContext {
         self
     }
 
+    pub fn session_page(
+        &self,
+        limit: usize,
+        after: Option<&str>,
+    ) -> Result<hypr_loofah_protocol::SessionPage, ApplicationError> {
+        self.store
+            .ensure_ready()
+            .map_err(|_| error(ErrorCode::Unavailable, "Vault is not ready"))?;
+        if !(1..=200).contains(&limit) || after.is_some_and(|cursor| cursor.len() > 512) {
+            return Err(error(
+                ErrorCode::Validation,
+                "Invalid session page size or cursor",
+            ));
+        }
+        let mut sessions: Vec<_> = self
+            .store
+            .session_list()
+            .into_iter()
+            .map(|entry| entry.meta)
+            .collect();
+        sessions.sort_by(|a, b| a.id.cmp(&b.id));
+        sessions.retain(|session| after.is_none_or(|after| session.id.as_str() > after));
+        let next_cursor = (sessions.len() > limit).then(|| sessions[limit - 1].id.clone());
+        sessions.truncate(limit);
+        Ok(hypr_loofah_protocol::SessionPage {
+            sessions,
+            next_cursor,
+        })
+    }
+
     pub async fn session_document(&self, id: &str) -> Result<SessionDocument, ApplicationError> {
         self.validate(id)?;
         self.store
@@ -222,6 +252,60 @@ fn io_error(cause: std::io::Error) -> ApplicationError {
 mod tests {
     use super::*;
     use crate::VaultRuntime;
+
+    #[tokio::test]
+    async fn session_pages_share_bounded_ordering_and_enforce_startup_readiness() {
+        let vault = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let operations = tempfile::tempdir().unwrap();
+        let runtime = VaultRuntime::open(
+            "private".into(),
+            vault.path(),
+            cache.path(),
+            operations.path(),
+        )
+        .await
+        .unwrap();
+        for id in ["c", "a", "b"] {
+            let meta = serde_json::from_value(serde_json::json!({"id":id,"title":id,"created_at":"2026-11-05T10:00:00Z","tags":[]})).unwrap();
+            runtime.context.store.write_meta(&meta).await.unwrap();
+        }
+        let first = runtime.context.session_page(2, None).unwrap();
+        assert_eq!(
+            first
+                .sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(first.next_cursor.as_deref(), Some("b"));
+        let last = runtime
+            .context
+            .session_page(2, first.next_cursor.as_deref())
+            .unwrap();
+        assert_eq!(
+            last.sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["c"]
+        );
+        assert!(last.next_cursor.is_none());
+        for limit in [0, 201] {
+            assert_eq!(
+                runtime.context.session_page(limit, None).unwrap_err().code,
+                ErrorCode::Validation
+            );
+        }
+        runtime.context.store.set_startup_pending(true);
+        assert_eq!(
+            runtime.context.session_page(2, None).unwrap_err().code,
+            ErrorCode::Unavailable
+        );
+        runtime.context.store.set_startup_pending(false);
+        runtime.shutdown().await.unwrap();
+    }
 
     #[tokio::test]
     async fn completed_receipts_do_not_override_current_content_or_resurrect_deleted_sessions() {

@@ -3435,6 +3435,7 @@ dependencies = [
  "loofah-protocol",
  "pico-args",
  "ractor",
+ "search-cache",
  "serde",
  "serde_json",
  "sha2 0.11.0",

@@ -35,7 +35,22 @@ impl EventHub {
         })))
     }
 
+    pub fn vault_id(&self) -> String {
+        self.0.lock().unwrap().vault_id.clone()
+    }
+
     pub fn publish(&self, change: Change) -> ChangeEvent {
+        let change = match change {
+            Change::IndexChanged { entity, ids }
+                if ids.len() > 256 || ids.iter().map(String::len).sum::<usize>() > 32 * 1024 =>
+            {
+                Change::IndexChanged {
+                    entity,
+                    ids: Vec::new(),
+                }
+            }
+            change => change,
+        };
         let mut state = self.0.lock().unwrap();
         if state.sequence == u64::MAX {
             state.epoch = uuid::Uuid::new_v4().to_string();
@@ -131,6 +146,22 @@ impl Subscription {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bulk_invalidations_are_bounded_without_losing_the_changed_entity() {
+        let hub = EventHub::new("vault".into(), 4);
+        let event = hub.publish(Change::IndexChanged {
+            entity: hypr_loofah_protocol::IndexEntity::Sessions,
+            ids: (0..1000).map(|id| id.to_string()).collect(),
+        });
+        assert_eq!(
+            event.change,
+            Change::IndexChanged {
+                entity: hypr_loofah_protocol::IndexEntity::Sessions,
+                ids: vec![],
+            }
+        );
+    }
 
     #[tokio::test]
     async fn reconnect_replays_then_delivers_live_without_a_gap() {
