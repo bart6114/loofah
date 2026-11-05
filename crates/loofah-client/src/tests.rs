@@ -15,6 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use futures_util::StreamExt;
 use hypr_loofah_protocol::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -60,6 +61,7 @@ struct Provider {
     issued: AtomicUsize,
     refreshes: AtomicUsize,
     denied: AtomicBool,
+    stalled_events: AtomicBool,
     delay: AtomicUsize,
     event_connections: Mutex<Vec<Option<String>>>,
 }
@@ -97,6 +99,7 @@ impl Fixture {
             issued: AtomicUsize::new(0),
             refreshes: AtomicUsize::new(0),
             denied: AtomicBool::new(false),
+            stalled_events: AtomicBool::new(false),
             delay: AtomicUsize::new(0),
             event_connections: Mutex::new(Vec::new()),
         });
@@ -312,7 +315,11 @@ async fn events(
             .event("change")
             .data(serde_json::to_string(&event).unwrap()),
     )]);
-    Sse::new(stream).into_response()
+    if state.stalled_events.load(Ordering::SeqCst) {
+        Sse::new(stream.chain(futures_util::stream::pending())).into_response()
+    } else {
+        Sse::new(stream).into_response()
+    }
 }
 
 #[tokio::test]
@@ -528,6 +535,45 @@ async fn real_tcp_sse_reconnects_with_the_last_complete_cursor_and_stops_after_r
             break;
         }
     }
+    subscription.close().await;
+}
+
+#[tokio::test]
+async fn https_sse_detects_a_blackholed_connection_and_recovers_the_last_cursor() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let client = fixture.client().await;
+    fixture.login(&client).await;
+    fixture.state.stalled_events.store(true, Ordering::SeqCst);
+    let (sender, mut receiver) = mpsc::unbounded_channel();
+    let subscription = client
+        .subscribe("test".into(), move |event| sender.send(event).is_ok())
+        .unwrap();
+    let mut changes = Vec::new();
+    let mut reconnecting = false;
+    while changes.len() < 2 {
+        let event = tokio::time::timeout(Duration::from_secs(55), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        match event {
+            RemoteEvent::Change { event } => {
+                changes.push(event);
+                fixture.state.stalled_events.store(false, Ordering::SeqCst);
+            }
+            RemoteEvent::Connection {
+                state: ConnectionState::Reconnecting,
+                ..
+            } => reconnecting = true,
+            _ => {}
+        }
+    }
+    assert!(reconnecting);
+    assert_eq!(changes[0].cursor, "epoch:1");
+    assert_eq!(changes[1].cursor, "epoch:2");
+    assert_eq!(
+        fixture.state.event_connections.lock().await.as_slice(),
+        &[None, Some("epoch:1".into())]
+    );
     subscription.close().await;
 }
 
