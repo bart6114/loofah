@@ -19,9 +19,13 @@ export class NativeDraftStore {
 
   async recovery(id: string): Promise<NoteDraftRecovery | null> {
     await this.flush();
-    const value = applicationResult(await commands.draftCacheRecovery(this.scope, id));
+    const value = applicationResult(
+      await commands.draftCacheRecovery(this.scope, id),
+    );
     if (value && value.scope !== this.scope)
-      throw new Error("This recovery draft belongs to a different account or vault");
+      throw new Error(
+        "This recovery draft belongs to a different account or vault",
+      );
     return value;
   }
 
