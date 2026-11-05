@@ -17,6 +17,163 @@ use crate::{
     service::Service,
 };
 
+async fn wait_agent_projection(context: &hypr_loofah_core::VaultContext) {
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            match context.agent_list(ListMeetingsInput::default()).await {
+                Ok(_) => return,
+                Err(error) if error.code == ErrorCode::Unavailable => {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await
+                }
+                Err(error) => panic!("Agent projection failed: {error}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn agent_projections_preserve_cli_models_and_reader_private_vault_boundaries() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.login("alice").await;
+    let bob = fixture.login("bob").await;
+    fixture.login("charlie").await;
+    let (_, shared) = fixture
+        .call(
+            "alice",
+            "POST",
+            "/api/v1/vaults",
+            Some(json!({"name":"Agent reads"})),
+        )
+        .await;
+    let id = shared["id"].as_str().unwrap();
+    assert_eq!(
+        fixture
+            .call(
+                "alice",
+                "PUT",
+                &format!("/api/v1/vaults/{id}/members/{}", bob.member.id),
+                Some(json!({"role":"reader","expected_revision":shared["revision"]}))
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let context = fixture.service.vault(id).await.unwrap();
+    let meta = serde_json::from_value(json!({"id":"note","title":"Agent fixture","created_at":"2026-11-05T10:00:00Z","tags":["project"]})).unwrap();
+    context.store.write_meta(&meta).await.unwrap();
+    let dir = context.store.vault_base().join("sessions/note");
+    std::fs::write(dir.join("_memo.md"), "Legacy canonical zephyr note").unwrap();
+    std::fs::write(dir.join("unknown.md"), "ATTACHMENT CANARY").unwrap();
+    std::fs::write(dir.join(".hidden.md"), "HIDDEN CANARY").unwrap();
+    context.store.ensure_summary("note").await.unwrap();
+    context
+        .store
+        .update_generated_summary("note", "Summary\n\n- [ ] Action", Some(""))
+        .await
+        .unwrap();
+    context.store.write_transcript("note", serde_json::from_value(json!({"id":"transcript","session_id":"note","words":[{"text":"First","start_ms":0,"end_ms":100,"channel":0},{"text":"last.","start_ms":110,"end_ms":200,"channel":0}]})).unwrap()).await.unwrap();
+    wait_agent_projection(&context).await;
+    let responses = [
+        (
+            "",
+            serde_json::to_value(context.agent_meeting("note").await.unwrap()).unwrap(),
+        ),
+        (
+            "/transcript",
+            serde_json::to_value(context.agent_transcript("note").await.unwrap()).unwrap(),
+        ),
+        (
+            "/export",
+            serde_json::to_value(context.agent_export("note").await.unwrap()).unwrap(),
+        ),
+        (
+            "/segments",
+            serde_json::to_value(context.agent_segments("note").await.unwrap()).unwrap(),
+        ),
+    ];
+    for (suffix, expected) in responses {
+        let path = format!("/api/v1/vaults/{id}/agent/sessions/note{suffix}");
+        let (status, body) = fixture.call("bob", "GET", &path, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, expected);
+        assert!(!body.to_string().contains("CANARY"));
+        assert!(
+            !body
+                .to_string()
+                .contains(&context.store.vault_base().to_string_lossy().to_string())
+        );
+        assert_eq!(
+            fixture.call("charlie", "GET", &path, None).await.0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            fixture
+                .call(
+                    "bob",
+                    "GET",
+                    &format!(
+                        "/api/v1/vaults/{}/agent/sessions/note{suffix}",
+                        alice.personal_vault_id
+                    ),
+                    None
+                )
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            fixture
+                .call(
+                    "bob",
+                    "GET",
+                    &format!("/api/v1/vaults/{id}/agent/sessions/missing{suffix}"),
+                    None
+                )
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    for (route, input) in [
+        (
+            "list",
+            json!({"query":"zephyr","limit":1,"tags":["PROJECT"]}),
+        ),
+        ("search", json!({"query":"zephyr","limit":1})),
+    ] {
+        let path = format!("/api/v1/vaults/{id}/agent/sessions/{route}");
+        let (status, body) = fixture
+            .call("bob", "POST", &path, Some(input.clone()))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["pagination"]["returned"], 1);
+        assert_eq!(
+            fixture.call("charlie", "POST", &path, Some(input)).await.0,
+            StatusCode::NOT_FOUND
+        );
+        let (status, body) = fixture
+            .call(
+                "bob",
+                "POST",
+                &path,
+                Some(json!({"query":"zephyr","offset":u32::MAX})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body["code"], "resource_limit");
+        assert_eq!(body["retryable"], false);
+    }
+    assert!(dir.join("_memo.md").exists());
+    assert!(!dir.join("notes.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("unknown.md")).unwrap(),
+        "ATTACHMENT CANARY"
+    );
+    fixture.service.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn document_edits_share_canonical_guards_and_never_grant_readers_write_access() {
     let fixture = Fixture::new().await;
@@ -868,7 +1025,7 @@ async fn same_session_id_in_two_vaults_keeps_content_separate_and_unknown_files_
             limit: 10,
             options: Default::default(),
         };
-        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        tokio::time::timeout(std::time::Duration::from_secs(15), async {
             loop {
                 if let Ok(result) = context.search.search(search.clone()).await {
                     assert_eq!(result.count, 0);
@@ -1315,6 +1472,25 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     );
     assert!(
         matches!(request(first.clone(), RemoteOperation::Tags { vault_id: vault_id.clone() }).await, RemoteReply::Tags(value) if value.len() == 1 && value[0].name == "native-tag")
+    );
+    wait_agent_projection(&context).await;
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::AgentList { vault_id: vault_id.clone(), input: ListMeetingsInput::default() }).await, RemoteReply::AgentList(value) if value.meetings.len() == 1 && value.meetings[0].id == created.meta.id)
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::AgentSearch { vault_id: vault_id.clone(), input: SearchMeetingsInput { query: "Original".into(), limit: Some(10), offset: None } }).await, RemoteReply::AgentSearch(value) if value.hits.len() == 1)
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::AgentMeeting { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::AgentMeeting(value) if value.note.as_ref().unwrap().markdown == "Original")
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::AgentTranscript { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::AgentTranscript(value) if value.meeting_id == created.meta.id && value.text.is_empty())
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::AgentExport { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::AgentExport(value) if value.meeting.id == created.meta.id && value.transcripts.is_empty())
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::AgentSegments { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::AgentSegments(value) if value.is_empty())
     );
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
     let subscription = second

@@ -34,7 +34,7 @@ impl SearchService {
         Ok(())
     }
 
-    async fn cache(&self) -> Result<Cache, SearchError> {
+    pub(crate) async fn cache(&self) -> Result<Cache, SearchError> {
         self.cache
             .read()
             .await

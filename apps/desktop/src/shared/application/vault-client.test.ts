@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   commands: {
     applicationScope: vi.fn(),
+    applicationAgentList: vi.fn(),
+    applicationAgentSearch: vi.fn(),
+    applicationAgentMeeting: vi.fn(),
+    applicationAgentTranscript: vi.fn(),
+    applicationAgentExport: vi.fn(),
+    applicationAgentSegments: vi.fn(),
     applicationReadNote: vi.fn(),
     applicationSaveNote: vi.fn(),
     applicationCreateSession: vi.fn(),
@@ -63,6 +69,94 @@ beforeEach(() => {
 });
 
 describe("shared vault request and subscription contract", () => {
+  it("pins agent reads to the same vault and preserves canonical CLI projections across IPC and HTTPS", async () => {
+    const list = {
+      query: null,
+      tags: ["project"],
+      untagged: false,
+      limit: 20,
+      offset: 0,
+    };
+    const search = { query: "term", limit: 20, offset: 0 };
+    const options = { signal: new AbortController().signal };
+    const request = vi.fn();
+    const remote = connectRemoteVault(
+      {
+        info: {
+          server: "https://company.example/",
+          capabilities: { features: ["agent_read"] },
+        },
+        request,
+      } as unknown as NativeRemoteConnection,
+      "alice",
+      vault,
+    );
+    const local = await connectLocalVault();
+    const operations = [
+      [
+        () => local.agentList(list, options),
+        () => remote.agentList(list, options),
+        native.commands.applicationAgentList,
+        [list],
+        { kind: "agent_list", vault_id: "first", input: list },
+      ],
+      [
+        () => local.agentSearch(search, options),
+        () => remote.agentSearch(search, options),
+        native.commands.applicationAgentSearch,
+        [search],
+        { kind: "agent_search", vault_id: "first", input: search },
+      ],
+      [
+        () => local.agentMeeting("same", options),
+        () => remote.agentMeeting("same", options),
+        native.commands.applicationAgentMeeting,
+        ["same"],
+        { kind: "agent_meeting", vault_id: "first", session_id: "same" },
+      ],
+      [
+        () => local.agentTranscript("same", options),
+        () => remote.agentTranscript("same", options),
+        native.commands.applicationAgentTranscript,
+        ["same"],
+        { kind: "agent_transcript", vault_id: "first", session_id: "same" },
+      ],
+      [
+        () => local.agentExport("same", options),
+        () => remote.agentExport("same", options),
+        native.commands.applicationAgentExport,
+        ["same"],
+        { kind: "agent_export", vault_id: "first", session_id: "same" },
+      ],
+      [
+        () => local.agentSegments("same", options),
+        () => remote.agentSegments("same", options),
+        native.commands.applicationAgentSegments,
+        ["same"],
+        { kind: "agent_segments", vault_id: "first", session_id: "same" },
+      ],
+    ] as const;
+    for (const [
+      readLocal,
+      readRemote,
+      command,
+      args,
+      operation,
+    ] of operations) {
+      const projection = { marker: operation.kind };
+      command.mockResolvedValueOnce({ status: "ok", data: projection });
+      request.mockResolvedValueOnce(projection);
+      expect(await readLocal()).toEqual(projection);
+      expect(command).toHaveBeenCalledWith(...args);
+      expect(await readRemote()).toEqual(projection);
+      expect(request).toHaveBeenLastCalledWith(
+        operation,
+        operation.kind,
+        options,
+      );
+    }
+  });
+
   it("uses the same document target and checked replacement through IPC and HTTPS", async () => {
     const target = { kind: "template_output" as const, document_id: "output" };
     const input = { markdown: "Edited output", expected_revision: "baseline" };

@@ -18,7 +18,10 @@ impl VaultContext {
         Ok(())
     }
 
-    async fn recover_document_session(&self, session_id: &str) -> Result<(), ApplicationError> {
+    pub(crate) async fn recover_document_session(
+        &self,
+        session_id: &str,
+    ) -> Result<(), ApplicationError> {
         if let Some(operations) = &self.operations {
             self.store
                 .recover_session_document_write(&operations.root.join("document-saves"), session_id)

@@ -7667,6 +7667,7 @@ dependencies = [
 name = "loofah-core"
 version = "0.1.0"
 dependencies = [
+ "agent-access",
  "chrono",
  "loofah-protocol",
  "search-cache",
@@ -7689,10 +7690,12 @@ dependencies = [
 name = "loofah-protocol"
 version = "0.1.0"
 dependencies = [
+ "agent-access",
  "serde",
  "serde_json",
  "specta",
  "specta-typescript",
+ "transcript",
  "vault-read",
 ]
 

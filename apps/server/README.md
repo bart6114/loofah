@@ -38,23 +38,25 @@ The container runs as UID/GID `10001`. Mount persistent volumes at `/var/lib/loo
 
 `GET /health`, `GET /api/v1/capabilities` and `GET /api/v1/auth/config` are public. Protected requests require `Authorization: Bearer …` and `X-Loofah-Api-Major: 1`. Creates also require a client-generated UUID in `X-Request-Id` so a lost response can be retried safely.
 
-| Operation                           | Endpoint                                                                                       |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Provision/read the signed-in member | `POST` / `GET /api/v1/me`                                                                      |
-| List existing company members       | `GET /api/v1/members`                                                                          |
-| List/create vaults                  | `GET` / `POST /api/v1/vaults`                                                                  |
-| Read/rename/delete shared vault     | `GET` / `PATCH` / `DELETE /api/v1/vaults/{vault}`                                              |
-| Read/change membership              | `GET /api/v1/vaults/{vault}/members`, `PUT` / `DELETE /api/v1/vaults/{vault}/members/{member}` |
-| List/create/read sessions           | `GET` / `POST /api/v1/vaults/{vault}/sessions`, `GET …/sessions/{session}`                     |
-| Read/save a note                    | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/note`                                   |
-| Read summaries/template outputs     | `GET /api/v1/vaults/{vault}/sessions/{session}/documents`                                      |
-| Read/replace summary Markdown       | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/summary`                                |
-| Read/replace template Markdown      | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/outputs/{document}`                     |
-| Read complete transcript records    | `GET /api/v1/vaults/{vault}/sessions/{session}/transcripts`                                    |
-| Read session tasks                  | `GET /api/v1/vaults/{vault}/sessions/{session}/tasks`                                          |
-| Read people/tag registries          | `GET /api/v1/vaults/{vault}/people`, `GET …/tags`                                              |
-| Search                              | `POST /api/v1/vaults/{vault}/search`                                                           |
-| Subscribe                           | `GET /api/v1/vaults/{vault}/events`                                                            |
+| Operation                              | Endpoint                                                                                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Provision/read the signed-in member    | `POST` / `GET /api/v1/me`                                                                                                                 |
+| List existing company members          | `GET /api/v1/members`                                                                                                                     |
+| List/create vaults                     | `GET` / `POST /api/v1/vaults`                                                                                                             |
+| Read/rename/delete shared vault        | `GET` / `PATCH` / `DELETE /api/v1/vaults/{vault}`                                                                                         |
+| Read/change membership                 | `GET /api/v1/vaults/{vault}/members`, `PUT` / `DELETE /api/v1/vaults/{vault}/members/{member}`                                            |
+| List/create/read sessions              | `GET` / `POST /api/v1/vaults/{vault}/sessions`, `GET …/sessions/{session}`                                                                |
+| Read/save a note                       | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/note`                                                                              |
+| Read summaries/template outputs        | `GET /api/v1/vaults/{vault}/sessions/{session}/documents`                                                                                 |
+| Read/replace summary Markdown          | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/summary`                                                                           |
+| Read/replace template Markdown         | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/outputs/{document}`                                                                |
+| Read complete transcript records       | `GET /api/v1/vaults/{vault}/sessions/{session}/transcripts`                                                                               |
+| Read session tasks                     | `GET /api/v1/vaults/{vault}/sessions/{session}/tasks`                                                                                     |
+| Read people/tag registries             | `GET /api/v1/vaults/{vault}/people`, `GET …/tags`                                                                                         |
+| Search                                 | `POST /api/v1/vaults/{vault}/search`                                                                                                      |
+| List/search existing agent projections | `POST /api/v1/vaults/{vault}/agent/sessions/list`, `POST …/agent/sessions/search`                                                         |
+| Read agent meeting/transcript/export   | `GET /api/v1/vaults/{vault}/agent/sessions/{session}`, `GET …/{session}/transcript`, `GET …/{session}/export`, `GET …/{session}/segments` |
+| Subscribe                              | `GET /api/v1/vaults/{vault}/events`                                                                                                       |
 
 Contract types live in `crates/loofah-protocol`; generate TypeScript with `cargo run -p loofah-protocol --bin export-types`, or use `-- --check` to detect drift. Full note replacements require `expected_revision`. A stale replacement returns HTTP 409 with the current note and leaves that note unchanged. Vault management and membership updates also require the catalog revision; DELETE supplies it through the `expected_revision` query parameter.
 
@@ -67,6 +69,10 @@ The additive `document_edit` capability exposes coherent summary/template snapsh
 These document operations are experimental. Body/task persistence uses separate atomic files and a durable recovery record. Startup and shared content reads finish an admitted task projection only when the canonical body and task hashes permit safe recovery. An ambiguous external edit stops recovery for review. Later failures still report an unknown mutation outcome; clients retain unsaved input and reload canonical state. The opt-in desktop output editor uses these operations; main-editor integration and wider feature parity remain open.
 
 The additive `content_read` capability covers the read-only content APIs. They share Rust operations and file-format types with local IPC. Four content reads can run concurrently, including response serialization on blocking workers. Serialized response limits are 1 MiB for registries, 8 MiB for tasks, and 32 MiB for documents or transcripts. Oversized results return a non-retryable `resource_limit` error; content is never silently truncated. Pagination/export for oversized content remains part of the full migration. Shutdown waits for admitted content reads as well as writes.
+
+The additive `agent_read` capability exposes the existing CLI/MCP meeting projections through the same core, IPC and native HTTPS clients. Meeting, readable transcript, export and rendered segment responses reuse `agent-access`; notes, summaries, actions, word records, pagination, relevance and speaker labels retain their existing shapes. Transcript responses are complete within the explicit response limit and can be large. Shared-vault readers can use these read operations. Unknown attachments are never included.
+
+Agent list/search POST requests are reads. Inputs retain the existing library limit clamps (200 list entries, 50 search hits); queries are limited to 8,192 bytes, filters to 64 tags of at most 4,096 bytes, and relevance-query offsets to 10,000. List/search responses are bounded to 8 MiB; other agent projections to 32 MiB, sharing the four content-reader permits. Composite file reads retain the store write lock until their blocking reads finish, including after request cancellation. This prevents mixing an admitted application write across one projection; it does not coordinate external filesystem writers. The CLI and MCP executables still use their original local access paths. Owner routing, remote profiles and oversized-content export remain in progress.
 
 ## Storage, backups and upgrades
 

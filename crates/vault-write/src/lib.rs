@@ -76,6 +76,11 @@ pub struct SessionStore {
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
 }
 
+#[must_use]
+pub struct VaultSnapshotGuard {
+    _guard: tokio::sync::OwnedMutexGuard<()>,
+}
+
 /// Product of `normalize_startup_layout`: one discovery snapshot -- with paths
 /// updated by the migration/reconciliation renames -- plus their diagnostics.
 /// Hand it to `rebuild_index_from_startup_layout` so the first index rebuild
@@ -123,6 +128,12 @@ impl From<hypr_vault_read::Error> for StoreError {
 }
 
 impl SessionStore {
+    pub async fn lock_snapshot(&self) -> VaultSnapshotGuard {
+        VaultSnapshotGuard {
+            _guard: self.write_lock.clone().lock_owned().await,
+        }
+    }
+
     pub fn new(vault_base: PathBuf) -> Self {
         let (index_changes_tx, index_changes_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {

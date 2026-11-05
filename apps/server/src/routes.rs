@@ -59,6 +59,30 @@ pub fn router(service: Arc<Service>) -> Router {
         .route("/vaults/{vault}/people", get(people))
         .route("/vaults/{vault}/tags", get(tags))
         .route(
+            "/vaults/{vault}/agent/sessions/list",
+            axum::routing::post(agent_list),
+        )
+        .route(
+            "/vaults/{vault}/agent/sessions/search",
+            axum::routing::post(agent_search),
+        )
+        .route(
+            "/vaults/{vault}/agent/sessions/{session}",
+            get(agent_meeting),
+        )
+        .route(
+            "/vaults/{vault}/agent/sessions/{session}/transcript",
+            get(agent_transcript),
+        )
+        .route(
+            "/vaults/{vault}/agent/sessions/{session}/export",
+            get(agent_export),
+        )
+        .route(
+            "/vaults/{vault}/agent/sessions/{session}/segments",
+            get(agent_segments),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/note",
             get(note).put(save_note),
         )
@@ -101,6 +125,7 @@ async fn capabilities() -> Json<Capabilities> {
             "notes".into(),
             "content_read".into(),
             "document_edit".into(),
+            "agent_read".into(),
             "search".into(),
             "vault_membership".into(),
             "change_stream".into(),
@@ -531,6 +556,80 @@ async fn tags(
     .await
 }
 
+async fn agent_list(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    ApiJson(input): ApiJson<ListMeetingsInput>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 8 * 1024 * 1024, async move {
+        context.agent_list(input).await
+    })
+    .await
+}
+async fn agent_search(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    ApiJson(input): ApiJson<SearchMeetingsInput>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 8 * 1024 * 1024, async move {
+        context.agent_search(input).await
+    })
+    .await
+}
+async fn agent_meeting(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.agent_meeting(&session).await
+    })
+    .await
+}
+async fn agent_transcript(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.agent_transcript(&session).await
+    })
+    .await
+}
+async fn agent_export(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.agent_export(&session).await
+    })
+    .await
+}
+async fn agent_segments(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.agent_segments(&session).await
+    })
+    .await
+}
 async fn content_read<T: serde::Serialize + Send + 'static>(
     service: &Service,
     access: VaultAccess,

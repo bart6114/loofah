@@ -97,6 +97,30 @@ pub enum RemoteOperation {
         vault_id: String,
         input: hypr_search_cache::SearchRequest,
     },
+    AgentList {
+        vault_id: String,
+        input: ListMeetingsInput,
+    },
+    AgentSearch {
+        vault_id: String,
+        input: SearchMeetingsInput,
+    },
+    AgentMeeting {
+        vault_id: String,
+        session_id: String,
+    },
+    AgentTranscript {
+        vault_id: String,
+        session_id: String,
+    },
+    AgentExport {
+        vault_id: String,
+        session_id: String,
+    },
+    AgentSegments {
+        vault_id: String,
+        session_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
@@ -120,6 +144,12 @@ pub enum RemoteReply {
     Note(NoteSnapshot),
     NoteSave(NoteSaveOutcome),
     Search(hypr_search_cache::SearchResult),
+    AgentList(AgentPage),
+    AgentSearch(AgentSearchPage),
+    AgentMeeting(AgentMeeting),
+    AgentTranscript(AgentTranscript),
+    AgentExport(AgentExport),
+    AgentSegments(Vec<RenderedTranscriptSegment>),
 }
 
 impl RemoteClient {
@@ -280,13 +310,70 @@ impl RemoteClient {
                     vec!["vaults", vault_id, "sessions", session_id, "note"],
                 )
             }
+            RemoteOperation::AgentList { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "agent", "sessions", "list"],
+                )
+            }
+            RemoteOperation::AgentSearch { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "agent", "sessions", "search"],
+                )
+            }
+            RemoteOperation::AgentMeeting {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec!["vaults", vault_id, "agent", "sessions", session_id],
+            ),
+            RemoteOperation::AgentTranscript {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "agent",
+                    "sessions",
+                    session_id,
+                    "transcript",
+                ],
+            ),
+            RemoteOperation::AgentExport {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults", vault_id, "agent", "sessions", session_id, "export",
+                ],
+            ),
+            RemoteOperation::AgentSegments {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults", vault_id, "agent", "sessions", session_id, "segments",
+                ],
+            ),
             RemoteOperation::Search { vault_id, input } => {
                 body = Some(value(input)?);
                 (Method::POST, vec!["vaults", vault_id, "search"])
             }
         };
-        let mutation =
-            !matches!(operation, RemoteOperation::Search { .. }) && method != Method::GET;
+        let mutation = !matches!(
+            operation,
+            RemoteOperation::Search { .. }
+                | RemoteOperation::AgentList { .. }
+                | RemoteOperation::AgentSearch { .. }
+        ) && method != Method::GET;
         let mut url = self.endpoint(&segments)?;
         url.query_pairs_mut().extend_pairs(query);
         let access = tokio::select! {
@@ -385,6 +472,24 @@ impl RemoteClient {
                 }
                 RemoteOperation::SaveNote { .. } => {
                     RemoteReply::NoteSave(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AgentList { .. } => {
+                    RemoteReply::AgentList(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AgentSearch { .. } => {
+                    RemoteReply::AgentSearch(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AgentMeeting { .. } => {
+                    RemoteReply::AgentMeeting(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AgentTranscript { .. } => {
+                    RemoteReply::AgentTranscript(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AgentExport { .. } => {
+                    RemoteReply::AgentExport(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AgentSegments { .. } => {
+                    RemoteReply::AgentSegments(json_body(response, 32 * 1024 * 1024).await?)
                 }
                 RemoteOperation::Search { .. } => {
                     RemoteReply::Search(json_body(response, 8 * 1024 * 1024).await?)

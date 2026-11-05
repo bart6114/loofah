@@ -167,3 +167,57 @@ pub async fn application_save_document<R: tauri::Runtime>(
         .save_document(&session_id, &target, input)
         .await
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_agent_list<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::ListMeetingsInput,
+) -> Result<hypr_loofah_protocol::AgentPage, ApplicationError> {
+    context(&app)?.agent_list(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_agent_search<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::SearchMeetingsInput,
+) -> Result<hypr_loofah_protocol::AgentSearchPage, ApplicationError> {
+    context(&app)?.agent_search(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_agent_meeting<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::AgentMeeting, ApplicationError> {
+    context(&app)?.agent_meeting(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_agent_transcript<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::AgentTranscript, ApplicationError> {
+    context(&app)?.agent_transcript(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_agent_export<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::AgentExport, ApplicationError> {
+    context(&app)?.agent_export(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_agent_segments<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<Vec<hypr_loofah_protocol::RenderedTranscriptSegment>, ApplicationError> {
+    context(&app)?.agent_segments(&session_id).await
+}

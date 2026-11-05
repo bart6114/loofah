@@ -81,6 +81,84 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationAgentList(
+    input: ListMeetingsInput,
+  ): Promise<Result<MeetingPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_list", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentSearch(
+    input: SearchMeetingsInput,
+  ): Promise<Result<SearchPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_search", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentMeeting(
+    sessionId: string,
+  ): Promise<Result<Meeting, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_meeting", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentTranscript(
+    sessionId: string,
+  ): Promise<Result<MeetingTranscript, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_transcript", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentExport(
+    sessionId: string,
+  ): Promise<Result<MeetingExport, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_export", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAgentSegments(
+    sessionId: string,
+  ): Promise<Result<RenderedTranscriptSegment[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_agent_segments", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationReadDocument(
     sessionId: string,
     target: DocumentTarget,
@@ -1247,6 +1325,22 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type ActionItem = {
+  id: string;
+  assignee_human_id: string;
+  status: string;
+  text: string;
+  due_at: string;
+  completed_at: string | null;
+};
+export type AgentSearchHit = {
+  session_id: string;
+  title: string;
+  created_at: number;
+  score: number;
+  title_snippet: string | null;
+  content_snippet: string | null;
+};
 export type ApplicationChanged = { event: ChangeEvent };
 export type ApplicationError = {
   code: ErrorCode;
@@ -1269,6 +1363,7 @@ export type Change =
   | { kind: "job_changed"; job_id: string }
   | { kind: "unknown" };
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change };
+export type ChannelProfile = "DirectMic" | "RemoteParty" | "MixedCapture";
 export type ChatgptAccount = { email: string; planType: string };
 export type ChatgptError = {
   code: string;
@@ -1313,6 +1408,15 @@ export type CreatedAtFilter = {
   gt: number | null;
   lt: number | null;
   eq: number | null;
+};
+export type Document = {
+  id: string;
+  kind: string;
+  template_id: string;
+  title: string;
+  markdown: string;
+  sort_order: number;
+  updated_at: string;
 };
 export type DocumentSaveOutcome =
   | { kind: "saved"; snapshot: DocumentSnapshot }
@@ -1417,7 +1521,55 @@ export type JsonValue =
   | string
   | JsonValue[]
   | Partial<{ [key in string]: JsonValue }>;
+export type ListMeetingsInput = {
+  query: string | null;
+  limit: number | null;
+  offset: number | null;
+  tags: string[] | null;
+  untagged: boolean | null;
+};
 export type Me = { member: MemberInfo; personal_vault_id: string };
+export type Meeting = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  timezone: string;
+  language: string;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
+  note: Document | null;
+  summaries: Document[];
+  action_items: ActionItem[];
+};
+export type MeetingExport = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  timezone: string;
+  language: string;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
+  note: Document | null;
+  summaries: Document[];
+  action_items: ActionItem[];
+} & { transcripts: Transcript[] };
+export type MeetingPage = {
+  meetings: SessionListItem[];
+  pagination: Pagination;
+};
+export type MeetingTranscript = { meeting_id: string; text: string };
 export type MemberInfo = { id: string; name: string };
 export type Membership = { member: MemberInfo; role: VaultRole };
 export type MutationOutcome = "not_committed" | "persisted" | "unknown";
@@ -1435,6 +1587,13 @@ export type NoteSnapshot = {
   markdown: string | null;
   title: string;
   revision: string;
+};
+export type Pagination = {
+  offset: number;
+  limit: number;
+  returned: number;
+  total: number | null;
+  next_offset: number | null;
 };
 export type PersonItem = { id: string; name?: string };
 /**
@@ -1520,7 +1679,13 @@ export type RemoteOperation =
       session_id: string;
       input: SaveNoteRequest;
     }
-  | { kind: "search"; vault_id: string; input: SearchRequest };
+  | { kind: "search"; vault_id: string; input: SearchRequest }
+  | { kind: "agent_list"; vault_id: string; input: ListMeetingsInput }
+  | { kind: "agent_search"; vault_id: string; input: SearchMeetingsInput }
+  | { kind: "agent_meeting"; vault_id: string; session_id: string }
+  | { kind: "agent_transcript"; vault_id: string; session_id: string }
+  | { kind: "agent_export"; vault_id: string; session_id: string }
+  | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
   | { kind: "me"; value: Me }
   | { kind: "vaults"; value: VaultInfo[] }
@@ -1539,7 +1704,23 @@ export type RemoteReply =
   | { kind: "tags"; value: TagItem[] }
   | { kind: "note"; value: NoteSnapshot }
   | { kind: "note_save"; value: NoteSaveOutcome }
-  | { kind: "search"; value: SearchResult };
+  | { kind: "search"; value: SearchResult }
+  | { kind: "agent_list"; value: MeetingPage }
+  | { kind: "agent_search"; value: SearchPage }
+  | { kind: "agent_meeting"; value: Meeting }
+  | { kind: "agent_transcript"; value: MeetingTranscript }
+  | { kind: "agent_export"; value: MeetingExport }
+  | { kind: "agent_segments"; value: RenderedTranscriptSegment[] };
+export type RenderedTranscriptSegment = {
+  is_current_user?: boolean | null;
+  id: string;
+  key: SegmentKey;
+  speaker_label: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
+  words: SegmentWord[];
+};
 export type SaveDocumentRequest = {
   markdown: string;
   expected_revision: string;
@@ -1570,6 +1751,11 @@ export type SearchHit = {
   title_snippet: Snippet | null;
   content_snippet: Snippet | null;
 };
+export type SearchMeetingsInput = {
+  query: string;
+  limit: number | null;
+  offset: number | null;
+};
 export type SearchOptions = {
   fuzzy: boolean | null;
   distance: number | null;
@@ -1577,6 +1763,7 @@ export type SearchOptions = {
   snippet_max_chars: number | null;
   phrase_slop: number | null;
 };
+export type SearchPage = { hits: AgentSearchHit[]; pagination: Pagination };
 export type SearchRequest = {
   query: string;
   collection?: string | null;
@@ -1585,6 +1772,19 @@ export type SearchRequest = {
   options?: SearchOptions;
 };
 export type SearchResult = { hits: SearchHit[]; count: number };
+export type SegmentKey = {
+  channel: ChannelProfile;
+  speaker_index?: number | null;
+  speaker_human_id?: string | null;
+};
+export type SegmentWord = {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: ChannelProfile;
+  is_final: boolean;
+  id?: string | null;
+};
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
@@ -1598,6 +1798,19 @@ export type SessionListHeader = {
   tags: string[];
   author: string | null;
   has_transcript_words: boolean;
+};
+export type SessionListItem = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
 };
 export type SessionMeta = {
   id: string;
@@ -1734,6 +1947,15 @@ export type TaskItem = {
   assignee?: string;
   created_at: string;
   updated_at: string;
+};
+export type Transcript = {
+  id: string;
+  started_at_ms: number;
+  ended_at_ms: number | null;
+  memo: string;
+  text: string;
+  words: JsonValue[];
+  speaker_hints: JsonValue[];
 };
 export type TranscriptDelta = {
   transcript_id: string;

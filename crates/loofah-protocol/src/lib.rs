@@ -2,6 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use hypr_agent_access::{
+    GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, Meeting as AgentMeeting,
+    MeetingExport as AgentExport, MeetingPage as AgentPage, MeetingTranscript as AgentTranscript,
+    SearchMeetingsInput, SearchPage as AgentSearchPage,
+};
+pub use hypr_transcript::RenderedTranscriptSegment;
 pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
 
 pub const API_MAJOR: u32 = 1;

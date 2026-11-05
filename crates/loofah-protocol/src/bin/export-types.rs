@@ -4,6 +4,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut types = specta::TypeCollection::default();
     types
         .register::<Capabilities>()
+        .register::<ListMeetingsInput>()
+        .register::<GetMeetingInput>()
+        .register::<GetMeetingTranscriptInput>()
+        .register::<SearchMeetingsInput>()
+        .register::<AgentMeeting>()
+        .register::<AgentExport>()
+        .register::<AgentPage>()
+        .register::<AgentTranscript>()
+        .register::<AgentSearchPage>()
+        .register::<RenderedTranscriptSegment>()
         .register::<VaultInfo>()
         .register::<VaultMutation>()
         .register::<Membership>()

@@ -1,6 +1,14 @@
 import { applicationResult, ApplicationRequestError } from "./errors";
 import type {
   ApplicationError,
+  ListMeetingsInput,
+  SearchMeetingsInput,
+  Meeting,
+  MeetingPage,
+  MeetingTranscript,
+  MeetingExport,
+  SearchPage,
+  RenderedTranscriptSegment,
   Change,
   CreateSessionRequest,
   DocumentTarget,
@@ -43,6 +51,12 @@ export type VaultClient = {
   readonly networkMode: "always" | "online";
   readonly canEdit: boolean;
   readonly features: readonly string[];
+  agentList: (input: ListMeetingsInput, options?: RequestOptions) => Promise<MeetingPage>;
+  agentSearch: (input: SearchMeetingsInput, options?: RequestOptions) => Promise<SearchPage>;
+  agentMeeting: (sessionId: string, options?: RequestOptions) => Promise<Meeting>;
+  agentTranscript: (sessionId: string, options?: RequestOptions) => Promise<MeetingTranscript>;
+  agentExport: (sessionId: string, options?: RequestOptions) => Promise<MeetingExport>;
+  agentSegments: (sessionId: string, options?: RequestOptions) => Promise<RenderedTranscriptSegment[]>;
   documents: (
     sessionId: string,
     options?: RequestOptions,
@@ -124,7 +138,13 @@ export async function connectLocalVault(): Promise<VaultClient> {
     scope,
     networkMode: "always",
     canEdit: true,
-    features: ["notes", "search", "content_read", "document_edit"],
+    features: ["notes", "search", "content_read", "document_edit", "agent_read"],
+    agentList: (input, options) => ipc(() => commands.applicationAgentList(input), options),
+    agentSearch: (input, options) => ipc(() => commands.applicationAgentSearch(input), options),
+    agentMeeting: (sessionId, options) => ipc(() => commands.applicationAgentMeeting(sessionId), options),
+    agentTranscript: (sessionId, options) => ipc(() => commands.applicationAgentTranscript(sessionId), options),
+    agentExport: (sessionId, options) => ipc(() => commands.applicationAgentExport(sessionId), options),
+    agentSegments: (sessionId, options) => ipc(() => commands.applicationAgentSegments(sessionId), options),
     readDocument: (sessionId, target, options) =>
       ipc(() => commands.applicationReadDocument(sessionId, target), options),
     saveDocument: (sessionId, target, input, options) =>
@@ -189,6 +209,12 @@ export function connectRemoteVault(
     networkMode: "online",
     canEdit: vault.role !== "reader",
     features: connection.info.capabilities.features,
+    agentList: (input, options) => connection.request({kind: "agent_list", vault_id: vaultId, input}, "agent_list", options),
+    agentSearch: (input, options) => connection.request({kind: "agent_search", vault_id: vaultId, input}, "agent_search", options),
+    agentMeeting: (sessionId, options) => connection.request({kind: "agent_meeting", vault_id: vaultId, session_id: sessionId}, "agent_meeting", options),
+    agentTranscript: (sessionId, options) => connection.request({kind: "agent_transcript", vault_id: vaultId, session_id: sessionId}, "agent_transcript", options),
+    agentExport: (sessionId, options) => connection.request({kind: "agent_export", vault_id: vaultId, session_id: sessionId}, "agent_export", options),
+    agentSegments: (sessionId, options) => connection.request({kind: "agent_segments", vault_id: vaultId, session_id: sessionId}, "agent_segments", options),
     readDocument: (sessionId, target, options) =>
       connection.request(
         { kind: "document", vault_id: vaultId, session_id: sessionId, target },
