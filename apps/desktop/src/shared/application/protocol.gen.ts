@@ -5,9 +5,13 @@ export type ApplicationError = { code: ErrorCode; message: string; request_id: s
 
 export type Capabilities = { api_major: number; application_version: string; features: string[] }
 
-export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[] } | { kind: "search_ready" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string }
+export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[] } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
 
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change }
+
+export type CreateSessionRequest = { title: string; markdown: string }
+
+export type CreateVaultRequest = { name: string }
 
 export type ErrorCode = "validation" | "not_found" | "unauthenticated" | "forbidden" | "conflict" | "unavailable" | "incompatible_version" | "resource_limit" | "cancelled" | "internal"
 
@@ -26,14 +30,59 @@ export type IndexEntity = "sessions" | "session_headers" | "docs" | "transcripts
  */
 "artifacts"
 
+export type Me = { member: MemberInfo; personal_vault_id: string }
+
+export type MemberInfo = { id: string; name: string }
+
+export type Membership = { member: MemberInfo; role: VaultRole }
+
 export type MutationOutcome = "not_committed" | "persisted" | "unknown"
 
 export type NoteSaveOutcome = { kind: "saved"; note: NoteSnapshot } | { kind: "conflict"; note: NoteSnapshot }
 
 export type NoteSnapshot = { markdown: string | null; title: string; revision: string }
 
+export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string; audience: string; scopes: string[] }
+
 export type SaveNoteRequest = { markdown: string; title: string | null; expected_revision: string }
+
+export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot }
+
+export type SessionMeta = { id: string; title: string; started_at: string | null; ended_at: string | null; created_at: string; tags: string[]; tag_suggestions?: TagSuggestionState | null;
+/**
+ * Marker for app-created special sessions (today only the onboarding welcome
+ * note) so they can be found again across restarts. Pre-removal builds carried
+ * this inside the retired calendar-event envelope, which now round-trips
+ * through `extra` -- see `session_find_by_tracking_id`'s legacy fallback.
+ */
+tracking_id?: string | null; folder?: string | null;
+/**
+ * Who wrote this note. Absent = the human vault owner; present = an
+ * agent/other writer (free-form, e.g. "claude-code").
+ */
+author?: string | null;
+/**
+ * The skill the author ran to produce this note, if any (free-form,
+ * e.g. "meeting-summarizer"). Only meaningful alongside `author`.
+ */
+skill?: string | null }
+
+export type SessionPage = { sessions: SessionMeta[]; next_cursor: string | null }
+
+export type SetMembershipRequest = { role: VaultRole; expected_revision: string }
 
 export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessions_found: number } | { kind: "indexing"; completed: number; total: number } | { kind: "archivingLegacyTemplates" } | { kind: "ready" } | { kind: "stopping" } | { kind: "stopped" } | { kind: "failed"; message: string }
 
 export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase; migrationIssues: string[] }
+
+export type TagSuggestionState = { items: string[]; dismissed: string[] }
+
+export type UpdateVaultRequest = { name: string; expected_revision: string }
+
+export type VaultInfo = { id: string; name: string; kind: VaultKind; role: VaultRole; revision: string }
+
+export type VaultKind = "personal" | "shared"
+
+export type VaultMutation = { vault_id: string; revision: string }
+
+export type VaultRole = "reader" | "editor" | "owner"

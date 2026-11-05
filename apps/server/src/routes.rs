@@ -1,0 +1,561 @@
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, Path, Query, Request, State},
+    http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
+    response::{
+        IntoResponse, Response, Sse,
+        sse::{Event, KeepAlive},
+    },
+    routing::get,
+};
+use hypr_loofah_protocol::*;
+use serde::Deserialize;
+use std::{convert::Infallible, sync::Arc, time::Duration};
+
+use crate::{
+    auth::{Identity, now},
+    catalog::VaultAccess,
+    error::{ApiError, Result},
+    service::Service,
+};
+
+pub fn router(service: Arc<Service>) -> Router {
+    let protected = Router::new()
+        .route("/me", get(me).post(provision))
+        .route("/members", get(directory))
+        .route("/vaults", get(vaults).post(create_vault))
+        .route(
+            "/vaults/{vault}",
+            get(vault).patch(rename_vault).delete(delete_vault),
+        )
+        .route("/vaults/{vault}/members", get(memberships))
+        .route(
+            "/vaults/{vault}/members/{member}",
+            axum::routing::put(set_membership).delete(remove_membership),
+        )
+        .route(
+            "/vaults/{vault}/sessions",
+            get(sessions).post(create_session),
+        )
+        .route("/vaults/{vault}/sessions/{session}", get(session))
+        .route(
+            "/vaults/{vault}/sessions/{session}/note",
+            get(note).put(save_note),
+        )
+        .route("/vaults/{vault}/search", axum::routing::post(search))
+        .route("/vaults/{vault}/events", get(events))
+        .route_layer(middleware::from_fn_with_state(service.clone(), authorize));
+    Router::new()
+        .route("/health", get(health))
+        .route("/api/v1/capabilities", get(capabilities))
+        .route("/api/v1/auth/config", get(auth_config))
+        .nest("/api/v1", protected)
+        .fallback(|| async { ApiError::new(ErrorCode::NotFound, "API route not found") })
+        .method_not_allowed_fallback(|| async {
+            let mut response = ApiError::new(
+                ErrorCode::Validation,
+                "Method is not supported for this operation",
+            )
+            .into_response();
+            *response.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+            response
+        })
+        .layer(DefaultBodyLimit::max(5 * 1024 * 1024))
+        .layer(middleware::from_fn(request_context))
+        .with_state(service)
+}
+
+async fn health(State(service): State<Arc<Service>>) -> StatusCode {
+    if service.stop.is_cancelled() || !service.catalog.ready().await {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::NO_CONTENT
+    }
+}
+
+async fn capabilities() -> Json<Capabilities> {
+    Json(Capabilities {
+        api_major: API_MAJOR,
+        application_version: env!("LOOFAH_VERSION").into(),
+        features: vec![
+            "notes".into(),
+            "search".into(),
+            "vault_membership".into(),
+            "change_stream".into(),
+        ],
+    })
+}
+async fn auth_config(State(service): State<Arc<Service>>) -> Json<RemoteAuthConfig> {
+    Json(service.auth.public_config())
+}
+
+async fn request_context(mut request: Request, next: Next) -> Response {
+    let id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+        .unwrap_or_else(uuid::Uuid::new_v4)
+        .to_string();
+    request.extensions_mut().insert(TrackingId(id.clone()));
+    let mut response = crate::error::REQUEST_ID
+        .scope(id.clone(), next.run(request))
+        .await;
+    response
+        .headers_mut()
+        .insert("x-request-id", id.parse().unwrap());
+    response
+        .headers_mut()
+        .insert("cache-control", "no-store".parse().unwrap());
+    response
+}
+
+async fn authorize(
+    State(service): State<Arc<Service>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let Ok(_request_permit) = service.requests.clone().try_acquire_owned() else {
+        return ApiError::busy("Request capacity reached; retry later").into_response();
+    };
+    let headers = request.headers().clone();
+    let result = async {
+        if service.stop.is_cancelled() {
+            return Err(ApiError::new(
+                ErrorCode::Unavailable,
+                "Server is shutting down",
+            ));
+        }
+        if headers
+            .get("x-loofah-api-major")
+            .and_then(|value| value.to_str().ok())
+            != Some("1")
+        {
+            return Err(ApiError::new(
+                ErrorCode::IncompatibleVersion,
+                "Negotiate API major 1 before accessing a vault",
+            ));
+        }
+        let token = headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .ok_or_else(|| {
+                ApiError::new(
+                    ErrorCode::Unauthenticated,
+                    "A company access token is required",
+                )
+            })?;
+        service.auth.authenticate(token).await
+    }
+    .await;
+    match result {
+        Ok(identity) => {
+            request.extensions_mut().insert(identity);
+            match tokio::time::timeout(Duration::from_secs(30), next.run(request)).await {
+                Ok(response) => response,
+                Err(_) => {
+                    let mut error = ApiError::new(
+                        ErrorCode::Unavailable,
+                        "Request deadline exceeded; reload before retrying a write",
+                    );
+                    error.0.mutation_outcome = Some(MutationOutcome::Unknown);
+                    error.into_response()
+                }
+            }
+        }
+        Err(mut error) => {
+            error.0.request_id = request
+                .extensions()
+                .get::<TrackingId>()
+                .map(|id| id.0.clone());
+            error.into_response()
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TrackingId(String);
+
+type IdentityExtension = axum::Extension<Identity>;
+
+async fn provision(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+) -> Result<Json<Me>> {
+    Ok(Json(service.catalog.provision(&identity).await?))
+}
+async fn me(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+) -> Result<Json<Me>> {
+    Ok(Json(service.catalog.me(&identity).await?))
+}
+async fn directory(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+) -> Result<Json<Vec<MemberInfo>>> {
+    Ok(Json(service.catalog.directory(&identity).await?))
+}
+async fn vaults(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+) -> Result<Json<Vec<VaultInfo>>> {
+    Ok(Json(service.catalog.list(&identity).await?))
+}
+async fn vault(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+) -> Result<Json<VaultInfo>> {
+    Ok(Json(
+        service.catalog.access(&identity, &id, false).await?.info,
+    ))
+}
+async fn create_vault(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<CreateVaultRequest>,
+) -> Result<Json<VaultInfo>> {
+    Ok(Json(
+        service
+            .catalog
+            .create_shared(&identity, request_id(&headers)?, &request.name)
+            .await?,
+    ))
+}
+async fn rename_vault(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    ApiJson(request): ApiJson<UpdateVaultRequest>,
+) -> Result<Json<VaultMutation>> {
+    Ok(Json(
+        service
+            .catalog
+            .rename(&identity, &id, &request.name, &request.expected_revision)
+            .await?,
+    ))
+}
+#[derive(Deserialize)]
+struct RevisionQuery {
+    expected_revision: String,
+}
+async fn delete_vault(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    ApiQuery(request): ApiQuery<RevisionQuery>,
+) -> Result<Json<VaultMutation>> {
+    Ok(Json(
+        service
+            .catalog
+            .delete(&identity, &id, &request.expected_revision)
+            .await?,
+    ))
+}
+async fn memberships(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+) -> Result<Json<Vec<Membership>>> {
+    Ok(Json(service.catalog.memberships(&identity, &id).await?))
+}
+async fn set_membership(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, member)): ApiPath<(String, String)>,
+    ApiJson(request): ApiJson<SetMembershipRequest>,
+) -> Result<Json<VaultMutation>> {
+    Ok(Json(
+        service
+            .catalog
+            .set_membership(
+                &identity,
+                &id,
+                &member,
+                Some(request.role),
+                &request.expected_revision,
+            )
+            .await?,
+    ))
+}
+async fn remove_membership(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, member)): ApiPath<(String, String)>,
+    ApiQuery(request): ApiQuery<RevisionQuery>,
+) -> Result<Json<VaultMutation>> {
+    Ok(Json(
+        service
+            .catalog
+            .set_membership(&identity, &id, &member, None, &request.expected_revision)
+            .await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct PageQuery {
+    #[serde(default = "default_limit")]
+    limit: usize,
+    after: Option<String>,
+}
+fn default_limit() -> usize {
+    100
+}
+async fn sessions(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    ApiQuery(page): ApiQuery<PageQuery>,
+) -> Result<Json<SessionPage>> {
+    let _access = service.catalog.access(&identity, &id, false).await?;
+    if page.limit == 0 || page.limit > 200 {
+        return Err(ApiError::new(
+            ErrorCode::Validation,
+            "Page size must be between 1 and 200",
+        ));
+    }
+    let context = service.vault(&id).await?;
+    let mut sessions: Vec<_> = context
+        .store
+        .session_list()
+        .into_iter()
+        .map(|entry| entry.meta)
+        .collect();
+    sessions.sort_by(|a, b| a.id.cmp(&b.id));
+    sessions.retain(|session| page.after.as_ref().is_none_or(|after| session.id > *after));
+    let next_cursor = (sessions.len() > page.limit).then(|| sessions[page.limit - 1].id.clone());
+    sessions.truncate(page.limit);
+    Ok(Json(SessionPage {
+        sessions,
+        next_cursor,
+    }))
+}
+async fn session(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Json<SessionDocument>> {
+    let _access = service.catalog.access(&identity, &id, false).await?;
+    Ok(Json(
+        service.vault(&id).await?.session_document(&session).await?,
+    ))
+}
+async fn create_session(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<CreateSessionRequest>,
+) -> Result<Json<SessionDocument>> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    let namespace = access.member_id.clone();
+    let request_id = request_id(&headers)?.to_owned();
+    write(&service, access, async move {
+        Ok(Json(
+            context
+                .create_session(namespace, request_id, request)
+                .await?,
+        ))
+    })
+    .await
+}
+async fn note(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Json<NoteSnapshot>> {
+    let _access = service.catalog.access(&identity, &id, false).await?;
+    Ok(Json(service.vault(&id).await?.read_note(&session).await?))
+}
+async fn save_note(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiJson(request): ApiJson<SaveNoteRequest>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    write(&service, access, async move {
+        let result = context.save_note(&session, request).await?;
+        let status = if matches!(result, NoteSaveOutcome::Conflict(_)) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::OK
+        };
+        Ok((status, Json(result)).into_response())
+    })
+    .await
+}
+async fn search(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    ApiJson(request): ApiJson<hypr_search_cache::SearchRequest>,
+) -> Result<Json<hypr_search_cache::SearchResult>> {
+    let _access = service.catalog.access(&identity, &id, false).await?;
+    if request.limit == 0
+        || request.limit > 200
+        || request.query.len() > 4096
+        || request
+            .options
+            .distance
+            .is_some_and(|distance| distance > 2)
+        || request
+            .options
+            .snippet_max_chars
+            .is_some_and(|length| length > 4096)
+        || request.options.phrase_slop.is_some_and(|slop| slop > 100)
+        || request
+            .collection
+            .as_deref()
+            .is_some_and(|value| value != "default")
+    {
+        return Err(ApiError::new(
+            ErrorCode::Validation,
+            "Invalid search query or limit",
+        ));
+    }
+    let context = service.vault(&id).await?;
+    let result = context
+        .search
+        .search(request)
+        .await
+        .map_err(|cause| match cause {
+            hypr_loofah_core::search::SearchError::Cache(
+                hypr_search_cache::Error::InvalidInput(_),
+            ) => ApiError::new(ErrorCode::Validation, "Search query is invalid"),
+            _ => ApiError::new(ErrorCode::Unavailable, "Search projection is not ready"),
+        })?;
+    Ok(Json(result))
+}
+
+async fn events(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    headers: HeaderMap,
+) -> Result<Sse<impl futures_util::Stream<Item = std::result::Result<Event, Infallible>>>> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    let mut access_changes = service.catalog.subscribe();
+    let cursor = headers
+        .get("last-event-id")
+        .and_then(|value| value.to_str().ok());
+    if cursor.is_some_and(|cursor| cursor.len() > 128) {
+        return Err(ApiError::new(ErrorCode::Validation, "Invalid event cursor"));
+    }
+    let mut subscription = context.events.subscribe(cursor);
+    drop(access);
+    let permit = service
+        .streams
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Subscription capacity reached"))?;
+    let stream = async_stream::stream! {
+        let _permit = permit;
+        let expiry = tokio::time::sleep(Duration::from_secs(identity.expires_at.saturating_sub(now())));
+        tokio::pin!(expiry);
+        loop {
+            tokio::select! {
+                _ = service.stop.cancelled() => break,
+                _ = &mut expiry => break,
+                change = access_changes.changed() => {
+                    if change.is_err() || service.catalog.access(&identity, &id, false).await.is_err() { break; }
+                },
+                event = subscription.recv() => {
+                    let Some(event) = event else { break; };
+                    let Ok(access) = service.catalog.access(&identity, &id, false).await else { break; };
+                    let Ok(json) = serde_json::to_string(&event) else { break; };
+                    drop(access);
+                    yield Ok(Event::default().id(event.cursor).event("change").data(json));
+                },
+            }
+        }
+    };
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+fn request_id(headers: &HeaderMap) -> Result<&str> {
+    let id = headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok());
+    id.ok_or_else(|| {
+        ApiError::new(
+            ErrorCode::Validation,
+            "A client-generated UUID request ID is required",
+        )
+    })
+}
+
+async fn write<T: Send + 'static>(
+    service: &Service,
+    access: VaultAccess,
+    operation: impl Future<Output = Result<T>> + Send + 'static,
+) -> Result<T> {
+    if service.stop.is_cancelled() {
+        return Err(ApiError::new(
+            ErrorCode::Unavailable,
+            "Server is shutting down",
+        ));
+    }
+    let permit = service
+        .writes
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Write capacity reached; retry later"))?;
+    tokio::spawn(async move {
+        let _permit = permit;
+        let _access = access;
+        operation.await
+    })
+    .await
+    .map_err(ApiError::internal)?
+}
+
+struct ApiJson<T>(T);
+impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequest<S> for ApiJson<T> {
+    type Rejection = ApiError;
+    async fn from_request(request: Request, state: &S) -> Result<Self> {
+        <Json<T> as axum::extract::FromRequest<S>>::from_request(request, state)
+            .await
+            .map(|Json(value)| Self(value))
+            .map_err(|_| {
+                ApiError::new(
+                    ErrorCode::Validation,
+                    "Request JSON is invalid or exceeds the size limit",
+                )
+            })
+    }
+}
+
+struct ApiQuery<T>(T);
+impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequestParts<S>
+    for ApiQuery<T>
+{
+    type Rejection = ApiError;
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, state: &S) -> Result<Self> {
+        <Query<T> as axum::extract::FromRequestParts<S>>::from_request_parts(parts, state)
+            .await
+            .map(|Query(value)| Self(value))
+            .map_err(|_| ApiError::new(ErrorCode::Validation, "Request query is invalid"))
+    }
+}
+
+struct ApiPath<T>(T);
+impl<S: Send + Sync, T: serde::de::DeserializeOwned + Send> axum::extract::FromRequestParts<S>
+    for ApiPath<T>
+{
+    type Rejection = ApiError;
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, state: &S) -> Result<Self> {
+        <Path<T> as axum::extract::FromRequestParts<S>>::from_request_parts(parts, state)
+            .await
+            .map(|Path(value)| Self(value))
+            .map_err(|_| ApiError::new(ErrorCode::Validation, "Request path is invalid"))
+    }
+}

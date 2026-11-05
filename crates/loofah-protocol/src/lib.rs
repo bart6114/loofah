@@ -4,6 +4,105 @@ use serde::{Deserialize, Serialize};
 
 pub const API_MAJOR: u32 = 1;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum VaultKind {
+    Personal,
+    Shared,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum VaultRole {
+    Reader,
+    Editor,
+    Owner,
+}
+
+impl VaultRole {
+    pub fn can_edit(self) -> bool {
+        matches!(self, Self::Editor | Self::Owner)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct VaultMutation {
+    pub vault_id: String,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct VaultInfo {
+    pub id: String,
+    pub name: String,
+    pub kind: VaultKind,
+    pub role: VaultRole,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct MemberInfo {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct Membership {
+    pub member: MemberInfo,
+    pub role: VaultRole,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct Me {
+    pub member: MemberInfo,
+    pub personal_vault_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct CreateVaultRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct UpdateVaultRequest {
+    pub name: String,
+    pub expected_revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SetMembershipRequest {
+    pub role: VaultRole,
+    pub expected_revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct CreateSessionRequest {
+    pub title: String,
+    pub markdown: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SessionDocument {
+    pub meta: hypr_vault_read::SessionMeta,
+    pub note: NoteSnapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SessionPage {
+    pub sessions: Vec<hypr_vault_read::SessionMeta>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct RemoteAuthConfig {
+    pub issuer: String,
+    pub authorization_endpoint: String,
+    pub token_endpoint: String,
+    pub client_id: String,
+    pub audience: String,
+    pub scopes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Capabilities {
     pub api_major: u32,
@@ -67,10 +166,13 @@ pub enum Change {
         ids: Vec<String>,
     },
     SearchReady,
+    CatalogChanged,
     ResyncRequired,
     JobChanged {
         job_id: String,
     },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -147,6 +249,10 @@ mod tests {
             "markdown": "hello", "title": null, "expected_revision": "opaque", "future_option": true,
         })).unwrap();
         assert_eq!(request.expected_revision, "opaque");
+        assert_eq!(
+            serde_json::from_value::<Change>(json!({"kind":"future_change","extra":true})).unwrap(),
+            Change::Unknown
+        );
         assert!(serde_json::from_value::<SaveNoteRequest>(json!({"markdown": "hello"})).is_err());
     }
 

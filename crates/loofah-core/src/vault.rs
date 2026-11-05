@@ -16,6 +16,7 @@ pub struct VaultContext {
     pub search: Arc<SearchService>,
     pub events: EventHub,
     pub(crate) lease: Option<std::fs::File>,
+    pub(crate) operations: Option<crate::operations::SessionOperations>,
 }
 
 impl VaultContext {
@@ -33,10 +34,11 @@ impl VaultContext {
             search,
             events: EventHub::new(id, 256),
             lease: None,
+            operations: None,
         }
     }
 
-    fn validate(&self, session_id: &str) -> Result<(), ApplicationError> {
+    pub(crate) fn validate(&self, session_id: &str) -> Result<(), ApplicationError> {
         hypr_vault_read::paths::validate_session_id(session_id)
             .map_err(|_| error(ErrorCode::Validation, "Invalid session identifier"))?;
         self.store
@@ -124,7 +126,7 @@ impl VaultContext {
     }
 }
 
-fn error(code: ErrorCode, message: &str) -> ApplicationError {
+pub(crate) fn error(code: ErrorCode, message: &str) -> ApplicationError {
     ApplicationError {
         code,
         message: message.into(),
@@ -135,7 +137,7 @@ fn error(code: ErrorCode, message: &str) -> ApplicationError {
     }
 }
 
-fn storage_error(cause: StoreError, mutation: bool) -> ApplicationError {
+pub(crate) fn storage_error(cause: StoreError, mutation: bool) -> ApplicationError {
     tracing::error!(%cause, "vault operation failed");
     let mut result = error(ErrorCode::Internal, "Vault operation failed");
     if mutation {

@@ -20,7 +20,12 @@ pub struct VaultRuntime {
 }
 
 impl VaultRuntime {
-    pub async fn open(id: String, vault: &Path, cache_root: &Path) -> Result<Self, StoreError> {
+    pub async fn open(
+        id: String,
+        vault: &Path,
+        cache_root: &Path,
+        operation_root: &Path,
+    ) -> Result<Self, StoreError> {
         let vault = vault.to_path_buf();
         let (vault, lease) = tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&vault).map_err(io_error)?;
@@ -58,7 +63,8 @@ impl VaultRuntime {
             startup.clone(),
             Arc::new(ConfigState::load_or_default(&vault)),
             Arc::new(SearchService::default()),
-        );
+        )
+        .with_operation_storage(operation_root.to_path_buf());
         context.lease = Some(lease);
         let context = Arc::new(context);
         let stop = CancellationToken::new();
@@ -147,12 +153,23 @@ mod tests {
     async fn headless_lifecycle_exclusively_owns_vault_and_reopens_canonical_notes() {
         let vault = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
-        let runtime = VaultRuntime::open("private".into(), vault.path(), cache.path())
-            .await
-            .unwrap();
+        let runtime = VaultRuntime::open(
+            "private".into(),
+            vault.path(),
+            cache.path(),
+            &cache.path().join("operations"),
+        )
+        .await
+        .unwrap();
         assert!(runtime.context.startup.is_ready());
         assert!(matches!(
-            VaultRuntime::open("other".into(), vault.path(), cache.path()).await,
+            VaultRuntime::open(
+                "other".into(),
+                vault.path(),
+                cache.path(),
+                &cache.path().join("operations")
+            )
+            .await,
             Err(StoreError::Conflict(_))
         ));
         let meta = serde_json::from_value(serde_json::json!({
@@ -183,13 +200,24 @@ mod tests {
             hypr_loofah_protocol::ErrorCode::Unavailable
         );
         assert!(matches!(
-            VaultRuntime::open("other".into(), vault.path(), cache.path()).await,
+            VaultRuntime::open(
+                "other".into(),
+                vault.path(),
+                cache.path(),
+                &cache.path().join("operations")
+            )
+            .await,
             Err(StoreError::Conflict(_))
         ));
         drop(remaining_client);
-        let reopened = VaultRuntime::open("private".into(), vault.path(), cache.path())
-            .await
-            .unwrap();
+        let reopened = VaultRuntime::open(
+            "private".into(),
+            vault.path(),
+            cache.path(),
+            &cache.path().join("operations"),
+        )
+        .await
+        .unwrap();
         assert_eq!(reopened.context.read_note("note").await.unwrap(), saved);
         reopened.shutdown().await.unwrap();
     }

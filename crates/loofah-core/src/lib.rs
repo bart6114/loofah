@@ -9,3 +9,4 @@ pub mod vault_watch;
 pub use vault::VaultContext;
 mod runtime;
 pub use runtime::VaultRuntime;
+mod operations;

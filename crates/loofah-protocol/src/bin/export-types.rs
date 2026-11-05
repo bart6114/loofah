@@ -4,6 +4,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut types = specta::TypeCollection::default();
     types
         .register::<Capabilities>()
+        .register::<VaultInfo>()
+        .register::<VaultMutation>()
+        .register::<Membership>()
+        .register::<Me>()
+        .register::<CreateVaultRequest>()
+        .register::<UpdateVaultRequest>()
+        .register::<SetMembershipRequest>()
+        .register::<CreateSessionRequest>()
+        .register::<SessionDocument>()
+        .register::<SessionPage>()
+        .register::<RemoteAuthConfig>()
         .register::<ApplicationError>()
         .register::<SaveNoteRequest>()
         .register::<NoteSaveOutcome>()

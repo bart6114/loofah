@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/target
+**/.build
+**/dist
+**/.turbo
+**/.venv
+.env
+**/.env
+**/.env.*

@@ -302,11 +302,11 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. Remaining: cover all requests, assets, settings, jobs and capture; connection selection and cache lifecycle; typed error and revision UX. The existing editor still uses its original local save contract pending that migration.
-- [ ] **Phase 3: first remote slice.** The headless vault runtime and replay/resync event hub exist and have filesystem integration coverage. Remaining: the server executable, OIDC, catalog/provisioning, authorized HTTPS/SSE adapters, desktop login/transport, two-client editing and realistic network tests.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership, remaining remote content operations, media/import/export, CLI ownership IPC, and remote CLI/MCP remain to implement. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Remaining: native desktop SSO/transport, client connection/cache lifecycle, editor conflict UX, and real HTTPS/latency/disconnect validation.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented. The sharing UI, remaining remote content operations, media/import/export, CLI ownership IPC, and remote CLI/MCP remain to implement. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
-- [ ] **Phase 7: release hardening.** Linux backend and native Windows CI now include shared backend coverage. Deployment, restore/upgrade, compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
+- [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
 Local remains the default and no authentication or account provisioning has been added to local startup. No remote deployment is selectable yet. This implementation must remain experimental until every acceptance criterion above is verified.
 
@@ -321,3 +321,18 @@ Verified locally on macOS on November 5, 2026:
 - The Linux dependency graph has no Tauri, webview or device-capture dependencies. Native Linux and Windows execution remains a CI gate, rather than a claim established by this macOS run.
 
 Local build artifacts must remain on T7. Both Cargo target symlinks were verified to resolve onto the T7 filesystem; task temporary files, compiler caches and validation logs are under `/Volumes/T7/loofah-backend-build/`.
+
+### Authenticated service checkpoint
+
+`apps/server/README.md` documents the experimental backend, OIDC configuration, API headers, deployment and stopped-service backup procedure. The desktop still selects local IPC only; this checkpoint does not enable the remote desktop experience.
+
+Verified locally:
+
+- 17 server unit/transport tests and a real executable startup/SIGTERM test pass without desktop resources.
+- Shared core: 57 tests passed. Protocol: 2 passed. Vault writes: 270 passed, 1 existing ignored test.
+- Tests cover signed-token issuer/audience/scope/expiry/type/signature rejection, concurrent private provisioning, last-owner protection, reader denial, revision conflicts, duplicate/lost-response retries, incomplete-create recovery, unknown attachments, symlink isolation, cancellation during catalog commit and first vault initialization, SSE reconnect/replay/overflow, catalog invalidation and revocation/expiry closure.
+- Desktop/CLI/server Rust checks and desktop TypeScript checking pass. Contract generation has a drift check. The executable reports the root package version.
+
+On the foundation commit, Linux headless, macOS Rust, frontend, CLI, formatting and security CI passed; CLI infrastructure's initial Launchpad HTTP 503 passed on retry. Native Windows checks were still running at this checkpoint. The expanded server/container CI must run on the new commit before platform validation is claimed.
+
+Still required for the first usable remote slice: native browser login with PKCE and secure credential storage, desktop HTTPS/SSE transport, connection/vault selection, scoped cache teardown, revision-aware editor recovery, and validation through actual HTTPS with realistic network conditions. Processing, media, capture reliability, CLI owner routing and the remaining release gates remain part of the full objective.

@@ -1,0 +1,24 @@
+[Unit]
+Description=Loofah application backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=loofah
+Group=loofah
+ExecStart=/usr/local/bin/loofah-server --config /etc/loofah/server.json
+StateDirectory=loofah
+CacheDirectory=loofah
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/loofah /var/cache/loofah
+
+[Install]
+WantedBy=multi-user.target

@@ -34,6 +34,64 @@ pub struct SessionMetaPatch {
 pub use hypr_loofah_protocol::{NoteSaveOutcome, NoteSnapshot};
 
 impl SessionStore {
+    pub async fn read_session_document(
+        &self,
+        id: &str,
+    ) -> Result<Option<hypr_loofah_protocol::SessionDocument>, StoreError> {
+        validate_session_id(id)?;
+        let guard = self.lock_writes().await;
+        let Some(meta) = self.read_meta(id).await? else {
+            return Ok(None);
+        };
+        let note = self
+            .read_note_snapshot_locked(&guard, id)
+            .await?
+            .ok_or_else(|| StoreError::Io("session disappeared during read".into()))?;
+        Ok(Some(hypr_loofah_protocol::SessionDocument { meta, note }))
+    }
+
+    pub async fn create_note_session(
+        &self,
+        meta: &SessionMeta,
+        markdown: &str,
+    ) -> Result<(), StoreError> {
+        validate_session_id(&meta.id)?;
+        let guard = self.lock_writes().await;
+        self.ensure_ready()?;
+        if self.read_meta(&meta.id).await?.is_some() {
+            return Err(StoreError::Conflict("session already exists".into()));
+        }
+        let dir = self.session_dir_locked(&guard, &meta.id).await?;
+        let note_path = self.vault_base.join(paths::note_path_in(&dir));
+        let legacy_path = self.vault_base.join(paths::legacy_note_path_in(&dir));
+        let previous = tokio::task::spawn_blocking(move || {
+            for path in [note_path, legacy_path] {
+                match std::fs::read(path) {
+                    Ok(bytes) => return Ok(Some(bytes)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(StoreError::Io(error.to_string())),
+                }
+            }
+            Ok(None)
+        })
+        .await
+        .map_err(|error| StoreError::Io(error.to_string()))??;
+        if previous
+            .as_ref()
+            .is_some_and(|bytes| bytes != markdown.as_bytes())
+        {
+            return Err(StoreError::Conflict(
+                "unfinished session contains different note bytes".into(),
+            ));
+        }
+        // Metadata makes the session discoverable only after its note has landed.
+        self.write_note_file_locked(&guard, &meta.id, markdown)
+            .await?;
+        self.write_session_title_file_locked(&guard, meta).await?;
+        self.index_set_note_and_meta(meta, super::strip_leading_frontmatter(markdown.to_owned()));
+        Ok(())
+    }
+
     pub async fn write_meta(&self, meta: &SessionMeta) -> Result<(), StoreError> {
         validate_session_id(&meta.id)?;
         let guard = self.lock_writes().await;
@@ -646,6 +704,26 @@ mod tests {
         id: &str,
     ) -> std::path::PathBuf {
         vault.path().join(store.session_dir(id).await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn exclusive_creation_preserves_foreign_legacy_notes_without_metadata() {
+        let (store, vault) = test_store().await;
+        let directory = vault.path().join("sessions/s1");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("_memo.md"), "existing user note").unwrap();
+        assert!(matches!(
+            store
+                .create_note_session(&meta("s1", "New"), "replacement")
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(
+            std::fs::read_to_string(directory.join("_memo.md")).unwrap(),
+            "existing user note"
+        );
+        assert!(!directory.join("notes.md").exists());
+        assert!(!directory.join("_meta.json").exists());
     }
 
     #[tokio::test]
