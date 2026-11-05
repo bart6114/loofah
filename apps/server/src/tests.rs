@@ -1,3 +1,5 @@
+mod metadata;
+
 use std::sync::Arc;
 
 use axum::{
@@ -1473,6 +1475,39 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     assert!(
         matches!(request(first.clone(), RemoteOperation::Tags { vault_id: vault_id.clone() }).await, RemoteReply::Tags(value) if value.len() == 1 && value[0].name == "native-tag")
     );
+    let RemoteReply::Metadata(metadata) = request(
+        first.clone(),
+        RemoteOperation::Metadata {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("metadata response");
+    };
+    let metadata_input = SaveMetadataRequest {
+        patch: SessionMetaPatch {
+            tags: Some(vec!["native-tag".into()]),
+            ..Default::default()
+        },
+        expected_revision: metadata.revision,
+    };
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::SaveMetadata { vault_id: vault_id.clone(), session_id: created.meta.id.clone(), input: metadata_input.clone() }).await, RemoteReply::MetadataSave(MetadataSaveOutcome::Saved(value)) if value.meta.tags == ["native-tag"])
+    );
+    assert!(matches!(
+        request(
+            second.clone(),
+            RemoteOperation::SaveMetadata {
+                vault_id: vault_id.clone(),
+                session_id: created.meta.id.clone(),
+                input: metadata_input
+            }
+        )
+        .await,
+        RemoteReply::MetadataSave(MetadataSaveOutcome::Conflict(_))
+    ));
     wait_agent_projection(&context).await;
     assert!(
         matches!(request(first.clone(), RemoteOperation::AgentList { vault_id: vault_id.clone(), input: ListMeetingsInput::default() }).await, RemoteReply::AgentList(value) if value.meetings.len() == 1 && value.meetings[0].id == created.meta.id)

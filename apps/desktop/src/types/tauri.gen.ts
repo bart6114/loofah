@@ -307,6 +307,36 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationReadMetadata(
+    sessionId: string,
+  ): Promise<Result<MetadataSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_metadata", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveMetadata(
+    sessionId: string,
+    input: SaveMetadataRequest,
+  ): Promise<Result<MetadataSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_metadata", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSaveNote(
     sessionId: string,
     input: SaveNoteRequest,
@@ -1599,6 +1629,10 @@ export type MeetingPage = {
 export type MeetingTranscript = { meeting_id: string; text: string };
 export type MemberInfo = { id: string; name: string };
 export type Membership = { member: MemberInfo; role: VaultRole };
+export type MetadataSaveOutcome =
+  | { kind: "saved"; snapshot: MetadataSnapshot }
+  | { kind: "conflict"; snapshot: MetadataSnapshot };
+export type MetadataSnapshot = { meta: SessionMeta; revision: string };
 export type MutationOutcome = "not_committed" | "persisted" | "unknown";
 export type NoteDraftRecovery = {
   scope: string;
@@ -1706,6 +1740,13 @@ export type RemoteOperation =
   | { kind: "tags"; vault_id: string }
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
   | { kind: "note"; vault_id: string; session_id: string }
+  | { kind: "metadata"; vault_id: string; session_id: string }
+  | {
+      kind: "save_metadata";
+      vault_id: string;
+      session_id: string;
+      input: SaveMetadataRequest;
+    }
   | {
       kind: "save_note";
       vault_id: string;
@@ -1736,6 +1777,8 @@ export type RemoteReply =
   | { kind: "people"; value: PersonItem[] }
   | { kind: "tags"; value: TagItem[] }
   | { kind: "note"; value: NoteSnapshot }
+  | { kind: "metadata"; value: MetadataSnapshot }
+  | { kind: "metadata_save"; value: MetadataSaveOutcome }
   | { kind: "note_save"; value: NoteSaveOutcome }
   | { kind: "search"; value: SearchResult }
   | { kind: "agent_list"; value: MeetingPage }
@@ -1756,6 +1799,10 @@ export type RenderedTranscriptSegment = {
 };
 export type SaveDocumentRequest = {
   markdown: string;
+  expected_revision: string;
+};
+export type SaveMetadataRequest = {
+  patch: SessionMetaPatch;
   expected_revision: string;
 };
 export type SaveNoteRequest = {

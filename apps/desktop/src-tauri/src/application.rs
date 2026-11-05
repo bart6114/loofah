@@ -221,3 +221,22 @@ pub async fn application_agent_segments<R: tauri::Runtime>(
 ) -> Result<Vec<hypr_loofah_protocol::RenderedTranscriptSegment>, ApplicationError> {
     context(&app)?.agent_segments(&session_id).await
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_read_metadata<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::MetadataSnapshot, ApplicationError> {
+    context(&app)?.read_metadata(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_save_metadata<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: hypr_loofah_protocol::SaveMetadataRequest,
+) -> Result<hypr_loofah_protocol::MetadataSaveOutcome, ApplicationError> {
+    context(&app)?.save_metadata(&session_id, input).await
+}

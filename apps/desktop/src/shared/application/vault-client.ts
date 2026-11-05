@@ -1,6 +1,9 @@
 import { applicationResult, ApplicationRequestError } from "./errors";
 import type {
   ApplicationError,
+  MetadataSnapshot,
+  MetadataSaveOutcome,
+  SaveMetadataRequest,
   ListMeetingsInput,
   SearchMeetingsInput,
   Meeting,
@@ -51,6 +54,8 @@ export type VaultClient = {
   readonly networkMode: "always" | "online";
   readonly canEdit: boolean;
   readonly features: readonly string[];
+  readMetadata: (sessionId: string, options?: RequestOptions) => Promise<MetadataSnapshot>;
+  saveMetadata: (sessionId: string, input: SaveMetadataRequest, options?: RequestOptions) => Promise<MetadataSaveOutcome>;
   agentList: (input: ListMeetingsInput, options?: RequestOptions) => Promise<MeetingPage>;
   agentSearch: (input: SearchMeetingsInput, options?: RequestOptions) => Promise<SearchPage>;
   agentMeeting: (sessionId: string, options?: RequestOptions) => Promise<Meeting>;
@@ -138,13 +143,15 @@ export async function connectLocalVault(): Promise<VaultClient> {
     scope,
     networkMode: "always",
     canEdit: true,
-    features: ["notes", "search", "content_read", "document_edit", "agent_read"],
+    features: ["notes", "search", "content_read", "document_edit", "metadata_edit", "agent_read"],
     agentList: (input, options) => ipc(() => commands.applicationAgentList(input), options),
     agentSearch: (input, options) => ipc(() => commands.applicationAgentSearch(input), options),
     agentMeeting: (sessionId, options) => ipc(() => commands.applicationAgentMeeting(sessionId), options),
     agentTranscript: (sessionId, options) => ipc(() => commands.applicationAgentTranscript(sessionId), options),
     agentExport: (sessionId, options) => ipc(() => commands.applicationAgentExport(sessionId), options),
     agentSegments: (sessionId, options) => ipc(() => commands.applicationAgentSegments(sessionId), options),
+    readMetadata: (sessionId, options) => ipc(() => commands.applicationReadMetadata(sessionId), options),
+    saveMetadata: (sessionId, input, options) => ipc(() => commands.applicationSaveMetadata(sessionId, input), options, true),
     readDocument: (sessionId, target, options) =>
       ipc(() => commands.applicationReadDocument(sessionId, target), options),
     saveDocument: (sessionId, target, input, options) =>
@@ -209,6 +216,8 @@ export function connectRemoteVault(
     networkMode: "online",
     canEdit: vault.role !== "reader",
     features: connection.info.capabilities.features,
+    readMetadata: (sessionId, options) => connection.request({kind: "metadata", vault_id: vaultId, session_id: sessionId}, "metadata", options),
+    saveMetadata: (sessionId, input, options) => connection.request({kind: "save_metadata", vault_id: vaultId, session_id: sessionId, input}, "metadata_save", options),
     agentList: (input, options) => connection.request({kind: "agent_list", vault_id: vaultId, input}, "agent_list", options),
     agentSearch: (input, options) => connection.request({kind: "agent_search", vault_id: vaultId, input}, "agent_search", options),
     agentMeeting: (sessionId, options) => connection.request({kind: "agent_meeting", vault_id: vaultId, session_id: sessionId}, "agent_meeting", options),

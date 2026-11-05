@@ -40,6 +40,10 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
+            "/vaults/{vault}/sessions/{session}/metadata",
+            get(metadata).patch(save_metadata),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/documents",
             get(documents),
         )
@@ -125,6 +129,7 @@ async fn capabilities() -> Json<Capabilities> {
             "notes".into(),
             "content_read".into(),
             "document_edit".into(),
+            "metadata_edit".into(),
             "agent_read".into(),
             "search".into(),
             "vault_membership".into(),
@@ -402,6 +407,42 @@ async fn note(
 ) -> Result<Json<NoteSnapshot>> {
     let _access = service.catalog.access(&identity, &id, false).await?;
     Ok(Json(service.vault(&id).await?.read_note(&session).await?))
+}
+
+async fn metadata(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 16 * 1024 * 1024, async move {
+        context.read_metadata(&session).await
+    })
+    .await
+}
+
+async fn save_metadata(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiJson(input): ApiJson<SaveMetadataRequest>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    write(&service, access, async move {
+        let result = context.save_metadata(&session, input).await?;
+        let status = if matches!(result, MetadataSaveOutcome::Conflict(_)) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::OK
+        };
+        let bytes = tokio::task::spawn_blocking(move || encode_content(&result, 16 * 1024 * 1024))
+            .await
+            .map_err(ApiError::internal)??;
+        Ok((status, [("content-type", "application/json")], bytes).into_response())
+    })
+    .await
 }
 
 async fn documents(

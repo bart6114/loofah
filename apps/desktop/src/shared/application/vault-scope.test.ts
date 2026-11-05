@@ -34,6 +34,29 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates metadata for the changed session without invalidating another session or vault", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const first = active.metadataOptions("first").queryKey;
+    const second = active.metadataOptions("second").queryKey;
+    const outside = ["vault", "other-scope", "metadata", "first"];
+    for (const key of [first, second, outside])
+      active.queryClient.setQueryData(key, {
+        meta: { title: "Title" },
+        revision: "r",
+      });
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "sessions", ids: ["first"] },
+    });
+    expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(second)?.isInvalidated).toBe(false);
+    expect(active.queryClient.getQueryState(outside)?.isInvalidated).toBe(
+      false,
+    );
+    active.dispose();
+  });
+
   it("keeps output snapshots isolated and invalidates only changed sessions", async () => {
     const { active, emit } = fixture("scope");
     await active.start();

@@ -159,6 +159,48 @@ impl std::fmt::Display for ApplicationError {
 
 impl std::error::Error for ApplicationError {}
 
+/// Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
+/// field without knowing the rest. There is deliberately no way to clear a field back to
+/// absent -- no mutation site needs that today.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SessionMetaPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct MetadataSnapshot {
+    pub meta: hypr_vault_read::SessionMeta,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SaveMetadataRequest {
+    pub patch: SessionMetaPatch,
+    pub expected_revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", content = "snapshot", rename_all = "snake_case")]
+pub enum MetadataSaveOutcome {
+    Saved(MetadataSnapshot),
+    Conflict(MetadataSnapshot),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct SaveNoteRequest {
     pub markdown: String,

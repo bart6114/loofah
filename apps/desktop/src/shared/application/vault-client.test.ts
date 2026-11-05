@@ -10,6 +10,8 @@ const native = vi.hoisted(() => ({
     applicationAgentExport: vi.fn(),
     applicationAgentSegments: vi.fn(),
     applicationReadNote: vi.fn(),
+    applicationReadMetadata: vi.fn(),
+    applicationSaveMetadata: vi.fn(),
     applicationSaveNote: vi.fn(),
     applicationCreateSession: vi.fn(),
     applicationSessions: vi.fn(),
@@ -69,6 +71,62 @@ beforeEach(() => {
 });
 
 describe("shared vault request and subscription contract", () => {
+  it("uses the same revision-checked metadata patch in local IPC and pinned HTTPS", async () => {
+    const snapshot = {
+      meta: { id: "same", title: "Title" },
+      revision: "baseline",
+    };
+    const outcome = { kind: "conflict", snapshot };
+    const input = {
+      patch: { title: "New title" },
+      expected_revision: "baseline",
+    };
+    native.commands.applicationReadMetadata.mockResolvedValue({
+      status: "ok",
+      data: snapshot,
+    });
+    native.commands.applicationSaveMetadata.mockResolvedValue({
+      status: "ok",
+      data: outcome,
+    });
+    const local = await connectLocalVault();
+    expect(await local.readMetadata("same")).toEqual(snapshot);
+    expect(await local.saveMetadata("same", input)).toEqual(outcome);
+    expect(native.commands.applicationSaveMetadata).toHaveBeenCalledWith(
+      "same",
+      input,
+    );
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce(outcome);
+    const remote = connectRemoteVault(
+      {
+        info: {
+          server: "https://company.example/",
+          capabilities: { features: ["metadata_edit"] },
+        },
+        request,
+      } as unknown as NativeRemoteConnection,
+      "alice",
+      vault,
+    );
+    expect(await remote.readMetadata("same")).toEqual(snapshot);
+    expect(await remote.saveMetadata("same", input)).toEqual(outcome);
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      { kind: "metadata", vault_id: "first", session_id: "same" },
+      "metadata",
+      undefined,
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      { kind: "save_metadata", vault_id: "first", session_id: "same", input },
+      "metadata_save",
+      undefined,
+    );
+  });
+
   it("pins agent reads to the same vault and preserves canonical CLI projections across IPC and HTTPS", async () => {
     const list = {
       query: null,

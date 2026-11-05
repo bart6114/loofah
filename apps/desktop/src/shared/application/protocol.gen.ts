@@ -80,6 +80,10 @@ export type MemberInfo = { id: string; name: string }
 
 export type Membership = { member: MemberInfo; role: VaultRole }
 
+export type MetadataSaveOutcome = { kind: "saved"; snapshot: MetadataSnapshot } | { kind: "conflict"; snapshot: MetadataSnapshot }
+
+export type MetadataSnapshot = { meta: SessionMeta; revision: string }
+
 export type MutationOutcome = "not_committed" | "persisted" | "unknown"
 
 export type NoteSaveOutcome = { kind: "saved"; note: NoteSnapshot } | { kind: "conflict"; note: NoteSnapshot }
@@ -95,6 +99,8 @@ export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string;
 export type RenderedTranscriptSegment = { is_current_user?: boolean | null; id: string; key: SegmentKey; speaker_label: string; start_ms: number; end_ms: number; text: string; words: SegmentWord[] }
 
 export type SaveDocumentRequest = { markdown: string; expected_revision: string }
+
+export type SaveMetadataRequest = { patch: SessionMetaPatch; expected_revision: string }
 
 export type SaveNoteRequest = { markdown: string; title: string | null; expected_revision: string }
 
@@ -128,6 +134,13 @@ author?: string | null;
  * e.g. "meeting-summarizer"). Only meaningful alongside `author`.
  */
 skill?: string | null }
+
+/**
+ * Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
+ * field without knowing the rest. There is deliberately no way to clear a field back to
+ * absent -- no mutation site needs that today.
+ */
+export type SessionMetaPatch = { title?: string | null; started_at?: string | null; ended_at?: string | null; created_at?: string | null; tags?: string[] | null; tracking_id?: string | null; folder?: string | null; author?: string | null }
 
 export type SessionPage = { sessions: SessionMeta[]; next_cursor: string | null }
 

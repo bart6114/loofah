@@ -100,6 +100,13 @@ export class VaultScope {
     }
   }
 
+  metadataOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "metadata", sessionId],
+      queryFn: ({ signal }) => this.run(() => this.client.readMetadata(sessionId, { signal })),
+    });
+  }
+
   noteOptions(sessionId: string) {
     const client = this.client;
     return queryOptions({
@@ -302,6 +309,8 @@ export class VaultScope {
             return true;
           if (kind === "session_page")
             return ["sessions", "session_headers"].includes(change.entity);
+          if (kind === "metadata")
+            return ["sessions", "session_headers"].includes(change.entity) && (all || ids.has(String(id)));
           if (kind === "note" || kind === "session")
             return (
               ["sessions", "session_headers", "tasks"].includes(

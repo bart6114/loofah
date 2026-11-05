@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use super::session_path::DeletedSession;
 use super::{SessionStore, StoreError, WriteGuard, paths, validate_session_id};
 
@@ -8,28 +6,7 @@ use super::{SessionStore, StoreError, WriteGuard, paths, validate_session_id};
 pub use hypr_vault_read::SessionMeta;
 pub use hypr_vault_read::TagSuggestionState;
 
-/// Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
-/// field without knowing the rest. There is deliberately no way to clear a field back to
-/// absent -- no mutation site needs that today.
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, Default, PartialEq)]
-pub struct SessionMetaPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tracking_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub folder: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub author: Option<String>,
-}
+pub use hypr_loofah_protocol::SessionMetaPatch;
 
 pub use hypr_loofah_protocol::{NoteSaveOutcome, NoteSnapshot};
 
@@ -151,51 +128,7 @@ impl SessionStore {
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {id} has no _meta.json to update")))?;
 
-        let SessionMetaPatch {
-            title,
-            started_at,
-            ended_at,
-            created_at,
-            tags,
-            tracking_id,
-            folder,
-            author,
-        } = patch;
-
-        if let Some(title) = title {
-            meta.title = title;
-        }
-        if let Some(started_at) = started_at {
-            meta.started_at = Some(started_at);
-        }
-        if let Some(ended_at) = ended_at {
-            meta.ended_at = Some(ended_at);
-        }
-        if let Some(created_at) = created_at {
-            meta.created_at = created_at;
-        }
-        if let Some(tags) = tags {
-            meta.tags = tags;
-            if let Some(suggestions) = &mut meta.tag_suggestions {
-                suggestions.items.retain(|suggestion| {
-                    !meta
-                        .tags
-                        .iter()
-                        .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
-                        .any(|tag| tag == *suggestion)
-                });
-            }
-        }
-        if let Some(tracking_id) = tracking_id {
-            meta.tracking_id = Some(tracking_id);
-        }
-        if let Some(folder) = folder {
-            meta.folder = Some(folder);
-        }
-        if let Some(author) = author {
-            meta.author = Some(author);
-        }
-
+        apply_meta_patch(&mut meta, patch);
         self.write_meta_locked(&guard, &meta).await
     }
 
@@ -667,6 +600,53 @@ impl SessionStore {
         }
 
         Ok(restored)
+    }
+}
+
+pub(super) fn apply_meta_patch(meta: &mut SessionMeta, patch: SessionMetaPatch) {
+    let SessionMetaPatch {
+        title,
+        started_at,
+        ended_at,
+        created_at,
+        tags,
+        tracking_id,
+        folder,
+        author,
+    } = patch;
+
+    if let Some(title) = title {
+        meta.title = title;
+    }
+    if let Some(started_at) = started_at {
+        meta.started_at = Some(started_at);
+    }
+    if let Some(ended_at) = ended_at {
+        meta.ended_at = Some(ended_at);
+    }
+    if let Some(created_at) = created_at {
+        meta.created_at = created_at;
+    }
+    if let Some(tags) = tags {
+        meta.tags = tags;
+        if let Some(suggestions) = &mut meta.tag_suggestions {
+            suggestions.items.retain(|suggestion| {
+                !meta
+                    .tags
+                    .iter()
+                    .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
+                    .any(|tag| tag == *suggestion)
+            });
+        }
+    }
+    if let Some(tracking_id) = tracking_id {
+        meta.tracking_id = Some(tracking_id);
+    }
+    if let Some(folder) = folder {
+        meta.folder = Some(folder);
+    }
+    if let Some(author) = author {
+        meta.author = Some(author);
     }
 }
 
