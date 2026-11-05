@@ -45,6 +45,9 @@ const error = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.remoteCancelRequest.mockResolvedValue(undefined);
+  native.remoteUnsubscribe.mockResolvedValue(undefined);
+  native.remoteDisconnect.mockResolvedValue(undefined);
   native.remoteConnect.mockResolvedValue({ status: "ok", data: info });
   native.remoteRequest.mockResolvedValue({
     status: "ok",
@@ -173,5 +176,40 @@ describe("native remote connection", () => {
     );
     await connection.signOut();
     expect(native.remoteLogout).toHaveBeenCalledTimes(2);
+  });
+  it("can release the native connection after failed credential deletion", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    native.remoteLogout.mockResolvedValueOnce({
+      status: "error",
+      error: {
+        ...error,
+        code: "internal",
+        message: "Credential store is locked",
+      },
+    });
+    await expect(connection.signOut()).rejects.toThrow(
+      "Credential store is locked",
+    );
+    await connection.disconnect();
+    await connection.disconnect();
+    expect(native.remoteDisconnect).toHaveBeenCalledOnce();
+  });
+  it("releases its native lease once when two cleanup paths run concurrently", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    let finish!: () => void;
+    native.remoteDisconnect.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const first = connection.disconnect();
+    const second = connection.disconnect();
+    await vi.waitFor(() =>
+      expect(native.remoteDisconnect).toHaveBeenCalledOnce(),
+    );
+    finish();
+    await first;
+    await second;
+    expect(native.remoteDisconnect).toHaveBeenCalledOnce();
   });
 });

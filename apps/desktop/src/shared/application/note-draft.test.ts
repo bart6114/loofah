@@ -338,4 +338,17 @@ describe("revision-aware note drafts", () => {
     });
     expect(backend.saveNote).toHaveBeenCalledOnce();
   });
+  it("releases saved note contents while keeping unsaved recovery scoped to its account", () => {
+    const registry = new NoteDrafts();
+    const backend = client();
+    registry.retainScope(backend.scope);
+    registry.open(backend, "clean", note("Saved private content", "a"));
+    const pending = registry.open(backend, "dirty", note("Original", "a"));
+    pending.edit("Unsaved", "Title");
+    registry.releaseScope(backend.scope);
+    expect(registry.get(backend.scope, "clean")).toBeUndefined();
+    expect(
+      registry.get(backend.scope, "dirty")?.getSnapshot().draft.markdown,
+    ).toBe("Unsaved");
+  });
 });

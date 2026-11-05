@@ -256,6 +256,36 @@ export class NoteDraft {
 
 export class NoteDrafts {
   private readonly drafts = new Map<string, NoteDraft>();
+  private readonly scopes = new Map<string, number>();
+
+  retainScope(scope: string) {
+    this.scopes.set(scope, (this.scopes.get(scope) ?? 0) + 1);
+  }
+  releaseScope(scope: string) {
+    const remaining = Math.max(0, (this.scopes.get(scope) ?? 0) - 1);
+    if (remaining) this.scopes.set(scope, remaining);
+    else {
+      this.scopes.delete(scope);
+      this.sweep(scope);
+    }
+  }
+  clearSaved(scope: string) {
+    for (const [key, draft] of this.drafts) {
+      if (
+        draft.scope === scope &&
+        !draft.getSnapshot().dirty &&
+        !draft.recovery().uncertain
+      )
+        this.drafts.delete(key);
+    }
+  }
+  sweep(scope: string) {
+    if (!this.scopes.has(scope)) this.clearSaved(scope);
+  }
+
+  get(scope: string, sessionId: string): NoteDraft | undefined {
+    return this.drafts.get(JSON.stringify([scope, sessionId]));
+  }
 
   open(client: VaultClient, sessionId: string, note: NoteSnapshot): NoteDraft {
     const key = JSON.stringify([client.scope, sessionId]);

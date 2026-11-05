@@ -23,7 +23,8 @@ type Reply<K extends RemoteReply["kind"]> = Extract<
 export class NativeRemoteConnection {
   private closed = false;
   private signedOut = false;
-  private readonly subscriptions = new Set<() => void>();
+  private disconnectPromise?: Promise<void>;
+  private readonly subscriptions = new Set<() => Promise<void>>();
 
   private constructor(readonly info: RemoteConnectionInfo) {}
 
@@ -57,8 +58,10 @@ export class NativeRemoteConnection {
     const requestId = options?.requestId ?? crypto.randomUUID();
     const signal = options?.signal;
     signal?.throwIfAborted();
-    const cancel = () => {
-      void commands.remoteCancelRequest(this.info.connection_id, requestId);
+    const cancel = async () => {
+      try {
+        await commands.remoteCancelRequest(this.info.connection_id, requestId);
+      } catch {}
     };
     signal?.addEventListener("abort", cancel, { once: true });
     try {
@@ -98,7 +101,7 @@ export class NativeRemoteConnection {
   async subscribe(
     vaultId: string,
     listener: (event: RemoteEvent) => void,
-  ): Promise<() => void> {
+  ): Promise<() => Promise<void>> {
     this.assertOpen();
     const subscriptionId = crypto.randomUUID();
     const channel = new Channel<RemoteEvent>();
@@ -106,11 +109,16 @@ export class NativeRemoteConnection {
     channel.onmessage = (event) => {
       if (active && !this.closed) listener(event);
     };
-    const unsubscribe = () => {
+    const unsubscribe = async () => {
       if (!active) return;
       active = false;
       this.subscriptions.delete(unsubscribe);
-      void commands.remoteUnsubscribe(this.info.connection_id, subscriptionId);
+      try {
+        await commands.remoteUnsubscribe(
+          this.info.connection_id,
+          subscriptionId,
+        );
+      } catch {}
     };
     this.subscriptions.add(unsubscribe);
     try {
@@ -122,30 +130,34 @@ export class NativeRemoteConnection {
           channel,
         ),
       );
-      if (this.closed) unsubscribe();
+      if (this.closed) await unsubscribe();
       return unsubscribe;
     } catch (error) {
-      unsubscribe();
+      await unsubscribe();
       throw error;
     }
   }
 
   async disconnect(): Promise<void> {
-    if (this.closed) return;
-    this.closeSubscriptions();
-    await commands.remoteDisconnect(this.info.connection_id);
+    if (this.signedOut) return;
+    return (this.disconnectPromise ??= (async () => {
+      await this.closeSubscriptions();
+      await commands.remoteDisconnect(this.info.connection_id);
+    })());
   }
 
   async signOut(): Promise<void> {
     if (this.signedOut) return;
-    this.closeSubscriptions();
+    await this.closeSubscriptions();
     applicationResult(await commands.remoteLogout(this.info.connection_id));
     this.signedOut = true;
   }
 
-  private closeSubscriptions() {
+  private async closeSubscriptions() {
     this.closed = true;
-    for (const unsubscribe of this.subscriptions) unsubscribe();
+    await Promise.all(
+      [...this.subscriptions].map((unsubscribe) => unsubscribe()),
+    );
   }
 
   private assertOpen() {

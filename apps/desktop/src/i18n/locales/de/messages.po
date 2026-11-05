@@ -239,6 +239,10 @@ msgstr ""
 msgid "Cancel date edit"
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Cancel sign-in"
+msgstr ""
+
 #: src/onboarding/folder-location.tsx
 msgid "Change"
 msgstr ""
@@ -299,6 +303,10 @@ msgstr ""
 
 #: src/settings/general/theme.tsx
 msgid "Choose a style for your workspace. Default follows your appearance setting."
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Choose a vault"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
@@ -370,8 +378,16 @@ msgstr ""
 msgid "comments"
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Company sign-in"
+msgstr ""
+
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Connect"
 msgstr ""
 
 #: src/onboarding/index.tsx
@@ -384,6 +400,15 @@ msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Connect an AI provider"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Connected"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/server-preview.tsx
+msgid "Connecting…"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -420,6 +445,10 @@ msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
 msgid "Copy my vault here"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Copy unsaved text"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -539,6 +568,10 @@ msgstr ""
 msgid "Design theme"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Device recovery copy:"
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Diagnostics"
 msgstr ""
@@ -552,7 +585,12 @@ msgid "Discard your unsaved instructions?"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
+#: src/shared/application/server-preview.tsx
 msgid "Disconnect"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Disconnected. Unsaved text is kept on this device."
 msgstr ""
 
 #: src/session/components/session-tags.tsx
@@ -848,6 +886,10 @@ msgstr ""
 msgid "LM Studio or Ollama"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Load more"
+msgstr ""
+
 #: src/shared/startup-boundary.tsx
 msgid "Loading"
 msgstr ""
@@ -862,6 +904,10 @@ msgstr ""
 
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Loading note…"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -910,6 +956,7 @@ msgid "macOS cannot access your login Keychain. Repairing briefly locks it and a
 msgstr ""
 
 #: src/main/about-storage.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Markdown"
 msgstr ""
 
@@ -989,6 +1036,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Name"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "New note"
 msgstr ""
 
 #: src/main/empty.tsx
@@ -1351,12 +1402,17 @@ msgstr ""
 msgid "Retry {0}"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Retry creation"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
 #: src/settings/ai/stt/select.tsx
 msgid "Runs after the recording finishes, not during the meeting."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Save"
 msgstr ""
 
@@ -1364,7 +1420,12 @@ msgstr ""
 msgid "Save date"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Save my version"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Saved"
 msgstr ""
 
@@ -1406,6 +1467,10 @@ msgstr ""
 msgid "Select a model"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Select a note or create one."
+msgstr ""
+
 #: src/settings/ai/stt/timing.tsx
 msgid "Select a transcription model to check live availability."
 msgstr ""
@@ -1429,6 +1494,14 @@ msgstr ""
 #: src/settings/ai/llm/select.tsx
 #: src/settings/ai/shared/index.tsx
 msgid "Selected"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Server address"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Server notes preview"
 msgstr ""
 
 #: src/session/components/note-input/header.tsx
@@ -1522,12 +1595,20 @@ msgstr ""
 msgid "Sign in · Beta"
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Sign in through your company to open its vaults."
+msgstr ""
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Sign in with ChatGPT"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Sign out"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1736,6 +1817,10 @@ msgstr ""
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "This connection is no longer authorized."
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"
 msgstr ""
@@ -1746,6 +1831,14 @@ msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "This note changed in another client. Review the server version before choosing."
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "This preview edits Markdown notes. Recording, attachments and AI are not connected here yet. Your standalone setup stays available."
 msgstr ""
 
 #. placeholder {0}: pending.speakerCount
@@ -1759,6 +1852,10 @@ msgstr ""
 
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Title"
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1825,6 +1922,10 @@ msgstr ""
 msgid "Try again"
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Try server notes"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Turn off summaries"
 msgstr ""
@@ -1837,6 +1938,10 @@ msgstr ""
 msgid "Unable to open this view. Please try another view."
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Unavailable vault"
+msgstr ""
+
 #: src/session/components/session-date.tsx
 msgid "Unknown date"
 msgstr ""
@@ -1846,11 +1951,13 @@ msgid "Unlock your login Keychain in the macOS prompt. Loofah will retry saving 
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Unsaved changes"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/title-input.tsx
+#: src/shared/application/notes-workspace.tsx
 #: src/shared/open-note-dialog.tsx
 #: src/sidebar/timeline/item.tsx
 msgid "Untitled"
@@ -1870,6 +1977,10 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload transcript"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Use server version"
 msgstr ""
 
 #: src/onboarding/permissions.tsx
@@ -1898,6 +2009,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Vault"
 msgstr ""
 
 #: src/main/about-storage.tsx

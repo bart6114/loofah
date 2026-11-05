@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { ApplicationRequestError } from "./errors";
 import type { NoteSnapshot } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultScope } from "./vault-scope";
@@ -178,5 +179,48 @@ describe("vault-scoped query lifecycle", () => {
     const invalidations = vi.spyOn(active.queryClient, "invalidateQueries");
     window.dispatchEvent(new Event("focus"));
     expect(invalidations).not.toHaveBeenCalled();
+  });
+  it("does not recreate private cached content from a late save confirmation", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    emit({ kind: "connection", state: "access_denied", error: null });
+    await active.confirmNote("note", {
+      markdown: "private",
+      title: "Title",
+      revision: "b",
+    });
+    expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
+    active.dispose();
+    await active.confirmNote("note", {
+      markdown: "late",
+      title: "Title",
+      revision: "c",
+    });
+    expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
+  });
+
+  it("clears cached private data when a request discovers lost authorization", async () => {
+    const { active } = fixture("scope");
+    await active.start();
+    active.queryClient.setQueryData(active.noteOptions("note").queryKey, {
+      markdown: "private",
+      title: "Title",
+      revision: "a",
+    });
+    await expect(
+      active.run(async () => {
+        throw new ApplicationRequestError({
+          code: "forbidden",
+          message: "Access revoked",
+          retryable: false,
+          request_id: null,
+          current_revision: null,
+          mutation_outcome: "not_committed",
+        });
+      }),
+    ).rejects.toThrow("Access revoked");
+    expect(active.getSnapshot().state).toBe("access_denied");
+    expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
+    active.dispose();
   });
 });

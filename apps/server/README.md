@@ -1,6 +1,10 @@
 # Run the Loofah server
 
-The server is experimental. It currently exposes authenticated vault, note, search and change-stream APIs. Desktop server connections, server AI processing, media and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server. A native Rust HTTPS/SSE client and desktop authentication bridge are implemented; the server connection UI is not enabled yet.
+The server is experimental. It currently exposes authenticated vault, note, search and change-stream APIs. Desktop server connections, server AI processing, media and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
+
+For development, set `VITE_REMOTE_PREVIEW=true` when starting the desktop frontend. **Settings → Storage → Try server notes** opens the opt-in notes preview. Connect to an HTTPS server, sign in through the company browser flow, and select a personal or shared vault. The preview supports note creation, Markdown source editing, revision conflicts and device draft recovery. It keeps tokens in native Rust and the OS credential store. Editing pauses during a disconnect; saved recovery drafts stay on the device. Readers cannot edit.
+
+This preview runs inside the existing local desktop host. It does not yet replace the main ProseMirror editor or provide remote-only startup, sharing controls, attachments, processing or recording. Do not use it as a complete remote deployment of Loofah. Keep `VITE_REMOTE_PREVIEW` unset for the existing standalone experience.
 
 ## Configure company SSO
 

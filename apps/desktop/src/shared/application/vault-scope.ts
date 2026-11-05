@@ -1,7 +1,7 @@
 import { QueryClient, queryOptions } from "@tanstack/react-query";
 
-import { ApplicationRequestError } from "./errors";
-import type { ApplicationError, Change } from "./protocol.gen";
+import { ApplicationRequestError, connectionClosed } from "./errors";
+import type { ApplicationError, Change, NoteSnapshot } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
 import type { ConnectionState, SearchRequest } from "~/types/tauri.gen";
@@ -72,32 +72,76 @@ export class VaultScope {
       }));
   }
 
+  async run<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.disposed) throw connectionClosed();
+    try {
+      return await operation();
+    } catch (error) {
+      if (
+        error instanceof ApplicationRequestError &&
+        ["unauthenticated", "forbidden"].includes(error.detail.code)
+      ) {
+        this.receive({
+          kind: "connection",
+          state:
+            error.detail.code === "unauthenticated"
+              ? "login_required"
+              : "access_denied",
+          error: error.detail,
+        });
+      }
+      throw error;
+    }
+  }
+
   noteOptions(sessionId: string) {
     const client = this.client;
     return queryOptions({
       queryKey: ["vault", client.scope, "note", sessionId],
-      queryFn: ({ signal }) => client.readNote(sessionId, { signal }),
+      queryFn: ({ signal }) =>
+        this.run(() => client.readNote(sessionId, { signal })),
     });
   }
   sessionOptions(sessionId: string) {
     const client = this.client;
     return queryOptions({
       queryKey: ["vault", client.scope, "session", sessionId],
-      queryFn: ({ signal }) => client.session(sessionId, { signal }),
+      queryFn: ({ signal }) =>
+        this.run(() => client.session(sessionId, { signal })),
     });
   }
   pageOptions(limit: number, after: string | null = null) {
     const client = this.client;
     return queryOptions({
       queryKey: ["vault", client.scope, "session_page", limit, after],
-      queryFn: ({ signal }) => client.sessions(limit, after, { signal }),
+      queryFn: ({ signal }) =>
+        this.run(() => client.sessions(limit, after, { signal })),
     });
   }
   searchOptions(input: SearchRequest) {
     const client = this.client;
     return queryOptions({
       queryKey: ["vault", client.scope, "search", input],
-      queryFn: ({ signal }) => client.search(input, { signal }),
+      queryFn: ({ signal }) => this.run(() => client.search(input, { signal })),
+    });
+  }
+
+  async confirmNote(sessionId: string, note: NoteSnapshot) {
+    const key = this.noteOptions(sessionId).queryKey;
+    await this.queryClient.cancelQueries({ queryKey: key, exact: true });
+    if (
+      this.disposed ||
+      ["access_denied", "login_required", "closed", "incompatible"].includes(
+        this.snapshot.state,
+      )
+    )
+      return;
+    this.queryClient.setQueryData(key, note);
+    void this.queryClient.invalidateQueries({
+      queryKey: ["vault", this.client.scope, "session_page"],
+    });
+    void this.queryClient.invalidateQueries({
+      queryKey: ["vault", this.client.scope, "session", sessionId],
     });
   }
 
