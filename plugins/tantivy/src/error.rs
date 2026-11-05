@@ -5,6 +5,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    Search(#[from] hypr_loofah_core::search::SearchError),
+    #[error(transparent)]
     Cache(#[from] hypr_search_cache::Error),
     #[error("Search worker failed: {0}")]
     Worker(String),

@@ -31,24 +31,7 @@ use serde::{Deserialize, Serialize};
 use super::{EnhancedDoc, PersonItem, SessionMeta, SessionStore, StoreError, TagItem, TaskItem};
 use hypr_fs_format::TranscriptWithData;
 
-/// Which index map changed. Serialized as the lowercase strings the frontend matches
-/// on in the `index-changed` payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "lowercase")]
-pub enum IndexEntity {
-    Sessions,
-    #[serde(rename = "session_headers")]
-    SessionHeaders,
-    Docs,
-    Transcripts,
-    Tasks,
-    People,
-    /// The vault-root `tags.json` registry changed (not a session's `_meta.json`
-    /// tags -- those ride `Sessions`).
-    Tags,
-    /// Audio or embedded attachment bytes changed independently of indexed text.
-    Artifacts,
-}
+pub use hypr_loofah_protocol::IndexEntity;
 
 /// Emitted (coalesced) to every webview as the `index-changed` event.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]

@@ -1,0 +1,24 @@
+[package]
+name = "loofah-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hypr-loofah-protocol = { workspace = true }
+hypr-search-cache = { workspace = true }
+hypr-storage = { workspace = true }
+hypr-vault-read = { workspace = true }
+hypr-vault-write = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+specta = { workspace = true, features = ["derive", "serde_json"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "time"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

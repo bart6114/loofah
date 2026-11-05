@@ -27,7 +27,9 @@ pub mod transcript;
 mod transcript_operation;
 
 pub use attachments::SavedAttachment;
-pub use content::{SessionMeta, SessionMetaPatch, TagSuggestionState};
+pub use content::{
+    NoteSaveOutcome, NoteSnapshot, SessionMeta, SessionMetaPatch, TagSuggestionState,
+};
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
 pub use index::{
     IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord,

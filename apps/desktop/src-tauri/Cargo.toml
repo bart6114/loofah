@@ -66,6 +66,7 @@ hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
+hypr-loofah-core = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-supervisor = { workspace = true }
 hypr-tauri-utils = { workspace = true }

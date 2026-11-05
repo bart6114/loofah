@@ -59,6 +59,8 @@ hypr-listener-core = { path = "crates/listener-core", package = "listener-core" 
 hypr-listener2-core = { path = "crates/listener2-core", package = "listener2-core" }
 hypr-local-model = { path = "crates/local-model", package = "local-model" }
 hypr-local-stt-core = { path = "crates/local-stt-core", package = "local-stt-core" }
+hypr-loofah-core = { path = "crates/loofah-core", package = "loofah-core" }
+hypr-loofah-protocol = { path = "crates/loofah-protocol", package = "loofah-protocol" }
 hypr-model-downloader = { path = "crates/model-downloader", package = "model-downloader" }
 hypr-model-manager = { path = "crates/model-manager", package = "model-manager" }
 hypr-mp3 = { path = "crates/mp3", package = "mp3" }

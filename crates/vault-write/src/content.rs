@@ -31,6 +31,8 @@ pub struct SessionMetaPatch {
     pub author: Option<String>,
 }
 
+pub use hypr_loofah_protocol::{NoteSaveOutcome, NoteSnapshot};
+
 impl SessionStore {
     pub async fn write_meta(&self, meta: &SessionMeta) -> Result<(), StoreError> {
         validate_session_id(&meta.id)?;
@@ -282,6 +284,90 @@ impl SessionStore {
     ) -> Result<(), StoreError> {
         validate_session_id(id)?;
         let guard = self.lock_writes().await;
+        self.save_note_locked(&guard, id, markdown, title).await
+    }
+
+    pub async fn read_note_snapshot(&self, id: &str) -> Result<Option<NoteSnapshot>, StoreError> {
+        validate_session_id(id)?;
+        let guard = self.lock_writes().await;
+        self.read_note_snapshot_locked(&guard, id).await
+    }
+
+    pub async fn save_note_if_revision(
+        &self,
+        id: &str,
+        markdown: &str,
+        title: Option<&str>,
+        expected_revision: &str,
+    ) -> Result<NoteSaveOutcome, StoreError> {
+        validate_session_id(id)?;
+        let guard = self.lock_writes().await;
+        let current = self
+            .read_note_snapshot_locked(&guard, id)
+            .await?
+            .ok_or_else(|| StoreError::Io("session not found".into()))?;
+        if current.revision != expected_revision {
+            return Ok(NoteSaveOutcome::Conflict(current));
+        }
+        self.save_note_locked(&guard, id, markdown, title).await?;
+        let saved = self
+            .read_note_snapshot_locked(&guard, id)
+            .await?
+            .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+        Ok(NoteSaveOutcome::Saved(saved))
+    }
+
+    async fn read_note_snapshot_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        id: &str,
+    ) -> Result<Option<NoteSnapshot>, StoreError> {
+        let Some(meta) = self.read_meta(id).await? else {
+            return Ok(None);
+        };
+        let dir = self.vault_base.join(self.session_dir(id).await?);
+        let raw = tokio::task::spawn_blocking(move || {
+            for path in [paths::note_path_in(&dir), paths::legacy_note_path_in(&dir)] {
+                match std::fs::read(path) {
+                    Ok(bytes) => return Ok(Some(bytes)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => {
+                        return Err(StoreError::Io(format!("failed to read note: {error}")));
+                    }
+                }
+            }
+            Ok(None)
+        })
+        .await
+        .map_err(|error| StoreError::Io(format!("task join error: {error}")))??;
+        // Hash canonical bytes, including frontmatter, but exclude metadata unrelated to editing.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(meta.title.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(meta.title.as_bytes());
+        bytes.push(u8::from(raw.is_some()));
+        if let Some(raw) = &raw {
+            bytes.extend_from_slice(raw);
+        }
+        let revision = super::sha256(&bytes);
+        let markdown = raw
+            .map(String::from_utf8)
+            .transpose()
+            .map_err(|error| StoreError::Serialize(error.to_string()))?
+            .map(super::strip_leading_frontmatter);
+        Ok(Some(NoteSnapshot {
+            markdown,
+            title: meta.title,
+            revision,
+        }))
+    }
+
+    async fn save_note_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        markdown: &str,
+        title: Option<&str>,
+    ) -> Result<(), StoreError> {
         let mut meta = self
             .read_meta(id)
             .await?
@@ -290,9 +376,9 @@ impl SessionStore {
         if let Some(title) = title {
             meta.title = title.to_owned();
         }
-        self.write_note_file_locked(&guard, id, markdown).await?;
+        self.write_note_file_locked(guard, id, markdown).await?;
         if changed_title {
-            if let Err(error) = self.write_session_title_file_locked(&guard, &meta).await {
+            if let Err(error) = self.write_session_title_file_locked(guard, &meta).await {
                 if let (Ok(Some(actual_meta)), Ok(Some(actual_note))) =
                     (self.read_meta(id).await, self.read_note(id).await)
                 {
@@ -560,6 +646,83 @@ mod tests {
         id: &str,
     ) -> std::path::PathBuf {
         vault.path().join(store.session_dir(id).await.unwrap())
+    }
+
+    #[tokio::test]
+    async fn stale_concurrent_note_save_cannot_overwrite_winner() {
+        let (store, _vault) = test_store().await;
+        store.write_meta(&meta("s1", "Title")).await.unwrap();
+        store.write_note("s1", "initial").await.unwrap();
+        let revision = store
+            .read_note_snapshot("s1")
+            .await
+            .unwrap()
+            .unwrap()
+            .revision;
+        let (a, b) = tokio::join!(
+            store.save_note_if_revision("s1", "alice", Some("Alice"), &revision),
+            store.save_note_if_revision("s1", "bob", Some("Bob"), &revision),
+        );
+        let outcomes = [a.unwrap(), b.unwrap()];
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, NoteSaveOutcome::Saved(_)))
+                .count(),
+            1
+        );
+        let current = store.read_note_snapshot("s1").await.unwrap().unwrap();
+        assert!(outcomes.contains(&NoteSaveOutcome::Conflict(current.clone())));
+        assert_eq!(
+            store.session_get("s1").unwrap().note_markdown,
+            current.markdown
+        );
+    }
+
+    #[tokio::test]
+    async fn revision_uses_actual_legacy_bytes_and_ignores_transcript_metadata() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Title")).await.unwrap();
+        let dir = session_path(&store, &vault, "s1").await;
+        std::fs::write(dir.join("_memo.md"), "original").unwrap();
+        let before = store.read_note_snapshot("s1").await.unwrap().unwrap();
+        store
+            .update_meta(
+                "s1",
+                SessionMetaPatch {
+                    ended_at: Some("later".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store.read_note_snapshot("s1").await.unwrap().unwrap(),
+            before
+        );
+        std::fs::write(dir.join("_memo.md"), "---\ncustom: true\n---\noriginal").unwrap();
+        let external = store.read_note_snapshot("s1").await.unwrap().unwrap();
+        assert_ne!(external.revision, before.revision);
+        assert_eq!(
+            store
+                .save_note_if_revision("s1", "stale", None, &before.revision)
+                .await
+                .unwrap(),
+            NoteSaveOutcome::Conflict(external.clone())
+        );
+        assert!(!dir.join("notes.md").exists());
+        assert!(matches!(
+            store
+                .save_note_if_revision("s1", "updated", None, &external.revision)
+                .await
+                .unwrap(),
+            NoteSaveOutcome::Saved(_)
+        ));
+        assert_eq!(
+            store.read_note("s1").await.unwrap().as_deref(),
+            Some("updated")
+        );
+        assert!(!dir.join("_memo.md").exists());
     }
 
     #[tokio::test]

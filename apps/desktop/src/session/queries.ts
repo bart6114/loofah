@@ -12,12 +12,12 @@ import { hydrateTaskContent } from "@hypr/editor/tasks";
 
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
 import { ensureFirstLineTitle } from "~/session/title-content";
+import { getApplicationClient } from "~/shared/application/client";
 import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import type { DeletedSessionData } from "~/store/zustand/undo-delete";
 import {
-  commands,
   type EnhancedDoc,
   type SessionMetaPatch,
   type SessionRecord as StoreSessionRecord,
@@ -69,7 +69,7 @@ export function useSession(sessionId: string): SessionRecord | null {
     ids: [sessionId],
     queryKey: ["session", sessionId],
     queryFn: async () => {
-      const result = await commands.sessionGet(sessionId);
+      const result = await getApplicationClient().store.sessionGet(sessionId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -124,7 +124,7 @@ export function useSessionSummary(
     ids: [sessionId],
     queryKey: ["session-summary", sessionId],
     queryFn: async () => {
-      const result = await commands.sessionGet(sessionId);
+      const result = await getApplicationClient().store.sessionGet(sessionId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -144,7 +144,7 @@ export function useSessionSummaries(enabled = true): SessionSummaryRecord[] {
     queryKey: ["session-summaries"],
     enabled,
     queryFn: async () => {
-      const result = await commands.sessionListHeaders();
+      const result = await getApplicationClient().store.sessionListHeaders();
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -180,7 +180,8 @@ export function useSessionHasTranscript(sessionId: string): boolean {
     ids: [sessionId],
     queryKey: ["session-has-transcript", sessionId],
     queryFn: async () => {
-      const result = await commands.sessionHasTranscript(sessionId);
+      const result =
+        await getApplicationClient().store.sessionHasTranscript(sessionId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -200,7 +201,8 @@ export function useEnhancedNoteRecords(
     ids: [sessionId],
     queryKey: ["session-enhanced-docs", sessionId],
     queryFn: async () => {
-      const result = await commands.sessionEnhancedDocs(sessionId);
+      const result =
+        await getApplicationClient().store.sessionEnhancedDocs(sessionId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -228,7 +230,8 @@ export function useEnhancedNote(
       const isSummary = sessionId !== undefined && enhancedNoteId === sessionId;
       let note: EnhancedNoteRecord;
       if (isSummary) {
-        const result = await commands.sessionSummaryGet(sessionId);
+        const result =
+          await getApplicationClient().store.sessionSummaryGet(sessionId);
         if (result.status === "error") throw new Error(result.error);
         if (result.data === null) return null;
         note = mapEnhancedDoc({
@@ -241,7 +244,8 @@ export function useEnhancedNote(
           markdown: result.data,
         });
       } else {
-        const result = await commands.enhancedDocGet(enhancedNoteId);
+        const result =
+          await getApplicationClient().store.enhancedDocGet(enhancedNoteId);
         if (result.status === "error") throw new Error(result.error);
         if (!result.data) return null;
         note = mapEnhancedDoc(result.data);
@@ -306,13 +310,13 @@ export function updateEnhancedNoteContent(
 
     const docWrite =
       enhancedNoteId === sessionId
-        ? await commands.sessionSaveSummary(
+        ? await getApplicationClient().store.sessionSaveSummary(
             sessionId,
             markdown,
             null,
             sessionTitle ?? null,
           )
-        : await commands.sessionSaveEnhancedDoc(
+        : await getApplicationClient().store.sessionSaveEnhancedDoc(
             sessionId,
             enhancedNoteId,
             {
@@ -334,7 +338,7 @@ export function saveSessionNote(
   title?: string,
 ): Promise<void> {
   return enqueueDatabaseWrite(`session:${sessionId}:note`, async () => {
-    const result = await commands.sessionSaveNote(
+    const result = await getApplicationClient().store.sessionSaveNote(
       sessionId,
       markdown,
       title ?? null,
@@ -419,8 +423,11 @@ export function deleteEnhancedNote(
   return enqueueDatabaseWrite(`enhanced-note:${enhancedNoteId}`, async () => {
     const result =
       enhancedNoteId === sessionId
-        ? await commands.sessionDeleteSummary(sessionId)
-        : await commands.sessionDeleteEnhancedDoc(sessionId, enhancedNoteId);
+        ? await getApplicationClient().store.sessionDeleteSummary(sessionId)
+        : await getApplicationClient().store.sessionDeleteEnhancedDoc(
+            sessionId,
+            enhancedNoteId,
+          );
     if (result.status === "error") {
       throw new Error(
         `Failed to delete summary ${enhancedNoteId}: ${result.error}`,
@@ -446,7 +453,10 @@ export function updateSession(
 
     if (Object.keys(patch).length === 0) return;
 
-    const result = await commands.sessionUpdateMeta(sessionId, patch);
+    const result = await getApplicationClient().store.sessionUpdateMeta(
+      sessionId,
+      patch,
+    );
     if (result.status === "error") {
       throw new Error(`Failed to update session ${sessionId}: ${result.error}`);
     }
@@ -464,7 +474,7 @@ export async function createSession(
   const sessionId = id();
   const now = new Date().toISOString();
 
-  const metaWrite = await commands.sessionWriteMeta({
+  const metaWrite = await getApplicationClient().store.sessionWriteMeta({
     id: sessionId,
     title,
     started_at: null,
@@ -497,7 +507,10 @@ export async function createSession(
       );
     }
     if (markdown) {
-      const noteWrite = await commands.sessionWriteNote(sessionId, markdown);
+      const noteWrite = await getApplicationClient().store.sessionWriteNote(
+        sessionId,
+        markdown,
+      );
       if (noteWrite.status === "error") {
         console.error(
           "[session] failed to seed session note file",
@@ -517,14 +530,14 @@ export async function softDeleteSession(
   // Read title before deleting: session_delete removes the index entry outright (nothing
   // left to read back from), so anything the undo toast needs to display has to be
   // captured up front.
-  const preRead = await commands.sessionGet(sessionId);
+  const preRead = await getApplicationClient().store.sessionGet(sessionId);
   if (preRead.status === "error") {
     throw new Error(`session_get failed: ${preRead.error}`);
   }
   const session = preRead.data;
   if (!session) return null;
 
-  const result = await commands.sessionDelete(sessionId);
+  const result = await getApplicationClient().store.sessionDelete(sessionId);
   if (result.status === "error") {
     // Distinct from "already deleted" (the pre-read above finding no session, which is
     // benign and returns null): the session existed and the store call itself failed. Throw so
@@ -544,7 +557,7 @@ export async function softDeleteSession(
 // enhanced-doc/tag counts, and attachments) live on the Rust side now -- see
 // `SessionStore::session_is_empty`.
 export async function isSessionEmpty(sessionId: string): Promise<boolean> {
-  const result = await commands.sessionIsEmpty(sessionId);
+  const result = await getApplicationClient().store.sessionIsEmpty(sessionId);
   if (result.status === "error") {
     throw new Error(result.error);
   }
@@ -559,7 +572,9 @@ export async function restoreDeletedSession(
   // trash dir, which only exists once session_delete has actually moved it there.
   await waitForPendingSoftDelete(data.session.id);
 
-  const result = await commands.sessionRestore(data.session.id);
+  const result = await getApplicationClient().store.sessionRestore(
+    data.session.id,
+  );
   if (result.status === "error") {
     throw new Error(
       `Failed to restore session ${data.session.id}: ${result.error}`,

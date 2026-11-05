@@ -1,5 +1,6 @@
+import { getApplicationClient } from "~/shared/application/client";
 import { useIndexQuery } from "~/shared/index-query";
-import { commands, type Result } from "~/types/tauri.gen";
+import { type Result } from "~/types/tauri.gen";
 
 export type Person = {
   id: string;
@@ -16,7 +17,7 @@ function unwrap<T>(result: Result<T, string>): T {
 }
 
 export async function listPeople(): Promise<Person[]> {
-  const items = unwrap(await commands.peopleList());
+  const items = unwrap(await getApplicationClient().store.peopleList());
   return items.map((item) => ({ id: item.id, name: item.name ?? item.id }));
 }
 
@@ -31,7 +32,7 @@ export function usePeople(): Person[] {
 }
 
 export async function ensurePerson(name: string): Promise<Person> {
-  const item = unwrap(await commands.peopleEnsure(name));
+  const item = unwrap(await getApplicationClient().store.peopleEnsure(name));
   return { id: item.id, name: item.name ?? item.id };
 }
 

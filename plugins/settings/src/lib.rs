@@ -46,7 +46,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             let config_state = config::ConfigState::load_or_default(&startup_vault_base);
             let snapshot = state::StartupSnapshot::new(startup_vault_base);
             assert!(app.manage(snapshot));
-            assert!(app.manage(config_state));
+            assert!(app.manage(std::sync::Arc::new(config_state)));
             Ok(())
         })
         .build()

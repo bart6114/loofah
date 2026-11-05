@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 
+import { getApplicationClient } from "~/shared/application/client";
 import { useIndexQuery } from "~/shared/index-query";
 import type {
   TimelineSessionRow,
   TimelineSessionsTable,
 } from "~/sidebar/timeline/utils";
 import { useUndoDelete } from "~/store/zustand/undo-delete";
-import { commands, type SessionListHeader } from "~/types/tauri.gen";
+import { type SessionListHeader } from "~/types/tauri.gen";
 
 const EMPTY_SESSIONS: Record<string, TimelineSessionRow> = {};
 
@@ -15,7 +16,7 @@ export function useTimelineSessionsTable(): TimelineSessionsTable {
     entity: "session_headers",
     queryKey: ["timeline-sessions"],
     queryFn: async () => {
-      const result = await commands.sessionListHeaders();
+      const result = await getApplicationClient().store.sessionListHeaders();
       if (result.status === "error") {
         throw new Error(result.error);
       }

@@ -327,27 +327,39 @@ pub async fn main() {
                 use tauri_plugin_settings::SettingsPluginExt;
                 match app_handle.settings().vault_base() {
                     Ok(base) => {
-                        let startup = startup::StartupState::new(Some(base.as_std_path()));
-                        app_handle.manage(startup);
+                        let startup = startup::state(&app_handle, Some(base.as_std_path()));
+                        app_handle.manage(startup.clone());
                         let store = std::sync::Arc::new(session_store::SessionStore::new(
                             base.as_std_path().to_path_buf(),
                         ));
                         store.set_startup_pending(true);
                         app_handle.manage(store.clone());
+                        app_handle.manage(std::sync::Arc::new(
+                            hypr_loofah_core::VaultContext::new(
+                                "local".into(),
+                                store.clone(),
+                                startup,
+                                app_handle
+                                    .state::<std::sync::Arc<tauri_plugin_settings::ConfigState>>()
+                                    .inner()
+                                    .clone(),
+                                app_handle
+                                    .state::<tauri_plugin_tantivy::IndexState>()
+                                    .service
+                                    .clone(),
+                            ),
+                        ));
 
                         search_index::spawn(app_handle.clone(), store.clone());
                         session_store::spawn_dispatcher(app_handle.clone());
                         startup::spawn(app_handle.clone(), store);
                     }
                     Err(error) => {
-                        let startup = startup::StartupState::new(None);
+                        let startup = startup::state(&app_handle, None);
                         app_handle.manage(startup.clone());
-                        startup.update(
-                            &app_handle,
-                            startup::StartupPhase::Failed {
-                                message: error.to_string(),
-                            },
-                        );
+                        startup.set_phase(startup::StartupPhase::Failed {
+                            message: error.to_string(),
+                        });
                     }
                 }
             }

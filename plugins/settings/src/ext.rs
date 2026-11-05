@@ -72,7 +72,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
     }
 
     pub fn config(&self) -> crate::AppConfig {
-        self.manager.state::<crate::ConfigState>().snapshot()
+        self.manager
+            .state::<std::sync::Arc<crate::ConfigState>>()
+            .snapshot()
     }
 
     pub async fn set_config_values(
@@ -81,7 +83,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
     ) -> crate::Result<()> {
         use tauri::Emitter;
 
-        let state = self.manager.state::<crate::ConfigState>();
+        let state = self.manager.state::<std::sync::Arc<crate::ConfigState>>();
         let next = state.set_values(values).await?;
 
         // Broadcast the FULL new config to every webview, including the one
@@ -95,7 +97,9 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
     }
 
     pub fn reset_config(&self) -> crate::Result<()> {
-        self.manager.state::<crate::ConfigState>().reset()?;
+        self.manager
+            .state::<std::sync::Arc<crate::ConfigState>>()
+            .reset()?;
         Ok(())
     }
 }

@@ -1134,6 +1134,8 @@ export type StartupPhase =
   | { kind: "indexing"; completed: number; total: number }
   | { kind: "archivingLegacyTemplates" }
   | { kind: "ready" }
+  | { kind: "stopping" }
+  | { kind: "stopped" }
   | { kind: "failed"; message: string };
 export type StartupProgress = { status: StartupStatus };
 export type StartupStatus = {

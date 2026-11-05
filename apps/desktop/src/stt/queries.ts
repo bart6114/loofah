@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 
 import { type Person, usePeople } from "~/people/queries";
+import {
+  type ApplicationClient,
+  getApplicationClient,
+} from "~/shared/application/client";
 import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
@@ -16,7 +20,6 @@ import type {
   TranscriptWithData,
   TranscriptWord,
 } from "~/types/tauri.gen";
-import { commands } from "~/types/tauri.gen";
 
 type TranscriptInsert = {
   id: string;
@@ -59,7 +62,8 @@ export function useSessionTranscriptMetadata(sessionId: string) {
     ids: [sessionId],
     queryKey: ["session-transcript-metadata", sessionId],
     queryFn: async () => {
-      const result = await commands.sessionTranscriptMetadata(sessionId);
+      const result =
+        await getApplicationClient().store.sessionTranscriptMetadata(sessionId);
       if (result.status === "error") throw new Error(result.error);
       return result.data;
     },
@@ -75,7 +79,8 @@ export function useSessionTranscriptsQuery(sessionId: string) {
     ids: [sessionId],
     queryKey: ["session-transcripts", sessionId],
     queryFn: async () => {
-      const result = await commands.sessionTranscripts(sessionId);
+      const result =
+        await getApplicationClient().store.sessionTranscripts(sessionId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -92,7 +97,8 @@ export function useTranscript(transcriptId: string): TranscriptRecord | null {
     entity: "transcripts",
     queryKey: ["transcript", transcriptId],
     queryFn: async () => {
-      const result = await commands.transcriptGet(transcriptId);
+      const result =
+        await getApplicationClient().store.transcriptGet(transcriptId);
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -154,10 +160,11 @@ export function createTranscript(input: TranscriptInsert): Promise<void> {
       // The store's supersede primitive: the new transcript replaces the session's whole
       // set (batch re-run must not show old and new side by side). The previous
       // transcript.json lands in `.trash/` and superseded index rows are removed.
-      const result = await commands.sessionReplaceTranscripts(
-        input.sessionId,
-        transcript,
-      );
+      const result =
+        await getApplicationClient().store.sessionReplaceTranscripts(
+          input.sessionId,
+          transcript,
+        );
       if (result.status === "error") {
         throw new Error(result.error);
       }
@@ -203,15 +210,16 @@ export function assignTranscriptSpeaker({
         : segmentKey.channel === "RemoteParty"
           ? 1
           : 2;
-    const result = await commands.sessionAssignTranscriptSpeaker(
-      transcriptId,
-      channel,
-      typeof segmentKey.speaker_index === "number"
-        ? segmentKey.speaker_index
-        : null,
-      speakerLabel,
-      anchorWordId,
-    );
+    const result =
+      await getApplicationClient().store.sessionAssignTranscriptSpeaker(
+        transcriptId,
+        channel,
+        typeof segmentKey.speaker_index === "number"
+          ? segmentKey.speaker_index
+          : null,
+        speakerLabel,
+        anchorWordId,
+      );
     if (result.status === "error") {
       throw new Error(result.error);
     }
@@ -238,9 +246,14 @@ export function softDeleteTranscript(
 
 async function writeTranscriptOrThrow(
   sessionId: string,
-  transcript: Parameters<typeof commands.sessionWriteTranscript>[1],
+  transcript: Parameters<
+    ApplicationClient["store"]["sessionWriteTranscript"]
+  >[1],
 ): Promise<void> {
-  const result = await commands.sessionWriteTranscript(sessionId, transcript);
+  const result = await getApplicationClient().store.sessionWriteTranscript(
+    sessionId,
+    transcript,
+  );
   if (result.status === "error") {
     throw new Error(result.error);
   }
@@ -321,7 +334,7 @@ async function mutateTranscript(
   mutation: (store: MemoryTranscriptStore) => void,
 ): Promise<void> {
   return enqueueDatabaseWrite(`transcript:${transcriptId}`, async () => {
-    const read = await commands.transcriptGet(transcriptId);
+    const read = await getApplicationClient().store.transcriptGet(transcriptId);
     if (read.status === "error") {
       throw new Error(read.error);
     }
