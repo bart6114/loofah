@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub(crate) struct SessionOperations {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
     lock: tokio::sync::Mutex<()>,
 }
 

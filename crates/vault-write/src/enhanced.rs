@@ -155,8 +155,21 @@ impl SessionStore {
         patch: EnhancedDocPatch,
         session_title: Option<&str>,
         auto_apply_high_confidence_tags: bool,
-        expected_revision: Option<&str>,
+        expected_revision: Option<(&str, &std::path::Path)>,
     ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
+        if expected_revision.is_some()
+            && (session_title.is_some()
+                || patch.suggested_tags.is_some()
+                || patch.title.is_some()
+                || patch.kind.is_some()
+                || patch.template_id.is_some()
+                || patch.sort_order.is_some()
+                || patch.reconcile_tasks != Some(true))
+        {
+            return Err(StoreError::Serialize(
+                "checked body replacement cannot update document metadata".into(),
+            ));
+        }
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
 
@@ -180,7 +193,9 @@ impl SessionStore {
         let target = hypr_loofah_protocol::DocumentTarget::TemplateOutput {
             document_id: doc_id.into(),
         };
-        if let Some(expected) = expected_revision {
+        if let Some((expected, operation_root)) = expected_revision {
+            self.recover_document_write_locked(&guard, operation_root, session_id)
+                .await?;
             let current = self
                 .document_snapshot_locked(&guard, session_id, &target)
                 .await?
@@ -268,6 +283,23 @@ impl SessionStore {
         } else {
             None
         };
+        let pending = if let Some((_, operation_root)) = expected_revision {
+            Some(
+                self.begin_document_write_locked(
+                    &guard,
+                    operation_root,
+                    session_id,
+                    &target,
+                    render_enhanced_file(&doc)?.as_bytes(),
+                    tasks.as_deref().ok_or_else(|| {
+                        StoreError::Io("checked document save requires tasks".into())
+                    })?,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let result = if session_title.is_some() || suggested_tags.is_some() {
             let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
                 StoreError::Io(format!("session {session_id} has no _meta.json to update"))
@@ -302,6 +334,9 @@ impl SessionStore {
                 .await
         };
         result?;
+        if let Some(pending) = pending {
+            pending.finish().await?;
+        }
         if expected_revision.is_some() {
             let snapshot = self
                 .document_snapshot_locked(&guard, session_id, &target)

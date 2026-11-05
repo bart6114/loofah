@@ -64,7 +64,7 @@ Requests and write workers are bounded. JSON requests have a 5 MiB body limit, n
 
 The additive `document_edit` capability exposes coherent summary/template snapshots and body replacement. A snapshot contains an optional `document` and an opaque `revision`. PUT accepts `markdown` and a required `expected_revision`; stale input returns HTTP 409 with the current snapshot. An absent summary can be created against its absent revision. An absent template output is never recreated by replacement. Output metadata, template identity and order are retained. Legacy summaries use the summary operation and the existing guarded migration path. These operations reconcile source tasks in Rust, retain stable matching task metadata, and apply explicitly changed checkboxes. Readers cannot replace content.
 
-These document operations are experimental. Body/task persistence uses separate atomic files; a later failure reports an unknown mutation outcome. Durable recovery of this compound write and the desktop output editor remain required before feature parity. Clients must retain unsaved input and reload canonical state after uncertain results.
+These document operations are experimental. Body/task persistence uses separate atomic files and a durable recovery record. Startup and shared content reads finish an admitted task projection only when the canonical body and task hashes permit safe recovery. An ambiguous external edit stops recovery for review. Later failures still report an unknown mutation outcome; clients retain unsaved input and reload canonical state. The desktop output editor and wider feature parity remain open.
 
 The additive `content_read` capability covers the read-only content APIs. They share Rust operations and file-format types with local IPC. Four content reads can run concurrently, including response serialization on blocking workers. Serialized response limits are 1 MiB for registries, 8 MiB for tasks, and 32 MiB for documents or transcripts. Oversized results return a non-retryable `resource_limit` error; content is never silently truncated. Pagination/export for oversized content remains part of the full migration. Shutdown waits for admitted content reads as well as writes.
 
@@ -74,7 +74,7 @@ The additive `content_read` capability covers the read-only content APIs. They s
 
 - `catalog.json` contains identities, vault memberships and shared-vault creation receipts.
 - `vaults/{uuid}/` contains canonical vault files in the existing Loofah format.
-- `runtime/{uuid}/creates/` contains durable session-creation intents and receipts.
+- `runtime/{uuid}/creates/` contains durable session-creation intents and receipts. Its `document-saves/` subdirectory holds pending body/task recovery records, removed after completion. These records are part of a consistent backup.
 - `cache_root/search_index/` contains rebuildable search projections.
 
 The server rejects symlinks in server-owned vaults. Vault IDs select catalog-managed directories; client requests cannot select server filesystem paths. Unknown session files remain user attachments and are never indexed as note content.

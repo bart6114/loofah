@@ -8,12 +8,33 @@ use crate::{
 };
 
 impl VaultContext {
+    pub async fn recover_document_writes(&self) -> Result<(), ApplicationError> {
+        if let Some(operations) = &self.operations {
+            self.store
+                .recover_document_writes(&operations.root.join("document-saves"))
+                .await
+                .map_err(|cause| storage_error(cause, false))?;
+        }
+        Ok(())
+    }
+
+    async fn recover_document_session(&self, session_id: &str) -> Result<(), ApplicationError> {
+        if let Some(operations) = &self.operations {
+            self.store
+                .recover_session_document_write(&operations.root.join("document-saves"), session_id)
+                .await
+                .map_err(|cause| storage_error(cause, false))?;
+        }
+        Ok(())
+    }
+
     pub async fn read_document(
         &self,
         session_id: &str,
         target: &hypr_loofah_protocol::DocumentTarget,
     ) -> Result<hypr_loofah_protocol::DocumentSnapshot, ApplicationError> {
         self.validate_document(session_id, target)?;
+        self.recover_document_session(session_id).await?;
         self.store
             .read_document_snapshot(session_id, target)
             .await
@@ -54,8 +75,15 @@ impl VaultContext {
         {
             return Err(error(ErrorCode::NotFound, "Template output not found"));
         }
+        let operations = self.operations.as_ref().ok_or_else(|| {
+            error(
+                ErrorCode::Unavailable,
+                "Operation storage is not configured",
+            )
+        })?;
         self.store
             .save_document_if_revision(
+                &operations.root.join("document-saves"),
                 session_id,
                 target,
                 &input.markdown,
@@ -93,6 +121,7 @@ impl VaultContext {
         session_id: &str,
     ) -> Result<Vec<EnhancedDoc>, ApplicationError> {
         self.require_session(session_id).await?;
+        self.recover_document_session(session_id).await?;
         Ok(self.store.session_enhanced_docs(session_id))
     }
 
@@ -109,6 +138,7 @@ impl VaultContext {
 
     pub async fn session_tasks(&self, session_id: &str) -> Result<Vec<TaskItem>, ApplicationError> {
         self.require_session(session_id).await?;
+        self.recover_document_session(session_id).await?;
         self.store
             .session_tasks(session_id)
             .await

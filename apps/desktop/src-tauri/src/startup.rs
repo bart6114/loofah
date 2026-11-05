@@ -32,6 +32,15 @@ pub fn get_startup_status<R: tauri::Runtime>(app: AppHandle<R>) -> StartupStatus
 pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
     let state = app.state::<StartupState>().inner().clone();
     tauri::async_runtime::spawn(async move {
+        if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {
+            if let Err(error) = context.recover_document_writes().await {
+                tracing::error!(%error, "document recovery failed");
+                state.set_phase(StartupPhase::Failed {
+                    message: error.to_string(),
+                });
+                return;
+            }
+        }
         if let Err(error) = hypr_loofah_core::startup::prepare(store.clone(), state.clone()).await {
             tracing::error!(%error, "vault startup failed");
             state.set_phase(StartupPhase::Failed {

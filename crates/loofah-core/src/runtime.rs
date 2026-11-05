@@ -53,6 +53,9 @@ impl VaultRuntime {
         .map_err(|error| StoreError::Io(error.to_string()))??;
         let store = Arc::new(SessionStore::new(vault.clone()));
         store.set_startup_pending(true);
+        store
+            .recover_document_writes(&operation_root.join("document-saves"))
+            .await?;
         let startup = StartupState::new(Some(&vault));
         startup::prepare(store.clone(), startup.clone())
             .await
@@ -148,6 +151,110 @@ fn io_error(error: std::io::Error) -> StoreError {
 mod tests {
     use super::*;
     use hypr_loofah_protocol::{NoteSaveOutcome, SaveNoteRequest};
+
+    #[tokio::test]
+    async fn restored_pending_document_state_recovers_before_headless_readiness_and_indexing() {
+        use serde_json::json;
+        use sha2::{Digest, Sha256};
+        let source = tempfile::tempdir().unwrap();
+        let bookkeeping = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(source.path().into());
+        let meta = serde_json::from_value(
+            json!({"id":"note","title":"Meeting","created_at":"2026-11-05T10:00:00Z","tags":[]}),
+        )
+        .unwrap();
+        store
+            .create_note_session(&meta, "Personal text")
+            .await
+            .unwrap();
+        store.ensure_summary("note").await.unwrap();
+        store
+            .update_generated_summary("note", "- [ ] Call Alice", Some(""))
+            .await
+            .unwrap();
+        let target = hypr_loofah_protocol::DocumentTarget::Summary;
+        let before = store
+            .read_document_snapshot("note", &target)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut tasks = store.session_tasks("note").await.unwrap();
+        tasks[0].status = "done".into();
+        let mut task_bytes = vec![1];
+        task_bytes.extend(std::fs::read(source.path().join("sessions/note/tasks.json")).unwrap());
+        let hash = |bytes: &[u8]| {
+            Sha256::digest(bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        };
+        std::fs::write(
+            source.path().join("sessions/note/summary.md"),
+            "- [x] Call Alice",
+        )
+        .unwrap();
+        let after = store
+            .read_document_snapshot("note", &target)
+            .await
+            .unwrap()
+            .unwrap();
+        let intent = json!({"schema_version":1,"session_id":"note","target":target,"before_revision":before.revision,"after_revision":after.revision,"before_tasks_hash":hash(&task_bytes),"tasks":tasks});
+        let filename = format!("{}.json", hash(b"note"));
+        hypr_storage::fs::atomic_write(
+            &bookkeeping.path().join("document-saves").join(&filename),
+            &intent.to_string(),
+        )
+        .unwrap();
+        drop(store);
+        let restored_vault = tempfile::tempdir().unwrap();
+        let restored_runtime = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        hypr_storage::fs::copy_dir_recursive(source.path(), restored_vault.path(), None)
+            .await
+            .unwrap();
+        hypr_storage::fs::copy_dir_recursive(bookkeeping.path(), restored_runtime.path(), None)
+            .await
+            .unwrap();
+        let runtime = VaultRuntime::open(
+            "restored".into(),
+            restored_vault.path(),
+            cache.path(),
+            restored_runtime.path(),
+        )
+        .await
+        .unwrap();
+        assert!(runtime.context.startup.is_ready());
+        assert_eq!(runtime.context.session_tasks("note").await.unwrap(), tasks);
+        assert_eq!(
+            runtime.context.session_documents("note").await.unwrap()[0].markdown,
+            "- [x] Call Alice"
+        );
+        assert_eq!(
+            runtime
+                .context
+                .read_note("note")
+                .await
+                .unwrap()
+                .markdown
+                .as_deref(),
+            Some("Personal text")
+        );
+        assert!(
+            !restored_runtime
+                .path()
+                .join("document-saves")
+                .join(&filename)
+                .exists()
+        );
+        assert!(
+            bookkeeping
+                .path()
+                .join("document-saves")
+                .join(filename)
+                .exists()
+        );
+        runtime.shutdown().await.unwrap();
+    }
 
     #[tokio::test]
     async fn headless_lifecycle_exclusively_owns_vault_and_reopens_canonical_notes() {

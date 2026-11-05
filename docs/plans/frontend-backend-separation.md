@@ -352,7 +352,7 @@ The frontend still selects local IPC. Connection selection, scoped caches/drafts
 
 ### Shared frontend contract and draft checkpoint
 
-Typed local IPC and HTTPS now expose the same paginated session reads, coherent note snapshots, revision-checked saves, idempotent creation and bounded search operations. Pagination and search validation live in the shared Rust application layer. Local creation receipts stay outside the canonical vault and are keyed to its canonical path. The local adapter publishes the same change contract as the server, including search readiness; bulk invalidations are bounded.
+Typed local IPC and HTTPS now expose the same paginated session reads, coherent note snapshots, revision-checked saves, idempotent creation and bounded search operations. Pagination and search validation live in the shared Rust application layer. Local creation receipts use app-local runtime storage outside session directories, keyed to the canonical vault path. The local adapter publishes the same change contract as the server, including search readiness; bulk invalidations are bounded.
 
 `VaultClient` captures its server/account/vault scope. `VaultScope` owns a separate query cache, cancels old reads, ignores late events, revalidates on reconnect/focus and removes cached private content after authorization loss. `NoteDraft` pins the original baseline on the first keystroke without serializing Markdown in the input handler, retains newer edits while a save is pending, serializes writes through its captured client, and requires explicit review before rebasing a conflict. Exact lost-response retry matches can be acknowledged; absent and explicitly empty notes remain distinct.
 
@@ -360,7 +360,7 @@ Validation: 33 frontend contract/cache/draft tests pass, including undo during a
 
 ### Device draft recovery checkpoint
 
-The native client now stores recovery drafts outside canonical vaults. Rust owns the device file I/O, atomic replacement and directory flushing. Cache paths hash the complete account/vault scope, session ID and native window identity; simultaneous windows keep separate recovery copies. Records retain the exact baseline, current draft and uncertain-commit flag. The recovery DTO is generated from Rust rather than maintained separately in TypeScript.
+The native client now stores recovery drafts in device runtime storage, separate from canonical session files. Rust owns the device file I/O, atomic replacement and directory flushing. Cache paths hash the complete account/vault scope, session ID and native window identity; simultaneous windows keep separate recovery copies. Records retain the exact baseline, current draft and uncertain-commit flag. The recovery DTO is generated from Rust rather than maintained separately in TypeScript.
 
 Device cache reads/writes reject symlinks, oversized records, damaged records and unsupported versions. Private directory/file permissions are enforced on Unix; Windows uses the user's application-data directory. Per-scope quotas preserve existing copies when storage is full. Frontend writes and cleanup are serialized with immutable inputs through the existing application exit write queue. An authoritative snapshot matching an uncertain draft can confirm a previously lost save response.
 
@@ -415,3 +415,13 @@ Task reconciliation for these replacements runs in Rust. Matching tasks retain i
 The opt-in UI still displays outputs as read-only text. Next: durable compound body/task recovery, then the output editor and its device draft/conflict integration. A body saved before a later task-write failure currently reports an unknown mutation outcome; automatic recovery is not complete. This checkpoint does not complete phase 4 or enable full remote Loofah.
 
 Validation: all 1,652 frontend tests and desktop typechecking pass; scoped application lint reports no warnings or errors. Shared core passes 62 tests, vault-write 275 (one existing ignored), native client 19, desktop Rust 45 (one existing ignored), and server 23 plus executable lifecycle coverage. Generated protocol checking and formatting pass. Native CI for the preceding HTTPS UI checkpoint is still running; this document-body checkpoint requires its own platform validation.
+
+### Compound document recovery checkpoint
+
+Checked summary/output replacements now persist a versioned, private recovery record before committing the body. It stores the exact prepared task projection and hashes of the canonical before/after states. The record lives under `creates/document-saves/` in host runtime storage, outside session directories. Readers of the vault format still use only canonical session files.
+
+Headless and local desktop startup recover records before indexing/readiness. Shared document/task reads also finish pending writes. Recovery completes tasks only when the body matches the admitted result and the task file still matches its recorded prior state. It removes already-completed records without rewriting canonical files, abandons writes whose body never committed, and discards records for deleted sessions without restoring them. Conflicting external body/task edits, damaged/future records and symlinks stop recovery for operator review; they are never silently overwritten. Records are bounded to 32 MiB, startup admits at most 256 pending records, and unavailable/misplaced runtime storage prevents the body commit.
+
+Tests reconstruct crashes before body commit, between body and task commits, and after both files commit. A stopped vault/runtime copy restored into different directories recovers before the headless backend becomes ready and indexed; note and attachment content remain intact. This closes the compound-write gap for the new checked body operations. The original local editing/provider paths retain their prior behavior until they are migrated to these operations. Output editing in the UI, richer mutations and complete release/platform validation remain open.
+
+Validation at this checkpoint: vault-write passes 280 tests (one existing ignored), shared core 63, and server 23 plus executable lifecycle coverage. Desktop Rust passes 45 (one existing ignored); desktop and CLI Rust checks pass. Frontend code is unchanged from its 1,652-test checkpoint. Native Windows checks for the preceding pushed checkpoint remain in progress.

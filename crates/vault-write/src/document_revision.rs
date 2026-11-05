@@ -15,6 +15,7 @@ impl SessionStore {
 
     pub async fn save_document_if_revision(
         &self,
+        operation_root: &std::path::Path,
         session_id: &str,
         target: &DocumentTarget,
         markdown: &str,
@@ -30,7 +31,7 @@ impl SessionStore {
                     None,
                     None,
                     false,
-                    Some(expected_revision),
+                    Some((expected_revision, operation_root)),
                 )
                 .await?
             }
@@ -45,7 +46,7 @@ impl SessionStore {
                     },
                     None,
                     false,
-                    Some(expected_revision),
+                    Some((expected_revision, operation_root)),
                 )
                 .await?
             }
@@ -105,13 +106,7 @@ impl SessionStore {
                 .map(|(path, _)| std::fs::read(vault.join(path)))
                 .transpose()
                 .map_err(|error| StoreError::Io(error.to_string()))?;
-            let mut bytes = serde_json::to_vec(&(&session, &target))
-                .map_err(|error| StoreError::Serialize(error.to_string()))?;
-            bytes.push(u8::from(raw.is_some()));
-            if let Some(raw) = &raw {
-                bytes.extend_from_slice(raw);
-            }
-            let revision = crate::sha256(&bytes);
+            let revision = revision(&session, &target, raw.as_deref())?;
             let document = match (located, raw) {
                 (Some((_, legacy_id)), Some(raw)) => {
                     let raw = String::from_utf8(raw)
@@ -145,6 +140,20 @@ impl SessionStore {
     }
 }
 
+pub(super) fn revision(
+    session: &str,
+    target: &DocumentTarget,
+    raw: Option<&[u8]>,
+) -> Result<String, StoreError> {
+    let mut bytes =
+        serde_json::to_vec(&(session, target)).map_err(|e| StoreError::Serialize(e.to_string()))?;
+    bytes.push(u8::from(raw.is_some()));
+    if let Some(raw) = raw {
+        bytes.extend_from_slice(raw);
+    }
+    Ok(crate::sha256(&bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +177,8 @@ mod tests {
     #[tokio::test]
     async fn summary_creation_and_concurrent_replacements_use_one_canonical_revision() {
         let (vault, store) = fixture().await;
+        let operation_storage = tempfile::tempdir().unwrap();
+        let operation_root = operation_storage.path();
         let target = DocumentTarget::Summary;
         let absent = store
             .read_document_snapshot("s1", &target)
@@ -176,8 +187,20 @@ mod tests {
             .unwrap();
         assert!(absent.document.is_none());
         let (first, second) = tokio::join!(
-            store.save_document_if_revision("s1", &target, "First", &absent.revision),
-            store.save_document_if_revision("s1", &target, "Second", &absent.revision),
+            store.save_document_if_revision(
+                operation_root,
+                "s1",
+                &target,
+                "First",
+                &absent.revision
+            ),
+            store.save_document_if_revision(
+                operation_root,
+                "s1",
+                &target,
+                "Second",
+                &absent.revision
+            ),
         );
         let outcomes = [first.unwrap(), second.unwrap()];
         assert_eq!(
@@ -214,6 +237,8 @@ mod tests {
     async fn template_revisions_cover_raw_frontmatter_and_preserve_other_documents_and_task_metadata()
      {
         let (vault, store) = fixture().await;
+        let operation_storage = tempfile::tempdir().unwrap();
+        let operation_root = operation_storage.path();
         store
             .write_enhanced_doc(&EnhancedDoc {
                 id: "output".into(),
@@ -255,7 +280,13 @@ mod tests {
         std::fs::write(&file, &raw).unwrap();
         assert!(matches!(
             store
-                .save_document_if_revision("s1", &target, "stale", &initial.revision)
+                .save_document_if_revision(
+                    operation_root,
+                    "s1",
+                    &target,
+                    "stale",
+                    &initial.revision
+                )
                 .await
                 .unwrap(),
             DocumentSaveOutcome::Conflict(_)
@@ -268,6 +299,7 @@ mod tests {
             .unwrap();
         let DocumentSaveOutcome::Saved(saved) = store
             .save_document_if_revision(
+                operation_root,
                 "s1",
                 &target,
                 "New paragraph\n\n- [ ] Call Alice\n- [ ] New task",
@@ -295,6 +327,7 @@ mod tests {
         assert!(!vault.path().join("sessions/s1/summary.md").exists());
         let DocumentSaveOutcome::Saved(checked) = store
             .save_document_if_revision(
+                operation_root,
                 "s1",
                 &target,
                 "New paragraph\n\n- [x] Call Alice\n- [ ] New task",
@@ -307,6 +340,7 @@ mod tests {
         };
         store
             .save_document_if_revision(
+                operation_root,
                 "s1",
                 &target,
                 "New paragraph\n\n- [ ] Call Alice\n- [ ] New task",
@@ -324,6 +358,8 @@ mod tests {
     async fn legacy_summary_migrates_through_existing_writer_and_stale_deleted_sessions_do_not_return()
      {
         let (vault, store) = fixture().await;
+        let operation_storage = tempfile::tempdir().unwrap();
+        let operation_root = operation_storage.path();
         store
             .write_enhanced_doc(&EnhancedDoc {
                 id: "legacy".into(),
@@ -350,7 +386,7 @@ mod tests {
         assert_eq!(old.document.unwrap().id, "s1");
         assert!(matches!(
             store
-                .save_document_if_revision("s1", &target, "Updated", &old.revision)
+                .save_document_if_revision(operation_root, "s1", &target, "Updated", &old.revision)
                 .await
                 .unwrap(),
             DocumentSaveOutcome::Saved(_)
@@ -367,7 +403,13 @@ mod tests {
         std::fs::remove_file(vault.path().join("sessions/s1/_meta.json")).unwrap();
         assert!(
             store
-                .save_document_if_revision("s1", &target, "Resurrected", &old.revision)
+                .save_document_if_revision(
+                    operation_root,
+                    "s1",
+                    &target,
+                    "Resurrected",
+                    &old.revision
+                )
                 .await
                 .is_err()
         );
@@ -377,6 +419,8 @@ mod tests {
     #[tokio::test]
     async fn absent_outputs_invalid_ids_and_symlinks_cannot_be_written() {
         let (vault, store) = fixture().await;
+        let operation_storage = tempfile::tempdir().unwrap();
+        let operation_root = operation_storage.path();
         let target = DocumentTarget::TemplateOutput {
             document_id: "missing".into(),
         };
@@ -387,7 +431,13 @@ mod tests {
             .unwrap();
         assert!(
             store
-                .save_document_if_revision("s1", &target, "Must not create", &absent.revision)
+                .save_document_if_revision(
+                    operation_root,
+                    "s1",
+                    &target,
+                    "Must not create",
+                    &absent.revision
+                )
                 .await
                 .is_err()
         );
@@ -424,6 +474,8 @@ mod tests {
     async fn damaged_tasks_block_body_replacement_and_summary_revision_excludes_unrelated_metadata()
     {
         let (vault, store) = fixture().await;
+        let operation_storage = tempfile::tempdir().unwrap();
+        let operation_root = operation_storage.path();
         store.ensure_summary("s1").await.unwrap();
         let target = DocumentTarget::Summary;
         let initial = store
@@ -453,7 +505,13 @@ mod tests {
         std::fs::write(vault.path().join("sessions/s1/tasks.json"), "damaged").unwrap();
         assert!(
             store
-                .save_document_if_revision("s1", &target, "Must not replace", &initial.revision)
+                .save_document_if_revision(
+                    operation_root,
+                    "s1",
+                    &target,
+                    "Must not replace",
+                    &initial.revision
+                )
                 .await
                 .is_err()
         );

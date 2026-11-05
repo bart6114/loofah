@@ -135,8 +135,15 @@ impl SessionStore {
         title: Option<&str>,
         suggested_tags: Option<Vec<ScoredTagSuggestion>>,
         auto_apply_high_confidence_tags: bool,
-        expected_revision: Option<&str>,
+        expected_revision: Option<(&str, &std::path::Path)>,
     ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
+        if expected_revision.is_some()
+            && (title.is_some() || suggested_tags.is_some() || !reconcile_tasks)
+        {
+            return Err(StoreError::Serialize(
+                "checked body replacement cannot update session metadata".into(),
+            ));
+        }
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
             Some(
@@ -150,7 +157,9 @@ impl SessionStore {
         };
         let guard = self.lock_writes().await;
         let target = hypr_loofah_protocol::DocumentTarget::Summary;
-        if let Some(expected) = expected_revision {
+        if let Some((expected, operation_root)) = expected_revision {
+            self.recover_document_write_locked(&guard, operation_root, session_id)
+                .await?;
             let current = self
                 .document_snapshot_locked(&guard, session_id, &target)
                 .await?
@@ -235,6 +244,23 @@ impl SessionStore {
         for name in &auto_applied {
             self.ensure_tag_locked(&guard, name).await?;
         }
+        let pending = if let Some((_, operation_root)) = expected_revision {
+            Some(
+                self.begin_document_write_locked(
+                    &guard,
+                    operation_root,
+                    session_id,
+                    &target,
+                    &bytes,
+                    tasks.as_deref().ok_or_else(|| {
+                        StoreError::Io("checked document save requires tasks".into())
+                    })?,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         self.write_file_locked(&guard, summary.relative_path, bytes)
             .await?;
         let task_result = if let Some(tasks) = tasks {
@@ -263,6 +289,9 @@ impl SessionStore {
             self.index_set_summary(session_id, Some(markdown.to_owned()));
         }
         task_result?;
+        if let Some(pending) = pending {
+            pending.finish().await?;
+        }
         if expected_revision.is_some() {
             let snapshot = self
                 .document_snapshot_locked(&guard, session_id, &target)
