@@ -103,6 +103,10 @@ msgstr "About Loofah"
 msgid "Accept suggested tag {name}"
 msgstr "Accept suggested tag {name}"
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Access to this vault changed. Close this panel and reload your vaults."
+msgstr "Access to this vault changed. Close this panel and reload your vaults."
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Actions"
 msgstr "Actions"
@@ -122,6 +126,10 @@ msgstr "Add files here or drop them anywhere in this area."
 #: src/settings/general/spoken-languages.tsx
 msgid "Add language"
 msgstr "Add language"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Add member"
+msgstr "Add member"
 
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
@@ -292,6 +300,10 @@ msgstr "Choose a connection"
 msgid "Choose a file format and what to include."
 msgstr "Choose a file format and what to include."
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Choose a member"
+msgstr "Choose a member"
+
 #: src/settings/ai/llm/select.tsx
 #: src/settings/ai/stt/select.tsx
 msgid "Choose a model"
@@ -377,6 +389,10 @@ msgstr "commented on"
 #: src/task/resource-view.tsx
 msgid "comments"
 msgstr "comments"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Company member"
+msgstr "Company member"
 
 #: src/shared/application/server-preview.tsx
 msgid "Company sign-in"
@@ -520,6 +536,14 @@ msgstr "Couldn't save your appearance. Please try again."
 msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr "Couldn’t update storage. Showing the previous measurement."
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Create shared vault"
+msgstr "Create shared vault"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Create vault"
+msgstr "Create vault"
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
 msgstr "Created"
@@ -563,6 +587,18 @@ msgstr "Delete Note"
 #: src/sidebar/timeline/index.tsx
 msgid "Delete Selected ({sessionCount})"
 msgstr "Delete Selected ({sessionCount})"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Delete this shared vault"
+msgstr "Delete this shared vault"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Delete vault"
+msgstr "Delete vault"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Deleting removes everyone's access. Server files are retained for operator recovery."
+msgstr "Deleting removes everyone's access. Server files are retained for operator recovery."
 
 #: src/settings/general/theme.tsx
 msgid "Design theme"
@@ -658,6 +694,10 @@ msgstr "Edit date"
 #: src/session/components/note-input/header.tsx
 msgid "Edit summary prompt"
 msgstr "Edit summary prompt"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Editor"
+msgstr "Editor"
 
 #. placeholder {0}: permissionName.toLowerCase()
 #: src/onboarding/permissions.tsx
@@ -902,6 +942,10 @@ msgstr "Loading connection…"
 msgid "Loading debug information…"
 msgstr "Loading debug information…"
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Loading members…"
+msgstr "Loading members…"
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr "Loading models..."
@@ -1137,6 +1181,10 @@ msgstr "Notes refreshed from the files in your folder."
 msgid "Now"
 msgstr "Now"
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Only existing company members can join. Readers can view; editors can change content; owners also manage access."
+msgstr "Only existing company members can join. Readers can view; editors can change content; owners also manage access."
+
 #: src/task/resource-view.tsx
 msgid "Open"
 msgstr "Open"
@@ -1194,6 +1242,10 @@ msgstr "Override the timezone used for the sidebar timeline"
 msgid "Overview"
 msgstr "Overview"
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Owner"
+msgstr "Owner"
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Participants"
 msgstr "Participants"
@@ -1244,6 +1296,10 @@ msgstr "Re-transcribe"
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "Re-transcribing resets speaker names"
 msgstr "Re-transcribing resets speaker names"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Reader"
+msgstr "Reader"
 
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Ready"
@@ -1298,6 +1354,10 @@ msgstr "Refresh the app if notes are missing or changes made outside Loofah are 
 msgid "Refreshing..."
 msgstr "Refreshing..."
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Reload access"
+msgstr "Reload access"
+
 #: src/settings/general/notification.tsx
 msgid "Remind me to record meetings"
 msgstr "Remind me to record meetings"
@@ -1307,6 +1367,7 @@ msgid "Reminder preferences"
 msgstr "Reminder preferences"
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-sharing.tsx
 msgid "Remove"
 msgstr "Remove"
 
@@ -1333,6 +1394,10 @@ msgstr "Remove tag {tag}"
 #: src/session/components/note-input/attachments.tsx
 msgid "Removing…"
 msgstr "Removing…"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Rename vault"
+msgstr "Rename vault"
 
 #: src/settings/ai/shared/index.tsx
 msgid "Repair Keychain Access"
@@ -1403,8 +1468,18 @@ msgid "Retry {0}"
 msgstr "Retry {0}"
 
 #: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-sharing.tsx
 msgid "Retry creation"
 msgstr "Retry creation"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Role"
+msgstr "Role"
+
+#. placeholder {0}: entry.member.name
+#: src/shared/application/vault-sharing.tsx
+msgid "Role for {0}"
+msgstr "Role for {0}"
 
 #: src/settings/ai/shared/index.tsx
 #: src/settings/ai/stt/select.tsx
@@ -1817,6 +1892,10 @@ msgstr "The app will restart after onboarding to apply your storage changes"
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
 msgstr "The selected provider processes the text you send for summaries. API usage may have separate charges."
 
+#: src/shared/application/vault-sharing.tsx
+msgid "The server may have created this vault. Retry the same request to recover its result."
+msgstr "The server may have created this vault. Retry the same request to recover its result."
+
 #: src/shared/application/notes-workspace.tsx
 msgid "This connection is no longer authorized."
 msgstr "This connection is no longer authorized."
@@ -2015,6 +2094,14 @@ msgstr "Variables"
 msgid "Vault"
 msgstr "Vault"
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Vault members"
+msgstr "Vault members"
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Vault name"
+msgstr "Vault name"
+
 #: src/main/about-storage.tsx
 msgid "Vault size by file type"
 msgstr "Vault size by file type"
@@ -2083,6 +2170,10 @@ msgstr "Your current vault stays where it is — nothing is moved or deleted. Yo
 #: src/settings/general/storage/index.tsx
 msgid "Your notes, recordings, and attachments are saved as files in this folder."
 msgstr "Your notes, recordings, and attachments are saved as files in this folder."
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Your personal vault stays private. Share this new vault with existing company members."
+msgstr "Your personal vault stays private. Share this new vault with existing company members."
 
 #: src/main/about-dialog.tsx
 msgid "Your vault"

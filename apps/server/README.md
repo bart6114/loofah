@@ -4,7 +4,9 @@ The server is experimental. It currently exposes authenticated vault, note, sear
 
 For development, set `VITE_REMOTE_PREVIEW=true` when starting the desktop frontend. **Settings → Storage → Try server notes** opens the opt-in notes preview. Connect to an HTTPS server, sign in through the company browser flow, and select a personal or shared vault. The preview supports note creation, Markdown source editing, revision conflicts and device draft recovery. It keeps tokens in native Rust and the OS credential store. Editing pauses during a disconnect; saved recovery drafts stay on the device. Readers cannot edit.
 
-This preview runs inside the existing local desktop host. It does not yet replace the main ProseMirror editor or provide remote-only startup, sharing controls, attachments, processing or recording. Do not use it as a complete remote deployment of Loofah. Keep `VITE_REMOTE_PREVIEW` unset for the existing standalone experience.
+Use **Create shared vault** for a separate company vault. **Vault members** shows its members; owners can add existing company members, set reader/editor/owner roles, remove members, rename the vault or explicitly delete its access. The last owner cannot be removed or downgraded. Personal vaults have no sharing controls. Catalog conflicts require a reload before another change. An uncertain creation retries its original request rather than silently creating another vault.
+
+This preview runs inside the existing local desktop host. It does not yet replace the main ProseMirror editor or provide remote-only startup, attachments, processing or recording. Do not use it as a complete remote deployment of Loofah. Keep `VITE_REMOTE_PREVIEW` unset for the existing standalone experience.
 
 ## Configure company SSO
 

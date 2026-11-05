@@ -127,7 +127,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
 export function connectRemoteVault(
   connection: NativeRemoteConnection,
   memberId: string,
-  vault: VaultInfo,
+  vault: Pick<VaultInfo, "id" | "role">,
 ): VaultClient {
   const vaultId = vault.id;
   return {

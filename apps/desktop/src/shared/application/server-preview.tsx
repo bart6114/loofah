@@ -17,6 +17,7 @@ import { VaultNotesWorkspace } from "./notes-workspace";
 import type { Me, VaultInfo } from "./protocol.gen";
 import { NativeRemoteConnection } from "./remote";
 import { connectRemoteVault } from "./vault-client";
+import { CreateSharedVault, VaultSharing } from "./vault-sharing";
 
 export default function ServerPreview() {
   const [open, setOpen] = useState(false);
@@ -258,10 +259,17 @@ function ConnectedVaults({
       ],
     });
   }, [queryClient, connection.info.server, me.member.id]);
+  const selectedId = selected?.id;
+  const selectedRole = selected?.role;
   const client = useMemo(
     () =>
-      selected ? connectRemoteVault(connection, me.member.id, selected) : null,
-    [connection, me.member.id, selected],
+      selectedId && selectedRole
+        ? connectRemoteVault(connection, me.member.id, {
+            id: selectedId,
+            role: selectedRole,
+          })
+        : null,
+    [connection, me.member.id, selectedId, selectedRole],
   );
   const unavailable =
     selected &&
@@ -299,7 +307,29 @@ function ConnectedVaults({
             ))}
           </select>
         </label>
-        <span className="text-muted-foreground text-xs">{me.member.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground text-xs">
+            {me.member.name}
+          </span>
+          {connection.info.capabilities.features.includes(
+            "vault_membership",
+          ) && (
+            <>
+              <CreateSharedVault
+                connection={connection}
+                memberId={me.member.id}
+                onCreated={setSelected}
+              />
+              {selected && !unavailable && (
+                <VaultSharing
+                  connection={connection}
+                  memberId={me.member.id}
+                  vault={selected}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
       {catalog.error && (
         <p role="alert" className="text-destructive text-xs">

@@ -9,7 +9,7 @@ import {
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ connect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ connect: vi.fn(), workspace: vi.fn() }));
 vi.mock("./remote", () => ({
   NativeRemoteConnection: { connect: mocks.connect },
 }));
@@ -18,13 +18,16 @@ vi.mock("./notes-workspace", () => ({
     client,
   }: {
     client: { scope: string; canEdit: boolean };
-  }) => (
-    <div
-      data-testid="workspace"
-      data-scope={client.scope}
-      data-editable={client.canEdit}
-    />
-  ),
+  }) => {
+    mocks.workspace(client);
+    return (
+      <div
+        data-testid="workspace"
+        data-scope={client.scope}
+        data-editable={client.canEdit}
+      />
+    );
+  },
 }));
 
 import { ApplicationRequestError } from "./errors";
@@ -131,6 +134,27 @@ describe("opt-in server connection preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Company sign-in" }));
     await screen.findByTestId("workspace");
     expect(native.signIn).toHaveBeenCalledOnce();
+  });
+
+  it("retains the active client when only the vault catalog name or revision changes", async () => {
+    const native = connection();
+    mocks.connect.mockResolvedValue(native);
+    const queryClient = renderPreview();
+    await enterServer();
+    const workspace = await screen.findByTestId("workspace");
+    const scope = workspace.dataset.scope;
+    const originalClient =
+      mocks.workspace.mock.calls[mocks.workspace.mock.calls.length - 1]?.[0];
+    queryClient.setQueryData(
+      ["server-preview", native.info.server, me.member.id, "vaults"],
+      [{ ...vault, name: "Renamed", revision: "b" }],
+    );
+    await screen.findByRole("option", { name: "Renamed" });
+    expect(screen.getByTestId("workspace")).toBe(workspace);
+    expect(workspace.dataset.scope).toBe(scope);
+    expect(
+      mocks.workspace.mock.calls[mocks.workspace.mock.calls.length - 1]?.[0],
+    ).toBe(originalClient);
   });
 
   it("releases a connection whose discovery finishes after the dialog was closed", async () => {
