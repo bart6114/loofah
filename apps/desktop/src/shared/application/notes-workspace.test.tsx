@@ -35,6 +35,56 @@ function fixture() {
     scope: crypto.randomUUID(),
     networkMode: "always",
     canEdit: true,
+    features: ["notes", "search"],
+    documents: vi.fn(async () => [
+      {
+        id: "output",
+        session_id: "same",
+        kind: "summary",
+        title: "Summary",
+        template_id: "",
+        sort_order: 0,
+        markdown: "Canonical summary",
+      },
+    ]),
+    transcripts: vi.fn(async () => [
+      {
+        id: "transcript",
+        session_id: "same",
+        user_id: "",
+        created_at: "",
+        started_at: 0,
+        ended_at: null,
+        memo_md: "",
+        words: [
+          {
+            text: "Canonical transcript",
+            start_ms: 0,
+            end_ms: 100,
+            channel: 0,
+            speaker: null,
+            metadata: null,
+          },
+        ],
+        speaker_hints: [],
+      },
+    ]),
+    tasks: vi.fn(async () => [
+      {
+        id: "task",
+        source_type: "session_raw_note",
+        source_id: "same",
+        source_order: 0,
+        status: "todo",
+        text: "Canonical task",
+        body: [],
+        due_at: "",
+        assignee: "",
+        created_at: "",
+        updated_at: "",
+      },
+    ]),
+    search: vi.fn(async () => ({ hits: [], count: 0 })),
     readNote: vi.fn(async () => current),
     sessions: vi.fn(async () => ({
       sessions: [
@@ -60,7 +110,10 @@ function fixture() {
         listeners.delete(listener);
       };
     }),
-  } as unknown as VaultClient & { saveNote: ReturnType<typeof vi.fn> };
+  } as unknown as VaultClient & {
+    saveNote: ReturnType<typeof vi.fn>;
+    search: ReturnType<typeof vi.fn>;
+  };
   return {
     client,
     set: (value: NoteSnapshot) => {
@@ -93,6 +146,134 @@ afterEach(async () => {
 });
 
 describe("shared note workspace", () => {
+  it("saves a draft to its original session when navigating before the autosave delay", async () => {
+    const backend = fixture();
+    const page = await backend.client.sessions(100);
+    vi.mocked(backend.client.sessions).mockResolvedValue({
+      ...page,
+      sessions: [
+        ...page.sessions,
+        { ...page.sessions[0], id: "other", title: "Other" },
+      ],
+    });
+    const editor = await open(backend.client);
+    fireEvent.change(editor, { target: { value: "Before switching" } });
+    fireEvent.click(screen.getByRole("button", { name: "Other" }));
+    await waitFor(() => expect(backend.client.saveNote).toHaveBeenCalledOnce());
+    expect(backend.client.saveNote.mock.calls[0]).toMatchObject([
+      "same",
+      { markdown: "Before switching", expected_revision: "a" },
+      undefined,
+    ]);
+  });
+
+  it("finishes newer typing after leaving a note with an earlier save pending", async () => {
+    const backend = fixture();
+    const page = await backend.client.sessions(100);
+    vi.mocked(backend.client.sessions).mockResolvedValue({
+      ...page,
+      sessions: [
+        ...page.sessions,
+        { ...page.sessions[0], id: "other", title: "Other" },
+      ],
+    });
+    let finish!: (value: unknown) => void;
+    backend.client.saveNote.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const editor = await open(backend.client);
+    fireEvent.change(editor, { target: { value: "First edit" } });
+    await waitFor(
+      () => expect(backend.client.saveNote).toHaveBeenCalledOnce(),
+      { timeout: 3000 },
+    );
+    fireEvent.change(editor, {
+      target: { value: "Later typing before switching" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Other" }));
+    finish({ kind: "saved", note: note("First edit", "b") });
+    await waitFor(() =>
+      expect(backend.client.saveNote).toHaveBeenCalledTimes(2),
+    );
+    expect(backend.client.saveNote.mock.calls[1]).toMatchObject([
+      "same",
+      { markdown: "Later typing before switching", expected_revision: "b" },
+      undefined,
+    ]);
+  });
+
+  it("reads existing outputs, transcripts and tasks through the same scoped client", async () => {
+    const backend = fixture();
+    await open({
+      ...backend.client,
+      features: ["notes", "search", "content_read"],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    await screen.findByText("Canonical summary");
+    fireEvent.click(screen.getByRole("button", { name: "Transcript" }));
+    await screen.findByText("Canonical transcript");
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+    await screen.findByText("Canonical task", { exact: false });
+    for (const operation of [
+      backend.client.documents,
+      backend.client.transcripts,
+      backend.client.tasks,
+    ])
+      expect(operation).toHaveBeenCalledWith("same", expect.anything());
+    expect(backend.client.saveNote).not.toHaveBeenCalled();
+  });
+  it("searches through the scoped client and revalidates after search readiness", async () => {
+    const backend = fixture();
+    backend.client.search.mockResolvedValue({
+      count: 1,
+      hits: [
+        {
+          document: {
+            id: "found",
+            title: "Found note",
+            doc_type: "session",
+            content: "",
+            language: null,
+            created_at: 0,
+            facets: [],
+          },
+          score: 1,
+          title_snippet: null,
+          content_snippet: {
+            fragment: '<img src="asset://localhost/private.png">',
+            highlights: [],
+          },
+        },
+      ],
+    });
+    await open(backend.client);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search notes" }), {
+      target: { value: "find this" },
+    });
+    expect(backend.client.search).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const hit = await screen.findByRole("button", { name: /Found note/ });
+    expect(backend.client.search.mock.calls[0][0]).toMatchObject({
+      query: "find this",
+      limit: 50,
+    });
+    expect(document.querySelector("img")).toBeNull();
+    fireEvent.click(hit);
+    await waitFor(() =>
+      expect(backend.client.readNote).toHaveBeenCalledWith(
+        "found",
+        expect.anything(),
+      ),
+    );
+    backend.client.search.mockResolvedValue({ count: 0, hits: [] });
+    backend.emit({ kind: "change", change: { kind: "search_ready" } });
+    await screen.findByText("No matching notes");
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await screen.findByRole("button", { name: "Seed" });
+  });
+
   it("keeps a deleted note's draft visible and read-only without retrying a save", async () => {
     const backend = fixture();
     const editor = await open(backend.client);
@@ -231,11 +412,15 @@ describe("shared note workspace", () => {
     backend.set(
       note("![private](asset://localhost/Users/private/file.png)", "a"),
     );
-    await open(backend.client);
+    const editor = await open(backend.client);
     expect(document.querySelector("img")).toBeNull();
+    fireEvent.change(editor, {
+      target: { value: "Unsaved text before access loss" },
+    });
     backend.emit({ kind: "connection", state: "access_denied", error: null });
     await screen.findByText("This connection is no longer authorized.");
     expect(screen.queryByRole("textbox", { name: "Markdown" })).toBeNull();
+    expect(backend.client.saveNote).not.toHaveBeenCalled();
   });
 
   it("preserves recovery data for readers and does not send an unauthorized mutation", async () => {

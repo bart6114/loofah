@@ -51,6 +51,24 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    Documents {
+        vault_id: String,
+        session_id: String,
+    },
+    Transcripts {
+        vault_id: String,
+        session_id: String,
+    },
+    Tasks {
+        vault_id: String,
+        session_id: String,
+    },
+    People {
+        vault_id: String,
+    },
+    Tags {
+        vault_id: String,
+    },
     CreateSession {
         vault_id: String,
         input: CreateSessionRequest,
@@ -81,6 +99,11 @@ pub enum RemoteReply {
     Memberships(Vec<Membership>),
     Sessions(SessionPage),
     Session(SessionDocument),
+    Documents(Vec<EnhancedDoc>),
+    Transcripts(Vec<TranscriptWithData>),
+    Tasks(Vec<TaskItem>),
+    People(Vec<PersonItem>),
+    Tags(Vec<TagItem>),
     Note(NoteSnapshot),
     NoteSave(NoteSaveOutcome),
     Search(hypr_search_cache::SearchResult),
@@ -169,6 +192,31 @@ impl RemoteClient {
                 body = Some(value(input)?);
                 (Method::POST, vec!["vaults", vault_id, "sessions"])
             }
+            RemoteOperation::Documents {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec!["vaults", vault_id, "sessions", session_id, "documents"],
+            ),
+            RemoteOperation::Transcripts {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec!["vaults", vault_id, "sessions", session_id, "transcripts"],
+            ),
+            RemoteOperation::Tasks {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec!["vaults", vault_id, "sessions", session_id, "tasks"],
+            ),
+            RemoteOperation::People { vault_id } => {
+                (Method::GET, vec!["vaults", vault_id, "people"])
+            }
+            RemoteOperation::Tags { vault_id } => (Method::GET, vec!["vaults", vault_id, "tags"]),
             RemoteOperation::Note {
                 vault_id,
                 session_id,
@@ -261,6 +309,21 @@ impl RemoteClient {
                 }
                 RemoteOperation::Note { .. } => {
                     RemoteReply::Note(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::Documents { .. } => {
+                    RemoteReply::Documents(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::Transcripts { .. } => {
+                    RemoteReply::Transcripts(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::Tasks { .. } => {
+                    RemoteReply::Tasks(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::People { .. } => {
+                    RemoteReply::People(json_body(response, 1024 * 1024).await?)
+                }
+                RemoteOperation::Tags { .. } => {
+                    RemoteReply::Tags(json_body(response, 1024 * 1024).await?)
                 }
                 RemoteOperation::SaveNote { .. } => {
                     RemoteReply::NoteSave(json_body(response, 8 * 1024 * 1024).await?)

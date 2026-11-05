@@ -1,4 +1,4 @@
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
 import {
   QueryClientProvider,
@@ -65,6 +65,11 @@ export function VaultNotesWorkspace({
 function Notes({ scope }: { scope: VaultScope }) {
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const searchForm = useForm({
+    defaultValues: { query: "" },
+    onSubmit: ({ value }) => setSearch(value.query.trim()),
+  });
   const connected = connection.state === "connected";
   const denied = [
     "access_denied",
@@ -150,34 +155,94 @@ function Notes({ scope }: { scope: VaultScope }) {
       ) : (
         <div className="flex min-h-0 flex-1 gap-4">
           <aside className="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto border-r pr-3">
-            {sessions.error && (
-              <p role="alert" className="text-destructive text-xs">
-                {sessions.error.message}
-              </p>
+            {scope.client.features.includes("search") && (
+              <form
+                className="mb-2 flex flex-col gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void searchForm.handleSubmit();
+                }}
+              >
+                <searchForm.Field name="query">
+                  {(field) => (
+                    <label className="flex flex-col gap-1 text-xs">
+                      <Trans>Search notes</Trans>
+                      <input
+                        className="bg-background rounded border px-2 py-1"
+                        maxLength={4096}
+                        value={field.state.value}
+                        onChange={(event) =>
+                          field.handleChange(event.target.value)
+                        }
+                      />
+                    </label>
+                  )}
+                </searchForm.Field>
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={!connected}
+                  >
+                    <Trans>Search</Trans>
+                  </Button>
+                  {search && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        searchForm.reset();
+                        setSearch("");
+                      }}
+                    >
+                      <Trans>Clear</Trans>
+                    </Button>
+                  )}
+                </div>
+              </form>
             )}
-            {rows.map((session) => (
-              <button
-                key={session.id}
-                className="hover:bg-muted aria-pressed:bg-muted rounded px-2 py-1 text-left text-sm"
-                aria-pressed={session.id === sessionId}
-                onClick={() => setSessionId(session.id)}
-              >
-                {session.title || <Trans>Untitled</Trans>}
-              </button>
-            ))}
-            {sessions.hasNextPage && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={sessions.isFetchingNextPage}
-                onClick={() => void sessions.fetchNextPage()}
-              >
-                <Trans>Load more</Trans>
-              </Button>
+            {search ? (
+              <SearchResults
+                scope={scope}
+                query={search}
+                selected={sessionId}
+                onSelect={setSessionId}
+              />
+            ) : (
+              <>
+                {sessions.error && (
+                  <p role="alert" className="text-destructive text-xs">
+                    {sessions.error.message}
+                  </p>
+                )}
+                {rows.map((session) => (
+                  <button
+                    key={session.id}
+                    className="hover:bg-muted aria-pressed:bg-muted rounded px-2 py-1 text-left text-sm"
+                    aria-pressed={session.id === sessionId}
+                    onClick={() => setSessionId(session.id)}
+                  >
+                    {session.title || <Trans>Untitled</Trans>}
+                  </button>
+                ))}
+                {sessions.hasNextPage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={sessions.isFetchingNextPage}
+                    onClick={() => void sessions.fetchNextPage()}
+                  >
+                    <Trans>Load more</Trans>
+                  </Button>
+                )}
+              </>
             )}
           </aside>
           {sessionId ? (
-            <NotePane
+            <SessionPane
               key={`${scope.client.scope}:${sessionId}`}
               scope={scope}
               sessionId={sessionId}
@@ -195,6 +260,206 @@ function Notes({ scope }: { scope: VaultScope }) {
         </p>
       )}
     </div>
+  );
+}
+
+function SessionPane({
+  scope,
+  sessionId,
+}: {
+  scope: VaultScope;
+  sessionId: string;
+}) {
+  const { t } = useLingui();
+  const [view, setView] = useState<
+    "note" | "documents" | "transcripts" | "tasks"
+  >("note");
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      {scope.client.features.includes("content_read") && (
+        <div className="flex gap-2" role="group" aria-label={t`Note views`}>
+          <Button
+            aria-pressed={view === "note"}
+            size="sm"
+            variant="ghost"
+            onClick={() => setView("note")}
+          >
+            <Trans>Note</Trans>
+          </Button>
+          <Button
+            aria-pressed={view === "documents"}
+            size="sm"
+            variant="ghost"
+            onClick={() => setView("documents")}
+          >
+            <Trans>Outputs</Trans>
+          </Button>
+          <Button
+            aria-pressed={view === "transcripts"}
+            size="sm"
+            variant="ghost"
+            onClick={() => setView("transcripts")}
+          >
+            <Trans>Transcript</Trans>
+          </Button>
+          <Button
+            aria-pressed={view === "tasks"}
+            size="sm"
+            variant="ghost"
+            onClick={() => setView("tasks")}
+          >
+            <Trans>Tasks</Trans>
+          </Button>
+        </div>
+      )}
+      {view === "note" ? (
+        <NotePane scope={scope} sessionId={sessionId} />
+      ) : (
+        <ContentPane scope={scope} sessionId={sessionId} view={view} />
+      )}
+    </div>
+  );
+}
+
+function ContentPane({
+  scope,
+  sessionId,
+  view,
+}: {
+  scope: VaultScope;
+  sessionId: string;
+  view: "documents" | "transcripts" | "tasks";
+}) {
+  const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
+  const enabled = connection.state === "connected";
+  const documents = useQuery({
+    ...scope.documentsOptions(sessionId),
+    enabled: enabled && view === "documents",
+  });
+  const transcripts = useQuery({
+    ...scope.transcriptsOptions(sessionId),
+    enabled: enabled && view === "transcripts",
+  });
+  const tasks = useQuery({
+    ...scope.tasksOptions(sessionId),
+    enabled: enabled && view === "tasks",
+  });
+  const result =
+    view === "documents"
+      ? documents
+      : view === "transcripts"
+        ? transcripts
+        : tasks;
+  if (result.error)
+    return (
+      <p role="alert" className="text-destructive text-sm">
+        {result.error.message}
+      </p>
+    );
+  if (result.isPending)
+    return (
+      <p className="text-muted-foreground text-sm">
+        <Trans>Loading content…</Trans>
+      </p>
+    );
+  if (result.data?.length === 0)
+    return (
+      <p className="text-muted-foreground text-sm">
+        <Trans>No content yet.</Trans>
+      </p>
+    );
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto text-sm" role="document">
+      {view === "documents" &&
+        documents.data?.map((document) => (
+          <section key={document.id} className="mb-4">
+            <h3 className="mb-2 font-medium">{document.title}</h3>
+            <pre className="whitespace-pre-wrap">{document.markdown}</pre>
+          </section>
+        ))}
+      {view === "transcripts" &&
+        transcripts.data?.map((transcript) => (
+          <pre key={transcript.id} className="mb-4 whitespace-pre-wrap">
+            {(transcript.words ?? []).map((word) => word.text).join(" ")}
+          </pre>
+        ))}
+      {view === "tasks" &&
+        tasks.data?.map((task) => (
+          <p key={task.id} className="mb-3">
+            <span className="text-muted-foreground">{task.status}</span>{" "}
+            {task.text}
+          </p>
+        ))}
+    </div>
+  );
+}
+
+function SearchResults({
+  scope,
+  query,
+  selected,
+  onSelect,
+}: {
+  scope: VaultScope;
+  query: string;
+  selected: string | null;
+  onSelect: (sessionId: string) => void;
+}) {
+  const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
+  const result = useQuery({
+    ...scope.searchOptions({
+      query,
+      limit: 50,
+      options: {
+        fuzzy: false,
+        distance: null,
+        snippets: true,
+        snippet_max_chars: 160,
+        phrase_slop: null,
+      },
+    }),
+    enabled: connection.state === "connected",
+  });
+  return (
+    <>
+      {result.error && (
+        <p role="alert" className="text-destructive text-xs">
+          {result.error.message}
+        </p>
+      )}
+      {result.isFetching && (
+        <p className="text-muted-foreground text-xs">
+          <Trans>Searching…</Trans>
+        </p>
+      )}
+      {result.data?.count === 0 && (
+        <p className="text-muted-foreground text-xs">
+          <Trans>No matching notes</Trans>
+        </p>
+      )}
+      {result.data?.hits.map((hit) => (
+        <button
+          key={hit.document.id}
+          className="hover:bg-muted aria-pressed:bg-muted rounded px-2 py-1 text-left text-sm"
+          aria-pressed={selected === hit.document.id}
+          onClick={() => onSelect(hit.document.id)}
+        >
+          <span className="block">
+            {hit.document.title || <Trans>Untitled</Trans>}
+          </span>
+          {hit.content_snippet && (
+            <span className="text-muted-foreground line-clamp-3 text-xs">
+              {hit.content_snippet.fragment}
+            </span>
+          )}
+        </button>
+      ))}
+      {result.data && result.data.count > result.data.hits.length && (
+        <p className="text-muted-foreground text-xs">
+          <Trans>Refine your search to see more results.</Trans>
+        </p>
+      )}
+    </>
   );
 }
 
@@ -330,6 +595,11 @@ function NoteFields({
   persistRef.current = persist.mutateAsync;
   const saveRef = useRef(save.mutate);
   saveRef.current = save.mutate;
+  const saveOnLeave = useRef(false);
+  saveOnLeave.current =
+    available &&
+    scope.client.canEdit &&
+    !(save.error && lastSubmitted.current === snapshot.draft);
   useEffect(() => {
     if (
       scope.queryClient.getQueryData(scope.noteOptions(sessionId).queryKey) ===
@@ -364,8 +634,16 @@ function NoteFields({
   useEffect(
     () => () => {
       void persistRef.current().catch(() => {});
+      const current = draft.getSnapshot();
+      if (
+        saveOnLeave.current &&
+        current.dirty &&
+        !current.conflict &&
+        scope.getSnapshot().state === "connected"
+      )
+        saveRef.current();
     },
-    [draft],
+    [draft, scope],
   );
   const resolve = useMutation({
     mutationFn: async ({

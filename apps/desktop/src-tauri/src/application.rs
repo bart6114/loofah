@@ -79,6 +79,49 @@ pub async fn application_search<R: tauri::Runtime>(
     context(&app)?.search_sessions(input).await
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn application_documents<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<Vec<hypr_loofah_protocol::EnhancedDoc>, ApplicationError> {
+    context(&app)?.session_documents(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_transcripts<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<Vec<hypr_loofah_protocol::TranscriptWithData>, ApplicationError> {
+    context(&app)?.session_transcripts(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_tasks<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<Vec<hypr_loofah_protocol::TaskItem>, ApplicationError> {
+    context(&app)?.session_tasks(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_people<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Vec<hypr_loofah_protocol::PersonItem>, ApplicationError> {
+    context(&app)?.people().await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_tags<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Vec<hypr_loofah_protocol::TagItem>, ApplicationError> {
+    context(&app)?.tags().await
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
 pub struct ApplicationChanged {
     pub event: hypr_loofah_protocol::ChangeEvent,

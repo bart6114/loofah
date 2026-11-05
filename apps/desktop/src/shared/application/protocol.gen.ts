@@ -13,6 +13,20 @@ export type CreateSessionRequest = { title: string; markdown: string }
 
 export type CreateVaultRequest = { name: string }
 
+/**
+ * Shared document response for session summaries and UUID-backed template outputs.
+ * A summary uses its session ID; only legacy/template files carry frontmatter.
+ */
+export type EnhancedDoc = { id: string; session_id: string;
+/**
+ * "summary" (no template) or "template_output".
+ */
+kind: string; title: string; template_id: string; sort_order: number;
+/**
+ * Body only -- never includes the frontmatter block.
+ */
+markdown: string }
+
 export type ErrorCode = "validation" | "not_found" | "unauthenticated" | "forbidden" | "conflict" | "unavailable" | "incompatible_version" | "resource_limit" | "cancelled" | "internal"
 
 /**
@@ -30,6 +44,8 @@ export type IndexEntity = "sessions" | "session_headers" | "docs" | "transcripts
  */
 "artifacts"
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
+
 export type Me = { member: MemberInfo; personal_vault_id: string }
 
 export type MemberInfo = { id: string; name: string }
@@ -41,6 +57,8 @@ export type MutationOutcome = "not_committed" | "persisted" | "unknown"
 export type NoteSaveOutcome = { kind: "saved"; note: NoteSnapshot } | { kind: "conflict"; note: NoteSnapshot }
 
 export type NoteSnapshot = { markdown: string | null; title: string; revision: string }
+
+export type PersonItem = { id: string; name?: string }
 
 export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string; audience: string; scopes: string[] }
 
@@ -75,7 +93,43 @@ export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessio
 
 export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase; migrationIssues: string[] }
 
+export type TagItem = { id: string; name?: string }
+
 export type TagSuggestionState = { items: string[]; dismissed: string[] }
+
+/**
+ * One action item, file-canonical in `sessions/<session_id>/tasks.json` (or the vault-root
+ * `tasks.json` for a source that cannot be tied to a session). Mirrors the live columns of
+ * the legacy `action_items` table minus the ownership columns (dropped per plan decision
+ * D10) and minus `deleted_at` -- deletion removes the entry and the list is rewritten
+ * atomically.
+ */
+export type TaskItem = { id: string;
+/**
+ * "session_raw_note" / "session_summary" (source_id is the session id), or "enhanced_note" (source_id is
+ * the enhanced doc id). Stored verbatim for any other value.
+ */
+source_type: string; source_id: string; source_order: number;
+/**
+ * "todo" | "in_progress" | "done". Stored verbatim; the frontend validates on read.
+ */
+status: string;
+/**
+ * Plain-text preview of the first paragraph, kept alongside the body like the old
+ * `text` column so the file is greppable.
+ */
+text: string;
+/**
+ * The TipTap `JSONContent[]` body, stored as real JSON (the old `body_json` column
+ * held it stringified).
+ */
+body: JsonValue; due_at?: string; assignee?: string; created_at: string; updated_at: string }
+
+export type TranscriptSpeakerHint = { id?: string | null; word_id: string; type: string; value?: JsonValue }
+
+export type TranscriptWithData = { id: string; user_id?: string; created_at?: string; session_id: string; started_at?: number; ended_at?: number | null; memo_md?: string; words?: TranscriptWord[]; speaker_hints?: TranscriptSpeakerHint[] }
+
+export type TranscriptWord = { id?: string | null; text: string; start_ms: number; end_ms: number; channel: number; speaker?: string | null; metadata?: Partial<{ [key in string]: JsonValue }> | null }
 
 export type UpdateVaultRequest = { name: string; expected_revision: string }
 

@@ -40,6 +40,17 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
+            "/vaults/{vault}/sessions/{session}/documents",
+            get(documents),
+        )
+        .route(
+            "/vaults/{vault}/sessions/{session}/transcripts",
+            get(transcripts),
+        )
+        .route("/vaults/{vault}/sessions/{session}/tasks", get(tasks))
+        .route("/vaults/{vault}/people", get(people))
+        .route("/vaults/{vault}/tags", get(tags))
+        .route(
             "/vaults/{vault}/sessions/{session}/note",
             get(note).put(save_note),
         )
@@ -80,6 +91,7 @@ async fn capabilities() -> Json<Capabilities> {
         application_version: env!("LOOFAH_VERSION").into(),
         features: vec![
             "notes".into(),
+            "content_read".into(),
             "search".into(),
             "vault_membership".into(),
             "change_stream".into(),
@@ -357,6 +369,137 @@ async fn note(
     let _access = service.catalog.access(&identity, &id, false).await?;
     Ok(Json(service.vault(&id).await?.read_note(&session).await?))
 }
+
+async fn documents(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.session_documents(&session).await
+    })
+    .await
+}
+async fn transcripts(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.session_transcripts(&session).await
+    })
+    .await
+}
+async fn tasks(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 8 * 1024 * 1024, async move {
+        context.session_tasks(&session).await
+    })
+    .await
+}
+async fn people(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 1024 * 1024, async move {
+        context.people().await
+    })
+    .await
+}
+async fn tags(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 1024 * 1024, async move {
+        context.tags().await
+    })
+    .await
+}
+
+async fn content_read<T: serde::Serialize + Send + 'static>(
+    service: &Service,
+    access: VaultAccess,
+    limit: usize,
+    operation: impl Future<Output = std::result::Result<T, ApplicationError>> + Send + 'static,
+) -> Result<Response> {
+    if service.stop.is_cancelled() {
+        return Err(ApiError::new(
+            ErrorCode::Unavailable,
+            "Server is shutting down",
+        ));
+    }
+    let permit = service
+        .content_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Content read capacity reached; retry later"))?;
+    tokio::spawn(async move {
+        let value = operation.await?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            let _access = access;
+            let bytes = encode_content(&value, limit)?;
+            Ok(([("content-type", "application/json")], bytes).into_response())
+        })
+        .await
+        .map_err(ApiError::internal)?
+    })
+    .await
+    .map_err(ApiError::internal)?
+}
+
+fn encode_content(value: &impl serde::Serialize, limit: usize) -> Result<Vec<u8>> {
+    struct Buffer {
+        bytes: Vec<u8>,
+        limit: usize,
+        full: bool,
+    }
+    impl std::io::Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.bytes.len().saturating_add(bytes.len()) > self.limit {
+                self.full = true;
+                return Err(std::io::Error::other("content response size limit"));
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut buffer = Buffer {
+        bytes: Vec::new(),
+        limit,
+        full: false,
+    };
+    if let Err(cause) = serde_json::to_writer(&mut buffer, value) {
+        return Err(if buffer.full {
+            ApiError::new(
+                ErrorCode::ResourceLimit,
+                "Content exceeds the current remote read limit",
+            )
+        } else {
+            ApiError::internal(cause)
+        });
+    }
+    Ok(buffer.bytes)
+}
+
 async fn save_note(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,
@@ -511,5 +654,18 @@ impl<S: Send + Sync, T: serde::de::DeserializeOwned + Send> axum::extract::FromR
             .await
             .map(|Path(value)| Self(value))
             .map_err(|_| ApiError::new(ErrorCode::Validation, "Request path is invalid"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_encoding_bounds_bytes_without_returning_a_truncated_document() {
+        assert_eq!(encode_content(&"é", 4).unwrap(), b"\"\xc3\xa9\"");
+        let error = encode_content(&"é", 3).unwrap_err();
+        assert_eq!(error.0.code, ErrorCode::ResourceLimit);
+        assert!(!error.0.retryable);
     }
 }

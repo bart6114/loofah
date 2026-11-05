@@ -1,8 +1,8 @@
 # Run the Loofah server
 
-The server is experimental. It currently exposes authenticated vault, note, search and change-stream APIs. Desktop server connections, server AI processing, media and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
+The server is experimental. It currently exposes authenticated vault, note, existing-content, search and change-stream APIs. Desktop server connections, server AI processing, media and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
 
-For development, set `VITE_REMOTE_PREVIEW=true` when starting the desktop frontend. **Settings → Storage → Try server notes** opens the opt-in notes preview. Connect to an HTTPS server, sign in through the company browser flow, and select a personal or shared vault. The preview supports note creation, Markdown source editing, revision conflicts and device draft recovery. It keeps tokens in native Rust and the OS credential store. Editing pauses during a disconnect; saved recovery drafts stay on the device. Readers cannot edit.
+For development, set `VITE_REMOTE_PREVIEW=true` when starting the desktop frontend. **Settings → Storage → Try server notes** opens the opt-in notes preview. Connect to an HTTPS server, sign in through the company browser flow, and select a personal or shared vault. The preview supports note creation, Markdown source editing, search, revision conflicts and device draft recovery. Existing summaries, template outputs, transcripts and tasks can be viewed as text; their editing and task reconciliation are still being migrated. It keeps tokens in native Rust and the OS credential store. Editing pauses during a disconnect; saved recovery drafts stay on the device. Readers cannot edit.
 
 Use **Create shared vault** for a separate company vault. **Vault members** shows its members; owners can add existing company members, set reader/editor/owner roles, remove members, rename the vault or explicitly delete its access. The last owner cannot be removed or downgraded. Personal vaults have no sharing controls. Catalog conflicts require a reload before another change. An uncertain creation retries its original request rather than silently creating another vault.
 
@@ -47,6 +47,10 @@ The container runs as UID/GID `10001`. Mount persistent volumes at `/var/lib/loo
 | Read/change membership              | `GET /api/v1/vaults/{vault}/members`, `PUT` / `DELETE /api/v1/vaults/{vault}/members/{member}` |
 | List/create/read sessions           | `GET` / `POST /api/v1/vaults/{vault}/sessions`, `GET …/sessions/{session}`                     |
 | Read/save a note                    | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/note`                                   |
+| Read summaries/template outputs     | `GET /api/v1/vaults/{vault}/sessions/{session}/documents`                                      |
+| Read complete transcript records    | `GET /api/v1/vaults/{vault}/sessions/{session}/transcripts`                                    |
+| Read session tasks                  | `GET /api/v1/vaults/{vault}/sessions/{session}/tasks`                                          |
+| Read people/tag registries          | `GET /api/v1/vaults/{vault}/people`, `GET …/tags`                                              |
 | Search                              | `POST /api/v1/vaults/{vault}/search`                                                           |
 | Subscribe                           | `GET /api/v1/vaults/{vault}/events`                                                            |
 
@@ -55,6 +59,8 @@ Contract types live in `crates/loofah-protocol`; generate TypeScript with `cargo
 SSE uses `Last-Event-ID` for bounded replay. A new connection, cursor gap or server epoch change produces `resync_required`; clients must reload authoritative snapshots. Streams close on token expiry, access removal or service shutdown. Changes are invalidations, not an offline synchronization log.
 
 Requests and write workers are bounded. JSON requests have a 5 MiB body limit, note creation has a 4 MiB content limit, and list/search pages are bounded. Disconnecting does not roll back an admitted write. Creation receipts survive restarts; note revisions protect retries from overwriting a newer edit.
+
+The additive `content_read` capability covers the read-only content APIs. They share Rust operations and file-format types with local IPC. Four content reads can run concurrently, including response serialization on blocking workers. Serialized response limits are 1 MiB for registries, 8 MiB for tasks, and 32 MiB for documents or transcripts. Oversized results return a non-retryable `resource_limit` error; content is never silently truncated. Pagination/export for oversized content remains part of the full migration. Shutdown waits for admitted content reads as well as writes.
 
 ## Storage, backups and upgrades
 

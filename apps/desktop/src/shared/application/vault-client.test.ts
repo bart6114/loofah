@@ -9,6 +9,11 @@ const native = vi.hoisted(() => ({
     applicationSessions: vi.fn(),
     applicationSession: vi.fn(),
     applicationSearch: vi.fn(),
+    applicationDocuments: vi.fn(),
+    applicationTranscripts: vi.fn(),
+    applicationTasks: vi.fn(),
+    applicationPeople: vi.fn(),
+    applicationTags: vi.fn(),
   },
   listen: vi.fn(),
 }));
@@ -45,9 +50,55 @@ beforeEach(() => {
     data: { kind: "saved", note },
   });
   native.listen.mockResolvedValue(vi.fn());
+  for (const command of [
+    native.commands.applicationDocuments,
+    native.commands.applicationTranscripts,
+    native.commands.applicationTasks,
+    native.commands.applicationPeople,
+    native.commands.applicationTags,
+  ])
+    command.mockResolvedValue({ status: "ok", data: [] });
 });
 
 describe("shared vault request and subscription contract", () => {
+  it("reads content through IPC locally and pins every remote read to its selected vault", async () => {
+    const local = await connectLocalVault();
+    await Promise.all([
+      local.documents("same"),
+      local.transcripts("same"),
+      local.tasks("same"),
+      local.people(),
+      local.tags(),
+    ]);
+    expect(native.commands.applicationDocuments).toHaveBeenCalledWith("same");
+    expect(native.commands.applicationTranscripts).toHaveBeenCalledWith("same");
+    expect(native.commands.applicationTasks).toHaveBeenCalledWith("same");
+    expect(native.commands.applicationPeople).toHaveBeenCalledOnce();
+    expect(native.commands.applicationTags).toHaveBeenCalledOnce();
+    const request = vi.fn().mockResolvedValue([]);
+    const connection = {
+      info: {
+        server: "https://company.example/",
+        capabilities: { features: ["content_read"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection;
+    const remote = connectRemoteVault(connection, "alice", vault);
+    await Promise.all([
+      remote.documents("same"),
+      remote.transcripts("same"),
+      remote.tasks("same"),
+      remote.people(),
+      remote.tags(),
+    ]);
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual([
+      { kind: "documents", vault_id: "first", session_id: "same" },
+      { kind: "transcripts", vault_id: "first", session_id: "same" },
+      { kind: "tasks", vault_id: "first", session_id: "same" },
+      { kind: "people", vault_id: "first" },
+      { kind: "tags", vault_id: "first" },
+    ]);
+  });
   it("keeps local reads on typed IPC with an always-available network mode and no HTTP requests", async () => {
     const http = vi.spyOn(globalThis, "fetch");
     const client = await connectLocalVault();
@@ -118,7 +169,10 @@ describe("shared vault request and subscription contract", () => {
 
   it("pins remote operations and scopes to the original server, account and vault", async () => {
     const connection = {
-      info: { server: "https://company.example/" },
+      info: {
+        server: "https://company.example/",
+        capabilities: { features: ["notes"] },
+      },
       request: vi.fn().mockResolvedValue(note),
       subscribe: vi.fn(),
     } as unknown as NativeRemoteConnection;

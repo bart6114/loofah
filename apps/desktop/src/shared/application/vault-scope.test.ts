@@ -34,6 +34,26 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates complete registry lists for individual people and tag changes", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const people = active.peopleOptions().queryKey;
+    const tags = active.tagsOptions().queryKey;
+    active.queryClient.setQueryData(people, [{ id: "alice", name: "Alice" }]);
+    active.queryClient.setQueryData(tags, [{ id: "project", name: "Project" }]);
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "people", ids: ["alice"] },
+    });
+    expect(active.queryClient.getQueryState(people)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(tags)?.isInvalidated).toBe(false);
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tags", ids: ["project"] },
+    });
+    expect(active.queryClient.getQueryState(tags)?.isInvalidated).toBe(true);
+    active.dispose();
+  });
   it("never shares notes for identical session IDs across account or vault scopes", async () => {
     const alice = fixture("server:alice:private");
     const bob = fixture("server:bob:private");

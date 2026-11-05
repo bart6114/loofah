@@ -18,12 +18,7 @@ pub struct SessionListItem {
     pub skill: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TagItem {
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-}
+pub use hypr_vault_read::TagItem;
 
 pub(crate) fn project(vault: &Path, id: &str) -> Result<Option<(SearchDocument, SessionListItem)>> {
     let dir = Path::new("sessions").join(id);

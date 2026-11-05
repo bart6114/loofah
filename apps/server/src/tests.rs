@@ -447,6 +447,171 @@ async fn unsupported_search_cost_options_are_rejected_before_running_a_query() {
 }
 
 #[tokio::test]
+async fn canonical_content_reads_are_available_to_readers_and_isolated_from_other_vaults() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.login("alice").await;
+    let bob = fixture.login("bob").await;
+    fixture.login("charlie").await;
+    let (_, shared) = fixture
+        .call(
+            "alice",
+            "POST",
+            "/api/v1/vaults",
+            Some(json!({"name":"Team"})),
+        )
+        .await;
+    let vault_id = shared["id"].as_str().unwrap();
+    let (status, _) = fixture
+        .call(
+            "alice",
+            "PUT",
+            &format!("/api/v1/vaults/{vault_id}/members/{}", bob.member.id),
+            Some(json!({"role":"reader","expected_revision":shared["revision"]})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let context = fixture.service.vault(vault_id).await.unwrap();
+    let meta = serde_json::from_value(
+        json!({"id":"note","title":"Team note","created_at":"2026-11-05T10:00:00Z","tags":[]}),
+    )
+    .unwrap();
+    context
+        .store
+        .create_note_session(&meta, "Note")
+        .await
+        .unwrap();
+    context.store.ensure_summary("note").await.unwrap();
+    context
+        .store
+        .update_summary("note", "Private summary", Some(""))
+        .await
+        .unwrap();
+    let transcript: TranscriptWithData = serde_json::from_value(json!({"id":"t","session_id":"note","words":[{"text":"Private transcript","start_ms":0,"end_ms":250,"channel":0}]})).unwrap();
+    context
+        .store
+        .write_transcript("note", transcript)
+        .await
+        .unwrap();
+    context
+        .store
+        .replace_tasks(
+            "session_raw_note",
+            "note",
+            vec![hypr_vault_write::TaskInput {
+                id: "task".into(),
+                source_order: 0,
+                status: "todo".into(),
+                text: "Private task".into(),
+                body: json!([]),
+                due_at: String::new(),
+            }],
+        )
+        .await
+        .unwrap();
+    context.store.ensure_person("Private person").await.unwrap();
+    context.store.ensure_tag("private-tag").await.unwrap();
+    let unknown = context.store.vault_base().join("sessions/note/unknown.txt");
+    std::fs::write(&unknown, "foreign secret").unwrap();
+    let responses = [
+        (
+            "sessions/note/documents",
+            serde_json::to_value(context.session_documents("note").await.unwrap()).unwrap(),
+        ),
+        (
+            "sessions/note/transcripts",
+            serde_json::to_value(context.session_transcripts("note").await.unwrap()).unwrap(),
+        ),
+        (
+            "sessions/note/tasks",
+            serde_json::to_value(context.session_tasks("note").await.unwrap()).unwrap(),
+        ),
+        (
+            "people",
+            serde_json::to_value(context.people().await.unwrap()).unwrap(),
+        ),
+        (
+            "tags",
+            serde_json::to_value(context.tags().await.unwrap()).unwrap(),
+        ),
+    ];
+    for (resource, expected) in responses {
+        let path = format!("/api/v1/vaults/{vault_id}/{resource}");
+        for member in ["alice", "bob"] {
+            let (status, actual) = fixture.call(member, "GET", &path, None).await;
+            assert_eq!(status, StatusCode::OK, "{resource}");
+            assert_eq!(actual, expected);
+            assert!(!actual.to_string().contains("foreign secret"));
+        }
+        assert_eq!(
+            fixture.call("charlie", "GET", &path, None).await.0,
+            StatusCode::NOT_FOUND
+        );
+        let private = format!("/api/v1/vaults/{}/{resource}", alice.personal_vault_id);
+        assert_eq!(
+            fixture.call("bob", "GET", &private, None).await.0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    for resource in ["documents", "transcripts", "tasks"] {
+        let (status, body) = fixture
+            .call(
+                "bob",
+                "GET",
+                &format!("/api/v1/vaults/{vault_id}/sessions/missing/{resource}"),
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["code"], "not_found");
+    }
+    assert_eq!(std::fs::read_to_string(unknown).unwrap(), "foreign secret");
+    fixture.service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn content_read_capacity_is_retryable_and_shutdown_waits_for_admitted_reads() {
+    let fixture = Fixture::new().await;
+    let me = fixture.login("alice").await;
+    let capacity = fixture
+        .service
+        .content_reads
+        .clone()
+        .acquire_many_owned(4)
+        .await
+        .unwrap();
+    let path = format!("/api/v1/vaults/{}/tags", me.personal_vault_id);
+    let (status, body) = fixture.call("alice", "GET", &path, None).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(body["code"], "resource_limit");
+    assert_eq!(body["retryable"], true);
+    drop(capacity);
+    assert_eq!(
+        fixture.call("alice", "GET", &path, None).await,
+        (StatusCode::OK, json!([]))
+    );
+    let read = fixture
+        .service
+        .content_reads
+        .clone()
+        .acquire_owned()
+        .await
+        .unwrap();
+    let service = fixture.service.clone();
+    let mut shutdown = tokio::spawn(async move { service.shutdown().await });
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), &mut shutdown)
+            .await
+            .is_err()
+    );
+    drop(read);
+    tokio::time::timeout(std::time::Duration::from_secs(5), shutdown)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
 async fn http_and_shared_core_agree_on_creates_conflicts_and_private_isolation() {
     let fixture = Fixture::new().await;
     let alice = fixture.login("alice").await;
@@ -947,6 +1112,34 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     else {
         panic!("create response");
     };
+    let context = fixture.service.vault(&vault_id).await.unwrap();
+    context
+        .store
+        .ensure_summary(&created.meta.id)
+        .await
+        .unwrap();
+    context
+        .store
+        .update_summary(&created.meta.id, "Canonical summary", Some(""))
+        .await
+        .unwrap();
+    context.store.ensure_person("Native person").await.unwrap();
+    context.store.ensure_tag("native-tag").await.unwrap();
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::Documents { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::Documents(value) if value.len() == 1 && value[0].markdown == "Canonical summary")
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::Transcripts { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::Transcripts(value) if value.is_empty())
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::Tasks { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::Tasks(value) if value.is_empty())
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::People { vault_id: vault_id.clone() }).await, RemoteReply::People(value) if value.len() == 1 && value[0].name == "Native person")
+    );
+    assert!(
+        matches!(request(first.clone(), RemoteOperation::Tags { vault_id: vault_id.clone() }).await, RemoteReply::Tags(value) if value.len() == 1 && value[0].name == "native-tag")
+    );
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
     let subscription = second
         .subscribe(vault_id.clone(), move |event| sender.send(event).is_ok())

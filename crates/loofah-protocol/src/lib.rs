@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
+
 pub const API_MAJOR: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]

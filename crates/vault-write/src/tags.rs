@@ -7,12 +7,7 @@ use super::{SessionStore, StoreError, WriteGuard, paths};
 /// identically are by definition the same tag, so no collision suffixing is needed.
 /// Sessions keep storing raw tag strings in `_meta.json` and degrade gracefully if
 /// `tags.json` disappears.
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct TagItem {
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-}
+pub use hypr_vault_read::TagItem;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct TagsFile {

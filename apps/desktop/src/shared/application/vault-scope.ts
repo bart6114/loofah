@@ -110,6 +110,39 @@ export class VaultScope {
         this.run(() => client.session(sessionId, { signal })),
     });
   }
+  documentsOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "docs", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.documents(sessionId, { signal })),
+    });
+  }
+  transcriptsOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "transcripts", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.transcripts(sessionId, { signal })),
+    });
+  }
+  tasksOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "tasks", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.tasks(sessionId, { signal })),
+    });
+  }
+  peopleOptions() {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "people"],
+      queryFn: ({ signal }) => this.run(() => this.client.people({ signal })),
+    });
+  }
+  tagsOptions() {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "tags"],
+      queryFn: ({ signal }) => this.run(() => this.client.tags({ signal })),
+    });
+  }
   pageOptions(limit: number, after: string | null = null) {
     const client = this.client;
     return queryOptions({
@@ -206,6 +239,11 @@ export class VaultScope {
         predicate: (query) => {
           const [prefix, scope, kind, id] = query.queryKey;
           if (prefix !== "vault" || scope !== this.client.scope) return false;
+          if (
+            (change.entity === "people" || change.entity === "tags") &&
+            kind === change.entity
+          )
+            return true;
           if (kind === "session_page")
             return ["sessions", "session_headers"].includes(change.entity);
           if (kind === "note" || kind === "session")

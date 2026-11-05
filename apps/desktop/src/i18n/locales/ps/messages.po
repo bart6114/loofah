@@ -352,6 +352,7 @@ msgid "Choosing…"
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Clear"
 msgstr ""
 
@@ -938,6 +939,10 @@ msgstr ""
 msgid "Loading connection…"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Loading content…"
+msgstr ""
+
 #: src/main/about-debug.tsx
 msgid "Loading debug information…"
 msgstr ""
@@ -1106,6 +1111,10 @@ msgstr ""
 msgid "No changelog available for this version."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "No content yet."
+msgstr ""
+
 #: src/task/resource-view.tsx
 msgid "No content."
 msgstr ""
@@ -1126,6 +1135,10 @@ msgstr ""
 #: src/settings/general/spoken-languages.tsx
 msgid "No matching languages found"
 msgstr "هیڅ ورته ژبه ونه موندل شوه"
+
+#: src/shared/application/notes-workspace.tsx
+msgid "No matching notes"
+msgstr ""
 
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "No models available."
@@ -1154,7 +1167,12 @@ msgstr ""
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Note"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Note views"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1232,6 +1250,10 @@ msgstr ""
 
 #: src/main/about-storage.tsx
 msgid "Other files"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Outputs"
 msgstr ""
 
 #: src/settings/general/timezone.tsx
@@ -1336,6 +1358,10 @@ msgstr ""
 
 #: src/main/about-dialog.tsx
 msgid "Recordings"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Refine your search to see more results."
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1512,6 +1538,10 @@ msgstr ""
 msgid "Saving..."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Search"
+msgstr ""
+
 #: src/settings/general/notification.tsx
 msgid "Search installed apps to exclude them. Click an excluded app to include it again."
 msgstr ""
@@ -1524,6 +1554,10 @@ msgstr ""
 msgid "Search language..."
 msgstr "د ژبې لټون..."
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Search notes"
+msgstr ""
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Search or create new"
 msgstr ""
@@ -1535,6 +1569,10 @@ msgstr ""
 #: src/session/components/note-input/search/bar.tsx
 #: src/settings/general/searchable-select.tsx
 msgid "Search..."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Searching…"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -1872,6 +1910,10 @@ msgstr ""
 msgid "Tags"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Tasks"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Text for summaries is sent to this provider."
 msgstr ""
@@ -1952,6 +1994,7 @@ msgstr ""
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Transcript"
 msgstr ""
 

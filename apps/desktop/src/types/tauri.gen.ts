@@ -68,6 +68,61 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationDocuments(
+    sessionId: string,
+  ): Promise<Result<EnhancedDoc[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_documents", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscripts(
+    sessionId: string,
+  ): Promise<Result<TranscriptWithData[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcripts", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTasks(
+    sessionId: string,
+  ): Promise<Result<TaskItem[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_tasks", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationPeople(): Promise<Result<PersonItem[], ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("application_people") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTags(): Promise<Result<TagItem[], ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("application_tags") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSession(
     sessionId: string,
   ): Promise<Result<SessionDocument, ApplicationError>> {
@@ -1335,11 +1390,6 @@ export type NoteSnapshot = {
   title: string;
   revision: string;
 };
-/**
- * One person, file-canonical in the vault-root `people.json`. The id doubles as the
- * value speaker hints store, so it is generated human-readable (`bob_peters`) — a
- * transcript keeps degrading gracefully if `people.json` disappears.
- */
 export type PersonItem = { id: string; name?: string };
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
@@ -1398,6 +1448,11 @@ export type RemoteOperation =
     }
   | { kind: "sessions"; vault_id: string; limit: number; after: string | null }
   | { kind: "session"; vault_id: string; session_id: string }
+  | { kind: "documents"; vault_id: string; session_id: string }
+  | { kind: "transcripts"; vault_id: string; session_id: string }
+  | { kind: "tasks"; vault_id: string; session_id: string }
+  | { kind: "people"; vault_id: string }
+  | { kind: "tags"; vault_id: string }
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
   | { kind: "note"; vault_id: string; session_id: string }
   | {
@@ -1416,6 +1471,11 @@ export type RemoteReply =
   | { kind: "memberships"; value: Membership[] }
   | { kind: "sessions"; value: SessionPage }
   | { kind: "session"; value: SessionDocument }
+  | { kind: "documents"; value: EnhancedDoc[] }
+  | { kind: "transcripts"; value: TranscriptWithData[] }
+  | { kind: "tasks"; value: TaskItem[] }
+  | { kind: "people"; value: PersonItem[] }
+  | { kind: "tags"; value: TagItem[] }
   | { kind: "note"; value: NoteSnapshot }
   | { kind: "note_save"; value: NoteSaveOutcome }
   | { kind: "search"; value: SearchResult };
@@ -1560,13 +1620,6 @@ export type TagContext = {
   attached: string[];
   dismissed: string[];
 };
-/**
- * One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
- * (lowercased) name itself — unlike people's lossy slug, two names normalizing
- * identically are by definition the same tag, so no collision suffixing is needed.
- * Sessions keep storing raw tag strings in `_meta.json` and degrade gracefully if
- * `tags.json` disappears.
- */
 export type TagItem = { id: string; name?: string };
 export type TagSuggestionState = { items: string[]; dismissed: string[] };
 /**

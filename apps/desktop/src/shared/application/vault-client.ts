@@ -3,11 +3,16 @@ import type {
   ApplicationError,
   Change,
   CreateSessionRequest,
+  EnhancedDoc,
   NoteSaveOutcome,
   NoteSnapshot,
+  PersonItem,
   SaveNoteRequest,
   SessionDocument,
   SessionPage,
+  TagItem,
+  TaskItem,
+  TranscriptWithData,
   VaultInfo,
 } from "./protocol.gen";
 import type { NativeRemoteConnection } from "./remote";
@@ -33,6 +38,18 @@ export type VaultClient = {
   readonly scope: string;
   readonly networkMode: "always" | "online";
   readonly canEdit: boolean;
+  readonly features: readonly string[];
+  documents: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<EnhancedDoc[]>;
+  transcripts: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<TranscriptWithData[]>;
+  tasks: (sessionId: string, options?: RequestOptions) => Promise<TaskItem[]>;
+  people: (options?: RequestOptions) => Promise<PersonItem[]>;
+  tags: (options?: RequestOptions) => Promise<TagItem[]>;
   sessions: (
     limit: number,
     after?: string | null,
@@ -92,6 +109,15 @@ export async function connectLocalVault(): Promise<VaultClient> {
     scope,
     networkMode: "always",
     canEdit: true,
+    features: ["notes", "search", "content_read"],
+    documents: (sessionId, options) =>
+      ipc(() => commands.applicationDocuments(sessionId), options),
+    transcripts: (sessionId, options) =>
+      ipc(() => commands.applicationTranscripts(sessionId), options),
+    tasks: (sessionId, options) =>
+      ipc(() => commands.applicationTasks(sessionId), options),
+    people: (options) => ipc(() => commands.applicationPeople(), options),
+    tags: (options) => ipc(() => commands.applicationTags(), options),
     sessions: (limit, after, options) =>
       ipc(() => commands.applicationSessions(limit, after ?? null), options),
     session: (sessionId, options) =>
@@ -139,6 +165,33 @@ export function connectRemoteVault(
     ]),
     networkMode: "online",
     canEdit: vault.role !== "reader",
+    features: connection.info.capabilities.features,
+    documents: (sessionId, options) =>
+      connection.request(
+        { kind: "documents", vault_id: vaultId, session_id: sessionId },
+        "documents",
+        options,
+      ),
+    transcripts: (sessionId, options) =>
+      connection.request(
+        { kind: "transcripts", vault_id: vaultId, session_id: sessionId },
+        "transcripts",
+        options,
+      ),
+    tasks: (sessionId, options) =>
+      connection.request(
+        { kind: "tasks", vault_id: vaultId, session_id: sessionId },
+        "tasks",
+        options,
+      ),
+    people: (options) =>
+      connection.request(
+        { kind: "people", vault_id: vaultId },
+        "people",
+        options,
+      ),
+    tags: (options) =>
+      connection.request({ kind: "tags", vault_id: vaultId }, "tags", options),
     sessions: (limit, after, options) =>
       connection.request(
         { kind: "sessions", vault_id: vaultId, limit, after: after ?? null },

@@ -93,6 +93,26 @@ fn collect_task_nodes<'a>(node: &'a serde_json::Value, tasks: &mut Vec<&'a serde
 }
 
 impl SessionStore {
+    pub async fn session_tasks(&self, session_id: &str) -> Result<Vec<TaskItem>, StoreError> {
+        validate_session_id(session_id)?;
+        let dir = self.session_dir(session_id).await?;
+        let vault = self.vault_base.clone();
+        let mut tasks = tokio::task::spawn_blocking(move || {
+            hypr_vault_read::tasks::read_session_tasks_in(&vault, &dir).map_err(StoreError::from)
+        })
+        .await
+        .map_err(|cause| StoreError::Io(cause.to_string()))??;
+        tasks.sort_by(|a, b| {
+            (&a.source_type, &a.source_id, a.source_order, &a.id).cmp(&(
+                &b.source_type,
+                &b.source_id,
+                b.source_order,
+                &b.id,
+            ))
+        });
+        Ok(tasks)
+    }
+
     pub(super) async fn prepare_generated_tasks(
         &self,
         session_id: &str,

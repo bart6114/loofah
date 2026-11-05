@@ -22,13 +22,13 @@ pub use layout::{
     has_session_boundary,
 };
 pub use meta::{SessionMeta, TagSuggestionState};
-pub use people::{Person, read_people};
+pub use people::{Person, PersonItem, read_people};
 pub use reserved::{
     SESSION_OWNED_DIRS, SESSION_OWNED_FILES, SESSION_PEAKS_FILE, SESSION_TRANSIENT_FILES,
     is_session_owned_name,
 };
 pub use strip::strip_leading_frontmatter;
-pub use tags::normalize_tag_name;
+pub use tags::{TagItem, normalize_tag_name};
 pub use tasks::{TaskItem, TasksFile};
 
 pub use hypr_fs_format::{

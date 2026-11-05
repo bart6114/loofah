@@ -25,6 +25,7 @@ pub struct Service {
     pub stop: CancellationToken,
     pub writes: Arc<Semaphore>,
     pub requests: Arc<Semaphore>,
+    pub content_reads: Arc<Semaphore>,
     pub streams: Arc<Semaphore>,
     runtimes: Mutex<BTreeMap<String, Arc<OnceCell<VaultRuntime>>>>,
     catalog_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -53,6 +54,7 @@ impl Service {
             stop: CancellationToken::new(),
             writes: Arc::new(Semaphore::new(32)),
             requests: Arc::new(Semaphore::new(64)),
+            content_reads: Arc::new(Semaphore::new(4)),
             streams: Arc::new(Semaphore::new(128)),
             runtimes: Mutex::new(BTreeMap::new()),
             catalog_worker: Mutex::new(None),
@@ -153,18 +155,28 @@ impl Service {
         if let Some(worker) = self.catalog_worker.lock().await.take() {
             worker.await.map_err(ApiError::internal)?;
         }
-        let _drained = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            self.writes.clone().acquire_many_owned(32),
-        )
+        let _drained = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let writes = self
+                .writes
+                .clone()
+                .acquire_many_owned(32)
+                .await
+                .map_err(ApiError::internal)?;
+            let reads = self
+                .content_reads
+                .clone()
+                .acquire_many_owned(4)
+                .await
+                .map_err(ApiError::internal)?;
+            Ok::<_, ApiError>((writes, reads))
+        })
         .await
         .map_err(|_| {
             ApiError::new(
                 ErrorCode::Unavailable,
-                "Active writes did not drain before shutdown",
+                "Active operations did not drain before shutdown",
             )
-        })?
-        .map_err(ApiError::internal)?;
+        })??;
         let runtimes = std::mem::take(&mut *self.runtimes.lock().await);
         for (_, cell) in runtimes {
             tokio::time::timeout(std::time::Duration::from_secs(30), async {
