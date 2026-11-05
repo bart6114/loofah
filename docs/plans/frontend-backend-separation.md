@@ -328,8 +328,9 @@ Local build artifacts must remain on T7. Both Cargo target symlinks were verifie
 
 Verified locally:
 
-- 17 server unit/transport tests and a real executable startup/SIGTERM test pass without desktop resources.
-- Shared core: 57 tests passed. Protocol: 2 passed. Vault writes: 270 passed, 1 existing ignored test.
+- 18 server unit/transport tests and a real executable startup/SIGTERM test pass without desktop resources.
+- Shared core: 58 tests passed. Protocol: 2 passed. Vault writes: 270 passed, 1 existing ignored test.
+- Completed create receipts read current canonical files and never restore a deleted session. Canonical storage and the private-text search cache are restricted to the service user.
 - Tests cover signed-token issuer/audience/scope/expiry/type/signature rejection, concurrent private provisioning, last-owner protection, reader denial, revision conflicts, duplicate/lost-response retries, incomplete-create recovery, unknown attachments, symlink isolation, cancellation during catalog commit and first vault initialization, SSE reconnect/replay/overflow, catalog invalidation and revocation/expiry closure.
 - Desktop/CLI/server Rust checks and desktop TypeScript checking pass. Contract generation has a drift check. The executable reports the root package version.
 

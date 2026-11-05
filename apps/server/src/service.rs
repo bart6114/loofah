@@ -222,6 +222,7 @@ fn prepare_roots(storage: &Path, cache: &Path) -> Result<(PathBuf, PathBuf)> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&storage, std::fs::Permissions::from_mode(0o700))?;
+        std::fs::set_permissions(&cache, std::fs::Permissions::from_mode(0o700))?;
     }
     Ok((storage, cache))
 }

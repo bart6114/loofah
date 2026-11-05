@@ -221,6 +221,23 @@ fn sign(claims: Value, typ: &str, kid: &str) -> String {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn canonical_storage_and_derived_search_cache_are_private_to_the_service_user() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new().await;
+    for path in [
+        &fixture.service.config.storage_root,
+        &fixture.service.config.cache_root,
+    ] {
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+    fixture.service.shutdown().await.unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn symlinks_cannot_redirect_one_vault_into_another() {
     let fixture = Fixture::new().await;
     let alice = fixture.login("alice").await;

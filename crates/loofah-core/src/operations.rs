@@ -119,8 +119,14 @@ impl SessionOperations {
                     "Request ID was used with different input or an unsupported receipt",
                 ));
             }
-            if let Some(response) = stored.response {
-                return Ok(response);
+            if stored.response.is_some() {
+                return store
+                    .read_session_document(&stored.session_id)
+                    .await
+                    .map_err(|cause| storage_error(cause, false))?
+                    .ok_or_else(|| {
+                        error(ErrorCode::NotFound, "The created session no longer exists")
+                    });
             }
             stored
         } else {
@@ -216,6 +222,67 @@ fn io_error(cause: std::io::Error) -> ApplicationError {
 mod tests {
     use super::*;
     use crate::VaultRuntime;
+
+    #[tokio::test]
+    async fn completed_receipts_do_not_override_current_content_or_resurrect_deleted_sessions() {
+        let vault = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let operations = tempfile::tempdir().unwrap();
+        let runtime = VaultRuntime::open(
+            "private".into(),
+            vault.path(),
+            cache.path(),
+            operations.path(),
+        )
+        .await
+        .unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let input = CreateSessionRequest {
+            title: "Original".into(),
+            markdown: "original".into(),
+        };
+        let created = runtime
+            .context
+            .create_session("alice".into(), id.clone(), input.clone())
+            .await
+            .unwrap();
+        runtime
+            .context
+            .save_note(
+                &created.meta.id,
+                hypr_loofah_protocol::SaveNoteRequest {
+                    markdown: "edited later".into(),
+                    title: Some("Updated".into()),
+                    expected_revision: created.note.revision,
+                },
+            )
+            .await
+            .unwrap();
+        let replayed = runtime
+            .context
+            .create_session("alice".into(), id.clone(), input.clone())
+            .await
+            .unwrap();
+        assert_eq!(replayed.note.markdown.as_deref(), Some("edited later"));
+        assert_eq!(replayed.meta.title, "Updated");
+        runtime
+            .context
+            .store
+            .delete_session(&created.meta.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime
+                .context
+                .create_session("alice".into(), id, input)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::NotFound
+        );
+        assert_eq!(runtime.context.store.session_count(), 0);
+        runtime.shutdown().await.unwrap();
+    }
 
     #[tokio::test]
     async fn creation_retry_and_recovery_never_duplicate_or_overwrite_notes() {
