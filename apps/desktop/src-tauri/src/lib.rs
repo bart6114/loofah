@@ -109,6 +109,13 @@ static FOCUS_RESCAN_LAST: std::sync::Mutex<Option<std::time::Instant>> =
 fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEvent) {
     tauri_plugin_windows::on_window_event(window, event);
 
+    if matches!(event, tauri::WindowEvent::Destroyed) {
+        window
+            .app_handle()
+            .state::<remote::RemoteState>()
+            .release_window(window.label());
+    }
+
     if !matches!(event, tauri::WindowEvent::Focused(true)) {
         return;
     }
