@@ -22,7 +22,7 @@ jobs:
       - uses: ./.github/actions/rust_install
         with:
           platform: linux-x86_64
-      - run: cargo test --locked -p loofah-server -p loofah-core -p loofah-protocol -p vault-read -p vault-write -p search-cache
+      - run: cargo test --locked -p loofah-server -p loofah-client -p loofah-core -p loofah-protocol -p vault-read -p vault-write -p search-cache
       - run: cargo run --locked -p loofah-server -- --version
       - run: cargo run --locked -p loofah-protocol --bin export-types -- --check
       - run: |

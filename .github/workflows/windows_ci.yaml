@@ -65,7 +65,7 @@ jobs:
       - if: github.event_name != 'workflow_dispatch' || !inputs.bundle-only
         run: cargo check --locked -p desktop -p loof-cli
       - if: github.event_name != 'workflow_dispatch' || !inputs.bundle-only
-        run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p loofah-core -p loofah-protocol -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-model -p local-stt-core -p whisper-local -p transcribe-whisper-local -p tauri-plugin-local-stt
+        run: cargo test --locked --no-fail-fast -p desktop -p loof-cli -p loofah-client -p loofah-core -p loofah-protocol -p vault-read -p vault-write -p storage -p fs-sync-core -p tauri-plugin-notify -p audio-actual -p listener-core -p listener2-core -p transcription-core -p device-monitor -p detect -p notification -p transcribe-onnx -p transcribe-soniqo -p local-model -p local-stt-core -p whisper-local -p transcribe-whisper-local -p tauri-plugin-local-stt
       - name: Diagnose native runtime dependencies
         if: failure()
         run: |

@@ -3422,13 +3422,17 @@ version = "0.0.0"
 dependencies = [
  "audio-actual",
  "audio-mock",
+ "axum",
  "camino",
  "chrono",
  "dirs 6.0.0",
  "fs-format",
  "host",
  "intercept",
+ "keyring",
+ "loofah-client",
  "loofah-core",
+ "loofah-protocol",
  "pico-args",
  "ractor",
  "serde",
@@ -3485,7 +3489,9 @@ dependencies = [
  "tauri-utils 0.1.0",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
+ "uuid",
  "vault-read",
  "vault-write",
  "windows 0.62.2",
@@ -7633,6 +7639,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "loofah-client"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "futures-util",
+ "loofah-protocol",
+ "reqwest 0.13.2",
+ "search-cache",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "specta",
+ "tokio",
+ "tokio-rustls 0.26.4",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "loofah-core"
 version = "0.1.0"
 dependencies = [
@@ -7676,6 +7703,7 @@ dependencies = [
  "futures-util",
  "http-body-util",
  "jsonwebtoken",
+ "loofah-client",
  "loofah-core",
  "loofah-protocol",
  "reqwest 0.13.2",
@@ -10707,6 +10735,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls 0.26.4",

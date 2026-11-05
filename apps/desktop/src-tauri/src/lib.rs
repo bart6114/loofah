@@ -8,6 +8,7 @@ mod identifier_migration;
 mod legacy_db;
 mod legacy_llm;
 mod recording_meta;
+mod remote;
 mod search_index;
 mod session_store;
 mod startup;
@@ -187,7 +188,8 @@ pub async fn main() {
 
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
         .manage(audio)
-        .manage(chatgpt::ChatgptState::default());
+        .manage(chatgpt::ChatgptState::default())
+        .manage(remote::RemoteState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
     #[cfg(all(target_os = "macos", feature = "automation"))]
@@ -453,6 +455,7 @@ pub async fn main() {
         }
         tauri::RunEvent::Exit => {
             app.state::<chatgpt::ChatgptState>().shutdown();
+            app.state::<remote::RemoteState>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
             // nothing is dirty, so this can never double-write.
@@ -536,6 +539,15 @@ fn get_onboarding_flag() -> Option<bool> {
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
+            remote::remote_connect::<tauri::Wry>,
+            remote::remote_login::<tauri::Wry>,
+            remote::remote_cancel_login::<tauri::Wry>,
+            remote::remote_request::<tauri::Wry>,
+            remote::remote_cancel_request::<tauri::Wry>,
+            remote::remote_subscribe::<tauri::Wry>,
+            remote::remote_unsubscribe::<tauri::Wry>,
+            remote::remote_disconnect::<tauri::Wry>,
+            remote::remote_logout::<tauri::Wry>,
             chatgpt::chatgpt_account::<tauri::Wry>,
             chatgpt::chatgpt_login::<tauri::Wry>,
             chatgpt::chatgpt_cancel_login::<tauri::Wry>,

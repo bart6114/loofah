@@ -5,6 +5,103 @@
 /** user-defined commands **/
 
 export const commands = {
+  async remoteConnect(
+    server: string,
+  ): Promise<Result<RemoteConnectionInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_connect", { server }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteLogin(
+    connectionId: string,
+  ): Promise<Result<Me, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_login", { connectionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteCancelLogin(connectionId: string): Promise<void> {
+    await TAURI_INVOKE("remote_cancel_login", { connectionId });
+  },
+  async remoteRequest(
+    connectionId: string,
+    requestId: string,
+    operation: RemoteOperation,
+  ): Promise<Result<RemoteReply, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_request", {
+          connectionId,
+          requestId,
+          operation,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteCancelRequest(
+    connectionId: string,
+    requestId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_cancel_request", { connectionId, requestId });
+  },
+  async remoteSubscribe(
+    connectionId: string,
+    vaultId: string,
+    subscriptionId: string,
+    onEvent: TAURI_CHANNEL<RemoteEvent>,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_subscribe", {
+          connectionId,
+          vaultId,
+          subscriptionId,
+          onEvent,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteUnsubscribe(
+    connectionId: string,
+    subscriptionId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_unsubscribe", { connectionId, subscriptionId });
+  },
+  async remoteDisconnect(connectionId: string): Promise<void> {
+    await TAURI_INVOKE("remote_disconnect", { connectionId });
+  },
+  async remoteLogout(
+    connectionId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_logout", { connectionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async chatgptAccount(): Promise<Result<ChatgptAccount | null, ChatgptError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
@@ -924,6 +1021,27 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type ApplicationError = {
+  code: ErrorCode;
+  message: string;
+  request_id: string | null;
+  retryable: boolean;
+  current_revision: string | null;
+  mutation_outcome: MutationOutcome | null;
+};
+export type Capabilities = {
+  api_major: number;
+  application_version: string;
+  features: string[];
+};
+export type Change =
+  | { kind: "index_changed"; entity: IndexEntity; ids: string[] }
+  | { kind: "search_ready" }
+  | { kind: "catalog_changed" }
+  | { kind: "resync_required" }
+  | { kind: "job_changed"; job_id: string }
+  | { kind: "unknown" };
+export type ChangeEvent = { vault_id: string; cursor: string; change: Change };
 export type ChatgptAccount = { email: string; planType: string };
 export type ChatgptError = {
   code: string;
@@ -951,6 +1069,23 @@ export type ChatgptModel = {
   displayName: string;
   isDefault: boolean;
   inputModalities?: string[];
+};
+export type ConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "login_required"
+  | "access_denied"
+  | "incompatible"
+  | "closed";
+export type CreateSessionRequest = { title: string; markdown: string };
+export type CreateVaultRequest = { name: string };
+export type CreatedAtFilter = {
+  gte: number | null;
+  lte: number | null;
+  gt: number | null;
+  lt: number | null;
+  eq: number | null;
 };
 export type EmbeddedCliState =
   | "installed"
@@ -1001,6 +1136,18 @@ export type EnhancedDocPatch = {
   expected_title?: string | null;
   expected_markdown?: string | null;
 };
+export type ErrorCode =
+  | "validation"
+  | "not_found"
+  | "unauthenticated"
+  | "forbidden"
+  | "conflict"
+  | "unavailable"
+  | "incompatible_version"
+  | "resource_limit"
+  | "cancelled"
+  | "internal";
+export type HighlightRange = { start: number; end: number };
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
  */
@@ -1032,6 +1179,18 @@ export type JsonValue =
   | string
   | JsonValue[]
   | Partial<{ [key in string]: JsonValue }>;
+export type Me = { member: MemberInfo; personal_vault_id: string };
+export type MemberInfo = { id: string; name: string };
+export type Membership = { member: MemberInfo; role: VaultRole };
+export type MutationOutcome = "not_committed" | "persisted" | "unknown";
+export type NoteSaveOutcome =
+  | { kind: "saved"; note: NoteSnapshot }
+  | { kind: "conflict"; note: NoteSnapshot };
+export type NoteSnapshot = {
+  markdown: string | null;
+  title: string;
+  revision: string;
+};
 /**
  * One person, file-canonical in the vault-root `people.json`. The id doubles as the
  * value speaker hints store, so it is generated human-readable (`bob_peters`) — a
@@ -1059,7 +1218,105 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
+export type RemoteConnectionInfo = {
+  connection_id: string;
+  server: string;
+  capabilities: Capabilities;
+};
+export type RemoteEvent =
+  | {
+      kind: "connection";
+      state: ConnectionState;
+      error: ApplicationError | null;
+    }
+  | { kind: "change"; event: ChangeEvent };
+export type RemoteOperation =
+  | { kind: "provision" }
+  | { kind: "me" }
+  | { kind: "vaults" }
+  | { kind: "directory" }
+  | { kind: "create_vault"; input: CreateVaultRequest }
+  | { kind: "vault"; vault_id: string }
+  | { kind: "rename_vault"; vault_id: string; input: UpdateVaultRequest }
+  | { kind: "delete_vault"; vault_id: string; expected_revision: string }
+  | { kind: "memberships"; vault_id: string }
+  | {
+      kind: "set_membership";
+      vault_id: string;
+      member_id: string;
+      input: SetMembershipRequest;
+    }
+  | {
+      kind: "remove_membership";
+      vault_id: string;
+      member_id: string;
+      expected_revision: string;
+    }
+  | { kind: "sessions"; vault_id: string; limit: number; after: string | null }
+  | { kind: "session"; vault_id: string; session_id: string }
+  | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
+  | { kind: "note"; vault_id: string; session_id: string }
+  | {
+      kind: "save_note";
+      vault_id: string;
+      session_id: string;
+      input: SaveNoteRequest;
+    }
+  | { kind: "search"; vault_id: string; input: SearchRequest };
+export type RemoteReply =
+  | { kind: "me"; value: Me }
+  | { kind: "vaults"; value: VaultInfo[] }
+  | { kind: "directory"; value: MemberInfo[] }
+  | { kind: "vault"; value: VaultInfo }
+  | { kind: "vault_mutation"; value: VaultMutation }
+  | { kind: "memberships"; value: Membership[] }
+  | { kind: "sessions"; value: SessionPage }
+  | { kind: "session"; value: SessionDocument }
+  | { kind: "note"; value: NoteSnapshot }
+  | { kind: "note_save"; value: NoteSaveOutcome }
+  | { kind: "search"; value: SearchResult };
+export type SaveNoteRequest = {
+  markdown: string;
+  title: string | null;
+  expected_revision: string;
+};
 export type ScoredTagSuggestion = { name: string; confidence: number };
+export type SearchDocument = {
+  id: string;
+  doc_type: string;
+  language: string | null;
+  title: string;
+  content: string;
+  created_at: number;
+  facets?: string[];
+};
+export type SearchFilters = {
+  created_at: CreatedAtFilter | null;
+  doc_type: string | null;
+  facet: string | null;
+};
+export type SearchHit = {
+  score: number;
+  document: SearchDocument;
+  title_snippet: Snippet | null;
+  content_snippet: Snippet | null;
+};
+export type SearchOptions = {
+  fuzzy: boolean | null;
+  distance: number | null;
+  snippets: boolean | null;
+  snippet_max_chars: number | null;
+  phrase_slop: number | null;
+};
+export type SearchRequest = {
+  query: string;
+  collection?: string | null;
+  filters?: SearchFilters;
+  limit?: number;
+  options?: SearchOptions;
+};
+export type SearchResult = { hits: SearchHit[]; count: number };
+export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot };
 /**
  * The slim `session_list_headers` row -- exactly what the always-mounted list
  * subscribers (timeline, summaries, tags, float) consume.
@@ -1115,6 +1372,10 @@ export type SessionMetaPatch = {
   folder?: string | null;
   author?: string | null;
 };
+export type SessionPage = {
+  sessions: SessionMeta[];
+  next_cursor: string | null;
+};
 /**
  * What `session_get` returns: the file-canonical equivalent of the old
  * `SESSION_SELECT_SQL` (sessions row + COALESCE'd note document join). The note is
@@ -1128,6 +1389,11 @@ export type SessionTranscriptMetadata = {
   started_at: number | null;
   ended_at: number | null;
 };
+export type SetMembershipRequest = {
+  role: VaultRole;
+  expected_revision: string;
+};
+export type Snippet = { fragment: string; highlights: HighlightRange[] };
 export type StartupPhase =
   | { kind: "openingVault" }
   | { kind: "scanning"; sessions_found: number }
@@ -1240,6 +1506,17 @@ export type TranscriptWord = {
   speaker?: string | null;
   metadata?: Partial<{ [key in string]: JsonValue }> | null;
 };
+export type UpdateVaultRequest = { name: string; expected_revision: string };
+export type VaultInfo = {
+  id: string;
+  name: string;
+  kind: VaultKind;
+  role: VaultRole;
+  revision: string;
+};
+export type VaultKind = "personal" | "shared";
+export type VaultMutation = { vault_id: string; revision: string };
+export type VaultRole = "reader" | "editor" | "owner";
 export type VaultStats = {
   sessions: number;
   /**

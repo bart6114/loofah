@@ -61,12 +61,16 @@ tauri-plugin-updater = { workspace = true }
 tauri-plugin-updater2 = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-windows = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
+hypr-loofah-client = { workspace = true }
 hypr-loofah-core = { workspace = true }
+hypr-loofah-protocol = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-supervisor = { workspace = true }
 hypr-tauri-utils = { workspace = true }
@@ -75,6 +79,7 @@ hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
 chrono = { workspace = true }
 dirs = { workspace = true }
+keyring = { workspace = true }
 pico-args = { workspace = true }
 ractor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -112,6 +117,7 @@ tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
 sha2 = { workspace = true }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.

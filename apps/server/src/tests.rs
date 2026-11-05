@@ -32,7 +32,13 @@ impl Fixture {
         let metadata = json!({"issuer":issuer,"jwks_uri":format!("{issuer}/keys"),"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"code_challenge_methods_supported":["S256"]});
         let keys: Value =
             serde_json::from_str(include_str!("../tests/fixtures/jwks.json")).unwrap();
+        let oauth = Arc::new(MockOAuth {
+            issuer: issuer.clone(),
+            codes: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+        });
         let provider = Router::new()
+            .route("/authorize", axum::routing::get(mock_authorize))
+            .route("/token", axum::routing::post(mock_token))
             .route(
                 "/.well-known/openid-configuration",
                 axum::routing::get(move || async move { Json(metadata) }),
@@ -40,7 +46,8 @@ impl Fixture {
             .route(
                 "/keys",
                 axum::routing::get(move || async move { Json(keys) }),
-            );
+            )
+            .with_state(oauth);
         let issuer_task = tokio::spawn(async move {
             axum::serve(listener, provider).await.unwrap();
         });
@@ -822,4 +829,213 @@ async fn real_tcp_stream_expires_and_overflow_requires_resync() {
         .await
         .unwrap()
         .unwrap();
+}
+
+struct MockOAuth {
+    issuer: String,
+    codes: tokio::sync::Mutex<std::collections::HashMap<String, (String, String)>>,
+}
+
+async fn mock_authorize(
+    axum::extract::State(state): axum::extract::State<Arc<MockOAuth>>,
+    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Redirect {
+    assert_eq!(query["client_id"], "loofah-desktop");
+    assert_eq!(query["audience"], "loofah-api");
+    assert_eq!(query["code_challenge_method"], "S256");
+    let code = uuid::Uuid::new_v4().to_string();
+    state.codes.lock().await.insert(
+        code.clone(),
+        (
+            query["code_challenge"].clone(),
+            query["redirect_uri"].clone(),
+        ),
+    );
+    let mut redirect = url::Url::parse(&query["redirect_uri"]).unwrap();
+    redirect.query_pairs_mut().extend_pairs([
+        ("code", code.as_str()),
+        ("state", query["state"].as_str()),
+        ("iss", state.issuer.as_str()),
+    ]);
+    axum::response::Redirect::to(redirect.as_str())
+}
+
+async fn mock_token(
+    axum::extract::State(state): axum::extract::State<Arc<MockOAuth>>,
+    axum::extract::Form(form): axum::extract::Form<std::collections::HashMap<String, String>>,
+) -> Json<Value> {
+    use base64::Engine;
+    use sha2::Digest;
+    let (challenge, redirect) = state.codes.lock().await.remove(&form["code"]).unwrap();
+    assert_eq!(
+        challenge,
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(sha2::Sha256::digest(form["code_verifier"].as_bytes()))
+    );
+    assert_eq!(redirect, form["redirect_uri"]);
+    Json(
+        json!({"access_token":sign(json!({"iss":state.issuer,"sub":"native-client","name":"Native client","aud":"loofah-api","exp":now()+3600,"iat":now(),"scope":"loofah:access"}),"at+jwt","test-1"),"token_type":"Bearer","expires_in":3600}),
+    )
+}
+
+struct EphemeralCredentials;
+impl hypr_loofah_client::CredentialStore for EphemeralCredentials {
+    fn load<'a>(
+        &'a self,
+        _account: &'a str,
+    ) -> hypr_loofah_client::CredentialFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+    fn save<'a>(
+        &'a self,
+        _account: &'a str,
+        _value: Option<&'a str>,
+    ) -> hypr_loofah_client::CredentialFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+#[tokio::test]
+async fn native_clients_login_create_share_notes_receive_changes_and_reject_stale_replacements() {
+    use hypr_loofah_client::{RemoteClient, RemoteEvent, RemoteOperation, RemoteReply};
+    use tokio_util::sync::CancellationToken;
+    let fixture = Fixture::new().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let app = fixture.app.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let first = RemoteClient::discover(&origin, Arc::new(EphemeralCredentials), true)
+        .await
+        .unwrap();
+    let second = RemoteClient::discover(&origin, Arc::new(EphemeralCredentials), true)
+        .await
+        .unwrap();
+    for client in [&first, &second] {
+        let login = client.begin_login().await.unwrap();
+        let url = login.authorization_url().to_string();
+        let complete = tokio::spawn(login.complete());
+        assert!(reqwest::get(url).await.unwrap().status().is_success());
+        complete.await.unwrap().unwrap();
+    }
+    let request = |client: Arc<RemoteClient>, operation| async move {
+        client
+            .execute(
+                operation,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap()
+    };
+    let RemoteReply::Me(me) = request(first.clone(), RemoteOperation::Provision).await else {
+        panic!("me response");
+    };
+    let vault_id = me.personal_vault_id;
+    let RemoteReply::Session(created) = request(
+        first.clone(),
+        RemoteOperation::CreateSession {
+            vault_id: vault_id.clone(),
+            input: CreateSessionRequest {
+                title: "Shared application".into(),
+                markdown: "Original".into(),
+            },
+        },
+    )
+    .await
+    else {
+        panic!("create response");
+    };
+    let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+    let subscription = second
+        .subscribe(vault_id.clone(), move |event| sender.send(event).is_ok())
+        .unwrap();
+    loop {
+        if matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            RemoteEvent::Change {
+                event: ChangeEvent {
+                    change: Change::ResyncRequired,
+                    ..
+                }
+            }
+        ) {
+            break;
+        }
+    }
+    let RemoteReply::NoteSave(NoteSaveOutcome::Saved(saved)) = request(
+        first.clone(),
+        RemoteOperation::SaveNote {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            input: SaveNoteRequest {
+                markdown: "Changed".into(),
+                title: None,
+                expected_revision: created.note.revision.clone(),
+            },
+        },
+    )
+    .await
+    else {
+        panic!("save response");
+    };
+    loop {
+        if let RemoteEvent::Change {
+            event:
+                ChangeEvent {
+                    change:
+                        Change::IndexChanged {
+                            entity: IndexEntity::Sessions,
+                            ids,
+                        },
+                    ..
+                },
+        } = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        {
+            if ids.contains(&created.meta.id) {
+                break;
+            }
+        }
+    }
+    let RemoteReply::Note(current) = request(
+        second.clone(),
+        RemoteOperation::Note {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("read response");
+    };
+    assert_eq!(current, saved);
+    let RemoteReply::NoteSave(NoteSaveOutcome::Conflict(current)) = request(
+        second.clone(),
+        RemoteOperation::SaveNote {
+            vault_id,
+            session_id: created.meta.id,
+            input: SaveNoteRequest {
+                markdown: "Stale".into(),
+                title: None,
+                expected_revision: created.note.revision,
+            },
+        },
+    )
+    .await
+    else {
+        panic!("conflict response");
+    };
+    assert_eq!(current, saved);
+    subscription.close().await;
+    first.disconnect();
+    second.disconnect();
+    server.abort();
+    fixture.service.shutdown().await.unwrap();
 }

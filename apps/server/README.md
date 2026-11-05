@@ -1,10 +1,10 @@
 # Run the Loofah server
 
-The server is experimental. It currently exposes authenticated vault, note, search and change-stream APIs. Desktop server connections, server AI processing, media and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
+The server is experimental. It currently exposes authenticated vault, note, search and change-stream APIs. Desktop server connections, server AI processing, media and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server. A native Rust HTTPS/SSE client and desktop authentication bridge are implemented; the server connection UI is not enabled yet.
 
 ## Configure company SSO
 
-Use one company OIDC issuer with JWT access tokens and advertised S256 PKCE support. Configure a public native OAuth client and a separate API audience. Give authorized company members the API access scope. An ID token is not an API credential.
+Use one company OIDC issuer with JWT access tokens and advertised S256 PKCE support. Configure a public native OAuth client and a separate API audience. Register the loopback redirect `http://127.0.0.1:{port}/oauth/callback` with dynamic ports, following your issuer's native-app registration rules. Give authorized company members the API access scope. An ID token is not an API credential.
 
 Copy [deploy/server.json](deploy/server.json) to `/etc/loofah/server.json` and replace the example domains and OIDC identifiers:
 
