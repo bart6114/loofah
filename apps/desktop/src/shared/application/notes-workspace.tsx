@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,9 +18,11 @@ import {
 
 import { Button } from "@hypr/ui/components/ui/button";
 
+import { documentDraftClient, documentDraftId } from "./document-draft";
 import { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
-import { NoteDrafts, type NoteDraft } from "./note-draft";
+import { NoteDrafts, type NoteDraft, type NoteDraftClient } from "./note-draft";
+import type { DocumentTarget } from "./protocol.gen";
 import type { VaultClient } from "./vault-client";
 import { VaultScope } from "./vault-scope";
 
@@ -65,6 +68,10 @@ export function VaultNotesWorkspace({
 function Notes({ scope }: { scope: VaultScope }) {
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const activeDraft = useRef<string | null>(null);
+  const onActiveDraft = useCallback((id: string) => {
+    activeDraft.current = id;
+  }, []);
   const [search, setSearch] = useState("");
   const searchForm = useForm({
     defaultValues: { query: "" },
@@ -98,7 +105,10 @@ function Notes({ scope }: { scope: VaultScope }) {
   const copy = useMutation({
     mutationFn: async () => {
       if (sessionId) {
-        const draft = drafts.get(scope.client.scope, sessionId);
+        const draft = drafts.get(
+          scope.client.scope,
+          activeDraft.current ?? sessionId,
+        );
         if (draft) await writeText(draft.recovery().draft.markdown);
       }
     },
@@ -246,6 +256,7 @@ function Notes({ scope }: { scope: VaultScope }) {
               key={`${scope.client.scope}:${sessionId}`}
               scope={scope}
               sessionId={sessionId}
+              onActiveDraft={onActiveDraft}
             />
           ) : (
             <p className="text-muted-foreground p-4 text-sm">
@@ -266,9 +277,11 @@ function Notes({ scope }: { scope: VaultScope }) {
 function SessionPane({
   scope,
   sessionId,
+  onActiveDraft,
 }: {
   scope: VaultScope;
   sessionId: string;
+  onActiveDraft: (id: string) => void;
 }) {
   const { t } = useLingui();
   const [view, setView] = useState<
@@ -313,9 +326,132 @@ function SessionPane({
         </div>
       )}
       {view === "note" ? (
-        <NotePane scope={scope} sessionId={sessionId} />
+        <NotePane
+          scope={scope}
+          sessionId={sessionId}
+          onActiveDraft={onActiveDraft}
+        />
+      ) : view === "documents" ? (
+        <DocumentsPane
+          scope={scope}
+          sessionId={sessionId}
+          onActiveDraft={onActiveDraft}
+        />
       ) : (
         <ContentPane scope={scope} sessionId={sessionId} view={view} />
+      )}
+    </div>
+  );
+}
+
+function DocumentsPane({
+  scope,
+  sessionId,
+  onActiveDraft,
+}: {
+  scope: VaultScope;
+  sessionId: string;
+  onActiveDraft: (id: string) => void;
+}) {
+  const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
+  const documents = useQuery({
+    ...scope.documentsOptions(sessionId),
+    enabled: connection.state === "connected",
+  });
+  const [target, setTarget] = useState<DocumentTarget | null>(null);
+  const canEdit = scope.client.features.includes("document_edit");
+  if (target) {
+    const selected = documents.data?.find((doc) =>
+      target.kind === "summary"
+        ? doc.kind === "summary"
+        : doc.kind === "template_output" && doc.id === target.document_id,
+    );
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex shrink-0 items-center gap-3">
+          <Button size="sm" variant="ghost" onClick={() => setTarget(null)}>
+            <Trans>Back</Trans>
+          </Button>
+          <h3 className="truncate text-sm font-medium">
+            {selected?.title ||
+              (target.kind === "summary" ? (
+                <Trans>Summary</Trans>
+              ) : (
+                <Trans>Output</Trans>
+              ))}
+          </h3>
+        </div>
+        <NotePane
+          key={documentDraftId(sessionId, target)}
+          scope={scope}
+          sessionId={sessionId}
+          target={target}
+          onActiveDraft={onActiveDraft}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto text-sm" role="document">
+      {documents.error && (
+        <p role="alert" className="text-destructive">
+          {documents.error.message}
+        </p>
+      )}
+      {documents.isPending ? (
+        <p className="text-muted-foreground">
+          <Trans>Loading content…</Trans>
+        </p>
+      ) : (
+        <>
+          {canEdit &&
+            !documents.error &&
+            !documents.data?.some((doc) => doc.kind === "summary") && (
+              <Button
+                size="sm"
+                className="mb-3"
+                disabled={
+                  connection.state !== "connected" || !scope.client.canEdit
+                }
+                onClick={() => setTarget({ kind: "summary" })}
+              >
+                <Trans>Add summary</Trans>
+              </Button>
+            )}
+          {documents.data?.length === 0 && (
+            <p className="text-muted-foreground">
+              <Trans>No content yet.</Trans>
+            </p>
+          )}
+          {documents.data?.map((doc) => (
+            <section key={doc.id} className="mb-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h3 className="font-medium">{doc.title}</h3>
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={connection.state !== "connected"}
+                    onClick={() =>
+                      setTarget(
+                        doc.kind === "summary"
+                          ? { kind: "summary" }
+                          : { kind: "template_output", document_id: doc.id },
+                      )
+                    }
+                  >
+                    {scope.client.canEdit ? (
+                      <Trans>Edit</Trans>
+                    ) : (
+                      <Trans>View</Trans>
+                    )}
+                  </Button>
+                )}
+              </div>
+              <pre className="whitespace-pre-wrap">{doc.markdown}</pre>
+            </section>
+          ))}
+        </>
       )}
     </div>
   );
@@ -328,14 +464,11 @@ function ContentPane({
 }: {
   scope: VaultScope;
   sessionId: string;
-  view: "documents" | "transcripts" | "tasks";
+  view: "transcripts" | "tasks";
 }) {
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const enabled = connection.state === "connected";
-  const documents = useQuery({
-    ...scope.documentsOptions(sessionId),
-    enabled: enabled && view === "documents",
-  });
+
   const transcripts = useQuery({
     ...scope.transcriptsOptions(sessionId),
     enabled: enabled && view === "transcripts",
@@ -344,12 +477,7 @@ function ContentPane({
     ...scope.tasksOptions(sessionId),
     enabled: enabled && view === "tasks",
   });
-  const result =
-    view === "documents"
-      ? documents
-      : view === "transcripts"
-        ? transcripts
-        : tasks;
+  const result = view === "transcripts" ? transcripts : tasks;
   if (result.error)
     return (
       <p role="alert" className="text-destructive text-sm">
@@ -370,13 +498,6 @@ function ContentPane({
     );
   return (
     <div className="min-h-0 flex-1 overflow-y-auto text-sm" role="document">
-      {view === "documents" &&
-        documents.data?.map((document) => (
-          <section key={document.id} className="mb-4">
-            <h3 className="mb-2 font-medium">{document.title}</h3>
-            <pre className="whitespace-pre-wrap">{document.markdown}</pre>
-          </section>
-        ))}
       {view === "transcripts" &&
         transcripts.data?.map((transcript) => (
           <pre key={transcript.id} className="mb-4 whitespace-pre-wrap">
@@ -466,23 +587,52 @@ function SearchResults({
 function NotePane({
   scope,
   sessionId,
+  target,
+  onActiveDraft,
 }: {
   scope: VaultScope;
   sessionId: string;
+  target?: DocumentTarget;
+  onActiveDraft: (id: string) => void;
 }) {
-  const note = useQuery(scope.noteOptions(sessionId));
+  const id = target ? documentDraftId(sessionId, target) : sessionId;
+  const client = useMemo(
+    () =>
+      target
+        ? documentDraftClient(scope.client, sessionId, target)
+        : scope.client,
+    [scope.client, sessionId, target],
+  );
+  const options = useMemo(
+    () =>
+      target
+        ? scope.documentTextOptions(sessionId, target)
+        : scope.noteOptions(sessionId),
+    [scope, sessionId, target],
+  );
+  const note = useQuery(options);
+  const confirm = useCallback(
+    (saved: NoteSnapshot) =>
+      target
+        ? scope.confirmDocumentText(sessionId, target, saved)
+        : scope.confirmNote(sessionId, saved),
+    [scope, sessionId, target],
+  );
+  useEffect(() => {
+    onActiveDraft(id);
+  }, [id, onActiveDraft]);
   const store = useMemo(
     () => new NativeDraftStore(scope.client.scope),
     [scope.client.scope],
   );
   const recovery = useQuery({
-    queryKey: ["device-draft", scope.client.scope, sessionId],
-    queryFn: () => store.load(sessionId),
+    queryKey: ["device-draft", scope.client.scope, id],
+    queryFn: () => store.load(id),
     networkMode: "always",
   });
   const snapshot =
     note.data ??
-    drafts.get(scope.client.scope, sessionId)?.getSnapshot().baseline ??
+    drafts.get(scope.client.scope, id)?.getSnapshot().baseline ??
     recovery.data?.baseline;
   if (!snapshot || recovery.isPending)
     return (
@@ -490,14 +640,18 @@ function NotePane({
         {note.error ? (
           <p role="alert">{note.error.message}</p>
         ) : (
-          <Trans>Loading note…</Trans>
+          <Trans>Loading content…</Trans>
         )}
       </div>
     );
   return (
     <NoteFields
       scope={scope}
-      sessionId={sessionId}
+      sessionId={id}
+      client={client}
+      queryKey={options.queryKey}
+      confirm={confirm}
+      readOnlyTitle={!!target}
       note={snapshot}
       noteError={note.error}
       available={!!note.data && !note.error}
@@ -511,6 +665,10 @@ function NotePane({
 function NoteFields({
   scope,
   sessionId,
+  client,
+  queryKey,
+  confirm,
+  readOnlyTitle,
   note,
   noteError,
   available,
@@ -520,6 +678,10 @@ function NoteFields({
 }: {
   scope: VaultScope;
   sessionId: string;
+  client: NoteDraftClient;
+  queryKey: readonly unknown[];
+  confirm: (note: NoteSnapshot) => Promise<void>;
+  readOnlyTitle: boolean;
   note: NoteSnapshot;
   noteError: Error | null;
   available: boolean;
@@ -532,19 +694,35 @@ function NoteFields({
     const value =
       existing ??
       (recovery
-        ? drafts.restore(scope.client, recovery)
-        : drafts.open(scope.client, sessionId, note));
-    value.rebind(scope.client);
+        ? drafts.restore(client, recovery)
+        : drafts.open(client, sessionId, note));
+    value.rebind(client);
     value.receive(note);
     return value;
   });
   const snapshot = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const persist = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (beforeRequest: boolean) => {
       const value = draft.recovery();
+      if (beforeRequest) value.uncertain = true;
       if (draft.getSnapshot().dirty || value.uncertain) await store.save(value);
-      else await store.remove(sessionId);
+      else {
+        await store.remove(sessionId);
+        if (
+          ![
+            "closed",
+            "access_denied",
+            "login_required",
+            "incompatible",
+          ].includes(scope.getSnapshot().state)
+        ) {
+          scope.queryClient.setQueryData(
+            ["device-draft", client.scope, sessionId],
+            null,
+          );
+        }
+      }
     },
   });
   const lastSubmitted = useRef<{ markdown: string; title: string } | null>(
@@ -552,7 +730,7 @@ function NoteFields({
   );
   const save = useMutation({
     mutationFn: async () => {
-      await persist.mutateAsync().catch(() => {});
+      await persist.mutateAsync(true).catch(() => {});
       if (scope.getSnapshot().state !== "connected")
         throw new ApplicationRequestError({
           code: "unavailable",
@@ -566,10 +744,18 @@ function NoteFields({
       try {
         lastSubmitted.current = draft.getSnapshot().draft;
         const saved = await scope.run(() => draft.save());
-        await scope.confirmNote(sessionId, saved);
+        await confirm(saved);
         return saved;
+      } catch (error) {
+        if (
+          error instanceof ApplicationRequestError &&
+          error.detail.code === "not_found"
+        ) {
+          await scope.queryClient.invalidateQueries({ queryKey, exact: true });
+        }
+        throw error;
       } finally {
-        await persist.mutateAsync().catch(() => {});
+        await persist.mutateAsync(false).catch(() => {});
         if (
           ["access_denied", "login_required", "closed"].includes(
             scope.getSnapshot().state,
@@ -601,22 +787,18 @@ function NoteFields({
     scope.client.canEdit &&
     !(save.error && lastSubmitted.current === snapshot.draft);
   useEffect(() => {
-    if (
-      scope.queryClient.getQueryData(scope.noteOptions(sessionId).queryKey) ===
-      note
-    )
-      draft.receive(note);
-  }, [draft, note, scope, sessionId]);
+    if (scope.queryClient.getQueryData(queryKey) === note) draft.receive(note);
+  }, [draft, note, scope, queryKey]);
   useEffect(() => {
     if (!snapshot.dirty) form.reset(snapshot.draft);
   }, [form, snapshot.baseline.revision, snapshot.dirty, snapshot.draft]);
   useEffect(() => {
-    if (!snapshot.dirty) return;
+    if (!snapshot.dirty && !recovery) return;
     const timer = setTimeout(() => {
-      void persistRef.current().catch(() => {});
+      void persistRef.current(false).catch(() => {});
     }, 200);
     return () => clearTimeout(timer);
-  }, [snapshot]);
+  }, [snapshot, recovery]);
   useEffect(() => {
     if (
       !snapshot.dirty ||
@@ -633,7 +815,7 @@ function NoteFields({
   }, [connection.state]);
   useEffect(
     () => () => {
-      void persistRef.current().catch(() => {});
+      void persistRef.current(false).catch(() => {});
       const current = draft.getSnapshot();
       if (
         saveOnLeave.current &&
@@ -659,8 +841,8 @@ function NoteFields({
       form.reset(current.draft);
       if (keep) await save.mutateAsync();
       else {
-        await scope.confirmNote(sessionId, current.baseline);
-        await persist.mutateAsync();
+        await confirm(current.baseline);
+        await persist.mutateAsync(false);
       }
     },
   });
@@ -679,25 +861,27 @@ function NoteFields({
             {noteError.message}
           </p>
         )}
-        <form.Field name="title">
-          {(field) => (
-            <label className="flex shrink-0 flex-col gap-1 text-xs">
-              <Trans>Title</Trans>
-              <input
-                className="bg-background rounded border px-3 py-2 text-sm"
-                readOnly={!editable}
-                value={field.state.value}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  draft.edit(
-                    form.getFieldValue("markdown"),
-                    event.target.value,
-                  );
-                }}
-              />
-            </label>
-          )}
-        </form.Field>
+        {!readOnlyTitle && (
+          <form.Field name="title">
+            {(field) => (
+              <label className="flex shrink-0 flex-col gap-1 text-xs">
+                <Trans>Title</Trans>
+                <input
+                  className="bg-background rounded border px-3 py-2 text-sm"
+                  readOnly={!editable}
+                  value={field.state.value}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                    draft.edit(
+                      form.getFieldValue("markdown"),
+                      event.target.value,
+                    );
+                  }}
+                />
+              </label>
+            )}
+          </form.Field>
+        )}
         <form.Field name="markdown">
           {(field) => (
             <label className="flex min-h-32 flex-1 flex-col gap-1 text-xs">
@@ -718,13 +902,12 @@ function NoteFields({
           <div className="rounded border p-3 text-xs">
             <p>
               <Trans>
-                This note changed in another client. Review the server version
-                before choosing.
+                This content changed in another client. Review the server
+                version before choosing.
               </Trans>
             </p>
             <pre className="my-2 max-h-40 overflow-auto whitespace-pre-wrap">
-              {snapshot.conflict.title}
-              {"\n\n"}
+              {snapshot.conflict.title && `${snapshot.conflict.title}\n\n`}
               {snapshot.conflict.markdown}
             </pre>
             <div className="flex gap-2">

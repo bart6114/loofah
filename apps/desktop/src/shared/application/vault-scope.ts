@@ -1,5 +1,6 @@
 import { QueryClient, queryOptions } from "@tanstack/react-query";
 
+import { documentDraftClient, documentDraftId } from "./document-draft";
 import { ApplicationRequestError, connectionClosed } from "./errors";
 import type {
   ApplicationError,
@@ -129,6 +130,22 @@ export class VaultScope {
         this.run(() => this.client.readDocument(sessionId, target, { signal })),
     });
   }
+  documentTextOptions(sessionId: string, target: DocumentTarget) {
+    const client = documentDraftClient(this.client, sessionId, target);
+    return queryOptions({
+      queryKey: [
+        "vault",
+        this.client.scope,
+        "document_text",
+        sessionId,
+        documentDraftId(sessionId, target),
+      ],
+      queryFn: ({ signal }) =>
+        this.run(() =>
+          client.readNote(documentDraftId(sessionId, target), { signal }),
+        ),
+    });
+  }
   transcriptsOptions(sessionId: string) {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "transcripts", sessionId],
@@ -172,7 +189,39 @@ export class VaultScope {
   }
 
   async confirmNote(sessionId: string, note: NoteSnapshot) {
-    const key = this.noteOptions(sessionId).queryKey;
+    if (!(await this.confirmText(this.noteOptions(sessionId).queryKey, note)))
+      return;
+    void this.queryClient.invalidateQueries({
+      queryKey: ["vault", this.client.scope, "session_page"],
+    });
+    void this.queryClient.invalidateQueries({
+      queryKey: ["vault", this.client.scope, "session", sessionId],
+    });
+  }
+
+  async confirmDocumentText(
+    sessionId: string,
+    target: DocumentTarget,
+    note: NoteSnapshot,
+  ) {
+    if (
+      !(await this.confirmText(
+        this.documentTextOptions(sessionId, target).queryKey,
+        note,
+      ))
+    )
+      return;
+    await this.queryClient.cancelQueries({
+      queryKey: this.documentOptions(sessionId, target).queryKey,
+    });
+    for (const kind of ["document", "docs", "tasks"]) {
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, kind, sessionId],
+      });
+    }
+  }
+
+  private async confirmText(key: readonly unknown[], note: NoteSnapshot) {
     await this.queryClient.cancelQueries({ queryKey: key, exact: true });
     if (
       this.disposed ||
@@ -180,14 +229,9 @@ export class VaultScope {
         this.snapshot.state,
       )
     )
-      return;
+      return false;
     this.queryClient.setQueryData(key, note);
-    void this.queryClient.invalidateQueries({
-      queryKey: ["vault", this.client.scope, "session_page"],
-    });
-    void this.queryClient.invalidateQueries({
-      queryKey: ["vault", this.client.scope, "session", sessionId],
-    });
+    return true;
   }
 
   resync() {
@@ -265,7 +309,7 @@ export class VaultScope {
               ) &&
               (all || ids.has(String(id)))
             );
-          if (kind === "document")
+          if (kind === "document" || kind === "document_text")
             return (
               ["docs", "sessions", "session_headers"].includes(change.entity) &&
               (all || ids.has(String(id)))

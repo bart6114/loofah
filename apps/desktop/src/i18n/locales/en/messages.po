@@ -135,6 +135,10 @@ msgstr "Add member"
 msgid "Add spoken language"
 msgstr "Add spoken language"
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Add summary"
+msgstr "Add summary"
+
 #: src/settings/ai/shared/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Advanced"
@@ -207,6 +211,7 @@ msgstr "Auto-apply tags with high confidence"
 msgid "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 msgstr "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 
+#: src/shared/application/notes-workspace.tsx
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
 msgstr "Back"
@@ -687,6 +692,10 @@ msgstr "Duration"
 msgid "Each file becomes its own note and is transcribed and summarized one at a time."
 msgstr "Each file becomes its own note and is transcribed and summarized one at a time."
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Edit"
+msgstr "Edit"
+
 #: src/session/components/session-date.tsx
 msgid "Edit date"
 msgstr "Edit date"
@@ -954,10 +963,6 @@ msgstr "Loading members…"
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
 msgstr "Loading models..."
-
-#: src/shared/application/notes-workspace.tsx
-msgid "Loading note…"
-msgstr "Loading note…"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
@@ -1251,6 +1256,10 @@ msgstr "Opening your vault…"
 #: src/main/about-storage.tsx
 msgid "Other files"
 msgstr "Other files"
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Output"
+msgstr "Output"
 
 #: src/shared/application/notes-workspace.tsx
 msgid "Outputs"
@@ -1834,6 +1843,7 @@ msgid "Summaries not enabled"
 msgstr "Summaries not enabled"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Summary"
 msgstr "Summary"
 
@@ -1942,6 +1952,10 @@ msgstr "The server may have created this vault. Retry the same request to recove
 msgid "This connection is no longer authorized."
 msgstr "This connection is no longer authorized."
 
+#: src/shared/application/notes-workspace.tsx
+msgid "This content changed in another client. Review the server version before choosing."
+msgstr "This content changed in another client. Review the server version before choosing."
+
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"
 msgstr "This folder already has files in it"
@@ -1953,10 +1967,6 @@ msgstr "This model supports English only. Choose another model or change your sp
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."
 msgstr "This model transcribes after recording."
-
-#: src/shared/application/notes-workspace.tsx
-msgid "This note changed in another client. Review the server version before choosing."
-msgstr "This note changed in another client. Review the server version before choosing."
 
 #: src/shared/application/server-preview.tsx
 msgid "This preview edits Markdown notes. Recording, attachments and AI are not connected here yet. Your standalone setup stays available."
@@ -2157,6 +2167,10 @@ msgstr "Vault storage"
 #: src/main/about-dialog.tsx
 msgid "Version {0}"
 msgstr "Version {0}"
+
+#: src/shared/application/notes-workspace.tsx
+msgid "View"
+msgstr "View"
 
 #: src/main/about-storage.tsx
 msgid "WAV audio"

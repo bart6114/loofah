@@ -245,7 +245,7 @@ fn coordinate(editor_id: &str, scope: &str, session_id: &str) -> Result<()> {
         || scope.is_empty()
         || scope.len() > 4096
         || session_id.is_empty()
-        || session_id.len() > 512
+        || session_id.len() > 1024
     {
         return Err(failure(
             ErrorCode::Validation,
@@ -399,6 +399,48 @@ mod tests {
                 .await
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn document_resource_keys_share_the_vault_quota_with_note_drafts() {
+        let root = tempfile::tempdir().unwrap();
+        let mut cache = DraftCache::new(root.path().join("cache")).unwrap();
+        cache.scope_limit = 4000;
+        let cache = Arc::new(cache);
+        let key =
+            serde_json::to_string(&("template_output", "s".repeat(255), "o".repeat(255))).unwrap();
+        assert!(key.len() > 512 && key.len() <= 1024);
+        let note = recovery("vault", "session", &"n".repeat(600));
+        let document = recovery("vault", &key, &"d".repeat(600));
+        cache.put("main".into(), note.clone()).await.unwrap();
+        cache.put("main".into(), document.clone()).await.unwrap();
+        let error = cache
+            .put(
+                "main".into(),
+                recovery("vault", "another", &"x".repeat(3000)),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ResourceLimit);
+        assert_eq!(
+            cache.get("main".into(), "vault".into(), key).await.unwrap(),
+            Some(document)
+        );
+        assert_eq!(
+            cache
+                .get("main".into(), "vault".into(), "session".into())
+                .await
+                .unwrap(),
+            Some(note)
+        );
+        assert_eq!(
+            cache
+                .put("main".into(), recovery("vault", &"k".repeat(1025), "text"))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
         );
     }
 

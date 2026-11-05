@@ -135,6 +135,10 @@ msgstr ""
 msgid "Add spoken language"
 msgstr "Ychwanegu iaith lafar"
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Add summary"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
 #: src/sidebar/settings.tsx
 msgid "Advanced"
@@ -207,6 +211,7 @@ msgstr ""
 msgid "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
 msgstr ""
@@ -687,6 +692,10 @@ msgstr ""
 msgid "Each file becomes its own note and is transcribed and summarized one at a time."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Edit"
+msgstr ""
+
 #: src/session/components/session-date.tsx
 msgid "Edit date"
 msgstr ""
@@ -953,10 +962,6 @@ msgstr ""
 
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
-msgstr ""
-
-#: src/shared/application/notes-workspace.tsx
-msgid "Loading note…"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1250,6 +1255,10 @@ msgstr ""
 
 #: src/main/about-storage.tsx
 msgid "Other files"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Output"
 msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
@@ -1834,6 +1843,7 @@ msgid "Summaries not enabled"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Summary"
 msgstr ""
 
@@ -1942,6 +1952,10 @@ msgstr ""
 msgid "This connection is no longer authorized."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "This content changed in another client. Review the server version before choosing."
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "This folder already has files in it"
 msgstr ""
@@ -1952,10 +1966,6 @@ msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."
-msgstr ""
-
-#: src/shared/application/notes-workspace.tsx
-msgid "This note changed in another client. Review the server version before choosing."
 msgstr ""
 
 #: src/shared/application/server-preview.tsx
@@ -2156,6 +2166,10 @@ msgstr ""
 #. placeholder {0}: info.data.appVersion
 #: src/main/about-dialog.tsx
 msgid "Version {0}"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "View"
 msgstr ""
 
 #: src/main/about-storage.tsx

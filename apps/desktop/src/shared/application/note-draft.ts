@@ -9,7 +9,7 @@ export class NoteConflictError extends ApplicationRequestError {
     super({
       code: "conflict",
       message:
-        "This note changed in another client. Review both versions before saving.",
+        "This content changed in another client. Review both versions before saving.",
       request_id: null,
       retryable: false,
       current_revision: current.revision,
@@ -20,8 +20,13 @@ export class NoteConflictError extends ApplicationRequestError {
 
 export type { NoteDraftRecovery } from "~/types/tauri.gen";
 
+export type NoteDraftClient = Pick<
+  VaultClient,
+  "scope" | "canEdit" | "readNote" | "saveNote"
+>;
+
 export class NoteDraft {
-  private client: VaultClient;
+  private client: NoteDraftClient;
   private snapshot: {
     baseline: NoteSnapshot;
     draft: { markdown: string; title: string };
@@ -36,7 +41,7 @@ export class NoteDraft {
   private readonly listeners = new Set<() => void>();
 
   constructor(
-    client: VaultClient,
+    client: NoteDraftClient,
     readonly sessionId: string,
     note: NoteSnapshot,
     draft?: { markdown: string; title: string },
@@ -64,7 +69,7 @@ export class NoteDraft {
     };
   };
 
-  rebind(client: VaultClient) {
+  rebind(client: NoteDraftClient) {
     if (client.scope !== this.scope)
       throw new Error("Cannot move a draft to a different account or vault");
     this.client = client;
@@ -287,7 +292,11 @@ export class NoteDrafts {
     return this.drafts.get(JSON.stringify([scope, sessionId]));
   }
 
-  open(client: VaultClient, sessionId: string, note: NoteSnapshot): NoteDraft {
+  open(
+    client: NoteDraftClient,
+    sessionId: string,
+    note: NoteSnapshot,
+  ): NoteDraft {
     const key = JSON.stringify([client.scope, sessionId]);
     let draft = this.drafts.get(key);
     if (draft) {
@@ -300,7 +309,7 @@ export class NoteDrafts {
     return draft;
   }
 
-  restore(client: VaultClient, recovery: NoteDraftRecovery): NoteDraft {
+  restore(client: NoteDraftClient, recovery: NoteDraftRecovery): NoteDraft {
     if (client.scope !== recovery.scope)
       throw new Error("This draft belongs to a different account or vault");
     const draft = new NoteDraft(

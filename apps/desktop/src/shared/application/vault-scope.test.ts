@@ -44,19 +44,61 @@ describe("vault-scoped query lifecycle", () => {
       kind: "template_output",
       document_id: "out",
     }).queryKey;
+    const text = active.documentTextOptions("first", {
+      kind: "summary",
+    }).queryKey;
     const other = active.documentOptions("second", {
       kind: "summary",
     }).queryKey;
     const value = { document: null, revision: "r" };
     for (const key of [summary, output, other])
       active.queryClient.setQueryData(key, value);
+    active.queryClient.setQueryData(text, {
+      markdown: "Summary",
+      title: "",
+      revision: "r",
+    });
     emit({
       kind: "change",
       change: { kind: "index_changed", entity: "docs", ids: ["first"] },
     });
     expect(active.queryClient.getQueryState(summary)?.isInvalidated).toBe(true);
     expect(active.queryClient.getQueryState(output)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(text)?.isInvalidated).toBe(true);
     expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(false);
+    active.dispose();
+  });
+  it("does not let an older output read replace a confirmed save and invalidates its task projection", async () => {
+    const { active, backend } = fixture("scope");
+    await active.start();
+    let finish!: (value: unknown) => void;
+    backend.readDocument = vi.fn().mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const target = { kind: "summary" as const };
+    const options = active.documentTextOptions("first", target);
+    const pending = active.queryClient.fetchQuery(options).catch(() => {});
+    const tasks = active.tasksOptions("first").queryKey;
+    active.queryClient.setQueryData(tasks, []);
+    const saved = { markdown: "Saved summary", title: "", revision: "b" };
+    await active.confirmDocumentText("first", target, saved);
+    finish({
+      document: {
+        id: "first",
+        session_id: "first",
+        kind: "summary",
+        title: "Summary",
+        template_id: "",
+        sort_order: 0,
+        markdown: "Old summary",
+      },
+      revision: "a",
+    });
+    await pending;
+    expect(active.queryClient.getQueryData(options.queryKey)).toEqual(saved);
+    expect(active.queryClient.getQueryState(tasks)?.isInvalidated).toBe(true);
     active.dispose();
   });
   it("invalidates complete registry lists for individual people and tag changes", async () => {
