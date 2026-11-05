@@ -323,4 +323,19 @@ describe("revision-aware note drafts", () => {
     await expect(draft.save()).rejects.toBeInstanceOf(NoteConflictError);
     expect(backend.saveNote).not.toHaveBeenCalled();
   });
+  it("acknowledges a lost response when an authoritative reconnect snapshot exactly matches", async () => {
+    const backend = client();
+    backend.saveNote.mockRejectedValueOnce(new Error("Response lost"));
+    const draft = new NoteDraft(backend, "note", note("Original", "a"));
+    draft.edit("Mine", "Title");
+    await expect(draft.save()).rejects.toThrow("Response lost");
+    const restored = new NoteDrafts().restore(backend, draft.recovery());
+    restored.receive(note("Mine", "b"));
+    expect(restored.getSnapshot()).toMatchObject({
+      dirty: false,
+      baseline: { revision: "b" },
+      conflict: null,
+    });
+    expect(backend.saveNote).toHaveBeenCalledOnce();
+  });
 });

@@ -2,6 +2,8 @@ import { ApplicationRequestError } from "./errors";
 import type { NoteSnapshot } from "./protocol.gen";
 import type { RequestOptions, VaultClient } from "./vault-client";
 
+import type { NoteDraftRecovery } from "~/types/tauri.gen";
+
 export class NoteConflictError extends ApplicationRequestError {
   constructor(readonly current: NoteSnapshot) {
     super({
@@ -16,13 +18,7 @@ export class NoteConflictError extends ApplicationRequestError {
   }
 }
 
-export type NoteDraftRecovery = {
-  scope: string;
-  sessionId: string;
-  baseline: NoteSnapshot;
-  draft: { markdown: string; title: string };
-  uncertain: boolean;
-};
+export type { NoteDraftRecovery } from "~/types/tauri.gen";
 
 export class NoteDraft {
   private client: VaultClient;
@@ -86,6 +82,18 @@ export class NoteDraft {
   }
 
   receive(note: NoteSnapshot) {
+    if (
+      this.uncertain &&
+      !this.captured &&
+      this.pending === 0 &&
+      note.markdown === this.snapshot.draft.markdown &&
+      note.title === this.snapshot.draft.title
+    ) {
+      this.uncertain = false;
+      this.snapshot = { ...this.snapshot, baseline: note, conflict: null };
+      this.update();
+      return;
+    }
     if (this.snapshot.dirty || this.pending > 0) {
       if (note.revision !== this.snapshot.baseline.revision) {
         this.snapshot = { ...this.snapshot, conflict: note };

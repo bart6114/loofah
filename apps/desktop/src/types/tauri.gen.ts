@@ -5,6 +5,47 @@
 /** user-defined commands **/
 
 export const commands = {
+  async draftCacheGet(
+    scope: string,
+    sessionId: string,
+  ): Promise<Result<NoteDraftRecovery | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_get", { scope, sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCachePut(
+    recovery: NoteDraftRecovery,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_put", { recovery }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCacheRemove(
+    scope: string,
+    sessionId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_remove", { scope, sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationScope(): Promise<Result<string, ApplicationError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("application_scope") };
@@ -1182,6 +1223,7 @@ export type CreatedAtFilter = {
   lt: number | null;
   eq: number | null;
 };
+export type DraftText = { markdown: string; title: string };
 export type EmbeddedCliState =
   | "installed"
   | "missing"
@@ -1278,6 +1320,13 @@ export type Me = { member: MemberInfo; personal_vault_id: string };
 export type MemberInfo = { id: string; name: string };
 export type Membership = { member: MemberInfo; role: VaultRole };
 export type MutationOutcome = "not_committed" | "persisted" | "unknown";
+export type NoteDraftRecovery = {
+  scope: string;
+  sessionId: string;
+  baseline: NoteSnapshot;
+  draft: DraftText;
+  uncertain: boolean;
+};
 export type NoteSaveOutcome =
   | { kind: "saved"; note: NoteSnapshot }
   | { kind: "conflict"; note: NoteSnapshot };

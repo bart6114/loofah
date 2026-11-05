@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+mod drafts;
 mod events;
 mod requests;
 mod sse;
 
 pub use auth::LoginAttempt;
+pub use drafts::{DraftCache, DraftText, NoteDraftRecovery};
 pub use events::{ConnectionState, RemoteEvent, Subscription};
 pub use requests::{RemoteOperation, RemoteReply};
 

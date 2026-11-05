@@ -3,6 +3,7 @@ mod application;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod draft_cache;
 mod embedded_cli;
 mod ext;
 mod identifier_migration;
@@ -190,7 +191,8 @@ pub async fn main() {
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
-        .manage(remote::RemoteState::default());
+        .manage(remote::RemoteState::default())
+        .manage(draft_cache::DraftCacheState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
     #[cfg(all(target_os = "macos", feature = "automation"))]
@@ -555,6 +557,9 @@ fn get_onboarding_flag() -> Option<bool> {
 fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
+            draft_cache::draft_cache_get::<tauri::Wry>,
+            draft_cache::draft_cache_put::<tauri::Wry>,
+            draft_cache::draft_cache_remove::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
             application::application_session::<tauri::Wry>,
