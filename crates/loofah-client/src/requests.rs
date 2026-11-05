@@ -55,6 +55,17 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    Document {
+        vault_id: String,
+        session_id: String,
+        target: DocumentTarget,
+    },
+    SaveDocument {
+        vault_id: String,
+        session_id: String,
+        target: DocumentTarget,
+        input: SaveDocumentRequest,
+    },
     Transcripts {
         vault_id: String,
         session_id: String,
@@ -100,6 +111,8 @@ pub enum RemoteReply {
     Sessions(SessionPage),
     Session(SessionDocument),
     Documents(Vec<EnhancedDoc>),
+    Document(DocumentSnapshot),
+    DocumentSave(DocumentSaveOutcome),
     Transcripts(Vec<TranscriptWithData>),
     Tasks(Vec<TaskItem>),
     People(Vec<PersonItem>),
@@ -199,6 +212,38 @@ impl RemoteClient {
                 Method::GET,
                 vec!["vaults", vault_id, "sessions", session_id, "documents"],
             ),
+            RemoteOperation::Document {
+                vault_id,
+                session_id,
+                target,
+            }
+            | RemoteOperation::SaveDocument {
+                vault_id,
+                session_id,
+                target,
+                ..
+            } => {
+                let method = if let RemoteOperation::SaveDocument { input, .. } = &operation {
+                    body = Some(value(input)?);
+                    Method::PUT
+                } else {
+                    Method::GET
+                };
+                let segments = match target {
+                    DocumentTarget::Summary => {
+                        vec!["vaults", vault_id, "sessions", session_id, "summary"]
+                    }
+                    DocumentTarget::TemplateOutput { document_id } => vec![
+                        "vaults",
+                        vault_id,
+                        "sessions",
+                        session_id,
+                        "outputs",
+                        document_id,
+                    ],
+                };
+                (method, segments)
+            }
             RemoteOperation::Transcripts {
                 vault_id,
                 session_id,
@@ -272,6 +317,13 @@ impl RemoteClient {
                     json_body(response, 8 * 1024 * 1024).await?,
                 ));
             }
+            if status == reqwest::StatusCode::CONFLICT
+                && matches!(operation, RemoteOperation::SaveDocument { .. })
+            {
+                return Ok(RemoteReply::DocumentSave(
+                    json_body(response, 32 * 1024 * 1024).await?,
+                ));
+            }
             if !status.is_success() {
                 return Err(json_body::<ApplicationError>(response, 131_072)
                     .await
@@ -312,6 +364,12 @@ impl RemoteClient {
                 }
                 RemoteOperation::Documents { .. } => {
                     RemoteReply::Documents(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::Document { .. } => {
+                    RemoteReply::Document(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::SaveDocument { .. } => {
+                    RemoteReply::DocumentSave(json_body(response, 32 * 1024 * 1024).await?)
                 }
                 RemoteOperation::Transcripts { .. } => {
                     RemoteReply::Transcripts(json_body(response, 32 * 1024 * 1024).await?)

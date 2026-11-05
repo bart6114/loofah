@@ -3,6 +3,10 @@ import type {
   ApplicationError,
   Change,
   CreateSessionRequest,
+  DocumentTarget,
+  DocumentSnapshot,
+  DocumentSaveOutcome,
+  SaveDocumentRequest,
   EnhancedDoc,
   NoteSaveOutcome,
   NoteSnapshot,
@@ -43,6 +47,17 @@ export type VaultClient = {
     sessionId: string,
     options?: RequestOptions,
   ) => Promise<EnhancedDoc[]>;
+  readDocument: (
+    sessionId: string,
+    target: DocumentTarget,
+    options?: RequestOptions,
+  ) => Promise<DocumentSnapshot>;
+  saveDocument: (
+    sessionId: string,
+    target: DocumentTarget,
+    input: SaveDocumentRequest,
+    options?: RequestOptions,
+  ) => Promise<DocumentSaveOutcome>;
   transcripts: (
     sessionId: string,
     options?: RequestOptions,
@@ -109,7 +124,15 @@ export async function connectLocalVault(): Promise<VaultClient> {
     scope,
     networkMode: "always",
     canEdit: true,
-    features: ["notes", "search", "content_read"],
+    features: ["notes", "search", "content_read", "document_edit"],
+    readDocument: (sessionId, target, options) =>
+      ipc(() => commands.applicationReadDocument(sessionId, target), options),
+    saveDocument: (sessionId, target, input, options) =>
+      ipc(
+        () => commands.applicationSaveDocument(sessionId, target, input),
+        options,
+        true,
+      ),
     documents: (sessionId, options) =>
       ipc(() => commands.applicationDocuments(sessionId), options),
     transcripts: (sessionId, options) =>
@@ -166,6 +189,24 @@ export function connectRemoteVault(
     networkMode: "online",
     canEdit: vault.role !== "reader",
     features: connection.info.capabilities.features,
+    readDocument: (sessionId, target, options) =>
+      connection.request(
+        { kind: "document", vault_id: vaultId, session_id: sessionId, target },
+        "document",
+        options,
+      ),
+    saveDocument: (sessionId, target, input, options) =>
+      connection.request(
+        {
+          kind: "save_document",
+          vault_id: vaultId,
+          session_id: sessionId,
+          target,
+          input,
+        },
+        "document_save",
+        options,
+      ),
     documents: (sessionId, options) =>
       connection.request(
         { kind: "documents", vault_id: vaultId, session_id: sessionId },

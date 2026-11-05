@@ -160,6 +160,32 @@ pub struct SaveNoteRequest {
     pub expected_revision: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DocumentTarget {
+    Summary,
+    TemplateOutput { document_id: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct DocumentSnapshot {
+    pub document: Option<EnhancedDoc>,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SaveDocumentRequest {
+    pub markdown: String,
+    pub expected_revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", content = "snapshot", rename_all = "snake_case")]
+pub enum DocumentSaveOutcome {
+    Saved(DocumentSnapshot),
+    Conflict(DocumentSnapshot),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Change {

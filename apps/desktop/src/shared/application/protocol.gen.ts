@@ -13,6 +13,12 @@ export type CreateSessionRequest = { title: string; markdown: string }
 
 export type CreateVaultRequest = { name: string }
 
+export type DocumentSaveOutcome = { kind: "saved"; snapshot: DocumentSnapshot } | { kind: "conflict"; snapshot: DocumentSnapshot }
+
+export type DocumentSnapshot = { document: EnhancedDoc | null; revision: string }
+
+export type DocumentTarget = { kind: "summary" } | { kind: "template_output"; document_id: string }
+
 /**
  * Shared document response for session summaries and UUID-backed template outputs.
  * A summary uses its session ID; only legacy/template files carry frontmatter.
@@ -61,6 +67,8 @@ export type NoteSnapshot = { markdown: string | null; title: string; revision: s
 export type PersonItem = { id: string; name?: string }
 
 export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string; audience: string; scopes: string[] }
+
+export type SaveDocumentRequest = { markdown: string; expected_revision: string }
 
 export type SaveNoteRequest = { markdown: string; title: string | null; expected_revision: string }
 

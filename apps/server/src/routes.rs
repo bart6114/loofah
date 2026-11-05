@@ -44,6 +44,14 @@ pub fn router(service: Arc<Service>) -> Router {
             get(documents),
         )
         .route(
+            "/vaults/{vault}/sessions/{session}/summary",
+            get(summary).put(save_summary),
+        )
+        .route(
+            "/vaults/{vault}/sessions/{session}/outputs/{document}",
+            get(output).put(save_output),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/transcripts",
             get(transcripts),
         )
@@ -92,6 +100,7 @@ async fn capabilities() -> Json<Capabilities> {
         features: vec![
             "notes".into(),
             "content_read".into(),
+            "document_edit".into(),
             "search".into(),
             "vault_membership".into(),
             "change_stream".into(),
@@ -379,6 +388,97 @@ async fn documents(
     let context = service.vault(&id).await?;
     content_read(&service, access, 32 * 1024 * 1024, async move {
         context.session_documents(&session).await
+    })
+    .await
+}
+async fn summary(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    read_document(service, identity, id, session, DocumentTarget::Summary).await
+}
+async fn output(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session, document_id)): ApiPath<(String, String, String)>,
+) -> Result<Response> {
+    read_document(
+        service,
+        identity,
+        id,
+        session,
+        DocumentTarget::TemplateOutput { document_id },
+    )
+    .await
+}
+async fn read_document(
+    service: Arc<Service>,
+    identity: Identity,
+    id: String,
+    session: String,
+    target: DocumentTarget,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.read_document(&session, &target).await
+    })
+    .await
+}
+async fn save_summary(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiJson(input): ApiJson<SaveDocumentRequest>,
+) -> Result<Response> {
+    save_document(
+        service,
+        identity,
+        id,
+        session,
+        DocumentTarget::Summary,
+        input,
+    )
+    .await
+}
+async fn save_output(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session, document_id)): ApiPath<(String, String, String)>,
+    ApiJson(input): ApiJson<SaveDocumentRequest>,
+) -> Result<Response> {
+    save_document(
+        service,
+        identity,
+        id,
+        session,
+        DocumentTarget::TemplateOutput { document_id },
+        input,
+    )
+    .await
+}
+async fn save_document(
+    service: Arc<Service>,
+    identity: Identity,
+    id: String,
+    session: String,
+    target: DocumentTarget,
+    input: SaveDocumentRequest,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    write(&service, access, async move {
+        let result = context.save_document(&session, &target, input).await?;
+        let status = if matches!(result, DocumentSaveOutcome::Conflict(_)) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::OK
+        };
+        let bytes = tokio::task::spawn_blocking(move || encode_content(&result, 32 * 1024 * 1024))
+            .await
+            .map_err(ApiError::internal)??;
+        Ok((status, [("content-type", "application/json")], bytes).into_response())
     })
     .await
 }

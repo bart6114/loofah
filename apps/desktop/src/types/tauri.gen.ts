@@ -81,6 +81,42 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationReadDocument(
+    sessionId: string,
+    target: DocumentTarget,
+  ): Promise<Result<DocumentSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_document", {
+          sessionId,
+          target,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveDocument(
+    sessionId: string,
+    target: DocumentTarget,
+    input: SaveDocumentRequest,
+  ): Promise<Result<DocumentSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_document", {
+          sessionId,
+          target,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationTranscripts(
     sessionId: string,
   ): Promise<Result<TranscriptWithData[], ApplicationError>> {
@@ -1278,6 +1314,16 @@ export type CreatedAtFilter = {
   lt: number | null;
   eq: number | null;
 };
+export type DocumentSaveOutcome =
+  | { kind: "saved"; snapshot: DocumentSnapshot }
+  | { kind: "conflict"; snapshot: DocumentSnapshot };
+export type DocumentSnapshot = {
+  document: EnhancedDoc | null;
+  revision: string;
+};
+export type DocumentTarget =
+  | { kind: "summary" }
+  | { kind: "template_output"; document_id: string };
 export type DraftText = { markdown: string; title: string };
 export type EmbeddedCliState =
   | "installed"
@@ -1449,6 +1495,19 @@ export type RemoteOperation =
   | { kind: "sessions"; vault_id: string; limit: number; after: string | null }
   | { kind: "session"; vault_id: string; session_id: string }
   | { kind: "documents"; vault_id: string; session_id: string }
+  | {
+      kind: "document";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+    }
+  | {
+      kind: "save_document";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+      input: SaveDocumentRequest;
+    }
   | { kind: "transcripts"; vault_id: string; session_id: string }
   | { kind: "tasks"; vault_id: string; session_id: string }
   | { kind: "people"; vault_id: string }
@@ -1472,6 +1531,8 @@ export type RemoteReply =
   | { kind: "sessions"; value: SessionPage }
   | { kind: "session"; value: SessionDocument }
   | { kind: "documents"; value: EnhancedDoc[] }
+  | { kind: "document"; value: DocumentSnapshot }
+  | { kind: "document_save"; value: DocumentSaveOutcome }
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "tasks"; value: TaskItem[] }
   | { kind: "people"; value: PersonItem[] }
@@ -1479,6 +1540,10 @@ export type RemoteReply =
   | { kind: "note"; value: NoteSnapshot }
   | { kind: "note_save"; value: NoteSaveOutcome }
   | { kind: "search"; value: SearchResult };
+export type SaveDocumentRequest = {
+  markdown: string;
+  expected_revision: string;
+};
 export type SaveNoteRequest = {
   markdown: string;
   title: string | null;

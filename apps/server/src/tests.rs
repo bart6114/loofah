@@ -17,6 +17,140 @@ use crate::{
     service::Service,
 };
 
+#[tokio::test]
+async fn document_edits_share_canonical_guards_and_never_grant_readers_write_access() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.login("alice").await;
+    let bob = fixture.login("bob").await;
+    fixture.login("charlie").await;
+    let (_, shared) = fixture
+        .call(
+            "alice",
+            "POST",
+            "/api/v1/vaults",
+            Some(json!({"name":"Documents"})),
+        )
+        .await;
+    let id = shared["id"].as_str().unwrap();
+    let (status, _) = fixture
+        .call(
+            "alice",
+            "PUT",
+            &format!("/api/v1/vaults/{id}/members/{}", bob.member.id),
+            Some(json!({"role":"reader","expected_revision":shared["revision"]})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let context = fixture.service.vault(id).await.unwrap();
+    let meta = serde_json::from_value(
+        json!({"id":"note","title":"Meeting","created_at":"2026-11-05T10:00:00Z","tags":[]}),
+    )
+    .unwrap();
+    context
+        .store
+        .create_note_session(&meta, "Original note")
+        .await
+        .unwrap();
+    context
+        .store
+        .write_enhanced_doc(&EnhancedDoc {
+            id: "output".into(),
+            session_id: "note".into(),
+            kind: "template_output".into(),
+            title: "Report".into(),
+            template_id: "report".into(),
+            sort_order: 1,
+            markdown: "Original output".into(),
+        })
+        .await
+        .unwrap();
+    for resource in ["summary", "outputs/output"] {
+        let path = format!("/api/v1/vaults/{id}/sessions/note/{resource}");
+        let (status, snapshot) = fixture.call("bob", "GET", &path, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let input =
+            json!({"markdown":"Updated\n\n- [ ] Action", "expected_revision":snapshot["revision"]});
+        assert_eq!(
+            fixture
+                .call("bob", "PUT", &path, Some(input.clone()))
+                .await
+                .0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            fixture.call("charlie", "GET", &path, None).await.0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            fixture
+                .call("charlie", "PUT", &path, Some(input.clone()))
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+        let (status, saved) = fixture
+            .call("alice", "PUT", &path, Some(input.clone()))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(saved["kind"], "saved");
+        let (status, conflict) = fixture.call("alice", "PUT", &path, Some(input)).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(conflict["snapshot"], saved["snapshot"]);
+        assert_eq!(
+            fixture.call("alice", "GET", &path, None).await.1,
+            saved["snapshot"]
+        );
+        let private = format!(
+            "/api/v1/vaults/{}/sessions/note/{resource}",
+            alice.personal_vault_id
+        );
+        assert_eq!(
+            fixture.call("bob", "GET", &private, None).await.0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    let tasks = context.session_tasks("note").await.unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert_ne!(tasks[0].source_type, tasks[1].source_type);
+    assert_eq!(
+        context.read_note("note").await.unwrap().markdown.as_deref(),
+        Some("Original note")
+    );
+    let missing = format!("/api/v1/vaults/{id}/sessions/note/outputs/missing");
+    let (_, absent) = fixture.call("alice", "GET", &missing, None).await;
+    assert!(absent["document"].is_null());
+    assert_eq!(
+        fixture
+            .call(
+                "alice",
+                "PUT",
+                &missing,
+                Some(json!({"markdown":"Do not create", "expected_revision":absent["revision"]}))
+            )
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    for input in [
+        json!({"markdown":"No revision"}),
+        json!({"markdown":"Blank revision","expected_revision":""}),
+    ] {
+        assert_eq!(
+            fixture
+                .call(
+                    "alice",
+                    "PUT",
+                    &format!("/api/v1/vaults/{id}/sessions/note/summary"),
+                    Some(input)
+                )
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    fixture.service.shutdown().await.unwrap();
+}
+
 struct Fixture {
     _root: tempfile::TempDir,
     issuer: String,
@@ -1128,6 +1262,48 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     assert!(
         matches!(request(first.clone(), RemoteOperation::Documents { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::Documents(value) if value.len() == 1 && value[0].markdown == "Canonical summary")
     );
+    let RemoteReply::Document(summary) = request(
+        first.clone(),
+        RemoteOperation::Document {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            target: DocumentTarget::Summary,
+        },
+    )
+    .await
+    else {
+        panic!("document response");
+    };
+    let input = SaveDocumentRequest {
+        markdown: "Native document replacement".into(),
+        expected_revision: summary.revision,
+    };
+    assert!(matches!(
+        request(
+            first.clone(),
+            RemoteOperation::SaveDocument {
+                vault_id: vault_id.clone(),
+                session_id: created.meta.id.clone(),
+                target: DocumentTarget::Summary,
+                input: input.clone()
+            }
+        )
+        .await,
+        RemoteReply::DocumentSave(DocumentSaveOutcome::Saved(_))
+    ));
+    assert!(matches!(
+        request(
+            second.clone(),
+            RemoteOperation::SaveDocument {
+                vault_id: vault_id.clone(),
+                session_id: created.meta.id.clone(),
+                target: DocumentTarget::Summary,
+                input
+            }
+        )
+        .await,
+        RemoteReply::DocumentSave(DocumentSaveOutcome::Conflict(_))
+    ));
     assert!(
         matches!(request(first.clone(), RemoteOperation::Transcripts { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::Transcripts(value) if value.is_empty())
     );

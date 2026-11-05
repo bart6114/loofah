@@ -1,7 +1,12 @@
 import { QueryClient, queryOptions } from "@tanstack/react-query";
 
 import { ApplicationRequestError, connectionClosed } from "./errors";
-import type { ApplicationError, Change, NoteSnapshot } from "./protocol.gen";
+import type {
+  ApplicationError,
+  Change,
+  NoteSnapshot,
+  DocumentTarget,
+} from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
 import type { ConnectionState, SearchRequest } from "~/types/tauri.gen";
@@ -115,6 +120,13 @@ export class VaultScope {
       queryKey: ["vault", this.client.scope, "docs", sessionId],
       queryFn: ({ signal }) =>
         this.run(() => this.client.documents(sessionId, { signal })),
+    });
+  }
+  documentOptions(sessionId: string, target: DocumentTarget) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "document", sessionId, target],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.readDocument(sessionId, target, { signal })),
     });
   }
   transcriptsOptions(sessionId: string) {
@@ -251,6 +263,11 @@ export class VaultScope {
               ["sessions", "session_headers", "tasks"].includes(
                 change.entity,
               ) &&
+              (all || ids.has(String(id)))
+            );
+          if (kind === "document")
+            return (
+              ["docs", "sessions", "session_headers"].includes(change.entity) &&
               (all || ids.has(String(id)))
             );
           return kind === change.entity && (all || ids.has(String(id)));

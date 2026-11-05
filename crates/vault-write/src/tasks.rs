@@ -120,6 +120,36 @@ impl SessionStore {
         source_id: &str,
         content: &serde_json::Value,
     ) -> Result<Vec<TaskItem>, StoreError> {
+        self.prepare_content_tasks(session_id, source_type, source_id, content, None)
+            .await
+    }
+
+    pub(super) async fn prepare_edited_tasks(
+        &self,
+        session_id: &str,
+        source_type: &str,
+        source_id: &str,
+        previous_markdown: &str,
+        content: &serde_json::Value,
+    ) -> Result<Vec<TaskItem>, StoreError> {
+        let markdown = previous_markdown.to_owned();
+        let previous =
+            tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                .await
+                .map_err(|error| StoreError::Io(error.to_string()))?
+                .map_err(StoreError::Serialize)?;
+        self.prepare_content_tasks(session_id, source_type, source_id, content, Some(&previous))
+            .await
+    }
+
+    async fn prepare_content_tasks(
+        &self,
+        session_id: &str,
+        source_type: &str,
+        source_id: &str,
+        content: &serde_json::Value,
+        previous_content: Option<&serde_json::Value>,
+    ) -> Result<Vec<TaskItem>, StoreError> {
         let mut existing = self
             .read_tasks_at(&TaskScope::Session(session_id.to_string()))
             .await?;
@@ -139,6 +169,10 @@ impl SessionStore {
             .collect();
         let mut nodes = Vec::new();
         collect_task_nodes(content, &mut nodes);
+        let mut prior_nodes = Vec::new();
+        if let Some(previous_content) = previous_content {
+            collect_task_nodes(previous_content, &mut prior_nodes);
+        }
         let now = now_iso();
         for (order, node) in nodes.into_iter().enumerate() {
             let body = node
@@ -157,6 +191,20 @@ impl SessionStore {
                 .iter()
                 .position(|task| normalize_task_text(&task.text) == text)
                 .map(|index| previous.remove(index));
+            let previous_checked = prior_nodes
+                .iter()
+                .position(|previous| {
+                    previous
+                        .get("content")
+                        .and_then(|body| body.as_array())
+                        .and_then(|nodes| nodes.iter().find(|node| node["type"] == "paragraph"))
+                        .map(task_node_text)
+                        .unwrap_or_default()
+                        == text
+                })
+                .map(|index| prior_nodes.remove(index)["attrs"]["checked"] == true);
+            let checked = node["attrs"]["checked"] == true;
+            let changed_checkbox = previous_checked.is_some_and(|previous| previous != checked);
             let mut task = TaskItem {
                 id: prior
                     .as_ref()
@@ -167,15 +215,9 @@ impl SessionStore {
                 source_order: order as i32,
                 status: prior
                     .as_ref()
+                    .filter(|_| !changed_checkbox)
                     .map(|task| task.status.clone())
-                    .unwrap_or_else(|| {
-                        if node["attrs"]["checked"] == true {
-                            "done"
-                        } else {
-                            "todo"
-                        }
-                        .into()
-                    }),
+                    .unwrap_or_else(|| if checked { "done" } else { "todo" }.into()),
                 text,
                 body,
                 due_at: prior

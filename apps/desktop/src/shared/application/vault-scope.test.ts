@@ -34,6 +34,31 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("keeps output snapshots isolated and invalidates only changed sessions", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const summary = active.documentOptions("first", {
+      kind: "summary",
+    }).queryKey;
+    const output = active.documentOptions("first", {
+      kind: "template_output",
+      document_id: "out",
+    }).queryKey;
+    const other = active.documentOptions("second", {
+      kind: "summary",
+    }).queryKey;
+    const value = { document: null, revision: "r" };
+    for (const key of [summary, output, other])
+      active.queryClient.setQueryData(key, value);
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "docs", ids: ["first"] },
+    });
+    expect(active.queryClient.getQueryState(summary)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(output)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(false);
+    active.dispose();
+  });
   it("invalidates complete registry lists for individual people and tag changes", async () => {
     const { active, emit } = fixture("scope");
     await active.start();

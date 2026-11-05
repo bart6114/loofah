@@ -8,6 +8,76 @@ use crate::{
 };
 
 impl VaultContext {
+    pub async fn read_document(
+        &self,
+        session_id: &str,
+        target: &hypr_loofah_protocol::DocumentTarget,
+    ) -> Result<hypr_loofah_protocol::DocumentSnapshot, ApplicationError> {
+        self.validate_document(session_id, target)?;
+        self.store
+            .read_document_snapshot(session_id, target)
+            .await
+            .map_err(|cause| match cause {
+                hypr_vault_write::StoreError::Conflict(_) => error(
+                    ErrorCode::Validation,
+                    "Use the summary operation for legacy summaries",
+                ),
+                cause => storage_error(cause, false),
+            })?
+            .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
+    }
+
+    pub async fn save_document(
+        &self,
+        session_id: &str,
+        target: &hypr_loofah_protocol::DocumentTarget,
+        input: hypr_loofah_protocol::SaveDocumentRequest,
+    ) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
+        self.validate_document(session_id, target)?;
+        if input.expected_revision.is_empty() || input.expected_revision.len() > 128 {
+            return Err(error(
+                ErrorCode::Validation,
+                "Expected document revision is required",
+            ));
+        }
+        if input.markdown.len() > 4 * 1024 * 1024 {
+            return Err(error(
+                ErrorCode::ResourceLimit,
+                "Document content is too large",
+            ));
+        }
+        let current = self.read_document(session_id, target).await?;
+        if matches!(
+            target,
+            hypr_loofah_protocol::DocumentTarget::TemplateOutput { .. }
+        ) && current.document.is_none()
+        {
+            return Err(error(ErrorCode::NotFound, "Template output not found"));
+        }
+        self.store
+            .save_document_if_revision(
+                session_id,
+                target,
+                &input.markdown,
+                &input.expected_revision,
+            )
+            .await
+            .map_err(|cause| storage_error(cause, true))
+    }
+
+    fn validate_document(
+        &self,
+        session_id: &str,
+        target: &hypr_loofah_protocol::DocumentTarget,
+    ) -> Result<(), ApplicationError> {
+        self.validate(session_id)?;
+        if let hypr_loofah_protocol::DocumentTarget::TemplateOutput { document_id } = target {
+            hypr_vault_read::paths::validate_session_id(document_id)
+                .map_err(|_| error(ErrorCode::Validation, "Invalid document identifier"))?;
+        }
+        Ok(())
+    }
+
     async fn require_session(&self, session_id: &str) -> Result<(), ApplicationError> {
         self.validate(session_id)?;
         self.store

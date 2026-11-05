@@ -7,6 +7,7 @@ pub mod attachments;
 pub mod audio;
 mod audio_layout;
 pub mod content;
+mod document_revision;
 pub mod enhanced;
 #[cfg(test)]
 mod flat_layout_tests;

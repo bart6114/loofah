@@ -144,3 +144,26 @@ pub fn application_scope<R: tauri::Runtime>(
 ) -> Result<String, ApplicationError> {
     Ok(context(&app)?.events.vault_id())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_read_document<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    target: hypr_loofah_protocol::DocumentTarget,
+) -> Result<hypr_loofah_protocol::DocumentSnapshot, ApplicationError> {
+    context(&app)?.read_document(&session_id, &target).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_save_document<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    target: hypr_loofah_protocol::DocumentTarget,
+    input: hypr_loofah_protocol::SaveDocumentRequest,
+) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
+    context(&app)?
+        .save_document(&session_id, &target, input)
+        .await
+}

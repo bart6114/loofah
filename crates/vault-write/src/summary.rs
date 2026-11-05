@@ -112,6 +112,31 @@ impl SessionStore {
         suggested_tags: Option<Vec<ScoredTagSuggestion>>,
         auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
+        self.update_summary_checked_impl(
+            session_id,
+            markdown,
+            expected,
+            reconcile_tasks,
+            title,
+            suggested_tags,
+            auto_apply_high_confidence_tags,
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub(super) async fn update_summary_checked_impl(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        reconcile_tasks: bool,
+        title: Option<&str>,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
+        expected_revision: Option<&str>,
+    ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
             Some(
@@ -124,6 +149,18 @@ impl SessionStore {
             None
         };
         let guard = self.lock_writes().await;
+        let target = hypr_loofah_protocol::DocumentTarget::Summary;
+        if let Some(expected) = expected_revision {
+            let current = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+            if current.revision != expected {
+                return Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Conflict(
+                    current,
+                )));
+            }
+        }
         let dir = self.writable_summary_dir(&guard, session_id).await?;
         let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
             StoreError::Io(format!("session {session_id} has no _meta.json to update"))
@@ -141,8 +178,16 @@ impl SessionStore {
             hypr_vault_read::summary::locate_in(&vault, &read_dir, &id)
         })
         .await
-        .map_err(join_error)??
-        .ok_or_else(|| StoreError::Conflict("summary was deleted".into()))?;
+        .map_err(join_error)??;
+        let summary = match summary {
+            Some(summary) => summary,
+            None if expected_revision.is_some() => hypr_vault_read::summary::LocatedSummary {
+                markdown: String::new(),
+                relative_path: paths::summary_path_in(&dir),
+                legacy_id: None,
+            },
+            None => return Err(StoreError::Conflict("summary was deleted".into())),
+        };
         if expected.is_some_and(|expected| expected != summary.markdown)
             && !(suggested_tags.is_none() && reconcile_tasks && markdown == summary.markdown)
         {
@@ -161,10 +206,19 @@ impl SessionStore {
             })
             .unwrap_or_default();
         let tasks = if let Some(content) = task_content {
-            Some(
+            Some(if expected_revision.is_some() {
+                self.prepare_edited_tasks(
+                    session_id,
+                    "session_summary",
+                    session_id,
+                    &summary.markdown,
+                    &content,
+                )
+                .await?
+            } else {
                 self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
-                    .await?,
-            )
+                    .await?
+            })
         } else {
             None
         };
@@ -208,7 +262,18 @@ impl SessionStore {
         } else {
             self.index_set_summary(session_id, Some(markdown.to_owned()));
         }
-        task_result
+        task_result?;
+        if expected_revision.is_some() {
+            let snapshot = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+            Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Saved(
+                snapshot,
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn delete_summary(&self, session_id: &str) -> Result<(), StoreError> {

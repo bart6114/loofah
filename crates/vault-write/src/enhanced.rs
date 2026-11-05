@@ -136,6 +136,27 @@ impl SessionStore {
         session_title: Option<&str>,
         auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
+        self.update_enhanced_doc_checked_impl(
+            session_id,
+            doc_id,
+            patch,
+            session_title,
+            auto_apply_high_confidence_tags,
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub(super) async fn update_enhanced_doc_checked_impl(
+        &self,
+        session_id: &str,
+        doc_id: &str,
+        patch: EnhancedDocPatch,
+        session_title: Option<&str>,
+        auto_apply_high_confidence_tags: bool,
+        expected_revision: Option<&str>,
+    ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
         validate_session_id(session_id)?;
         validate_doc_id(doc_id)?;
 
@@ -156,6 +177,20 @@ impl SessionStore {
         // Held across the read-modify-write so a concurrent patch of the same doc can't be
         // computed from bytes this call is about to replace.
         let guard = self.lock_writes().await;
+        let target = hypr_loofah_protocol::DocumentTarget::TemplateOutput {
+            document_id: doc_id.into(),
+        };
+        if let Some(expected) = expected_revision {
+            let current = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+            if current.revision != expected {
+                return Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Conflict(
+                    current,
+                )));
+            }
+        }
 
         let mut doc = self
             .read_enhanced_doc(session_id, doc_id)
@@ -186,6 +221,7 @@ impl SessionStore {
             }
         }
 
+        let previous_markdown = expected_revision.map(|_| doc.markdown.clone());
         let EnhancedDocPatch {
             suggested_tags,
             reconcile_tasks: _,
@@ -216,14 +252,23 @@ impl SessionStore {
         }
 
         let tasks = if let Some(content) = task_content {
-            Some(
+            Some(if let Some(previous_markdown) = previous_markdown {
+                self.prepare_edited_tasks(
+                    session_id,
+                    "enhanced_note",
+                    doc_id,
+                    &previous_markdown,
+                    &content,
+                )
+                .await?
+            } else {
                 self.prepare_generated_tasks(session_id, "enhanced_note", doc_id, &content)
-                    .await?,
-            )
+                    .await?
+            })
         } else {
             None
         };
-        if session_title.is_some() || suggested_tags.is_some() {
+        let result = if session_title.is_some() || suggested_tags.is_some() {
             let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
                 StoreError::Io(format!("session {session_id} has no _meta.json to update"))
             })?;
@@ -255,6 +300,18 @@ impl SessionStore {
         } else {
             self.persist_enhanced_doc_locked(&guard, &doc, tasks.as_deref())
                 .await
+        };
+        result?;
+        if expected_revision.is_some() {
+            let snapshot = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+            Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Saved(
+                snapshot,
+            )))
+        } else {
+            Ok(None)
         }
     }
 

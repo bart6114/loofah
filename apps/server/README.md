@@ -48,6 +48,8 @@ The container runs as UID/GID `10001`. Mount persistent volumes at `/var/lib/loo
 | List/create/read sessions           | `GET` / `POST /api/v1/vaults/{vault}/sessions`, `GET …/sessions/{session}`                     |
 | Read/save a note                    | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/note`                                   |
 | Read summaries/template outputs     | `GET /api/v1/vaults/{vault}/sessions/{session}/documents`                                      |
+| Read/replace summary Markdown       | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/summary`                                |
+| Read/replace template Markdown      | `GET` / `PUT /api/v1/vaults/{vault}/sessions/{session}/outputs/{document}`                     |
 | Read complete transcript records    | `GET /api/v1/vaults/{vault}/sessions/{session}/transcripts`                                    |
 | Read session tasks                  | `GET /api/v1/vaults/{vault}/sessions/{session}/tasks`                                          |
 | Read people/tag registries          | `GET /api/v1/vaults/{vault}/people`, `GET …/tags`                                              |
@@ -59,6 +61,10 @@ Contract types live in `crates/loofah-protocol`; generate TypeScript with `cargo
 SSE uses `Last-Event-ID` for bounded replay. A new connection, cursor gap or server epoch change produces `resync_required`; clients must reload authoritative snapshots. Streams close on token expiry, access removal or service shutdown. Changes are invalidations, not an offline synchronization log.
 
 Requests and write workers are bounded. JSON requests have a 5 MiB body limit, note creation has a 4 MiB content limit, and list/search pages are bounded. Disconnecting does not roll back an admitted write. Creation receipts survive restarts; note revisions protect retries from overwriting a newer edit.
+
+The additive `document_edit` capability exposes coherent summary/template snapshots and body replacement. A snapshot contains an optional `document` and an opaque `revision`. PUT accepts `markdown` and a required `expected_revision`; stale input returns HTTP 409 with the current snapshot. An absent summary can be created against its absent revision. An absent template output is never recreated by replacement. Output metadata, template identity and order are retained. Legacy summaries use the summary operation and the existing guarded migration path. These operations reconcile source tasks in Rust, retain stable matching task metadata, and apply explicitly changed checkboxes. Readers cannot replace content.
+
+These document operations are experimental. Body/task persistence uses separate atomic files; a later failure reports an unknown mutation outcome. Durable recovery of this compound write and the desktop output editor remain required before feature parity. Clients must retain unsaved input and reload canonical state after uncertain results.
 
 The additive `content_read` capability covers the read-only content APIs. They share Rust operations and file-format types with local IPC. Four content reads can run concurrently, including response serialization on blocking workers. Serialized response limits are 1 MiB for registries, 8 MiB for tasks, and 32 MiB for documents or transcripts. Oversized results return a non-retryable `resource_limit` error; content is never silently truncated. Pagination/export for oversized content remains part of the full migration. Shutdown waits for admitted content reads as well as writes.
 

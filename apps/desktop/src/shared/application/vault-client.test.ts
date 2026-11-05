@@ -10,6 +10,8 @@ const native = vi.hoisted(() => ({
     applicationSession: vi.fn(),
     applicationSearch: vi.fn(),
     applicationDocuments: vi.fn(),
+    applicationReadDocument: vi.fn(),
+    applicationSaveDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationTasks: vi.fn(),
     applicationPeople: vi.fn(),
@@ -61,6 +63,67 @@ beforeEach(() => {
 });
 
 describe("shared vault request and subscription contract", () => {
+  it("uses the same document target and checked replacement through IPC and HTTPS", async () => {
+    const target = { kind: "template_output" as const, document_id: "output" };
+    const input = { markdown: "Edited output", expected_revision: "baseline" };
+    const snapshot = { document: null, revision: "baseline" };
+    const conflict = { kind: "conflict", snapshot };
+    native.commands.applicationReadDocument.mockResolvedValue({
+      status: "ok",
+      data: snapshot,
+    });
+    native.commands.applicationSaveDocument.mockResolvedValue({
+      status: "ok",
+      data: conflict,
+    });
+    const local = await connectLocalVault();
+    expect(await local.readDocument("session", target)).toEqual(snapshot);
+    expect(await local.saveDocument("session", target, input)).toEqual(
+      conflict,
+    );
+    expect(native.commands.applicationSaveDocument).toHaveBeenCalledWith(
+      "session",
+      target,
+      input,
+    );
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce(conflict);
+    const remote = connectRemoteVault(
+      {
+        info: {
+          server: "https://company.example/",
+          capabilities: { features: ["document_edit"] },
+        },
+        request,
+      } as unknown as NativeRemoteConnection,
+      "alice",
+      vault,
+    );
+    expect(await remote.readDocument("session", target)).toEqual(snapshot);
+    expect(await remote.saveDocument("session", target, input)).toEqual(
+      conflict,
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      { kind: "document", vault_id: "first", session_id: "session", target },
+      "document",
+      undefined,
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      {
+        kind: "save_document",
+        vault_id: "first",
+        session_id: "session",
+        target,
+        input,
+      },
+      "document_save",
+      undefined,
+    );
+  });
   it("reads content through IPC locally and pins every remote read to its selected vault", async () => {
     const local = await connectLocalVault();
     await Promise.all([
