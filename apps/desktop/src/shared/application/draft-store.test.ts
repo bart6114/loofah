@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   draftCacheGet: vi.fn(),
+  draftCacheInventory: vi.fn(),
+  draftCacheRecovery: vi.fn(),
   draftCachePut: vi.fn(),
   draftCacheRemove: vi.fn(),
 }));
@@ -19,12 +21,44 @@ const recovery = (scope: string) => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [] });
+  native.draftCacheRecovery.mockResolvedValue({ status: "ok", data: null });
   native.draftCacheGet.mockResolvedValue({ status: "ok", data: null });
   native.draftCachePut.mockResolvedValue({ status: "ok", data: undefined });
   native.draftCacheRemove.mockResolvedValue({ status: "ok", data: undefined });
 });
 
 describe("native device draft persistence", () => {
+  it("flushes queued device writes before inventory and pins recovery lookups to the original scope", async () => {
+    const store = new NativeDraftStore("alice");
+    let finish!: (value: unknown) => void;
+    native.draftCachePut.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const writing = store.save(recovery("alice"));
+    await vi.waitFor(() => expect(native.draftCachePut).toHaveBeenCalledOnce());
+    const listing = store.inventory();
+    expect(native.draftCacheInventory).not.toHaveBeenCalled();
+    finish({ status: "ok", data: undefined });
+    await writing;
+    await listing;
+    expect(native.draftCacheInventory).toHaveBeenCalledWith("alice");
+    await store.recovery("opaque-id");
+    expect(native.draftCacheRecovery).toHaveBeenCalledWith(
+      "alice",
+      "opaque-id",
+    );
+    native.draftCacheRecovery.mockResolvedValueOnce({
+      status: "ok",
+      data: recovery("bob"),
+    });
+    await expect(store.recovery("opaque-id")).rejects.toThrow(
+      "different account or vault",
+    );
+  });
+
   it("serializes writes and cleanup while pinning immutable inputs at enqueue time", async () => {
     const store = new NativeDraftStore("server:alice:vault");
     let finish!: (value: unknown) => void;

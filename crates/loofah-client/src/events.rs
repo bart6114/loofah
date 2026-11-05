@@ -165,11 +165,11 @@ impl RemoteClient {
                 .await
                 .unwrap_or_else(|_| unavailable()));
         }
-        if !response
+        if response
             .headers()
             .get("content-type")
             .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.split(';').next() == Some("text/event-stream"))
+            .is_none_or(|value| value.split(';').next() != Some("text/event-stream"))
         {
             return Err(failure(
                 ErrorCode::IncompatibleVersion,

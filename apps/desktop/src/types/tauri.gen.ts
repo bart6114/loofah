@@ -19,6 +19,33 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async draftCacheInventory(
+    scope: string,
+  ): Promise<Result<RecoveryEntry[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_inventory", { scope }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async draftCacheRecovery(
+    scope: string,
+    id: string,
+  ): Promise<Result<NoteDraftRecovery | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_recovery", { scope, id }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async draftCachePut(
     recovery: NoteDraftRecovery,
   ): Promise<Result<null, ApplicationError>> {
@@ -1616,6 +1643,12 @@ export type RebuildReport = {
    */
   ghost_sessions: string[];
   errors: string[];
+};
+export type RecoveryEntry = {
+  id: string;
+  sessionId: string;
+  title: string;
+  uncertain: boolean;
 };
 export type RemoteConnectionInfo = {
   connection_id: string;

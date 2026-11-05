@@ -7,7 +7,7 @@ mod requests;
 mod sse;
 
 pub use auth::LoginAttempt;
-pub use drafts::{DraftCache, DraftText, NoteDraftRecovery};
+pub use drafts::{DraftCache, DraftText, NoteDraftRecovery, RecoveryEntry};
 pub use events::{ConnectionState, RemoteEvent, Subscription};
 pub use requests::{RemoteOperation, RemoteReply};
 

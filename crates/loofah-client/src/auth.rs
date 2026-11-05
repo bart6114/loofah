@@ -204,10 +204,10 @@ impl RemoteClient {
 
     pub(crate) async fn expire_access(&self, access: &str) {
         let mut state = self.tokens.lock().await;
-        if let Some(token) = &mut state.token {
-            if token.access == access {
-                token.expires = Instant::now();
-            }
+        if let Some(token) = &mut state.token
+            && token.access == access
+        {
+            token.expires = Instant::now();
         }
     }
 

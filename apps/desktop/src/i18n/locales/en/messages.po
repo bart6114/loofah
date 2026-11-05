@@ -469,6 +469,10 @@ msgstr "Copy my vault"
 msgid "Copy my vault here"
 msgstr "Copy my vault here"
 
+#: src/shared/application/device-recovery.tsx
+msgid "Copy saved text"
+msgstr "Copy saved text"
+
 #: src/shared/application/notes-workspace.tsx
 msgid "Copy unsaved text"
 msgstr "Copy unsaved text"
@@ -613,6 +617,10 @@ msgstr "Design theme"
 #: src/shared/application/notes-workspace.tsx
 msgid "Device recovery copy:"
 msgstr "Device recovery copy:"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Device recovery drafts"
+msgstr "Device recovery drafts"
 
 #: src/main/about-dialog.tsx
 msgid "Diagnostics"
@@ -956,6 +964,14 @@ msgstr "Loading content…"
 msgid "Loading debug information…"
 msgstr "Loading debug information…"
 
+#: src/shared/application/device-recovery.tsx
+msgid "Loading draft…"
+msgstr "Loading draft…"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Loading drafts…"
+msgstr "Loading drafts…"
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Loading members…"
 msgstr "Loading members…"
@@ -1161,6 +1177,10 @@ msgstr "No notes found."
 #: src/settings/general/searchable-select.tsx
 msgid "No results found."
 msgstr "No results found."
+
+#: src/shared/application/device-recovery.tsx
+msgid "No saved recovery drafts."
+msgstr "No saved recovery drafts."
 
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
@@ -1369,6 +1389,18 @@ msgstr "Recording and transcription still work. Set up summaries when you want t
 msgid "Recordings"
 msgstr "Recordings"
 
+#: src/shared/application/device-recovery.tsx
+msgid "Recovered Markdown"
+msgstr "Recovered Markdown"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovered title"
+msgstr "Recovered title"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovery copies for this vault from closed windows and deleted notes or outputs. Copy text to recover it; this view does not save to the vault."
+msgstr "Recovery copies for this vault from closed windows and deleted notes or outputs. Copy text to recover it; this view does not save to the vault."
+
 #: src/shared/application/notes-workspace.tsx
 msgid "Refine your search to see more results."
 msgstr "Refine your search to see more results."
@@ -1392,6 +1424,10 @@ msgstr "Refreshing..."
 #: src/shared/application/vault-sharing.tsx
 msgid "Reload access"
 msgstr "Reload access"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Reload drafts"
+msgstr "Reload drafts"
 
 #: src/settings/general/notification.tsx
 msgid "Remind me to record meetings"
@@ -1525,6 +1561,10 @@ msgstr "Runs after the recording finishes, not during the meeting."
 #: src/shared/application/notes-workspace.tsx
 msgid "Save"
 msgstr "Save"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Save confirmation was not received"
+msgstr "Save confirmation was not received"
 
 #: src/session/components/session-date.tsx
 msgid "Save date"
@@ -1847,6 +1887,10 @@ msgstr "Summaries not enabled"
 msgid "Summary"
 msgstr "Summary"
 
+#: src/shared/application/device-recovery.tsx
+msgid "Summary draft"
+msgstr "Summary draft"
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
 msgstr "Summary instructions"
@@ -1924,6 +1968,10 @@ msgstr "Tags"
 msgid "Tasks"
 msgstr "Tasks"
 
+#: src/shared/application/device-recovery.tsx
+msgid "Template output draft"
+msgstr "Template output draft"
+
 #: src/settings/ai/llm/select.tsx
 msgid "Text for summaries is sent to this provider."
 msgstr "Text for summaries is sent to this provider."
@@ -1971,6 +2019,10 @@ msgstr "This model transcribes after recording."
 #: src/shared/application/server-preview.tsx
 msgid "This preview edits Markdown notes. Recording, attachments and AI are not connected here yet. Your standalone setup stays available."
 msgstr "This preview edits Markdown notes. Recording, attachments and AI are not connected here yet. Your standalone setup stays available."
+
+#: src/shared/application/device-recovery.tsx
+msgid "This recovery copy has already been cleared."
+msgstr "This recovery copy has already been cleared."
 
 #. placeholder {0}: pending.speakerCount
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
@@ -2094,6 +2146,10 @@ msgstr "Unsaved changes"
 #: src/sidebar/timeline/item.tsx
 msgid "Untitled"
 msgstr "Untitled"
+
+#: src/shared/application/device-recovery.tsx
+msgid "Untitled note draft"
+msgstr "Untitled note draft"
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Update Codex CLI"

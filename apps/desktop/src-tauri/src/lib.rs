@@ -565,6 +565,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
     tauri_specta::Builder::<R>::new()
         .commands(tauri_specta::collect_commands![
             draft_cache::draft_cache_get::<tauri::Wry>,
+            draft_cache::draft_cache_inventory::<tauri::Wry>,
+            draft_cache::draft_cache_recovery::<tauri::Wry>,
             draft_cache::draft_cache_put::<tauri::Wry>,
             draft_cache::draft_cache_remove::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,

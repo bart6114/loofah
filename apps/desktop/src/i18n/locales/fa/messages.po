@@ -469,6 +469,10 @@ msgstr ""
 msgid "Copy my vault here"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Copy saved text"
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 msgid "Copy unsaved text"
 msgstr ""
@@ -612,6 +616,10 @@ msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
 msgid "Device recovery copy:"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Device recovery drafts"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -956,6 +964,14 @@ msgstr ""
 msgid "Loading debug information…"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Loading draft…"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Loading drafts…"
+msgstr ""
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Loading members…"
 msgstr ""
@@ -1160,6 +1176,10 @@ msgstr ""
 #: src/settings/ai/shared/model-combobox.tsx
 #: src/settings/general/searchable-select.tsx
 msgid "No results found."
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "No saved recovery drafts."
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
@@ -1369,6 +1389,18 @@ msgstr ""
 msgid "Recordings"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Recovered Markdown"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovered title"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovery copies for this vault from closed windows and deleted notes or outputs. Copy text to recover it; this view does not save to the vault."
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 msgid "Refine your search to see more results."
 msgstr ""
@@ -1391,6 +1423,10 @@ msgstr ""
 
 #: src/shared/application/vault-sharing.tsx
 msgid "Reload access"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Reload drafts"
 msgstr ""
 
 #: src/settings/general/notification.tsx
@@ -1524,6 +1560,10 @@ msgstr ""
 #: src/settings/ai/llm/summary-prompt.tsx
 #: src/shared/application/notes-workspace.tsx
 msgid "Save"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Save confirmation was not received"
 msgstr ""
 
 #: src/session/components/session-date.tsx
@@ -1847,6 +1887,10 @@ msgstr ""
 msgid "Summary"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Summary draft"
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
 msgstr ""
@@ -1924,6 +1968,10 @@ msgstr ""
 msgid "Tasks"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Template output draft"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Text for summaries is sent to this provider."
 msgstr ""
@@ -1970,6 +2018,10 @@ msgstr ""
 
 #: src/shared/application/server-preview.tsx
 msgid "This preview edits Markdown notes. Recording, attachments and AI are not connected here yet. Your standalone setup stays available."
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "This recovery copy has already been cleared."
 msgstr ""
 
 #. placeholder {0}: pending.speakerCount
@@ -2093,6 +2145,10 @@ msgstr ""
 #: src/shared/open-note-dialog.tsx
 #: src/sidebar/timeline/item.tsx
 msgid "Untitled"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Untitled note draft"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx

@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   draftCacheGet: vi.fn(),
+  draftCacheInventory: vi.fn(),
+  draftCacheRecovery: vi.fn(),
   draftCachePut: vi.fn(),
   draftCacheRemove: vi.fn(),
 }));
@@ -168,6 +170,8 @@ async function open(client: VaultClient) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [] });
+  native.draftCacheRecovery.mockResolvedValue({ status: "ok", data: null });
   native.draftCacheGet.mockResolvedValue({ status: "ok", data: null });
   native.draftCachePut.mockResolvedValue({ status: "ok", data: undefined });
   native.draftCacheRemove.mockResolvedValue({ status: "ok", data: undefined });
@@ -606,6 +610,53 @@ describe("shared note workspace", () => {
     await screen.findByText("No matching notes");
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     await screen.findByRole("button", { name: "Seed" });
+  });
+
+  it("hides recovery inventory and its private preview when vault authorization is lost", async () => {
+    const backend = fixture();
+    await open(backend.client);
+    const entry = {
+      id: "a".repeat(64),
+      sessionId: "deleted-note",
+      title: "Orphaned note",
+      uncertain: false,
+    };
+    native.draftCacheInventory.mockResolvedValue({
+      status: "ok",
+      data: [entry],
+    });
+    native.draftCacheRecovery.mockResolvedValue({
+      status: "ok",
+      data: {
+        scope: backend.client.scope,
+        sessionId: entry.sessionId,
+        baseline: note("Original", "a"),
+        draft: { title: "Orphaned note", markdown: "Private orphaned draft" },
+        uncertain: false,
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Device recovery drafts" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Orphaned note/ }),
+    );
+    const preview = await screen.findByRole("textbox", {
+      name: "Recovered Markdown",
+    });
+    expect((preview as HTMLTextAreaElement).value).toBe(
+      "Private orphaned draft",
+    );
+    backend.emit({ kind: "connection", state: "access_denied", error: null });
+    await screen.findByText("This connection is no longer authorized.");
+    expect(
+      screen.queryByRole("textbox", { name: "Recovered Markdown" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Device recovery drafts" }),
+    ).toBeNull();
+    expect(backend.client.saveNote).not.toHaveBeenCalled();
+    expect(backend.client.saveDocument).not.toHaveBeenCalled();
   });
 
   it("keeps a deleted note's draft visible and read-only without retrying a save", async () => {

@@ -26,6 +26,15 @@ pub struct NoteDraftRecovery {
     pub uncertain: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryEntry {
+    pub id: String,
+    pub session_id: String,
+    pub title: String,
+    pub uncertain: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 struct StoredDraft {
     schema_version: u32,
@@ -68,6 +77,84 @@ impl DraftCache {
             let path = cache.path(&editor_id, &scope, &session_id);
             cache.check_path(&path)?;
             cache.read(&path, &editor_id, &scope, &session_id)
+        })
+        .await
+        .map_err(|_| worker_error())?
+    }
+
+    pub async fn inventory(self: &Arc<Self>, scope: String) -> Result<Vec<RecoveryEntry>> {
+        coordinate("inventory", &scope, "inventory")?;
+        let cache = self.clone();
+        let guard = self.gate.clone().lock_owned().await;
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            let directory = cache.root.join(key(&scope));
+            cache.check_path(&directory.join("inventory.json"))?;
+            let entries = match std::fs::read_dir(&directory) {
+                Ok(entries) => entries,
+                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+                Err(cause) => return Err(io_error(cause)),
+            };
+            let mut result = Vec::new();
+            let mut total = 0_u64;
+            for (count, entry) in entries.enumerate() {
+                if count >= 4096 {
+                    return Err(limit(
+                        "Draft recovery directory has too many entries. Its files were kept.",
+                    ));
+                }
+                let entry = entry.map_err(io_error)?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !owned_filename(&name) {
+                    continue;
+                }
+                let path = entry.path();
+                cache.check_path(&path)?;
+                total = total.saturating_add(entry.metadata().map_err(io_error)?.len());
+                if total > cache.scope_limit || result.len() >= 512 {
+                    return Err(limit(
+                        "Draft recovery storage exceeds the inventory limit. Its files were kept.",
+                    ));
+                }
+                if let Some(stored) = cache.read_inventory_record(&path, &scope)? {
+                    result.push(RecoveryEntry {
+                        id: name.strip_suffix(".json").unwrap().into(),
+                        session_id: stored.recovery.session_id,
+                        title: stored.recovery.draft.title.chars().take(200).collect(),
+                        uncertain: stored.recovery.uncertain,
+                    });
+                }
+            }
+            result.sort_by(|left, right| {
+                left.session_id
+                    .cmp(&right.session_id)
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            Ok(result)
+        })
+        .await
+        .map_err(|_| worker_error())?
+    }
+
+    pub async fn recovery(
+        self: &Arc<Self>,
+        scope: String,
+        id: String,
+    ) -> Result<Option<NoteDraftRecovery>> {
+        coordinate("inventory", &scope, "inventory")?;
+        if id.len() != 64 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(failure(
+                ErrorCode::Validation,
+                "Invalid device recovery identifier",
+            ));
+        }
+        let cache = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let path = cache.root.join(key(&scope)).join(format!("{id}.json"));
+            cache.check_path(&path)?;
+            Ok(cache
+                .read_inventory_record(&path, &scope)?
+                .map(|stored| stored.recovery))
         })
         .await
         .map_err(|_| worker_error())?
@@ -201,6 +288,37 @@ impl DraftCache {
         scope: &str,
         session_id: &str,
     ) -> Result<Option<NoteDraftRecovery>> {
+        let Some(stored) = self.read_stored(path)? else {
+            return Ok(None);
+        };
+        if stored.editor_id != editor_id
+            || stored.recovery.scope != scope
+            || stored.recovery.session_id != session_id
+        {
+            return Err(damaged());
+        }
+        Ok(Some(stored.recovery))
+    }
+
+    fn read_inventory_record(&self, path: &Path, scope: &str) -> Result<Option<StoredDraft>> {
+        let Some(stored) = self.read_stored(path)? else {
+            return Ok(None);
+        };
+        coordinate(
+            &stored.editor_id,
+            &stored.recovery.scope,
+            &stored.recovery.session_id,
+        )
+        .map_err(|_| damaged())?;
+        if stored.recovery.scope != scope
+            || self.path(&stored.editor_id, scope, &stored.recovery.session_id) != path
+        {
+            return Err(damaged());
+        }
+        Ok(Some(stored))
+    }
+
+    fn read_stored(&self, path: &Path) -> Result<Option<StoredDraft>> {
         match std::fs::metadata(path) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(io_error(error)),
@@ -229,13 +347,7 @@ impl DraftCache {
             ));
         }
         let stored: StoredDraft = serde_json::from_value(value).map_err(|_| damaged())?;
-        if stored.editor_id != editor_id
-            || stored.recovery.scope != scope
-            || stored.recovery.session_id != session_id
-        {
-            return Err(damaged());
-        }
-        Ok(Some(stored.recovery))
+        Ok(Some(stored))
     }
 }
 
@@ -313,6 +425,143 @@ mod tests {
                 title: "Title".into(),
             },
             uncertain: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn inventory_discovers_orphaned_notes_and_outputs_across_windows_without_crossing_scopes()
+    {
+        let root = tempfile::tempdir().unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        let first = recovery("alice:vault", "deleted-note", "First unsaved body");
+        let output = recovery(
+            "alice:vault",
+            r#"["template_output","deleted-note","deleted-output"]"#,
+            "Orphaned output",
+        );
+        let other = recovery("bob:vault", "deleted-note", "Private Bob body");
+        cache.put("main".into(), first.clone()).await.unwrap();
+        cache
+            .put("closed-window".into(), output.clone())
+            .await
+            .unwrap();
+        cache.put("main".into(), other).await.unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        let entries = cache.inventory("alice:vault".into()).await.unwrap();
+        assert_eq!(entries.len(), 2);
+        let serialized = serde_json::to_string(&entries).unwrap();
+        assert!(!serialized.contains("unsaved body"));
+        assert!(!serialized.contains("Orphaned output"));
+        assert!(!serialized.contains("Bob"));
+        for entry in &entries {
+            let value = cache
+                .recovery("alice:vault".into(), entry.id.clone())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(value == first || value == output);
+            assert_eq!(value.session_id, entry.session_id);
+            assert!(
+                cache
+                    .recovery("bob:vault".into(), entry.id.clone())
+                    .await
+                    .unwrap()
+                    .is_none_or(|value| value.scope == "bob:vault"
+                        && value.draft.markdown == "Private Bob body")
+            );
+        }
+        assert!(cache.inventory("empty".into()).await.unwrap().is_empty());
+        assert!(!root.path().join("cache").join(key("empty")).exists());
+        assert!(
+            cache
+                .recovery("alice:vault".into(), "../outside".into())
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            cache.inventory("alice:vault".into()).await.unwrap(),
+            entries
+        );
+    }
+
+    #[tokio::test]
+    async fn inventory_rejects_misplaced_damaged_and_future_records_without_changing_them() {
+        let root = tempfile::tempdir().unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        let original = recovery("scope", "deleted", "Keep this body");
+        cache.put("main".into(), original.clone()).await.unwrap();
+        let path = cache.path("main", "scope", "deleted");
+        let bytes = std::fs::read(&path).unwrap();
+        let renamed = path
+            .parent()
+            .unwrap()
+            .join(format!("{}.json", "a".repeat(64)));
+        std::fs::rename(&path, &renamed).unwrap();
+        assert!(cache.inventory("scope".into()).await.is_err());
+        assert!(
+            cache
+                .recovery("scope".into(), "a".repeat(64))
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&renamed).unwrap(), bytes);
+        std::fs::rename(&renamed, &path).unwrap();
+        for (content, code) in [
+            ("invalid JSON".to_owned(), ErrorCode::Internal),
+            (
+                serde_json::to_string(&serde_json::json!({"schema_version":2})).unwrap(),
+                ErrorCode::IncompatibleVersion,
+            ),
+        ] {
+            std::fs::write(&path, &content).unwrap();
+            assert_eq!(
+                cache.inventory("scope".into()).await.unwrap_err().code,
+                code
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+        }
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(cache.inventory("scope".into()).await.unwrap().len(), 1);
+        assert_eq!(
+            cache
+                .get("main".into(), "scope".into(), "deleted".into())
+                .await
+                .unwrap(),
+            Some(original)
+        );
+    }
+
+    #[tokio::test]
+    async fn inventory_bounds_bytes_and_rejects_symlinks_without_deleting_recovery_data() {
+        let root = tempfile::tempdir().unwrap();
+        let mut cache = DraftCache::new(root.path().join("cache")).unwrap();
+        cache.scope_limit = 32;
+        let cache = Arc::new(cache);
+        let path = cache.path("main", "scope", "note");
+        cache.prepare(&path).unwrap();
+        std::fs::write(&path, "x".repeat(33)).unwrap();
+        assert_eq!(
+            cache.inventory("scope".into()).await.unwrap_err().code,
+            ErrorCode::ResourceLimit
+        );
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 33);
+        #[cfg(unix)]
+        {
+            std::fs::remove_file(&path).unwrap();
+            let foreign = root.path().join("foreign");
+            std::fs::write(&foreign, "foreign").unwrap();
+            std::os::unix::fs::symlink(&foreign, &path).unwrap();
+            assert!(cache.inventory("scope".into()).await.is_err());
+            assert!(
+                cache
+                    .recovery(
+                        "scope".into(),
+                        path.file_stem().unwrap().to_str().unwrap().into()
+                    )
+                    .await
+                    .is_err()
+            );
+            assert_eq!(std::fs::read_to_string(&foreign).unwrap(), "foreign");
         }
     }
 

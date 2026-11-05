@@ -12,6 +12,19 @@ export class NativeDraftStore {
     this.prefix = `draft:${JSON.stringify(scope)}:`;
   }
 
+  async inventory() {
+    await this.flush();
+    return applicationResult(await commands.draftCacheInventory(this.scope));
+  }
+
+  async recovery(id: string): Promise<NoteDraftRecovery | null> {
+    await this.flush();
+    const value = applicationResult(await commands.draftCacheRecovery(this.scope, id));
+    if (value && value.scope !== this.scope)
+      throw new Error("This recovery draft belongs to a different account or vault");
+    return value;
+  }
+
   async load(sessionId: string): Promise<NoteDraftRecovery | null> {
     await this.flush();
     return applicationResult(

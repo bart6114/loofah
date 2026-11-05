@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@hypr/ui/components/ui/button";
 
+import { DeviceRecovery } from "./device-recovery";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
@@ -152,6 +153,9 @@ function Notes({ scope }: { scope: VaultScope }) {
             <Trans>Retry creation</Trans>
           </Button>
         </div>
+      )}
+      {!denied && (
+        <DeviceRecovery key={scope.client.scope} scope={scope.client.scope} />
       )}
       {denied ? (
         <div className="flex items-center gap-3">
