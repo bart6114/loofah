@@ -227,6 +227,36 @@ fn capacity() -> ApplicationError {
     )
 }
 
+async fn discover<R: tauri::Runtime>(
+    _app: &tauri::AppHandle<R>,
+    server: &str,
+    credentials: Arc<dyn CredentialStore>,
+) -> Result<Arc<RemoteClient>, ApplicationError> {
+    #[cfg(feature = "dev")]
+    if _app.config().identifier == "io.loofah.remote-qa" {
+        if let Some(path) = std::env::var_os("LOOFAH_QA_ROOT_CA") {
+            let root = tokio::task::spawn_blocking(move || {
+                let path = std::path::PathBuf::from(path);
+                let metadata = std::fs::metadata(&path).map_err(|_| {
+                    failure(ErrorCode::Validation, "Cannot read QA root certificate")
+                })?;
+                if !metadata.is_file() || metadata.len() > 131_072 {
+                    return Err(failure(
+                        ErrorCode::Validation,
+                        "Invalid QA root certificate file",
+                    ));
+                }
+                std::fs::read(path)
+                    .map_err(|_| failure(ErrorCode::Validation, "Cannot read QA root certificate"))
+            })
+            .await
+            .map_err(|_| failure(ErrorCode::Internal, "Cannot load QA certificate"))??;
+            return RemoteClient::discover_fixture(server, credentials, &root).await;
+        }
+    }
+    RemoteClient::discover(server, credentials, false).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn remote_connect<R: tauri::Runtime>(
@@ -241,7 +271,7 @@ pub async fn remote_connect<R: tauri::Runtime>(
     });
     let client = tokio::select! {
         _ = lifetime.cancelled() => return Err(missing()),
-        result = RemoteClient::discover(&server, credentials, false) => result?,
+        result = discover(&app, &server, credentials) => result?,
     };
     state.register(client, window.label(), &lifetime)
 }

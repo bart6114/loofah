@@ -98,7 +98,7 @@ run_rust() {
   run_step "desktop Rust check" cargo check -p desktop
   run_step "desktop Rust tests" cargo test -p desktop
 
-  local workspace_args=(cargo test --workspace)
+  local workspace_args=(cargo test --workspace --features loofah-client/dev-fixtures)
   local package
   for package in "${rust_excludes[@]}"; do
     workspace_args+=(--exclude "$package")

@@ -27,7 +27,7 @@ export default function ServerPreview() {
         <Trans>Try server notes</Trans>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex h-[80vh] w-[90vw] max-w-5xl flex-col">
+        <DialogContent className="flex h-[90vh] w-[94vw] max-w-5xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               <Trans>Server notes preview</Trans>

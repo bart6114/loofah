@@ -673,107 +673,112 @@ function NoteFields({
         void form.handleSubmit().catch(() => {});
       }}
     >
-      {noteError && (
-        <p role="alert" className="text-destructive text-xs">
-          {noteError.message}
-        </p>
-      )}
-      <form.Field name="title">
-        {(field) => (
-          <label className="flex flex-col gap-1 text-xs">
-            <Trans>Title</Trans>
-            <input
-              className="bg-background rounded border px-3 py-2 text-sm"
-              readOnly={!editable}
-              value={field.state.value}
-              onChange={(event) => {
-                field.handleChange(event.target.value);
-                draft.edit(form.getFieldValue("markdown"), event.target.value);
-              }}
-            />
-          </label>
-        )}
-      </form.Field>
-      <form.Field name="markdown">
-        {(field) => (
-          <label className="flex min-h-0 flex-1 flex-col gap-1 text-xs">
-            <Trans>Markdown</Trans>
-            <textarea
-              className="bg-background min-h-48 flex-1 resize-none rounded border p-3 font-mono text-sm"
-              readOnly={!editable}
-              value={field.state.value}
-              onChange={(event) => {
-                field.handleChange(event.target.value);
-                draft.edit(event.target.value, form.getFieldValue("title"));
-              }}
-            />
-          </label>
-        )}
-      </form.Field>
-      {snapshot.conflict && !save.isPending && (
-        <div className="rounded border p-3 text-xs">
-          <p>
-            <Trans>
-              This note changed in another client. Review the server version
-              before choosing.
-            </Trans>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        {noteError && (
+          <p role="alert" className="text-destructive text-xs">
+            {noteError.message}
           </p>
-          <pre className="my-2 max-h-40 overflow-auto whitespace-pre-wrap">
-            {snapshot.conflict.title}
-            {"\n\n"}
-            {snapshot.conflict.markdown}
-          </pre>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                resolve.mutate({
-                  keep: false,
-                  revision: snapshot.conflict!.revision,
-                })
-              }
-            >
-              <Trans>Use server version</Trans>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={
-                !available ||
-                connection.state !== "connected" ||
-                !scope.client.canEdit
-              }
-              onClick={() =>
-                resolve.mutate({
-                  keep: true,
-                  revision: snapshot.conflict!.revision,
-                })
-              }
-            >
-              <Trans>Save my version</Trans>
-            </Button>
+        )}
+        <form.Field name="title">
+          {(field) => (
+            <label className="flex shrink-0 flex-col gap-1 text-xs">
+              <Trans>Title</Trans>
+              <input
+                className="bg-background rounded border px-3 py-2 text-sm"
+                readOnly={!editable}
+                value={field.state.value}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                  draft.edit(
+                    form.getFieldValue("markdown"),
+                    event.target.value,
+                  );
+                }}
+              />
+            </label>
+          )}
+        </form.Field>
+        <form.Field name="markdown">
+          {(field) => (
+            <label className="flex min-h-32 flex-1 flex-col gap-1 text-xs">
+              <Trans>Markdown</Trans>
+              <textarea
+                className="bg-background min-h-0 flex-1 resize-none rounded border p-3 font-mono text-sm"
+                readOnly={!editable}
+                value={field.state.value}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                  draft.edit(event.target.value, form.getFieldValue("title"));
+                }}
+              />
+            </label>
+          )}
+        </form.Field>
+        {snapshot.conflict && !save.isPending && (
+          <div className="rounded border p-3 text-xs">
+            <p>
+              <Trans>
+                This note changed in another client. Review the server version
+                before choosing.
+              </Trans>
+            </p>
+            <pre className="my-2 max-h-40 overflow-auto whitespace-pre-wrap">
+              {snapshot.conflict.title}
+              {"\n\n"}
+              {snapshot.conflict.markdown}
+            </pre>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  resolve.mutate({
+                    keep: false,
+                    revision: snapshot.conflict!.revision,
+                  })
+                }
+              >
+                <Trans>Use server version</Trans>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  !available ||
+                  connection.state !== "connected" ||
+                  !scope.client.canEdit
+                }
+                onClick={() =>
+                  resolve.mutate({
+                    keep: true,
+                    revision: snapshot.conflict!.revision,
+                  })
+                }
+              >
+                <Trans>Save my version</Trans>
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
-      {save.error && (
-        <p role="alert" className="text-destructive text-xs">
-          {save.error.message}
-        </p>
-      )}
-      {resolve.error && (
-        <p role="alert" className="text-destructive text-xs">
-          {resolve.error.message}
-        </p>
-      )}
-      {(persist.error || recoveryError) && (
-        <p role="alert" className="text-destructive text-xs">
-          <Trans>Device recovery copy:</Trans>{" "}
-          {(persist.error ?? recoveryError)?.message}
-        </p>
-      )}
-      <div className="flex items-center justify-between">
+        )}
+        {save.error && (
+          <p role="alert" className="text-destructive text-xs">
+            {save.error.message}
+          </p>
+        )}
+        {resolve.error && (
+          <p role="alert" className="text-destructive text-xs">
+            {resolve.error.message}
+          </p>
+        )}
+        {(persist.error || recoveryError) && (
+          <p role="alert" className="text-destructive text-xs">
+            <Trans>Device recovery copy:</Trans>{" "}
+            {(persist.error ?? recoveryError)?.message}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center justify-between">
         <p role="status" className="text-muted-foreground text-xs">
           {snapshot.dirty ? (
             <Trans>Unsaved changes</Trans>

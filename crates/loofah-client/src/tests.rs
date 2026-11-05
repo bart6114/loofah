@@ -355,6 +355,40 @@ async fn browser_pkce_login_keeps_only_refresh_credentials_and_restores_without_
     assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 1);
 }
 
+#[cfg(feature = "dev-fixtures")]
+#[tokio::test]
+async fn fixture_transport_validates_tls_and_cannot_target_public_or_plain_http_origins() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let pem = include_bytes!("../tests/fixtures/localhost-ca.pem");
+    for address in ["http://127.0.0.1:8027", "https://company.example/"] {
+        let result =
+            RemoteClient::discover_fixture(address, fixture.credentials.clone(), pem).await;
+        assert!(matches!(
+            result,
+            Err(ApplicationError {
+                code: ErrorCode::Validation,
+                ..
+            })
+        ));
+    }
+    let client =
+        RemoteClient::discover_fixture(&fixture.state.origin, fixture.credentials.clone(), pem)
+            .await
+            .unwrap();
+    fixture.login(&client).await;
+    assert!(matches!(
+        client
+            .execute(
+                RemoteOperation::Me,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new()
+            )
+            .await
+            .unwrap(),
+        RemoteReply::Me(_)
+    ));
+}
+
 #[tokio::test]
 async fn forged_callback_does_not_consume_the_login_and_identity_mixup_is_rejected() {
     let fixture = Fixture::new().await;

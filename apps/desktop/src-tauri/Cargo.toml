@@ -101,7 +101,7 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsA
 
 [features]
 default = []
-dev = ["dep:hypr-audio-mock"]
+dev = ["dep:hypr-audio-mock", "hypr-loofah-client/dev-fixtures"]
 devtools = ["tauri/devtools", "dep:hypr-audio-mock"]
 # The staging DMG flavor: everything `devtools` gives except `tauri/devtools`
 # itself. Flipping that tauri feature refingerprints the whole tauri/wry stack,

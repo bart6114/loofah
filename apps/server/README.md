@@ -76,3 +76,7 @@ The server rejects symlinks in server-owned vaults. Vault IDs select catalog-man
 Stop the service before a consistent backup or restore. Copy the entire storage root, including unknown attachment files and runtime receipts, and back up the configuration separately. Caches can be rebuilt. Preserve directory ownership and permissions when restoring. Do not delete a live lock file to bypass ownership.
 
 Before upgrading, stop the service, take a backup, replace the executable and check `--version`. Startup rejects unsupported catalog versions. Restore the prior binary and its matching backup if a future migration requires rollback. Direct filesystem maintenance is performed while writes are stopped; multiple writable service instances and writable shared network mounts are unsupported.
+
+## Isolated native UI tests
+
+The native client has an explicit `dev-fixtures` feature for loopback HTTPS fixtures with a supplied CA. Certificate and hostname checks remain enabled. The desktop hook is available only with `--features dev`, bundle identifier `io.loofah.remote-qa`, and a native `LOOFAH_QA_ROOT_CA` file (at most 128 KiB). It is excluded from normal, staging and devtools builds. Keep its disposable debug profile and all fixture/build artifacts on T7; use synthetic identities and data. No OS trust-store change is needed. This hook is for native UI validation, not a server deployment option.

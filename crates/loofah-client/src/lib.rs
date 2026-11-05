@@ -43,6 +43,33 @@ pub struct RemoteClient {
 }
 
 impl RemoteClient {
+    #[cfg(feature = "dev-fixtures")]
+    pub async fn discover_fixture(
+        address: &str,
+        credentials: Arc<dyn CredentialStore>,
+        root_pem: &[u8],
+    ) -> Result<Arc<Self>> {
+        let url = Url::parse(address).map_err(|_| invalid("Invalid fixture address"))?;
+        let loopback = match url.host() {
+            Some(url::Host::Domain("localhost")) => true,
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            _ => false,
+        };
+        if url.scheme() != "https" || !loopback {
+            return Err(invalid("Fixtures require a loopback HTTPS origin"));
+        }
+        let root = reqwest::Certificate::from_pem(root_pem)
+            .map_err(|_| invalid("Invalid fixture root certificate"))?;
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(10))
+            .tls_certs_only([root])
+            .build()
+            .map_err(|_| failure(ErrorCode::Internal, "Cannot initialize fixture HTTPS"))?;
+        Self::discover_http(address, credentials, true, http).await
+    }
+
     pub async fn discover(
         address: &str,
         credentials: Arc<dyn CredentialStore>,
