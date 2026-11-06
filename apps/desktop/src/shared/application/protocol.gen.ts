@@ -109,6 +109,8 @@ export type Pagination = { offset: number; limit: number; returned: number; tota
 
 export type PersonItem = { id: string; name?: string }
 
+export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: AudioFileMetadata; idle_timeout_secs: number }
+
 export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string; audience: string; scopes: string[] }
 
 export type RenderedTranscriptSegment = { is_current_user?: boolean | null; id: string; key: SegmentKey; speaker_label: string; start_ms: number; end_ms: number; text: string; words: SegmentWord[] }

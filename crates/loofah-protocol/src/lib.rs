@@ -12,6 +12,16 @@ pub use hypr_vault_read::media::{AudioFileMetadata, AudioPeaks};
 pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
 
 pub const API_MAJOR: u32 = 1;
+pub const RECORDING_CHUNK_LIMIT: usize = 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct RecordingLease {
+    pub id: String,
+    pub vault_id: String,
+    pub session_id: String,
+    pub metadata: AudioFileMetadata,
+    pub idle_timeout_secs: u32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]

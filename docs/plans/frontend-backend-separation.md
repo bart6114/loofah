@@ -962,8 +962,8 @@ export, desktop typechecking, scoped lint and production-library Clippy pass.
 Desktop Rust also passes 45 tests (one existing ignored). The Linux server's
 normal dependency graph still excludes Tauri, Soniqo and desktop capture crates
 after adding the direct portable media dependency. This checkpoint still needs
-its own hosted Windows checks; the preceding pushed batch's x64 checks passed
-and its ARM64 installer build remains in progress.
+its own hosted Windows checks. The preceding pushed batch subsequently passed
+both native Windows x64 and ARM64, alongside every other required hosted check.
 
 Real HTTPS verified the metadata response at configured 50/150/500 ms round
 trips, with observed request times of 68.6/168.4/522.3 ms. It refused a
@@ -979,3 +979,70 @@ The desktop audio player still uses its existing local path. Metadata does not
 provide recording bytes or a persistent playback handle. Authenticated range
 reads, waveform operations, attachment transfer, native media presentation and
 complete audio/platform performance validation remain open.
+
+### Pinned recording ranges and native SDK
+
+The shared `RecordingLeases` manager now opens and hashes one strict canonical
+recording generation outside the store lock. It reuses the metadata operation's
+portable hashing and snapshot preparation. An authenticated member or native
+window generation owns each opaque UUID; possession alone grants no access.
+Retrying the same open pins the same generation during the process lifetime.
+No persistent blob store, canonical metadata change or database is introduced.
+
+The host has 64 live file slots and eight per owner, including cancelled work
+still finishing. Ten idle minutes expire a handle; explicit close, owner cleanup
+and host shutdown are supported. Atomic replacement leaves a handle on its
+original file. Detected in-place size/mtime changes fail closed. Reads use at most
+1 MiB and retain admission/vault ownership through blocking I/O even after caller
+cancellation. Pending opens cannot resurrect a closed handle. Missing or failed
+opens release admission.
+
+The additive `recording_leases` HTTPS capability exposes PUT open/retry, GET/HEAD
+read and DELETE close. Reads require current vault membership and the same
+member. The adapter implements single, suffix and open-ended byte ranges, strong
+SHA-256 ETags, If-Match/If-Range, 412 stale revisions and 416 invalid ranges. A
+full GET streams 64 KiB chunks. Each chunk rechecks authorization; the catalog
+lock is released before network backpressure. Revocation, token expiry and
+shutdown interrupt delivery. Eight stream slots are separate from note/content
+reads. Demand-driven workers stop after 30 seconds without consumption, so an
+unpolled HTTP body cannot retain a worker indefinitely. Resource limits remain
+bounded without retaining a full long recording in memory.
+
+The native SDK keeps bearer credentials and bytes in Rust. It requires the
+capability before authentication, validates the returned coordinates and media
+metadata, requests bounded exact ranges and checks status, Content-Range, ETag,
+Content-Length and actual body length. Cancellation stops a request without
+returning a partial chunk. A service restart or idle expiry requires reopening;
+the caller must compare SHA-256 before resuming old cached bytes. The desktop
+media URL adapter and player are not mounted on these operations yet. IPC
+presentation, waveform operations and actual macOS/Windows media-element and
+long-recording performance checks remain required. A passing binary transport
+test is not audio playback QA.
+
+Validation: core passes 83 tests and the native client 42. The extended HTTPS
+client regression additionally refuses ignored ranges, wrong ETags/range bounds,
+missing lengths and truncated bodies, and returns no partial chunk after
+cancellation. Server passes 32 tests plus executable lifecycle coverage, including
+owner/reader/private-vault isolation,
+HEAD/ranges/preconditions, revocation without retaining the catalog lock,
+separate stream admission, idle timeout and shutdown. Desktop/CLI/server Rust
+checks, desktop typechecking, contract drift and formatting pass. The Linux
+server dependency graph still excludes Tauri and desktop capture. Hosted native
+Windows x64/ARM64 validation remains required for this checkpoint. Scoped
+production-library Clippy passes; the broader invocation
+also reports existing `storage`/`fs-format` dependency warnings, left unchanged.
+
+The real executable served a synthetic 160 MiB recording fixture over trusted
+HTTPS at configured 50/150/500 ms round trips. Observed 4 KiB requests took
+102.8/251.9/772.3 ms, including connection setup. A lost PUT-open response retried
+the same handle. A mid-response disconnect truncated a 1 MiB request; resuming
+at its exact offset produced byte-for-byte matching data, with SHA-256
+`631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769`.
+The original full recording SHA-256 was
+`f61a40416693599ebc6b868b3740dc2d65e38b15ae37504d6a89770ac8e3ea83`.
+Its old handle kept the original generation after atomic replacement. Restart
+expired the handle; reopening returned the new SHA and rejected the old If-Match
+with 412. Notes, metadata, unknown-file canaries and all 56 pre-existing fixture
+files retained their hashes. Processes stopped cleanly and network settings
+were restored. All artifacts stayed on T7. These are binary transport tests,
+using synthetic data; they do not establish decoder, waveform or player parity.

@@ -15,4 +15,5 @@ mod media;
 mod metadata;
 mod note_editor;
 mod operations;
+pub mod recording_leases;
 mod tasks;

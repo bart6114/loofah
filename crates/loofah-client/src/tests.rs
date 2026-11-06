@@ -67,6 +67,7 @@ struct Provider {
     refreshes: AtomicUsize,
     denied: AtomicBool,
     stalled_events: AtomicBool,
+    recording_mode: AtomicUsize,
     delay: AtomicUsize,
     event_connections: Mutex<Vec<Option<String>>>,
 }
@@ -105,6 +106,7 @@ impl Fixture {
             refreshes: AtomicUsize::new(0),
             denied: AtomicBool::new(false),
             stalled_events: AtomicBool::new(false),
+            recording_mode: AtomicUsize::new(0),
             delay: AtomicUsize::new(0),
             event_connections: Mutex::new(Vec::new()),
         });
@@ -125,6 +127,10 @@ impl Fixture {
             .route("/api/v1/auth/config", get(config))
             .route("/api/v1/me", get(me).post(me))
             .route("/api/v1/vaults/test/events", get(events))
+            .route(
+                "/api/v1/vaults/test/audio/leases/{lease}",
+                get(recording_fixture),
+            )
             .with_state(state.clone());
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -325,6 +331,207 @@ async fn events(
     } else {
         Sse::new(stream).into_response()
     }
+}
+
+async fn recording_fixture(
+    State(state): State<Arc<Provider>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    assert!(
+        headers["authorization"]
+            .to_str()
+            .unwrap()
+            .starts_with("Bearer access-")
+    );
+    assert_eq!(headers["range"], "bytes=2-4");
+    assert_eq!(headers["accept-encoding"], "identity");
+    let etag = format!("\"sha256:{}\"", "0".repeat(64));
+    assert_eq!(headers["if-match"], etag);
+    let mode = state.recording_mode.load(Ordering::SeqCst);
+    if mode == 4 {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
+    let mut response = (StatusCode::PARTIAL_CONTENT, "234").into_response();
+    response
+        .headers_mut()
+        .insert("content-range", "bytes 2-4/10".parse().unwrap());
+    response.headers_mut().insert("etag", etag.parse().unwrap());
+    response
+        .headers_mut()
+        .insert("content-length", "3".parse().unwrap());
+    match mode {
+        1 => *response.status_mut() = StatusCode::OK,
+        2 => {
+            response
+                .headers_mut()
+                .insert("etag", "\"wrong\"".parse().unwrap());
+        }
+        3 => {
+            response
+                .headers_mut()
+                .insert("content-range", "bytes 3-5/10".parse().unwrap());
+        }
+        5 | 7 => {
+            let bytes = if mode == 7 {
+                b"23".to_vec()
+            } else {
+                b"234".to_vec()
+            };
+            *response.body_mut() =
+                axum::body::Body::from_stream(futures_util::stream::iter([Ok::<
+                    _,
+                    std::convert::Infallible,
+                >(
+                    bytes
+                )]));
+            if mode == 5 {
+                response.headers_mut().remove("content-length");
+            }
+        }
+        _ => {}
+    }
+    response
+}
+
+#[tokio::test]
+async fn recording_chunks_validate_https_ranges_versions_sizes_and_cancellation() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(150))).await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("recording_leases".into());
+    fixture.login(&client).await;
+    let lease = RecordingLease {
+        id: uuid::Uuid::new_v4().to_string(),
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        idle_timeout_secs: 600,
+        metadata: AudioFileMetadata {
+            filename: "audio.wav".into(),
+            content_type: "audio/wav".into(),
+            size_bytes: 10,
+            sha256: "0".repeat(64),
+        },
+    };
+    assert_eq!(
+        client
+            .read_recording_chunk(&lease, 2, 3, CancellationToken::new())
+            .await
+            .unwrap(),
+        b"234"
+    );
+    for mode in [1, 2, 3, 5] {
+        fixture.state.recording_mode.store(mode, Ordering::SeqCst);
+        assert_eq!(
+            client
+                .read_recording_chunk(&lease, 2, 3, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::IncompatibleVersion,
+            "mode {mode}"
+        );
+    }
+    fixture.state.recording_mode.store(7, Ordering::SeqCst);
+    assert_eq!(
+        client
+            .read_recording_chunk(&lease, 2, 3, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Unavailable
+    );
+    for (offset, length) in [
+        (0, 0),
+        (10, 1),
+        (0, RECORDING_CHUNK_LIMIT + 1),
+        (u64::MAX, 1),
+    ] {
+        assert_eq!(
+            client
+                .read_recording_chunk(&lease, offset, length, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+    }
+    fixture.state.recording_mode.store(4, Ordering::SeqCst);
+    let cancel = CancellationToken::new();
+    let pending = {
+        let client = client.clone();
+        let lease = lease.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move { client.read_recording_chunk(&lease, 2, 3, cancel).await })
+    };
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    cancel.cancel();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), pending)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err()
+            .code,
+        ErrorCode::Cancelled
+    );
+}
+
+#[tokio::test]
+async fn recording_reads_require_a_capability_before_credentials_or_requests() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let id = uuid::Uuid::new_v4().to_string();
+    assert_eq!(
+        client
+            .open_recording("test", "note", &id, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    assert_eq!(
+        client
+            .close_recording("test", &id, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    let lease = hypr_loofah_protocol::RecordingLease {
+        id,
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        idle_timeout_secs: 600,
+        metadata: hypr_loofah_protocol::AudioFileMetadata {
+            filename: "audio.wav".into(),
+            content_type: "audio/wav".into(),
+            size_bytes: 10,
+            sha256: "0".repeat(64),
+        },
+    };
+    assert_eq!(
+        client
+            .read_recording_chunk(&lease, 0, 1, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    assert_eq!(
+        client
+            .open_recording("test", "note", &lease.id, cancel)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Cancelled
+    );
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
 }
 
 #[tokio::test]

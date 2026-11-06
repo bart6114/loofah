@@ -1,6 +1,7 @@
 mod audio_metadata;
 mod metadata;
 mod note_editor;
+mod recording;
 mod tasks;
 
 use std::sync::Arc;
@@ -1685,6 +1686,18 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         .await,
         RemoteReply::AudioMetadata(None)
     ));
+    assert!(
+        first
+            .open_recording(
+                &vault_id,
+                &created.meta.id,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new()
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
     let context = fixture.service.vault(&vault_id).await.unwrap();
     let recording = context
         .store
@@ -1696,6 +1709,59 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     let expected = context.audio_metadata(&created.meta.id).await.unwrap();
     assert!(
         matches!(request(second.clone(),RemoteOperation::AudioMetadata {vault_id:vault_id.clone(),session_id:created.meta.id.clone()}).await,RemoteReply::AudioMetadata(metadata) if metadata == expected)
+    );
+    let lease_id = uuid::Uuid::new_v4().to_string();
+    let lease = first
+        .open_recording(
+            &vault_id,
+            &created.meta.id,
+            &lease_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(Some(lease.metadata.clone()), expected);
+    assert_eq!(
+        first
+            .open_recording(
+                &vault_id,
+                &created.meta.id,
+                &lease_id,
+                CancellationToken::new()
+            )
+            .await
+            .unwrap(),
+        Some(lease.clone())
+    );
+    assert_eq!(
+        first
+            .read_recording_chunk(&lease, 7, 9, CancellationToken::new())
+            .await
+            .unwrap(),
+        b"recording"
+    );
+    let mut stale = lease.clone();
+    stale.metadata.sha256 = "0".repeat(64);
+    assert_eq!(
+        first
+            .read_recording_chunk(&stale, 0, 1, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    first
+        .close_recording(&vault_id, &lease_id, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        first
+            .read_recording_chunk(&lease, 0, 1, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotFound
     );
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),

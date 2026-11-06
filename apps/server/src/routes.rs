@@ -22,6 +22,7 @@ use crate::{
 
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
+        .merge(crate::recording::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
         .route("/vaults", get(vaults).post(create_vault))
@@ -145,6 +146,7 @@ async fn capabilities() -> Json<Capabilities> {
             "note_editor_read".into(),
             "note_editor_write".into(),
             "audio_metadata_read".into(),
+            "recording_leases".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
@@ -248,7 +250,7 @@ async fn authorize(
 #[derive(Clone)]
 struct TrackingId(String);
 
-type IdentityExtension = axum::Extension<Identity>;
+pub(crate) type IdentityExtension = axum::Extension<Identity>;
 
 async fn provision(
     State(service): State<Arc<Service>>,
@@ -745,7 +747,7 @@ async fn agent_segments(
     })
     .await
 }
-async fn content_read<T: serde::Serialize + Send + 'static>(
+pub(crate) async fn content_read<T: serde::Serialize + Send + 'static>(
     service: &Service,
     access: VaultAccess,
     limit: usize,
@@ -994,7 +996,7 @@ impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequestP
     }
 }
 
-struct ApiPath<T>(T);
+pub(crate) struct ApiPath<T>(pub(crate) T);
 impl<S: Send + Sync, T: serde::de::DeserializeOwned + Send> axum::extract::FromRequestParts<S>
     for ApiPath<T>
 {

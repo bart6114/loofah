@@ -27,6 +27,8 @@ pub struct Service {
     pub requests: Arc<Semaphore>,
     pub content_reads: Arc<Semaphore>,
     pub media_reads: Arc<Semaphore>,
+    pub recording_leases: hypr_loofah_core::recording_leases::RecordingLeases,
+    pub recording_streams: Arc<Semaphore>,
     pub streams: Arc<Semaphore>,
     runtimes: Mutex<BTreeMap<String, Arc<OnceCell<VaultRuntime>>>>,
     catalog_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -57,6 +59,8 @@ impl Service {
             requests: Arc::new(Semaphore::new(64)),
             content_reads: Arc::new(Semaphore::new(4)),
             media_reads: Arc::new(Semaphore::new(2)),
+            recording_leases: Default::default(),
+            recording_streams: Arc::new(Semaphore::new(8)),
             streams: Arc::new(Semaphore::new(128)),
             runtimes: Mutex::new(BTreeMap::new()),
             catalog_worker: Mutex::new(None),
@@ -65,9 +69,15 @@ impl Service {
         let weak = Arc::downgrade(&service);
         let stop = service.stop.clone();
         let worker = tokio::spawn(async move {
+            let mut media_expiry = tokio::time::interval(std::time::Duration::from_secs(30));
             loop {
                 tokio::select! {
                     _ = stop.cancelled() => break,
+                    _ = media_expiry.tick() => {
+                        let Some(service) = weak.upgrade() else { break; };
+                        service.recording_leases.expire_idle();
+                        continue;
+                    },
                     change = changes.changed() => if change.is_err() { break; },
                 }
                 let Some(service) = weak.upgrade() else {
@@ -179,6 +189,7 @@ impl Service {
                 "Active operations did not drain before shutdown",
             )
         })??;
+        self.recording_leases.close_all();
         let runtimes = std::mem::take(&mut *self.runtimes.lock().await);
         for (_, cell) in runtimes {
             tokio::time::timeout(std::time::Duration::from_secs(30), async {

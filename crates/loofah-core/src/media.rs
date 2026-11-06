@@ -13,29 +13,13 @@ impl VaultContext {
         self: &Arc<Self>,
         session_id: &str,
     ) -> Result<Option<AudioFileMetadata>, ApplicationError> {
-        self.read_recording(session_id, |mut source| {
-            let before = source.file.metadata().map_err(media_error)?;
-            let metadata =
-                hypr_fs_sync_core::audio::metadata_from_reader(source.filename, &mut source.file)
-                    .map_err(media_error)?;
-            let after = source.file.metadata().map_err(media_error)?;
-            if before.len() != after.len()
-                || before.modified().ok() != after.modified().ok()
-                || metadata
-                    .as_ref()
-                    .is_some_and(|metadata| metadata.size_bytes != after.len())
-            {
-                return Err(error(
-                    ErrorCode::Unavailable,
-                    "Recording changed while its metadata was read",
-                ));
-            }
-            metadata.ok_or_else(|| error(ErrorCode::Internal, "Unsupported recording format"))
+        self.read_recording(session_id, |source| {
+            recording_with_metadata(source).map(|(_, metadata, _)| metadata)
         })
         .await
     }
 
-    async fn read_recording<T, F>(
+    pub(crate) async fn read_recording<T, F>(
         self: &Arc<Self>,
         session_id: &str,
         read: F,
@@ -86,6 +70,27 @@ impl VaultContext {
         .await
         .map_err(|_| error(ErrorCode::Internal, "Recording request stopped"))?
     }
+}
+
+pub(crate) fn recording_with_metadata(
+    mut source: OpenedRecording,
+) -> Result<(OpenedRecording, AudioFileMetadata, std::fs::Metadata), ApplicationError> {
+    let before = source.file.metadata().map_err(media_error)?;
+    let metadata =
+        hypr_fs_sync_core::audio::metadata_from_reader(source.filename, &mut source.file)
+            .map_err(media_error)?
+            .ok_or_else(|| error(ErrorCode::Internal, "Unsupported recording format"))?;
+    let after = source.file.metadata().map_err(media_error)?;
+    if before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+        || metadata.size_bytes != after.len()
+    {
+        return Err(error(
+            ErrorCode::Unavailable,
+            "Recording changed while its metadata was read",
+        ));
+    }
+    Ok((source, metadata, after))
 }
 
 fn media_error(cause: std::io::Error) -> ApplicationError {

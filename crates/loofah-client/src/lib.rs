@@ -6,6 +6,7 @@ mod events;
 #[cfg(feature = "os-credentials")]
 mod os_credentials;
 mod profiles;
+mod recording;
 mod requests;
 mod sse;
 

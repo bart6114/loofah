@@ -34,5 +34,5 @@ base64 = { workspace = true }
 http-body-util = "0.1"
 hypr-loofah-client = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["process"] }
+tokio = { workspace = true, features = ["process", "test-util"] }
 tower = { workspace = true, features = ["util"] }
