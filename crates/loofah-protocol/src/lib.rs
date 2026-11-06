@@ -57,6 +57,38 @@ pub struct RemoveAttachmentRequest {
     pub expected_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct UploadAttachmentRequest {
+    pub filename: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+}
+
+pub fn validate_upload_attachment_request(
+    input: &UploadAttachmentRequest,
+) -> Result<(), &'static str> {
+    validate_attachment_basename(&input.filename).map_err(|_| "Invalid attachment filename")?;
+    if input.sha256.len() != 64
+        || !input
+            .sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("A lowercase SHA-256 attachment checksum is required");
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum AttachmentUploadStatus {
+    Missing,
+    Committed(FileMetadata),
+    Rejected,
+    Uncertain,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum VaultKind {

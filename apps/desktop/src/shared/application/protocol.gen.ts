@@ -15,6 +15,8 @@ export type AttachmentLease = { id: string; vault_id: string; session_id: string
 
 export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null }
 
+export type AttachmentUploadStatus = { kind: "missing" } | { kind: "committed"; value: FileMetadata } | { kind: "rejected" } | { kind: "uncertain" }
+
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
@@ -241,6 +243,8 @@ export type TranscriptWithData = { id: string; user_id?: string; created_at?: st
 export type TranscriptWord = { id?: string | null; text: string; start_ms: number; end_ms: number; channel: number; speaker?: string | null; metadata?: Partial<{ [key in string]: JsonValue }> | null }
 
 export type UpdateVaultRequest = { name: string; expected_revision: string }
+
+export type UploadAttachmentRequest = { filename: string; size_bytes: number; sha256: string }
 
 export type VaultInfo = { id: string; name: string; kind: VaultKind; role: VaultRole; revision: string }
 

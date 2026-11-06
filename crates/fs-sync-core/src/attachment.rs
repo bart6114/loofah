@@ -41,6 +41,10 @@ impl StagedAttachment {
             .expect("attachment has not been published")
     }
 
+    pub fn is_published(&self) -> bool {
+        self.path.is_none()
+    }
+
     pub fn publish_as(&mut self, filename: &str) -> io::Result<PathBuf> {
         if filename.is_empty()
             || filename == "."

@@ -125,7 +125,10 @@ pub fn router(service: Arc<Service>) -> Router {
         .route("/health", get(health))
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/auth/config", get(auth_config))
-        .nest("/api/v1", protected)
+        .nest(
+            "/api/v1",
+            protected.merge(crate::uploads::router(service.clone())),
+        )
         .fallback(|| async { ApiError::new(ErrorCode::NotFound, "API route not found") })
         .method_not_allowed_fallback(|| async {
             let mut response = ApiError::new(
@@ -167,6 +170,7 @@ async fn capabilities() -> Json<Capabilities> {
             "attachment_list".into(),
             "attachment_metadata".into(),
             "attachment_remove".into(),
+            "attachment_upload".into(),
             "artifact_details".into(),
             "content_read".into(),
             "document_edit".into(),
@@ -204,10 +208,27 @@ async fn request_context(mut request: Request, next: Next) -> Response {
     response
 }
 
-async fn authorize(
+pub(crate) async fn authorize(
     State(service): State<Arc<Service>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    authorize_with(service, request, next, false).await
+}
+
+pub(crate) async fn authorize_upload(
+    State(service): State<Arc<Service>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    authorize_with(service, request, next, true).await
+}
+
+async fn authorize_with(
+    service: Arc<Service>,
     mut request: Request,
     next: Next,
+    streaming: bool,
 ) -> Response {
     let Ok(_request_permit) = service.requests.clone().try_acquire_owned() else {
         return ApiError::busy("Request capacity reached; retry later").into_response();
@@ -246,6 +267,9 @@ async fn authorize(
     match result {
         Ok(identity) => {
             request.extensions_mut().insert(identity);
+            if streaming {
+                return next.run(request).await;
+            }
             match tokio::time::timeout(Duration::from_secs(30), next.run(request)).await {
                 Ok(response) => response,
                 Err(_) => {
@@ -1056,7 +1080,7 @@ async fn events(
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
-fn request_id(headers: &HeaderMap) -> Result<&str> {
+pub(crate) fn request_id(headers: &HeaderMap) -> Result<&str> {
     let id = headers
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
@@ -1081,7 +1105,7 @@ async fn write<T: Send + 'static>(
     .await
 }
 
-async fn admitted_write<T: Send + 'static>(
+pub(crate) async fn admitted_write<T: Send + 'static>(
     service: &Service,
     operation: impl Future<Output = Result<T>> + Send + 'static,
 ) -> Result<T> {
@@ -1120,7 +1144,7 @@ impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequest<
     }
 }
 
-struct ApiQuery<T>(T);
+pub(crate) struct ApiQuery<T>(pub(crate) T);
 impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequestParts<S>
     for ApiQuery<T>
 {

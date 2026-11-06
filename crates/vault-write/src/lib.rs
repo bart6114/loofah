@@ -6,6 +6,7 @@ pub mod agents_doc;
 pub mod attachment_list;
 pub mod attachment_remove;
 pub mod attachment_stage;
+pub mod attachment_upload;
 pub mod attachments;
 pub mod audio;
 mod audio_layout;
@@ -24,6 +25,7 @@ pub mod media;
 mod metadata_revision;
 pub mod migrate;
 mod note_revision;
+mod operation_io;
 pub mod paths;
 pub mod people;
 pub mod rebuild;
@@ -85,6 +87,7 @@ pub struct SessionStore {
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     attachment_removals: Arc<tokio::sync::Mutex<()>>,
     attachment_stages: Arc<std::sync::Mutex<HashMap<String, usize>>>,
+    attachment_publications: Arc<tokio::sync::Mutex<()>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
@@ -236,6 +239,7 @@ impl SessionStore {
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             attachment_removals: Arc::new(tokio::sync::Mutex::new(())),
             attachment_stages: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            attachment_publications: Arc::new(tokio::sync::Mutex::new(())),
             storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }

@@ -12,14 +12,14 @@ use crate::{SessionStore, StoreError, attachments::SavedAttachment};
 
 pub struct SessionAttachmentStage {
     pub(crate) staged: StagedAttachment,
-    _reservation: Reservation,
-    store: SessionStore,
+    pub(crate) _reservation: Reservation,
+    pub(crate) store: SessionStore,
     pub(crate) session_id: String,
     pub(crate) filename: String,
-    relative_directory: PathBuf,
+    pub(crate) relative_directory: PathBuf,
 }
 
-struct Reservation {
+pub(crate) struct Reservation {
     active: Arc<Mutex<HashMap<String, usize>>>,
     session: String,
 }

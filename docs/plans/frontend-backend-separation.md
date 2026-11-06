@@ -2019,3 +2019,59 @@ The test now imports both locally, preserving the production implementation.
 The macOS recording regressions and application check pass after the correction;
 that does not validate Windows. Native Windows x64 and ARM64 validation of the
 corrected head remains required before merge.
+
+### Shared attachment publication and binary HTTP receiving
+
+`crates/vault-write/src/attachment_upload.rs` now turns a prepared attachment
+stage into a checked, idempotent publication. The shared protocol declares an
+opaque filename, byte length and SHA-256. Private bytes are hashed before taking
+the short publication lock. Publication rechecks the session and stage generation,
+records the exact target, and uses the shared exclusive move/deduplication path.
+The same operation does not change notes, session metadata or unknown files.
+
+Per-vault upload receipts are scoped by member namespace and UUID outside
+canonical sessions. Completed replay returns the original metadata without
+creating another file or resurrecting a deleted attachment. After interruption,
+status may confirm the exact pending publication, but never resumes publication
+against a changed or missing target. Ambiguous evidence remains uncertain.
+Known rejection can retry the same UUID and declaration. Original declarations
+must survive lost responses; callers cannot silently substitute new bytes or a
+fresh UUID. Shared receipt I/O now also serves checked removal, retaining its
+existing key encoding and replay behavior.
+
+`crates/loofah-core/src/attachment_upload.rs` owns validation, writer admission,
+staging, final authorization and path-free responses. Input copying and hashing
+leave vault reads responsive. Permits, session reservations and publication
+guards remain owned through actual I/O after caller cancellation. The trusted
+local operation requires no account; native IPC/client source adapters and the
+shared frontend upload flow have not yet been connected to it.
+
+`apps/server/src/uploads.rs` exposes binary upload and status routes under the
+additive `attachment_upload` capability. Binary bodies bypass the JSON body cap
+but retain explicit length/SHA checks and a 32 GiB server limit. Two global
+attachment transfers use a bounded two-chunk, 64 KiB bridge into the shared Rust
+operation. An explicit complete-input marker prevents a closed connection from
+being mistaken for a successful upload. Healthy transfers use a 35-second idle
+deadline rather than the ordinary 30-second request deadline. Authorization
+monitoring promptly stops receiving after revocation or edit-role downgrade;
+the catalog grant is reacquired for publication instead of held across network
+backpressure. Readers can reconcile their own receipts but cannot upload.
+
+Validation covers checksum/length mismatch, namespace and vault isolation,
+same-name deduplication, completed replay after deletion, pending receipt restart
+recovery, changed evidence, cancellation cleanup, current-access rechecks and
+note-read responsiveness during copying. A real TCP transfer exceeds the ordinary
+30-second deadline while making progress. Native UI integration, incoming-stage
+crash cleanup, upload restart UX and Windows validation of these new changes
+remain open. This is an attachment backend increment; the full implementation,
+recording capture/ingest, server jobs, CLI ownership and deployment/performance
+gates remain incomplete.
+
+This increment passes 361 vault-write tests (one ignored), 120 application tests,
+three protocol tests, 51 server tests and the headless executable lifecycle test.
+The native SDK passes 65 regression tests; macOS desktop/CLI compilation, 61
+desktop tests (one ignored), generated protocol drift checking, desktop
+TypeScript checking and strict production core/server Clippy also pass. A real
+TCP test drops the response after publication, reconciles status and retries the
+same UUID while proving that exactly one attachment remains. These checks do not
+replace native Windows or full remote feature validation.

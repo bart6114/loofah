@@ -59,6 +59,23 @@ impl MediaAccess {
         identity: crate::auth::Identity,
         vault: String,
     ) -> Self {
+        Self::watch_access(service, identity, vault, false)
+    }
+
+    pub(crate) fn watch_write(
+        service: Arc<Service>,
+        identity: crate::auth::Identity,
+        vault: String,
+    ) -> Self {
+        Self::watch_access(service, identity, vault, true)
+    }
+
+    fn watch_access(
+        service: Arc<Service>,
+        identity: crate::auth::Identity,
+        vault: String,
+        edit: bool,
+    ) -> Self {
         let cancel = service.stop.child_token();
         let mut changes = service.catalog.subscribe();
         let monitored = service;
@@ -70,7 +87,7 @@ impl MediaAccess {
                 if member.expires_at <= now()
                     || monitored
                         .catalog
-                        .access(&member, &watched_vault, false)
+                        .access(&member, &watched_vault, edit)
                         .await
                         .is_err()
                 {

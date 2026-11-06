@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::{
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use crate::{SessionStore, StoreError, file_snapshot::FileSnapshot, media::open_regular_file};
+use crate::{
+    SessionStore, StoreError,
+    file_snapshot::FileSnapshot,
+    media::open_regular_file,
+    operation_io::{operation_key, persist, read_receipt, sync_parent},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentRemoval {
@@ -86,7 +87,7 @@ impl SessionStore {
         tokio::spawn(async move {
             let serial = store.attachment_removals.clone().lock_owned().await;
             let read_path = path.clone();
-            let existing = tokio::task::spawn_blocking(move || read_receipt(&read_path))
+            let existing = tokio::task::spawn_blocking(move || read_receipt::<Receipt>(&read_path))
                 .await
                 .map_err(worker_error)??;
             if let Some(receipt) = &existing
@@ -288,13 +289,6 @@ impl AttachmentRemovalPlan {
     }
 }
 
-fn operation_key(namespace: &str, request_id: uuid::Uuid) -> String {
-    Sha256::digest(serde_json::to_vec(&(namespace, request_id)).unwrap())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
 fn open_candidate(path: &Path) -> Result<Option<FileSnapshot>, StoreError> {
     if let Some(parent) = path.parent() {
         match std::fs::symlink_metadata(parent) {
@@ -331,60 +325,6 @@ fn validate_target(root: &Path, request: &Request, target: &str) -> Result<PathB
     }
     Ok(path)
 }
-fn read_receipt(path: &Path) -> Result<Option<Receipt>, StoreError> {
-    let Some(file) = open_regular_file(path)? else {
-        return Ok(None);
-    };
-    if file.metadata().map_err(io_error)?.len() > 64 * 1024 {
-        return Err(StoreError::Io("Invalid attachment removal receipt".into()));
-    }
-    let mut bytes = Vec::new();
-    file.take(64 * 1024 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(io_error)?;
-    if bytes.len() > 64 * 1024 {
-        return Err(StoreError::Io("Invalid attachment removal receipt".into()));
-    }
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|_| StoreError::Io("Invalid attachment removal receipt".into()))
-}
-fn persist(path: &Path, receipt: &Receipt) -> Result<(), StoreError> {
-    ensure_operation_directory(
-        path.parent()
-            .ok_or_else(|| StoreError::Io("Missing removal receipt directory".into()))?,
-    )?;
-    hypr_storage::fs::atomic_write(
-        path,
-        &serde_json::to_string(receipt)
-            .map_err(|cause| StoreError::Serialize(cause.to_string()))?,
-    )
-    .map_err(io_error)?;
-    sync_parent(path)
-}
-fn ensure_operation_directory(path: &Path) -> Result<(), StoreError> {
-    if path.is_dir() {
-        return Ok(());
-    }
-    let parent = path
-        .parent()
-        .ok_or_else(|| StoreError::Io("Invalid removal receipt directory".into()))?;
-    ensure_operation_directory(parent)?;
-    match std::fs::create_dir(path) {
-        Ok(()) => sync_parent(path),
-        Err(cause) if cause.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => Ok(()),
-        Err(cause) => Err(io_error(cause)),
-    }
-}
-fn sync_parent(path: &Path) -> Result<(), StoreError> {
-    #[cfg(unix)]
-    std::fs::File::open(path.parent().unwrap())
-        .and_then(|parent| parent.sync_all())
-        .map_err(io_error)?;
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
 fn worker_error(cause: tokio::task::JoinError) -> StoreError {
     StoreError::Io(format!("Attachment removal worker failed: {cause}"))
 }
@@ -398,6 +338,7 @@ fn fs_error(cause: hypr_fs_sync_core::Error) -> StoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
     fn sha(bytes: &[u8]) -> String {
         Sha256::digest(bytes)
             .iter()
@@ -455,7 +396,7 @@ mod tests {
             AttachmentRemoval::Removed
         );
         assert!(!source.exists());
-        let receipt = read_receipt(&receipt_path(operations.path(), id))
+        let receipt: Receipt = read_receipt::<Receipt>(&receipt_path(operations.path(), id))
             .unwrap()
             .unwrap();
         let target = validate_target(
@@ -651,7 +592,7 @@ mod tests {
         );
         let path = receipt_path(operations.path(), id);
         assert!(matches!(
-            read_receipt(&path).unwrap().unwrap().state,
+            read_receipt::<Receipt>(&path).unwrap().unwrap().state,
             State::Pending
         ));
         store
@@ -673,7 +614,7 @@ mod tests {
             b"new generation"
         );
         assert!(matches!(
-            read_receipt(&path).unwrap().unwrap().state,
+            read_receipt::<Receipt>(&path).unwrap().unwrap().state,
             State::Removed
         ));
     }

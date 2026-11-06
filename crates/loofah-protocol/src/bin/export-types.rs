@@ -22,6 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<RecordingWaveform>()
         .register::<DeleteRecordingRequest>()
         .register::<RemoveAttachmentRequest>()
+        .register::<UploadAttachmentRequest>()
+        .register::<AttachmentUploadStatus>()
         .register::<AudioPeaks>()
         .register::<VaultInfo>()
         .register::<VaultMutation>()

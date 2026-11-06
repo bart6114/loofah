@@ -18,6 +18,7 @@ pub struct VaultContext {
     pub(crate) lease: Option<std::fs::File>,
     pub(crate) operations: Option<crate::operations::SessionOperations>,
     pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
+    pub(crate) upload_writers: Arc<tokio::sync::Semaphore>,
 }
 
 impl VaultContext {
@@ -37,6 +38,7 @@ impl VaultContext {
             lease: None,
             operations: None,
             media_readers: Arc::new(tokio::sync::Semaphore::new(4)),
+            upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
         }
     }
 
