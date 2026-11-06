@@ -628,9 +628,12 @@ mod tests {
             .await
             .unwrap();
         let pending = prepare(&store, operations.path(), id, &hash).await;
-        store.delete_session("note").await.unwrap();
+        // Windows may refuse a directory move while its reviewed attachment is pinned.
+        let meta = vault.path().join("sessions/note/_meta.json");
+        let metadata = std::fs::read(&meta).unwrap();
+        std::fs::remove_file(&meta).unwrap();
         assert_eq!(pending.commit().await.unwrap(), AttachmentRemoval::Changed);
-        store.restore_session("note").await.unwrap();
+        std::fs::write(&meta, metadata).unwrap();
         let path = receipt_path(operations.path(), id);
         let request = Request {
             session: "note".into(),

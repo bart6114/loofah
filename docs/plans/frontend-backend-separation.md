@@ -2075,3 +2075,10 @@ TypeScript checking and strict production core/server Clippy also pass. A real
 TCP test drops the response after publication, reconciles status and retries the
 same UUID while proving that exactly one attachment remains. These checks do not
 replace native Windows or full remote feature validation.
+
+Windows x64 then passed compilation and reached the suites, exposing a stale-session
+fixture that assumed it could move a whole directory while retaining a pinned
+attachment. The fixture now removes/restores session metadata to exercise the
+same missing-session refusal on both operating systems. The eight checked-removal
+regressions pass locally; native Windows validation of the correction remains
+required. Production removal and directory-move behavior were not changed.
