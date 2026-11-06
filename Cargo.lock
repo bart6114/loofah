@@ -7675,6 +7675,7 @@ dependencies = [
  "chrono",
  "fs-sync-core",
  "loofah-protocol",
+ "mime_guess",
  "search-cache",
  "serde",
  "serde_json",

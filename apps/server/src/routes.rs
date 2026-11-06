@@ -22,7 +22,7 @@ use crate::{
 
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
-        .merge(crate::recording::router())
+        .merge(crate::media::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
         .route("/vaults", get(vaults).post(create_vault))
@@ -154,6 +154,7 @@ async fn capabilities() -> Json<Capabilities> {
             "recording_waveforms".into(),
             "audio_playback".into(),
             "recording_delete".into(),
+            "attachment_leases".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
@@ -619,13 +620,7 @@ async fn audio_metadata(
 ) -> Result<Response> {
     let access = service.catalog.access(&identity, &id, false).await?;
     let context = service.vault(&id).await?;
-    let media_permit = service
-        .media_reads
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| ApiError::busy("Recording readers are busy; retry shortly"))?;
-    content_read(&service, access, 256 * 1024, async move {
-        let _media_permit = media_permit;
+    crate::media::metadata_read(&service, access, identity, id, async move {
         context.audio_metadata(&session).await
     })
     .await
@@ -646,7 +641,7 @@ async fn delete_recording(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ApiError::busy("Recording readers are busy; retry shortly"))?;
-    let leases = service.recording_leases.clone();
+    let leases = service.media_leases.clone();
     let authorization = service.clone();
     let vault = id.clone();
     drop(access);
@@ -667,7 +662,7 @@ async fn delete_recording(
                     .map_err(|cause| cause.0)
             })
             .await?;
-        leases.close_session(&id, &session);
+        leases.close_recording_session(&id, &session);
         Ok(Json(deleted))
     })
     .await

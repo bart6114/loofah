@@ -1,7 +1,7 @@
 use super::*;
 use futures_util::StreamExt;
 
-async fn request(
+pub(super) async fn request(
     fixture: &Fixture,
     subject: &str,
     method: &str,
@@ -271,7 +271,7 @@ async fn reader_streams_release_catalog_locks_and_stop_after_revocation_without_
     );
     let capacity = fixture
         .service
-        .recording_streams
+        .media_streams
         .clone()
         .try_acquire_many_owned(8)
         .unwrap();
@@ -312,7 +312,7 @@ async fn reader_streams_release_catalog_locks_and_stop_after_revocation_without_
     assert_eq!(status, StatusCode::OK);
     assert!(stream.next().await.unwrap().is_err());
     drop(stream);
-    assert_eq!(fixture.service.recording_streams.available_permits(), 8);
+    assert_eq!(fixture.service.media_streams.available_permits(), 8);
     assert_eq!(
         request(&fixture, "bob", "GET", &path, &[]).await.status(),
         StatusCode::NOT_FOUND
@@ -349,17 +349,17 @@ async fn unpolled_recording_bodies_release_stream_slots_on_idle_timeout_and_shut
     let response = request(&fixture, "alice", "GET", &path, &[]).await;
     let mut stream = response.into_body().into_data_stream();
     assert_eq!(stream.next().await.unwrap().unwrap().len(), 64 * 1024);
-    assert_eq!(fixture.service.recording_streams.available_permits(), 7);
+    assert_eq!(fixture.service.media_streams.available_permits(), 7);
     tokio::time::pause();
     tokio::task::yield_now().await;
     tokio::time::advance(std::time::Duration::from_secs(31)).await;
     for _ in 0..20 {
-        if fixture.service.recording_streams.available_permits() == 8 {
+        if fixture.service.media_streams.available_permits() == 8 {
             break;
         }
         tokio::task::yield_now().await;
     }
-    assert_eq!(fixture.service.recording_streams.available_permits(), 8);
+    assert_eq!(fixture.service.media_streams.available_permits(), 8);
     assert!(stream.next().await.unwrap().is_err());
     tokio::time::resume();
     let response = request(&fixture, "alice", "GET", &path, &[]).await;
@@ -367,7 +367,7 @@ async fn unpolled_recording_bodies_release_stream_slots_on_idle_timeout_and_shut
     assert_eq!(stream.next().await.unwrap().unwrap().len(), 64 * 1024);
     fixture.service.stop.cancel();
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        while fixture.service.recording_streams.available_permits() != 8 {
+        while fixture.service.media_streams.available_permits() != 8 {
             tokio::task::yield_now().await;
         }
     })

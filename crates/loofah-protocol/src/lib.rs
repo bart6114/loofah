@@ -8,7 +8,7 @@ pub use hypr_agent_access::{
     SearchMeetingsInput, SearchPage as AgentSearchPage,
 };
 pub use hypr_transcript::RenderedTranscriptSegment;
-pub use hypr_vault_read::media::{AudioFileMetadata, AudioPeaks};
+pub use hypr_vault_read::media::{AudioPeaks, FileMetadata};
 pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
 
 pub const API_MAJOR: u32 = 1;
@@ -19,7 +19,17 @@ pub struct RecordingLease {
     pub id: String,
     pub vault_id: String,
     pub session_id: String,
-    pub metadata: AudioFileMetadata,
+    pub metadata: FileMetadata,
+    pub idle_timeout_secs: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct AttachmentLease {
+    pub id: String,
+    pub vault_id: String,
+    pub session_id: String,
+    pub attachment_id: String,
+    pub metadata: FileMetadata,
     pub idle_timeout_secs: u32,
 }
 

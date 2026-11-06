@@ -1,3 +1,4 @@
+mod attachments;
 mod audio_metadata;
 mod metadata;
 mod note_editor;

@@ -644,3 +644,5 @@ mod tests {
         assert_eq!(result, "file.txt");
     }
 }
+
+pub mod media;

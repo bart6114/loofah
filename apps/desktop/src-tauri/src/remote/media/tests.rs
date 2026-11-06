@@ -176,7 +176,7 @@ async fn open(
         vault_id: "vault".into(),
         session_id: session,
         idle_timeout_secs: 600,
-        metadata: AudioFileMetadata {
+        metadata: FileMetadata {
             filename: "audio.wav".into(),
             content_type: "audio/wav".into(),
             size_bytes: bytes.len() as u64,

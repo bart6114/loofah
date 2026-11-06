@@ -13,7 +13,7 @@ import {
 import type {
   ApplicationError,
   DeleteRecordingRequest,
-  AudioFileMetadata,
+  FileMetadata,
   MetadataSnapshot,
   MetadataSaveOutcome,
   SaveMetadataRequest,
@@ -87,7 +87,7 @@ export type VaultClient = {
   audioMetadata: (
     sessionId: string,
     options?: RequestOptions,
-  ) => Promise<AudioFileMetadata | null>;
+  ) => Promise<FileMetadata | null>;
   readMetadata: (
     sessionId: string,
     options?: RequestOptions,

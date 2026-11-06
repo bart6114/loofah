@@ -4,7 +4,7 @@ pub mod auth;
 pub mod catalog;
 pub mod config;
 pub mod error;
-mod recording;
+mod media;
 pub mod routes;
 pub mod service;
 

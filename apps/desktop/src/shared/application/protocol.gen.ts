@@ -7,7 +7,7 @@ export type AgentSearchHit = { session_id: string; title: string; created_at: nu
 
 export type ApplicationError = { code: ErrorCode; message: string; request_id: string | null; retryable: boolean; current_revision: string | null; mutation_outcome: MutationOutcome | null }
 
-export type AudioFileMetadata = { filename: string; contentType: string; sizeBytes: number; sha256: string }
+export type AttachmentLease = { id: string; vault_id: string; session_id: string; attachment_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
@@ -51,6 +51,8 @@ kind: string; title: string; template_id: string; sort_order: number;
 markdown: string }
 
 export type ErrorCode = "validation" | "not_found" | "unauthenticated" | "forbidden" | "conflict" | "unavailable" | "incompatible_version" | "resource_limit" | "cancelled" | "internal"
+
+export type FileMetadata = { filename: string; contentType: string; sizeBytes: number; sha256: string }
 
 export type GetMeetingInput = { meeting_id: string }
 
@@ -111,7 +113,7 @@ export type Pagination = { offset: number; limit: number; returned: number; tota
 
 export type PersonItem = { id: string; name?: string }
 
-export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: AudioFileMetadata; idle_timeout_secs: number }
+export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
 export type RecordingWaveform = { recording_sha256: string; peaks: AudioPeaks }
 

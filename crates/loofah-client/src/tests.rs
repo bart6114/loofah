@@ -476,7 +476,7 @@ async fn recording_head_validates_representation_headers_and_typed_errors_withou
         vault_id: "test".into(),
         session_id: "note".into(),
         idle_timeout_secs: 600,
-        metadata: AudioFileMetadata {
+        metadata: FileMetadata {
             filename: "audio.wav".into(),
             content_type: "audio/wav".into(),
             size_bytes: 10,
@@ -523,7 +523,7 @@ async fn waveforms_require_capabilities_and_validate_authenticated_https_replies
         vault_id: "test".into(),
         session_id: "note".into(),
         idle_timeout_secs: 600,
-        metadata: AudioFileMetadata {
+        metadata: FileMetadata {
             filename: "audio.wav".into(),
             content_type: "audio/wav".into(),
             size_bytes: 10,
@@ -596,7 +596,7 @@ async fn recording_chunks_validate_https_ranges_versions_sizes_and_cancellation(
         vault_id: "test".into(),
         session_id: "note".into(),
         idle_timeout_secs: 600,
-        metadata: AudioFileMetadata {
+        metadata: FileMetadata {
             filename: "audio.wav".into(),
             content_type: "audio/wav".into(),
             size_bytes: 10,
@@ -693,7 +693,7 @@ async fn recording_reads_require_a_capability_before_credentials_or_requests() {
         vault_id: "test".into(),
         session_id: "note".into(),
         idle_timeout_secs: 600,
-        metadata: hypr_loofah_protocol::AudioFileMetadata {
+        metadata: hypr_loofah_protocol::FileMetadata {
             filename: "audio.wav".into(),
             content_type: "audio/wav".into(),
             size_bytes: 10,

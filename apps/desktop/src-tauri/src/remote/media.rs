@@ -1,6 +1,6 @@
 use super::*;
 use hypr_loofah_protocol::{
-    AudioFileMetadata, RECORDING_CHUNK_LIMIT, RecordingLease, RecordingWaveform,
+    FileMetadata, RECORDING_CHUNK_LIMIT, RecordingLease, RecordingWaveform,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::http::{Method, Request, Response, StatusCode, header};
@@ -12,7 +12,7 @@ mod tests;
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct NativeRecording {
     pub id: String,
-    pub metadata: AudioFileMetadata,
+    pub metadata: FileMetadata,
 }
 
 pub(super) struct MediaRegistry {

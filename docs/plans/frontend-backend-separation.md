@@ -1479,3 +1479,53 @@ Both files (151,485,736 bytes) retained their hashes. The original cache path is
 now a symlink; both Cargo targets, the ONNX cache and the SwiftPM cache resolve
 physically to T7. Readback evidence is in
 `/Volumes/T7/loofah-backend-build/ort-cache-relocation.json`.
+
+### Shared pinned reads for embedded attachments
+
+The next increment generalizes the existing recording reader into
+`crates/loofah-core/src/media_leases.rs`, with one registry, hash-index budget,
+pinned descriptor and checked-range implementation. Its typed source selects a
+recording or an exact attachment basename through the existing `vault-write`
+openers. Unknown flat files, dotfiles and symlinks are not alternate content
+sources. Recordings retain their endpoints and JSON fields; the shared metadata
+DTO is named `FileMetadata`. `fs-sync-core::media` owns the common streaming
+checksum helper and the strict audio helper delegates to it.
+
+`apps/server/src/media.rs` now hosts both endpoint families. Attachment open,
+HEAD/ranges/GET/close are reader-authorized and source-kind isolated. They reuse
+the existing bounded worker/descriptor/hash budgets. Only two of the eight binary
+streams may be attachments, leaving capacity for recording playback. An owned
+host guard now follows a byte read into its blocking worker, keeping stream
+admission alive after cancellation. A blocked-I/O regression extends the existing
+cancellation test. File responses have `nosniff` and sandboxed CSP headers.
+
+The shared metadata-open host helper releases catalog ownership before waiting
+or hashing and rechecks current access/expiry after completion, including errors.
+Tests prove membership removal completes while each of recording metadata,
+recording open and attachment open waits; the revoked read then returns no data.
+A separate cancellation test proves the global hashing slot is retained through
+the real work. Recording deletion closes only recording leases; independent
+attachment handles remain usable.
+
+The final 98 core and 40 server tests pass, including the blocked-I/O admission
+guard regression. The 44 existing SDK, 22 portable audio, 50 native desktop
+(one ignored), four fs-sync plugin and 55 focused frontend tests pass. Generated
+bindings and desktop typechecking pass; strict production core/SDK/server Clippy
+passes. Final desktop/CLI compilation, generated-contract drift, repository-wide
+formatting and generated-binding formatting pass after the admission guard change.
+Desktop lint reports zero errors and retains existing warnings. Windows x64/ARM64
+and Linux hosted checks remain required for this new increment.
+
+The rebuilt headless executable passed trusted loopback HTTPS checks at
+50/150/500 ms RTT with a 32,899,072-byte attachment (observed 4 KiB requests at
+94/248/785 ms). Lost-open retry, mid-response disconnect/exact resume, old-generation
+reads after replacement, zero changed bytes after a same-size/restored-mtime edit,
+restart-expired handles, Unicode PNG filenames and empty files all passed. All 94
+preexisting fixture files and the new note/task/metadata/unknown-file canaries kept
+their hashes. Evidence:
+`/Volumes/T7/loofah-backend-build/remote-ui-qa/attachment-ranges-evidence.json`.
+This does not establish native attachment rendering, uploads or production
+performance; those remain acceptance gates. This is a backend read increment: the attachment SDK/native client,
+frontend resolver, upload/open/reveal actions and import/export parity remain open.
+It does not add general remote offline synchronization or change local login-free
+startup. The complete plan objective and remaining release gates stay unchanged.

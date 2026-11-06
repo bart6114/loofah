@@ -174,7 +174,7 @@ pub enum RemoteReply {
     Document(DocumentSnapshot),
     DocumentSave(DocumentSaveOutcome),
     Transcripts(Vec<TranscriptWithData>),
-    AudioMetadata(Option<AudioFileMetadata>),
+    AudioMetadata(Option<FileMetadata>),
     RecordingDeleted(bool),
     Tasks(Vec<TaskItem>),
     TasksSnapshot(TasksSnapshot),

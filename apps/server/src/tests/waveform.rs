@@ -141,11 +141,8 @@ async fn waveform_authorization_monitor_allows_prompt_revocation_and_cancels_on_
         .authenticate(&fixture.token("bob"))
         .await
         .unwrap();
-    let monitor = crate::recording::WaveformAccess::watch(
-        fixture.service.clone(),
-        identity.clone(),
-        vault.clone(),
-    );
+    let monitor =
+        crate::media::MediaAccess::watch(fixture.service.clone(), identity.clone(), vault.clone());
     let remove = format!(
         "/api/v1/vaults/{vault}/members/{}?expected_revision={}",
         bob.member.id,
@@ -173,8 +170,7 @@ async fn waveform_authorization_monitor_allows_prompt_revocation_and_cancels_on_
         .await
         .unwrap();
     expired.expires_at = now();
-    let expiry =
-        crate::recording::WaveformAccess::watch(fixture.service.clone(), expired, vault.clone());
+    let expiry = crate::media::MediaAccess::watch(fixture.service.clone(), expired, vault.clone());
     tokio::time::timeout(std::time::Duration::from_secs(2), expiry.cancel.cancelled())
         .await
         .unwrap();
@@ -184,7 +180,7 @@ async fn waveform_authorization_monitor_allows_prompt_revocation_and_cancels_on_
         .authenticate(&fixture.token("alice"))
         .await
         .unwrap();
-    let shutdown = crate::recording::WaveformAccess::watch(fixture.service.clone(), owner, vault);
+    let shutdown = crate::media::MediaAccess::watch(fixture.service.clone(), owner, vault);
     fixture.service.stop.cancel();
     tokio::time::timeout(
         std::time::Duration::from_secs(2),

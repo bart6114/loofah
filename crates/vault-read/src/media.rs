@@ -1,6 +1,6 @@
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioFileMetadata {
+pub struct FileMetadata {
     pub filename: String,
     pub content_type: String,
     pub size_bytes: u64,

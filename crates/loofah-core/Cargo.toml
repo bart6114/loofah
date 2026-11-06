@@ -12,6 +12,7 @@ hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
+mime_guess = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

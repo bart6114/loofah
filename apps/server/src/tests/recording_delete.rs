@@ -209,7 +209,7 @@ async fn checked_recording_deletion_enforces_roles_isolation_preconditions_and_i
     );
     let reader = fixture
         .service
-        .recording_leases
+        .media_leases
         .reader(&bob.member.id, vault, &lease.to_string())
         .unwrap();
     assert_eq!(

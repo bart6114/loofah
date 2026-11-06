@@ -5,12 +5,18 @@ use tokio_util::sync::CancellationToken;
 const TIME_LIMIT: Duration = Duration::from_secs(30);
 const DURATION_LIMIT: u64 = 12 * 60 * 60;
 
-impl RecordingReader {
+impl MediaReader {
     pub async fn waveform(
         &self,
         cancel: CancellationToken,
     ) -> Result<RecordingWaveform, ApplicationError> {
         self.entry.touch()?;
+        if !matches!(self.entry.source, MediaSource::Recording) {
+            return Err(error(
+                ErrorCode::Validation,
+                "Waveforms are only available for session recordings",
+            ));
+        }
         check_cancel(&cancel)?;
         let reader = self.clone();
         // Keep the cache cell and admission alive until cancelled blocking work actually exits.
@@ -108,7 +114,7 @@ impl RecordingReader {
 }
 
 struct VerifiedInput {
-    reader: RecordingReader,
+    reader: MediaReader,
     position: u64,
     start: u64,
     buffer: Vec<u8>,
@@ -170,7 +176,7 @@ impl Seek for VerifiedInput {
 }
 
 fn check_work(
-    reader: &RecordingReader,
+    reader: &MediaReader,
     cancel: &CancellationToken,
     deadline: Instant,
 ) -> Result<(), ApplicationError> {
@@ -222,13 +228,11 @@ mod tests {
         bytes
     }
 
-    async fn prepared(
-        channels: u16,
-    ) -> (tempfile::TempDir, RecordingLeases, RecordingReader, Vec<u8>) {
+    async fn prepared(channels: u16) -> (tempfile::TempDir, MediaLeases, MediaReader, Vec<u8>) {
         let (root, context) = super::super::tests::fixture().await;
         let bytes = wav(channels);
         std::fs::write(root.path().join("sessions/note/audio.wav"), &bytes).unwrap();
-        let leases = RecordingLeases::default();
+        let leases = MediaLeases::default();
         let id = uuid::Uuid::new_v4().to_string();
         leases.open(context, "alice", &id, "note").await.unwrap();
         let reader = leases.reader("alice", "vault", &id).unwrap();

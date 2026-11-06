@@ -1,12 +1,24 @@
 use std::sync::Arc;
 
-use hypr_loofah_protocol::{ApplicationError, AudioFileMetadata, ErrorCode};
-use hypr_vault_write::media::{OpenedRecording, RecordingSnapshot};
+use hypr_loofah_protocol::{ApplicationError, ErrorCode, FileMetadata};
+use hypr_vault_write::media::RecordingSnapshot;
 
 use crate::{
     VaultContext,
     vault::{error, storage_error},
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MediaSource {
+    Recording,
+    Attachment(String),
+}
+
+pub(crate) struct OpenedMedia {
+    pub filename: String,
+    pub content_type: String,
+    pub file: std::fs::File,
+}
 
 impl VaultContext {
     pub async fn delete_recording(
@@ -108,9 +120,9 @@ impl VaultContext {
     pub async fn audio_metadata(
         self: &Arc<Self>,
         session_id: &str,
-    ) -> Result<Option<AudioFileMetadata>, ApplicationError> {
+    ) -> Result<Option<FileMetadata>, ApplicationError> {
         self.read_recording(session_id, |source| {
-            recording_with_metadata(source, |filename, file, _| {
+            media_with_metadata(source, |filename, _, file, _| {
                 hypr_fs_sync_core::audio::metadata_from_reader(filename, file)
                     .map_err(media_error)?
                     .map(|metadata| (metadata, ()))
@@ -128,9 +140,36 @@ impl VaultContext {
     ) -> Result<Option<T>, ApplicationError>
     where
         T: Send + 'static,
-        F: FnOnce(OpenedRecording) -> Result<T, ApplicationError> + Send + 'static,
+        F: FnOnce(OpenedMedia) -> Result<T, ApplicationError> + Send + 'static,
     {
+        self.read_media(session_id, MediaSource::Recording, read)
+            .await
+    }
+
+    pub(crate) fn validate_media(
+        &self,
+        session_id: &str,
+        source: &MediaSource,
+    ) -> Result<(), ApplicationError> {
         self.validate(session_id)?;
+        if let MediaSource::Attachment(id) = source {
+            hypr_vault_read::paths::validate_attachment_id(id)
+                .map_err(|_| error(ErrorCode::Validation, "Invalid attachment ID"))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn read_media<T, F>(
+        self: &Arc<Self>,
+        session_id: &str,
+        target: MediaSource,
+        read: F,
+    ) -> Result<Option<T>, ApplicationError>
+    where
+        T: Send + 'static,
+        F: FnOnce(OpenedMedia) -> Result<T, ApplicationError> + Send + 'static,
+    {
+        self.validate_media(session_id, &target)?;
         let permit = self
             .media_readers
             .clone()
@@ -138,27 +177,57 @@ impl VaultContext {
             .map_err(|_| {
                 error(
                     ErrorCode::Unavailable,
-                    "Recording readers are busy; retry shortly",
+                    "Media readers are busy; retry shortly",
                 )
             })?;
         let context = self.clone();
         let id = session_id.to_owned();
         tokio::spawn(async move {
-            let source = context
-                .store
-                .open_recording(&id)
-                .await
-                .map_err(|cause| storage_error(cause, false))?
-                .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))?;
-            let source = match source {
-                RecordingSnapshot::Absent => return Ok(None),
-                RecordingSnapshot::Busy => {
-                    return Err(error(
-                        ErrorCode::Unavailable,
-                        "Recording is not ready for playback",
-                    ));
+            let source = match target {
+                MediaSource::Recording => {
+                    let source = context
+                        .store
+                        .open_recording(&id)
+                        .await
+                        .map_err(|cause| storage_error(cause, false))?
+                        .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))?;
+                    match source {
+                        RecordingSnapshot::Absent => return Ok(None),
+                        RecordingSnapshot::Busy => {
+                            return Err(error(
+                                ErrorCode::Unavailable,
+                                "Recording is not ready for playback",
+                            ));
+                        }
+                        RecordingSnapshot::File(source) => OpenedMedia {
+                            content_type: hypr_fs_sync_core::audio::content_type(source.filename)
+                                .ok_or_else(|| {
+                                    error(ErrorCode::Internal, "Unsupported recording format")
+                                })?
+                                .into(),
+                            filename: source.filename.into(),
+                            file: source.file,
+                        },
+                    }
                 }
-                RecordingSnapshot::File(source) => source,
+                MediaSource::Attachment(attachment_id) => {
+                    let Some(source) = context
+                        .store
+                        .open_attachment(&id, &attachment_id)
+                        .await
+                        .map_err(|cause| storage_error(cause, false))?
+                    else {
+                        return Ok(None);
+                    };
+                    OpenedMedia {
+                        content_type: mime_guess::from_path(&source.attachment_id)
+                            .first_or_octet_stream()
+                            .essence_str()
+                            .into(),
+                        filename: source.attachment_id,
+                        file: source.file,
+                    }
+                }
             };
             // Retain admission and vault ownership through blocking work after caller cancellation.
             tokio::task::spawn_blocking(move || {
@@ -167,19 +236,29 @@ impl VaultContext {
                 read(source).map(Some)
             })
             .await
-            .map_err(|_| error(ErrorCode::Internal, "Recording reader stopped"))?
+            .map_err(|_| error(ErrorCode::Internal, "Media reader stopped"))?
         })
         .await
-        .map_err(|_| error(ErrorCode::Internal, "Recording request stopped"))?
+        .map_err(|_| error(ErrorCode::Internal, "Media request stopped"))?
     }
 }
 
-pub(crate) fn recording_with_metadata<T>(
-    mut source: OpenedRecording,
-    read: impl FnOnce(&str, &mut std::fs::File, u64) -> Result<(AudioFileMetadata, T), ApplicationError>,
-) -> Result<(OpenedRecording, AudioFileMetadata, std::fs::Metadata, T), ApplicationError> {
+pub(crate) fn media_with_metadata<T>(
+    mut source: OpenedMedia,
+    read: impl FnOnce(
+        &str,
+        &str,
+        &mut std::fs::File,
+        u64,
+    ) -> Result<(FileMetadata, T), ApplicationError>,
+) -> Result<(OpenedMedia, FileMetadata, std::fs::Metadata, T), ApplicationError> {
     let before = source.file.metadata().map_err(media_error)?;
-    let (metadata, extra) = read(source.filename, &mut source.file, before.len())?;
+    let (metadata, extra) = read(
+        &source.filename,
+        &source.content_type,
+        &mut source.file,
+        before.len(),
+    )?;
     let after = source.file.metadata().map_err(media_error)?;
     if before.len() != after.len()
         || before.modified().ok() != after.modified().ok()
@@ -187,7 +266,7 @@ pub(crate) fn recording_with_metadata<T>(
     {
         return Err(error(
             ErrorCode::Unavailable,
-            "Recording changed while its metadata was read",
+            "Media changed while its metadata was read",
         ));
     }
     Ok((source, metadata, after, extra))

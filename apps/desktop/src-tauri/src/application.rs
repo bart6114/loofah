@@ -122,7 +122,7 @@ pub async fn application_documents<R: tauri::Runtime>(
 pub async fn application_audio_metadata<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
-) -> Result<Option<hypr_loofah_protocol::AudioFileMetadata>, ApplicationError> {
+) -> Result<Option<hypr_loofah_protocol::FileMetadata>, ApplicationError> {
     context(&app)?.audio_metadata(&session_id).await
 }
 

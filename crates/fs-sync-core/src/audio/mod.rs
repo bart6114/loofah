@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -6,9 +5,8 @@ use std::time::UNIX_EPOCH;
 use crate::error::AudioImportError;
 use crate::runtime::{AudioImportEvent, AudioImportRuntime};
 use chrono::{DateTime, Utc};
-use sha2::{Digest, Sha256};
 
-pub use hypr_vault_read::media::{AudioFileMetadata, AudioPeaks};
+pub use hypr_vault_read::media::{AudioPeaks, FileMetadata};
 
 const AUDIO_FORMATS: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
 const AUDIO_ARTIFACTS: [&str; 9] = [
@@ -71,7 +69,7 @@ pub fn path(session_dir: &Path) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>> {
+pub fn metadata(session_dir: &Path) -> std::io::Result<Option<FileMetadata>> {
     let Some(path) = path(session_dir) else {
         return Ok(None);
     };
@@ -82,46 +80,23 @@ pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>
     metadata_from_reader(filename, std::fs::File::open(&path)?)
 }
 
+pub fn content_type(filename: &str) -> Option<&'static str> {
+    match filename {
+        "audio.mp3" => Some("audio/mpeg"),
+        "audio.wav" => Some("audio/wav"),
+        "audio.ogg" => Some("audio/ogg"),
+        _ => None,
+    }
+}
+
 pub fn metadata_from_reader(
     filename: &str,
-    mut reader: impl Read,
-) -> std::io::Result<Option<AudioFileMetadata>> {
-    let content_type = match filename {
-        "audio.mp3" => "audio/mpeg",
-        "audio.wav" => "audio/wav",
-        "audio.ogg" => "audio/ogg",
-        _ => return Ok(None),
+    reader: impl Read,
+) -> std::io::Result<Option<FileMetadata>> {
+    let Some(content_type) = content_type(filename) else {
+        return Ok(None);
     };
-
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut size_bytes = 0_u64;
-
-    loop {
-        let bytes_read = reader.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-        size_bytes = size_bytes
-            .checked_add(bytes_read as u64)
-            .ok_or_else(|| std::io::Error::other("audio_file_too_large"))?;
-    }
-
-    let sha256 = hasher
-        .finalize()
-        .iter()
-        .fold(String::with_capacity(64), |mut output, byte| {
-            write!(&mut output, "{byte:02x}").unwrap();
-            output
-        });
-
-    Ok(Some(AudioFileMetadata {
-        filename: filename.to_string(),
-        content_type: content_type.to_string(),
-        size_bytes,
-        sha256,
-    }))
+    crate::media::metadata_from_reader(filename, content_type, reader).map(Some)
 }
 
 /// Returns waveform peaks for the session's recording, computing and caching them on first
@@ -454,7 +429,7 @@ mod tests {
 
         assert_eq!(
             metadata,
-            AudioFileMetadata {
+            FileMetadata {
                 filename: "audio.mp3".to_string(),
                 content_type: "audio/mpeg".to_string(),
                 size_bytes: 3,

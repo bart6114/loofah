@@ -29,13 +29,23 @@ pub(crate) fn router() -> Router<Arc<Service>> {
             get(read).head(head).delete(close),
         )
         .route("/vaults/{vault}/audio/leases/{lease}/peaks", get(waveform))
+        .route(
+            "/vaults/{vault}/sessions/{session}/attachments/{attachment}/leases/{lease}",
+            put(open_attachment),
+        )
+        .route(
+            "/vaults/{vault}/attachments/leases/{lease}",
+            get(read_attachment)
+                .head(head_attachment)
+                .delete(close_attachment),
+        )
 }
 
-pub(crate) struct WaveformAccess {
+pub(crate) struct MediaAccess {
     pub(crate) cancel: tokio_util::sync::CancellationToken,
     monitor: tokio::task::JoinHandle<()>,
 }
-impl WaveformAccess {
+impl MediaAccess {
     pub(crate) fn watch(
         service: Arc<Service>,
         identity: crate::auth::Identity,
@@ -69,7 +79,7 @@ impl WaveformAccess {
         Self { cancel, monitor }
     }
 }
-impl Drop for WaveformAccess {
+impl Drop for MediaAccess {
     fn drop(&mut self) {
         self.cancel.cancel();
         self.monitor.abort();
@@ -84,7 +94,7 @@ async fn waveform(
 ) -> Result<Response> {
     let access = service.catalog.access(&identity, &vault, false).await?;
     let reader = service
-        .recording_leases
+        .media_leases
         .reader(&access.member_id, &vault, &lease)?;
     let etag = format!("\"sha256:{}\"", reader.metadata().sha256);
     if headers.get(header::IF_MATCH).is_some_and(|value| {
@@ -101,7 +111,7 @@ async fn waveform(
     }
     // Long decoding must not hold the catalog read lock and delay membership removal.
     drop(access);
-    let guard = WaveformAccess::watch(service.clone(), identity.clone(), vault.clone());
+    let guard = MediaAccess::watch(service.clone(), identity.clone(), vault.clone());
     let result = reader.waveform(guard.cancel.clone()).await;
     if identity.expires_at <= now() {
         return Err(ApiError::new(ErrorCode::Unauthenticated, "Sign in again"));
@@ -127,17 +137,70 @@ async fn open(
     let access = service.catalog.access(&identity, &vault, false).await?;
     let context = service.vault(&vault).await?;
     let owner = access.member_id.clone();
-    let media_permit = service
-        .media_reads
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| ApiError::busy("Recording readers are busy; retry shortly"))?;
-    let leases = service.recording_leases.clone();
-    content_read(&service, access, 256 * 1024, async move {
-        let _permit = media_permit;
+    let leases = service.media_leases.clone();
+    metadata_read(&service, access, identity, vault, async move {
         leases.open(context, &owner, &lease, &session).await
     })
     .await
+}
+
+async fn open_attachment(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, session, attachment, lease)): ApiPath<(String, String, String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    let context = service.vault(&vault).await?;
+    let owner = access.member_id.clone();
+    let leases = service.media_leases.clone();
+    metadata_read(&service, access, identity, vault, async move {
+        leases
+            .open_attachment(context, &owner, &lease, &session, &attachment)
+            .await
+    })
+    .await
+}
+
+pub(crate) async fn metadata_read<T: serde::Serialize + Send + 'static>(
+    service: &Arc<Service>,
+    access: crate::catalog::VaultAccess,
+    identity: crate::auth::Identity,
+    vault: String,
+    operation: impl Future<Output = std::result::Result<T, hypr_loofah_protocol::ApplicationError>>
+    + Send
+    + 'static,
+) -> Result<Response> {
+    if service.stop.is_cancelled() {
+        return Err(ApiError::new(
+            ErrorCode::Unavailable,
+            "Server is shutting down",
+        ));
+    }
+    let permit = service
+        .media_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Media readers are busy; retry shortly"))?;
+    let service = service.clone();
+    drop(access);
+    // File hashing retains global admission after disconnect, without blocking membership changes.
+    tokio::spawn(async move {
+        let _permit = permit;
+        let result = operation.await;
+        if service.stop.is_cancelled() {
+            return Err(ApiError::new(
+                ErrorCode::Unavailable,
+                "Server is shutting down",
+            ));
+        }
+        if identity.expires_at <= now() {
+            return Err(ApiError::new(ErrorCode::Unauthenticated, "Sign in again"));
+        }
+        let access = service.catalog.access(&identity, &vault, false).await?;
+        content_read(&service, access, 256 * 1024, async move { result }).await
+    })
+    .await
+    .map_err(ApiError::internal)?
 }
 
 async fn close(
@@ -147,7 +210,7 @@ async fn close(
 ) -> Result<StatusCode> {
     let access = service.catalog.access(&identity, &vault, false).await?;
     service
-        .recording_leases
+        .media_leases
         .close(&access.member_id, &vault, &lease)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -158,7 +221,7 @@ async fn head(
     ApiPath((vault, lease)): ApiPath<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response> {
-    response(service, identity, vault, lease, headers, true).await
+    response(service, identity, vault, lease, headers, true, false).await
 }
 
 async fn read(
@@ -167,7 +230,37 @@ async fn read(
     ApiPath((vault, lease)): ApiPath<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response> {
-    response(service, identity, vault, lease, headers, false).await
+    response(service, identity, vault, lease, headers, false, false).await
+}
+
+async fn close_attachment(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, lease)): ApiPath<(String, String)>,
+) -> Result<StatusCode> {
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    service
+        .media_leases
+        .close_attachment(&access.member_id, &vault, &lease)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn read_attachment(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, lease)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    response(service, identity, vault, lease, headers, false, true).await
+}
+
+async fn head_attachment(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, lease)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    response(service, identity, vault, lease, headers, true, true).await
 }
 
 async fn response(
@@ -177,6 +270,7 @@ async fn response(
     lease: String,
     headers: HeaderMap,
     head: bool,
+    attachment: bool,
 ) -> Result<Response> {
     let access = service.catalog.access(&identity, &vault, false).await?;
     if service.stop.is_cancelled() {
@@ -186,11 +280,29 @@ async fn response(
         ));
     }
     let owner = access.member_id.clone();
-    let reader = service.recording_leases.reader(&owner, &vault, &lease)?;
+    let reader = if attachment {
+        service
+            .media_leases
+            .attachment_reader(&owner, &vault, &lease)?
+    } else {
+        service.media_leases.reader(&owner, &vault, &lease)?
+    };
     let metadata = reader.metadata();
+
     let size = metadata.size_bytes;
     let etag = format!("\"sha256:{}\"", metadata.sha256);
     let mut response = Response::new(Body::empty());
+    if attachment {
+        response.headers_mut().insert(
+            header::CONTENT_SECURITY_POLICY,
+            "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+                .parse()
+                .unwrap(),
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, "private, no-store".parse().unwrap());
+    }
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, metadata.content_type.parse().unwrap());
@@ -265,31 +377,52 @@ async fn response(
     if head || range.length == 0 {
         return Ok(response);
     }
+    let attachment_permit = if attachment {
+        Some(
+            service
+                .attachment_streams
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| ApiError::busy("Attachment stream capacity reached; retry shortly"))?,
+        )
+    } else {
+        None
+    };
     let permit = service
-        .recording_streams
+        .media_streams
         .clone()
         .try_acquire_owned()
-        .map_err(|_| ApiError::busy("Recording stream capacity reached; retry shortly"))?;
-    *response.body_mut() = recording_body(service, identity, vault, reader, range, permit);
+        .map_err(|_| ApiError::busy("Media stream capacity reached; retry shortly"))?;
+    *response.body_mut() = media_body(
+        service,
+        identity,
+        vault,
+        reader,
+        range,
+        (permit, attachment_permit),
+    );
     Ok(response)
 }
 
-fn recording_body(
+fn media_body(
     service: Arc<Service>,
     identity: crate::auth::Identity,
     vault: String,
-    reader: hypr_loofah_core::recording_leases::RecordingReader,
+    reader: hypr_loofah_core::media_leases::MediaReader,
     range: ByteRange,
-    permit: tokio::sync::OwnedSemaphorePermit,
+    permits: (
+        tokio::sync::OwnedSemaphorePermit,
+        Option<tokio::sync::OwnedSemaphorePermit>,
+    ),
 ) -> Body {
     type Chunk = std::result::Result<Vec<u8>, std::io::Error>;
     let (demand, mut requests) =
         tokio::sync::mpsc::channel::<tokio::sync::oneshot::Sender<Chunk>>(1);
     let length = range.length;
+    let permits = Arc::new(permits);
     // The body owns only demand channels. An unpolled body cannot retain a file reader
     // or stream slot indefinitely; the worker stops after 30 seconds without demand.
     tokio::spawn(async move {
-        let _permit = permit;
         let expiry = tokio::time::sleep(Duration::from_secs(
             identity.expires_at.saturating_sub(now()),
         ));
@@ -312,7 +445,11 @@ fn recording_body(
                     .await
                     .map_err(std::io::Error::other)?;
                 let bytes = reader
-                    .read_chunk(offset, remaining.min(64 * 1024) as usize)
+                    .read_chunk_with_guard(
+                        offset,
+                        remaining.min(64 * 1024) as usize,
+                        permits.clone(),
+                    )
                     .await
                     .map_err(std::io::Error::other)?;
                 drop(access);

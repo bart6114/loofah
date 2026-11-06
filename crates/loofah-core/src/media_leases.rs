@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod attachment_tests;
 mod waveform;
 
 use std::{
@@ -11,11 +13,13 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use hypr_loofah_protocol::{ApplicationError, AudioFileMetadata, ErrorCode, RecordingLease};
+use hypr_loofah_protocol::{
+    ApplicationError, AttachmentLease, ErrorCode, FileMetadata, RecordingLease,
+};
 use sha2::{Digest, Sha256};
 use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore};
 
-use crate::{VaultContext, vault::error};
+use crate::{VaultContext, media::MediaSource, vault::error};
 
 pub use hypr_loofah_protocol::RECORDING_CHUNK_LIMIT;
 const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
@@ -26,7 +30,7 @@ const HASH_INDEX_LIMIT: usize = 16 * 1024 * 1024;
 /// Hosts supply an authenticated member or device-window generation as the owner.
 /// A lease ID alone never grants access. Hosts must recheck vault authorization on every read.
 #[derive(Clone)]
-pub struct RecordingLeases(Arc<Registry>);
+pub struct MediaLeases(Arc<Registry>);
 
 struct Registry {
     state: Mutex<State>,
@@ -49,20 +53,21 @@ struct Entry {
     owner: String,
     vault: String,
     session: String,
+    source: MediaSource,
     touched: Mutex<Instant>,
     idle_timeout: Duration,
     closed: AtomicBool,
-    recording: OnceCell<Result<Option<Arc<Recording>>, ApplicationError>>,
+    recording: OnceCell<Result<Option<Arc<PinnedMedia>>, ApplicationError>>,
     // Close cached descriptors before releasing vault ownership and descriptor admission.
     context: Arc<VaultContext>,
     _slot: OwnedSemaphorePermit,
 }
 
-struct Recording {
+struct PinnedMedia {
     #[cfg(test)]
     reads_started: std::sync::atomic::AtomicU64,
     file: Mutex<File>,
-    metadata: AudioFileMetadata,
+    metadata: FileMetadata,
     modified: Option<SystemTime>,
     chunks: ChunkIndex,
     peaks: OnceCell<Arc<hypr_loofah_protocol::AudioPeaks>>,
@@ -82,19 +87,19 @@ struct IndexedReader<R> {
 }
 
 #[derive(Clone)]
-pub struct RecordingReader {
-    recording: Arc<Recording>,
+pub struct MediaReader {
+    recording: Arc<PinnedMedia>,
     entry: Arc<Entry>,
     waveforms: Arc<Semaphore>,
 }
 
-impl Default for RecordingLeases {
+impl Default for MediaLeases {
     fn default() -> Self {
         Self::new(64, 8, IDLE_TIMEOUT)
     }
 }
 
-impl RecordingLeases {
+impl MediaLeases {
     fn new(capacity: usize, owner_limit: usize, idle_timeout: Duration) -> Self {
         Self::with_index_limits(
             capacity,
@@ -132,17 +137,61 @@ impl RecordingLeases {
         id: &str,
         session: &str,
     ) -> Result<Option<RecordingLease>, ApplicationError> {
-        context.validate(session)?;
+        self.open_media(context, owner, id, session, MediaSource::Recording)
+            .await
+            .map(|opened| opened.map(|(entry, media)| entry.info(&media, self.0.idle_timeout)))
+    }
+
+    pub async fn open_attachment(
+        &self,
+        context: Arc<VaultContext>,
+        owner: &str,
+        id: &str,
+        session: &str,
+        attachment_id: &str,
+    ) -> Result<Option<AttachmentLease>, ApplicationError> {
+        self.open_media(
+            context,
+            owner,
+            id,
+            session,
+            MediaSource::Attachment(attachment_id.into()),
+        )
+        .await
+        .map(|opened| {
+            opened.map(|(entry, media)| AttachmentLease {
+                id: entry.id.clone(),
+                vault_id: entry.vault.clone(),
+                session_id: entry.session.clone(),
+                attachment_id: attachment_id.into(),
+                metadata: media.metadata.clone(),
+                idle_timeout_secs: self.0.idle_timeout.as_secs() as u32,
+            })
+        })
+    }
+
+    async fn open_media(
+        &self,
+        context: Arc<VaultContext>,
+        owner: &str,
+        id: &str,
+        session: &str,
+        source: MediaSource,
+    ) -> Result<Option<(Arc<Entry>, Arc<PinnedMedia>)>, ApplicationError> {
+        context.validate_media(session, &source)?;
         let id = normalize_id(id)?;
         let entry = {
             let mut state = self.0.state.lock().unwrap();
             self.prune(&mut state);
             if let Some(entry) = state.active.get(&id) {
                 entry.check_scope(owner, &context.events.vault_id())?;
-                if entry.session != session || !Arc::ptr_eq(&entry.context, &context) {
+                if entry.session != session
+                    || entry.source != source
+                    || !Arc::ptr_eq(&entry.context, &context)
+                {
                     return Err(error(
                         ErrorCode::Conflict,
-                        "Recording lease identifies another request",
+                        "Media lease identifies another request",
                     ));
                 }
                 entry.touch()?;
@@ -174,6 +223,7 @@ impl RecordingLeases {
                     owner: owner.to_owned(),
                     vault: context.events.vault_id(),
                     session: session.to_owned(),
+                    source,
                     context,
                     _slot: slot,
                     touched: Mutex::new(Instant::now()),
@@ -196,15 +246,22 @@ impl RecordingLeases {
                     let limit = leases.0.index_limit;
                     entry
                         .context
-                        .read_recording(&entry.session, move |source| {
+                        .read_media(&entry.session, entry.source.clone(), move |source| {
                             let (source, metadata, after, chunks) =
-                                crate::media::recording_with_metadata(
+                                crate::media::media_with_metadata(
                                     source,
-                                    |filename, file, size| {
-                                        ChunkIndex::collect(filename, file, size, budget, limit)
+                                    |filename, content_type, file, size| {
+                                        ChunkIndex::collect(
+                                            filename,
+                                            content_type,
+                                            file,
+                                            size,
+                                            budget,
+                                            limit,
+                                        )
                                     },
                                 )?;
-                            Ok(Arc::new(Recording {
+                            Ok(Arc::new(PinnedMedia {
                                 #[cfg(test)]
                                 reads_started: Default::default(),
                                 file: Mutex::new(source.file),
@@ -220,7 +277,7 @@ impl RecordingLeases {
                 .clone();
             entry.touch()?;
             match result {
-                Ok(Some(recording)) => Ok(Some(entry.info(&recording, leases.0.idle_timeout))),
+                Ok(Some(recording)) => Ok(Some((entry.clone(), recording))),
                 other => {
                     leases.remove(&entry);
                     other.map(|_| None)
@@ -228,7 +285,7 @@ impl RecordingLeases {
             }
         })
         .await
-        .map_err(|_| error(ErrorCode::Internal, "Recording lease request stopped"))?
+        .map_err(|_| error(ErrorCode::Internal, "Media lease request stopped"))?
     }
 
     pub fn reader(
@@ -236,23 +293,42 @@ impl RecordingLeases {
         owner: &str,
         vault: &str,
         id: &str,
-    ) -> Result<RecordingReader, ApplicationError> {
+    ) -> Result<MediaReader, ApplicationError> {
+        self.reader_inner(owner, vault, id, false)
+    }
+
+    pub fn attachment_reader(
+        &self,
+        owner: &str,
+        vault: &str,
+        id: &str,
+    ) -> Result<MediaReader, ApplicationError> {
+        self.reader_inner(owner, vault, id, true)
+    }
+
+    fn reader_inner(
+        &self,
+        owner: &str,
+        vault: &str,
+        id: &str,
+        attachment: bool,
+    ) -> Result<MediaReader, ApplicationError> {
         let id = normalize_id(id)?;
         let mut state = self.0.state.lock().unwrap();
         self.prune(&mut state);
         let entry = state.active.get(&id).ok_or_else(not_found)?;
         entry.check_scope(owner, vault)?;
+        if matches!(entry.source, MediaSource::Attachment(_)) != attachment {
+            return Err(not_found());
+        }
         entry.touch()?;
         let recording = match entry.recording.get() {
             Some(Ok(Some(recording))) => recording.clone(),
             _ => {
-                return Err(error(
-                    ErrorCode::Unavailable,
-                    "Recording lease is not ready",
-                ));
+                return Err(error(ErrorCode::Unavailable, "Media lease is not ready"));
             }
         };
-        Ok(RecordingReader {
+        Ok(MediaReader {
             entry: entry.clone(),
             recording,
             waveforms: self.0.waveforms.clone(),
@@ -260,11 +336,33 @@ impl RecordingLeases {
     }
 
     pub fn close(&self, owner: &str, vault: &str, id: &str) -> Result<(), ApplicationError> {
+        self.close_inner(owner, vault, id, false)
+    }
+
+    pub fn close_attachment(
+        &self,
+        owner: &str,
+        vault: &str,
+        id: &str,
+    ) -> Result<(), ApplicationError> {
+        self.close_inner(owner, vault, id, true)
+    }
+
+    fn close_inner(
+        &self,
+        owner: &str,
+        vault: &str,
+        id: &str,
+        attachment: bool,
+    ) -> Result<(), ApplicationError> {
         let id = normalize_id(id)?;
         let mut state = self.0.state.lock().unwrap();
         self.prune(&mut state);
         if let Some(entry) = state.active.get(&id) {
             entry.check_scope(owner, vault)?;
+            if matches!(entry.source, MediaSource::Attachment(_)) != attachment {
+                return Err(not_found());
+            }
             entry.closed.store(true, Ordering::Release);
             state.active.remove(&id);
         }
@@ -284,10 +382,13 @@ impl RecordingLeases {
         self.prune(&mut state);
     }
 
-    pub fn close_session(&self, vault: &str, session: &str) {
+    pub fn close_recording_session(&self, vault: &str, session: &str) {
         let mut state = self.0.state.lock().unwrap();
         state.active.retain(|_, entry| {
-            if entry.vault == vault && entry.session == session {
+            if entry.vault == vault
+                && entry.session == session
+                && matches!(entry.source, MediaSource::Recording)
+            {
                 entry.closed.store(true, Ordering::Release);
                 false
             } else {
@@ -354,7 +455,7 @@ impl Entry {
         Ok(())
     }
 
-    fn info(&self, recording: &Recording, idle_timeout: Duration) -> RecordingLease {
+    fn info(&self, recording: &PinnedMedia, idle_timeout: Duration) -> RecordingLease {
         RecordingLease {
             id: self.id.clone(),
             vault_id: self.vault.clone(),
@@ -365,8 +466,8 @@ impl Entry {
     }
 }
 
-impl RecordingReader {
-    pub fn metadata(&self) -> &AudioFileMetadata {
+impl MediaReader {
+    pub fn metadata(&self) -> &FileMetadata {
         &self.recording.metadata
     }
 
@@ -374,6 +475,16 @@ impl RecordingReader {
         &self,
         offset: u64,
         length: usize,
+    ) -> Result<Vec<u8>, ApplicationError> {
+        self.read_chunk_with_guard(offset, length, ()).await
+    }
+
+    /// Keep host admission alive until blocking I/O ends, even if the caller cancels its future.
+    pub async fn read_chunk_with_guard<G: Send + 'static>(
+        &self,
+        offset: u64,
+        length: usize,
+        admission: G,
     ) -> Result<Vec<u8>, ApplicationError> {
         if length == 0
             || length > RECORDING_CHUNK_LIMIT
@@ -383,9 +494,12 @@ impl RecordingReader {
         }
         self.entry.touch()?;
         let reader = self.clone();
-        tokio::task::spawn_blocking(move || reader.read_chunk_blocking(offset, length))
-            .await
-            .map_err(|_| error(ErrorCode::Internal, "Recording reader stopped"))?
+        tokio::task::spawn_blocking(move || {
+            let _admission = admission;
+            reader.read_chunk_blocking(offset, length)
+        })
+        .await
+        .map_err(|_| error(ErrorCode::Internal, "Recording reader stopped"))?
     }
 
     fn read_chunk_blocking(&self, offset: u64, length: usize) -> Result<Vec<u8>, ApplicationError> {
@@ -445,11 +559,12 @@ impl RecordingReader {
 impl ChunkIndex {
     fn collect(
         filename: &str,
+        content_type: &str,
         file: &mut File,
         size: u64,
         budget: Arc<Semaphore>,
         limit: usize,
-    ) -> Result<(AudioFileMetadata, Self), ApplicationError> {
+    ) -> Result<(FileMetadata, Self), ApplicationError> {
         let count = size.div_ceil(HASH_CHUNK_SIZE as u64);
         let memory = count.checked_mul(32).ok_or_else(index_limit_error)?;
         if memory > limit as u64 || memory > u32::MAX as u64 {
@@ -469,9 +584,9 @@ impl ChunkIndex {
             hasher: Sha256::new(),
             pending: 0,
         };
-        let metadata = hypr_fs_sync_core::audio::metadata_from_reader(filename, &mut indexed)
-            .map_err(read_error)?
-            .ok_or_else(|| error(ErrorCode::Internal, "Unsupported recording format"))?;
+        let metadata =
+            hypr_fs_sync_core::media::metadata_from_reader(filename, content_type, &mut indexed)
+                .map_err(read_error)?;
         if indexed.pending != 0 {
             indexed.hashes.push(indexed.hasher.finalize().into());
         }
@@ -507,35 +622,35 @@ impl<R: Read> Read for IndexedReader<R> {
 fn index_limit_error() -> ApplicationError {
     error(
         ErrorCode::ResourceLimit,
-        "Recording exceeds the playback verification limit",
+        "Media exceeds the file verification limit",
     )
 }
 
 fn normalize_id(id: &str) -> Result<String, ApplicationError> {
     uuid::Uuid::parse_str(id)
         .map(|id| id.to_string())
-        .map_err(|_| error(ErrorCode::Validation, "Invalid recording lease identifier"))
+        .map_err(|_| error(ErrorCode::Validation, "Invalid media lease identifier"))
 }
 fn not_found() -> ApplicationError {
-    error(ErrorCode::NotFound, "Recording lease not found or expired")
+    error(ErrorCode::NotFound, "Media lease not found or expired")
 }
 fn changed_error() -> ApplicationError {
     error(
         ErrorCode::Unavailable,
-        "Recording changed; reopen it before continuing",
+        "Media changed; reopen it before continuing",
     )
 }
 fn capacity_error() -> ApplicationError {
     let mut cause = error(
         ErrorCode::ResourceLimit,
-        "Recording lease capacity reached; close idle recordings and retry",
+        "Media lease capacity reached; close idle recordings and retry",
     );
     cause.retryable = true;
     cause
 }
 fn read_error(cause: std::io::Error) -> ApplicationError {
-    tracing::error!(%cause, "recording read failed");
-    error(ErrorCode::Internal, "Cannot read recording")
+    tracing::error!(%cause, "media read failed");
+    error(ErrorCode::Internal, "Cannot read media")
 }
 
 #[cfg(test)]
@@ -570,7 +685,7 @@ mod tests {
     #[tokio::test]
     async fn retry_and_ranges_keep_one_generation_without_rehashing_or_holding_the_store_lock() {
         let (root, context) = fixture().await;
-        let leases = RecordingLeases::default();
+        let leases = MediaLeases::default();
         let id = id();
         let info = leases
             .open(context.clone(), "alice", &id, "note")
@@ -630,7 +745,7 @@ mod tests {
     #[tokio::test]
     async fn identifiers_are_scoped_to_the_authenticated_owner_vault_and_session() {
         let (_root, context) = fixture().await;
-        let leases = RecordingLeases::default();
+        let leases = MediaLeases::default();
         assert_eq!(
             leases
                 .open(context.clone(), "alice", "../audio.wav", "note")
@@ -682,7 +797,7 @@ mod tests {
     #[tokio::test]
     async fn idle_expiry_close_owner_and_shutdown_release_resources_without_resurrecting_readers() {
         let (_root, context) = fixture().await;
-        let leases = RecordingLeases::default();
+        let leases = MediaLeases::default();
         let alice = id();
         let bob = id();
         leases
@@ -719,7 +834,7 @@ mod tests {
     async fn changed_in_place_recordings_fail_closed_and_missing_or_failed_opens_release_capacity()
     {
         let (root, context) = fixture().await;
-        let leases = RecordingLeases::new(1, 1, IDLE_TIMEOUT);
+        let leases = MediaLeases::new(1, 1, IDLE_TIMEOUT);
         assert_eq!(
             leases
                 .open(context.clone(), "alice", &id(), "missing")
@@ -760,7 +875,7 @@ mod tests {
             .map(|i| (i % 251) as u8)
             .collect();
         std::fs::write(&path, &original).unwrap();
-        let leases = RecordingLeases::default();
+        let leases = MediaLeases::default();
         let id = id();
         let info = leases
             .open(context.clone(), "alice", &id, "note")
@@ -827,7 +942,7 @@ mod tests {
             .open(root.path().join("sessions/note/audio.wav"))
             .unwrap();
         file.set_len(HASH_CHUNK_SIZE as u64 + 1).unwrap();
-        let leases = RecordingLeases::with_index_limits(4, 4, IDLE_TIMEOUT, 96, 64);
+        let leases = MediaLeases::with_index_limits(4, 4, IDLE_TIMEOUT, 96, 64);
         let id = id();
         leases
             .open(context.clone(), "alice", &id, "note")
@@ -865,7 +980,7 @@ mod tests {
             .open(root.path().join("sessions/note/audio.wav"))
             .unwrap();
         file.set_len(HASH_CHUNK_SIZE as u64 + 1).unwrap();
-        let leases = RecordingLeases::with_index_limits(1, 1, IDLE_TIMEOUT, 64, 32);
+        let leases = MediaLeases::with_index_limits(1, 1, IDLE_TIMEOUT, 64, 32);
         let rejected = leases
             .open(context.clone(), "alice", &id(), "note")
             .await
@@ -889,7 +1004,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancelled_chunk_retains_ownership_and_admission_until_blocking_io_finishes() {
         let (_root, context) = fixture().await;
-        let leases = RecordingLeases::new(1, 1, IDLE_TIMEOUT);
+        let leases = MediaLeases::new(1, 1, IDLE_TIMEOUT);
         let id = id();
         leases
             .open(context.clone(), "alice", &id, "note")
@@ -899,7 +1014,10 @@ mod tests {
         let recording = reader.recording.clone();
         let block = recording.file.lock().unwrap();
         let caller = reader.clone();
-        let request = tokio::spawn(async move { caller.read_chunk(0, 4).await });
+        let host_capacity = Arc::new(Semaphore::new(1));
+        let host_admission = host_capacity.clone().try_acquire_owned().unwrap();
+        let request =
+            tokio::spawn(async move { caller.read_chunk_with_guard(0, 4, host_admission).await });
         tokio::time::timeout(Duration::from_secs(2), async {
             while Arc::strong_count(&reader.entry) < 4 {
                 tokio::task::yield_now().await;
@@ -909,6 +1027,7 @@ mod tests {
         .unwrap();
         request.abort();
         assert!(request.await.unwrap_err().is_cancelled());
+        assert_eq!(host_capacity.available_permits(), 0);
         let entry = Arc::downgrade(&reader.entry);
         leases.close("alice", "vault", &id).unwrap();
         drop(reader);
@@ -941,6 +1060,7 @@ mod tests {
         .unwrap();
         assert_eq!(leases.0.slots.available_permits(), 1);
         assert_eq!(leases.0.index_budget.available_permits(), HASH_INDEX_BUDGET);
+        assert_eq!(host_capacity.available_permits(), 1);
         assert!(
             leases
                 .open(context, "bob", &self::id(), "note")
@@ -953,7 +1073,7 @@ mod tests {
     #[tokio::test]
     async fn cancelled_pending_open_cannot_resurrect_a_closed_handle() {
         let (_root, context) = fixture().await;
-        let leases = RecordingLeases::new(1, 1, IDLE_TIMEOUT);
+        let leases = MediaLeases::new(1, 1, IDLE_TIMEOUT);
         let snapshot = context.store.lock_snapshot().await;
         let id = id();
         let pending = {
@@ -996,7 +1116,7 @@ mod tests {
     #[tokio::test]
     async fn owner_and_global_limits_count_live_readers_after_explicit_close() {
         let (_root, context) = fixture().await;
-        let leases = RecordingLeases::new(2, 1, IDLE_TIMEOUT);
+        let leases = MediaLeases::new(2, 1, IDLE_TIMEOUT);
         let id = id();
         leases
             .open(context.clone(), "alice", &id, "note")

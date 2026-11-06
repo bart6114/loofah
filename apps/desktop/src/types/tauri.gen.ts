@@ -250,7 +250,7 @@ export const commands = {
   },
   async applicationAudioMetadata(
     sessionId: string,
-  ): Promise<Result<AudioFileMetadata | null, ApplicationError>> {
+  ): Promise<Result<FileMetadata | null, ApplicationError>> {
     try {
       return {
         status: "ok",
@@ -1556,12 +1556,6 @@ export type ApplicationError = {
   current_revision: string | null;
   mutation_outcome: MutationOutcome | null;
 };
-export type AudioFileMetadata = {
-  filename: string;
-  contentType: string;
-  sizeBytes: number;
-  sha256: string;
-};
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
@@ -1710,6 +1704,12 @@ export type ErrorCode =
   | "resource_limit"
   | "cancelled"
   | "internal";
+export type FileMetadata = {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+};
 export type HighlightRange = { start: number; end: number };
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
@@ -1798,7 +1798,7 @@ export type MetadataSaveOutcome =
   | { kind: "conflict"; snapshot: MetadataSnapshot };
 export type MetadataSnapshot = { meta: SessionMeta; revision: string };
 export type MutationOutcome = "not_committed" | "persisted" | "unknown";
-export type NativeRecording = { id: string; metadata: AudioFileMetadata };
+export type NativeRecording = { id: string; metadata: FileMetadata };
 export type NoteDraftRecovery = {
   scope: string;
   sessionId: string;
@@ -1972,7 +1972,7 @@ export type RemoteReply =
   | { kind: "document"; value: DocumentSnapshot }
   | { kind: "document_save"; value: DocumentSaveOutcome }
   | { kind: "transcripts"; value: TranscriptWithData[] }
-  | { kind: "audio_metadata"; value: AudioFileMetadata | null }
+  | { kind: "audio_metadata"; value: FileMetadata | null }
   | { kind: "recording_deleted"; value: boolean }
   | { kind: "tasks"; value: TaskItem[] }
   | { kind: "tasks_snapshot"; value: TasksSnapshot }
