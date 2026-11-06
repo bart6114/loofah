@@ -1,10 +1,10 @@
 ---
 source: apps/cli/src/cli.rs
-assertion_line: 868
+assertion_line: 950
 expression: canonicalize_json(contract)
 ---
 {
-  "about": "Query and edit local Loofah meeting data",
+  "about": "Query and edit Loofah meeting data",
   "global_options": [
     {
       "flags": "--base",
@@ -17,6 +17,13 @@ expression: canonicalize_json(contract)
       "is_flag": false,
       "required": false,
       "value_name": "DIR"
+    },
+    {
+      "flags": "--profile",
+      "help": "Use a saved HTTPS server profile instead of the local vault",
+      "is_flag": false,
+      "required": false,
+      "value_name": "NAME"
     },
     {
       "flags": "--json",
@@ -40,6 +47,92 @@ expression: canonicalize_json(contract)
     }
   ],
   "subcommands": [
+    {
+      "about": "Manage explicit server connections; local commands do not require a login",
+      "name": "loof profiles",
+      "options": [
+        {
+          "flags": "-h, --help",
+          "help": "Print help",
+          "is_flag": false,
+          "required": false
+        }
+      ],
+      "subcommands": [
+        {
+          "about": "List saved connection metadata without contacting a server",
+          "name": "loof profiles list",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof profiles list [-h]"
+        },
+        {
+          "about": "Sign in through the server's company browser flow",
+          "arguments": [
+            {
+              "name": "NAME",
+              "required": true
+            }
+          ],
+          "name": "loof profiles login",
+          "options": [
+            {
+              "flags": "--server",
+              "help": "Required when creating a profile; existing profiles keep their server",
+              "is_flag": false,
+              "required": false,
+              "value_name": "HTTPS_ORIGIN"
+            },
+            {
+              "flags": "--vault",
+              "help": "Select an accessible vault; defaults to the saved or personal vault",
+              "is_flag": false,
+              "required": false,
+              "value_name": "VAULT_ID"
+            },
+            {
+              "flags": "--no-browser",
+              "help": "Print the login URL on stderr instead of opening the browser on this computer",
+              "is_flag": true,
+              "required": false
+            },
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof profiles login [--server] [--vault] [--no-browser] [-h] <name>"
+        },
+        {
+          "about": "Remove this device's CLI credentials and saved profile; vault files stay intact",
+          "arguments": [
+            {
+              "name": "NAME",
+              "required": true
+            }
+          ],
+          "name": "loof profiles logout",
+          "options": [
+            {
+              "flags": "-h, --help",
+              "help": "Print help",
+              "is_flag": false,
+              "required": false
+            }
+          ],
+          "synopsis": "loof profiles logout [-h] <name>"
+        }
+      ],
+      "synopsis": "loof profiles [-h] <command>"
+    },
     {
       "about": "Build or repair the local search cache for the existing vault",
       "name": "loof init",
@@ -665,5 +758,5 @@ expression: canonicalize_json(contract)
       "synopsis": "loof tags [-h] <command>"
     }
   ],
-  "synopsis": "loof [--base] [--vault-path] [--json] [-h] [-V] <command>"
+  "synopsis": "loof [--base] [--vault-path] [--profile] [--json] [-h] [-V] <command>"
 }

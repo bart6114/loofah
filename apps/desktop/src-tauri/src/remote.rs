@@ -5,7 +5,7 @@ use std::{
 };
 
 use hypr_loofah_client::{
-    CredentialFuture, CredentialStore, RemoteClient, RemoteEvent, RemoteOperation, RemoteReply,
+    CredentialStore, OsCredentials, RemoteClient, RemoteEvent, RemoteOperation, RemoteReply,
     Subscription, failure,
 };
 use hypr_loofah_protocol::{ApplicationError, Capabilities, ErrorCode, Me};
@@ -168,55 +168,6 @@ pub struct RemoteConnectionInfo {
     pub capabilities: Capabilities,
 }
 
-struct OsCredentials {
-    service: String,
-}
-impl CredentialStore for OsCredentials {
-    fn load<'a>(&'a self, account: &'a str) -> CredentialFuture<'a, Option<String>> {
-        let service = self.service.clone();
-        let account = account.to_string();
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || {
-                let entry =
-                    keyring::Entry::new(&service, &account).map_err(|_| credential_error())?;
-                match entry.get_password() {
-                    Ok(value) => Ok(Some(value)),
-                    Err(keyring::Error::NoEntry) => Ok(None),
-                    Err(_) => Err(credential_error()),
-                }
-            })
-            .await
-            .map_err(|_| credential_error())?
-        })
-    }
-    fn save<'a>(&'a self, account: &'a str, value: Option<&'a str>) -> CredentialFuture<'a, ()> {
-        let service = self.service.clone();
-        let account = account.to_string();
-        let value = value.map(str::to_owned);
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || {
-                let entry =
-                    keyring::Entry::new(&service, &account).map_err(|_| credential_error())?;
-                if let Some(value) = value {
-                    entry.set_password(&value).map_err(|_| credential_error())
-                } else {
-                    match entry.delete_credential() {
-                        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                        Err(_) => Err(credential_error()),
-                    }
-                }
-            })
-            .await
-            .map_err(|_| credential_error())?
-        })
-    }
-}
-fn credential_error() -> ApplicationError {
-    failure(
-        ErrorCode::Internal,
-        "Cannot access saved server credentials. Unlock the device credential store and try again.",
-    )
-}
 fn missing() -> ApplicationError {
     failure(ErrorCode::Cancelled, "This server connection is closed")
 }
@@ -266,9 +217,10 @@ pub async fn remote_connect<R: tauri::Runtime>(
 ) -> Result<RemoteConnectionInfo, ApplicationError> {
     let state = app.state::<RemoteState>();
     let lifetime = state.window_lifetime(window.label());
-    let credentials = Arc::new(OsCredentials {
-        service: format!("{}.remote-auth", app.config().identifier),
-    });
+    let credentials = Arc::new(OsCredentials::new(format!(
+        "{}.remote-auth",
+        app.config().identifier
+    )));
     let client = tokio::select! {
         _ = lifetime.cancelled() => return Err(missing()),
         result = discover(&app, &server, credentials) => result?,
@@ -602,6 +554,7 @@ pub async fn remote_logout<R: tauri::Runtime>(
 mod tests {
     use super::*;
     use axum::{Json, Router, routing::get};
+    use hypr_loofah_client::CredentialFuture;
     use serde_json::json;
 
     fn test_window(

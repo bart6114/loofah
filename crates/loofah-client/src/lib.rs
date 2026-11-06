@@ -3,12 +3,18 @@
 mod auth;
 mod drafts;
 mod events;
+#[cfg(feature = "os-credentials")]
+mod os_credentials;
+mod profiles;
 mod requests;
 mod sse;
 
 pub use auth::LoginAttempt;
 pub use drafts::{DraftCache, DraftText, NoteDraftRecovery, RecoveryEntry};
 pub use events::{ConnectionState, RemoteEvent, Subscription};
+#[cfg(feature = "os-credentials")]
+pub use os_credentials::OsCredentials;
+pub use profiles::{ConnectionProfile, ConnectionProfiles, ProfileLease};
 pub use requests::{RemoteOperation, RemoteReply};
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};

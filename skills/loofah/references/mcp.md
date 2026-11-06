@@ -16,4 +16,12 @@ Available resources:
 
 Prefer tools when the workflow needs structured JSON. Use resources when the client needs concise Markdown or plain-text context.
 
-MCP startup automatically builds a missing or incompatible shared cache, reporting progress on stderr. Use `loof --json init` for repair. Search and list requests reconcile external edits.
+Local MCP startup automatically builds a missing or incompatible shared cache, reporting progress on stderr. Use `loof --json init` for repair. Search and list requests reconcile external edits.
+
+
+For a server vault, the user first signs in with `loof profiles login company
+--server https://notes.example.com`, then starts `loof --profile company mcp`.
+The same tools and resource URIs read that selected vault over HTTPS. Tool calls
+never open a browser, and errors never fall back to a local vault. Restart MCP
+after changing the profile's account or vault. The initial remote CLI command
+set is also read-only; see `cli.md` before attempting a write.

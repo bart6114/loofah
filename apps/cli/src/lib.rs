@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
+mod agent_reader;
 mod cli;
 mod commands;
 mod error;
 mod mcp;
 mod output;
+mod profiles;
 mod vault;
 
 pub use cli::Args;
@@ -12,6 +14,36 @@ pub use error::{Error, Result};
 pub use output::JSON_SCHEMA_VERSION;
 
 pub async fn run(args: Args) -> Result<u8> {
+    if let cli::Command::Profiles { command } = args.command {
+        if args.profile.is_some() || args.base.is_some() || args.vault_path.is_some() {
+            return Err(Error::operation(
+                "manage server profiles",
+                "Profile management does not accept --profile, --base, or --vault-path",
+            ));
+        }
+        profiles::run(command, args.json).await?;
+        return Ok(0);
+    }
+    if let Some(name) = &args.profile {
+        match &args.command {
+            cli::Command::Sessions { .. } | cli::Command::Mcp => {}
+            _ => {
+                return Err(Error::operation(
+                    "run remote command",
+                    "This command is not available for server profiles yet. No local vault was accessed.",
+                ));
+            }
+        }
+        let reader = agent_reader::AgentReader::Remote(profiles::RemoteTarget::select(name).await?);
+        match args.command {
+            cli::Command::Sessions { command } => {
+                commands::meetings::run_with_reader(&reader, command, args.json).await?
+            }
+            cli::Command::Mcp => mcp::serve_with_reader(reader).await?,
+            _ => unreachable!("remote commands were checked before selecting the profile"),
+        }
+        return Ok(0);
+    }
     if matches!(&args.command, cli::Command::Doctor) {
         let ready = commands::doctor::run(&args, args.json)?;
         return Ok(if ready { 0 } else { 1 });
@@ -152,7 +184,7 @@ async fn dispatch(
     cache: &hypr_search_cache::Cache,
 ) -> Result<u8> {
     match args.command {
-        cli::Command::Doctor | cli::Command::Init => {
+        cli::Command::Profiles { .. } | cli::Command::Doctor | cli::Command::Init => {
             unreachable!("setup commands return before dispatch")
         }
         cli::Command::Sessions { command } => {
@@ -198,6 +230,7 @@ mod tests {
     async fn doctor_returns_nonzero_status_when_vault_is_not_ready() {
         let dir = tempfile::tempdir().unwrap();
         let status = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(dir.path().join("missing-vault")),
             json: true,
@@ -277,6 +310,7 @@ mod tests {
 
     fn meetings_args(vault: &std::path::Path, command: cli::MeetingCommand) -> Args {
         Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.to_path_buf()),
             json: false,
@@ -293,6 +327,7 @@ mod tests {
         std::fs::write(&body_path, "Decide the launch date.\n").unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -346,6 +381,7 @@ mod tests {
 
         // The existing read path sees the new session.
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: true,
@@ -369,6 +405,7 @@ mod tests {
         std::fs::create_dir_all(&vault).unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -408,6 +445,7 @@ mod tests {
         std::fs::create_dir_all(&vault).unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -459,6 +497,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -512,6 +551,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -564,6 +604,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -597,6 +638,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -633,6 +675,7 @@ mod tests {
         std::fs::write(&text_path, "not audio").unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -663,6 +706,7 @@ mod tests {
         std::fs::create_dir_all(&vault).unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -693,6 +737,7 @@ mod tests {
         std::fs::create_dir_all(vault.join("sessions")).unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -714,6 +759,7 @@ mod tests {
         write_session(&vault, "meeting-1", None);
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -736,6 +782,7 @@ mod tests {
         std::fs::write(vault.join("sessions/meeting-1/audio.mp3"), b"mp3").unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -772,6 +819,7 @@ mod tests {
         .unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,
@@ -806,6 +854,7 @@ mod tests {
         write_test_wav(&audio_path);
 
         let exit_code = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: true,
@@ -851,6 +900,7 @@ mod tests {
         std::fs::write(&append_path, "Appended line").unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -871,6 +921,7 @@ mod tests {
         );
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -900,6 +951,7 @@ mod tests {
         std::fs::write(&set_path, "body").unwrap();
 
         let error = run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault.clone()),
             json: false,
@@ -1141,6 +1193,7 @@ mod tests {
         assert_eq!(registry, vec!["hiring", "project-x"]);
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: true,
@@ -1176,6 +1229,7 @@ mod tests {
         std::fs::write(session_dir.join("_memo.md"), "Decide the launch date.").unwrap();
 
         run(Args {
+            profile: None,
             base: None,
             vault_path: Some(vault),
             json: false,

@@ -3,7 +3,7 @@ title: "Vault guide for agents"
 description: "The standing AGENTS.md every vault carries: what Loofah is, how the vault is structured, and how to work with it."
 ---
 
-Loofah is a local-first knowledge and note-taking app that began with meeting transcription. Its **vault** can hold recorded meetings, standalone notes, imported material, and work an agent creates from other authorized sources. The vault is a plain folder of Markdown and JSON files and the only source of truth. There is no database or cloud copy. A copy of this page is kept at the vault root as `AGENTS.md`. Full, current documentation lives at https://loofah.io/, with machine-readable indexes at https://loofah.io/llms.txt and https://loofah.io/llms-full.txt.
+Loofah is a local-first knowledge and note-taking app that began with meeting transcription. Its **vault** can hold recorded meetings, standalone notes, imported material, and work an agent creates from other authorized sources. The vault is a plain folder of Markdown and JSON files and the only source of truth. There is no database. By default the vault lives on your device; an explicitly selected server profile reads the authoritative vault on that server. A copy of this page is kept at the vault root as `AGENTS.md`. Full, current documentation lives at https://loofah.io/, with machine-readable indexes at https://loofah.io/llms.txt and https://loofah.io/llms-full.txt.
 
 For agents with shell access, use the `loof` CLI for both reading and writing. Start with the [skill installation prompt](https://loofah.io/agents/skills/#install-with-a-prompt) to install the Loofah skill and remember to use it through the CLI when the user wants to save or retrieve knowledge.
 
@@ -115,6 +115,9 @@ output. Vault commands automatically initialize a missing or incompatible local 
 
 | Command | Purpose |
 | --- | --- |
+| `profiles list` | List saved server connection metadata without contacting a server. |
+| `profiles login` | Sign in to an explicit HTTPS server profile; local use needs no login. |
+| `profiles logout` | Remove the CLI profile and its device credentials without changing vault files. |
 | `doctor` | Check vault and cache readiness; refresh this guide. |
 | `init` | Build, repair, or refresh the local search cache for the existing vault. |
 | `sessions list` | List sessions, optionally filtered with `--query`. |
@@ -155,3 +158,18 @@ The whole directory moves atomically to `.trash/<UTC-date>/sessions/<ID>` with a
 There is no CLI restore command. For manual recovery, quit Loofah and pause vault sync, locate the exact `trash_path` from the response in Finder, and move the complete directory back to `path` (`sessions/<ID>`). Restore the original ID as the directory name if the trash name has a collision suffix. If that destination exists, stop: never merge or replace it. Reopen Loofah and verify with `loof --json sessions get ID`. Agents should give these recovery steps to the user; do not move vault files on their behalf.
 
 A missing or already-deleted ID returns `not_found` (exit 2), without scanning trash or moving anything. Malformed IDs, mismatched/corrupt metadata, symlinked session paths, and failed moves return `operation_failed` (exit 1). A failed rename keeps the original in place; there is no cross-filesystem copy/delete fallback. If the process is interrupted or its response is lost, the complete directory is at its original location or in dated trash; check `sessions get ID` before retrying, and use Finder for user-requested recovery. No persistent deletion receipt is written.
+
+## Explicit server connections
+
+Local commands need no login. For a server, run `loof profiles login company
+--server https://notes.example.com`, then select it explicitly with
+`loof --profile company --json sessions list` or `loof --profile company mcp`.
+Never choose a server profile or change its account/vault without the user's
+instruction. The initial remote command set is read-only: list, search, get,
+note without `--set` or `--append`, transcript, and the existing MCP tools and
+resources. Writes, import, transcription, export, tag listing, `doctor`, `init`,
+and local filesystem paths are not available through server profiles yet.
+Errors never fall back to a local vault. Sign in before starting remote MCP;
+restart the MCP connection after changing the profile's account or vault.
+`profiles list` works offline. `profiles logout company` removes that CLI
+connection and its OS-stored credentials without changing the vault.

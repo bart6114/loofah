@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
@@ -9,13 +8,12 @@ use rmcp::{
 };
 use serde::Serialize;
 
-use crate::Error;
+use crate::{Error, agent_reader::AgentReader};
 use hypr_agent_access as access;
 
 #[derive(Clone)]
 struct LoofahMcpServer {
-    vault: Arc<PathBuf>,
-    cache: hypr_search_cache::Cache,
+    reader: AgentReader,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -25,10 +23,10 @@ enum ResourceRequest {
 }
 
 impl LoofahMcpServer {
+    #[cfg(test)]
     fn new(vault: PathBuf, cache: hypr_search_cache::Cache) -> Self {
         Self {
-            vault: Arc::new(vault),
-            cache,
+            reader: AgentReader::local(vault, cache),
         }
     }
 }
@@ -48,9 +46,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::ListMeetingsInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::list_meetings(&self.cache, input)
-            .await
-            .map_err(command_error)?;
+        let page = self.reader.list(input).await.map_err(command_error)?;
         structured(&page)
     }
 
@@ -67,9 +63,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::GetMeetingInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let meeting = access::get_meeting(&self.vault, input)
-            .await
-            .map_err(command_error)?;
+        let meeting = self.reader.meeting(input).await.map_err(command_error)?;
         structured(&meeting)
     }
 
@@ -86,9 +80,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::GetMeetingTranscriptInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::get_meeting_transcript(&self.vault, input)
-            .await
-            .map_err(command_error)?;
+        let page = self.reader.transcript(input).await.map_err(command_error)?;
         structured(&page)
     }
 
@@ -105,9 +97,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::SearchMeetingsInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::search_meetings(&self.cache, input)
-            .await
-            .map_err(command_error)?;
+        let page = self.reader.search(input).await.map_err(command_error)?;
         structured(&page)
     }
 }
@@ -127,7 +117,7 @@ impl ServerHandler for LoofahMcpServer {
             env!("LOOFAH_VERSION"),
         ))
         .with_instructions(
-            "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
+            "Read-only access to the selected Loofah vault. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the selected vault's search cache. Documentation: https://github.com/bart6114/loofah",
         )
     }
 
@@ -147,17 +137,16 @@ impl ServerHandler for LoofahMcpServer {
             })
             .transpose()?
             .unwrap_or(0);
-        let page = access::list_meetings(
-            &self.cache,
-            access::ListMeetingsInput {
+        let page = self
+            .reader
+            .list(access::ListMeetingsInput {
                 query: None,
                 limit: Some(access::DEFAULT_LIST_LIMIT),
                 offset: Some(offset),
                 ..Default::default()
-            },
-        )
-        .await
-        .map_err(command_error)?;
+            })
+            .await
+            .map_err(command_error)?;
         let next_cursor = page.pagination.next_offset.map(|offset| offset.to_string());
         let resources = page
             .meetings
@@ -212,20 +201,20 @@ impl ServerHandler for LoofahMcpServer {
         let request = parse_resource_uri(&params.uri)?;
         let contents = match request {
             ResourceRequest::Meeting { meeting_id } => {
-                let meeting =
-                    access::get_meeting(&self.vault, access::GetMeetingInput { meeting_id })
-                        .await
-                        .map_err(command_error)?;
+                let meeting = self
+                    .reader
+                    .meeting(access::GetMeetingInput { meeting_id })
+                    .await
+                    .map_err(command_error)?;
                 ResourceContents::text(meeting.to_markdown(), params.uri)
                     .with_mime_type("text/markdown")
             }
             ResourceRequest::Transcript { meeting_id } => {
-                let transcript = access::get_meeting_transcript(
-                    &self.vault,
-                    access::GetMeetingTranscriptInput { meeting_id },
-                )
-                .await
-                .map_err(command_error)?;
+                let transcript = self
+                    .reader
+                    .transcript(access::GetMeetingTranscriptInput { meeting_id })
+                    .await
+                    .map_err(command_error)?;
                 ResourceContents::text(transcript.text, params.uri).with_mime_type("text/plain")
             }
         };
@@ -235,7 +224,11 @@ impl ServerHandler for LoofahMcpServer {
 }
 
 pub async fn serve(vault: PathBuf, cache: hypr_search_cache::Cache) -> crate::Result<()> {
-    let running = LoofahMcpServer::new(vault, cache)
+    serve_with_reader(AgentReader::local(vault, cache)).await
+}
+
+pub(crate) async fn serve_with_reader(reader: AgentReader) -> crate::Result<()> {
+    let running = LoofahMcpServer { reader }
         .serve(rmcp::transport::stdio())
         .await
         .map_err(|error| Error::operation("start MCP server", error.to_string()))?;
@@ -288,12 +281,23 @@ fn internal_error(error: impl std::fmt::Display) -> McpError {
     McpError::internal_error(error.to_string(), None)
 }
 
-fn command_error(error: access::Error) -> McpError {
+fn command_error(error: Error) -> McpError {
     match error {
-        access::Error::NotFound(what) => {
-            McpError::invalid_params(format!("{what} not found"), None)
+        Error::NotFound(what) => McpError::invalid_params(format!("{what} not found"), None),
+        Error::Operation {
+            action: "search meetings",
+            reason,
+        } => McpError::invalid_params(reason, None),
+        Error::Remote(error) => {
+            let data = serde_json::json!({ "code": error.code, "retryable": error.retryable, "request_id": error.request_id });
+            match error.code {
+                hypr_loofah_protocol::ErrorCode::Validation
+                | hypr_loofah_protocol::ErrorCode::NotFound => {
+                    McpError::invalid_params(error.message, Some(data))
+                }
+                _ => McpError::internal_error(error.message, Some(data)),
+            }
         }
-        access::Error::InvalidInput(reason) => McpError::invalid_params(reason, None),
         other => internal_error(other),
     }
 }

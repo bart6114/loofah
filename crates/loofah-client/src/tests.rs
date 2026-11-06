@@ -29,6 +29,7 @@ struct MemoryCredentials {
     values: Mutex<HashMap<String, String>>,
     saves: AtomicUsize,
     fail: AtomicBool,
+    save_delay: AtomicUsize,
 }
 impl CredentialStore for MemoryCredentials {
     fn load<'a>(&'a self, account: &'a str) -> CredentialFuture<'a, Option<String>> {
@@ -40,6 +41,10 @@ impl CredentialStore for MemoryCredentials {
                 return Err(failure(ErrorCode::Internal, "Credential store is locked"));
             }
             self.saves.fetch_add(1, Ordering::SeqCst);
+            let delay = self.save_delay.load(Ordering::SeqCst);
+            if delay > 0 {
+                tokio::time::sleep(Duration::from_millis(delay as u64)).await;
+            }
             let mut values = self.values.lock().await;
             match value {
                 Some(value) => {
@@ -476,6 +481,62 @@ async fn concurrent_requests_rotate_a_refresh_token_once_and_cancellation_does_n
         .unwrap()
         .clone();
     assert!(saved.contains("refresh-2"));
+}
+
+#[tokio::test]
+async fn abandoned_refresh_retains_the_profile_process_lock_until_rotated_credentials_are_saved() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(1))).await;
+    let root = tempfile::tempdir().unwrap();
+    let profiles = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+    let lease = profiles
+        .create("work", &fixture.state.origin)
+        .await
+        .unwrap();
+    let weak_lease = Arc::downgrade(&lease);
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client).unwrap().credentials = lease.credentials(fixture.credentials.clone());
+    drop(lease);
+    fixture.login(&client).await;
+    client.expire_access("access-1").await;
+    fixture.credentials.save_delay.store(250, Ordering::SeqCst);
+    let abandoned = tokio::spawn({
+        let client = client.clone();
+        async move { client.access_token().await }
+    });
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while fixture.credentials.saves.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    abandoned.abort();
+    assert!(abandoned.await.unwrap_err().is_cancelled());
+    drop(client);
+    assert!(weak_lease.upgrade().is_some());
+    let next = profiles.open("work");
+    tokio::pin!(next);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), &mut next)
+            .await
+            .is_err()
+    );
+    let _next = tokio::time::timeout(Duration::from_secs(5), next)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(weak_lease.upgrade().is_none());
+    assert!(
+        fixture
+            .credentials
+            .values
+            .lock()
+            .await
+            .values()
+            .next()
+            .unwrap()
+            .contains("refresh-2")
+    );
 }
 
 #[tokio::test]

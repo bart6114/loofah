@@ -1,17 +1,30 @@
 use std::path::Path;
 
+use crate::agent_reader::AgentReader;
 use crate::cli::{DocumentKind, MeetingCommand, TagCommand};
 use crate::{Error, Result, output};
 use hypr_agent_access::{
     Document, GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, MeetingListItem,
-    SearchHit, SearchMeetingsInput, get_meeting, get_meeting_transcript, list_meetings,
-    search_meetings,
+    SearchHit, SearchMeetingsInput,
 };
 use hypr_vault_write::SessionStore;
 
 pub async fn run(
     vault: &Path,
     cache: &hypr_search_cache::Cache,
+    command: MeetingCommand,
+    json: bool,
+) -> Result<()> {
+    run_with_reader(
+        &AgentReader::local(vault.to_path_buf(), cache.clone()),
+        command,
+        json,
+    )
+    .await
+}
+
+pub(crate) async fn run_with_reader(
+    reader: &AgentReader,
     command: MeetingCommand,
     json: bool,
 ) -> Result<()> {
@@ -23,17 +36,15 @@ pub async fn run(
             tag,
             untagged,
         } => {
-            let page = list_meetings(
-                cache,
-                ListMeetingsInput {
+            let page = reader
+                .list(ListMeetingsInput {
                     query,
                     limit: Some(limit),
                     offset: Some(offset),
                     tags: (!tag.is_empty()).then_some(tag),
                     untagged: untagged.then_some(true),
-                },
-            )
-            .await?;
+                })
+                .await?;
             let rendered = if json {
                 output::json("meetings.list", &page.meetings, Some(&page.pagination))?
             } else {
@@ -47,15 +58,13 @@ pub async fn run(
             limit,
             offset,
         } => {
-            let page = search_meetings(
-                cache,
-                SearchMeetingsInput {
+            let page = reader
+                .search(SearchMeetingsInput {
                     query,
                     limit: Some(limit),
                     offset: Some(offset),
-                },
-            )
-            .await?;
+                })
+                .await?;
             let rendered = if json {
                 output::json("meetings.search", &page.hits, Some(&page.pagination))?
             } else {
@@ -65,7 +74,7 @@ pub async fn run(
             Ok(())
         }
         MeetingCommand::Get { id } => {
-            let meeting = get_meeting(vault, GetMeetingInput { meeting_id: id }).await?;
+            let meeting = reader.meeting(GetMeetingInput { meeting_id: id }).await?;
             let rendered = if json {
                 output::json("meetings.get", &meeting, None)?
             } else {
@@ -74,7 +83,9 @@ pub async fn run(
             output::emit(&rendered);
             Ok(())
         }
-        MeetingCommand::Rename { id, title } => rename_session(vault, &id, title, json).await,
+        MeetingCommand::Rename { id, title } => {
+            rename_session(reader.vault()?, &id, title, json).await
+        }
         MeetingCommand::New {
             title,
             note,
@@ -85,6 +96,7 @@ pub async fn run(
             author,
             skill,
         } => {
+            let vault = reader.vault()?;
             // Read the body before touching the vault, so a bad --note path creates nothing.
             let body = note.as_deref().map(read_body).transpose()?;
             let store = SessionStore::new(vault.to_path_buf());
@@ -159,16 +171,21 @@ pub async fn run(
             append,
         } => {
             if set.is_some() || append.is_some() {
-                return edit_note(vault, &id, set.as_deref(), append.as_deref(), json).await;
+                return edit_note(
+                    reader.vault()?,
+                    &id,
+                    set.as_deref(),
+                    append.as_deref(),
+                    json,
+                )
+                .await;
             }
 
-            let meeting = get_meeting(
-                vault,
-                GetMeetingInput {
+            let meeting = reader
+                .meeting(GetMeetingInput {
                     meeting_id: id.clone(),
-                },
-            )
-            .await?;
+                })
+                .await?;
             if json {
                 match kind {
                     DocumentKind::Note => {
@@ -205,8 +222,9 @@ pub async fn run(
             Ok(())
         }
         MeetingCommand::Transcript { id } => {
-            let transcript =
-                get_meeting_transcript(vault, GetMeetingTranscriptInput { meeting_id: id }).await?;
+            let transcript = reader
+                .transcript(GetMeetingTranscriptInput { meeting_id: id })
+                .await?;
             let rendered = if json {
                 output::json("meetings.transcript", &transcript, None)?
             } else {
@@ -216,12 +234,14 @@ pub async fn run(
             Ok(())
         }
         MeetingCommand::Tag { command } => match command {
-            TagCommand::Add { id, tags } => edit_tags(vault, &id, tags, true, json).await,
-            TagCommand::Remove { id, tags } => edit_tags(vault, &id, tags, false, json).await,
+            TagCommand::Add { id, tags } => edit_tags(reader.vault()?, &id, tags, true, json).await,
+            TagCommand::Remove { id, tags } => {
+                edit_tags(reader.vault()?, &id, tags, false, json).await
+            }
         },
-        MeetingCommand::Delete { id } => delete_session(vault, &id, json).await,
+        MeetingCommand::Delete { id } => delete_session(reader.vault()?, &id, json).await,
         MeetingCommand::Path { id } => {
-            let path = session_path(vault, &id).await?;
+            let path = session_path(reader.vault()?, &id).await?;
             let rendered = if json {
                 output::json(
                     "meetings.path",
@@ -238,7 +258,7 @@ pub async fn run(
             Ok(())
         }
         MeetingCommand::Attach { id, file, name } => {
-            let saved = attach_file(vault, &id, &file, name).await?;
+            let saved = attach_file(reader.vault()?, &id, &file, name).await?;
             let rendered = if json {
                 output::json(
                     "meetings.attach",
@@ -256,7 +276,9 @@ pub async fn run(
             output::emit(&rendered);
             Ok(())
         }
-        command @ MeetingCommand::Export { .. } => super::export::run(vault, command, json).await,
+        command @ MeetingCommand::Export { .. } => {
+            super::export::run(reader.vault()?, command, json).await
+        }
     }
 }
 

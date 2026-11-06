@@ -303,7 +303,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. Remaining: cover all requests, assets, settings, jobs and capture; connection selection and cache lifecycle; typed error and revision UX. The existing editor still uses its original local save contract pending that migration.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: actual editor/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Remaining remote content operations, media/import/export, CLI ownership IPC, and remote CLI/MCP remain to implement. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Remaining remote content operations, media/import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -467,3 +467,52 @@ Stale patches return the current metadata snapshot. Raw formatting or unknown-fi
 This is the metadata contract foundation. The main editor still uses its existing local calls, and the opt-in preview does not yet mount a metadata form. Task/registry mutations, media/import/export, CLI owner routing/profiles, processing, reliable recording and the remaining full migration/release gates stay open.
 
 Validation: shared core passes 69 tests, server 25 plus executable lifecycle coverage, vault-write 286 (one existing ignored), native client 23, agent-access 16 and CLI 111. Desktop/CLI Rust checks and desktop Rust's 45 tests pass (one existing ignored). The final protocol-model move also passes focused core/server/store metadata tests and a fresh native binding export/typecheck. All 93 scoped frontend tests pass with no scoped lint warnings/errors; the preceding full frontend run passed 1,673 tests. Native-client and CLI/agent-access Clippy, generated protocol drift, formatting and whitespace checks pass. The Linux server dependency graph still excludes desktop host/capture/Soniqo dependencies. The preceding output-editor commit has now passed native Windows x64 and ARM64 checks, tests and preview installers; these newer checkpoints still need their own hosted CI results.
+
+### Native connection-profile storage checkpoint
+
+The native OS credential-store adapter is now reusable in `loofah-client` behind an optional feature. The desktop uses that adapter with its existing bundle-specific service name, preserving saved credential lookup. The headless server does not enable that feature. A shared native connection-profile store holds server/member/vault coordinates and credential account hashes; refresh values remain in the OS credential store. It is not mounted in a CLI command or desktop profile selector yet.
+
+Profile metadata uses versioned, private, bounded atomic files outside canonical session content. Updates preserve unknown fields and refuse external file changes, identity/server replacement, damaged/future records and symlinks. Creation is serialized and admits at most 32 saved profiles. Each profile has a process lock; unrelated profiles remain independent. Credential wrappers retain that lock until detached refresh workers have saved rotated credentials, even after caller cancellation. A real subprocess checks lock exclusion and release. A trusted HTTPS test cancels a refresh caller while credential persistence is delayed and verifies that another operation cannot acquire the profile until the rotated credential is stored.
+
+The CLI increment will require explicit `--profile` selection, keeping default local commands login-free. CLI profiles will use their own native credential namespace and the existing company browser SSO flow; they will not borrow the desktop's rotating refresh token. A fresh client per CLI/MCP operation will load the latest credential under the profile lease and verify the signed-in member before accessing its pinned vault. MCP will retain its selected identity/vault binding and resolve access per operation, without holding a profile or vault lock while idle. Missing/changed authorization will fail explicitly rather than falling back to a local vault. Existing JSON schema version 2, tool/resource names and complete transcript behavior remain requirements. CLI mutations and local owner routing still need migration; a first remote read increment will not complete those parts of phase 4.
+
+### Remote CLI and MCP read checkpoint
+
+The CLI now accepts explicit `--profile NAME` selection and `profiles login`,
+`profiles list`, and `profiles logout`. Login reuses native browser S256 PKCE
+and company provisioning; vault selection defaults to the saved or private
+vault. Profile metadata is outside vault content and contains no refresh/access
+values. CLI credentials use their own OS namespace rather than the desktop's
+rotating token. Offline logout deletes known credential entries before removing
+the profile metadata. Local CLI and desktop commands still need no login and
+select no server by default.
+
+One `AgentReader` dispatches the existing list/search/detail/note/transcript
+commands and all four MCP tools/resources to either the local agent projections
+or the native HTTPS client. Existing command identifiers, schema version 2,
+resource URIs, pagination and transcript rendering remain intact. Every remote
+operation reopens its profile under the process lease, loads the latest native
+credential and verifies the signed-in member. MCP pins its profile identity,
+origin, member and vault; changed bindings require a fresh connection. Idle MCP
+holds no profile lock. Unsupported commands, authentication failures and
+network errors never open or fall back to a local vault. Remote mutations,
+media/import/export, tag listing, local owner IPC and desktop profile selection
+remain open; this does not complete phase 4.
+
+Validation: 118 CLI tests, 32 native-client tests and 45 desktop Rust tests pass
+(one existing desktop test remains ignored), with desktop/CLI checks and
+native-client/CLI Clippy. CLI contract/help and MCP instruction snapshots were
+reviewed and updated. Documentation builds with valid internal links. Real
+subprocess CLI and MCP checks against the headless service through trusted
+loopback HTTPS at 150 ms round trips completed browser login, read/search/note
+parity and the full 10,000-word transcript (88,917 rendered bytes, SHA-256
+`1ab19cdfa4f4669a2e82e00521a9354ca722ed161afd835e9251a841d1faa597`).
+Two concurrent CLI processes refreshed the same profile successfully; an idle
+MCP connection allowed another CLI request. Disconnects returned explicit
+CLI/MCP errors, the same MCP process recovered after reconnect, a changed vault
+binding was refused, and offline logout removed credentials/profile access
+from an already-open MCP process. Canonical fixture files, unknown attachments,
+dotfiles and the existing local QA note hash stayed unchanged across reads.
+All test data, profiles and logs stayed on T7; synthetic sign-in credentials
+were removed and fixture processes stopped. Native Windows validation remains
+required for this checkpoint.

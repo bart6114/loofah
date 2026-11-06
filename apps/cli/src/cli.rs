@@ -8,7 +8,7 @@ use hypr_agent_access::{DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT};
 #[command(
     name = "loof",
     version = env!("LOOFAH_VERSION"),
-    about = "Query and edit local Loofah meeting data",
+    about = "Query and edit Loofah meeting data",
     after_help = "Agent guidance lives in AGENTS.md at the vault root; run 'loof doctor' to see the vault path and restore the file if stale."
 )]
 pub struct Args {
@@ -30,6 +30,9 @@ pub struct Args {
     )]
     pub vault_path: Option<PathBuf>,
 
+    #[arg(long, global = true, value_name = "NAME", conflicts_with_all = ["base", "vault_path"], help = "Use a saved HTTPS server profile instead of the local vault")]
+    pub profile: Option<String>,
+
     #[arg(long, global = true)]
     pub json: bool,
 
@@ -39,6 +42,11 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Manage explicit server connections; local commands do not require a login
+    Profiles {
+        #[command(subcommand)]
+        command: ProfileCommand,
+    },
     /// Build or repair the local search cache for the existing vault
     Init,
     /// Check vault access and layout; refresh the vault guide. Open desktop to migrate.
@@ -119,6 +127,35 @@ pub enum Command {
         #[command(subcommand)]
         command: TagsCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProfileCommand {
+    /// List saved connection metadata without contacting a server
+    List,
+    /// Sign in through the server's company browser flow
+    Login {
+        name: String,
+        #[arg(
+            long,
+            value_name = "HTTPS_ORIGIN",
+            help = "Required when creating a profile; existing profiles keep their server"
+        )]
+        server: Option<String>,
+        #[arg(
+            long,
+            value_name = "VAULT_ID",
+            help = "Select an accessible vault; defaults to the saved or personal vault"
+        )]
+        vault: Option<String>,
+        #[arg(
+            long,
+            help = "Print the login URL on stderr instead of opening the browser on this computer"
+        )]
+        no_browser: bool,
+    },
+    /// Remove this device's CLI credentials and saved profile; vault files stay intact
+    Logout { name: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -352,6 +389,51 @@ mod tests {
 
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn server_connections_are_explicit_and_conflict_with_local_vault_options() {
+        let local = Args::try_parse_from(["loof", "sessions", "list"]).unwrap();
+        assert!(local.profile.is_none());
+        let remote =
+            Args::try_parse_from(["loof", "sessions", "list", "--profile", "company"]).unwrap();
+        assert_eq!(remote.profile.as_deref(), Some("company"));
+        for option in ["--base", "--vault-path"] {
+            assert!(
+                Args::try_parse_from([
+                    "loof",
+                    "--profile",
+                    "company",
+                    option,
+                    "/vault",
+                    "sessions",
+                    "list"
+                ])
+                .is_err()
+            );
+        }
+        let login = Args::try_parse_from([
+            "loof",
+            "profiles",
+            "login",
+            "company",
+            "--server",
+            "https://notes.example",
+            "--vault",
+            "shared",
+            "--no-browser",
+        ])
+        .unwrap();
+        assert!(matches!(
+            login.command,
+            Command::Profiles {
+                command: ProfileCommand::Login {
+                    no_browser: true,
+                    vault: Some(_),
+                    ..
+                }
+            }
+        ));
+    }
 
     #[test]
     fn parses_meeting_list_filters() {

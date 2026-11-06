@@ -5,6 +5,7 @@ edition = "2024"
 
 [features]
 dev-fixtures = []
+os-credentials = ["dep:keyring"]
 
 [dependencies]
 axum = { workspace = true }
@@ -13,6 +14,7 @@ futures-util = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
+keyring = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "form", "query"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

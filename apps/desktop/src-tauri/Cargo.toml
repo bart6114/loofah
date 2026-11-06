@@ -68,7 +68,7 @@ hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
-hypr-loofah-client = { workspace = true }
+hypr-loofah-client = { workspace = true, features = ["os-credentials"] }
 hypr-loofah-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
@@ -80,7 +80,6 @@ hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
 chrono = { workspace = true }
 dirs = { workspace = true }
-keyring = { workspace = true }
 pico-args = { workspace = true }
 ractor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
