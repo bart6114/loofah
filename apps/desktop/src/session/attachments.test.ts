@@ -77,42 +77,33 @@ describe("attachment catalog", () => {
     ).rejects.toThrow("disk full");
   });
 
-  it("deletes local audio bytes from both the flat and store-owned locations", async () => {
-    mocks.sessionListAudio.mockResolvedValue({
-      status: "ok",
-      data: ["recording.wav"],
-    });
-
-    await expect(deleteSessionAudio("session-1", () => true)).resolves.toBe(
-      true,
+  it("runs the supplied shared operation inside the serialized device guard", async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      deleteSessionAudio("session-1", () => true, remove),
+    ).resolves.toBe(true);
+    expect(remove).toHaveBeenCalledOnce();
+    expect(mocks.enqueueDatabaseWrite).toHaveBeenCalledWith(
+      "session:session-1",
+      expect.any(Function),
     );
-    expect(mocks.audioDelete).toHaveBeenCalledWith("session-1");
-    expect(mocks.sessionListAudio).toHaveBeenCalledWith("session-1");
-    expect(mocks.sessionDeleteAudio).toHaveBeenCalledWith(
-      "session-1",
-      "recording.wav",
-    );
+    expect(mocks.audioDelete).not.toHaveBeenCalled();
+    expect(mocks.sessionListAudio).not.toHaveBeenCalled();
+    expect(mocks.sessionDeleteAudio).not.toHaveBeenCalled();
   });
 
-  it("deletes the recording without touching the database", async () => {
-    await expect(deleteSessionAudio("session-1", () => true)).resolves.toBe(
-      true,
-    );
-    expect(mocks.audioDelete).toHaveBeenCalledWith("session-1");
-  });
-
-  it("completes logical deletion when local audio is already absent", async () => {
-    mocks.audioDelete.mockResolvedValue({ status: "ok", data: false });
-
-    await expect(deleteSessionAudio("session-1", () => true)).resolves.toBe(
-      true,
-    );
+  it("propagates shared operation failures without reporting successful deletion", async () => {
+    const remove = vi.fn().mockRejectedValue(new Error("recording changed"));
+    await expect(
+      deleteSessionAudio("session-1", () => true, remove),
+    ).rejects.toThrow("recording changed");
   });
 
   it("rechecks capture safety inside the serialized delete operation", async () => {
-    await expect(deleteSessionAudio("session-1", () => false)).resolves.toBe(
-      false,
-    );
-    expect(mocks.audioDelete).not.toHaveBeenCalled();
+    const remove = vi.fn();
+    await expect(
+      deleteSessionAudio("session-1", () => false, remove),
+    ).resolves.toBe(false);
+    expect(remove).not.toHaveBeenCalled();
   });
 });

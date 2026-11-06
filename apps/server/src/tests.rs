@@ -2,6 +2,7 @@ mod audio_metadata;
 mod metadata;
 mod note_editor;
 mod recording;
+mod recording_delete;
 mod tasks;
 mod waveform;
 
@@ -1788,10 +1789,50 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         .unwrap();
     assert_eq!(waveform.recording_sha256, wav_lease.metadata.sha256);
     assert_eq!(waveform.peaks.duration_sec, 1.0);
-    first
-        .close_recording(&vault_id, &wav_id, CancellationToken::new())
+    let deletion_id = uuid::Uuid::new_v4().to_string();
+    let deletion = RemoteOperation::DeleteRecording {
+        vault_id: vault_id.clone(),
+        session_id: created.meta.id.clone(),
+        input: DeleteRecordingRequest {
+            expected_sha256: wav_lease.metadata.sha256.clone(),
+        },
+    };
+    assert!(matches!(
+        first
+            .execute(deletion.clone(), &deletion_id, CancellationToken::new())
+            .await
+            .unwrap(),
+        RemoteReply::RecordingDeleted(true)
+    ));
+    assert!(matches!(
+        first
+            .execute(deletion.clone(), &deletion_id, CancellationToken::new())
+            .await
+            .unwrap(),
+        RemoteReply::RecordingDeleted(false)
+    ));
+    assert_eq!(
+        first
+            .read_recording_chunk(&wav_lease, 0, 1, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotFound
+    );
+    std::fs::write(&wav_path, b"New recording after deletion").unwrap();
+    let rejected = first
+        .execute(deletion, &deletion_id, CancellationToken::new())
         .await
-        .unwrap();
+        .unwrap_err();
+    assert_eq!(rejected.code, ErrorCode::Conflict);
+    assert_eq!(
+        rejected.mutation_outcome,
+        Some(MutationOutcome::NotCommitted)
+    );
+    assert_eq!(
+        std::fs::read(&wav_path).unwrap(),
+        b"New recording after deletion"
+    );
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),
         title: None,

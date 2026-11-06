@@ -754,6 +754,35 @@ async fn recording_metadata_requires_a_capability_before_credential_access() {
 }
 
 #[tokio::test]
+async fn recording_deletion_requires_a_capability_before_credentials_or_mutation_admission() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let request = uuid::Uuid::new_v4().to_string();
+    let cause = client
+        .execute(
+            RemoteOperation::DeleteRecording {
+                vault_id: "test".into(),
+                session_id: "note".into(),
+                input: hypr_loofah_protocol::DeleteRecordingRequest {
+                    expected_sha256: "0".repeat(64),
+                },
+            },
+            &request,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(cause.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(
+        cause.mutation_outcome,
+        Some(hypr_loofah_protocol::MutationOutcome::NotCommitted)
+    );
+    assert!(cause.message.contains("recording deletion"));
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn coherent_editor_reads_require_an_advertised_feature_before_authentication_or_requests() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

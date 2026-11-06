@@ -82,6 +82,7 @@ interface AudioPlayerContextValue {
   canDeleteRecording: boolean;
   audioReady: boolean;
   error: Error | null;
+  deletionFailed: boolean;
   retry: () => void;
 }
 
@@ -101,7 +102,7 @@ export function useAudioTime(): TimeSnapshot {
 }
 
 export function AudioPlayerStatus() {
-  const { error, retry } = useAudioPlayer();
+  const { error, retry, deletionFailed } = useAudioPlayer();
   if (!error) return null;
   return (
     <div
@@ -109,7 +110,13 @@ export function AudioPlayerStatus() {
       className="text-destructive flex items-center gap-2 text-xs"
     >
       <span>
-        <Trans>Recording playback is unavailable.</Trans>
+        {deletionFailed ? (
+          <Trans>
+            Recording deletion was not confirmed. Reload it before trying again.
+          </Trans>
+        ) : (
+          <Trans>Recording playback is unavailable.</Trans>
+        )}
       </span>
       <button type="button" className="underline" onClick={retry}>
         <Trans>Retry</Trans>
@@ -128,7 +135,7 @@ export function AudioPlayerProvider({
   sessionId: string;
   scope: VaultScope | null;
   enabled?: boolean;
-  onDeleteRecording?: () => Promise<void>;
+  onDeleteRecording?: (remove: () => Promise<void>) => Promise<void>;
   children: ReactNode;
 }) {
   const recordingQuery = useQuery(
@@ -161,6 +168,7 @@ export function AudioPlayerProvider({
   const [playbackRate, setPlaybackRateState] = useState(1);
   const timeStoreRef = useRef(new TimeStore());
   const stopRequestedRef = useRef(false);
+  const currentPlayerRef = useRef<WaveSurfer | null>(null);
   const checkpointRef = useRef<{
     key: string;
     time: number;
@@ -193,6 +201,7 @@ export function AudioPlayerProvider({
     if (checkpoint) store.setCurrent(checkpoint.time);
     stopRequestedRef.current = false;
     let ready = false;
+    let active = true;
 
     setPlaybackError(null);
     const audio = new Audio();
@@ -245,7 +254,10 @@ export function AudioPlayerProvider({
       }
       if (!ready && checkpoint) {
         ws.setTime(Math.min(checkpoint.time, dur || checkpoint.time));
-        if (checkpoint.playing) void ws.play().catch(setPlaybackError);
+        if (checkpoint.playing)
+          void ws.play().catch((error) => {
+            if (active) setPlaybackError(error);
+          });
       }
       ready = true;
     };
@@ -294,7 +306,9 @@ export function AudioPlayerProvider({
       setState("stopped");
     };
 
-    ws.on("error", (error) => setPlaybackError(error));
+    ws.on("error", (error) => {
+      if (active) setPlaybackError(error);
+    });
     ws.on("decode", handleDecode);
     ws.on("play", handlePlay);
     ws.on("pause", handlePause);
@@ -305,8 +319,11 @@ export function AudioPlayerProvider({
     ws.on("destroy", handleDestroy);
 
     setWavesurfer(ws);
+    currentPlayerRef.current = ws;
 
     return () => {
+      active = false;
+      if (currentPlayerRef.current === ws) currentPlayerRef.current = null;
       if (ready && playbackKey)
         checkpointRef.current = {
           key: playbackKey,
@@ -324,7 +341,9 @@ export function AudioPlayerProvider({
 
   const start = useCallback(() => {
     if (wavesurfer) {
-      void wavesurfer.play().catch(setPlaybackError);
+      void wavesurfer.play().catch((error) => {
+        if (currentPlayerRef.current === wavesurfer) setPlaybackError(error);
+      });
     }
   }, [wavesurfer]);
 
@@ -336,7 +355,9 @@ export function AudioPlayerProvider({
 
   const resume = useCallback(() => {
     if (wavesurfer) {
-      void wavesurfer.play().catch(setPlaybackError);
+      void wavesurfer.play().catch((error) => {
+        if (currentPlayerRef.current === wavesurfer) setPlaybackError(error);
+      });
     }
   }, [wavesurfer]);
 
@@ -387,14 +408,28 @@ export function AudioPlayerProvider({
     }
   }, [isPro, playbackRate, wavesurfer]);
 
+  const hasDeleteCapability =
+    !!scope?.client.canEdit &&
+    scope.client.features.includes("recording_delete");
   const deleteRecordingMutation = useMutation({
+    networkMode: "always",
+    retry: false,
     mutationFn: async () => {
-      if (!onDeleteRecording)
+      if (!scope || !recording || !hasDeleteCapability)
         throw new Error("Recording deletion is unavailable");
-      await onDeleteRecording();
+      const remove = async () => {
+        const expected_sha256 = await recording.deletionRevision();
+        if (expected_sha256 === null) return;
+        await scope.run(() =>
+          scope.client.deleteRecording(sessionId, { expected_sha256 }),
+        );
+      };
+      if (onDeleteRecording) await onDeleteRecording(remove);
+      else await remove();
     },
     onSuccess: () => {
       stop();
+      setPlaybackError(null);
       timeStoreRef.current.reset();
       for (const kind of ["audio_resource", "audio_peaks", "audio_metadata"]) {
         void scope?.queryClient.invalidateQueries({
@@ -403,12 +438,22 @@ export function AudioPlayerProvider({
       }
     },
   });
+  const canDeleteRecording =
+    hasDeleteCapability &&
+    enabled &&
+    !!recording &&
+    !recordingQuery.isFetching &&
+    !recordingQuery.isError &&
+    !deleteRecordingMutation.isError;
   const { refetch: refetchRecording } = recordingQuery;
+  const { reset: resetDeletion } = deleteRecordingMutation;
   const retry = useCallback(() => {
+    resetDeletion();
     setPlaybackError(null);
     void refetchRecording();
-  }, [refetchRecording]);
-  const error = recordingQuery.error ?? playbackError;
+  }, [refetchRecording, resetDeletion]);
+  const error =
+    deleteRecordingMutation.error ?? recordingQuery.error ?? playbackError;
 
   const value = useMemo<AudioPlayerContextValue>(
     () => ({
@@ -424,8 +469,9 @@ export function AudioPlayerProvider({
       audioExists: !!recording,
       audioExistsResolved: recordingQuery.isSuccess,
       audioReady: !!url,
-      canDeleteRecording: !!onDeleteRecording,
+      canDeleteRecording,
       error,
+      deletionFailed: !!deleteRecordingMutation.error,
       retry,
       playbackRate,
       setPlaybackRate,
@@ -444,7 +490,8 @@ export function AudioPlayerProvider({
       recording,
       recordingQuery.isSuccess,
       url,
-      onDeleteRecording,
+      canDeleteRecording,
+      deleteRecordingMutation.error,
       error,
       retry,
       playbackRate,

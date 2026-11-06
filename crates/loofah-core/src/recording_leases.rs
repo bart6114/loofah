@@ -284,6 +284,19 @@ impl RecordingLeases {
         self.prune(&mut state);
     }
 
+    pub fn close_session(&self, vault: &str, session: &str) {
+        let mut state = self.0.state.lock().unwrap();
+        state.active.retain(|_, entry| {
+            if entry.vault == vault && entry.session == session {
+                entry.closed.store(true, Ordering::Release);
+                false
+            } else {
+                true
+            }
+        });
+        self.prune(&mut state);
+    }
+
     pub fn close_all(&self) {
         let mut state = self.0.state.lock().unwrap();
         for entry in state.active.values() {

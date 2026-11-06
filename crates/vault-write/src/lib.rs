@@ -23,6 +23,7 @@ mod note_revision;
 pub mod paths;
 pub mod people;
 pub mod rebuild;
+pub mod recording_delete;
 mod session_path;
 pub mod stats;
 pub mod storage_stats;

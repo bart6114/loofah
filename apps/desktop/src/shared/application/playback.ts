@@ -2,15 +2,18 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 
-import { connectionClosed } from "./errors";
+import { applicationResult, connectionClosed } from "./errors";
 import type { AudioPeaks } from "./protocol.gen";
 import type { NativeRemoteConnection } from "./remote";
 import type { RequestOptions } from "./vault-client";
+
+import { commands } from "~/types/tauri.gen";
 
 export type PlaybackRecording = {
   readonly id: string;
   readonly url: string;
   readonly resumeKey: string;
+  deletionRevision: (options?: RequestOptions) => Promise<string | null>;
   peaks: (options?: RequestOptions) => Promise<AudioPeaks | null>;
   close: () => Promise<void>;
 };
@@ -31,6 +34,16 @@ export async function openLocalRecording(
     id: crypto.randomUUID(),
     url: convertFileSrc(path.data),
     resumeKey: path.data,
+    deletionRevision: async (request) => {
+      if (closed) throw connectionClosed();
+      request?.signal?.throwIfAborted();
+      const metadata = applicationResult(
+        await commands.applicationAudioMetadata(sessionId),
+      );
+      if (closed) throw connectionClosed();
+      request?.signal?.throwIfAborted();
+      return metadata?.sha256 ?? null;
+    },
     peaks: async (request) => {
       if (closed) throw connectionClosed();
       request?.signal?.throwIfAborted();
@@ -59,6 +72,7 @@ export async function openRemoteRecording(
       id: recording.id,
       url: convertFileSrc(recording.id, "loofah-media"),
       resumeKey: recording.metadata.sha256,
+      deletionRevision: async () => recording.metadata.sha256,
       peaks: async (request) =>
         (await connection.recordingWaveform(recording.id, request)).peaks,
       close: () => connection.closeRecording(recording.id),

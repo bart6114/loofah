@@ -101,6 +101,7 @@ describe("vault-scoped query lifecycle", () => {
       id,
       url: `media:${id}`,
       resumeKey: id,
+      deletionRevision: vi.fn().mockResolvedValue("sha"),
       peaks: vi.fn().mockResolvedValue(null),
       close: vi.fn().mockResolvedValue(undefined),
     });
@@ -144,6 +145,7 @@ describe("vault-scoped query lifecycle", () => {
       id: "late",
       url: "media:late",
       resumeKey: "late",
+      deletionRevision: vi.fn().mockResolvedValue("sha"),
       peaks: vi.fn(),
       close,
     });

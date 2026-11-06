@@ -1,4 +1,8 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -47,6 +51,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  onlineManager.setOnline(true);
   for (const scope of scopes.splice(0)) scope.dispose();
   vi.restoreAllMocks();
 });
@@ -65,13 +70,15 @@ function Probe() {
       <p>{audioExists ? "recording exists" : "no recording"}</p>
       <button onClick={start}>Play</button>
       {canDeleteRecording && (
-        <button onClick={() => void deleteRecording()}>Delete</button>
+        <button onClick={() => void deleteRecording().catch(() => {})}>
+          Delete
+        </button>
       )}
       <AudioPlayerStatus />
     </>
   );
 }
-function fixture(peaks: PlaybackRecording["peaks"]) {
+function fixture(peaks: PlaybackRecording["peaks"], canEdit = true) {
   const recordings: PlaybackRecording[] = [];
   let resumeKey = "recording-sha";
   const open = vi.fn(async () => {
@@ -79,19 +86,27 @@ function fixture(peaks: PlaybackRecording["peaks"]) {
       id: crypto.randomUUID(),
       url: `media:${crypto.randomUUID()}`,
       resumeKey,
+      deletionRevision: vi.fn().mockResolvedValue("current-sha"),
       peaks,
       close: vi.fn().mockResolvedValue(undefined),
     };
     recordings.push(recording);
     return recording;
   });
+  const remove = vi.fn().mockResolvedValue(true);
   const scope = new VaultScope({
     scope: "fixture",
     networkMode: "always",
+    canEdit,
+    features: ["recording_delete"],
+    deleteRecording: remove,
     openRecording: open,
   } as unknown as VaultClient);
   scopes.push(scope);
-  const view = (enabled = true, onDeleteRecording?: () => Promise<void>) => (
+  const view = (
+    enabled = true,
+    onDeleteRecording?: (remove: () => Promise<void>) => Promise<void>,
+  ) => (
     <StrictMode>
       <QueryClientProvider client={scope.queryClient}>
         <AudioPlayerProvider
@@ -107,6 +122,7 @@ function fixture(peaks: PlaybackRecording["peaks"]) {
   );
   return {
     scope,
+    remove,
     recordings,
     open,
     view,
@@ -147,6 +163,112 @@ it.each([true, false])(
   },
 );
 
+it("deletes the displayed revision through the shared operation inside the device guard", async () => {
+  const f = fixture(
+    vi.fn().mockResolvedValue({ durationSec: 60, channels: [[1]] }),
+  );
+  const guard = vi.fn(async (remove: () => Promise<void>) => remove());
+  const mounted = render(f.view(true, guard));
+  await screen.findByText("recording exists");
+  fireEvent.click(screen.getByText("Delete"));
+  await waitFor(() =>
+    expect(f.remove).toHaveBeenCalledExactlyOnceWith("session", {
+      expected_sha256: "current-sha",
+    }),
+  );
+  expect(guard).toHaveBeenCalledOnce();
+  mounted.unmount();
+});
+
+it("shows guarded deletion failures and reloads without automatically retrying deletion", async () => {
+  const f = fixture(
+    vi.fn().mockResolvedValue({ durationSec: 60, channels: [[1]] }),
+  );
+  f.remove.mockRejectedValueOnce(new Error("recording changed"));
+  render(f.view());
+  await screen.findByText("recording exists");
+  fireEvent.click(screen.getByText("Delete"));
+  await screen.findByText(
+    "Recording deletion was not confirmed. Reload it before trying again.",
+  );
+  expect(screen.queryByText("Delete")).toBeNull();
+  const opened = f.open.mock.calls.length;
+  fireEvent.click(screen.getByText("Retry"));
+  await waitFor(() => expect(f.open).toHaveBeenCalledTimes(opened + 1));
+  expect(f.remove).toHaveBeenCalledOnce();
+  await screen.findByText("Delete");
+});
+
+it("never dispatches deletion when the device guard rejects or the member is a reader", async () => {
+  const f = fixture(
+    vi.fn().mockResolvedValue({ durationSec: 60, channels: [[1]] }),
+  );
+  const mounted = render(
+    f.view(true, async () => {
+      throw new Error("capture is active");
+    }),
+  );
+  await screen.findByText("recording exists");
+  fireEvent.click(screen.getByText("Delete"));
+  await screen.findByRole("alert");
+  expect(f.remove).not.toHaveBeenCalled();
+  mounted.unmount();
+  const reader = fixture(
+    vi.fn().mockResolvedValue({ durationSec: 60, channels: [[1]] }),
+    false,
+  );
+  render(reader.view());
+  await screen.findByText("recording exists");
+  expect(screen.queryByText("Delete")).toBeNull();
+});
+
+it("ignores a play failure from a replaced player", async () => {
+  const f = fixture(
+    vi.fn().mockResolvedValue({ durationSec: 60, channels: [[1]] }),
+  );
+  render(f.view());
+  await waitFor(() => expect(waveform.create).toHaveBeenCalledOnce());
+  let reject!: (error: Error) => void;
+  waveform.create.mock.results[0].value.play.mockReturnValueOnce(
+    new Promise((_, fail) => {
+      reject = fail;
+    }),
+  );
+  fireEvent.click(screen.getByText("Play"));
+  await act(async () => {
+    await f.scope.queryClient.invalidateQueries({
+      queryKey: f.scope.recordingOptions("session").queryKey,
+    });
+  });
+  await waitFor(() => expect(waveform.create).toHaveBeenCalledTimes(2));
+  await act(async () => reject(new Error("old media was closed")));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("does not queue deletion while offline or retry an uncertain mutation through an ambient client", async () => {
+  const f = fixture(
+    vi.fn().mockResolvedValue({ durationSec: 60, channels: [[1]] }),
+  );
+  f.remove.mockRejectedValue(new Error("Connection lost; outcome unknown"));
+  const ambient = new QueryClient({
+    defaultOptions: { mutations: { networkMode: "online", retry: 3 } },
+  });
+  onlineManager.setOnline(false);
+  render(
+    <QueryClientProvider client={ambient}>
+      <AudioPlayerProvider scope={f.scope} sessionId="session">
+        <Probe />
+      </AudioPlayerProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("recording exists");
+  fireEvent.click(screen.getByText("Delete"));
+  await screen.findByRole("alert");
+  expect(f.remove).toHaveBeenCalledOnce();
+  await act(async () => onlineManager.setOnline(true));
+  expect(f.remove).toHaveBeenCalledOnce();
+});
+
 it("waits for bounded waveform data before creating a streaming player and closes on unmount", async () => {
   let finish!: (value: unknown) => void;
   const peaks = vi.fn(
@@ -166,7 +288,8 @@ it("waits for bounded waveform data before creating a streaming player and close
   expect(options.duration).toBe(60);
   expect(options.media.preload).toBe("metadata");
   expect(options.media.src).toBe(f.recordings[f.recordings.length - 1]!.url);
-  expect(screen.queryByText("Delete")).toBeNull();
+  expect(screen.queryByText("Delete")).not.toBeNull();
+  expect(f.remove).not.toHaveBeenCalled();
   mounted.unmount();
   await waitFor(() =>
     expect(f.recordings[f.recordings.length - 1]!.close).toHaveBeenCalledOnce(),

@@ -47,16 +47,23 @@ export function TabContentNote({
   const sessionMode = useListener((state) => state.getSessionMode(tab.id));
   const { scope } = useVaultHost();
   const isCapturing = sessionMode === "active" || sessionMode === "finalizing";
-  const deleteRecording = useCallback(async () => {
-    const deleted = await deleteSessionAudio(tab.id, () => {
-      const state = listenerStore.getState();
-      return (
-        state.getSessionMode(tab.id) === "inactive" &&
-        !(state.live.sessionId === tab.id && state.live.loading)
+  const deleteRecording = useCallback(
+    async (remove: () => Promise<void>) => {
+      const deleted = await deleteSessionAudio(
+        tab.id,
+        () => {
+          const state = listenerStore.getState();
+          return (
+            state.getSessionMode(tab.id) === "inactive" &&
+            !(state.live.sessionId === tab.id && state.live.loading)
+          );
+        },
+        remove,
       );
-    });
-    if (!deleted) throw new Error("audio_session_busy");
-  }, [tab.id]);
+      if (!deleted) throw new Error("audio_session_busy");
+    },
+    [tab.id],
+  );
   const wasCapturingRef = useRef(false);
   useEffect(() => {
     if (wasCapturingRef.current && !isCapturing) {

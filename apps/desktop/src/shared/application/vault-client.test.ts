@@ -24,6 +24,7 @@ const native = vi.hoisted(() => ({
     applicationSaveDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationAudioMetadata: vi.fn(),
+    applicationDeleteRecording: vi.fn(),
     applicationTasks: vi.fn(),
     applicationTasksSnapshot: vi.fn(),
     applicationReplaceTasks: vi.fn(),
@@ -96,6 +97,43 @@ beforeEach(() => {
     native.commands.applicationTags,
   ])
     command.mockResolvedValue({ status: "ok", data: [] });
+});
+
+it("uses the same typed checked deletion through local IPC or remote requests", async () => {
+  const input = { expected_sha256: "1".repeat(64) };
+  native.commands.applicationDeleteRecording.mockResolvedValue({
+    status: "ok",
+    data: true,
+  });
+  const local = await connectLocalVault();
+  expect(await local.deleteRecording("session", input)).toBe(true);
+  expect(native.commands.applicationDeleteRecording).toHaveBeenCalledWith(
+    "session",
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(false);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://server.example/",
+        capabilities: { features: ["recording_delete"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  expect(await remote.deleteRecording("session", input)).toBe(false);
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "delete_recording",
+      vault_id: vault.id,
+      session_id: "session",
+      input,
+    },
+    "recording_deleted",
+    undefined,
+  );
 });
 
 it("reads recording metadata through either transport without a filesystem path", async () => {

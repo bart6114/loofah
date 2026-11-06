@@ -5,9 +5,13 @@ const device = vi.hoisted(() => ({
   audioPath: vi.fn(),
   audioPeaks: vi.fn(),
   convert: vi.fn(),
+  metadata: vi.fn(),
 }));
 vi.mock("@hypr/plugin-fs-sync", () => ({ commands: device }));
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: device.convert }));
+vi.mock("~/types/tauri.gen", () => ({
+  commands: { applicationAudioMetadata: device.metadata },
+}));
 
 import { openLocalRecording, openRemoteRecording } from "./playback";
 import type { NativeRemoteConnection } from "./remote";
@@ -26,6 +30,10 @@ beforeEach(() => {
   device.convert.mockImplementation(
     (path, scheme = "asset") => `${scheme}://${path}`,
   );
+  device.metadata.mockResolvedValue({
+    status: "ok",
+    data: { sha256: "current-local-sha" },
+  });
 });
 
 it("keeps login-free local playback paths inside the device adapter", async () => {
@@ -35,6 +43,8 @@ it("keeps login-free local playback paths inside the device adapter", async () =
     durationSec: 1,
     channels: [[0, 1]],
   });
+  expect(await recording!.deletionRevision()).toBe("current-local-sha");
+  expect(device.metadata).toHaveBeenCalledExactlyOnceWith("session");
   await recording!.close();
   await expect(recording!.peaks()).rejects.toThrow();
   expect(device.audioPath).toHaveBeenCalledExactlyOnceWith("session");
@@ -82,6 +92,8 @@ it("uses an opaque native URI for remote playback without exposing credentials o
     signal,
   });
   expect(await recording!.peaks({ signal })).toEqual(peaks);
+  expect(await recording!.deletionRevision()).toBe("sha");
+  expect(device.metadata).not.toHaveBeenCalled();
   expect(connection.recordingWaveform).toHaveBeenCalledWith("opaque-id", {
     signal,
   });

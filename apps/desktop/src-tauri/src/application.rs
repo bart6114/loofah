@@ -22,6 +22,16 @@ fn context<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_delete_recording<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: hypr_loofah_protocol::DeleteRecordingRequest,
+) -> Result<bool, ApplicationError> {
+    context(&app)?.delete_recording(&session_id, input).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn application_sessions<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     limit: u32,

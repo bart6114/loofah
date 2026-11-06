@@ -74,6 +74,11 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    DeleteRecording {
+        vault_id: String,
+        session_id: String,
+        input: DeleteRecordingRequest,
+    },
     Tasks {
         vault_id: String,
         session_id: String,
@@ -170,6 +175,7 @@ pub enum RemoteReply {
     DocumentSave(DocumentSaveOutcome),
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<AudioFileMetadata>),
+    RecordingDeleted(bool),
     Tasks(Vec<TaskItem>),
     TasksSnapshot(TasksSnapshot),
     TasksSave(TasksSaveOutcome),
@@ -207,6 +213,7 @@ impl RemoteClient {
             RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
+            RemoteOperation::DeleteRecording { .. } => Some("recording_delete"),
             _ => None,
         };
         if required_feature.is_some_and(|required| {
@@ -216,10 +223,10 @@ impl RemoteClient {
                 .iter()
                 .any(|feature| feature == required)
         }) {
-            let description = if matches!(operation, RemoteOperation::AudioMetadata { .. }) {
-                "recording metadata"
-            } else {
-                "the note editor"
+            let description = match operation {
+                RemoteOperation::AudioMetadata { .. } => "recording metadata",
+                RemoteOperation::DeleteRecording { .. } => "recording deletion",
+                _ => "the note editor",
             };
             let mut error = failure(
                 ErrorCode::IncompatibleVersion,
@@ -228,7 +235,10 @@ impl RemoteClient {
                 ),
             );
             error.request_id = Some(request_id.to_owned());
-            if matches!(operation, RemoteOperation::SaveNoteEditor { .. }) {
+            if matches!(
+                operation,
+                RemoteOperation::SaveNoteEditor { .. } | RemoteOperation::DeleteRecording { .. }
+            ) {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
@@ -302,6 +312,17 @@ impl RemoteClient {
             RemoteOperation::CreateSession { vault_id, input } => {
                 body = Some(value(input)?);
                 (Method::POST, vec!["vaults", vault_id, "sessions"])
+            }
+            RemoteOperation::DeleteRecording {
+                vault_id,
+                session_id,
+                input,
+            } => {
+                query.push(("expected_sha256", input.expected_sha256.clone()));
+                (
+                    Method::DELETE,
+                    vec!["vaults", vault_id, "sessions", session_id, "audio"],
+                )
             }
             RemoteOperation::Documents {
                 vault_id,
@@ -635,6 +656,9 @@ impl RemoteClient {
                 }
                 RemoteOperation::Transcripts { .. } => {
                     RemoteReply::Transcripts(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::DeleteRecording { .. } => {
+                    RemoteReply::RecordingDeleted(json_body(response, 131_072).await?)
                 }
                 RemoteOperation::Tasks { .. } => {
                     RemoteReply::Tasks(json_body(response, 8 * 1024 * 1024).await?)

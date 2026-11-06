@@ -1405,6 +1405,10 @@ msgid "Recording and transcription still work. Set up summaries when you want to
 msgstr "Recording and transcription still work. Set up summaries when you want to turn your notes or transcript into a summary."
 
 #: src/audio-player/provider.tsx
+msgid "Recording deletion was not confirmed. Reload it before trying again."
+msgstr "Recording deletion was not confirmed. Reload it before trying again."
+
+#: src/audio-player/provider.tsx
 msgid "Recording playback is unavailable."
 msgstr "Recording playback is unavailable."
 

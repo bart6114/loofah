@@ -9,6 +9,102 @@ use crate::{
 };
 
 impl VaultContext {
+    pub async fn delete_recording(
+        self: &Arc<Self>,
+        session_id: &str,
+        input: hypr_loofah_protocol::DeleteRecordingRequest,
+    ) -> Result<bool, ApplicationError> {
+        self.delete_recording_authorized(session_id, input, || async { Ok(()) })
+            .await
+    }
+
+    // Hosts recheck authorization after long hashing and retain their grant only through commit.
+    pub async fn delete_recording_authorized<
+        G: Send + 'static,
+        F: std::future::Future<Output = Result<G, ApplicationError>> + Send + 'static,
+    >(
+        self: &Arc<Self>,
+        session_id: &str,
+        input: hypr_loofah_protocol::DeleteRecordingRequest,
+        authorize: impl FnOnce() -> F + Send + 'static,
+    ) -> Result<bool, ApplicationError> {
+        use hypr_loofah_protocol::MutationOutcome;
+        use hypr_vault_write::{
+            StoreError,
+            recording_delete::{RecordingDeletion, RecordingDeletionPlan},
+        };
+        let rejected = |code, message| {
+            let mut cause = error(code, message);
+            cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            cause
+        };
+        self.validate(session_id).map_err(|mut cause| {
+            cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            cause
+        })?;
+        if input.expected_sha256.len() != 64
+            || !input
+                .expected_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(rejected(
+                ErrorCode::Validation,
+                "A lowercase SHA-256 recording revision is required",
+            ));
+        }
+        let permit = self
+            .media_readers
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                rejected(
+                    ErrorCode::Unavailable,
+                    "Recording readers are busy; retry shortly",
+                )
+            })?;
+        let context = self.clone();
+        let session_id = session_id.to_owned();
+        tokio::spawn(async move {
+            let _permit = permit;
+            let prepared = context
+                .store
+                .prepare_recording_deletion(&session_id, &input.expected_sha256)
+                .await;
+            let _grant = authorize().await.map_err(|mut cause| {
+                cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+                cause
+            })?;
+            let result = match prepared {
+                Ok(Some(RecordingDeletionPlan::Prepared(commit))) => (*commit).commit().await,
+                Ok(Some(RecordingDeletionPlan::Finished(status))) => Ok(Some(status)),
+                Ok(None) => Ok(None),
+                Err(cause) => Err(cause),
+            };
+            match result {
+                Ok(Some(RecordingDeletion::Deleted)) => Ok(true),
+                Ok(Some(RecordingDeletion::Absent)) => Ok(false),
+                Ok(Some(RecordingDeletion::Busy)) | Err(StoreError::Conflict(_)) => Err(rejected(
+                    ErrorCode::Unavailable,
+                    "Recording or import is busy; retry when it finishes",
+                )),
+                Ok(Some(RecordingDeletion::Changed)) => Err(rejected(
+                    ErrorCode::Conflict,
+                    "The recording changed; reload it before deleting",
+                )),
+                Ok(None) => Err(rejected(ErrorCode::NotFound, "Session not found")),
+                Err(cause) => Err(storage_error(cause, true)),
+            }
+        })
+        .await
+        .map_err(|cause| {
+            tracing::error!(%cause,"recording deletion stopped");
+            let mut cause = error(ErrorCode::Internal, "Recording deletion stopped");
+            cause.mutation_outcome = Some(MutationOutcome::Unknown);
+            cause
+        })?
+    }
+
     pub async fn audio_metadata(
         self: &Arc<Self>,
         session_id: &str,
@@ -124,6 +220,76 @@ mod tests {
             Arc::new(SearchService::default()),
         ));
         (root, context)
+    }
+
+    #[tokio::test]
+    async fn recording_deletion_validates_revisions_and_reports_busy_stale_missing_and_idempotent_outcomes()
+     {
+        use hypr_loofah_protocol::{DeleteRecordingRequest, MutationOutcome};
+        let (root, context) = fixture().await;
+        let directory = root.path().join("sessions/note");
+        std::fs::write(directory.join("audio.wav"), b"Original recording").unwrap();
+        let sha = context
+            .audio_metadata("note")
+            .await
+            .unwrap()
+            .unwrap()
+            .sha256;
+        for revision in ["".into(), "0".repeat(63), "G".repeat(64), "A".repeat(64)] {
+            let cause = context
+                .delete_recording(
+                    "note",
+                    DeleteRecordingRequest {
+                        expected_sha256: revision,
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(cause.code, ErrorCode::Validation);
+            assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        }
+        let input = DeleteRecordingRequest {
+            expected_sha256: sha,
+        };
+        assert_eq!(
+            context
+                .delete_recording("missing", input.clone())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::NotFound
+        );
+        context.store.note_recording_active("note");
+        let busy = context
+            .delete_recording("note", input.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(busy.code, ErrorCode::Unavailable);
+        assert!(busy.retryable);
+        context
+            .store
+            .release_recording_prepare("note")
+            .await
+            .unwrap();
+        std::fs::write(directory.join("audio.wav"), b"Changed recording").unwrap();
+        let stale = context.delete_recording("note", input).await.unwrap_err();
+        assert_eq!(stale.code, ErrorCode::Conflict);
+        assert_eq!(stale.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        let current = context.audio_metadata("note").await.unwrap().unwrap();
+        let input = DeleteRecordingRequest {
+            expected_sha256: current.sha256,
+        };
+        assert!(
+            context
+                .delete_recording("note", input.clone())
+                .await
+                .unwrap()
+        );
+        assert!(!context.delete_recording("note", input).await.unwrap());
+        assert_eq!(
+            std::fs::read_to_string(directory.join("notes.md")).unwrap(),
+            "Notes remain unchanged"
+        );
     }
 
     #[tokio::test]

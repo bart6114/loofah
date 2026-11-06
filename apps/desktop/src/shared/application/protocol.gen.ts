@@ -26,6 +26,8 @@ export type CreateSessionRequest = { title: string; markdown: string }
 
 export type CreateVaultRequest = { name: string }
 
+export type DeleteRecordingRequest = { expected_sha256: string }
+
 export type Document = { id: string; kind: string; template_id: string; title: string; markdown: string; sort_order: number; updated_at: string }
 
 export type DocumentSaveOutcome = { kind: "saved"; snapshot: DocumentSnapshot } | { kind: "conflict"; snapshot: DocumentSnapshot }

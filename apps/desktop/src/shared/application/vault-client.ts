@@ -12,6 +12,7 @@ import {
 } from "./playback";
 import type {
   ApplicationError,
+  DeleteRecordingRequest,
   AudioFileMetadata,
   MetadataSnapshot,
   MetadataSaveOutcome,
@@ -74,6 +75,11 @@ export type VaultClient = {
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
   noteWriteQueueKey?: (sessionId: string) => string;
+  deleteRecording: (
+    sessionId: string,
+    input: DeleteRecordingRequest,
+    options?: RequestOptions,
+  ) => Promise<boolean>;
   openRecording: (
     sessionId: string,
     options?: RequestOptions,
@@ -218,6 +224,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       "audio_playback",
+      "recording_delete",
       "notes",
       "note_editor_read",
       "note_editor_write",
@@ -230,6 +237,12 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "agent_read",
     ],
     openRecording: openLocalRecording,
+    deleteRecording: (sessionId, input, options) =>
+      ipc(
+        () => commands.applicationDeleteRecording(sessionId, input),
+        options,
+        true,
+      ),
     agentList: (input, options) =>
       ipc(() => commands.applicationAgentList(input), options),
     agentSearch: (input, options) =>
@@ -333,6 +346,17 @@ export function connectRemoteVault(
     canEdit: vault.role !== "reader",
     attachmentPresentation: scopedAttachmentPresentation,
     features: connection.info.capabilities.features,
+    deleteRecording: (sessionId, input, options) =>
+      connection.request(
+        {
+          kind: "delete_recording",
+          vault_id: vaultId,
+          session_id: sessionId,
+          input,
+        },
+        "recording_deleted",
+        options,
+      ),
     openRecording: (sessionId, options) =>
       openRemoteRecording(connection, vaultId, sessionId, options),
     readMetadata: (sessionId, options) =>

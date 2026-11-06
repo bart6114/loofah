@@ -92,7 +92,7 @@ export function Timeline({
 
   const handleDeleteRecording = useCallback(async () => {
     setShowRateMenu(false);
-    await deleteRecording();
+    await deleteRecording().catch(() => {});
   }, [deleteRecording]);
 
   const contextMenu = useMemo(

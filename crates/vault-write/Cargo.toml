@@ -17,6 +17,7 @@ hypr-vault-read = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 regex = { workspace = true }
+same-file = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -29,3 +30,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

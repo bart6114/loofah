@@ -2,7 +2,7 @@
 
 Status: implementation in progress. The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
 
-Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The main desktop remote shell/profile migration, media and imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
+Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes, with the validation limits recorded below. The main desktop remote shell/profile migration, media and imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
@@ -1420,3 +1420,62 @@ uploads, processing/jobs/providers, CLI owner routing and the remaining full
 release gates remain required. Native Windows x64/ARM64 CI passed for the
 preceding commit; this increment requires its own CI results, and actual Windows
 WebView2 playback remains unverified.
+
+### Checked recording deletion through the shared application
+
+`vault-write::recording_delete` now owns recording cleanup, exposed by
+`VaultContext::delete_recording`, typed desktop IPC, the HTTPS DELETE recording
+route, the native SDK and `VaultClient`. The common player dispatches this
+operation through the current scope. Remote editors use the displayed recording's
+SHA-256; local mode reads its current revision on demand and retains the device
+queue and capture guard. Local startup and playback remain offline and login-free.
+Readers have no delete action. Unknown outcomes require reload and an explicit
+new choice; the player does not queue offline deletions or retry automatically,
+even under an ambient query client that normally pauses or retries mutations.
+
+Preparation retains the session audio reservation through hashing and cancellation
+while releasing the vault write lock. Commit obtains fresh authorization, checks
+busy state and the original file handles/change metadata, validates every owned
+cleanup path before unlinking, and removes the selected primary recording last.
+Unknown and dot-prefixed files in the legacy audio directory survive as well as
+ordinary user attachments. Partial cleanup failure emits invalidation and leaves
+the primary available for a checked retry. This does not yet implement a durable
+compound-deletion journal; crash recovery for all compound operations remains an
+open acceptance gate. Successful/absent server deletion invalidates all session
+recording leases.
+
+Nine focused storage tests cover exact ownership, stale bytes with restored mtime,
+atomic replacement, active capture/import, cancellation during hashing and commit,
+post-preparation edits, symlink prevalidation and injected partial cleanup failure.
+Server tests prove reader refusal, vault isolation, lease invalidation and that
+membership removal completes while a deletion waits, then prevents that commit.
+Frontend validation passed 1,762 tests, including lazy local revision reads,
+remote pinned revisions, device guards, reader actions, explicit error/reload,
+no offline queue or automatic retry, and ignored late errors from replaced players.
+Fresh executable suites passed: storage 334 (one ignored), core 93, SDK 44,
+server 36 plus executable, and CLI 119. The CLI documentation check was stopped
+after more than five minutes waiting in macOS library loading; it is incomplete.
+Final desktop compilation and typechecking passed; all 50 native tests passed
+(one ignored), generated contract drift passed, and repository-wide formatting
+passed. Windows x64/ARM64 checks remain required for this deletion increment.
+Production core/SDK/server Clippy passed; existing unrelated storage lint warnings
+are not represented as a clean all-target lint result.
+
+The rebuilt headless executable also passed trusted loopback HTTPS deletion runs
+at 50/150/500 ms RTT (observed 92/168/520 ms delete times), disconnect-before-request,
+lost successful response with explicit absent retry, stale replacement refusal and
+stale retry after restart. Note/task/metadata and unknown flat/legacy attachment
+hashes remained intact; all 72 preexisting fixture files were unchanged. Evidence:
+`/Volumes/T7/loofah-backend-build/remote-ui-qa/recording-delete-evidence.json`.
+These automated route/player checks do not constitute native destructive-UI,
+Windows WebView2, production-performance or full recording/outage acceptance.
+The Windows change-time implementation still requires both native CI architectures
+for this increment. Attachments/import/export, processing, resilient capture upload,
+CLI ownership, remote-only startup and the remaining plan gates stay open.
+
+The remaining ONNX binary cache was moved from the internal drive to
+`/Volumes/T7/loofah-backend-build/ort-shared-cache` after Rust builds finished.
+Both files (151,485,736 bytes) retained their hashes. The original cache path is
+now a symlink; both Cargo targets, the ONNX cache and the SwiftPM cache resolve
+physically to T7. Readback evidence is in
+`/Volumes/T7/loofah-backend-build/ort-cache-relocation.json`.

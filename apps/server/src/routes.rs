@@ -45,6 +45,10 @@ pub fn router(service: Arc<Service>) -> Router {
             get(audio_metadata),
         )
         .route(
+            "/vaults/{vault}/sessions/{session}/audio",
+            axum::routing::delete(delete_recording),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/note/editor",
             get(note_editor).put(save_note_editor),
         )
@@ -149,6 +153,7 @@ async fn capabilities() -> Json<Capabilities> {
             "recording_leases".into(),
             "recording_waveforms".into(),
             "audio_playback".into(),
+            "recording_delete".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
@@ -626,6 +631,48 @@ async fn audio_metadata(
     .await
 }
 
+async fn delete_recording(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiQuery(input): ApiQuery<DeleteRecordingRequest>,
+    headers: HeaderMap,
+) -> Result<Json<bool>> {
+    request_id(&headers)?;
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    let permit = service
+        .media_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Recording readers are busy; retry shortly"))?;
+    let leases = service.recording_leases.clone();
+    let authorization = service.clone();
+    let vault = id.clone();
+    drop(access);
+    admitted_write(&service, async move {
+        let _permit = permit;
+        let deleted = context
+            .delete_recording_authorized(&session, input, move || async move {
+                if authorization.stop.is_cancelled() {
+                    return Err(ApiError::new(ErrorCode::Unavailable, "Server is shutting down").0);
+                }
+                if identity.expires_at <= now() {
+                    return Err(ApiError::new(ErrorCode::Unauthenticated, "Sign in again").0);
+                }
+                authorization
+                    .catalog
+                    .access(&identity, &vault, true)
+                    .await
+                    .map_err(|cause| cause.0)
+            })
+            .await?;
+        leases.close_session(&id, &session);
+        Ok(Json(deleted))
+    })
+    .await
+}
+
 async fn transcripts(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,
@@ -949,6 +996,17 @@ async fn write<T: Send + 'static>(
     access: VaultAccess,
     operation: impl Future<Output = Result<T>> + Send + 'static,
 ) -> Result<T> {
+    admitted_write(service, async move {
+        let _access = access;
+        operation.await
+    })
+    .await
+}
+
+async fn admitted_write<T: Send + 'static>(
+    service: &Service,
+    operation: impl Future<Output = Result<T>> + Send + 'static,
+) -> Result<T> {
     if service.stop.is_cancelled() {
         return Err(ApiError::new(
             ErrorCode::Unavailable,
@@ -962,7 +1020,6 @@ async fn write<T: Send + 'static>(
         .map_err(|_| ApiError::busy("Write capacity reached; retry later"))?;
     tokio::spawn(async move {
         let _permit = permit;
-        let _access = access;
         operation.await
     })
     .await
