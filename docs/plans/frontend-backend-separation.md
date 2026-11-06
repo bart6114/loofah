@@ -738,12 +738,16 @@ with its revision while retaining the existing serialized vault format; they
 must not silently discard unsupported rich content.
 
 Subsequent bridge tests also found that the frontend Markdown schema lacks the
-editor's `session` and `appLink` nodes. Keeping the current serializer alone does
-not provide parity for those nodes. Resolve their serialization/readback in both
-local and remote paths before switching the main editor; new links must not lose
-identity or content during device recovery. Existing inline mentions and normal
-link marks have supported Markdown representations. The bridge explicitly
-rejects unsupported nodes; no new vault syntax was introduced in this extraction.
+editor schema's `session` and `appLink` nodes. Current reference insertion uses
+inline `mention-@` nodes: the session-drop plugin in `packages/editor/src/note/index.tsx`
+creates a mention, and `apps/desktop/src/editor-bridge/mention-config.ts` supplies
+mention suggestions. These inline references and ordinary link marks already
+have supported Markdown representations and pass bridge round trips. No active
+production insertion path for the separate `session`/`appLink` node types was
+found. Schema/view definitions alone do not establish an active feature. Keep
+unsupported legacy content explicit and intact; do not add new vault syntax or
+expand dormant functionality merely to make the separation. Investigate any
+real legacy fixture before changing its representation.
 
 ### Compound editor save contract
 
@@ -839,8 +843,9 @@ content conversion, wrong-note task rejection, malformed/duplicate task IDs and
 unsupported node failures. Initial hydration can assign IDs to untracked
 Markdown tasks; saving requires already-normalized editor identities so repeated
 saves cannot invent new IDs. Existing desktop task-storage tests still pass.
-The bridge is not mounted yet, and attachment transport plus session/app-link
-serializer parity remain required before a full main-editor switch.
+The bridge is not mounted yet. Attachment transport and preserving supported
+reference behavior, with explicit handling of any real unsupported legacy
+fixtures, remain required before a full main-editor switch.
 
 Validation: all 1,709 frontend tests pass, including 32 editor-bridge tests and
 the preceding 120 scoped application tests. Desktop typechecking and scoped lint
