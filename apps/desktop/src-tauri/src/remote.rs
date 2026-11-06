@@ -1,3 +1,4 @@
+pub(crate) mod attachments;
 pub(crate) mod media;
 
 use std::{
@@ -59,6 +60,7 @@ pub struct RemoteState {
     registry: Arc<Mutex<HashMap<String, Connection>>>,
     windows: Mutex<HashMap<String, CancellationToken>>,
     media: media::MediaRegistry,
+    attachments: attachments::AttachmentRegistry,
 }
 type WorkId = (String, String);
 struct Connection {
@@ -90,6 +92,7 @@ impl RemoteState {
         }
         self.registry.lock().unwrap().clear();
         self.media.clear();
+        self.attachments.clear();
     }
     fn window_lifetime(&self, owner: &str) -> CancellationToken {
         self.windows
@@ -109,6 +112,7 @@ impl RemoteState {
             !connection.leases.is_empty()
         });
         self.media.prune();
+        self.attachments.prune(self);
     }
     fn register(
         &self,
@@ -589,6 +593,7 @@ pub fn remote_disconnect<R: tauri::Runtime>(
     }
     drop(registry);
     state.media.prune();
+    state.attachments.prune(&state);
 }
 
 #[tauri::command]
@@ -600,9 +605,11 @@ pub async fn remote_logout<R: tauri::Runtime>(
 ) -> Result<(), ApplicationError> {
     let state = app.state::<RemoteState>();
     let client = state.client(&connection_id, window.label())?;
+    state.attachments.cancel_connection(&connection_id).await;
     client.logout().await?;
     state.registry.lock().unwrap().remove(&connection_id);
     state.media.prune();
+    state.attachments.prune(&state);
     Ok(())
 }
 

@@ -465,6 +465,12 @@ async fn media_response(
         .path()
         .strip_prefix('/')
         .ok_or_else(unavailable_media)?;
+    if path.starts_with("attachments/")
+        || path.starts_with("attachments%2F")
+        || path.starts_with("attachments%2f")
+    {
+        return super::attachments::preview_response(state, owner, request).await;
+    }
     if path.len() != 36 || request.uri().query().is_some() || uuid::Uuid::parse_str(path).is_err() {
         return Err(unavailable_media());
     }

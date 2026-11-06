@@ -15,6 +15,9 @@ import {
   type RemoteOperation,
   type RemoteReply,
   type NativeRecording,
+  type NativeAttachment,
+  type NativeAttachmentCopy,
+  type AttachmentCopyAction,
   type RecordingWaveform,
 } from "~/types/tauri.gen";
 
@@ -30,6 +33,11 @@ export class NativeRemoteConnection {
   private readonly subscriptions = new Set<() => Promise<void>>();
   private readonly recordings = new Set<string>();
   private readonly closingRecordings = new Map<string, Promise<void>>();
+  private readonly attachments = new Map<
+    string,
+    { vaultId: string; sessionId: string; attachmentId: string }
+  >();
+  private readonly closingAttachments = new Map<string, Promise<void>>();
 
   private constructor(readonly info: RemoteConnectionInfo) {}
 
@@ -52,6 +60,147 @@ export class NativeRemoteConnection {
 
   restore(): Promise<Me> {
     return this.request({ kind: "provision" }, "me");
+  }
+
+  async openAttachment(
+    vaultId: string,
+    sessionId: string,
+    attachmentId: string,
+    options?: RequestOptions,
+  ): Promise<NativeAttachment> {
+    this.assertOpen();
+    const signal = options?.signal;
+    signal?.throwIfAborted();
+    const id = crypto.randomUUID();
+    this.attachments.set(id, { vaultId, sessionId, attachmentId });
+    const cancel = () => {
+      void this.closeAttachment(id).catch(() => {});
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const resource = applicationResult(
+        await commands.remoteAttachmentOpen(this.info.connection_id, id, {
+          vault_id: vaultId,
+          session_id: sessionId,
+          attachment_id: attachmentId,
+        }),
+      );
+      if (
+        this.closed ||
+        signal?.aborted ||
+        !this.attachments.has(id) ||
+        this.closingAttachments.has(id)
+      )
+        throw connectionClosed();
+      if (
+        resource.id !== id ||
+        !Number.isSafeInteger(resource.preview_limit_bytes) ||
+        resource.preview_limit_bytes <= 0
+      ) {
+        throw new ApplicationRequestError({
+          code: "incompatible_version",
+          message: "The native host returned an unexpected attachment",
+          request_id: null,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: null,
+        });
+      }
+      return resource;
+    } catch (error) {
+      await this.closeAttachment(id).catch(() => {});
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  async copyAttachment(
+    id: string,
+    action: AttachmentCopyAction,
+    options?: RequestOptions,
+  ): Promise<NativeAttachmentCopy> {
+    this.assertOpen();
+    const target = this.attachments.get(id);
+    if (!target || this.closingAttachments.has(id)) throw connectionClosed();
+    const signal = options?.signal;
+    signal?.throwIfAborted();
+    const requestId = options?.requestId ?? crypto.randomUUID();
+    const cancel = async () => {
+      try {
+        await commands.remoteCancelRequest(this.info.connection_id, requestId);
+      } catch {}
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const copy = applicationResult(
+        await commands.remoteAttachmentCopy(
+          this.info.connection_id,
+          id,
+          requestId,
+          action,
+        ),
+      );
+      if (
+        this.closed ||
+        signal?.aborted ||
+        !this.attachments.has(id) ||
+        this.closingAttachments.has(id)
+      ) {
+        throw new ApplicationRequestError({
+          code: "cancelled",
+          message: "The attachment action was cancelled after being sent",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "unknown",
+        });
+      }
+      if (
+        copy.metadata.filename !== target.attachmentId ||
+        !copy.copied_filename ||
+        /[/\\]/.test(copy.copied_filename) ||
+        copy.copied_filename.includes("\0")
+      ) {
+        throw new ApplicationRequestError({
+          code: "incompatible_version",
+          message: "The native host returned an unexpected attachment copy",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "unknown",
+        });
+      }
+      return copy;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  closeAttachment(id: string): Promise<void> {
+    const closing = this.closingAttachments.get(id);
+    if (closing) return closing;
+    if (!this.attachments.delete(id)) return Promise.resolve();
+    const result = (async () => {
+      try {
+        await commands.remoteAttachmentClose(this.info.connection_id, id);
+      } finally {
+        this.closingAttachments.delete(id);
+      }
+    })();
+    this.closingAttachments.set(id, result);
+    return result;
+  }
+
+  private async closeAttachments(vaultId?: string) {
+    await Promise.allSettled([
+      ...this.closingAttachments.values(),
+      ...[...this.attachments]
+        .filter(
+          ([, target]) => vaultId === undefined || target.vaultId === vaultId,
+        )
+        .map(([id]) => this.closeAttachment(id)),
+    ]);
   }
 
   async openRecording(
@@ -212,6 +361,16 @@ export class NativeRemoteConnection {
     const channel = new Channel<RemoteEvent>();
     let active = true;
     channel.onmessage = (event) => {
+      if (
+        active &&
+        !this.closed &&
+        event.kind === "connection" &&
+        (event.state === "access_denied" || event.state === "login_required")
+      ) {
+        void this.closeAttachments(
+          event.state === "login_required" ? undefined : vaultId,
+        );
+      }
       if (active && !this.closed) listener(event);
     };
     const unsubscribe = async () => {
@@ -263,6 +422,7 @@ export class NativeRemoteConnection {
     await Promise.allSettled([
       ...[...this.subscriptions].map((unsubscribe) => unsubscribe()),
       ...[...this.recordings].map((id) => this.closeRecording(id)),
+      this.closeAttachments(),
     ]);
   }
 

@@ -13,6 +13,10 @@ const native = vi.hoisted(() => ({
   remoteAudioOpen: vi.fn(),
   remoteAudioClose: vi.fn(),
   remoteAudioPeaks: vi.fn(),
+  remoteAttachmentOpen: vi.fn(),
+  remoteAttachmentClose: vi.fn(),
+  remoteAttachmentCopy: vi.fn(),
+  attachmentTargets: new Map<string, string>(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
 vi.mock("@tauri-apps/api/core", () => ({
@@ -77,6 +81,205 @@ beforeEach(() => {
       recording_sha256: "sha",
       peaks: { durationSec: 1, channels: [[0, 1]] },
     },
+  });
+  native.attachmentTargets.clear();
+  native.remoteAttachmentClose.mockResolvedValue(undefined);
+  native.remoteAttachmentOpen.mockImplementation(
+    async (_connection, id, target) => {
+      native.attachmentTargets.set(id, target.attachment_id);
+      return {
+        status: "ok",
+        data: { id, preview_limit_bytes: 32 * 1024 * 1024 },
+      };
+    },
+  );
+  native.remoteAttachmentCopy.mockImplementation(async (_connection, id) => ({
+    status: "ok",
+    data: {
+      copied_filename: "downloaded-copy.svg",
+      metadata: {
+        filename: native.attachmentTargets.get(id),
+        contentType: "image/svg+xml",
+        sizeBytes: 42,
+        sha256: "a".repeat(64),
+      },
+    },
+  }));
+});
+
+describe("native attachment resource lifetime", () => {
+  it("binds opaque resources to coordinates and delegates copy actions without exposing a path", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const controller = new AbortController();
+    const resource = await connection.openAttachment("vault", "note", "a.svg", {
+      signal: controller.signal,
+    });
+    expect(native.remoteAttachmentOpen).toHaveBeenCalledWith(
+      info.connection_id,
+      resource.id,
+      { vault_id: "vault", session_id: "note", attachment_id: "a.svg" },
+    );
+    controller.abort();
+    expect(native.remoteAttachmentClose).not.toHaveBeenCalled();
+    const requestId = crypto.randomUUID();
+    const copy = await connection.copyAttachment(resource.id, "open", {
+      requestId,
+    });
+    expect(native.remoteAttachmentCopy).toHaveBeenCalledWith(
+      info.connection_id,
+      resource.id,
+      requestId,
+      "open",
+    );
+    expect(copy).not.toHaveProperty("path");
+    await Promise.all([
+      connection.closeAttachment(resource.id),
+      connection.closeAttachment(resource.id),
+    ]);
+    expect(native.remoteAttachmentClose).toHaveBeenCalledTimes(1);
+    await expect(
+      connection.copyAttachment(resource.id, "reveal"),
+    ).rejects.toMatchObject({ detail: { code: "cancelled" } });
+  });
+
+  it("closes before late registration and ignores returned handles after an aborted open", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    let complete!: (value: unknown) => void;
+    native.remoteAttachmentOpen.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const opening = connection.openAttachment("vault", "note", "a.svg", {
+      signal: controller.signal,
+    });
+    const id = native.remoteAttachmentOpen.mock.calls[0][1];
+    controller.abort();
+    complete({
+      status: "ok",
+      data: { id, preview_limit_bytes: 32 * 1024 * 1024 },
+    });
+    await expect(opening).rejects.toMatchObject({
+      detail: { code: "cancelled" },
+    });
+    expect(native.remoteAttachmentClose).toHaveBeenCalledWith(
+      info.connection_id,
+      id,
+    );
+    expect(native.remoteAttachmentClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels copy requests and treats late side effects as uncertain without automatically retrying", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const resource = await connection.openAttachment("vault", "note", "a.svg");
+    let complete!: (value: unknown) => void;
+    native.remoteAttachmentCopy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const requestId = crypto.randomUUID();
+    const copying = connection.copyAttachment(resource.id, "save", {
+      signal: controller.signal,
+      requestId,
+    });
+    controller.abort();
+    expect(native.remoteCancelRequest).toHaveBeenCalledWith(
+      info.connection_id,
+      requestId,
+    );
+    complete({
+      status: "ok",
+      data: { copied_filename: "a.svg", metadata: { filename: "a.svg" } },
+    });
+    await expect(copying).rejects.toMatchObject({
+      detail: { code: "cancelled", mutation_outcome: "unknown" },
+    });
+    expect(native.remoteAttachmentCopy).toHaveBeenCalledTimes(1);
+    await expect(
+      connection.copyAttachment(resource.id, "reveal"),
+    ).resolves.toHaveProperty("copied_filename");
+  });
+
+  it("closes descriptors during disconnect and refuses late copy delivery", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const resource = await connection.openAttachment("vault", "note", "a.svg");
+    let complete!: (value: unknown) => void;
+    native.remoteAttachmentCopy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const copying = connection.copyAttachment(resource.id, "open");
+    await connection.disconnect();
+    complete({
+      status: "ok",
+      data: { copied_filename: "a.svg", metadata: { filename: "a.svg" } },
+    });
+    await expect(copying).rejects.toMatchObject({
+      detail: { code: "cancelled", mutation_outcome: "unknown" },
+    });
+    expect(native.remoteAttachmentClose).toHaveBeenCalledWith(
+      info.connection_id,
+      resource.id,
+    );
+    expect(native.remoteDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes only the revoked vault's attachments and all attachments after sign-out", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const first = await connection.openAttachment("first", "note", "a.svg");
+    const second = await connection.openAttachment("second", "note", "a.svg");
+    await connection.subscribe("first", vi.fn());
+    const channel = native.remoteSubscribe.mock.calls[0][3];
+    channel.onmessage({ kind: "connection", state: "access_denied", error });
+    await vi.waitFor(() =>
+      expect(native.remoteAttachmentClose).toHaveBeenCalledWith(
+        info.connection_id,
+        first.id,
+      ),
+    );
+    expect(native.remoteAttachmentClose).not.toHaveBeenCalledWith(
+      info.connection_id,
+      second.id,
+    );
+    await expect(
+      connection.copyAttachment(second.id, "reveal"),
+    ).resolves.toHaveProperty("copied_filename");
+    channel.onmessage({ kind: "connection", state: "login_required", error });
+    await vi.waitFor(() =>
+      expect(native.remoteAttachmentClose).toHaveBeenCalledWith(
+        info.connection_id,
+        second.id,
+      ),
+    );
+  });
+
+  it("rejects mismatched native handles and metadata without accepting a device path", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    native.remoteAttachmentOpen.mockResolvedValueOnce({
+      status: "ok",
+      data: { id: "foreign", preview_limit_bytes: 32 * 1024 * 1024 },
+    });
+    await expect(
+      connection.openAttachment("vault", "note", "a.svg"),
+    ).rejects.toMatchObject({ detail: { code: "incompatible_version" } });
+    const resource = await connection.openAttachment("vault", "note", "a.svg");
+    native.remoteAttachmentCopy.mockResolvedValueOnce({
+      status: "ok",
+      data: {
+        copied_filename: "../bad.svg",
+        metadata: { filename: "other.svg" },
+      },
+    });
+    await expect(
+      connection.copyAttachment(resource.id, "save"),
+    ).rejects.toMatchObject({ detail: { code: "incompatible_version" } });
   });
 });
 

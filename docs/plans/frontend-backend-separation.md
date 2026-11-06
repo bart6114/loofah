@@ -307,7 +307,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: actual editor/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info and typed SDK reads are implemented; native attachment presentation remains open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads and native scoped preview/copy operations are implemented; editor attachment integration remains open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -1637,3 +1637,61 @@ native attachment presentation is established by these tests. Linux and both
 native Windows checks are still required for this increment. Native attachment
 resources, complete image delivery, original-copy open/reveal, scoped invalidation,
 uploads and editor integration remain open.
+
+### Native attachment resources and verified device copies
+
+`apps/desktop/src-tauri/src/remote/attachments.rs` now owns cheap, opaque,
+window/connection/vault/session-scoped resources. The media protocol dispatches
+`/attachments/{resource}` to complete image responses up to 32 MiB, with checked
+SHA-256, ETag, sandboxed CSP, no-store and nosniff. Larger previews return 413;
+non-images return 415. Handles retain no backend download lease or ordinary
+request slot. Each actual transfer acquires and closes a backend lease. Two
+attachment transfers are admitted globally; only one original-copy transfer may
+run, leaving a slot for previews.
+
+Native save/open/reveal operations use private staged files, full verification,
+file sync and atomic no-overwrite publication under the client's Downloads/Loofah.
+Save produces a fresh deduplicated original; open/reveal reuse the resource's
+existing regular local copy, preserving client edits. Remote names are retained
+in metadata and mapped to safe local filenames, including Windows device aliases.
+Local paths stay in Rust. macOS quarantine and Windows download-zone metadata
+are applied where supported. Close/window teardown/cancellation suppress late
+results and actions while actual buffered I/O retains its admission and temporary
+file ownership. Healthy logout closes known backend leases before stopping
+credentials. Unreachable lease cleanup remains bounded by the server's lifetime.
+
+`NativeRemoteConnection` now wraps these typed operations and closes handles on
+connection disposal, sign-out and scoped access denial. This increment does not
+yet implement the high-level `VaultClient` attachment resource, editor resolver,
+fine-grained attachment invalidation, uploads or attachment-panel parity. Local
+startup and existing local file actions remain standalone and login-free.
+
+Current validation: 61 native tests pass (one ignored), four fs-sync plugin tests
+pass, all 1,769 desktop frontend tests pass, and desktop typechecking and
+Desktop/CLI compilation pass. Focused client lint passes. Tests cover full images
+over 1 MiB, preview bounds, digest failures, ownership/quota checks, early close,
+window teardown, cancellation cleanup, active logout lease cleanup, OS download
+metadata, Tauri-encoded protocol paths, existing-copy edits, original-save
+deduplication and preview capacity during a stalled copy. Production performance and native Windows WebView2
+acceptance remain open. This increment still requires its own hosted Windows
+x64/ARM64 validation.
+
+The preceding recording-deletion correction (`1e4c5d742`) passed all hosted CI,
+including native Windows x64 and ARM64 tests/installers. Attachment info and
+streaming SDK commit `78dafb748` has passed Linux backend, portable CI and CLI
+checks; its macOS desktop checks pass, while native Windows builds are still
+running at this checkpoint.
+The full plan objective and all incomplete phase/release gates remain unchanged.
+
+Native macOS debug WebView QA now passes with trusted fixture HTTPS and synthetic
+OIDC PKCE. It fetches, checks the SHA-256 of and decodes a complete 3,145,849-byte
+SVG at 50/150/500 ms RTT, then verifies original save, native Finder reveal,
+retention of local-copy edits, fresh-original deduplication and quarantine.
+Explicit retries after disconnect and backend restart deliver the current
+checksummed generation; oversized previews return 413 and closed handles cannot
+read. All 131 preexisting fixture files retain their hashes. Evidence:
+`/Volumes/T7/loofah-backend-build/native-qa/attachments/evidence.json`.
+The first native run caught Tauri's encoded path separator; the handler and its
+regression now accept that exact URI grammar without general path decoding.
+This is host-operation validation in a disposable harness, not completed editor
+integration, production performance, remote capture or Windows WebView2 acceptance.

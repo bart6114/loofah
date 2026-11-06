@@ -627,6 +627,52 @@ export const commands = {
   ): Promise<void> {
     await TAURI_INVOKE("remote_audio_close", { connectionId, resourceId });
   },
+  async remoteAttachmentOpen(
+    connectionId: string,
+    resourceId: string,
+    target: AttachmentTarget,
+  ): Promise<Result<NativeAttachment, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_attachment_open", {
+          connectionId,
+          resourceId,
+          target,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAttachmentClose(
+    connectionId: string,
+    resourceId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_attachment_close", { connectionId, resourceId });
+  },
+  async remoteAttachmentCopy(
+    connectionId: string,
+    resourceId: string,
+    requestId: string,
+    action: AttachmentCopyAction,
+  ): Promise<Result<NativeAttachmentCopy, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_attachment_copy", {
+          connectionId,
+          resourceId,
+          requestId,
+          action,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async chatgptAccount(): Promise<Result<ChatgptAccount | null, ChatgptError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
@@ -1573,6 +1619,12 @@ export type ApplicationError = {
   current_revision: string | null;
   mutation_outcome: MutationOutcome | null;
 };
+export type AttachmentCopyAction = "save" | "open" | "reveal";
+export type AttachmentTarget = {
+  vault_id: string;
+  session_id: string;
+  attachment_id: string;
+};
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
@@ -1820,6 +1872,11 @@ export type MetadataSaveOutcome =
   | { kind: "conflict"; snapshot: MetadataSnapshot };
 export type MetadataSnapshot = { meta: SessionMeta; revision: string };
 export type MutationOutcome = "not_committed" | "persisted" | "unknown";
+export type NativeAttachment = { id: string; preview_limit_bytes: number };
+export type NativeAttachmentCopy = {
+  copied_filename: string;
+  metadata: FileMetadata;
+};
 export type NativeRecording = { id: string; metadata: FileMetadata };
 export type NoteDraftRecovery = {
   scope: string;

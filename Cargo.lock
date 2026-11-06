@@ -3427,6 +3427,7 @@ dependencies = [
  "chrono",
  "dirs 6.0.0",
  "fs-format",
+ "futures-util",
  "host",
  "intercept",
  "loofah-client",
