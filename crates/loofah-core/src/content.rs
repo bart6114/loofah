@@ -18,17 +18,10 @@ impl VaultContext {
         Ok(())
     }
 
-    pub(crate) async fn recover_document_session(
-        &self,
-        session_id: &str,
-    ) -> Result<(), ApplicationError> {
-        if let Some(operations) = &self.operations {
-            self.store
-                .recover_session_document_write(&operations.root.join("document-saves"), session_id)
-                .await
-                .map_err(|cause| storage_error(cause, false))?;
-        }
-        Ok(())
+    pub(crate) fn document_operation_root(&self) -> Option<std::path::PathBuf> {
+        self.operations
+            .as_ref()
+            .map(|operations| operations.root.join("document-saves"))
     }
 
     pub async fn read_document(
@@ -37,15 +30,22 @@ impl VaultContext {
         target: &hypr_loofah_protocol::DocumentTarget,
     ) -> Result<hypr_loofah_protocol::DocumentSnapshot, ApplicationError> {
         self.validate_document(session_id, target)?;
-        self.recover_document_session(session_id).await?;
         self.store
-            .read_document_snapshot(session_id, target)
+            .read_recovered_document_snapshot(
+                self.document_operation_root().as_deref(),
+                session_id,
+                target,
+            )
             .await
             .map_err(|cause| match cause {
-                hypr_vault_write::StoreError::Conflict(_) => error(
-                    ErrorCode::Validation,
-                    "Use the summary operation for legacy summaries",
-                ),
+                hypr_vault_write::StoreError::Conflict(ref reason)
+                    if reason == "document is a legacy summary; use the summary operation" =>
+                {
+                    error(
+                        ErrorCode::Validation,
+                        "Use the summary operation for legacy summaries",
+                    )
+                }
                 cause => storage_error(cause, false),
             })?
             .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
@@ -123,9 +123,12 @@ impl VaultContext {
         &self,
         session_id: &str,
     ) -> Result<Vec<EnhancedDoc>, ApplicationError> {
-        self.require_session(session_id).await?;
-        self.recover_document_session(session_id).await?;
-        Ok(self.store.session_enhanced_docs(session_id))
+        self.validate(session_id)?;
+        self.store
+            .read_recovered_session_documents(self.document_operation_root().as_deref(), session_id)
+            .await
+            .map_err(|cause| storage_error(cause, false))?
+            .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
     }
 
     pub async fn session_transcripts(
@@ -140,12 +143,12 @@ impl VaultContext {
     }
 
     pub async fn session_tasks(&self, session_id: &str) -> Result<Vec<TaskItem>, ApplicationError> {
-        self.require_session(session_id).await?;
-        self.recover_document_session(session_id).await?;
+        self.validate(session_id)?;
         self.store
-            .session_tasks(session_id)
+            .read_recovered_session_tasks(self.document_operation_root().as_deref(), session_id)
             .await
-            .map_err(|cause| storage_error(cause, false))
+            .map_err(|cause| storage_error(cause, false))?
+            .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
     }
 
     pub async fn people(&self) -> Result<Vec<PersonItem>, ApplicationError> {

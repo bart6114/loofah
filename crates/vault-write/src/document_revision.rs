@@ -3,6 +3,44 @@ use hypr_loofah_protocol::{DocumentSaveOutcome, DocumentSnapshot, DocumentTarget
 use crate::{EnhancedDocPatch, SessionStore, StoreError, WriteGuard, paths};
 
 impl SessionStore {
+    pub async fn read_recovered_document_snapshot(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+        target: &DocumentTarget,
+    ) -> Result<Option<DocumentSnapshot>, StoreError> {
+        let target = target.clone();
+        self.recovered_read(
+            operation_root,
+            session_id,
+            |store, snapshot, id| async move {
+                store
+                    .document_snapshot_locked(&snapshot._guard, &id, &target)
+                    .await
+            },
+        )
+        .await
+    }
+
+    pub async fn read_recovered_session_documents(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+    ) -> Result<Option<Vec<crate::EnhancedDoc>>, StoreError> {
+        self.recovered_read(
+            operation_root,
+            session_id,
+            |store, snapshot, id| async move {
+                let _snapshot = snapshot;
+                if store.read_meta(&id).await?.is_none() {
+                    return Ok(None);
+                }
+                Ok(Some(store.session_enhanced_docs(&id)))
+            },
+        )
+        .await
+    }
+
     pub async fn read_document_snapshot(
         &self,
         session_id: &str,

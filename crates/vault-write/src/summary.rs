@@ -340,7 +340,7 @@ impl SessionStore {
         Ok(dir)
     }
 
-    fn index_set_summary(&self, id: &str, markdown: Option<String>) {
+    pub(super) fn index_set_summary(&self, id: &str, markdown: Option<String>) {
         let changed = {
             let mut index = self.index.write().unwrap();
             if let Some(docs) = index.docs.get_mut(id) {

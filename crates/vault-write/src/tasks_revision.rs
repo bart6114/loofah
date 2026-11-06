@@ -13,13 +13,14 @@ impl SessionStore {
         operation_root: Option<&Path>,
         session_id: &str,
     ) -> Result<Option<TasksSnapshot>, StoreError> {
-        crate::validate_session_id(session_id)?;
-        let guard = self.lock_writes().await;
-        if let Some(root) = operation_root {
-            self.recover_document_write_locked(&guard, root, session_id)
-                .await?;
-        }
-        self.tasks_snapshot_locked(&guard, session_id).await
+        self.recovered_read(
+            operation_root,
+            session_id,
+            |store, snapshot, id| async move {
+                store.tasks_snapshot_locked(&snapshot._guard, &id).await
+            },
+        )
+        .await
     }
 
     pub async fn replace_tasks_if_revision(

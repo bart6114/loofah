@@ -616,3 +616,31 @@ The relevant Rust suites pass 295 storage tests (one existing ignored), 70 core
 tests, 26 server tests plus the executable startup test, 16 agent-access tests,
 118 CLI tests and 35 native-client tests. Desktop Rust passes 45 tests with one
 existing ignored; native bindings were regenerated from those command exports.
+
+### Recovery and canonical reads share their lock
+
+Document bodies, task lists, revisioned task snapshots and composite agent
+reads now recover pending document work and read content under one continuous
+store lock. A queued partial writer cannot slip between a separate recovery
+pass and a later read. Owned workers retain that lock while recovery or file
+reads finish if the requesting transport is cancelled. Both the legacy task
+list response and the revisioned response keep their existing shapes and size
+policies.
+
+Recovery also refreshes the affected summary or template-output projection
+before removing its intent. An interrupted body commit therefore becomes visible
+to the current process without waiting for a restart or watcher rescan. Ambiguous
+external edits still fail closed and retain their recovery record and exact
+canonical bytes. A recovery conflict no longer looks like a request to edit a
+legacy summary through the wrong operation.
+
+Validation: five new regression tests cover a queued partial writer, lock
+retention across composite reads, cancellation while blocking recovery I/O is
+pending, template projection repair without rewriting completed tasks, and
+ambiguous recovery across every content reader. All 300 storage tests pass
+(one existing ignored), alongside 70 core tests and 26 server tests plus the
+executable startup test. The existing agent cancellation and concurrent
+note/title consistency tests pass. Optional strict Clippy for the storage
+crate additionally reports existing style warnings, including nested `if`
+statements, long argument lists and the rebuild lock's complex type. These are
+not failures of the storage tests. Full feature and platform gates remain open.

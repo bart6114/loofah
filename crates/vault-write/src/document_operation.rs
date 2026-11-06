@@ -139,6 +139,20 @@ impl SessionStore {
                 self.persist_generated_tasks(guard, &intent.session_id, &intent.tasks)
                     .await?;
             }
+            if let Some(document) = current.document {
+                match intent.target {
+                    DocumentTarget::Summary => {
+                        self.index_set_summary(&intent.session_id, Some(document.markdown));
+                    }
+                    DocumentTarget::TemplateOutput { .. } => {
+                        self.index_upsert_doc(&document);
+                        self.notify_index_changed(
+                            crate::IndexEntity::Docs,
+                            vec![intent.session_id],
+                        );
+                    }
+                }
+            }
             pending.finish().await
         } else if current.revision == intent.before_revision && before_tasks {
             pending.finish().await
@@ -385,6 +399,262 @@ mod tests {
                 .await
                 .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn queued_document_reads_recover_a_partial_writer_before_publishing_content() {
+        use std::future::{Future, poll_fn};
+
+        let (_vault, runtime, store, tasks) = fixture().await;
+        let blocker = store.lock_snapshot().await;
+        let (queued, waiting) = tokio::sync::oneshot::channel();
+        let writer = store.clone();
+        let root = runtime.path().to_path_buf();
+        let expected = tasks.clone();
+        let write = tokio::spawn(async move {
+            let lock = writer.lock_writes();
+            tokio::pin!(lock);
+            let mut queued = Some(queued);
+            let guard = poll_fn(|cx| {
+                let poll = lock.as_mut().poll(cx);
+                if poll.is_pending()
+                    && let Some(queued) = queued.take()
+                {
+                    queued.send(()).unwrap();
+                }
+                poll
+            })
+            .await;
+            writer
+                .begin_document_write_locked(
+                    &guard,
+                    &root,
+                    "s1",
+                    &DocumentTarget::Summary,
+                    b"- [x] Call Alice",
+                    &tasks,
+                )
+                .await
+                .unwrap();
+            writer
+                .write_file_locked(
+                    &guard,
+                    PathBuf::from("sessions/s1/summary.md"),
+                    b"- [x] Call Alice".to_vec(),
+                )
+                .await
+                .unwrap();
+        });
+        waiting.await.unwrap();
+        let reader = store.clone();
+        let root = runtime.path().to_path_buf();
+        let read = tokio::spawn(async move {
+            reader
+                .read_recovered_session_documents(Some(&root), "s1")
+                .await
+                .unwrap()
+                .unwrap()
+        });
+        drop(blocker);
+        write.await.unwrap();
+        let documents = read.await.unwrap();
+        assert_eq!(documents[0].markdown, "- [x] Call Alice");
+        assert_eq!(store.session_tasks("s1").await.unwrap(), expected);
+        assert!(!intent_path(runtime.path(), "s1").exists());
+    }
+
+    #[tokio::test]
+    async fn recovered_snapshot_retains_its_lock_across_composite_reads() {
+        let (_vault, runtime, store, tasks) = fixture().await;
+        admit(&store, runtime.path(), &tasks, true, false).await;
+        let snapshot = store
+            .lock_recovered_snapshot(Some(runtime.path()), "s1")
+            .await
+            .unwrap();
+        assert_eq!(
+            store.read_summary("s1").await.unwrap().as_deref(),
+            Some("- [x] Call Alice")
+        );
+        assert_eq!(store.session_tasks("s1").await.unwrap(), tasks);
+        let writer = store.lock_snapshot();
+        tokio::pin!(writer);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), &mut writer)
+                .await
+                .is_err()
+        );
+        drop(snapshot);
+        let _writer = tokio::time::timeout(std::time::Duration::from_secs(2), writer)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn recovering_template_content_refreshes_its_projection_without_rewriting_completed_tasks()
+     {
+        let (_vault, runtime, store, _) = fixture().await;
+        let mut document = crate::EnhancedDoc {
+            id: "output".into(),
+            session_id: "s1".into(),
+            kind: "template_output".into(),
+            title: "Report".into(),
+            template_id: "report".into(),
+            sort_order: 2,
+            markdown: "Before".into(),
+        };
+        store.write_enhanced_doc(&document).await.unwrap();
+        let tasks = store.session_tasks("s1").await.unwrap();
+        let task_path = store.vault_base().join("sessions/s1/tasks.json");
+        let before_tasks = std::fs::read(&task_path).unwrap();
+        let modified = std::fs::metadata(&task_path).unwrap().modified().unwrap();
+        document.markdown = "Recovered output".into();
+        {
+            let guard = store.lock_writes().await;
+            let bytes = hypr_vault_read::render_enhanced_file(&document)
+                .unwrap()
+                .into_bytes();
+            store
+                .begin_document_write_locked(
+                    &guard,
+                    runtime.path(),
+                    "s1",
+                    &DocumentTarget::TemplateOutput {
+                        document_id: "output".into(),
+                    },
+                    &bytes,
+                    &tasks,
+                )
+                .await
+                .unwrap();
+            store
+                .write_file_locked(
+                    &guard,
+                    PathBuf::from("sessions/s1/enhanced/output.md"),
+                    bytes,
+                )
+                .await
+                .unwrap();
+        }
+        assert_eq!(store.enhanced_doc_get("output").unwrap().markdown, "Before");
+        let documents = store
+            .read_recovered_session_documents(Some(runtime.path()), "s1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            documents
+                .into_iter()
+                .find(|doc| doc.id == "output")
+                .unwrap(),
+            document
+        );
+        assert_eq!(std::fs::read(&task_path).unwrap(), before_tasks);
+        assert_eq!(
+            std::fs::metadata(&task_path).unwrap().modified().unwrap(),
+            modified
+        );
+        assert!(!intent_path(runtime.path(), "s1").exists());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_recovery_fails_all_content_reads_without_touching_canonical_files() {
+        let (vault, runtime, store, tasks) = fixture().await;
+        admit(&store, runtime.path(), &tasks, true, false).await;
+        let path = vault.path().join("sessions/s1/summary.md");
+        std::fs::write(&path, "Externally changed after interruption").unwrap();
+        let before_tasks = std::fs::read(vault.path().join("sessions/s1/tasks.json")).unwrap();
+        assert!(matches!(
+            store
+                .read_recovered_document_snapshot(
+                    Some(runtime.path()),
+                    "s1",
+                    &DocumentTarget::Summary
+                )
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert!(matches!(
+            store
+                .read_recovered_session_documents(Some(runtime.path()), "s1")
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert!(matches!(
+            store
+                .read_recovered_session_tasks(Some(runtime.path()), "s1")
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert!(matches!(
+            store.read_tasks_snapshot(Some(runtime.path()), "s1").await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert!(matches!(
+            store
+                .lock_recovered_snapshot(Some(runtime.path()), "s1")
+                .await,
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "Externally changed after interruption"
+        );
+        assert_eq!(
+            std::fs::read(vault.path().join("sessions/s1/tasks.json")).unwrap(),
+            before_tasks
+        );
+        assert!(intent_path(runtime.path(), "s1").exists());
+    }
+
+    #[test]
+    fn cancelling_recovery_does_not_release_the_write_lock_while_blocking_io_is_pending() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (_vault, root, store, tasks) = fixture().await;
+            admit(&store, root.path(), &tasks, true, false).await;
+            let (started, waiting) = tokio::sync::oneshot::channel();
+            let (finish, completed) = std::sync::mpsc::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                started.send(()).unwrap();
+                completed
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
+            });
+            waiting.await.unwrap();
+            let reader = store.clone();
+            let root = root.path().to_path_buf();
+            let read =
+                tokio::spawn(async move { reader.read_tasks_snapshot(Some(&root), "s1").await });
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                while store.write_lock.try_lock().is_ok() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            read.abort();
+            assert!(read.await.unwrap_err().is_cancelled());
+            let writer = store.lock_snapshot();
+            tokio::pin!(writer);
+            let held = tokio::time::timeout(std::time::Duration::from_millis(30), &mut writer)
+                .await
+                .is_err();
+            finish.send(()).unwrap();
+            blocker.await.unwrap();
+            assert!(
+                held,
+                "cancelled recovery released its lock before its blocking worker completed"
+            );
+            let guard = tokio::time::timeout(std::time::Duration::from_secs(2), writer)
+                .await
+                .unwrap();
+            assert_eq!(store.session_tasks("s1").await.unwrap(), tasks);
+            drop(guard);
+        });
     }
 
     #[tokio::test]

@@ -4,7 +4,10 @@ use hypr_loofah_protocol::{
     RenderedTranscriptSegment, SearchMeetingsInput,
 };
 
-use crate::{VaultContext, vault::error};
+use crate::{
+    VaultContext,
+    vault::{error, storage_error},
+};
 
 impl VaultContext {
     pub async fn agent_list(
@@ -57,11 +60,10 @@ impl VaultContext {
 
     pub async fn agent_meeting(&self, session_id: &str) -> Result<AgentMeeting, ApplicationError> {
         self.validate(session_id)?;
-        self.recover_document_session(session_id).await?;
         let input = GetMeetingInput {
             meeting_id: session_id.into(),
         };
-        self.agent_snapshot(move |vault| async move {
+        self.agent_snapshot(session_id, move |vault| async move {
             hypr_agent_access::get_meeting(&vault, input).await
         })
         .await
@@ -75,7 +77,7 @@ impl VaultContext {
         let input = GetMeetingTranscriptInput {
             meeting_id: session_id.into(),
         };
-        self.agent_snapshot(move |vault| async move {
+        self.agent_snapshot(session_id, move |vault| async move {
             hypr_agent_access::get_meeting_transcript(&vault, input).await
         })
         .await
@@ -83,9 +85,8 @@ impl VaultContext {
 
     pub async fn agent_export(&self, session_id: &str) -> Result<AgentExport, ApplicationError> {
         self.validate(session_id)?;
-        self.recover_document_session(session_id).await?;
         let id = session_id.to_owned();
-        self.agent_snapshot(move |vault| async move {
+        self.agent_snapshot(session_id, move |vault| async move {
             hypr_agent_access::get_meeting_export(&vault, id).await
         })
         .await
@@ -97,7 +98,7 @@ impl VaultContext {
     ) -> Result<Vec<RenderedTranscriptSegment>, ApplicationError> {
         self.validate(session_id)?;
         let id = session_id.to_owned();
-        self.agent_snapshot(move |vault| async move {
+        self.agent_snapshot(session_id, move |vault| async move {
             hypr_agent_access::get_meeting_export_segments(&vault, id).await
         })
         .await
@@ -105,18 +106,25 @@ impl VaultContext {
 
     async fn agent_snapshot<T, F>(
         &self,
+        session_id: &str,
         operation: impl FnOnce(std::path::PathBuf) -> F + Send + 'static,
     ) -> Result<T, ApplicationError>
     where
         T: Send + 'static,
         F: std::future::Future<Output = hypr_agent_access::Result<T>> + Send + 'static,
     {
-        let snapshot = self.store.lock_snapshot().await;
-        let vault = self.store.vault_base().to_owned();
-        // The blocking readers must retain the snapshot lock if the transport is cancelled.
+        let store = self.store.clone();
+        let root = self.document_operation_root();
+        let id = session_id.to_owned();
+        // Recovery and blocking readers keep one snapshot lock even after cancellation.
         tokio::spawn(async move {
-            let _snapshot = snapshot;
-            operation(vault).await.map_err(agent_error)
+            let _snapshot = store
+                .lock_recovered_snapshot(root.as_deref(), &id)
+                .await
+                .map_err(|cause| storage_error(cause, false))?;
+            operation(store.vault_base().to_owned())
+                .await
+                .map_err(agent_error)
         })
         .await
         .map_err(|cause| {
@@ -298,7 +306,7 @@ mod tests {
         let reader = context.clone();
         let task = tokio::spawn(async move {
             reader
-                .agent_snapshot(move |_vault| async move {
+                .agent_snapshot("note", move |_vault| async move {
                     started.send(()).unwrap();
                     completed.await.unwrap();
                     Ok(())

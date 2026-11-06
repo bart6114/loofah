@@ -80,7 +80,7 @@ pub struct SessionStore {
 
 #[must_use]
 pub struct VaultSnapshotGuard {
-    _guard: tokio::sync::OwnedMutexGuard<()>,
+    _guard: WriteGuard<'static>,
 }
 
 /// Product of `normalize_startup_layout`: one discovery snapshot -- with paths
@@ -135,8 +135,55 @@ impl From<hypr_vault_read::Error> for StoreError {
 impl SessionStore {
     pub async fn lock_snapshot(&self) -> VaultSnapshotGuard {
         VaultSnapshotGuard {
-            _guard: self.write_lock.clone().lock_owned().await,
+            _guard: WriteGuard::Owned {
+                _guard: self.write_lock.clone().lock_owned().await,
+            },
         }
+    }
+
+    pub async fn lock_recovered_snapshot(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+    ) -> Result<VaultSnapshotGuard, StoreError> {
+        validate_session_id(session_id)?;
+        let store = self.clone();
+        let root = operation_root.map(std::path::Path::to_path_buf);
+        let id = session_id.to_owned();
+        // Recovery can dispatch blocking writes; cancellation must not release their lock.
+        tokio::spawn(async move {
+            let snapshot = store.lock_snapshot().await;
+            if let Some(root) = root {
+                store
+                    .recover_document_write_locked(&snapshot._guard, &root, &id)
+                    .await?;
+            }
+            Ok(snapshot)
+        })
+        .await
+        .map_err(|cause| StoreError::Io(format!("snapshot worker failed: {cause}")))?
+    }
+
+    async fn recovered_read<T, F>(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+        read: impl FnOnce(SessionStore, VaultSnapshotGuard, String) -> F + Send + 'static,
+    ) -> Result<T, StoreError>
+    where
+        T: Send + 'static,
+        F: std::future::Future<Output = Result<T, StoreError>> + Send + 'static,
+    {
+        validate_session_id(session_id)?;
+        let store = self.clone();
+        let root = operation_root.map(std::path::Path::to_path_buf);
+        let id = session_id.to_owned();
+        tokio::spawn(async move {
+            let snapshot = store.lock_recovered_snapshot(root.as_deref(), &id).await?;
+            read(store, snapshot, id).await
+        })
+        .await
+        .map_err(|cause| StoreError::Io(format!("snapshot read failed: {cause}")))?
     }
 
     pub fn new(vault_base: PathBuf) -> Self {
@@ -197,7 +244,9 @@ impl SessionStore {
     /// this, `write_file`'s internal lock only spans the write, and two callers computing a
     /// new whole-file value from the same starting bytes silently drop one of the updates.
     pub(crate) async fn lock_writes(&self) -> WriteGuard<'_> {
-        self.write_lock.lock().await
+        WriteGuard::Borrowed {
+            _guard: self.write_lock.lock().await,
+        }
     }
 
     pub async fn write_file(&self, relative: PathBuf, bytes: Vec<u8>) -> Result<(), StoreError> {
@@ -305,7 +354,14 @@ pub struct VaultMoveGuard<'a> {
 }
 
 /// Proof that the caller holds the store-wide write lock.
-pub(crate) type WriteGuard<'a> = tokio::sync::MutexGuard<'a, ()>;
+pub(crate) enum WriteGuard<'a> {
+    Borrowed {
+        _guard: tokio::sync::MutexGuard<'a, ()>,
+    },
+    Owned {
+        _guard: tokio::sync::OwnedMutexGuard<()>,
+    },
+}
 
 /// Preserves bytes at `abs` that this store did not write, before they are overwritten.
 ///

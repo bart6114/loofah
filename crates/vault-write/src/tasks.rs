@@ -103,8 +103,8 @@ pub(super) fn replaced_source_tasks(
     let mut next: Vec<TaskItem> = existing
         .iter()
         .filter(|t| {
-            !(t.source_type == source_type && t.source_id == source_id)
-                && !input_ids.contains(t.id.as_str())
+            !(input_ids.contains(t.id.as_str())
+                || (t.source_type == source_type && t.source_id == source_id))
         })
         .cloned()
         .collect();
@@ -137,6 +137,25 @@ pub(super) fn replaced_source_tasks(
 }
 
 impl SessionStore {
+    pub async fn read_recovered_session_tasks(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+    ) -> Result<Option<Vec<TaskItem>>, StoreError> {
+        self.recovered_read(
+            operation_root,
+            session_id,
+            |store, snapshot, id| async move {
+                let _snapshot = snapshot;
+                if store.read_meta(&id).await?.is_none() {
+                    return Ok(None);
+                }
+                store.session_tasks(&id).await.map(Some)
+            },
+        )
+        .await
+    }
+
     pub async fn session_tasks(&self, session_id: &str) -> Result<Vec<TaskItem>, StoreError> {
         validate_session_id(session_id)?;
         let dir = self.session_dir(session_id).await?;

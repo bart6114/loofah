@@ -13,10 +13,7 @@ impl VaultContext {
         session_id: &str,
     ) -> Result<TasksSnapshot, ApplicationError> {
         self.validate(session_id)?;
-        let root = self
-            .operations
-            .as_ref()
-            .map(|operations| operations.root.join("document-saves"));
+        let root = self.document_operation_root();
         self.store
             .read_tasks_snapshot(root.as_deref(), session_id)
             .await
