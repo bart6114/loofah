@@ -25,6 +25,8 @@ const native = vi.hoisted(() => ({
     applicationTranscripts: vi.fn(),
     applicationAudioMetadata: vi.fn(),
     applicationAttachmentInfo: vi.fn(),
+    applicationAttachmentMetadata: vi.fn(),
+    applicationRemoveAttachment: vi.fn(),
     applicationAttachments: vi.fn(),
     applicationDeleteRecording: vi.fn(),
     applicationTasks: vi.fn(),
@@ -759,5 +761,71 @@ it("uses the same attachment page contract over IPC and HTTPS with opaque cursor
     },
     "attachments",
     undefined,
+  );
+});
+
+it("shares checked attachment review and removal contracts with a stable request ID", async () => {
+  const metadata = {
+    filename: "file.pdf",
+    contentType: "application/pdf",
+    sizeBytes: 42,
+    sha256: "0".repeat(64),
+  };
+  const input = { expected_sha256: metadata.sha256 };
+  const options = { requestId: crypto.randomUUID() };
+  native.commands.applicationAttachmentMetadata.mockResolvedValue({
+    status: "ok",
+    data: metadata,
+  });
+  native.commands.applicationRemoveAttachment.mockResolvedValue({
+    status: "ok",
+    data: true,
+  });
+  const local = await connectLocalVault();
+  expect(await local.attachmentMetadata("note", metadata.filename)).toEqual(
+    metadata,
+  );
+  expect(
+    await local.removeAttachment("note", metadata.filename, input, options),
+  ).toBe(true);
+  expect(native.commands.applicationRemoveAttachment).toHaveBeenCalledWith(
+    options.requestId,
+    "note",
+    metadata.filename,
+    input,
+  );
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(metadata)
+    .mockResolvedValueOnce(true);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: {
+          features: ["attachment_metadata", "attachment_remove"],
+        },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    { id: "vault", role: "editor" },
+  );
+  expect(await remote.attachmentMetadata("note", metadata.filename)).toEqual(
+    metadata,
+  );
+  expect(
+    await remote.removeAttachment("note", metadata.filename, input, options),
+  ).toBe(true);
+  expect(request).toHaveBeenLastCalledWith(
+    {
+      kind: "remove_attachment",
+      vault_id: "vault",
+      session_id: "note",
+      attachment_id: metadata.filename,
+      input,
+    },
+    "attachment_removed",
+    options,
   );
 });

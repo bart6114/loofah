@@ -229,6 +229,21 @@ export class VaultScope {
         ),
     });
   }
+  attachmentMetadataOptions(sessionId: string, attachmentId: string) {
+    return queryOptions({
+      queryKey: [
+        "vault",
+        this.client.scope,
+        "attachment_metadata",
+        sessionId,
+        attachmentId,
+      ],
+      queryFn: ({ signal }) =>
+        this.run(() =>
+          this.client.attachmentMetadata(sessionId, attachmentId, { signal }),
+        ),
+    });
+  }
   attachmentsOptions(sessionId: string) {
     return infiniteQueryOptions({
       queryKey: ["vault", this.client.scope, "attachment_list", sessionId],
@@ -542,6 +557,7 @@ export class VaultScope {
           if (
             [
               "attachment_info",
+              "attachment_metadata",
               "attachment_resource",
               "attachment_list",
             ].includes(String(kind))

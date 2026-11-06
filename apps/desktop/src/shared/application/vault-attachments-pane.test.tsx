@@ -21,11 +21,15 @@ afterEach(() => {
 function file(filename: string) {
   return { filename, contentType: "application/pdf", sizeBytes: 1024 };
 }
-async function fixture(name = "scope") {
+async function fixture(name = "scope", canEdit = true) {
   let event!: (value: VaultClientEvent) => void;
   const client = {
     scope: name,
     networkMode: "always",
+    canEdit,
+    features: ["attachment_metadata", "attachment_remove"],
+    attachmentMetadata: vi.fn(),
+    removeAttachment: vi.fn(),
     attachments: vi.fn(),
     openAttachment: vi.fn(),
     subscribe: vi.fn(async (listener) => {
@@ -36,6 +40,8 @@ async function fixture(name = "scope") {
   } as unknown as VaultClient & {
     attachments: ReturnType<typeof vi.fn>;
     openAttachment: ReturnType<typeof vi.fn>;
+    attachmentMetadata: ReturnType<typeof vi.fn>;
+    removeAttachment: ReturnType<typeof vi.fn>;
   };
   const scope = new VaultScope(client);
   scope.queryClient.setDefaultOptions({
@@ -46,6 +52,53 @@ async function fixture(name = "scope") {
   await scope.start();
   return { scope, client, emit: (value: VaultClientEvent) => event(value) };
 }
+
+it("uses the shared reviewed removal dialog and hides removal for readers", async () => {
+  const { scope, client } = await fixture();
+  client.attachments.mockResolvedValue({
+    files: [file("a.pdf")],
+    next_cursor: null,
+  });
+  client.openAttachment.mockResolvedValue(null);
+  client.attachmentMetadata.mockResolvedValue({
+    ...file("a.pdf"),
+    sha256: "0".repeat(64),
+  });
+  client.removeAttachment.mockResolvedValue(true);
+  const mounted = render(
+    <VaultAttachmentsPane scope={scope} sessionId="note" />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Actions for a.pdf" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Remove attachment" }),
+  );
+  expect(client.removeAttachment).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole("button", { name: "Move to Trash" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(client.removeAttachment).toHaveBeenCalledWith(
+    "note",
+    "a.pdf",
+    { expected_sha256: "0".repeat(64) },
+    { requestId: expect.any(String) },
+  );
+  mounted.unmount();
+  const reader = await fixture("reader", false);
+  reader.client.attachments.mockResolvedValue({
+    files: [file("a.pdf")],
+    next_cursor: null,
+  });
+  reader.client.openAttachment.mockResolvedValue(null);
+  render(<VaultAttachmentsPane scope={reader.scope} sessionId="note" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Actions for a.pdf" }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Remove attachment" }),
+  ).toBeNull();
+  expect(reader.client.attachmentMetadata).not.toHaveBeenCalled();
+});
 function resource(id: string): AttachmentResource {
   return {
     id,

@@ -19,6 +19,7 @@ import type {
   ApplicationError,
   AttachmentPage,
   DeleteRecordingRequest,
+  RemoveAttachmentRequest,
   FileInfo,
   FileMetadata,
   MetadataSnapshot,
@@ -105,6 +106,17 @@ export type VaultClient = {
     attachmentId: string,
     options?: RequestOptions,
   ) => Promise<FileInfo | null>;
+  attachmentMetadata: (
+    sessionId: string,
+    attachmentId: string,
+    options?: RequestOptions,
+  ) => Promise<FileMetadata | null>;
+  removeAttachment: (
+    sessionId: string,
+    attachmentId: string,
+    input: RemoveAttachmentRequest,
+    options?: RequestOptions,
+  ) => Promise<boolean>;
   attachments: (
     sessionId: string,
     limit: number,
@@ -254,6 +266,8 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "audio_metadata_read",
       "attachment_info",
       "attachment_list",
+      "attachment_metadata",
+      "attachment_remove",
       "artifact_details",
       "search",
       "content_read",
@@ -309,6 +323,25 @@ export async function connectLocalVault(): Promise<VaultClient> {
         () => commands.applicationAttachmentInfo(sessionId, attachmentId),
         options,
       ),
+    attachmentMetadata: (sessionId, attachmentId, options) =>
+      ipc(
+        () => commands.applicationAttachmentMetadata(sessionId, attachmentId),
+        options,
+      ),
+    removeAttachment: (sessionId, attachmentId, input, options) => {
+      const requestId = options?.requestId ?? crypto.randomUUID();
+      return ipc(
+        () =>
+          commands.applicationRemoveAttachment(
+            requestId,
+            sessionId,
+            attachmentId,
+            input,
+          ),
+        { ...options, requestId },
+        true,
+      );
+    },
     attachments: (sessionId, limit, after, options) =>
       ipc(
         () => commands.applicationAttachments(sessionId, limit, after ?? null),
@@ -395,6 +428,29 @@ export function connectRemoteVault(
         options,
       ),
     features: connection.info.capabilities.features,
+    attachmentMetadata: (sessionId, attachmentId, options) =>
+      connection.request(
+        {
+          kind: "attachment_metadata",
+          vault_id: vaultId,
+          session_id: sessionId,
+          attachment_id: attachmentId,
+        },
+        "attachment_metadata",
+        options,
+      ),
+    removeAttachment: (sessionId, attachmentId, input, options) =>
+      connection.request(
+        {
+          kind: "remove_attachment",
+          vault_id: vaultId,
+          session_id: sessionId,
+          attachment_id: attachmentId,
+          input,
+        },
+        "attachment_removed",
+        options,
+      ),
     deleteRecording: (sessionId, input, options) =>
       connection.request(
         {

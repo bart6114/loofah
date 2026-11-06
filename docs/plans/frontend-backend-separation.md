@@ -1898,6 +1898,84 @@ Uploads, checked attachment removal, clipboard/native-drop integration, full
 main-shell migration and all wider processing/capture/CLI/deployment and platform
 gates remain part of the active objective. This read/action panel is an
 incremental boundary, not complete attachment parity. Hosted macOS, Linux backend,
-CLI and Windows x64 checks passed for the preceding `a1f11012a` resource/watcher
-commit; its Windows ARM64 run is still active. The two newer checkpoints require
+CLI and Windows x64/ARM64 checks passed for the preceding `a1f11012a`
+resource/watcher commit, including both Windows installers. The two newer checkpoints require
 their own hosted checks before merge.
+
+### Checked attachment removal through the shared application layer
+
+Attachment removal now uses `SessionStore::prepare_attachment_removal` and its
+commit plan in `crates/vault-write/src/attachment_remove.rs`. It checks the exact
+owned basename, SHA-256 and file identity, hashes outside the vault write lock,
+then rechecks the session and file before a single non-replacing move into the
+existing Trash layout. The shared `file_snapshot` helper preserves the recording
+delete checks and Windows shared-lock behavior. New Trash directory links and
+receipt directories are synced on Unix. Unknown session files, nested/hidden
+attachments, linked paths and canonical note content remain outside this action.
+
+Per-member request UUID receipts live in persistent operation storage under
+`attachment-removals/`, outside canonical sessions. The pending receipt records
+its exact Trash target before the move. Completed/absent receipts return their
+original result without deleting a subsequently restored or created file, even
+with the same name and identical bytes. Pending recovery may confirm an exact
+original in Trash, but never resumes deletion against the live filename. Missing
+or damaged recovery evidence remains uncertain. This is a bounded single-file
+operation; it does not close the separate compound recording-deletion recovery
+work or establish power-loss guarantees on every filesystem. Receipts currently
+have no automatic expiry and must survive backups, restarts and upgrades.
+
+`VaultContext::attachment_metadata` supplies an explicitly requested review hash;
+listing remains stat-only. `remove_attachment_authorized` rechecks current access
+after hashing, including for receipt replays, and retains the grant through
+commit. Thin `application_attachment_metadata`/`application_remove_attachment`
+IPC commands and HTTPS routes use generated contracts. Additive
+`attachment_metadata` and `attachment_remove` capabilities gate SDK calls before
+credential access. The SDK validates names, revisions and metadata, preserves the
+explicit UUID, and does not automatically retry a mutation. Server resources for
+the matching basename/revision close without closing unrelated recordings,
+attachments or a restored file with different bytes.
+
+Both desktop panels now use `RemoveAttachmentDialog`, `VaultClient` and scoped
+metadata queries. The local panel retains native uploads/folder/file actions and
+requires no account. The dialog freezes the reviewed revision, blocks a changed
+or failed review and disconnected confirmation, and requires fresh review after
+an error. An uncertain reply remains visible even if an earlier change event has
+already removed the file row. It explains the vault Trash and existing Markdown
+links; it neither rewrites links nor adds offline editing or a background delete
+queue.
+
+Validation passes 350 storage tests (one ignored), 114 application tests, 65 SDK
+tests with development fixtures enabled, 44 server unit tests and its executable
+test. The native desktop suite passes 61 tests (one ignored), and all 1,804
+frontend tests pass. Native desktop/CLI and headless checks, generated-contract
+drift, desktop typecheck, locale compilation, production frontend build and
+production application/SDK/server Clippy pass. Broader strict all-target Clippy
+finds existing warnings in unrelated storage and test modules; those were not
+changed. Desktop lint reports existing warnings and no errors, with none in the
+changed frontend modules. The production headless dependency graph continues to
+exclude Tauri, webview and device-capture dependencies.
+
+A disposable native macOS debug window exercised the actual attachment panel and
+confirmation dialog over trusted HTTPS at 50/150/500 ms RTT. Review plus removal
+of these small fixture files took approximately 0.31/0.73/3.00 seconds; these are
+fixture measurements, not production acceptance. Exact originals reached the
+existing Trash layout and listing refreshed. A stale review preserved changed
+bytes. A deliberately lost post-commit reply retained uncertain feedback and
+caused no automatic UI retry. After service restart, an explicit replay of that
+UUID returned its receipt and preserved restored identical bytes. Disconnect
+removed mutation actions; reconnect recovered the authenticated channel. Canonical
+note/metadata and unknown files, an unrelated attachment, all 275 preexisting
+fixture files and existing local notes were unchanged. Computer-use inspection
+confirmed the actual workspace, remaining rows and final result. Evidence:
+`/Volumes/T7/loofah-backend-build/native-qa/attachment-remove/evidence.json`.
+The first launch raced fixture startup; the first lost-reply injection read a
+stale proxy setting. Both failed results are retained, and the final run waits
+for readiness and reads network settings after receiving the request. All owned
+QA processes were stopped and the synthetic credential was removed.
+
+The full implementation objective remains open: uploads and native-drop publication, durable capture/ingest,
+processing/providers/jobs, main-shell and remote-only startup, CLI ownership and
+mutation parity, lifecycle/backup/upgrade gates, production performance and native
+Windows acceptance still require work. The preceding `a1f11012a` checkpoint has
+now passed hosted macOS, Linux backend, CLI and Windows x64/ARM64 checks, including
+both Windows installers. Newer checkpoints need their own hosted checks.

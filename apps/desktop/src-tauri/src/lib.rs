@@ -594,6 +594,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_audio_metadata::<tauri::Wry>,
             application::application_attachment_info::<tauri::Wry>,
             application::application_attachments::<tauri::Wry>,
+            application::application_attachment_metadata::<tauri::Wry>,
+            application::application_remove_attachment::<tauri::Wry>,
             application::application_delete_recording::<tauri::Wry>,
             application::application_tasks::<tauri::Wry>,
             application::application_tasks_snapshot::<tauri::Wry>,

@@ -297,6 +297,44 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationAttachmentMetadata(
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<Result<FileMetadata | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachment_metadata", {
+          sessionId,
+          attachmentId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRemoveAttachment(
+    requestId: string,
+    sessionId: string,
+    attachmentId: string,
+    input: RemoveAttachmentRequest,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_remove_attachment", {
+          requestId,
+          sessionId,
+          attachmentId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationDeleteRecording(
     sessionId: string,
     input: DeleteRecordingRequest,
@@ -2035,6 +2073,19 @@ export type RemoteOperation =
       attachment_id: string;
     }
   | {
+      kind: "attachment_metadata";
+      vault_id: string;
+      session_id: string;
+      attachment_id: string;
+    }
+  | {
+      kind: "remove_attachment";
+      vault_id: string;
+      session_id: string;
+      attachment_id: string;
+      input: RemoveAttachmentRequest;
+    }
+  | {
       kind: "attachments";
       vault_id: string;
       session_id: string;
@@ -2101,6 +2152,8 @@ export type RemoteReply =
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "audio_metadata"; value: FileMetadata | null }
   | { kind: "attachment_info"; value: FileInfo | null }
+  | { kind: "attachment_metadata"; value: FileMetadata | null }
+  | { kind: "attachment_removed"; value: boolean }
   | { kind: "attachments"; value: AttachmentPage }
   | { kind: "recording_deleted"; value: boolean }
   | { kind: "tasks"; value: TaskItem[] }
@@ -2121,6 +2174,7 @@ export type RemoteReply =
   | { kind: "agent_transcript"; value: MeetingTranscript }
   | { kind: "agent_export"; value: MeetingExport }
   | { kind: "agent_segments"; value: RenderedTranscriptSegment[] };
+export type RemoveAttachmentRequest = { expected_sha256: string };
 export type RenderedTranscriptSegment = {
   is_current_user?: boolean | null;
   id: string;

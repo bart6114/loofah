@@ -1,3 +1,4 @@
+mod attachment_remove;
 mod attachments;
 mod audio_metadata;
 mod metadata;

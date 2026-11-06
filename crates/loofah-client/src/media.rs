@@ -73,18 +73,25 @@ impl<'a> MediaRef<'a> {
                 lease.idle_timeout_secs
             }
         };
-        if idle == 0
-            || metadata.sha256.len() != 64
-            || !metadata
-                .sha256
-                .bytes()
-                .all(|value| value.is_ascii_digit() || (b'a'..=b'f').contains(&value))
-        {
+        if idle == 0 {
             return Err(invalid_response());
         }
-        validate_content_type(&metadata.content_type)?;
-        Ok(())
+        validate_file_metadata(metadata)
     }
+}
+
+pub(crate) fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+pub(crate) fn validate_file_metadata(metadata: &FileMetadata) -> Result<()> {
+    if !valid_sha256(&metadata.sha256) {
+        return Err(invalid_response());
+    }
+    validate_content_type(&metadata.content_type)
 }
 
 pub(crate) fn validate_content_type(value: &str) -> Result<()> {

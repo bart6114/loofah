@@ -34,6 +34,10 @@ pub(crate) fn router() -> Router<Arc<Service>> {
             get(attachment_info),
         )
         .route(
+            "/vaults/{vault}/sessions/{session}/attachments/{attachment}/metadata",
+            get(attachment_metadata),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/attachments/{attachment}/leases/{lease}",
             put(open_attachment),
         )
@@ -174,6 +178,19 @@ async fn open_attachment(
         leases
             .open_attachment(context, &owner, &lease, &session, &attachment)
             .await
+    })
+    .await
+}
+
+async fn attachment_metadata(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, session, attachment)): ApiPath<(String, String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    let context = service.vault(&vault).await?;
+    metadata_read(&service, access, identity, vault, async move {
+        context.attachment_metadata(&session, &attachment).await
     })
     .await
 }

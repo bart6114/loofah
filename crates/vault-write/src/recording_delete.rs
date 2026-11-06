@@ -1,13 +1,8 @@
-use std::{
-    fs::Metadata,
-    io::{Seek, SeekFrom},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use hypr_vault_read::reserved::{SESSION_PEAKS_FILE, SESSION_TRANSIENT_FILES};
-use same_file::Handle;
 
-use crate::{SessionStore, StoreError, media::open_regular_file};
+use crate::{SessionStore, StoreError, file_snapshot::FileSnapshot, media::open_regular_file};
 
 const RECORDINGS: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
 
@@ -21,10 +16,7 @@ pub enum RecordingDeletion {
 
 struct Candidate {
     path: PathBuf,
-    filename: &'static str,
-    handle: Handle,
-    metadata: Metadata,
-    change: (i64, i64),
+    snapshot: FileSnapshot,
 }
 
 pub enum RecordingDeletionPlan<T = RecordingDeletionCommit> {
@@ -290,14 +282,9 @@ fn candidates(directory: &Path) -> Result<Vec<Candidate>, StoreError> {
         for filename in RECORDINGS {
             let path = base.join(filename);
             if let Some(file) = open_regular_file(&path)? {
-                let metadata = file.metadata().map_err(io_error)?;
-                let change = file_change(&file)?;
                 candidates.push(Candidate {
                     path,
-                    filename,
-                    handle: Handle::from_file(file).map_err(io_error)?,
-                    metadata,
-                    change,
+                    snapshot: FileSnapshot::new(file)?,
                 });
             }
         }
@@ -308,32 +295,16 @@ fn candidates(directory: &Path) -> Result<Vec<Candidate>, StoreError> {
 fn recording_hashes(candidates: &[Candidate]) -> Result<Vec<String>, StoreError> {
     candidates
         .iter()
-        .map(|candidate| {
-            let mut file = candidate.handle.as_file();
-            file.seek(SeekFrom::Start(0)).map_err(io_error)?;
-            hypr_fs_sync_core::audio::metadata_from_reader(candidate.filename, file)
-                .map_err(io_error)?
-                .map(|value| value.sha256)
-                .ok_or_else(|| StoreError::Io("Unsupported recording format".into()))
-        })
+        .map(|candidate| candidate.snapshot.hash())
         .collect()
 }
 
-#[cfg(windows)]
 fn lock_for_recheck(candidates: &[Candidate]) -> Result<bool, StoreError> {
     for candidate in candidates {
-        // Shared Windows locks allow playback and prevent ordinary writes until commit exits.
-        match candidate.handle.as_file().try_lock_shared() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => return Ok(false),
-            Err(std::fs::TryLockError::Error(cause)) => return Err(io_error(cause)),
+        if !candidate.snapshot.lock_for_recheck()? {
+            return Ok(false);
         }
     }
-    Ok(true)
-}
-
-#[cfg(not(windows))]
-fn lock_for_recheck(_: &[Candidate]) -> Result<bool, StoreError> {
     Ok(true)
 }
 
@@ -342,37 +313,11 @@ fn same_candidates(before: &[Candidate], after: &[Candidate]) -> Result<bool, St
         return Ok(false);
     }
     for (before, after) in before.iter().zip(after) {
-        let hashed = before.handle.as_file().metadata().map_err(io_error)?;
-        let named = after.handle.as_file().metadata().map_err(io_error)?;
-        if before.path != after.path
-            || before.handle != after.handle
-            || before.change != file_change(before.handle.as_file())?
-            || before.change != file_change(after.handle.as_file())?
-            || !same_metadata(&before.metadata, &hashed)
-            || !same_metadata(&hashed, &named)
-        {
+        if before.path != after.path || !before.snapshot.unchanged(&after.snapshot)? {
             return Ok(false);
         }
     }
     Ok(true)
-}
-
-fn same_metadata(a: &Metadata, b: &Metadata) -> bool {
-    a.len() == b.len()
-        && a.modified().ok() == b.modified().ok()
-        && a.created().ok() == b.created().ok()
-}
-
-#[cfg(unix)]
-fn file_change(file: &std::fs::File) -> Result<(i64, i64), StoreError> {
-    use std::os::unix::fs::MetadataExt;
-    let metadata = file.metadata().map_err(io_error)?;
-    Ok((metadata.ctime(), metadata.ctime_nsec()))
-}
-
-#[cfg(not(unix))]
-fn file_change(_: &std::fs::File) -> Result<(i64, i64), StoreError> {
-    Ok((0, 0))
 }
 
 fn regular_directory(path: &Path) -> Result<bool, StoreError> {

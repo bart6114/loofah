@@ -71,6 +71,7 @@ struct Provider {
     stalled_events: AtomicBool,
     recording_mode: AtomicUsize,
     attachment_mode: AtomicUsize,
+    attachment_removals: Mutex<Vec<String>>,
     download_offsets: Mutex<Vec<u64>>,
     download_opens: AtomicUsize,
     delay: AtomicUsize,
@@ -113,6 +114,7 @@ impl Fixture {
             stalled_events: AtomicBool::new(false),
             recording_mode: AtomicUsize::new(0),
             attachment_mode: AtomicUsize::new(0),
+            attachment_removals: Mutex::new(Vec::new()),
             download_offsets: Mutex::new(Vec::new()),
             download_opens: AtomicUsize::new(0),
             delay: AtomicUsize::new(0),
@@ -146,6 +148,14 @@ impl Fixture {
             .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/info",
                 get(attachments::info),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/metadata",
+                get(attachments::read_metadata),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}",
+                axum::routing::delete(attachments::remove),
             )
             .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/leases/{lease}",

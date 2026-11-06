@@ -32,6 +32,38 @@ pub async fn application_delete_recording<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_remove_attachment<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request_id: String,
+    session_id: String,
+    attachment_id: String,
+    input: hypr_loofah_protocol::RemoveAttachmentRequest,
+) -> Result<bool, ApplicationError> {
+    context(&app)?
+        .remove_attachment(
+            "desktop".into(),
+            request_id,
+            &session_id,
+            &attachment_id,
+            input,
+        )
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_attachment_metadata<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    attachment_id: String,
+) -> Result<Option<hypr_loofah_protocol::FileMetadata>, ApplicationError> {
+    context(&app)?
+        .attachment_metadata(&session_id, &attachment_id)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn application_sessions<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     limit: u32,

@@ -284,7 +284,13 @@ async fn attachment_ranges_preserve_owned_paths_pinned_generations_and_endpoint_
 
 #[tokio::test]
 async fn media_info_and_open_requests_release_catalog_grants_then_recheck_revocation() {
-    for kind in ["attachment", "recording", "metadata", "info"] {
+    for kind in [
+        "attachment",
+        "recording",
+        "metadata",
+        "info",
+        "attachment_metadata",
+    ] {
         let fixture = Fixture::new().await;
         fixture.login("alice").await;
         let bob = fixture.login("bob").await;
@@ -353,6 +359,10 @@ async fn media_info_and_open_requests_release_catalog_grants_then_recheck_revoca
             "info" => (
                 "GET",
                 format!("/api/v1/vaults/{vault}/sessions/note/attachments/a.png/info"),
+            ),
+            "attachment_metadata" => (
+                "GET",
+                format!("/api/v1/vaults/{vault}/sessions/note/attachments/a.png/metadata"),
             ),
             _ => (
                 "GET",

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 pub mod agents_doc;
 pub mod attachment_list;
+pub mod attachment_remove;
 pub mod attachments;
 pub mod audio;
 mod audio_layout;
@@ -12,6 +13,7 @@ mod content_limits;
 mod document_operation;
 mod document_revision;
 pub mod enhanced;
+mod file_snapshot;
 #[cfg(test)]
 mod flat_layout_tests;
 pub mod index;
@@ -80,6 +82,7 @@ pub struct SessionStore {
     audio_operations: Arc<std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// Backend recording reservations also protect whole-vault relocation.
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
+    attachment_removals: Arc<tokio::sync::Mutex<()>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
@@ -229,6 +232,7 @@ impl SessionStore {
             active_recordings: Arc::new(std::sync::Mutex::new(HashMap::new())),
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            attachment_removals: Arc::new(tokio::sync::Mutex::new(())),
             storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }

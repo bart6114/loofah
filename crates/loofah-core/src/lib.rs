@@ -10,6 +10,7 @@ pub use vault::VaultContext;
 mod runtime;
 pub use runtime::VaultRuntime;
 mod agent;
+mod attachments;
 mod content;
 mod media;
 pub mod media_leases;

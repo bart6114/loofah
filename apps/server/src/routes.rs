@@ -45,6 +45,10 @@ pub fn router(service: Arc<Service>) -> Router {
             get(attachments),
         )
         .route(
+            "/vaults/{vault}/sessions/{session}/attachments/{attachment}",
+            axum::routing::delete(remove_attachment),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/audio/metadata",
             get(audio_metadata),
         )
@@ -161,6 +165,8 @@ async fn capabilities() -> Json<Capabilities> {
             "attachment_leases".into(),
             "attachment_info".into(),
             "attachment_list".into(),
+            "attachment_metadata".into(),
+            "attachment_remove".into(),
             "artifact_details".into(),
             "content_read".into(),
             "document_edit".into(),
@@ -686,6 +692,61 @@ async fn delete_recording(
             .await?;
         leases.close_recording_session(&id, &session);
         Ok(Json(deleted))
+    })
+    .await
+}
+
+async fn remove_attachment(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session, attachment)): ApiPath<(String, String, String)>,
+    ApiQuery(input): ApiQuery<RemoveAttachmentRequest>,
+    headers: HeaderMap,
+) -> Result<Json<bool>> {
+    let request_id = request_id(&headers)?.to_owned();
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    let namespace = access.member_id.clone();
+    let permit = service
+        .media_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Media readers are busy; retry shortly"))?;
+    let leases = service.media_leases.clone();
+    let authorization = service.clone();
+    let vault = id.clone();
+    drop(access);
+    admitted_write(&service, async move {
+        let _permit = permit;
+        let expected_sha256 = input.expected_sha256.clone();
+        let removed = context
+            .remove_attachment_authorized(
+                namespace,
+                request_id,
+                &session,
+                &attachment,
+                input,
+                move || async move {
+                    if authorization.stop.is_cancelled() {
+                        return Err(ApiError::new(
+                            ErrorCode::Unavailable,
+                            "Server is shutting down",
+                        )
+                        .0);
+                    }
+                    if identity.expires_at <= now() {
+                        return Err(ApiError::new(ErrorCode::Unauthenticated, "Sign in again").0);
+                    }
+                    authorization
+                        .catalog
+                        .access(&identity, &vault, true)
+                        .await
+                        .map_err(|cause| cause.0)
+                },
+            )
+            .await?;
+        leases.close_attachment_source(&id, &session, &attachment, &expected_sha256);
+        Ok(Json(removed))
     })
     .await
 }

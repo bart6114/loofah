@@ -383,11 +383,40 @@ impl MediaLeases {
     }
 
     pub fn close_recording_session(&self, vault: &str, session: &str) {
+        self.close_source(vault, session, &MediaSource::Recording, None);
+    }
+
+    pub fn close_attachment_source(
+        &self,
+        vault: &str,
+        session: &str,
+        attachment: &str,
+        expected_sha256: &str,
+    ) {
+        self.close_source(
+            vault,
+            session,
+            &MediaSource::Attachment(attachment.into()),
+            Some(expected_sha256),
+        );
+    }
+
+    fn close_source(
+        &self,
+        vault: &str,
+        session: &str,
+        source: &MediaSource,
+        expected_sha256: Option<&str>,
+    ) {
         let mut state = self.0.state.lock().unwrap();
         state.active.retain(|_, entry| {
             if entry.vault == vault
                 && entry.session == session
-                && matches!(entry.source, MediaSource::Recording)
+                && &entry.source == source
+                && expected_sha256.is_none_or(|sha| match entry.recording.get() {
+                    Some(Ok(Some(media))) => media.metadata.sha256 == sha,
+                    _ => true,
+                })
             {
                 entry.closed.store(true, Ordering::Release);
                 false

@@ -51,6 +51,12 @@ pub struct DeleteRecordingRequest {
     pub expected_sha256: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveAttachmentRequest {
+    pub expected_sha256: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum VaultKind {

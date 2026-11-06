@@ -127,6 +127,8 @@ export type RecordingWaveform = { recording_sha256: string; peaks: AudioPeaks }
 
 export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string; token_endpoint: string; client_id: string; audience: string; scopes: string[] }
 
+export type RemoveAttachmentRequest = { expected_sha256: string }
+
 export type RenderedTranscriptSegment = { is_current_user?: boolean | null; id: string; key: SegmentKey; speaker_label: string; start_ms: number; end_ms: number; text: string; words: SegmentWord[] }
 
 export type ReplaceTasksRequest = { source: TaskSource; tasks: TaskInput[]; expected_revision: string }

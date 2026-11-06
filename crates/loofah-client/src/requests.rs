@@ -79,6 +79,17 @@ pub enum RemoteOperation {
         session_id: String,
         attachment_id: String,
     },
+    AttachmentMetadata {
+        vault_id: String,
+        session_id: String,
+        attachment_id: String,
+    },
+    RemoveAttachment {
+        vault_id: String,
+        session_id: String,
+        attachment_id: String,
+        input: RemoveAttachmentRequest,
+    },
     Attachments {
         vault_id: String,
         session_id: String,
@@ -187,6 +198,8 @@ pub enum RemoteReply {
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<FileMetadata>),
     AttachmentInfo(Option<FileInfo>),
+    AttachmentMetadata(Option<FileMetadata>),
+    AttachmentRemoved(bool),
     Attachments(AttachmentPage),
     RecordingDeleted(bool),
     Tasks(Vec<TaskItem>),
@@ -227,6 +240,8 @@ impl RemoteClient {
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
             RemoteOperation::AttachmentInfo { .. } => Some("attachment_info"),
+            RemoteOperation::AttachmentMetadata { .. } => Some("attachment_metadata"),
+            RemoteOperation::RemoveAttachment { .. } => Some("attachment_remove"),
             RemoteOperation::Attachments { .. } => Some("attachment_list"),
             RemoteOperation::DeleteRecording { .. } => Some("recording_delete"),
             _ => None,
@@ -241,6 +256,8 @@ impl RemoteClient {
             let description = match operation {
                 RemoteOperation::AudioMetadata { .. } => "recording metadata",
                 RemoteOperation::AttachmentInfo { .. } => "attachment information",
+                RemoteOperation::AttachmentMetadata { .. } => "attachment metadata",
+                RemoteOperation::RemoveAttachment { .. } => "attachment removal",
                 RemoteOperation::Attachments { .. } => "attachment listing",
                 RemoteOperation::DeleteRecording { .. } => "recording deletion",
                 _ => "the note editor",
@@ -254,15 +271,33 @@ impl RemoteClient {
             error.request_id = Some(request_id.to_owned());
             if matches!(
                 operation,
-                RemoteOperation::SaveNoteEditor { .. } | RemoteOperation::DeleteRecording { .. }
+                RemoteOperation::SaveNoteEditor { .. }
+                    | RemoteOperation::DeleteRecording { .. }
+                    | RemoteOperation::RemoveAttachment { .. }
             ) {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
         }
-        if let RemoteOperation::AttachmentInfo { attachment_id, .. } = &operation {
-            validate_attachment_basename(attachment_id)
-                .map_err(|_| invalid("Invalid attachment ID"))?;
+        if let RemoteOperation::AttachmentInfo { attachment_id, .. }
+        | RemoteOperation::AttachmentMetadata { attachment_id, .. }
+        | RemoteOperation::RemoveAttachment { attachment_id, .. } = &operation
+            && validate_attachment_basename(attachment_id).is_err()
+        {
+            let mut error = invalid("Invalid attachment ID");
+            error.request_id = Some(request_id.to_owned());
+            if matches!(operation, RemoteOperation::RemoveAttachment { .. }) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            return Err(error);
+        }
+        if let RemoteOperation::RemoveAttachment { input, .. } = &operation
+            && !crate::media::valid_sha256(&input.expected_sha256)
+        {
+            let mut error = invalid("A lowercase SHA-256 attachment revision is required");
+            error.request_id = Some(request_id.to_owned());
+            error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            return Err(error);
         }
         if let RemoteOperation::Attachments { limit, after, .. } = &operation
             && (!(1..=200).contains(limit)
@@ -370,6 +405,25 @@ impl RemoteClient {
                     vec!["vaults", vault_id, "sessions", session_id, "audio"],
                 )
             }
+            RemoteOperation::RemoveAttachment {
+                vault_id,
+                session_id,
+                attachment_id,
+                input,
+            } => {
+                query.push(("expected_sha256", input.expected_sha256.clone()));
+                (
+                    Method::DELETE,
+                    vec![
+                        "vaults",
+                        vault_id,
+                        "sessions",
+                        session_id,
+                        "attachments",
+                        attachment_id,
+                    ],
+                )
+            }
             RemoteOperation::Documents {
                 vault_id,
                 session_id,
@@ -436,18 +490,30 @@ impl RemoteClient {
                 vault_id,
                 session_id,
                 attachment_id,
-            } => (
-                Method::GET,
-                vec![
-                    "vaults",
-                    vault_id,
-                    "sessions",
-                    session_id,
-                    "attachments",
-                    attachment_id,
-                    "info",
-                ],
-            ),
+            }
+            | RemoteOperation::AttachmentMetadata {
+                vault_id,
+                session_id,
+                attachment_id,
+            } => {
+                let suffix = if matches!(&operation, RemoteOperation::AttachmentMetadata { .. }) {
+                    "metadata"
+                } else {
+                    "info"
+                };
+                (
+                    Method::GET,
+                    vec![
+                        "vaults",
+                        vault_id,
+                        "sessions",
+                        session_id,
+                        "attachments",
+                        attachment_id,
+                        suffix,
+                    ],
+                )
+            }
             RemoteOperation::People { vault_id } => {
                 (Method::GET, vec!["vaults", vault_id, "people"])
             }
@@ -716,6 +782,22 @@ impl RemoteClient {
                         crate::media::validate_content_type(&info.content_type)?;
                     }
                     RemoteReply::AttachmentInfo(info)
+                }
+                RemoteOperation::AttachmentMetadata { attachment_id, .. } => {
+                    let metadata: Option<FileMetadata> = json_body(response, 16 * 1024).await?;
+                    if let Some(metadata) = &metadata {
+                        if metadata.filename != attachment_id {
+                            return Err(failure(
+                                ErrorCode::IncompatibleVersion,
+                                "Invalid attachment metadata",
+                            ));
+                        }
+                        crate::media::validate_file_metadata(metadata)?;
+                    }
+                    RemoteReply::AttachmentMetadata(metadata)
+                }
+                RemoteOperation::RemoveAttachment { .. } => {
+                    RemoteReply::AttachmentRemoved(json_body(response, 16 * 1024).await?)
                 }
                 RemoteOperation::Attachments { limit, after, .. } => {
                     let page: AttachmentPage = json_body(response, 256 * 1024).await?;

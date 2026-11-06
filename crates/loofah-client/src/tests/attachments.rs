@@ -30,6 +30,47 @@ fn authenticated(headers: &HeaderMap) {
     assert!(uuid::Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).is_ok());
 }
 
+pub(super) async fn read_metadata(
+    State(state): State<Arc<Provider>>,
+    Path((vault, session, attachment)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    assert_eq!((vault.as_str(), session.as_str()), ("test", "note"));
+    let mut value = serde_json::to_value(metadata(&attachment)).unwrap();
+    match state.attachment_mode.load(Ordering::SeqCst) {
+        1 => value["filename"] = json!("wrong.bin"),
+        2 => value["sha256"] = json!("A".repeat(64)),
+        3 => value["contentType"] = json!("image/png\r\ninjected: true"),
+        10 => value = Value::Null,
+        _ => {}
+    }
+    Json(value).into_response()
+}
+
+pub(super) async fn remove(
+    State(state): State<Arc<Provider>>,
+    Path((vault, session, attachment)): Path<(String, String, String)>,
+    axum::extract::Query(input): axum::extract::Query<
+        hypr_loofah_protocol::RemoveAttachmentRequest,
+    >,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    assert_eq!((vault.as_str(), session.as_str()), ("test", "note"));
+    assert_eq!(attachment, "chart + # ü.pdf");
+    assert_eq!(input.expected_sha256, "0".repeat(64));
+    state
+        .attachment_removals
+        .lock()
+        .await
+        .push(headers["x-request-id"].to_str().unwrap().into());
+    if state.attachment_mode.load(Ordering::SeqCst) == 21 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    Json(true).into_response()
+}
+
 pub(super) async fn info(
     State(state): State<Arc<Provider>>,
     Path((vault, session, attachment)): Path<(String, String, String)>,
@@ -181,7 +222,12 @@ async fn capable(fixture: &Fixture) -> Arc<RemoteClient> {
         .unwrap()
         .capabilities
         .features
-        .extend(["attachment_leases".into(), "attachment_info".into()]);
+        .extend([
+            "attachment_leases".into(),
+            "attachment_info".into(),
+            "attachment_metadata".into(),
+            "attachment_remove".into(),
+        ]);
     client
 }
 
@@ -428,6 +474,126 @@ async fn attachment_information_requires_capability_and_valid_names_before_crede
     );
     assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
     assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn attachment_mutations_and_metadata_validate_capabilities_and_inputs_before_credentials() {
+    let fixture = Fixture::new().await;
+    let unsupported = fixture.client().await;
+    let request = uuid::Uuid::new_v4().to_string();
+    let metadata = |name: &str| RemoteOperation::AttachmentMetadata {
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        attachment_id: name.into(),
+    };
+    let remove = |name: &str, hash: &str| RemoteOperation::RemoveAttachment {
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        attachment_id: name.into(),
+        input: hypr_loofah_protocol::RemoveAttachmentRequest {
+            expected_sha256: hash.into(),
+        },
+    };
+    for operation in [metadata("file.pdf"), remove("file.pdf", &"0".repeat(64))] {
+        let cause = unsupported
+            .execute(operation, &request, CancellationToken::new())
+            .await
+            .unwrap_err();
+        assert_eq!(cause.code, ErrorCode::IncompatibleVersion);
+        assert_eq!(cause.request_id.as_deref(), Some(request.as_str()));
+    }
+    let client = capable(&fixture).await;
+    for operation in [
+        metadata("../private"),
+        remove(".private", &"0".repeat(64)),
+        remove("file.pdf", ""),
+        remove("file.pdf", &"A".repeat(64)),
+    ] {
+        let cause = client
+            .execute(operation, &request, CancellationToken::new())
+            .await
+            .unwrap_err();
+        assert_eq!(cause.code, ErrorCode::Validation);
+        assert_eq!(cause.request_id.as_deref(), Some(request.as_str()));
+    }
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+    assert!(fixture.state.attachment_removals.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn checked_attachment_requests_validate_https_metadata_and_never_repeat_a_cancelled_mutation()
+{
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let client = capable(&fixture).await;
+    fixture.login(&client).await;
+    let name = "chart + # ü.pdf";
+    for mode in [0, 1, 2, 3, 10] {
+        fixture.state.attachment_mode.store(mode, Ordering::SeqCst);
+        let result = client
+            .execute(
+                RemoteOperation::AttachmentMetadata {
+                    vault_id: "test".into(),
+                    session_id: "note".into(),
+                    attachment_id: name.into(),
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await;
+        match mode {
+            0 => assert!(
+                matches!(result.unwrap(), RemoteReply::AttachmentMetadata(Some(value)) if value == metadata(name))
+            ),
+            10 => assert!(matches!(
+                result.unwrap(),
+                RemoteReply::AttachmentMetadata(None)
+            )),
+            _ => assert_eq!(result.unwrap_err().code, ErrorCode::IncompatibleVersion),
+        }
+    }
+    let operation = RemoteOperation::RemoveAttachment {
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        attachment_id: name.into(),
+        input: hypr_loofah_protocol::RemoveAttachmentRequest {
+            expected_sha256: "0".repeat(64),
+        },
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    assert!(matches!(
+        client
+            .execute(operation.clone(), &id, CancellationToken::new())
+            .await
+            .unwrap(),
+        RemoteReply::AttachmentRemoved(true)
+    ));
+    assert_eq!(*fixture.state.attachment_removals.lock().await, vec![id]);
+    fixture.state.attachment_mode.store(21, Ordering::SeqCst);
+    let cancel = CancellationToken::new();
+    let id = uuid::Uuid::new_v4().to_string();
+    let pending = tokio::spawn({
+        let client = client.clone();
+        let cancel = cancel.clone();
+        let id = id.clone();
+        async move { client.execute(operation, &id, cancel).await }
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while fixture.state.attachment_removals.lock().await.len() < 2 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    cancel.cancel();
+    let cause = pending.await.unwrap().unwrap_err();
+    assert_eq!(
+        cause.mutation_outcome,
+        Some(hypr_loofah_protocol::MutationOutcome::Unknown)
+    );
+    assert_eq!(cause.request_id.as_deref(), Some(id.as_str()));
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(fixture.state.attachment_removals.lock().await.len(), 2);
 }
 
 #[tokio::test]

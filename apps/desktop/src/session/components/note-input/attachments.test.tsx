@@ -98,14 +98,43 @@ vi.mock("~/shared/hooks/useNativeFileDrop", () => ({
 
 import { Attachments, formatFileSize, formatFileType } from "./attachments";
 
+import type { VaultClient } from "~/shared/application/vault-client";
+import { VaultHostContext } from "~/shared/application/vault-provider";
+import { VaultScope } from "~/shared/application/vault-scope";
+
+const scopes: VaultScope[] = [];
+
 function renderAttachments(children?: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   queryClient.invalidateQueries = mocks.invalidateQueries;
+  const scope = new VaultScope({
+    scope: "local-test",
+    networkMode: "always",
+    canEdit: true,
+    features: ["attachment_metadata", "attachment_remove"],
+    subscribe: async (listener: Parameters<VaultClient["subscribe"]>[0]) => {
+      listener({ kind: "connection", state: "connected", error: null });
+      return () => {};
+    },
+    attachmentMetadata: async () => ({
+      filename: "Alpha.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 1536,
+      sha256: "0".repeat(64),
+    }),
+    removeAttachment: mocks.attachmentRemove,
+  } as unknown as VaultClient);
+  scopes.push(scope);
+  void scope.start();
   return render(
     <QueryClientProvider client={queryClient}>
-      <Attachments sessionId="s1">{children}</Attachments>
+      <VaultHostContext.Provider
+        value={{ scope, error: null, retry: () => {} }}
+      >
+        <Attachments sessionId="s1">{children}</Attachments>
+      </VaultHostContext.Provider>
     </QueryClientProvider>,
   );
 }
@@ -119,7 +148,7 @@ describe("Attachments", () => {
       status: "ok",
       data: "/vault/sessions/s1/attachments",
     });
-    mocks.attachmentRemove.mockResolvedValue({ status: "ok", data: null });
+    mocks.attachmentRemove.mockResolvedValue(true);
     mocks.onFocusChanged.mockResolvedValue(() => {});
     mocks.openPath.mockResolvedValue({ status: "ok", data: null });
     mocks.selectFile.mockResolvedValue([]);
@@ -132,6 +161,7 @@ describe("Attachments", () => {
 
   afterEach(() => {
     cleanup();
+    for (const scope of scopes.splice(0)) scope.dispose();
   });
 
   it("sorts files and shows their type and size", () => {
@@ -236,7 +266,11 @@ describe("Attachments", () => {
     });
     render(
       <QueryClientProvider client={queryClient}>
-        <FullPanel />
+        <VaultHostContext.Provider
+          value={{ scope: null, error: null, retry: () => {} }}
+        >
+          <FullPanel />
+        </VaultHostContext.Provider>
       </QueryClientProvider>,
     );
 
@@ -282,9 +316,16 @@ describe("Attachments", () => {
     expect(screen.getByText(/Links to this file/)).toBeTruthy();
     expect(mocks.attachmentRemove).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Move to Trash" }),
+    );
     await waitFor(() =>
-      expect(mocks.attachmentRemove).toHaveBeenCalledWith("s1", "Alpha.pdf"),
+      expect(mocks.attachmentRemove).toHaveBeenCalledWith(
+        "s1",
+        "Alpha.pdf",
+        { expected_sha256: "0".repeat(64) },
+        { requestId: expect.any(String) },
+      ),
     );
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ["session", "s1", "attachment-paths"],

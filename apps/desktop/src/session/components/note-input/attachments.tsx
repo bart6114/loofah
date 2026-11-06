@@ -32,15 +32,6 @@ import {
 } from "@hypr/plugin-fs-sync";
 import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { Button } from "@hypr/ui/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@hypr/ui/components/ui/dialog";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
@@ -49,6 +40,8 @@ import {
   sessionAttachmentPathsQueryKey,
   useSessionAttachments,
 } from "~/session/hooks/useAttachmentResolver";
+import { RemoveAttachmentDialog } from "~/shared/application/remove-attachment-dialog";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { formatFileSize } from "~/shared/format-file-size";
 import {
   type FileUploadCandidate,
@@ -103,6 +96,7 @@ export function Attachments({
 }) {
   const { t } = useLingui();
   const queryClient = useQueryClient();
+  const { scope } = useVaultHost();
   const attachmentsQuery = useSessionAttachments(sessionId);
   const uploadFile = useFileUpload(sessionId);
   const uploadStates = useFileUploadStates(sessionId);
@@ -186,30 +180,6 @@ export function Attachments({
     onError: (error) => {
       console.error("[attachments] file dialog failed", error);
       sonnerToast.error(t`Couldn’t choose attachments`);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (attachment: AttachmentInfo) => {
-      const result = await fsSyncCommands.attachmentRemove(
-        sessionId,
-        attachment.attachmentId,
-      );
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return attachment;
-    },
-    onSuccess: (attachment) => {
-      void queryClient.invalidateQueries({
-        queryKey: sessionAttachmentPathsQueryKey(sessionId),
-      });
-      setAttachmentToDelete(null);
-      sonnerToast.success(t`“${attachment.attachmentId}” moved to Trash`);
-    },
-    onError: (error) => {
-      console.error("[attachments] failed to remove attachment", error);
-      sonnerToast.error(t`Couldn’t remove attachment`);
     },
   });
 
@@ -380,7 +350,9 @@ export function Attachments({
             <AttachmentRow
               key={attachment.attachmentId}
               attachment={attachment}
-              onDelete={() => setAttachmentToDelete(attachment)}
+              onDelete={
+                scope ? () => setAttachmentToDelete(attachment) : undefined
+              }
             />
           ))}
         </div>
@@ -392,49 +364,24 @@ export function Attachments({
           : dropOverlay
         : null}
 
-      <Dialog
-        open={attachmentToDelete !== null}
-        onOpenChange={(open) => {
-          if (!open && !deleteMutation.isPending) {
+      {attachmentToDelete && scope && (
+        <RemoveAttachmentDialog
+          key={attachmentToDelete.attachmentId}
+          scope={scope}
+          sessionId={sessionId}
+          attachmentId={attachmentToDelete.attachmentId}
+          onClose={() => setAttachmentToDelete(null)}
+          onRemoved={() => {
+            void queryClient.invalidateQueries({
+              queryKey: sessionAttachmentPathsQueryKey(sessionId),
+            });
+            sonnerToast.success(
+              t`“${attachmentToDelete.attachmentId}” moved to Trash`,
+            );
             setAttachmentToDelete(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t`Remove attachment?`}</DialogTitle>
-            <DialogDescription>
-              {attachmentToDelete
-                ? t`“${attachmentToDelete.attachmentId}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={deleteMutation.isPending}
-              >
-                {t`Cancel`}
-              </Button>
-            </DialogClose>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!attachmentToDelete || deleteMutation.isPending}
-              onClick={() => {
-                if (attachmentToDelete) {
-                  deleteMutation.mutate(attachmentToDelete);
-                }
-              }}
-            >
-              {deleteMutation.isPending ? <Spinner size={14} /> : null}
-              {deleteMutation.isPending ? t`Removing…` : t`Move to Trash`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -444,7 +391,7 @@ function AttachmentRow({
   onDelete,
 }: {
   attachment: AttachmentInfo;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const { t } = useLingui();
   const Icon = getFileIcon(attachment.extension);
@@ -495,6 +442,7 @@ function AttachmentRow({
         className="text-muted-foreground mr-1 size-7"
         aria-label={t`Remove ${attachment.attachmentId}`}
         title={t`Remove attachment`}
+        disabled={!onDelete}
         onClick={onDelete}
       >
         <Trash2Icon className="size-3.5" />

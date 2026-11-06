@@ -10,6 +10,7 @@ import {
 import { Button } from "@hypr/ui/components/ui/button";
 
 import type { FileInfo } from "./protocol.gen";
+import { RemoveAttachmentDialog } from "./remove-attachment-dialog";
 import { VaultAttachmentProvider } from "./vault-attachment-provider";
 import type { VaultScope } from "./vault-scope";
 
@@ -23,6 +24,7 @@ export function VaultAttachmentsPane({
   sessionId: string;
 }) {
   const { t } = useLingui();
+  const [removing, setRemoving] = useState<string | null>(null);
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const query = useInfiniteQuery(
     {
@@ -80,7 +82,17 @@ export function VaultAttachmentsPane({
       <VaultAttachmentProvider scope={scope} sessionId={sessionId}>
         <ul className="divide-border divide-y">
           {files.map((file) => (
-            <AttachmentRow key={file.filename} file={file} />
+            <AttachmentRow
+              key={file.filename}
+              file={file}
+              onRemove={
+                scope.client.canEdit &&
+                scope.client.features?.includes("attachment_remove") &&
+                connection.state === "connected"
+                  ? () => setRemoving(file.filename)
+                  : undefined
+              }
+            />
           ))}
         </ul>
       </VaultAttachmentProvider>
@@ -94,11 +106,27 @@ export function VaultAttachmentsPane({
           <Trans>Load more</Trans>
         </Button>
       )}
+      {removing && (
+        <RemoveAttachmentDialog
+          key={removing}
+          scope={scope}
+          sessionId={sessionId}
+          attachmentId={removing}
+          onClose={() => setRemoving(null)}
+          onRemoved={() => setRemoving(null)}
+        />
+      )}
     </section>
   );
 }
 
-function AttachmentRow({ file }: { file: FileInfo }) {
+function AttachmentRow({
+  file,
+  onRemove,
+}: {
+  file: FileInfo;
+  onRemove?: () => void;
+}) {
   const { t } = useLingui();
   const [expanded, setExpanded] = useState(false);
   return (
@@ -122,18 +150,25 @@ function AttachmentRow({ file }: { file: FileInfo }) {
         </span>
       </button>
       {expanded && (
-        <AttachmentResource attachmentId={file.filename}>
-          {(resource) =>
-            resource && (
-              <div className="px-2 py-1">
-                <div className="flex items-center gap-1">
-                  <AttachmentActions resource={resource} />
+        <>
+          <AttachmentResource attachmentId={file.filename}>
+            {(resource) =>
+              resource && (
+                <div className="px-2 py-1">
+                  <div className="flex items-center gap-1">
+                    <AttachmentActions resource={resource} />
+                  </div>
+                  <AttachmentFeedback resource={resource} />
                 </div>
-                <AttachmentFeedback resource={resource} />
-              </div>
-            )
-          }
-        </AttachmentResource>
+              )
+            }
+          </AttachmentResource>
+          {onRemove && (
+            <Button size="sm" variant="outline" onClick={onRemove}>
+              <Trans>Remove attachment</Trans>
+            </Button>
+          )}
+        </>
       )}
     </li>
   );

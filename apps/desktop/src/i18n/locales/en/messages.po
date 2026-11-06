@@ -13,15 +13,14 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachmentToDelete.attachmentId
 #: src/session/components/note-input/attachments.tsx
 msgid "“{0}” moved to Trash"
 msgstr "“{0}” moved to Trash"
 
-#. placeholder {0}: attachmentToDelete.attachmentId
-#: src/session/components/note-input/attachments.tsx
-msgid "“{0}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working."
-msgstr "“{0}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working."
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "“{attachmentId}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working."
+msgstr "“{attachmentId}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working."
 
 #: src/settings/general/notification.tsx
 msgid "(default)"
@@ -195,6 +194,7 @@ msgstr "Appearance"
 msgid "Assignees:"
 msgstr "Assignees:"
 
+#: src/shared/application/remove-attachment-dialog.tsx
 #: src/shared/application/vault-attachment-provider.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 msgid "Attachment access is unavailable. Reconnect or sign in again."
@@ -256,11 +256,11 @@ msgstr "Calculating storage…"
 msgid "Can transcribe while the meeting is happening."
 msgstr "Can transcribe while the meeting is happening."
 
-#: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 #: src/settings/ai/llm/chatgpt.tsx
 #: src/settings/ai/llm/summary-prompt.tsx
 #: src/settings/general/storage/change-location.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -300,6 +300,10 @@ msgstr "Check connection"
 #: src/settings/ai/llm/select.tsx
 msgid "Check this connection's sign-in, API key, or local AI app, then try again."
 msgstr "Check this connection's sign-in, API key, or local AI app, then try again."
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Checking attachment…"
+msgstr "Checking attachment…"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Checking connection…"
@@ -380,6 +384,7 @@ msgstr "Clear"
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/search/bar.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 #: src/shared/open-note-dialog.tsx
 msgid "Close"
 msgstr "Close"
@@ -541,6 +546,14 @@ msgstr "Couldn’t add 1 attachment"
 msgid "Couldn’t calculate vault storage."
 msgstr "Couldn’t calculate vault storage."
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Couldn’t check the attachment."
+msgstr "Couldn’t check the attachment."
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Couldn’t check the attachment. Close this dialog and review it again."
+msgstr "Couldn’t check the attachment. Close this dialog and review it again."
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t choose attachments"
 msgstr "Couldn’t choose attachments"
@@ -578,10 +591,6 @@ msgstr "Couldn’t open attachments in Finder"
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Couldn't prepare export."
 msgstr "Couldn't prepare export."
-
-#: src/session/components/note-input/attachments.tsx
-msgid "Couldn’t remove attachment"
-msgstr "Couldn’t remove attachment"
 
 #: src/settings/general/theme.tsx
 msgid "Couldn't save your appearance. Please try again."
@@ -1161,7 +1170,7 @@ msgstr "Move my vault"
 msgid "Move my vault here"
 msgstr "Move my vault here"
 
-#: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Move to Trash"
 msgstr "Move to Trash"
 
@@ -1535,6 +1544,10 @@ msgstr "Remind me to record meetings"
 msgid "Reminder preferences"
 msgstr "Reminder preferences"
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Removal could not be confirmed. Check the attachment and vault Trash before trying again."
+msgstr "Removal could not be confirmed. Check the attachment and vault Trash before trying again."
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-sharing.tsx
 msgid "Remove"
@@ -1549,10 +1562,11 @@ msgid "Remove {0}"
 msgstr "Remove {0}"
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Remove attachment"
 msgstr "Remove attachment"
 
-#: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Remove attachment?"
 msgstr "Remove attachment?"
 
@@ -1560,7 +1574,7 @@ msgstr "Remove attachment?"
 msgid "Remove tag {tag}"
 msgstr "Remove tag {tag}"
 
-#: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Removing…"
 msgstr "Removing…"
 
@@ -2112,6 +2126,14 @@ msgstr "The app restarts to apply."
 msgid "The app will restart after onboarding to apply your storage changes"
 msgstr "The app will restart after onboarding to apply your storage changes"
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "The attachment changed. Close this dialog and review it again."
+msgstr "The attachment changed. Close this dialog and review it again."
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "The attachment was not removed. Close this dialog and review it again."
+msgstr "The attachment was not removed. Close this dialog and review it again."
+
 #: src/settings/ai/llm/configure.tsx
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
 msgstr "The selected provider processes the text you send for summaries. API usage may have separate charges."
@@ -2119,6 +2141,10 @@ msgstr "The selected provider processes the text you send for summaries. API usa
 #: src/shared/application/vault-sharing.tsx
 msgid "The server may have created this vault. Retry the same request to recover its result."
 msgstr "The server may have created this vault. Retry the same request to recover its result."
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "This attachment is no longer available."
+msgstr "This attachment is no longer available."
 
 #: src/shared/application/notes-workspace.tsx
 msgid "This connection is no longer authorized."
@@ -2223,6 +2249,7 @@ msgid "Troubleshooting"
 msgstr "Troubleshooting"
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 #: src/shared/startup-boundary.tsx
 msgid "Try again"
