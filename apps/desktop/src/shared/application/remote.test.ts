@@ -10,6 +10,9 @@ const native = vi.hoisted(() => ({
   remoteUnsubscribe: vi.fn(),
   remoteDisconnect: vi.fn(),
   remoteLogout: vi.fn(),
+  remoteAudioOpen: vi.fn(),
+  remoteAudioClose: vi.fn(),
+  remoteAudioPeaks: vi.fn(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
 vi.mock("@tauri-apps/api/core", () => ({
@@ -55,6 +58,152 @@ beforeEach(() => {
   });
   native.remoteSubscribe.mockResolvedValue({ status: "ok", data: undefined });
   native.remoteLogout.mockResolvedValue({ status: "ok", data: undefined });
+  native.remoteAudioClose.mockResolvedValue(undefined);
+  native.remoteAudioOpen.mockImplementation(async (_connection, id) => ({
+    status: "ok",
+    data: {
+      id,
+      metadata: {
+        filename: "audio.wav",
+        contentType: "audio/wav",
+        sizeBytes: 100,
+        sha256: "sha",
+      },
+    },
+  }));
+  native.remoteAudioPeaks.mockResolvedValue({
+    status: "ok",
+    data: {
+      recording_sha256: "sha",
+      peaks: { durationSec: 1, channels: [[0, 1]] },
+    },
+  });
+});
+
+describe("native recording resource lifetime", () => {
+  it("owns each descriptor until an idempotent close and removes completed abort listeners", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const abort = new AbortController();
+    const recording = await connection.openRecording("vault", "session", {
+      signal: abort.signal,
+    });
+    expect(native.remoteAudioOpen).toHaveBeenCalledWith(
+      "connection",
+      recording!.id,
+      "vault",
+      "session",
+    );
+    abort.abort();
+    expect(native.remoteAudioClose).not.toHaveBeenCalled();
+    await expect(
+      connection.recordingWaveform(recording!.id),
+    ).resolves.toMatchObject({ recording_sha256: "sha" });
+    await Promise.all([
+      connection.closeRecording(recording!.id),
+      connection.closeRecording(recording!.id),
+    ]);
+    expect(native.remoteAudioClose).toHaveBeenCalledExactlyOnceWith(
+      "connection",
+      recording!.id,
+    );
+    await expect(connection.recordingWaveform(recording!.id)).rejects.toThrow();
+  });
+
+  it.each(["abort", "disconnect"] as const)(
+    "closes before delayed native admission and rejects a late open after %s",
+    async (action) => {
+      const connection = await NativeRemoteConnection.connect(info.server);
+      let finish!: (value: unknown) => void;
+      native.remoteAudioOpen.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const abort = new AbortController();
+      const opening = connection.openRecording("vault", "session", {
+        signal: abort.signal,
+      });
+      const id = native.remoteAudioOpen.mock.calls[0][1];
+      if (action === "abort") abort.abort();
+      else await connection.disconnect();
+      expect(native.remoteAudioClose).toHaveBeenCalledWith("connection", id);
+      finish({ status: "ok", data: { id, metadata: {} } });
+      await expect(opening).rejects.toThrow();
+    },
+  );
+
+  it("cleans up absent recordings and unexpected native identifiers", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    native.remoteAudioOpen.mockResolvedValueOnce({ status: "ok", data: null });
+    expect(await connection.openRecording("vault", "missing")).toBeNull();
+    native.remoteAudioOpen.mockResolvedValueOnce({
+      status: "ok",
+      data: { id: "other", metadata: {} },
+    });
+    await expect(
+      connection.openRecording("vault", "session"),
+    ).rejects.toMatchObject({ detail: { code: "incompatible_version" } });
+    expect(native.remoteAudioClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let one JavaScript connection use another connection's resource", async () => {
+    const first = await NativeRemoteConnection.connect(info.server);
+    const second = await NativeRemoteConnection.connect(info.server);
+    const recording = await first.openRecording("vault", "session");
+    await expect(second.recordingWaveform(recording!.id)).rejects.toThrow();
+    await second.closeRecording(recording!.id);
+    expect(native.remoteAudioClose).not.toHaveBeenCalled();
+    await first.disconnect();
+    expect(native.remoteAudioClose).toHaveBeenCalledWith(
+      "connection",
+      recording!.id,
+    );
+  });
+
+  it("cancels a waveform request and rejects a response arriving after resource closure", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const recording = await connection.openRecording("vault", "session");
+    let finish!: (value: unknown) => void;
+    native.remoteAudioPeaks.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const abort = new AbortController();
+    const waveform = connection.recordingWaveform(recording!.id, {
+      requestId: "waveform-request",
+      signal: abort.signal,
+    });
+    abort.abort();
+    expect(native.remoteCancelRequest).toHaveBeenCalledWith(
+      "connection",
+      "waveform-request",
+    );
+    await connection.closeRecording(recording!.id);
+    finish({
+      status: "ok",
+      data: {
+        recording_sha256: "sha",
+        peaks: { durationSec: 1, channels: [[1]] },
+      },
+    });
+    await expect(waveform).rejects.toThrow();
+  });
+
+  it("retries a failed close and still performs authoritative logout when cleanup fails", async () => {
+    const connection = await NativeRemoteConnection.connect(info.server);
+    const recording = await connection.openRecording("vault", "session");
+    native.remoteAudioClose.mockRejectedValueOnce(new Error("IPC failed"));
+    await expect(connection.closeRecording(recording!.id)).rejects.toThrow(
+      "IPC failed",
+    );
+    await connection.closeRecording(recording!.id);
+    expect(native.remoteAudioClose).toHaveBeenCalledTimes(2);
+    await connection.openRecording("vault", "second");
+    native.remoteAudioClose.mockRejectedValue(new Error("IPC failed"));
+    await connection.signOut();
+    expect(native.remoteLogout).toHaveBeenCalledWith("connection");
+  });
 });
 
 describe("native remote connection", () => {

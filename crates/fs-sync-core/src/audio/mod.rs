@@ -180,6 +180,20 @@ where
     compute_peaks(hypr_audio_utils::source_from_reader(reader, byte_len).ok()?)
 }
 
+pub fn peaks_from_reader_with_control<R, E>(
+    reader: R,
+    byte_len: u64,
+    control: impl FnMut(u64, u32, u16) -> Result<(), E>,
+) -> Result<Option<AudioPeaks>, E>
+where
+    R: Read + std::io::Seek + Send + Sync + 'static,
+{
+    match hypr_audio_utils::source_from_reader(reader, byte_len) {
+        Ok(source) => compute_peaks_with_control(source, control),
+        Err(_) => Ok(None),
+    }
+}
+
 fn read_peaks_cache(
     cache_path: &Path,
     source_size_bytes: u64,
@@ -197,8 +211,16 @@ fn read_peaks_cache(
 }
 
 fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
+    compute_peaks_with_control(source, |_, _, _| Ok::<_, std::convert::Infallible>(())).unwrap()
+}
+
+fn compute_peaks_with_control<S: hypr_audio_utils::Source, E>(
+    source: S,
+    mut control: impl FnMut(u64, u32, u16) -> Result<(), E>,
+) -> Result<Option<AudioPeaks>, E> {
     let sample_rate = u32::from(source.sample_rate()) as usize;
     let channel_count = usize::from(u16::from(source.channels()));
+    control(0, sample_rate as u32, channel_count as u16)?;
     let window_frames = (sample_rate / PEAK_WINDOWS_PER_SECOND).max(1);
 
     let mut windows: Vec<Vec<f32>> = vec![Vec::new(); channel_count];
@@ -208,6 +230,9 @@ fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
     let mut total_frames = 0u64;
 
     for sample in source {
+        if total_frames.is_multiple_of(4096) && channel_index == 0 {
+            control(total_frames, sample_rate as u32, channel_count as u16)?;
+        }
         let peak = &mut current[channel_index];
         *peak = peak.max(sample.abs());
 
@@ -233,16 +258,16 @@ fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
     }
 
     if total_frames == 0 {
-        return None;
+        return Ok(None);
     }
-
-    Some(AudioPeaks {
+    control(total_frames, sample_rate as u32, channel_count as u16)?;
+    Ok(Some(AudioPeaks {
         duration_sec: total_frames as f64 / sample_rate as f64,
         channels: windows
             .iter()
             .map(|channel| downsample_max(channel, MAX_PEAK_BUCKETS))
             .collect(),
-    })
+    }))
 }
 
 fn downsample_max(windows: &[f32], buckets: usize) -> Vec<f32> {
@@ -563,10 +588,42 @@ mod tests {
             let len = bytes.len() as u64;
             let actual = peaks_from_reader(std::io::Cursor::new(bytes), len).unwrap();
             assert_eq!(actual, expected, "{path}");
+            let checked = peaks_from_reader_with_control(
+                std::fs::File::open(path).unwrap(),
+                len,
+                |_, _, _| Ok::<_, std::convert::Infallible>(()),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(checked, expected, "{path}");
         }
         assert!(
             peaks_from_reader(std::io::Cursor::new(b"Not an audio recording".to_vec()), 22)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn controlled_waveform_decoding_stops_at_an_admitted_progress_boundary() {
+        let path = hypr_data::english_1::AUDIO_PATH;
+        let file = std::fs::File::open(path).unwrap();
+        let len = file.metadata().unwrap().len();
+        let mut calls = Vec::new();
+        let result = peaks_from_reader_with_control(file, len, |frames, rate, channels| {
+            calls.push((frames, rate, channels));
+            if frames >= 4096 {
+                Err("cancelled")
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Err("cancelled"));
+        assert_eq!(calls.first().unwrap().0, 0);
+        assert_eq!(calls.last().unwrap().0, 4096);
+        assert!(
+            calls
+                .iter()
+                .all(|(_, rate, channels)| *rate > 0 && *channels > 0)
         );
     }
 

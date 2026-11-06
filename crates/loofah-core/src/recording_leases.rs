@@ -1,3 +1,5 @@
+mod waveform;
+
 use std::{
     collections::BTreeMap,
     fs::File,
@@ -29,6 +31,7 @@ pub struct RecordingLeases(Arc<Registry>);
 struct Registry {
     state: Mutex<State>,
     slots: Arc<Semaphore>,
+    waveforms: Arc<Semaphore>,
     index_budget: Arc<Semaphore>,
     index_limit: usize,
     owner_limit: usize,
@@ -56,10 +59,13 @@ struct Entry {
 }
 
 struct Recording {
+    #[cfg(test)]
+    reads_started: std::sync::atomic::AtomicU64,
     file: Mutex<File>,
     metadata: AudioFileMetadata,
     modified: Option<SystemTime>,
     chunks: ChunkIndex,
+    peaks: OnceCell<Arc<hypr_loofah_protocol::AudioPeaks>>,
 }
 
 struct ChunkIndex {
@@ -79,6 +85,7 @@ struct IndexedReader<R> {
 pub struct RecordingReader {
     recording: Arc<Recording>,
     entry: Arc<Entry>,
+    waveforms: Arc<Semaphore>,
 }
 
 impl Default for RecordingLeases {
@@ -108,6 +115,7 @@ impl RecordingLeases {
         Self(Arc::new(Registry {
             state: Mutex::new(State::default()),
             slots: Arc::new(Semaphore::new(capacity)),
+            waveforms: Arc::new(Semaphore::new(2)),
             index_budget: Arc::new(Semaphore::new(index_budget)),
             index_limit,
             owner_limit,
@@ -197,10 +205,13 @@ impl RecordingLeases {
                                     },
                                 )?;
                             Ok(Arc::new(Recording {
+                                #[cfg(test)]
+                                reads_started: Default::default(),
                                 file: Mutex::new(source.file),
                                 metadata,
                                 modified: after.modified().ok(),
                                 chunks,
+                                peaks: OnceCell::new(),
                             }))
                         })
                         .await
@@ -244,6 +255,7 @@ impl RecordingLeases {
         Ok(RecordingReader {
             entry: entry.clone(),
             recording,
+            waveforms: self.0.waveforms.clone(),
         })
     }
 
@@ -358,44 +370,47 @@ impl RecordingReader {
         }
         self.entry.touch()?;
         let reader = self.clone();
-        tokio::task::spawn_blocking(move || {
-            reader.entry.touch()?;
-            let mut file = reader.recording.file.lock().unwrap();
-            reader.verify(&file)?;
-            let length =
-                (reader.recording.metadata.size_bytes - offset).min(length as u64) as usize;
-            let end = offset + length as u64;
-            let first = offset / HASH_CHUNK_SIZE as u64;
-            let last = (end - 1) / HASH_CHUNK_SIZE as u64;
-            file.seek(SeekFrom::Start(first * HASH_CHUNK_SIZE as u64))
-                .map_err(read_error)?;
-            let mut bytes = Vec::with_capacity(length);
-            let mut buffer = [0; HASH_CHUNK_SIZE];
-            for index in first..=last {
-                let start = index * HASH_CHUNK_SIZE as u64;
-                let count = (reader.recording.metadata.size_bytes - start)
-                    .min(HASH_CHUNK_SIZE as u64) as usize;
-                file.read_exact(&mut buffer[..count]).map_err(|cause| {
-                    if cause.kind() == std::io::ErrorKind::UnexpectedEof {
-                        reader.changed()
-                    } else {
-                        read_error(cause)
-                    }
-                })?;
-                let hash: [u8; 32] = Sha256::digest(&buffer[..count]).into();
-                if hash != reader.recording.chunks.hashes[index as usize] {
-                    return Err(reader.changed());
+        tokio::task::spawn_blocking(move || reader.read_chunk_blocking(offset, length))
+            .await
+            .map_err(|_| error(ErrorCode::Internal, "Recording reader stopped"))?
+    }
+
+    fn read_chunk_blocking(&self, offset: u64, length: usize) -> Result<Vec<u8>, ApplicationError> {
+        self.entry.touch()?;
+        #[cfg(test)]
+        self.recording.reads_started.fetch_add(1, Ordering::Release);
+        let mut file = self.recording.file.lock().unwrap();
+        self.verify(&file)?;
+        let length = (self.recording.metadata.size_bytes - offset).min(length as u64) as usize;
+        let end = offset + length as u64;
+        let first = offset / HASH_CHUNK_SIZE as u64;
+        let last = (end - 1) / HASH_CHUNK_SIZE as u64;
+        file.seek(SeekFrom::Start(first * HASH_CHUNK_SIZE as u64))
+            .map_err(read_error)?;
+        let mut bytes = Vec::with_capacity(length);
+        let mut buffer = [0; HASH_CHUNK_SIZE];
+        for index in first..=last {
+            let start = index * HASH_CHUNK_SIZE as u64;
+            let count =
+                (self.recording.metadata.size_bytes - start).min(HASH_CHUNK_SIZE as u64) as usize;
+            file.read_exact(&mut buffer[..count]).map_err(|cause| {
+                if cause.kind() == std::io::ErrorKind::UnexpectedEof {
+                    self.changed()
+                } else {
+                    read_error(cause)
                 }
-                let from = offset.saturating_sub(start) as usize;
-                let to = (end - start).min(count as u64) as usize;
-                bytes.extend_from_slice(&buffer[from..to]);
+            })?;
+            let hash: [u8; 32] = Sha256::digest(&buffer[..count]).into();
+            if hash != self.recording.chunks.hashes[index as usize] {
+                return Err(self.changed());
             }
-            reader.verify(&file)?;
-            reader.entry.touch()?;
-            Ok(bytes)
-        })
-        .await
-        .map_err(|_| error(ErrorCode::Internal, "Recording reader stopped"))?
+            let from = offset.saturating_sub(start) as usize;
+            let to = (end - start).min(count as u64) as usize;
+            bytes.extend_from_slice(&buffer[from..to]);
+        }
+        self.verify(&file)?;
+        self.entry.touch()?;
+        Ok(bytes)
     }
 
     fn verify(&self, file: &File) -> Result<(), ApplicationError> {
@@ -516,7 +531,7 @@ mod tests {
     use crate::{search::SearchService, settings::ConfigState, startup::StartupState};
     use hypr_vault_write::SessionStore;
 
-    async fn fixture() -> (tempfile::TempDir, Arc<VaultContext>) {
+    pub(super) async fn fixture() -> (tempfile::TempDir, Arc<VaultContext>) {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(root.path().into()));
         let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Title","created_at":"2026-11-06T10:00:00Z","tags":[]})).unwrap();

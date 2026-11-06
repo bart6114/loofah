@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<RenderedTranscriptSegment>()
         .register::<AudioFileMetadata>()
         .register::<RecordingLease>()
+        .register::<RecordingWaveform>()
         .register::<AudioPeaks>()
         .register::<VaultInfo>()
         .register::<VaultMutation>()

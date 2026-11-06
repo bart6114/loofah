@@ -147,6 +147,8 @@ async fn capabilities() -> Json<Capabilities> {
             "note_editor_write".into(),
             "audio_metadata_read".into(),
             "recording_leases".into(),
+            "recording_waveforms".into(),
+            "audio_playback".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),

@@ -199,6 +199,13 @@ pub async fn main() {
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
         .manage(remote::RemoteState::default())
+        .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
+            let app = context.app_handle().clone();
+            let label = context.webview_label().to_owned();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(remote::media_response(&app, &label, request).await);
+            });
+        })
         .manage(draft_cache::DraftCacheState::default());
 
     // https://docs.crabnebula.dev/plugins/tauri-e2e-tests/#macos-support
@@ -608,6 +615,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             remote::remote_unsubscribe::<tauri::Wry>,
             remote::remote_disconnect::<tauri::Wry>,
             remote::remote_logout::<tauri::Wry>,
+            remote::media::remote_audio_open::<tauri::Wry>,
+            remote::media::remote_audio_peaks::<tauri::Wry>,
+            remote::media::remote_audio_close::<tauri::Wry>,
             chatgpt::chatgpt_account::<tauri::Wry>,
             chatgpt::chatgpt_login::<tauri::Wry>,
             chatgpt::chatgpt_cancel_login::<tauri::Wry>,

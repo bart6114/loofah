@@ -307,7 +307,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: actual editor/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Remaining remote content operations, media/import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs and a common local/remote player are implemented, with native macOS latency/restart checks. Remaining remote content operations, recording deletion, attachments/import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -1360,3 +1360,63 @@ Strict all-target Clippy also reports existing findings in unrelated storage
 code and older core/server fixtures; this checkpoint does not claim that check
 is clean. Full remote main-shell selection,
 remaining feature migration and release gates are still open.
+
+### Authenticated recording playback and verified waveforms
+
+The shared recording reader now decodes waveforms through its verified pinned
+file descriptor. Cancellation and format/time limits interrupt decoding, and
+worker admission remains owned until real blocking work ends. Results are
+memoized per lease and bound to its SHA-256; this path never publishes a stale
+canonical waveform sidecar after a recording replacement. The HTTPS adapter
+checks current authorization throughout work and before returning a bounded
+response, without retaining the catalog lock during decoding.
+
+The native desktop bridge supplies window-owned opaque media URLs, bounded range
+responses, authenticated HEAD and waveform operations, and same-generation
+reopening after server lease expiry/restart. Credentials remain in Rust.
+Cancellation before admission, late replies, connection/window teardown, quotas,
+foreign origins and resource ownership have focused coverage. The generated
+contracts include the waveform DTO and native media commands.
+
+`VaultClient` now supplies playback resources with scoped cache ownership.
+`AudioPlayerProvider` uses that contract in both the default local session and
+opt-in remote notes workspace. Closing/replacing cached resources releases their
+native handles. Artifact events invalidate only affected recordings; ordinary
+note/title/task edits do not reopen media. A missing/failed waveform supplies flat
+peaks, preventing the browser waveform library from downloading and decoding the
+whole recording. The media element requests metadata and streams playback.
+Same-generation remote revalidation preserves the playback position and play
+state; changed content and capture transitions reset it. Local playback retains
+its existing device file path behavior, local waveform cache, login-free/offline
+startup and guarded deletion callback. Remote recording deletion remains open.
+
+Validation for this increment: 92 shared-core tests, 43 native SDK tests,
+34 server tests plus the executable lifecycle check, and 50 desktop Rust tests
+pass (one preexisting desktop test is ignored). The final full frontend run
+passed 1,756 tests; the last 48 focused cases also cover artifact-scoped invalidation
+and capture transitions. Desktop typechecking, strict compilation of all 548 locale
+messages, generated contract drift and production core/SDK/server Clippy pass.
+The 23 portable audio tests passed earlier in this increment. WAV/MP3/OGG waveform
+parity, timestamp-restored in-place corruption, cancellation during blocked IO,
+revocation/expiry, HTTP range/HEAD validation and generation mismatch are covered
+at their relevant boundaries. These tests do not establish Windows media-engine
+or production performance parity.
+
+The disposable macOS debug bundle with current frontend played a synthetic
+90-second stereo recording through actual HTTPS at 50/150/500 ms RTT. The UI
+showed waveform/duration, advancing playback, seeking at 500 ms, disconnection,
+reconnection after a server restart, and sign-out removing playback. A second
+restart retained active playback position after fixing a reset found in the
+first run. The proxy observed 96 recording byte requests, all ranged, with a
+largest request of 384,004 bytes, within the native 1 MiB limit. With the server
+and proxy stopped, the default local player played, sought and paused without
+login. Both recording hashes and five local note/task/attachment-canary hashes
+were unchanged. Evidence is saved on T7 at
+`/Volumes/T7/loofah-backend-build/native-qa/playback-native-evidence.json`.
+
+This is a recording playback increment. Attachments/import/export, remote
+recording deletion, complete profile/main-shell startup, durable capture and
+uploads, processing/jobs/providers, CLI owner routing and the remaining full
+release gates remain required. Native Windows x64/ARM64 CI passed for the
+preceding commit; this increment requires its own CI results, and actual Windows
+WebView2 playback remains unverified.

@@ -28,6 +28,95 @@ pub(crate) fn router() -> Router<Arc<Service>> {
             "/vaults/{vault}/audio/leases/{lease}",
             get(read).head(head).delete(close),
         )
+        .route("/vaults/{vault}/audio/leases/{lease}/peaks", get(waveform))
+}
+
+pub(crate) struct WaveformAccess {
+    pub(crate) cancel: tokio_util::sync::CancellationToken,
+    monitor: tokio::task::JoinHandle<()>,
+}
+impl WaveformAccess {
+    pub(crate) fn watch(
+        service: Arc<Service>,
+        identity: crate::auth::Identity,
+        vault: String,
+    ) -> Self {
+        let cancel = service.stop.child_token();
+        let mut changes = service.catalog.subscribe();
+        let monitored = service;
+        let member = identity;
+        let watched_vault = vault;
+        let stopped = cancel.clone();
+        let monitor = tokio::spawn(async move {
+            loop {
+                if member.expires_at <= now()
+                    || monitored
+                        .catalog
+                        .access(&member, &watched_vault, false)
+                        .await
+                        .is_err()
+                {
+                    stopped.cancel();
+                    break;
+                }
+                tokio::select! {
+                    _ = stopped.cancelled() => break,
+                    changed = changes.changed() => if changed.is_err() { stopped.cancel(); break; },
+                    _ = tokio::time::sleep(Duration::from_millis(100)) => {},
+                }
+            }
+        });
+        Self { cancel, monitor }
+    }
+}
+impl Drop for WaveformAccess {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        self.monitor.abort();
+    }
+}
+
+async fn waveform(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, lease)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    let reader = service
+        .recording_leases
+        .reader(&access.member_id, &vault, &lease)?;
+    let etag = format!("\"sha256:{}\"", reader.metadata().sha256);
+    if headers.get(header::IF_MATCH).is_some_and(|value| {
+        value.to_str().ok().is_none_or(|value| {
+            value != "*" && !value.split(',').any(|candidate| candidate.trim() == etag)
+        })
+    }) {
+        return Ok(Response::builder()
+            .status(StatusCode::PRECONDITION_FAILED)
+            .header(header::ETAG, &etag)
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::empty())
+            .unwrap());
+    }
+    // Long decoding must not hold the catalog read lock and delay membership removal.
+    drop(access);
+    let guard = WaveformAccess::watch(service.clone(), identity.clone(), vault.clone());
+    let result = reader.waveform(guard.cancel.clone()).await;
+    if identity.expires_at <= now() {
+        return Err(ApiError::new(ErrorCode::Unauthenticated, "Sign in again"));
+    }
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    let result = result?;
+    let mut response =
+        content_read(&service, access, 256 * 1024, async move { Ok(result) }).await?;
+    response
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, "private, no-store".parse().unwrap());
+    Ok(response)
 }
 
 async fn open(

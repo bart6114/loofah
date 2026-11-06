@@ -3,6 +3,7 @@ mod metadata;
 mod note_editor;
 mod recording;
 mod tasks;
+mod waveform;
 
 use std::sync::Arc;
 
@@ -1705,7 +1706,7 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         .join("sessions")
         .join(&created.meta.id)
         .join("audio.mp3");
-    std::fs::write(recording, b"Native recording metadata bytes").unwrap();
+    std::fs::write(&recording, b"Native recording metadata bytes").unwrap();
     let expected = context.audio_metadata(&created.meta.id).await.unwrap();
     assert!(
         matches!(request(second.clone(),RemoteOperation::AudioMetadata {vault_id:vault_id.clone(),session_id:created.meta.id.clone()}).await,RemoteReply::AudioMetadata(metadata) if metadata == expected)
@@ -1722,6 +1723,10 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         .unwrap()
         .unwrap();
     assert_eq!(Some(lease.metadata.clone()), expected);
+    first
+        .head_recording(&lease, CancellationToken::new())
+        .await
+        .unwrap();
     assert_eq!(
         first
             .open_recording(
@@ -1763,6 +1768,30 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
             .code,
         ErrorCode::NotFound
     );
+    std::fs::remove_file(&recording).unwrap();
+    let wav_path = recording.parent().unwrap().join("audio.wav");
+    std::fs::write(&wav_path, waveform::wav()).unwrap();
+    let wav_id = uuid::Uuid::new_v4().to_string();
+    let wav_lease = first
+        .open_recording(
+            &vault_id,
+            &created.meta.id,
+            &wav_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let waveform = first
+        .recording_waveform(&wav_lease, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(waveform.recording_sha256, wav_lease.metadata.sha256);
+    assert_eq!(waveform.peaks.duration_sec, 1.0);
+    first
+        .close_recording(&vault_id, &wav_id, CancellationToken::new())
+        .await
+        .unwrap();
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),
         title: None,

@@ -129,7 +129,11 @@ impl Fixture {
             .route("/api/v1/vaults/test/events", get(events))
             .route(
                 "/api/v1/vaults/test/audio/leases/{lease}",
-                get(recording_fixture),
+                get(recording_fixture).head(recording_head_fixture),
+            )
+            .route(
+                "/api/v1/vaults/test/audio/leases/{lease}/peaks",
+                get(waveform_fixture),
             )
             .with_state(state.clone());
         let task = tokio::spawn(async move {
@@ -393,6 +397,190 @@ async fn recording_fixture(
     response
 }
 
+async fn waveform_fixture(
+    State(state): State<Arc<Provider>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if !headers.contains_key("authorization") {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mode = state.recording_mode.load(Ordering::SeqCst);
+    if mode == 10 {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
+    let mut value = json!({"recording_sha256":"0".repeat(64),"peaks":{"durationSec":1.0,"channels":[[0.0,0.5,1.0]]}});
+    match mode {
+        1 => value["recording_sha256"] = json!("1".repeat(64)),
+        3 => value["peaks"]["channels"] = json!([]),
+        4 => value["peaks"]["channels"] = json!([vec![0.0; 1501]]),
+        5 => value["peaks"]["channels"] = json!([[-0.1]]),
+        6 => value["peaks"]["durationSec"] = json!(0.0),
+        7 => value["peaks"]["channels"] = json!(vec![vec![0.1]; 9]),
+        8 => value["padding"] = json!("x".repeat(256 * 1024)),
+        9 => value["peaks"]["channels"] = Value::Null,
+        _ => {}
+    }
+    let mut response = Json(value).into_response();
+    let etag = if mode == 2 {
+        "wrong".into()
+    } else {
+        format!("\"sha256:{}\"", "0".repeat(64))
+    };
+    response.headers_mut().insert("etag", etag.parse().unwrap());
+    response
+}
+
+async fn recording_head_fixture(
+    State(state): State<Arc<Provider>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if !headers.contains_key("authorization") {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mode = state.recording_mode.load(Ordering::SeqCst);
+    let status = match mode {
+        4 => StatusCode::NOT_FOUND,
+        5 => StatusCode::PRECONDITION_FAILED,
+        6 => StatusCode::UNAUTHORIZED,
+        _ => StatusCode::OK,
+    };
+    let etag = if mode == 1 {
+        "wrong".into()
+    } else {
+        format!("\"sha256:{}\"", "0".repeat(64))
+    };
+    axum::response::Response::builder()
+        .status(status)
+        .header("etag", etag)
+        .header(
+            "content-type",
+            if mode == 3 { "text/plain" } else { "audio/wav" },
+        )
+        .header("content-length", if mode == 2 { 11 } else { 10 })
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn recording_head_validates_representation_headers_and_typed_errors_without_a_body() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("recording_leases".into());
+    fixture.login(&client).await;
+    let lease = RecordingLease {
+        id: uuid::Uuid::new_v4().to_string(),
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        idle_timeout_secs: 600,
+        metadata: AudioFileMetadata {
+            filename: "audio.wav".into(),
+            content_type: "audio/wav".into(),
+            size_bytes: 10,
+            sha256: "0".repeat(64),
+        },
+    };
+    client
+        .head_recording(&lease, CancellationToken::new())
+        .await
+        .unwrap();
+    for (mode, expected) in [
+        (1, ErrorCode::IncompatibleVersion),
+        (2, ErrorCode::IncompatibleVersion),
+        (3, ErrorCode::IncompatibleVersion),
+        (4, ErrorCode::NotFound),
+        (5, ErrorCode::Conflict),
+        (6, ErrorCode::Unauthenticated),
+    ] {
+        fixture.state.recording_mode.store(mode, Ordering::SeqCst);
+        assert_eq!(
+            client
+                .head_recording(&lease, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            expected,
+            "mode {mode}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn waveforms_require_capabilities_and_validate_authenticated_https_replies_and_cancellation()
+{
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("recording_leases".into());
+    let lease = RecordingLease {
+        id: uuid::Uuid::new_v4().to_string(),
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        idle_timeout_secs: 600,
+        metadata: AudioFileMetadata {
+            filename: "audio.wav".into(),
+            content_type: "audio/wav".into(),
+            size_bytes: 10,
+            sha256: "0".repeat(64),
+        },
+    };
+    assert_eq!(
+        client
+            .recording_waveform(&lease, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("recording_waveforms".into());
+    fixture.login(&client).await;
+    let value = client
+        .recording_waveform(&lease, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(value.peaks.duration_sec, 1.0);
+    assert_eq!(value.peaks.channels, vec![vec![0.0, 0.5, 1.0]]);
+    for mode in [1, 2, 3, 4, 5, 6, 7, 8, 9] {
+        fixture.state.recording_mode.store(mode, Ordering::SeqCst);
+        assert!(
+            client
+                .recording_waveform(&lease, CancellationToken::new())
+                .await
+                .is_err(),
+            "accepted invalid mode {mode}"
+        );
+    }
+    fixture.state.recording_mode.store(10, Ordering::SeqCst);
+    let cancel = CancellationToken::new();
+    let request = {
+        let stop = cancel.clone();
+        tokio::spawn(async move { client.recording_waveform(&lease, stop).await })
+    };
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    cancel.cancel();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), request)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err()
+            .code,
+        ErrorCode::Cancelled
+    );
+}
+
 #[tokio::test]
 async fn recording_chunks_validate_https_ranges_versions_sizes_and_cancellation() {
     let fixture = Fixture::with_tls(Some(Duration::from_millis(150))).await;
@@ -512,6 +700,14 @@ async fn recording_reads_require_a_capability_before_credentials_or_requests() {
             sha256: "0".repeat(64),
         },
     };
+    assert_eq!(
+        client
+            .head_recording(&lease, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
     assert_eq!(
         client
             .read_recording_chunk(&lease, 0, 1, CancellationToken::new())

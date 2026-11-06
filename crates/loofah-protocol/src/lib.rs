@@ -23,6 +23,12 @@ pub struct RecordingLease {
     pub idle_timeout_secs: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct RecordingWaveform {
+    pub recording_sha256: String,
+    pub peaks: AudioPeaks,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum VaultKind {

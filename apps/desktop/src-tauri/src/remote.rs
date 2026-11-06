@@ -1,3 +1,5 @@
+pub(crate) mod media;
+
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -13,10 +15,50 @@ use tauri::{Manager, ipc::Channel};
 use tauri_plugin_opener::OpenerExt;
 use tokio_util::sync::CancellationToken;
 
+pub async fn media_response<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    label: &str,
+    request: tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>> {
+    let forbidden = || {
+        tauri::http::Response::builder()
+            .status(403)
+            .body(Vec::new())
+            .unwrap()
+    };
+    let Some(view) = app.get_webview_window(label) else {
+        return forbidden();
+    };
+    let Ok(url) = view.url() else {
+        return forbidden();
+    };
+    let origin = if url.scheme() == "tauri" && url.host_str() == Some("localhost") {
+        "tauri://localhost".into()
+    } else if matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost")
+    {
+        url.origin().ascii_serialization()
+    } else if cfg!(debug_assertions)
+        && app
+            .config()
+            .build
+            .dev_url
+            .as_ref()
+            .is_some_and(|expected| expected.origin() == url.origin())
+    {
+        url.origin().ascii_serialization()
+    } else {
+        return forbidden();
+    };
+    let owner = view.label().to_owned();
+    drop(view);
+    media::response(&app.state::<RemoteState>(), &owner, &origin, request).await
+}
+
 #[derive(Default)]
 pub struct RemoteState {
     registry: Arc<Mutex<HashMap<String, Connection>>>,
     windows: Mutex<HashMap<String, CancellationToken>>,
+    media: media::MediaRegistry,
 }
 type WorkId = (String, String);
 struct Connection {
@@ -47,6 +89,7 @@ impl RemoteState {
             token.cancel();
         }
         self.registry.lock().unwrap().clear();
+        self.media.clear();
     }
     fn window_lifetime(&self, owner: &str) -> CancellationToken {
         self.windows
@@ -65,6 +108,7 @@ impl RemoteState {
             connection.release(owner, true);
             !connection.leases.is_empty()
         });
+        self.media.prune();
     }
     fn register(
         &self,
@@ -116,6 +160,60 @@ impl RemoteState {
             },
         );
         Ok(info)
+    }
+    fn admit(
+        &self,
+        connection_id: &str,
+        owner: &str,
+        request_id: &str,
+    ) -> Result<(Arc<RemoteClient>, CancellationToken, PendingRequest), ApplicationError> {
+        let cancel = CancellationToken::new();
+        let key = (owner.into(), request_id.to_owned());
+        let (client, pending) = {
+            let mut registry = self.registry.lock().unwrap();
+            let connection = registry.get_mut(connection_id).ok_or_else(missing)?;
+            if !connection.leases.contains_key(owner) {
+                return Err(missing());
+            }
+            connection
+                .cancelled
+                .retain(|_, at| at.elapsed() < Duration::from_secs(60));
+            if connection.cancelled.remove(&key).is_some() {
+                let mut error = failure(
+                    ErrorCode::Cancelled,
+                    "The request was cancelled before admission",
+                );
+                error.request_id = Some(request_id.to_owned());
+                error.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::NotCommitted);
+                return Err(error);
+            }
+            if connection.login.is_some() {
+                return Err(failure(
+                    ErrorCode::Conflict,
+                    "Wait for browser login to finish",
+                ));
+            }
+            if connection.requests.contains_key(&key) {
+                return Err(failure(
+                    ErrorCode::Conflict,
+                    "This request is already running",
+                ));
+            }
+            if connection.requests.len() >= 32 {
+                return Err(capacity());
+            }
+            connection.requests.insert(key.clone(), cancel.clone());
+            (
+                connection.client.clone(),
+                PendingRequest {
+                    registry: self.registry.clone(),
+                    connection: connection_id.to_owned(),
+                    id: key,
+                    login: false,
+                },
+            )
+        };
+        Ok((client, cancel, pending))
     }
     fn client(&self, id: &str, owner: &str) -> Result<Arc<RemoteClient>, ApplicationError> {
         self.registry
@@ -356,52 +454,7 @@ pub async fn remote_request<R: tauri::Runtime>(
     operation: RemoteOperation,
 ) -> Result<RemoteReply, ApplicationError> {
     let state = app.state::<RemoteState>();
-    let cancel = CancellationToken::new();
-    let key = (window.label().into(), request_id.clone());
-    let (client, _pending) = {
-        let mut registry = state.registry.lock().unwrap();
-        let connection = registry.get_mut(&connection_id).ok_or_else(missing)?;
-        if !connection.leases.contains_key(window.label()) {
-            return Err(missing());
-        }
-        connection
-            .cancelled
-            .retain(|_, at| at.elapsed() < Duration::from_secs(60));
-        if connection.cancelled.remove(&key).is_some() {
-            let mut error = failure(
-                ErrorCode::Cancelled,
-                "The request was cancelled before admission",
-            );
-            error.request_id = Some(request_id);
-            error.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::NotCommitted);
-            return Err(error);
-        }
-        if connection.login.is_some() {
-            return Err(failure(
-                ErrorCode::Conflict,
-                "Wait for browser login to finish",
-            ));
-        }
-        if connection.requests.contains_key(&key) {
-            return Err(failure(
-                ErrorCode::Conflict,
-                "This request is already running",
-            ));
-        }
-        if connection.requests.len() >= 32 {
-            return Err(capacity());
-        }
-        connection.requests.insert(key.clone(), cancel.clone());
-        (
-            connection.client.clone(),
-            PendingRequest {
-                registry: state.registry.clone(),
-                connection: connection_id,
-                id: key,
-                login: false,
-            },
-        )
-    };
+    let (client, cancel, _pending) = state.admit(&connection_id, window.label(), &request_id)?;
     let reply = client.execute(operation, &request_id, cancel).await?;
     if matches!(&reply, RemoteReply::Me(_)) {
         if let Some(connection) = state.registry.lock().unwrap().get_mut(&_pending.connection) {
@@ -534,6 +587,8 @@ pub fn remote_disconnect<R: tauri::Runtime>(
             registry.remove(&connection_id);
         }
     }
+    drop(registry);
+    state.media.prune();
 }
 
 #[tauri::command]
@@ -547,6 +602,7 @@ pub async fn remote_logout<R: tauri::Runtime>(
     let client = state.client(&connection_id, window.label())?;
     client.logout().await?;
     state.registry.lock().unwrap().remove(&connection_id);
+    state.media.prune();
     Ok(())
 }
 

@@ -1,8 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import React, { useEffect, useRef } from "react";
-
-import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
+import React, { useCallback, useEffect, useRef } from "react";
 
 import {
   NoteInput,
@@ -26,11 +22,14 @@ import { useAutoEnhance } from "./hooks/useAutoEnhance";
 import { shouldShowSessionTopAudioPlayer } from "./top-audio-player";
 
 import * as AudioPlayer from "~/audio-player";
+import { deleteSessionAudio } from "~/session/attachments";
 import {
   useEnhancedNoteRecords,
   useSession,
   useSessionRawMd,
 } from "~/session/queries";
+import { useVaultHost } from "~/shared/application/vault-provider";
+import { listenerStore } from "~/store/zustand/listener/instance";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { useListener } from "~/stt/contexts";
 import { consumePendingUpload } from "~/stt/pending-upload";
@@ -46,35 +45,29 @@ export function TabContentNote({
   tab: Extract<Tab, { type: "sessions" }>;
 }) {
   const sessionMode = useListener((state) => state.getSessionMode(tab.id));
-  const audioExists = AudioPlayer.useAudioExists(tab.id);
-  const queryClient = useQueryClient();
+  const { scope } = useVaultHost();
   const isCapturing = sessionMode === "active" || sessionMode === "finalizing";
-
-  const audioUrlQuery = useQuery({
-    enabled: !isCapturing,
-    queryKey: ["audio", tab.id, "url"],
-    queryFn: () => fsSyncCommands.audioPath(tab.id),
-    select: (result) => {
-      if (result.status === "error") {
-        return null;
-      }
-      return convertFileSrc(result.data);
-    },
-  });
-  // While capturing, cached url/peaks describe the previous recording; withholding the
-  // url tears the player down so nothing renders (or precomputes peaks) against a file
-  // that is about to be replaced.
-  const audioUrl = isCapturing ? null : audioUrlQuery.data;
-
+  const deleteRecording = useCallback(async () => {
+    const deleted = await deleteSessionAudio(tab.id, () => {
+      const state = listenerStore.getState();
+      return (
+        state.getSessionMode(tab.id) === "inactive" &&
+        !(state.live.sessionId === tab.id && state.live.loading)
+      );
+    });
+    if (!deleted) throw new Error("audio_session_busy");
+  }, [tab.id]);
   const wasCapturingRef = useRef(false);
   useEffect(() => {
-    // A finished recording replaces the audio file at an unchanged path, so the audio
-    // queries (exist/url/peaks) must be told rather than left to focus-driven refetches.
     if (wasCapturingRef.current && !isCapturing) {
-      void queryClient.invalidateQueries({ queryKey: ["audio", tab.id] });
+      for (const kind of ["audio_resource", "audio_peaks", "audio_metadata"]) {
+        void scope?.queryClient.invalidateQueries({
+          queryKey: ["vault", scope.client.scope, kind, tab.id],
+        });
+      }
     }
     wasCapturingRef.current = isCapturing;
-  }, [isCapturing, queryClient, tab.id]);
+  }, [isCapturing, scope, tab.id]);
 
   return (
     <>
@@ -82,13 +75,13 @@ export function TabContentNote({
         <AutoStartListening tab={tab} />
       ) : null}
       <SearchProvider>
-        <AudioPlayer.Provider sessionId={tab.id} url={audioUrl ?? ""}>
-          <TabContentNoteInner
-            tab={tab}
-            standaloneWindow={standaloneWindow}
-            audioUrlReady={Boolean(audioUrl)}
-            audioExists={audioExists}
-          />
+        <AudioPlayer.Provider
+          sessionId={tab.id}
+          scope={scope}
+          enabled={!isCapturing}
+          onDeleteRecording={deleteRecording}
+        >
+          <TabContentNoteInner tab={tab} standaloneWindow={standaloneWindow} />
         </AudioPlayer.Provider>
       </SearchProvider>
     </>
@@ -139,15 +132,13 @@ function AutoStartListening({
 function TabContentNoteInner({
   tab,
   standaloneWindow,
-  audioUrlReady,
-  audioExists,
 }: {
   tab: Extract<Tab, { type: "sessions" }>;
   standaloneWindow: boolean;
-  audioUrlReady: boolean;
-  audioExists: boolean;
 }) {
   const noteInputRef = React.useRef<NoteInputHandle>(null);
+  const { audioReady: audioUrlReady, audioExists } =
+    AudioPlayer.useAudioPlayer();
 
   const sessionId = tab.id;
   usePendingUpload(sessionId);
@@ -260,6 +251,7 @@ function TabContentNoteInner({
           />
         }
       >
+        <AudioPlayer.Status />
         {session && rawMd !== null ? (
           <NoteInput
             ref={noteInputRef}

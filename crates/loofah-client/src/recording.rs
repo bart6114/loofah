@@ -1,12 +1,133 @@
 use std::{sync::Arc, time::Duration};
 
-use hypr_loofah_protocol::{API_MAJOR, ErrorCode, RECORDING_CHUNK_LIMIT, RecordingLease};
+use hypr_loofah_protocol::{
+    API_MAJOR, ErrorCode, RECORDING_CHUNK_LIMIT, RecordingLease, RecordingWaveform,
+};
 use reqwest::{Method, Response, StatusCode};
 use tokio_util::sync::CancellationToken;
 
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
 impl RemoteClient {
+    pub async fn head_recording(
+        self: &Arc<Self>,
+        lease: &RecordingLease,
+        cancel: CancellationToken,
+    ) -> Result<()> {
+        if cancel.is_cancelled() {
+            return Err(cancelled());
+        }
+        self.recording_capability()?;
+        validate_metadata(lease)?;
+        let id = normalize_id(&lease.id)?;
+        let etag = format!("\"sha256:{}\"", lease.metadata.sha256);
+        let operation = async {
+            let response = self
+                .recording_request(
+                    Method::HEAD,
+                    &["vaults", &lease.vault_id, "audio", "leases", &id],
+                    &[("if-match", &etag)],
+                )
+                .await?;
+            if response.status() != StatusCode::OK {
+                return Err(recording_head_error(response.status()));
+            }
+            if response
+                .headers()
+                .get("etag")
+                .and_then(|value| value.to_str().ok())
+                != Some(etag.as_str())
+                || response
+                    .headers()
+                    .get("content-length")
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok())
+                    != Some(lease.metadata.size_bytes)
+                || response
+                    .headers()
+                    .get("content-type")
+                    .and_then(|value| value.to_str().ok())
+                    != Some(lease.metadata.content_type.as_str())
+            {
+                return Err(invalid_response());
+            }
+            Ok(())
+        };
+        tokio::select! {
+            _ = cancel.cancelled() => Err(cancelled()),
+            _ = self.stop.cancelled() => Err(cancelled()),
+            result = operation => result,
+        }
+    }
+
+    pub async fn recording_waveform(
+        self: &Arc<Self>,
+        lease: &RecordingLease,
+        cancel: CancellationToken,
+    ) -> Result<RecordingWaveform> {
+        if cancel.is_cancelled() {
+            return Err(cancelled());
+        }
+        self.recording_capability()?;
+        if !self
+            .capabilities
+            .features
+            .iter()
+            .any(|value| value == "recording_waveforms")
+        {
+            return Err(failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support recording waveforms. Upgrade the server, then reconnect.",
+            ));
+        }
+        validate_metadata(lease)?;
+        let id = normalize_id(&lease.id)?;
+        let etag = format!("\"sha256:{}\"", lease.metadata.sha256);
+        let operation = async {
+            let response = self
+                .recording_request(
+                    Method::GET,
+                    &["vaults", &lease.vault_id, "audio", "leases", &id, "peaks"],
+                    &[("if-match", &etag)],
+                )
+                .await?;
+            if response.status() != StatusCode::OK {
+                return Err(recording_response_error(response).await);
+            }
+            if response
+                .headers()
+                .get("etag")
+                .and_then(|value| value.to_str().ok())
+                != Some(etag.as_str())
+            {
+                return Err(invalid_response());
+            }
+            let waveform: RecordingWaveform = json_body(response, 256 * 1024).await?;
+            let peaks = &waveform.peaks;
+            if waveform.recording_sha256 != lease.metadata.sha256
+                || !peaks.duration_sec.is_finite()
+                || peaks.duration_sec <= 0.0
+                || peaks.channels.is_empty()
+                || peaks.channels.len() > 8
+                || peaks.channels.iter().any(|channel| {
+                    channel.is_empty()
+                        || channel.len() > 1500
+                        || channel
+                            .iter()
+                            .any(|value| !value.is_finite() || *value < 0.0)
+                })
+            {
+                return Err(invalid_response());
+            }
+            Ok(waveform)
+        };
+        tokio::select! {
+            _ = cancel.cancelled() => Err(cancelled()),
+            _ = self.stop.cancelled() => Err(cancelled()),
+            result = operation => result,
+        }
+    }
+
     pub async fn open_recording(
         self: &Arc<Self>,
         vault: &str,
@@ -234,4 +355,25 @@ fn invalid_response() -> hypr_loofah_protocol::ApplicationError {
         ErrorCode::IncompatibleVersion,
         "The server returned an invalid recording response",
     )
+}
+
+fn recording_head_error(status: StatusCode) -> hypr_loofah_protocol::ApplicationError {
+    match status {
+        StatusCode::UNAUTHORIZED => failure(ErrorCode::Unauthenticated, "Sign in again"),
+        StatusCode::FORBIDDEN => failure(ErrorCode::Forbidden, "Recording access was denied"),
+        StatusCode::NOT_FOUND => failure(ErrorCode::NotFound, "Recording lease is not available"),
+        StatusCode::PRECONDITION_FAILED | StatusCode::CONFLICT => failure(
+            ErrorCode::Conflict,
+            "Recording changed; reopen it before continuing",
+        ),
+        StatusCode::TOO_MANY_REQUESTS => {
+            let mut cause = failure(
+                ErrorCode::ResourceLimit,
+                "Recording readers are busy; retry shortly",
+            );
+            cause.retryable = true;
+            cause
+        }
+        _ => unavailable(),
+    }
 }

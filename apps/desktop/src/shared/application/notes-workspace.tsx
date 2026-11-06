@@ -29,6 +29,7 @@ import type { VaultClient } from "./vault-client";
 import { VaultNoteEditor } from "./vault-note-editor";
 import { VaultScope } from "./vault-scope";
 
+import { RecordingPlayer } from "~/audio-player/recording";
 import type { NoteDraftRecovery, NoteSnapshot } from "~/types/tauri.gen";
 
 const drafts = new NoteDrafts();
@@ -308,6 +309,9 @@ function SessionPane({
   >("note");
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      {scope.client.features.includes("audio_playback") && (
+        <RecordingPlayer scope={scope} sessionId={sessionId} />
+      )}
       {scope.client.features.includes("content_read") && (
         <div className="flex gap-2" role="group" aria-label={t`Note views`}>
           <Button

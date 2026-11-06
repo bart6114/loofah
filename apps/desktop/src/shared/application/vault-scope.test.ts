@@ -2,6 +2,7 @@ import { QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApplicationRequestError } from "./errors";
+import type { PlaybackRecording } from "./playback";
 import type { NoteEditorSnapshot, NoteSnapshot } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultScope } from "./vault-scope";
@@ -17,6 +18,7 @@ function fixture(scope: string) {
       .fn()
       .mockResolvedValue({ markdown: scope, title: "Title", revision: scope }),
     readNoteEditor: vi.fn(),
+    openRecording: vi.fn(),
     session: vi.fn(),
     sessions: vi.fn(),
     search: vi.fn(),
@@ -28,6 +30,7 @@ function fixture(scope: string) {
   } as unknown as VaultClient & {
     readNote: ReturnType<typeof vi.fn>;
     readNoteEditor: ReturnType<typeof vi.fn>;
+    openRecording: ReturnType<typeof vi.fn>;
   };
   const active = new VaultScope(backend);
   return {
@@ -38,7 +41,133 @@ function fixture(scope: string) {
   };
 }
 
+function watchCacheCleanup(scope: VaultScope) {
+  const cache = scope.queryClient.getQueryCache();
+  const subscribe = cache.subscribe.bind(cache);
+  const stopped = vi.fn();
+  vi.spyOn(cache, "subscribe").mockImplementation((listener) => {
+    const stop = subscribe(listener);
+    return () => {
+      stopped();
+      stop();
+    };
+  });
+  return stopped;
+}
+
 describe("vault-scoped query lifecycle", () => {
+  it("does not reopen recordings for note, title or task edits, and scopes artifact invalidation", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const keys = ["audio_resource", "audio_peaks"].map((kind) => ({
+      first: ["vault", "scope", kind, "first"],
+      second: ["vault", "scope", kind, "second"],
+      other: ["vault", "other", kind, "first"],
+    }));
+    for (const group of keys)
+      for (const key of Object.values(group))
+        active.queryClient.setQueryData(key, null);
+    for (const entity of ["sessions", "session_headers", "tasks"] as const) {
+      emit({
+        kind: "change",
+        change: { kind: "index_changed", entity, ids: ["first"] },
+      });
+      for (const group of keys)
+        expect(
+          active.queryClient.getQueryState(group.first)?.isInvalidated,
+        ).toBe(false);
+    }
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "artifacts", ids: ["first"] },
+    });
+    for (const group of keys) {
+      expect(active.queryClient.getQueryState(group.first)?.isInvalidated).toBe(
+        true,
+      );
+      expect(
+        active.queryClient.getQueryState(group.second)?.isInvalidated,
+      ).toBe(false);
+      expect(active.queryClient.getQueryState(group.other)?.isInvalidated).toBe(
+        false,
+      );
+    }
+    active.dispose();
+  });
+  it("releases recordings on replacement, last-observer removal and scope shutdown", async () => {
+    const { active, backend } = fixture("scope");
+    await active.start();
+    const resource = (id: string): PlaybackRecording => ({
+      id,
+      url: `media:${id}`,
+      resumeKey: id,
+      peaks: vi.fn().mockResolvedValue(null),
+      close: vi.fn().mockResolvedValue(undefined),
+    });
+    const first = resource("one"),
+      second = resource("two"),
+      third = resource("three");
+    backend.openRecording
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second)
+      .mockResolvedValueOnce(third);
+    const options = active.recordingOptions("session");
+    const observer = new QueryObserver(active.queryClient, options);
+    const stop = observer.subscribe(() => {});
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toBe(first),
+    );
+    await observer.refetch();
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(second.close).not.toHaveBeenCalled();
+    stop();
+    await vi.waitFor(() => expect(second.close).toHaveBeenCalledOnce());
+    await active.queryClient.fetchQuery(active.recordingOptions("other"));
+    active.dispose();
+    expect(third.close).toHaveBeenCalledOnce();
+  });
+
+  it("closes a recording returned after a cancelled query instead of caching it", async () => {
+    const { active, backend } = fixture("scope");
+    const close = vi.fn().mockResolvedValue(undefined);
+    let finish!: (value: PlaybackRecording) => void;
+    backend.openRecording.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const options = active.recordingOptions("session");
+    const opening = active.queryClient.fetchQuery(options);
+    const rejected = expect(opening).rejects.toThrow();
+    await active.queryClient.cancelQueries({ queryKey: options.queryKey });
+    finish({
+      id: "late",
+      url: "media:late",
+      resumeKey: "late",
+      peaks: vi.fn(),
+      close,
+    });
+    await rejected;
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(active.queryClient.getQueryData(options.queryKey)).toBeUndefined();
+    active.dispose();
+  });
+
+  it("releases media on access loss without waiting for the view to unmount", async () => {
+    const { active, backend, emit } = fixture("scope");
+    await active.start();
+    const close = vi.fn().mockResolvedValue(undefined);
+    backend.openRecording.mockResolvedValue({
+      id: "id",
+      url: "media:id",
+      peaks: vi.fn(),
+      close,
+    });
+    await active.queryClient.fetchQuery(active.recordingOptions("session"));
+    emit({ kind: "connection", state: "access_denied", error: null });
+    expect(close).toHaveBeenCalledOnce();
+    active.dispose();
+  });
   it("invalidates recording metadata only for matching artifact changes or resync", async () => {
     const { active, emit } = fixture("scope");
     await active.start();
@@ -222,6 +351,7 @@ describe("vault-scoped query lifecycle", () => {
 
   it("retains a refresh started during a save even before that read or a change event completes", async () => {
     const { active, backend } = fixture("scope");
+    const stopped = watchCacheCleanup(active);
     await active.start();
     const options = active.noteOptions("note");
     const saved = { markdown: "Saved", title: "Title", revision: "b" };
@@ -260,12 +390,14 @@ describe("vault-scoped query lifecycle", () => {
     expect(
       active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
     ).toBe(true);
-    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    expect(stopped).toHaveBeenCalledOnce();
     active.dispose();
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
   });
 
   it("does not add a read for an ordinary acknowledgement without an intervening change", async () => {
     const { active, backend } = fixture("scope");
+    const stopped = watchCacheCleanup(active);
     await active.start();
     const options = active.noteOptions("note");
     const saved = { markdown: "Saved", title: "Title", revision: "b" };
@@ -284,12 +416,14 @@ describe("vault-scoped query lifecycle", () => {
       active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
     ).toBe(false);
     expect(backend.readNote).not.toHaveBeenCalled();
-    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    expect(stopped).toHaveBeenCalledOnce();
     active.dispose();
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
   });
 
   it("preserves output invalidation through a delayed reply and unsubscribes after failure or authorization loss", async () => {
     const { active, emit } = fixture("scope");
+    const stopped = watchCacheCleanup(active);
     await active.start();
     const target = { kind: "summary" as const };
     const options = active.documentTextOptions("note", target);
@@ -313,7 +447,7 @@ describe("vault-scoped query lifecycle", () => {
     expect(
       active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
     ).toBe(true);
-    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    expect(stopped).toHaveBeenCalledTimes(1);
     const failure = new Error("The connection stopped");
     await expect(
       active.saveAndConfirm(
@@ -324,7 +458,7 @@ describe("vault-scoped query lifecycle", () => {
         vi.fn(),
       ),
     ).rejects.toBe(failure);
-    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    expect(stopped).toHaveBeenCalledTimes(2);
     let finish!: (value: NoteSnapshot) => void;
     const lost = active.saveAndConfirm(
       options.queryKey,
@@ -338,8 +472,9 @@ describe("vault-scoped query lifecycle", () => {
     finish(saved);
     await lost;
     expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
-    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    expect(stopped).toHaveBeenCalledTimes(3);
     active.dispose();
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
   });
 
   it("invalidates checked task snapshots for the affected session without touching another session or vault", async () => {

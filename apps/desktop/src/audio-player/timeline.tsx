@@ -61,6 +61,7 @@ export function Timeline({
     setPlaybackRate,
     deleteRecording,
     isDeletingRecording,
+    canDeleteRecording,
   } = useAudioPlayer();
   const time = useAudioTime();
   const [showRateMenu, setShowRateMenu] = useState(false);
@@ -108,13 +109,17 @@ export function Timeline({
       ...(state !== "stopped"
         ? [{ id: "stop", text: "Stop", action: stop }]
         : []),
-      { separator: true as const },
-      {
-        id: "delete-recording",
-        text: "Delete recording",
-        action: () => void handleDeleteRecording(),
-        disabled: isDeletingRecording,
-      },
+      ...(canDeleteRecording
+        ? [
+            { separator: true as const },
+            {
+              id: "delete-recording",
+              text: "Delete recording",
+              action: () => void handleDeleteRecording(),
+              disabled: isDeletingRecording,
+            },
+          ]
+        : []),
     ],
     [
       state,
@@ -123,6 +128,7 @@ export function Timeline({
       pause,
       stop,
       isDeletingRecording,
+      canDeleteRecording,
       handleDeleteRecording,
     ],
   );

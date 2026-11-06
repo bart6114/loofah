@@ -547,6 +547,52 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async remoteAudioOpen(
+    connectionId: string,
+    resourceId: string,
+    vaultId: string,
+    sessionId: string,
+  ): Promise<Result<NativeRecording | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_audio_open", {
+          connectionId,
+          resourceId,
+          vaultId,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAudioPeaks(
+    connectionId: string,
+    resourceId: string,
+    requestId: string,
+  ): Promise<Result<RecordingWaveform, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_audio_peaks", {
+          connectionId,
+          resourceId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteAudioClose(
+    connectionId: string,
+    resourceId: string,
+  ): Promise<void> {
+    await TAURI_INVOKE("remote_audio_close", { connectionId, resourceId });
+  },
   async chatgptAccount(): Promise<Result<ChatgptAccount | null, ChatgptError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("chatgpt_account") };
@@ -1499,6 +1545,10 @@ export type AudioFileMetadata = {
   sizeBytes: number;
   sha256: string;
 };
+/**
+ * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
+ */
+export type AudioPeaks = { durationSec: number; channels: number[][] };
 export type Capabilities = {
   api_major: number;
   application_version: string;
@@ -1730,6 +1780,7 @@ export type MetadataSaveOutcome =
   | { kind: "conflict"; snapshot: MetadataSnapshot };
 export type MetadataSnapshot = { meta: SessionMeta; revision: string };
 export type MutationOutcome = "not_committed" | "persisted" | "unknown";
+export type NativeRecording = { id: string; metadata: AudioFileMetadata };
 export type NoteDraftRecovery = {
   scope: string;
   sessionId: string;
@@ -1785,6 +1836,7 @@ export type RebuildReport = {
   ghost_sessions: string[];
   errors: string[];
 };
+export type RecordingWaveform = { recording_sha256: string; peaks: AudioPeaks };
 export type RecoveryEntry = {
   id: string;
   sessionId: string;

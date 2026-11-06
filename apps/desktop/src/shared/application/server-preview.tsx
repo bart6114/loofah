@@ -34,9 +34,8 @@ export default function ServerPreview() {
             </DialogTitle>
             <DialogDescription>
               <Trans>
-                This preview edits Markdown notes. Recording, attachments and AI
-                are not connected here yet. Your standalone setup stays
-                available.
+                Connect to your server to edit notes and play recordings. Your
+                standalone setup stays available.
               </Trans>
             </DialogDescription>
           </DialogHeader>

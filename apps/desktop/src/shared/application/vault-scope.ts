@@ -2,6 +2,7 @@ import { QueryClient, hashKey, queryOptions } from "@tanstack/react-query";
 
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { ApplicationRequestError, connectionClosed } from "./errors";
+import type { PlaybackRecording } from "./playback";
 import type {
   ApplicationError,
   Change,
@@ -22,6 +23,8 @@ export class VaultScope {
   private startPromise?: Promise<void>;
   private unsubscribe?: () => void;
   private disposed = false;
+  private readonly recordings = new Map<string, PlaybackRecording>();
+  private readonly stopRecordingCache: () => void;
 
   constructor(readonly client: VaultClient) {
     this.queryClient = new QueryClient({
@@ -38,6 +41,31 @@ export class VaultScope {
         },
       },
     });
+    this.stopRecordingCache = this.queryClient
+      .getQueryCache()
+      .subscribe((event) => {
+        const [prefix, scope, kind] = event.query.queryKey;
+        if (
+          prefix !== "vault" ||
+          scope !== client.scope ||
+          kind !== "audio_resource"
+        )
+          return;
+        if (
+          event.type !== "removed" &&
+          !(event.type === "updated" && event.action.type === "success")
+        )
+          return;
+        const previous = this.recordings.get(event.query.queryHash);
+        const next =
+          event.type === "removed"
+            ? null
+            : (event.query.state.data as PlaybackRecording | null);
+        if (previous === next) return;
+        this.recordings.delete(event.query.queryHash);
+        if (next) this.recordings.set(event.query.queryHash, next);
+        if (previous) void previous.close().catch(() => {});
+      });
   }
 
   getSnapshot = () => this.snapshot;
@@ -171,6 +199,44 @@ export class VaultScope {
       queryKey: ["vault", this.client.scope, "audio_metadata", sessionId],
       queryFn: ({ signal }) =>
         this.run(() => this.client.audioMetadata(sessionId, { signal })),
+    });
+  }
+  recordingOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "audio_resource", sessionId],
+      gcTime: 0,
+      structuralSharing: false,
+      queryFn: ({ signal }) =>
+        this.run(async () => {
+          const recording = await this.client.openRecording(sessionId, {
+            signal,
+          });
+          if (signal.aborted || this.disposed) {
+            await recording?.close().catch(() => {});
+            throw connectionClosed();
+          }
+          return recording;
+        }),
+    });
+  }
+  recordingPeaksOptions(
+    sessionId: string,
+    recording: PlaybackRecording | null,
+  ) {
+    return queryOptions({
+      queryKey: [
+        "vault",
+        this.client.scope,
+        "audio_peaks",
+        sessionId,
+        recording?.id ?? null,
+      ],
+      gcTime: 0,
+      retry: false,
+      queryFn: ({ signal }) =>
+        this.run(() =>
+          recording ? recording.peaks({ signal }) : Promise.resolve(null),
+        ),
     });
   }
   sessionOptions(sessionId: string) {
@@ -347,6 +413,7 @@ export class VaultScope {
     document.removeEventListener("visibilitychange", this.visible);
     void this.queryClient.cancelQueries();
     this.queryClient.clear();
+    this.stopRecordingCache();
     this.snapshot = { state: "closed", error: null };
     for (const listener of this.listeners) listener();
     this.listeners.clear();
@@ -400,7 +467,11 @@ export class VaultScope {
             return true;
           if (kind === "session_page")
             return ["sessions", "session_headers"].includes(change.entity);
-          if (kind === "audio_metadata")
+          if (
+            ["audio_metadata", "audio_resource", "audio_peaks"].includes(
+              String(kind),
+            )
+          )
             return (
               change.entity === "artifacts" && (all || ids.has(String(id)))
             );

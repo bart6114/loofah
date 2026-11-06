@@ -5,6 +5,7 @@ import {
   ApplicationRequestError,
   connectionClosed,
 } from "./errors";
+import type { RequestOptions } from "./vault-client";
 
 import {
   commands,
@@ -13,6 +14,8 @@ import {
   type RemoteEvent,
   type RemoteOperation,
   type RemoteReply,
+  type NativeRecording,
+  type RecordingWaveform,
 } from "~/types/tauri.gen";
 
 type Reply<K extends RemoteReply["kind"]> = Extract<
@@ -25,6 +28,8 @@ export class NativeRemoteConnection {
   private signedOut = false;
   private disconnectPromise?: Promise<void>;
   private readonly subscriptions = new Set<() => Promise<void>>();
+  private readonly recordings = new Set<string>();
+  private readonly closingRecordings = new Map<string, Promise<void>>();
 
   private constructor(readonly info: RemoteConnectionInfo) {}
 
@@ -47,6 +52,106 @@ export class NativeRemoteConnection {
 
   restore(): Promise<Me> {
     return this.request({ kind: "provision" }, "me");
+  }
+
+  async openRecording(
+    vaultId: string,
+    sessionId: string,
+    options?: RequestOptions,
+  ): Promise<NativeRecording | null> {
+    this.assertOpen();
+    const signal = options?.signal;
+    signal?.throwIfAborted();
+    const id = crypto.randomUUID();
+    this.recordings.add(id);
+    const cancel = () => {
+      void this.closeRecording(id).catch(() => {});
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const recording = applicationResult(
+        await commands.remoteAudioOpen(
+          this.info.connection_id,
+          id,
+          vaultId,
+          sessionId,
+        ),
+      );
+      if (
+        this.closed ||
+        signal?.aborted ||
+        !this.recordings.has(id) ||
+        this.closingRecordings.has(id)
+      )
+        throw connectionClosed();
+      if (!recording) {
+        await this.closeRecording(id);
+        return null;
+      }
+      if (recording.id !== id)
+        throw new ApplicationRequestError({
+          code: "incompatible_version",
+          message: "The native host returned an unexpected recording",
+          request_id: null,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: null,
+        });
+      return recording;
+    } catch (error) {
+      await this.closeRecording(id).catch(() => {});
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  async recordingWaveform(
+    id: string,
+    options?: RequestOptions,
+  ): Promise<RecordingWaveform> {
+    this.assertOpen();
+    if (!this.recordings.has(id) || this.closingRecordings.has(id))
+      throw connectionClosed();
+    const signal = options?.signal;
+    signal?.throwIfAborted();
+    const requestId = options?.requestId ?? crypto.randomUUID();
+    const cancel = async () => {
+      try {
+        await commands.remoteCancelRequest(this.info.connection_id, requestId);
+      } catch {}
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const result = applicationResult(
+        await commands.remoteAudioPeaks(this.info.connection_id, id, requestId),
+      );
+      if (
+        this.closed ||
+        signal?.aborted ||
+        !this.recordings.has(id) ||
+        this.closingRecordings.has(id)
+      )
+        throw connectionClosed();
+      return result;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  closeRecording(id: string): Promise<void> {
+    if (!this.recordings.has(id)) return Promise.resolve();
+    const pending = this.closingRecordings.get(id);
+    if (pending) return pending;
+    const closing = (async () => {
+      await commands.remoteAudioClose(this.info.connection_id, id);
+      this.recordings.delete(id);
+    })().finally(() => {
+      if (this.closingRecordings.get(id) === closing)
+        this.closingRecordings.delete(id);
+    });
+    this.closingRecordings.set(id, closing);
+    return closing;
   }
 
   async request<K extends RemoteReply["kind"]>(
@@ -155,9 +260,10 @@ export class NativeRemoteConnection {
 
   private async closeSubscriptions() {
     this.closed = true;
-    await Promise.all(
-      [...this.subscriptions].map((unsubscribe) => unsubscribe()),
-    );
+    await Promise.allSettled([
+      ...[...this.subscriptions].map((unsubscribe) => unsubscribe()),
+      ...[...this.recordings].map((id) => this.closeRecording(id)),
+    ]);
   }
 
   private assertOpen() {

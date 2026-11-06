@@ -5,6 +5,11 @@ import {
 } from "@hypr/editor/attachment-presentation";
 
 import { applicationResult, ApplicationRequestError } from "./errors";
+import {
+  openLocalRecording,
+  openRemoteRecording,
+  type PlaybackRecording,
+} from "./playback";
 import type {
   ApplicationError,
   AudioFileMetadata,
@@ -69,6 +74,10 @@ export type VaultClient = {
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
   noteWriteQueueKey?: (sessionId: string) => string;
+  openRecording: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<PlaybackRecording | null>;
   audioMetadata: (
     sessionId: string,
     options?: RequestOptions,
@@ -208,6 +217,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     attachmentPresentation: legacyAttachmentPresentation,
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
+      "audio_playback",
       "notes",
       "note_editor_read",
       "note_editor_write",
@@ -219,6 +229,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "tasks_edit",
       "agent_read",
     ],
+    openRecording: openLocalRecording,
     agentList: (input, options) =>
       ipc(() => commands.applicationAgentList(input), options),
     agentSearch: (input, options) =>
@@ -322,6 +333,8 @@ export function connectRemoteVault(
     canEdit: vault.role !== "reader",
     attachmentPresentation: scopedAttachmentPresentation,
     features: connection.info.capabilities.features,
+    openRecording: (sessionId, options) =>
+      openRemoteRecording(connection, vaultId, sessionId, options),
     readMetadata: (sessionId, options) =>
       connection.request(
         { kind: "metadata", vault_id: vaultId, session_id: sessionId },

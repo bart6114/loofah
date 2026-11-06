@@ -424,6 +424,10 @@ msgstr ""
 msgid "Connect an AI provider"
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Connect to your server to edit notes and play recordings. Your standalone setup stays available."
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 msgid "Connected"
 msgstr ""
@@ -1400,6 +1404,10 @@ msgstr ""
 msgid "Recording and transcription still work. Set up summaries when you want to turn your notes or transcript into a summary."
 msgstr ""
 
+#: src/audio-player/provider.tsx
+msgid "Recording playback is unavailable."
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Recordings"
 msgstr ""
@@ -1542,6 +1550,7 @@ msgstr ""
 msgid "Resume listening"
 msgstr ""
 
+#: src/audio-player/provider.tsx
 #: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
@@ -2038,10 +2047,6 @@ msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."
-msgstr ""
-
-#: src/shared/application/server-preview.tsx
-msgid "This preview edits Markdown notes. Recording, attachments and AI are not connected here yet. Your standalone setup stays available."
 msgstr ""
 
 #: src/shared/application/device-recovery.tsx
