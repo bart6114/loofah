@@ -722,7 +722,7 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn recheck_blocks_writes_from_an_existing_handle_while_allowing_playback_until_dropped() {
-        use std::io::Write;
+        use std::io::{Seek, SeekFrom, Write};
         let (root, store, sha) = fixture().await;
         let path = root.path().join("sessions/note/audio.wav");
         let mut writer = std::fs::File::options().write(true).open(&path).unwrap();

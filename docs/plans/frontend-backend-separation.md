@@ -2005,10 +2005,17 @@ upload path has not yet moved onto the new session reservation.
 Storage validation passes 97 fs-sync tests and 354 vault-write tests (one
 ignored), including hidden staging, collisions, failed writes, unwinding,
 cancellation, reader responsiveness and session/relocation protection. Headless
-application/client/server and native desktop/CLI compilation pass. The native
-desktop suite passes 61 tests (one ignored), plus four fs-sync plugin tests.
+application/client/server and native macOS desktop/CLI compilation pass. The
+macOS desktop suite passes 61 tests (one ignored), plus four fs-sync plugin tests.
 Clippy reports existing warnings in other storage modules, with none in the new
 staging modules. HTTP receiving, content-checksum validation, persistent upload receipts and status,
 native file/clipboard/drop adapters and shared frontend upload UX remain required.
 Crash cleanup and restart recovery of incoming uploads remain lifecycle gates;
 this primitive alone does not establish durable remote upload completion.
+
+Hosted Windows x64 validation of `179ad6948` found missing `Seek`/`SeekFrom`
+imports in a Windows-only recording-lock test after the file-snapshot extraction.
+The test now imports both locally, preserving the production implementation.
+The macOS recording regressions and application check pass after the correction;
+that does not validate Windows. Native Windows x64 and ARM64 validation of the
+corrected head remains required before merge.
