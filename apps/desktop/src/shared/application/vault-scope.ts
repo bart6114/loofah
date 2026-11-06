@@ -1,4 +1,9 @@
-import { QueryClient, hashKey, queryOptions } from "@tanstack/react-query";
+import {
+  QueryClient,
+  hashKey,
+  queryOptions,
+  infiniteQueryOptions,
+} from "@tanstack/react-query";
 
 import { artifactInvalidation } from "./artifact-invalidation";
 import type { AttachmentResource } from "./attachments";
@@ -222,6 +227,17 @@ export class VaultScope {
         this.run(() =>
           this.client.attachmentInfo(sessionId, attachmentId, { signal }),
         ),
+    });
+  }
+  attachmentsOptions(sessionId: string) {
+    return infiniteQueryOptions({
+      queryKey: ["vault", this.client.scope, "attachment_list", sessionId],
+      initialPageParam: undefined as string | undefined,
+      queryFn: ({ pageParam, signal }) =>
+        this.run(() =>
+          this.client.attachments(sessionId, 100, pageParam, { signal }),
+        ),
+      getNextPageParam: (page) => page.next_cursor ?? undefined,
     });
   }
   attachmentOptions(sessionId: string, attachmentId: string) {

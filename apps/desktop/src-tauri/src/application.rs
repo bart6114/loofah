@@ -119,6 +119,19 @@ pub async fn application_documents<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_attachments<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    limit: u32,
+    after: Option<String>,
+) -> Result<hypr_loofah_protocol::AttachmentPage, ApplicationError> {
+    context(&app)?
+        .attachment_page(&session_id, limit as usize, after.as_deref())
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_attachment_info<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,

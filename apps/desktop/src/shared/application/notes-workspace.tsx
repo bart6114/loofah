@@ -25,6 +25,7 @@ import { NoteDrafts, type NoteDraft, type NoteDraftClient } from "./note-draft";
 import { noteEditorDrafts } from "./note-editor-draft";
 import type { DocumentTarget } from "./protocol.gen";
 import { useDraftPersistence } from "./use-draft-persistence";
+import { VaultAttachmentsPane } from "./vault-attachments-pane";
 import type { VaultClient } from "./vault-client";
 import { VaultNoteEditor } from "./vault-note-editor";
 import { VaultScope } from "./vault-scope";
@@ -305,7 +306,7 @@ function SessionPane({
 }) {
   const { t } = useLingui();
   const [view, setView] = useState<
-    "note" | "documents" | "transcripts" | "tasks"
+    "note" | "documents" | "transcripts" | "tasks" | "attachments"
   >("note");
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
@@ -346,6 +347,16 @@ function SessionPane({
           >
             <Trans>Tasks</Trans>
           </Button>
+          {scope.client.features.includes("attachment_list") && (
+            <Button
+              aria-pressed={view === "attachments"}
+              size="sm"
+              variant="ghost"
+              onClick={() => setView("attachments")}
+            >
+              <Trans>Attachments</Trans>
+            </Button>
+          )}
         </div>
       )}
       {view === "note" ? (
@@ -379,6 +390,12 @@ function SessionPane({
           scope={scope}
           sessionId={sessionId}
           onActiveDraft={onActiveDraft}
+        />
+      ) : view === "attachments" ? (
+        <VaultAttachmentsPane
+          key={sessionId}
+          scope={scope}
+          sessionId={sessionId}
         />
       ) : (
         <ContentPane scope={scope} sessionId={sessionId} view={view} />

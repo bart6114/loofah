@@ -5,6 +5,7 @@ export {
   scopedAttachmentPresentation,
 } from "./attachment-presentation";
 export { appLinkNodeSpec } from "./app-link-spec";
+export { AttachmentActions, AttachmentFeedback } from "./attachment-feedback";
 export { attachmentNodeSpec, AttachmentChipView } from "./attachment-view";
 export {
   type AttachmentResolution,

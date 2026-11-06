@@ -106,6 +106,7 @@ function fixture(rich = false) {
     ],
     attachmentPresentation: scopedAttachmentPresentation,
     openAttachment: vi.fn(),
+    attachments: vi.fn(),
     readNoteEditor: vi.fn(async () => ({ note: current, tasks: currentTasks })),
     saveNoteEditor: vi.fn(async (_id, input) => {
       if (
@@ -227,6 +228,7 @@ function fixture(rich = false) {
   } as unknown as VaultClient & {
     saveNote: ReturnType<typeof vi.fn>;
     openAttachment: ReturnType<typeof vi.fn>;
+    attachments: ReturnType<typeof vi.fn>;
     saveNoteEditor: ReturnType<typeof vi.fn<VaultClient["saveNoteEditor"]>>;
     saveDocument: ReturnType<typeof vi.fn>;
     search: ReturnType<typeof vi.fn>;
@@ -1556,4 +1558,63 @@ it("mounts owned attachments through the actual shared note host and saves porta
   expect(saved.markdown).not.toContain("loofah-media:");
   unmount();
   await waitFor(() => expect(close).toHaveBeenCalled());
+});
+
+it("opens the attachment panel through the shared workspace and defers file actions until expanded", async () => {
+  const backend = fixture(true);
+  Object.assign(backend.client, {
+    features: [...backend.client.features, "content_read", "attachment_list"],
+  });
+  backend.client.attachments.mockResolvedValue({
+    files: [
+      {
+        filename: "report.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 2048,
+      },
+    ],
+    next_cursor: null,
+  });
+  const open = vi.fn().mockResolvedValue(undefined);
+  const closed: ReturnType<typeof vi.fn>[] = [];
+  backend.client.openAttachment.mockImplementation(async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    closed.push(close);
+    return {
+      id: crypto.randomUUID(),
+      info: {
+        filename: "report.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 2048,
+      },
+      labels: {
+        open: { id: "open", message: "Open downloaded copy" },
+        reveal: { id: "show", message: "Show downloaded copy" },
+      },
+      open,
+      reveal: vi.fn(),
+      close,
+    };
+  });
+  const { unmount } = await openRich(backend.client);
+  fireEvent.click(screen.getByRole("button", { name: "Attachments" }));
+  const row = await screen.findByRole("button", {
+    name: "Actions for report.pdf",
+  });
+  expect(backend.client.attachments).toHaveBeenCalledWith(
+    "same",
+    100,
+    undefined,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(backend.client.openAttachment).not.toHaveBeenCalled();
+  fireEvent.click(row);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open downloaded copy" }),
+  );
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+  unmount();
+  await waitFor(() => {
+    for (const close of closed) expect(close).toHaveBeenCalledTimes(1);
+  });
 });

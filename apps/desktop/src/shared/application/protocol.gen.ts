@@ -13,6 +13,8 @@ export type ArtifactTarget = { kind: "recording" } | { kind: "attachments" } | {
 
 export type AttachmentLease = { id: string; vault_id: string; session_id: string; attachment_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
+export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null }
+
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */

@@ -111,6 +111,11 @@ msgstr "Access to this vault changed. Close this panel and reload your vaults."
 msgid "Actions"
 msgstr "Actions"
 
+#. placeholder {0}: file.filename
+#: src/shared/application/vault-attachments-pane.tsx
+msgid "Actions for {0}"
+msgstr "Actions for {0}"
+
 #: src/settings/general/language-settings.tsx
 msgid "Add a meeting language to help transcription choose the right words."
 msgstr "Add a meeting language to help transcription choose the right words."
@@ -191,6 +196,7 @@ msgid "Assignees:"
 msgstr "Assignees:"
 
 #: src/shared/application/vault-attachment-provider.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Attachment access is unavailable. Reconnect or sign in again."
 msgstr "Attachment access is unavailable. Reconnect or sign in again."
 
@@ -204,6 +210,8 @@ msgstr "Attachment not found."
 
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/header.tsx
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Attachments"
 msgstr "Attachments"
 
@@ -542,6 +550,7 @@ msgid "Couldn’t copy debug information. Try again."
 msgstr "Couldn’t copy debug information. Try again."
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Couldn’t load attachments."
 msgstr "Couldn’t load attachments."
 
@@ -986,6 +995,7 @@ msgid "LM Studio or Ollama"
 msgstr "LM Studio or Ollama"
 
 #: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Load more"
 msgstr "Load more"
 
@@ -996,6 +1006,10 @@ msgstr "Loading"
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Loading attachment…"
 msgstr "Loading attachment…"
+
+#: src/shared/application/vault-attachments-pane.tsx
+msgid "Loading attachments…"
+msgstr "Loading attachments…"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Loading connection…"
@@ -1176,6 +1190,7 @@ msgid "No apps found."
 msgstr "No apps found."
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "No attachments yet"
 msgstr "No attachments yet"
 
@@ -2208,6 +2223,7 @@ msgid "Troubleshooting"
 msgstr "Troubleshooting"
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 #: src/shared/startup-boundary.tsx
 msgid "Try again"
 msgstr "Try again"

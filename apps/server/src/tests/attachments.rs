@@ -557,3 +557,124 @@ async fn attachment_streams_cannot_consume_all_recording_playback_capacity() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn attachment_listing_is_paginated_pathless_isolated_and_available_to_readers() {
+    let fixture = Fixture::new().await;
+    fixture.login("alice").await;
+    let bob = fixture.login("bob").await;
+    let (_, shared) = fixture
+        .call(
+            "alice",
+            "POST",
+            "/api/v1/vaults",
+            Some(json!({"name":"Attachment pages"})),
+        )
+        .await;
+    let vault = shared["id"].as_str().unwrap();
+    let (_, created) = fixture
+        .call(
+            "alice",
+            "POST",
+            &format!("/api/v1/vaults/{vault}/sessions"),
+            Some(json!({"title":"Attachment pages","markdown":"Canonical note"})),
+        )
+        .await;
+    let session = created["meta"]["id"].as_str().unwrap();
+    let context = fixture.service.vault(vault).await.unwrap();
+    for name in ["z.pdf", "b + ü.png", "a.txt"] {
+        context
+            .store
+            .save_attachment(session, name, b"owned".to_vec())
+            .await
+            .unwrap();
+    }
+    let directory = fixture
+        ._root
+        .path()
+        .join("storage/vaults")
+        .join(vault)
+        .join("sessions")
+        .join(session);
+    let note = std::fs::read(directory.join("notes.md")).unwrap();
+    std::fs::write(directory.join("unknown-user.pdf"), "User owned, never list").unwrap();
+    std::fs::write(directory.join("attachments/.hidden"), "Private").unwrap();
+    std::fs::create_dir(directory.join("attachments/directory")).unwrap();
+    let path = format!("/api/v1/vaults/{vault}/sessions/{session}/attachments");
+    assert_eq!(
+        fixture.call("bob", "GET", &path, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let membership = format!("/api/v1/vaults/{vault}/members/{}", bob.member.id);
+    assert_eq!(
+        fixture
+            .call(
+                "alice",
+                "PUT",
+                &membership,
+                Some(json!({"role":"reader","expected_revision":shared["revision"]}))
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (status, first) = fixture
+        .call("alice", "GET", &format!("{path}?limit=2"), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        first,
+        json!({"files":[{"filename":"a.txt","contentType":"text/plain","sizeBytes":5},{"filename":"b + ü.png","contentType":"image/png","sizeBytes":5}],"next_cursor":"b + ü.png"})
+    );
+    let (status, second) = fixture
+        .call(
+            "alice",
+            "GET",
+            &format!("{path}?limit=2&after=b%20%2B%20%C3%BC.png"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        second,
+        json!({"files":[{"filename":"z.pdf","contentType":"application/pdf","sizeBytes":5}],"next_cursor":null})
+    );
+    assert_eq!(
+        fixture
+            .call("bob", "GET", &format!("{path}?limit=2"), None)
+            .await,
+        (StatusCode::OK, first.clone())
+    );
+    for query in [
+        "limit=0",
+        "limit=201",
+        "after=..%2Fprivate",
+        "after=.hidden",
+        "limit=bad",
+    ] {
+        assert_eq!(
+            fixture
+                .call("alice", "GET", &format!("{path}?{query}"), None)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        fixture
+            .call(
+                "alice",
+                "GET",
+                &format!("/api/v1/vaults/{vault}/sessions/missing/attachments"),
+                None
+            )
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(std::fs::read(directory.join("notes.md")).unwrap(), note);
+    assert_eq!(
+        std::fs::read_to_string(directory.join("unknown-user.pdf")).unwrap(),
+        "User owned, never list"
+    );
+}

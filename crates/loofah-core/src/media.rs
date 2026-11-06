@@ -21,6 +21,63 @@ pub(crate) struct OpenedMedia {
 }
 
 impl VaultContext {
+    pub async fn attachment_page(
+        self: &Arc<Self>,
+        session_id: &str,
+        limit: usize,
+        after: Option<&str>,
+    ) -> Result<hypr_loofah_protocol::AttachmentPage, ApplicationError> {
+        self.validate(session_id)?;
+        if !(1..=200).contains(&limit)
+            || after.is_some_and(|cursor| {
+                hypr_loofah_protocol::validate_attachment_basename(cursor).is_err()
+            })
+        {
+            return Err(error(
+                ErrorCode::Validation,
+                "Invalid attachment page size or cursor",
+            ));
+        }
+        let permit = self
+            .media_readers
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                error(
+                    ErrorCode::Unavailable,
+                    "Media readers are busy; retry shortly",
+                )
+            })?;
+        let context = self.clone();
+        let id = session_id.to_owned();
+        let after = after.map(str::to_owned);
+        tokio::spawn(async move {
+            let _permit = permit;
+            let entries = context
+                .store
+                .list_attachments(&id, limit, after.as_deref())
+                .await
+                .map_err(|cause| storage_error(cause, false))?
+                .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))?;
+            let next_cursor = (entries.len() > limit).then(|| entries[limit - 1].filename.clone());
+            let files = entries
+                .into_iter()
+                .take(limit)
+                .map(|entry| FileInfo {
+                    content_type: mime_guess::from_path(&entry.filename)
+                        .first_or_octet_stream()
+                        .essence_str()
+                        .into(),
+                    filename: entry.filename,
+                    size_bytes: entry.size_bytes,
+                })
+                .collect();
+            Ok(hypr_loofah_protocol::AttachmentPage { files, next_cursor })
+        })
+        .await
+        .map_err(|_| error(ErrorCode::Internal, "Attachment listing request stopped"))?
+    }
+
     pub async fn attachment_info(
         self: &Arc<Self>,
         session_id: &str,
@@ -337,6 +394,69 @@ mod tests {
             Arc::new(SearchService::default()),
         ));
         (root, context)
+    }
+
+    #[tokio::test]
+    async fn attachment_pages_validate_cursors_keep_admission_and_never_hash_file_bytes() {
+        let (root, context) = fixture().await;
+        let dir = root.path().join("sessions/note/attachments");
+        std::fs::create_dir(&dir).unwrap();
+        let file = std::fs::File::create(dir.join("large.pdf")).unwrap();
+        file.set_len(3 * 1024 * 1024 * 1024).unwrap();
+        let page = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            context.attachment_page("note", 1, None),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            page.files,
+            vec![FileInfo {
+                filename: "large.pdf".into(),
+                content_type: "application/pdf".into(),
+                size_bytes: 3 * 1024 * 1024 * 1024
+            }]
+        );
+        assert!(page.next_cursor.is_none());
+        for (limit, after) in [(0, None), (201, None), (1, Some("../private"))] {
+            assert_eq!(
+                context
+                    .attachment_page("note", limit, after)
+                    .await
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Validation
+            );
+        }
+        assert_eq!(
+            context
+                .attachment_page("missing", 1, None)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::NotFound
+        );
+        let permit = context
+            .media_readers
+            .clone()
+            .acquire_many_owned(4)
+            .await
+            .unwrap();
+        assert_eq!(
+            context
+                .attachment_page("note", 1, None)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Unavailable
+        );
+        drop(permit);
+        assert!(context.attachment_page("note", 1, None).await.is_ok());
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("sessions/note/notes.md")).unwrap(),
+            "Notes remain unchanged"
+        );
     }
 
     #[tokio::test]

@@ -1969,6 +1969,45 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     assert_eq!(info.filename, attachment.attachment_id);
     assert_eq!(info.content_type, "application/pdf");
     assert_eq!(info.size_bytes, payload.len() as u64);
+    context
+        .store
+        .save_attachment(&created.meta.id, "zz-tail.txt", b"tail".to_vec())
+        .await
+        .unwrap();
+    let RemoteReply::Attachments(page) = request(
+        first.clone(),
+        RemoteOperation::Attachments {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            limit: 1,
+            after: None,
+        },
+    )
+    .await
+    else {
+        panic!("attachment page response")
+    };
+    assert_eq!(page.files, vec![info.clone()]);
+    assert_eq!(
+        page.next_cursor.as_deref(),
+        Some(attachment.attachment_id.as_str())
+    );
+    let RemoteReply::Attachments(page) = request(
+        first.clone(),
+        RemoteOperation::Attachments {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            limit: 1,
+            after: page.next_cursor,
+        },
+    )
+    .await
+    else {
+        panic!("attachment continuation response")
+    };
+    assert_eq!(page.files[0].filename, "zz-tail.txt");
+    assert!(page.next_cursor.is_none());
+
     let attachment_lease = first
         .open_attachment(
             &vault_id,

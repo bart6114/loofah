@@ -49,6 +49,7 @@ import {
   sessionAttachmentPathsQueryKey,
   useSessionAttachments,
 } from "~/session/hooks/useAttachmentResolver";
+import { formatFileSize } from "~/shared/format-file-size";
 import {
   type FileUploadCandidate,
   type FileUploadState,
@@ -597,14 +598,7 @@ export function formatFileType(extension: string) {
   return extension ? extension.toLocaleUpperCase() : "File";
 }
 
-export function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
+export { formatFileSize } from "~/shared/format-file-size";
 
 function fileNameFromPath(path: string) {
   return path.split("/").pop() ?? path;

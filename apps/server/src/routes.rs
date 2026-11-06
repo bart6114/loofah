@@ -41,6 +41,10 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
+            "/vaults/{vault}/sessions/{session}/attachments",
+            get(attachments),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/audio/metadata",
             get(audio_metadata),
         )
@@ -156,6 +160,7 @@ async fn capabilities() -> Json<Capabilities> {
             "recording_delete".into(),
             "attachment_leases".into(),
             "attachment_info".into(),
+            "attachment_list".into(),
             "artifact_details".into(),
             "content_read".into(),
             "document_edit".into(),
@@ -400,6 +405,21 @@ async fn sessions(
             .await?
             .session_page(page.limit, page.after.as_deref())?,
     ))
+}
+async fn attachments(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiQuery(page): ApiQuery<PageQuery>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 256 * 1024, async move {
+        context
+            .attachment_page(&session, page.limit, page.after.as_deref())
+            .await
+    })
+    .await
 }
 async fn session(
     State(service): State<Arc<Service>>,

@@ -79,6 +79,12 @@ pub enum RemoteOperation {
         session_id: String,
         attachment_id: String,
     },
+    Attachments {
+        vault_id: String,
+        session_id: String,
+        limit: u32,
+        after: Option<String>,
+    },
     DeleteRecording {
         vault_id: String,
         session_id: String,
@@ -181,6 +187,7 @@ pub enum RemoteReply {
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<FileMetadata>),
     AttachmentInfo(Option<FileInfo>),
+    Attachments(AttachmentPage),
     RecordingDeleted(bool),
     Tasks(Vec<TaskItem>),
     TasksSnapshot(TasksSnapshot),
@@ -220,6 +227,7 @@ impl RemoteClient {
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
             RemoteOperation::AttachmentInfo { .. } => Some("attachment_info"),
+            RemoteOperation::Attachments { .. } => Some("attachment_list"),
             RemoteOperation::DeleteRecording { .. } => Some("recording_delete"),
             _ => None,
         };
@@ -233,6 +241,7 @@ impl RemoteClient {
             let description = match operation {
                 RemoteOperation::AudioMetadata { .. } => "recording metadata",
                 RemoteOperation::AttachmentInfo { .. } => "attachment information",
+                RemoteOperation::Attachments { .. } => "attachment listing",
                 RemoteOperation::DeleteRecording { .. } => "recording deletion",
                 _ => "the note editor",
             };
@@ -254,6 +263,16 @@ impl RemoteClient {
         if let RemoteOperation::AttachmentInfo { attachment_id, .. } = &operation {
             validate_attachment_basename(attachment_id)
                 .map_err(|_| invalid("Invalid attachment ID"))?;
+        }
+        if let RemoteOperation::Attachments { limit, after, .. } = &operation
+            && (!(1..=200).contains(limit)
+                || after
+                    .as_deref()
+                    .is_some_and(|cursor| validate_attachment_basename(cursor).is_err()))
+        {
+            let mut error = invalid("Invalid attachment page size or cursor");
+            error.request_id = Some(request_id.to_owned());
+            return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
         let mut body = None;
@@ -321,6 +340,21 @@ impl RemoteClient {
                 Method::GET,
                 vec!["vaults", vault_id, "sessions", session_id],
             ),
+            RemoteOperation::Attachments {
+                vault_id,
+                session_id,
+                limit,
+                after,
+            } => {
+                query.push(("limit", limit.to_string()));
+                if let Some(after) = after {
+                    query.push(("after", after.clone()));
+                }
+                (
+                    Method::GET,
+                    vec!["vaults", vault_id, "sessions", session_id, "attachments"],
+                )
+            }
             RemoteOperation::CreateSession { vault_id, input } => {
                 body = Some(value(input)?);
                 (Method::POST, vec!["vaults", vault_id, "sessions"])
@@ -683,6 +717,11 @@ impl RemoteClient {
                     }
                     RemoteReply::AttachmentInfo(info)
                 }
+                RemoteOperation::Attachments { limit, after, .. } => {
+                    let page: AttachmentPage = json_body(response, 256 * 1024).await?;
+                    validate_attachment_page(&page, limit as usize, after.as_deref())?;
+                    RemoteReply::Attachments(page)
+                }
                 RemoteOperation::SaveNoteEditor { .. } => {
                     RemoteReply::NoteEditorSave(json_body(response, 32 * 1024 * 1024).await?)
                 }
@@ -767,4 +806,125 @@ impl RemoteClient {
 
 fn value(input: &impl Serialize) -> Result<Value> {
     serde_json::to_value(input).map_err(|_| invalid("Cannot encode request"))
+}
+
+fn validate_attachment_page(
+    page: &AttachmentPage,
+    limit: usize,
+    after: Option<&str>,
+) -> Result<()> {
+    let invalid = || failure(ErrorCode::IncompatibleVersion, "Invalid attachment page");
+    if page.files.len() > limit {
+        return Err(invalid());
+    }
+    let mut previous = after;
+    for file in &page.files {
+        if validate_attachment_basename(&file.filename).is_err()
+            || previous.is_some_and(|cursor| file.filename.as_str() <= cursor)
+        {
+            return Err(invalid());
+        }
+        crate::media::validate_content_type(&file.content_type)?;
+        previous = Some(&file.filename);
+    }
+    if let Some(cursor) = page.next_cursor.as_deref()
+        && (page.files.len() != limit
+            || page.files.last().map(|file| file.filename.as_str()) != Some(cursor))
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod attachment_page_tests {
+    use super::*;
+
+    #[test]
+    fn page_validation_rejects_paths_duplicates_bad_order_nonadvancing_cursors_and_malformed_metadata()
+     {
+        let file = |name: &str| FileInfo {
+            filename: name.into(),
+            content_type: "application/pdf".into(),
+            size_bytes: 42,
+        };
+        let page = AttachmentPage {
+            files: vec![file("a.pdf"), file("z ü.pdf")],
+            next_cursor: Some("z ü.pdf".into()),
+        };
+        assert!(validate_attachment_page(&page, 2, None).is_ok());
+        let cases = [
+            (
+                AttachmentPage {
+                    files: vec![file("../private")],
+                    next_cursor: None,
+                },
+                2,
+                None,
+            ),
+            (
+                AttachmentPage {
+                    files: vec![file(".hidden")],
+                    next_cursor: None,
+                },
+                2,
+                None,
+            ),
+            (
+                AttachmentPage {
+                    files: vec![file("a"), file("a")],
+                    next_cursor: None,
+                },
+                2,
+                None,
+            ),
+            (
+                AttachmentPage {
+                    files: vec![file("b"), file("a")],
+                    next_cursor: None,
+                },
+                2,
+                None,
+            ),
+            (
+                AttachmentPage {
+                    files: vec![file("a")],
+                    next_cursor: None,
+                },
+                2,
+                Some("a"),
+            ),
+            (
+                AttachmentPage {
+                    files: vec![file("a")],
+                    next_cursor: Some("b".into()),
+                },
+                2,
+                None,
+            ),
+            (
+                AttachmentPage {
+                    files: vec![],
+                    next_cursor: Some("a".into()),
+                },
+                2,
+                None,
+            ),
+            (page, 1, None),
+        ];
+        for (page, limit, after) in cases {
+            assert_eq!(
+                validate_attachment_page(&page, limit, after)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::IncompatibleVersion
+            );
+        }
+        let mut malformed = AttachmentPage {
+            files: vec![file("a")],
+            next_cursor: None,
+        };
+        malformed.files[0].content_type = "image/png\r\nprivate".into();
+        assert!(validate_attachment_page(&malformed, 2, None).is_err());
+    }
 }

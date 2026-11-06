@@ -16,6 +16,12 @@ pub const API_MAJOR: u32 = 1;
 pub const RECORDING_CHUNK_LIMIT: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct AttachmentPage {
+    pub files: Vec<FileInfo>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct RecordingLease {
     pub id: String,
     pub vault_id: String,

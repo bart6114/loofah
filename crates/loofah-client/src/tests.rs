@@ -837,6 +837,66 @@ async fn coherent_editor_reads_require_an_advertised_feature_before_authenticati
 }
 
 #[tokio::test]
+async fn attachment_listing_requires_an_advertised_feature_before_credentials_or_requests() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let error = client
+        .execute(
+            RemoteOperation::Attachments {
+                vault_id: "test".into(),
+                session_id: "note".into(),
+                limit: 50,
+                after: None,
+            },
+            &request_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(error.request_id.as_deref(), Some(request_id.as_str()));
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn attachment_listing_rejects_invalid_pages_before_credentials() {
+    let fixture = Fixture::new().await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("attachment_list".into());
+    for (limit, after) in [
+        (0, None),
+        (201, None),
+        (1, Some("../private")),
+        (1, Some(".hidden")),
+    ] {
+        let request = uuid::Uuid::new_v4().to_string();
+        let error = client
+            .execute(
+                RemoteOperation::Attachments {
+                    vault_id: "test".into(),
+                    session_id: "note".into(),
+                    limit,
+                    after: after.map(str::to_owned),
+                },
+                &request,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(error.request_id.as_deref(), Some(request.as_str()));
+    }
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn editor_writes_refuse_a_missing_feature_as_not_committed_before_authentication() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

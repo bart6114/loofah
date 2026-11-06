@@ -307,7 +307,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; attachment panel/uploads remain open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel is implemented; uploads and checked removal remain open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -1832,3 +1832,72 @@ The full implementation remains incomplete. Attachment panel/list/upload/delete,
 imports/exports, main-shell/profile and remote-only startup, processing/jobs,
 durable capture/upload recovery, CLI ownership/mutation parity, backups/upgrades,
 and full macOS/Windows and realistic performance gates remain required.
+
+### Shared attachment listing and action panel
+
+`SessionStore::list_attachments` now supplies a shallow, bounded read of the owned
+`attachments/` directory. It validates the session and cursor, holds its snapshot
+through blocking work after cancellation, and keeps at most 201 candidate names
+for a page plus lookahead. It ignores hidden files, nested directories and
+symlinked entries, refuses a linked attachment directory, and never enumerates
+unknown files beside canonical session content. An absent directory stays absent;
+listing creates no files. Metadata is stat-only, including for multi-gigabyte
+files. A scan beyond 50,000 directory entries fails explicitly rather than
+returning a silently incomplete page; hidden entries also count against that
+budget.
+
+`VaultContext::attachment_page` supplies the existing path-free `FileInfo` shape,
+MIME inference, media-reader admission and a next cursor. Thin IPC and HTTPS
+adapters return the same generated `AttachmentPage`. The additive
+`attachment_list` capability exposes GET
+`/api/v1/vaults/{vault}/sessions/{session}/attachments?limit=100&after=...`.
+Pages default to 100, accept 1–200 entries and sort by the exact filename. Reader
+membership suffices; inaccessible vaults stay concealed. Responses have a 256 KiB
+bound. The native SDK rejects missing capabilities and invalid page inputs before
+credentials or requests, then validates returned names, MIME, ordering, page size
+and advancing cursors. Paths never enter the response.
+
+The shared notes workspace now offers an Attachments tab when supported. Its
+infinite query belongs to `VaultScope`, refreshes for attachment changes and
+reconnect/resync, and ignores recording-only changes. Rows open a resource only
+when their action area is expanded, so listing and pagination do not exhaust
+native media handles or download image bytes. Existing localized client actions,
+loading/error feedback and verified original copies are reused. Collapsing a row,
+leaving the panel or losing access closes its resources; denied access hides
+cached filenames. The default local main panel retains its current upload/delete
+flow. Its file-size formatter is shared with the new panel without importing
+filesystem behavior into that UI.
+
+Validation passes 342 storage tests (one ignored), 110 core tests, 63 SDK tests,
+43 server unit tests and the separate headless executable test. The native desktop
+suite passes 61 tests (one ignored). All 1,795 desktop frontend tests and 303
+shared editor tests pass, together with desktop/editor typechecks, desktop/CLI
+Rust checks, generated-contract drift, scoped lint, strict locale compilation and
+production core/SDK/server Clippy. The headless production graph still excludes
+Tauri, webview and device-capture dependencies.
+
+A disposable native macOS debug window used the actual workspace, trusted HTTPS
+and synthetic OIDC to list 104 attachments across two pages at 50/150/500 ms RTT.
+It preserved exact UTF-8 names and ignored hidden/nested files and an unknown root
+attachment. The observed two-page fixture loads were approximately
+0.37/1.38/2.00 seconds; these exclude initial connection/login and do not establish
+production performance. The run proved zero resource openings during pagination,
+one opening for the expanded row, and a byte-identical original copy. External
+file creation refreshed both loaded pages. Disconnect status retained the cached
+list, and reconnection/server restart produced new reads and resync. Canonical
+note/metadata, all seeded attachment hashes, 155 preexisting fixture files and
+existing local notes were unchanged. Computer-use inspection confirmed the actual
+workspace tab, file rows and completed result. Evidence:
+`/Volumes/T7/loofah-backend-build/native-qa/attachment-panel/evidence.json`.
+The first fixture attempt reused a signed-out connection incorrectly; the test
+now opens a new connection after sign-out, matching the application lifecycle.
+Its failed evidence is retained. The owned QA processes were stopped and the
+synthetic credential was removed.
+
+Uploads, checked attachment removal, clipboard/native-drop integration, full
+main-shell migration and all wider processing/capture/CLI/deployment and platform
+gates remain part of the active objective. This read/action panel is an
+incremental boundary, not complete attachment parity. Hosted macOS, Linux backend,
+CLI and Windows x64 checks passed for the preceding `a1f11012a` resource/watcher
+commit; its Windows ARM64 run is still active. The two newer checkpoints require
+their own hosted checks before merge.

@@ -278,6 +278,25 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationAttachments(
+    sessionId: string,
+    limit: number,
+    after: string | null,
+  ): Promise<Result<AttachmentPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachments", {
+          sessionId,
+          limit,
+          after,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationDeleteRecording(
     sessionId: string,
     input: DeleteRecordingRequest,
@@ -1626,6 +1645,7 @@ export type ArtifactTarget =
   | { kind: "attachment"; attachment_id: string }
   | { kind: "all" };
 export type AttachmentCopyAction = "save" | "open" | "reveal";
+export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null };
 export type AttachmentTarget = {
   vault_id: string;
   session_id: string;
@@ -2015,6 +2035,13 @@ export type RemoteOperation =
       attachment_id: string;
     }
   | {
+      kind: "attachments";
+      vault_id: string;
+      session_id: string;
+      limit: number;
+      after: string | null;
+    }
+  | {
       kind: "delete_recording";
       vault_id: string;
       session_id: string;
@@ -2074,6 +2101,7 @@ export type RemoteReply =
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "audio_metadata"; value: FileMetadata | null }
   | { kind: "attachment_info"; value: FileInfo | null }
+  | { kind: "attachments"; value: AttachmentPage }
   | { kind: "recording_deleted"; value: boolean }
   | { kind: "tasks"; value: TaskItem[] }
   | { kind: "tasks_snapshot"; value: TasksSnapshot }

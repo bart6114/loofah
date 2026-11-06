@@ -25,6 +25,7 @@ const native = vi.hoisted(() => ({
     applicationTranscripts: vi.fn(),
     applicationAudioMetadata: vi.fn(),
     applicationAttachmentInfo: vi.fn(),
+    applicationAttachments: vi.fn(),
     applicationDeleteRecording: vi.fn(),
     applicationTasks: vi.fn(),
     applicationTasksSnapshot: vi.fn(),
@@ -711,4 +712,52 @@ describe("shared vault request and subscription contract", () => {
         .canEdit,
     ).toBe(false);
   });
+});
+
+it("uses the same attachment page contract over IPC and HTTPS with opaque cursors", async () => {
+  const page = {
+    files: [
+      {
+        filename: "chart + ü.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 42,
+      },
+    ],
+    next_cursor: null,
+  };
+  native.commands.applicationAttachments.mockResolvedValue({
+    status: "ok",
+    data: page,
+  });
+  const local = await connectLocalVault();
+  expect(await local.attachments("note", 10, "a.pdf")).toEqual(page);
+  expect(native.commands.applicationAttachments).toHaveBeenCalledWith(
+    "note",
+    10,
+    "a.pdf",
+  );
+  const request = vi.fn().mockResolvedValue(page);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["attachment_list"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    { id: "vault", role: "reader" },
+  );
+  expect(await remote.attachments("note", 10, "a.pdf")).toEqual(page);
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "attachments",
+      vault_id: "vault",
+      session_id: "note",
+      limit: 10,
+      after: "a.pdf",
+    },
+    "attachments",
+    undefined,
+  );
 });

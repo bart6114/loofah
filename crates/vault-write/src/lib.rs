@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod agents_doc;
+pub mod attachment_list;
 pub mod attachments;
 pub mod audio;
 mod audio_layout;

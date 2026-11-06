@@ -17,6 +17,7 @@ import {
 } from "./playback";
 import type {
   ApplicationError,
+  AttachmentPage,
   DeleteRecordingRequest,
   FileInfo,
   FileMetadata,
@@ -104,6 +105,12 @@ export type VaultClient = {
     attachmentId: string,
     options?: RequestOptions,
   ) => Promise<FileInfo | null>;
+  attachments: (
+    sessionId: string,
+    limit: number,
+    after?: string,
+    options?: RequestOptions,
+  ) => Promise<AttachmentPage>;
   readMetadata: (
     sessionId: string,
     options?: RequestOptions,
@@ -246,6 +253,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "note_editor_write",
       "audio_metadata_read",
       "attachment_info",
+      "attachment_list",
       "artifact_details",
       "search",
       "content_read",
@@ -299,6 +307,11 @@ export async function connectLocalVault(): Promise<VaultClient> {
     attachmentInfo: (sessionId, attachmentId, options) =>
       ipc(
         () => commands.applicationAttachmentInfo(sessionId, attachmentId),
+        options,
+      ),
+    attachments: (sessionId, limit, after, options) =>
+      ipc(
+        () => commands.applicationAttachments(sessionId, limit, after ?? null),
         options,
       ),
     tasks: (sessionId, options) =>
@@ -369,6 +382,18 @@ export function connectRemoteVault(
     networkMode: "online",
     canEdit: vault.role !== "reader",
     attachmentPresentation: scopedAttachmentPresentation,
+    attachments: (sessionId, limit, after, options) =>
+      connection.request(
+        {
+          kind: "attachments",
+          vault_id: vaultId,
+          session_id: sessionId,
+          limit,
+          after: after ?? null,
+        },
+        "attachments",
+        options,
+      ),
     features: connection.info.capabilities.features,
     deleteRecording: (sessionId, input, options) =>
       connection.request(
