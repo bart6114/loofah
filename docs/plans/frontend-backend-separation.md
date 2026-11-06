@@ -1529,3 +1529,36 @@ performance; those remain acceptance gates. This is a backend read increment: th
 frontend resolver, upload/open/reveal actions and import/export parity remain open.
 It does not add general remote offline synchronization or change local login-free
 startup. The complete plan objective and remaining release gates stay unchanged.
+
+### Typed attachment SDK and remote filename handling
+
+`crates/loofah-client/src/media.rs` now implements recording and attachment open,
+HEAD, bounded range reads and close through shared request/response code. Existing
+recording methods retain their signatures. The SDK requires the advertised
+capability before accessing credentials, validates the requested vault/session/resource
+identity and metadata, enforces exact range/ETag/MIME/length responses, and supports
+cancellation. Full-success responses to range requests are rejected before reading
+an unbounded body. Waveforms remain recording-specific.
+
+`vault-read::paths::validate_attachment_basename` validates opaque names separately
+from local storage aliases. The physical `validate_attachment_id` retains its
+additional Windows rules; remote reads can preserve a Linux vault's `CON.txt`
+without treating it as a Windows path. The protocol reexports that shared lexical
+validator. This does not authorize a client filesystem path or change stored names.
+
+All 48 SDK tests pass. New real HTTPS tests exercise escaped Unicode names,
+Windows-reserved remote names, open/retry/HEAD/ranges/close, missing capabilities,
+invalid IDs, scope/metadata/header failures, response-size bounds and cancellation
+at 50/150 ms RTT. The service's real TCP/SDK integration also opens, reads and
+closes a stored PDF attachment through the public typed methods. Production
+core/SDK/server Clippy passes. Both existing path tests and all 50 native desktop
+tests pass (one ignored). Desktop/CLI compilation, generated-contract drift and
+desktop typechecking pass. The SDK still needs its own hosted Windows x64/ARM64
+validation; native attachment presentation is not established by these tests.
+
+Native presentation remains open. The current recording URI caps responses at
+1 MiB and cannot be reused unchanged for complete images. The next step needs
+cheap file-info reads without retained download leases, then pinned leases for
+byte transfers. Full original downloads, device open/reveal actions, attachment
+notifications/cache ownership, uploads and editor integration remain required.
+Local startup and its existing attachment experience remain offline and login-free.

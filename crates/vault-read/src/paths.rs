@@ -17,12 +17,17 @@ pub fn validate_session_id(id: &str) -> crate::Result<()> {
     Ok(())
 }
 
-/// Attachment IDs are exact basenames, never caller-supplied paths. Existing Unix names
-/// retain their spelling; Windows additionally rejects device/stream aliases.
-pub fn validate_attachment_id(id: &str) -> crate::Result<()> {
+/// Validate an opaque remote name without treating it as a path on the client's OS.
+pub fn validate_attachment_basename(id: &str) -> crate::Result<()> {
     if id.is_empty() || id.starts_with('.') || id.contains(['/', '\\', '\0']) || id.len() > 4096 {
         return Err(crate::Error::Parse("invalid attachment id".into()));
     }
+    Ok(())
+}
+
+/// Storage additionally rejects device/stream aliases on Windows.
+pub fn validate_attachment_id(id: &str) -> crate::Result<()> {
+    validate_attachment_basename(id)?;
     #[cfg(target_os = "windows")]
     {
         let safe = is_windows_filename(id);

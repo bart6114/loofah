@@ -1834,6 +1834,54 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         std::fs::read(&wav_path).unwrap(),
         b"New recording after deletion"
     );
+    let payload = b"Portable attachment bytes";
+    let attachment = context
+        .store
+        .save_attachment(&created.meta.id, "spec + # ü.pdf", payload.to_vec())
+        .await
+        .unwrap();
+    let attachment_id = uuid::Uuid::new_v4().to_string();
+    let attachment_lease = first
+        .open_attachment(
+            &vault_id,
+            &created.meta.id,
+            &attachment.attachment_id,
+            &attachment_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(attachment_lease.metadata.filename, attachment.attachment_id);
+    assert_eq!(attachment_lease.metadata.content_type, "application/pdf");
+    first
+        .head_attachment(&attachment_lease, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        first
+            .read_attachment_chunk(
+                &attachment_lease,
+                0,
+                payload.len(),
+                CancellationToken::new()
+            )
+            .await
+            .unwrap(),
+        payload
+    );
+    first
+        .close_attachment(&vault_id, &attachment_id, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        first
+            .head_attachment(&attachment_lease, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotFound
+    );
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),
         title: None,

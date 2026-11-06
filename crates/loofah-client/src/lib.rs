@@ -3,10 +3,10 @@
 mod auth;
 mod drafts;
 mod events;
+mod media;
 #[cfg(feature = "os-credentials")]
 mod os_credentials;
 mod profiles;
-mod recording;
 mod requests;
 mod sse;
 

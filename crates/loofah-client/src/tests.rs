@@ -1,3 +1,4 @@
+mod attachments;
 use std::{
     collections::HashMap,
     sync::{
@@ -68,6 +69,7 @@ struct Provider {
     denied: AtomicBool,
     stalled_events: AtomicBool,
     recording_mode: AtomicUsize,
+    attachment_mode: AtomicUsize,
     delay: AtomicUsize,
     event_connections: Mutex<Vec<Option<String>>>,
 }
@@ -107,6 +109,7 @@ impl Fixture {
             denied: AtomicBool::new(false),
             stalled_events: AtomicBool::new(false),
             recording_mode: AtomicUsize::new(0),
+            attachment_mode: AtomicUsize::new(0),
             delay: AtomicUsize::new(0),
             event_connections: Mutex::new(Vec::new()),
         });
@@ -134,6 +137,16 @@ impl Fixture {
             .route(
                 "/api/v1/vaults/test/audio/leases/{lease}/peaks",
                 get(waveform_fixture),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/leases/{lease}",
+                axum::routing::put(attachments::open),
+            )
+            .route(
+                "/api/v1/vaults/test/attachments/leases/{lease}",
+                get(attachments::read)
+                    .head(attachments::head)
+                    .delete(attachments::close),
             )
             .with_state(state.clone());
         let task = tokio::spawn(async move {
@@ -358,6 +371,9 @@ async fn recording_fixture(
     let mut response = (StatusCode::PARTIAL_CONTENT, "234").into_response();
     response
         .headers_mut()
+        .insert("content-type", "audio/wav".parse().unwrap());
+    response
+        .headers_mut()
         .insert("content-range", "bytes 2-4/10".parse().unwrap());
     response.headers_mut().insert("etag", etag.parse().unwrap());
     response
@@ -374,6 +390,11 @@ async fn recording_fixture(
             response
                 .headers_mut()
                 .insert("content-range", "bytes 3-5/10".parse().unwrap());
+        }
+        8 => {
+            response
+                .headers_mut()
+                .insert("content-type", "text/plain".parse().unwrap());
         }
         5 | 7 => {
             let bytes = if mode == 7 {
@@ -610,7 +631,7 @@ async fn recording_chunks_validate_https_ranges_versions_sizes_and_cancellation(
             .unwrap(),
         b"234"
     );
-    for mode in [1, 2, 3, 5] {
+    for mode in [1, 2, 3, 5, 8] {
         fixture.state.recording_mode.store(mode, Ordering::SeqCst);
         assert_eq!(
             client

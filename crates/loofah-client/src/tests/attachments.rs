@@ -1,0 +1,349 @@
+use super::*;
+use axum::extract::Path;
+
+fn metadata(name: &str) -> FileMetadata {
+    FileMetadata {
+        filename: name.into(),
+        content_type: "application/octet-stream".into(),
+        size_bytes: 10,
+        sha256: "0".repeat(64),
+    }
+}
+fn lease(id: &str, name: &str) -> AttachmentLease {
+    AttachmentLease {
+        id: id.into(),
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        attachment_id: name.into(),
+        metadata: metadata(name),
+        idle_timeout_secs: 600,
+    }
+}
+fn authenticated(headers: &HeaderMap) {
+    assert!(
+        headers["authorization"]
+            .to_str()
+            .unwrap()
+            .starts_with("Bearer access-")
+    );
+    assert_eq!(headers["x-loofah-api-major"], "1");
+    assert!(uuid::Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).is_ok());
+}
+
+pub(super) async fn open(
+    State(state): State<Arc<Provider>>,
+    Path((vault, session, attachment, id)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    assert_eq!(vault, "test");
+    assert_eq!(session, "note");
+    let mode = state.attachment_mode.load(Ordering::SeqCst);
+    if mode == 10 {
+        return Json(Value::Null).into_response();
+    }
+    if mode == 11 {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
+    let mut value = serde_json::to_value(lease(&id, &attachment)).unwrap();
+    match mode {
+        1 => value["metadata"]["filename"] = json!("another.bin"),
+        2 => value["attachment_id"] = json!("another.bin"),
+        3 => value["metadata"]["contentType"] = json!("application/bin\r\nx-injected: true"),
+        4 => value["metadata"]["sha256"] = json!("A".repeat(64)),
+        5 => value["idle_timeout_secs"] = json!(0),
+        6 => value["vault_id"] = json!("other-vault"),
+        7 => value["id"] = json!(uuid::Uuid::new_v4()),
+        8 => value["padding"] = json!("x".repeat(256 * 1024)),
+        _ => {}
+    }
+    Json(value).into_response()
+}
+pub(super) async fn head(
+    State(state): State<Arc<Provider>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    let mode = state.attachment_mode.load(Ordering::SeqCst);
+    axum::response::Response::builder()
+        .status(if mode == 20 {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::OK
+        })
+        .header("etag", format!("\"sha256:{}\"", "0".repeat(64)))
+        .header("content-type", "application/octet-stream")
+        .header("content-length", "10")
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+pub(super) async fn read(
+    State(state): State<Arc<Provider>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    assert_eq!(headers["range"], "bytes=2-4");
+    assert_eq!(headers["accept-encoding"], "identity");
+    assert_eq!(
+        headers["if-match"],
+        format!("\"sha256:{}\"", "0".repeat(64))
+    );
+    let mode = state.attachment_mode.load(Ordering::SeqCst);
+    if mode == 11 {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
+    let mut response = axum::response::Response::builder()
+        .status(StatusCode::PARTIAL_CONTENT)
+        .header("etag", format!("\"sha256:{}\"", "0".repeat(64)))
+        .header("content-range", "bytes 2-4/10")
+        .header("content-length", "3")
+        .header("content-type", "application/octet-stream")
+        .body(axum::body::Body::from("234"))
+        .unwrap();
+    match mode {
+        21 => {
+            response
+                .headers_mut()
+                .insert("content-range", "bytes 3-5/10".parse().unwrap());
+        }
+        22 => {
+            response
+                .headers_mut()
+                .insert("etag", "wrong".parse().unwrap());
+        }
+        23 => {
+            response
+                .headers_mut()
+                .insert("content-type", "image/png".parse().unwrap());
+        }
+        24 => {
+            *response.status_mut() = StatusCode::OK;
+        }
+        25 => {
+            *response.body_mut() =
+                axum::body::Body::from_stream(futures_util::stream::iter([Ok::<
+                    _,
+                    std::convert::Infallible,
+                >(
+                    b"234".to_vec()
+                )]));
+            response.headers_mut().remove("content-length");
+        }
+        26 => {
+            *response.status_mut() = StatusCode::PRECONDITION_FAILED;
+        }
+        _ => {}
+    }
+    response
+}
+pub(super) async fn close(headers: HeaderMap) -> StatusCode {
+    authenticated(&headers);
+    StatusCode::NO_CONTENT
+}
+
+async fn capable(fixture: &Fixture) -> Arc<RemoteClient> {
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("attachment_leases".into());
+    client
+}
+
+#[tokio::test]
+async fn typed_attachment_lifecycle_handles_escaped_names_and_remote_windows_aliases_over_https() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let client = capable(&fixture).await;
+    fixture.login(&client).await;
+    for name in ["chart + # ü.bin", "CON.txt"] {
+        let id = uuid::Uuid::new_v4().to_string();
+        let opened = client
+            .open_attachment("test", "note", name, &id, CancellationToken::new())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(opened, lease(&id, name));
+        assert_eq!(
+            client
+                .open_attachment("test", "note", name, &id, CancellationToken::new())
+                .await
+                .unwrap(),
+            Some(opened.clone())
+        );
+        client
+            .head_attachment(&opened, CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            client
+                .read_attachment_chunk(&opened, 2, 3, CancellationToken::new())
+                .await
+                .unwrap(),
+            b"234"
+        );
+        client
+            .close_attachment("test", &id, CancellationToken::new())
+            .await
+            .unwrap();
+    }
+    fixture.state.attachment_mode.store(10, Ordering::SeqCst);
+    assert!(
+        client
+            .open_attachment(
+                "test",
+                "note",
+                "missing.bin",
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new()
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn attachment_capability_and_portable_validation_run_before_credentials() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let id = uuid::Uuid::new_v4().to_string();
+    assert_eq!(
+        client
+            .open_attachment("test", "note", "valid.bin", &id, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    assert_eq!(
+        client
+            .close_attachment("test", &id, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    let client = capable(&fixture).await;
+    for name in ["", ".private", "../note.md", "nested/a", "a\\b", "a\0b"] {
+        assert_eq!(
+            client
+                .open_attachment("test", "note", name, &id, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+    }
+    let opened = lease(&id, "valid.bin");
+    for (offset, length) in [
+        (0, 0),
+        (10, 1),
+        (0, RECORDING_CHUNK_LIMIT + 1),
+        (u64::MAX, 1),
+    ] {
+        assert_eq!(
+            client
+                .read_attachment_chunk(&opened, offset, length, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+    }
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn attachment_responses_enforce_identity_headers_and_bounded_representation() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let client = capable(&fixture).await;
+    fixture.login(&client).await;
+    let id = uuid::Uuid::new_v4().to_string();
+    for mode in 1..=8 {
+        fixture.state.attachment_mode.store(mode, Ordering::SeqCst);
+        let expected = if mode == 8 {
+            ErrorCode::ResourceLimit
+        } else {
+            ErrorCode::IncompatibleVersion
+        };
+        assert_eq!(
+            client
+                .open_attachment("test", "note", "valid.bin", &id, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            expected,
+            "mode {mode}"
+        );
+    }
+    let opened = lease(&id, "valid.bin");
+    for mode in 21..=25 {
+        fixture.state.attachment_mode.store(mode, Ordering::SeqCst);
+        assert_eq!(
+            client
+                .read_attachment_chunk(&opened, 2, 3, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::IncompatibleVersion,
+            "mode {mode}"
+        );
+    }
+    fixture.state.attachment_mode.store(26, Ordering::SeqCst);
+    assert_eq!(
+        client
+            .read_attachment_chunk(&opened, 2, 3, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    fixture.state.attachment_mode.store(20, Ordering::SeqCst);
+    assert_eq!(
+        client
+            .head_attachment(&opened, CancellationToken::new())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotFound
+    );
+}
+
+#[tokio::test]
+async fn attachment_open_and_chunk_cancellation_do_not_wait_for_the_network_timeout() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(150))).await;
+    let client = capable(&fixture).await;
+    fixture.login(&client).await;
+    fixture.state.attachment_mode.store(11, Ordering::SeqCst);
+    let id = uuid::Uuid::new_v4().to_string();
+    let opened = lease(&id, "valid.bin");
+    for open in [true, false] {
+        let cancel = CancellationToken::new();
+        let caller = client.clone();
+        let cancelled = cancel.clone();
+        let data = opened.clone();
+        let started = std::time::Instant::now();
+        let request = tokio::spawn(async move {
+            if open {
+                caller
+                    .open_attachment("test", "note", "valid.bin", &data.id, cancelled)
+                    .await
+                    .map(|_| ())
+            } else {
+                caller
+                    .read_attachment_chunk(&data, 2, 3, cancelled)
+                    .await
+                    .map(|_| ())
+            }
+        });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        cancel.cancel();
+        assert_eq!(
+            request.await.unwrap().unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+}
