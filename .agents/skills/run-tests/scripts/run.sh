@@ -82,6 +82,8 @@ run_lint() {
 
 run_frontend() {
   run_step "UI build" pnpm -F ui build
+  run_step "shared editor typecheck" pnpm -F @hypr/editor typecheck
+  run_step "shared editor tests" pnpm -F @hypr/editor test
   run_step "desktop typecheck" pnpm -F desktop typecheck
   run_step "desktop frontend tests" pnpm -F desktop test
   run_step "desktop locale catalogs" pnpm -F desktop i18n:check

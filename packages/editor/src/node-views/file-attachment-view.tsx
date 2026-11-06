@@ -115,6 +115,7 @@ export const FileAttachmentView = forwardRef<
     src: node.attrs.src,
     path: node.attrs.path,
     resolved: resolvedAttachment,
+    attachmentId: typeof attachmentId === "string" ? attachmentId : undefined,
   });
 
   const Icon = getFileIcon(mimeType ?? "");
@@ -170,7 +171,7 @@ export const FileAttachmentView = forwardRef<
         </div>
 
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {src && open && (
+          {open && (
             <button
               type="button"
               onMouseDown={(e) => {

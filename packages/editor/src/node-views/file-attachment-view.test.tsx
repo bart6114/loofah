@@ -103,3 +103,12 @@ it("does not infer native actions from a resolved URL or server path", () => {
   expect(screen.queryByTitle("Open file")).toBeNull();
   expect(screen.queryByTitle("Show in Finder")).toBeNull();
 });
+
+it("opens an action-only resource without requiring an inline URL or path", () => {
+  const open = vi.fn();
+  scoped({ open });
+  fireEvent.mouseDown(screen.getByTitle("Open file"));
+  expect(open).toHaveBeenCalledOnce();
+  expect(screen.queryByTitle("Show in Finder")).toBeNull();
+  expect(commands.openPath).not.toHaveBeenCalled();
+});

@@ -114,6 +114,22 @@ describe("client attachment presentation", () => {
     expect(commands.openPath).not.toHaveBeenCalled();
   });
 
+  it("does not substitute a raw source for a scoped attachment that is unavailable", () => {
+    expect(
+      scopedAttachmentPresentation({
+        src: "https://example.com/unrelated.png",
+        attachmentId: "owned-image.png",
+        resolved: null,
+      }).src,
+    ).toBeUndefined();
+    expect(
+      scopedAttachmentPresentation({
+        src: "https://example.com/unrelated.png",
+        resolved: { open: vi.fn() },
+      }).src,
+    ).toBeUndefined();
+  });
+
   it("keeps supported public and raster image sources without modifying their text", () => {
     for (const src of [
       "https://example.com/image.png?signature=a%2Bb#part",

@@ -6,6 +6,7 @@ export type AttachmentAction = () => void | Promise<unknown>;
 export type AttachmentPresentation = (input: {
   src?: unknown;
   path?: unknown;
+  attachmentId?: string;
   resolved?: AttachmentResolution | null;
 }) => { src?: string; open?: AttachmentAction; reveal?: AttachmentAction };
 
@@ -37,9 +38,14 @@ export const legacyAttachmentPresentation: AttachmentPresentation = ({
 // Resolved values come from a client-owned resource handle, never a server path.
 export const scopedAttachmentPresentation: AttachmentPresentation = ({
   src,
+  attachmentId,
   resolved,
 }) => ({
-  src: resolved?.src ?? externalImageSource(src),
+  src: resolved
+    ? resolved.src
+    : attachmentId
+      ? undefined
+      : externalImageSource(src),
   open: resolved?.open,
   reveal: resolved?.reveal,
 });

@@ -10,7 +10,7 @@ export type AttachmentResolution = {
   path?: string;
   open?: AttachmentAction;
   reveal?: AttachmentAction;
-  src: string;
+  src?: string;
 };
 
 export type AttachmentResolver = (

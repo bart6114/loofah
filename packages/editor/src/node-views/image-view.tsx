@@ -107,6 +107,7 @@ export const ResizableImageView = forwardRef<
   const presentation = useAttachmentPresentation()({
     src: node.attrs.src,
     resolved: resolvedAttachment,
+    attachmentId: typeof attachmentId === "string" ? attachmentId : undefined,
   });
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);

@@ -1177,3 +1177,22 @@ The preceding pushed recording-metadata checkpoint subsequently passed every
 hosted gate, including native Windows x64 and ARM64. The recording-range,
 waveform-input, attachment-descriptor and client-presentation batch still needs
 its own hosted results. All local artifacts remain on T7.
+
+File actions now work without an inline URL: an authorized file handle may
+supply only an open callback. A missing scoped attachment does not substitute a
+raw public URL from its node attributes, and a resolved action-only handle does
+not inherit a raw source. This keeps file opening independent of image/audio
+presentation and avoids allocating media handles just to display a file row.
+The editor suite passes 302 tests after these regressions.
+
+The desktop frontend CI job and local `run-tests` frontend group now also run
+shared editor typechecking and tests. The earlier frontend job ran desktop tests
+alone, so a green desktop-only result did not execute the new editor policy and
+node-view regressions. This adds that missing gate without adding Linux desktop
+support. Existing local legacy actions and the scoped callback interface share
+the same node views.
+
+The updated local frontend CI mirror passes: 302 shared editor tests and 1,712
+desktop tests, both typechecks, UI build, formatting and locale compilation.
+The workflow security check passes at the repository's configured high-severity
+threshold; two pre-existing low-severity local-action findings are unchanged.
