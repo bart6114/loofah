@@ -1,3 +1,9 @@
+import {
+  type AttachmentPresentation,
+  legacyAttachmentPresentation,
+  scopedAttachmentPresentation,
+} from "@hypr/editor/attachment-presentation";
+
 import { applicationResult, ApplicationRequestError } from "./errors";
 import type {
   ApplicationError,
@@ -60,6 +66,7 @@ export type VaultClient = {
   readonly scope: string;
   readonly networkMode: "always" | "online";
   readonly canEdit: boolean;
+  readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
   audioMetadata: (
     sessionId: string,
@@ -197,6 +204,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     scope,
     networkMode: "always",
     canEdit: true,
+    attachmentPresentation: legacyAttachmentPresentation,
     features: [
       "notes",
       "note_editor_read",
@@ -310,6 +318,7 @@ export function connectRemoteVault(
     ]),
     networkMode: "online",
     canEdit: vault.role !== "reader",
+    attachmentPresentation: scopedAttachmentPresentation,
     features: connection.info.capabilities.features,
     readMetadata: (sessionId, options) =>
       connection.request(

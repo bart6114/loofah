@@ -14,11 +14,11 @@ import {
 import type { NodeSpec } from "prosemirror-model";
 import { forwardRef } from "react";
 
-import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { cn } from "@hypr/utils";
 
 import {
   useAttachmentEditingEnabled,
+  useAttachmentPresentation,
   useAttachmentResolver,
 } from "./attachment-resolver";
 import { getSafeNodePos } from "./error-boundary";
@@ -111,8 +111,11 @@ export const FileAttachmentView = forwardRef<
   const resolvedAttachment =
     typeof attachmentId === "string" ? resolveAttachment?.(attachmentId) : null;
   const { name, mimeType, size } = node.attrs;
-  const src = resolvedAttachment?.src ?? node.attrs.src;
-  const path = resolvedAttachment?.path ?? node.attrs.path;
+  const { src, open, reveal } = useAttachmentPresentation()({
+    src: node.attrs.src,
+    path: node.attrs.path,
+    resolved: resolvedAttachment,
+  });
 
   const Icon = getFileIcon(mimeType ?? "");
   const sizeLabel = formatFileSize(size);
@@ -127,24 +130,6 @@ export const FileAttachmentView = forwardRef<
     view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
     view.focus();
   });
-
-  const handleOpen = () => {
-    if (path) {
-      if (path.startsWith("https://")) {
-        openerCommands.openUrl(path, null);
-      } else {
-        openerCommands.openPath(path, null);
-      }
-    }
-  };
-
-  const isLocalFile = typeof path === "string" && !path.startsWith("https://");
-
-  const handleReveal = () => {
-    if (isLocalFile) {
-      openerCommands.revealItemInDir(path);
-    }
-  };
 
   const isImage = typeof mimeType === "string" && mimeType.startsWith("image/");
 
@@ -185,13 +170,13 @@ export const FileAttachmentView = forwardRef<
         </div>
 
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {src && (
+          {src && open && (
             <button
               type="button"
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                handleOpen();
+                void open();
               }}
               className="hover:bg-accent rounded p-1"
               title="Open file"
@@ -199,13 +184,13 @@ export const FileAttachmentView = forwardRef<
               <ExternalLinkIcon size={14} className="text-muted-foreground" />
             </button>
           )}
-          {isLocalFile && (
+          {reveal && (
             <button
               type="button"
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                handleReveal();
+                void reveal();
               }}
               className="hover:bg-accent rounded p-1"
               title="Show in Finder"

@@ -10,6 +10,7 @@ import { cn } from "@hypr/utils";
 
 import {
   useAttachmentEditingEnabled,
+  useAttachmentPresentation,
   useAttachmentResolver,
 } from "./attachment-resolver";
 import { getSafeNodePos } from "./error-boundary";
@@ -103,6 +104,10 @@ export const ResizableImageView = forwardRef<
       : node.attrs.attachmentId;
   const resolvedAttachment =
     typeof attachmentId === "string" ? resolveAttachment?.(attachmentId) : null;
+  const presentation = useAttachmentPresentation()({
+    src: node.attrs.src,
+    resolved: resolvedAttachment,
+  });
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [draftWidth, setDraftWidth] = useState<number | null>(null);
@@ -212,7 +217,7 @@ export const ResizableImageView = forwardRef<
       >
         <img
           ref={imageRef}
-          src={resolvedAttachment?.src ?? node.attrs.src}
+          src={presentation.src}
           alt={node.attrs.alt || ""}
           title={parseImageMetadata(node.attrs.title).title ?? undefined}
           onLoad={scrollCaretIntoView}

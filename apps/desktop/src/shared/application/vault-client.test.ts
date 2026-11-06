@@ -41,6 +41,29 @@ import { ApplicationRequestError } from "./errors";
 import type { NativeRemoteConnection } from "./remote";
 import { connectLocalVault, connectRemoteVault } from "./vault-client";
 
+it("selects client asset presentation independently of editor components", async () => {
+  const local = await connectLocalVault();
+  expect(
+    local.attachmentPresentation({
+      src: "asset:/local.png",
+      path: "/local.png",
+    }).src,
+  ).toBe("asset:/local.png");
+  const remote = connectRemoteVault(
+    {
+      info: { server: "https://example.com", capabilities: { features: [] } },
+    } as unknown as NativeRemoteConnection,
+    "member",
+    { id: "vault", role: "editor" },
+  );
+  expect(
+    remote.attachmentPresentation({
+      src: "asset:/private.png",
+      path: "/private.png",
+    }),
+  ).toEqual({ src: undefined, open: undefined, reveal: undefined });
+});
+
 const note = { markdown: "Note", title: "Title", revision: "a" };
 const vault = {
   id: "first",

@@ -30,6 +30,11 @@ vi.mock("@handlewithcare/react-prosemirror", () => ({
   useIsNodeSelected: () => false,
 }));
 
+import { scopedAttachmentPresentation } from "./attachment-presentation";
+import {
+  AttachmentPresentationContext,
+  AttachmentResolverContext,
+} from "./attachment-resolver";
 import { ResizableImageView } from "./image-view";
 
 describe("ResizableImageView", () => {
@@ -43,6 +48,33 @@ describe("ResizableImageView", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("does not render a raw native source under the scoped client policy", () => {
+    render(
+      <AttachmentPresentationContext.Provider
+        value={scopedAttachmentPresentation}
+      >
+        {image()}
+      </AttachmentPresentationContext.Provider>,
+    );
+    expect(screen.getByRole("presentation").getAttribute("src")).toBeNull();
+  });
+
+  it("renders a client-resolved resource instead of the raw native source", () => {
+    const resolver = () => ({ src: "loofah-media://localhost/authorized" });
+    render(
+      <AttachmentPresentationContext.Provider
+        value={scopedAttachmentPresentation}
+      >
+        <AttachmentResolverContext.Provider value={resolver}>
+          {image("image.png")}
+        </AttachmentResolverContext.Provider>
+      </AttachmentPresentationContext.Provider>,
+    );
+    expect(screen.getByRole("presentation").getAttribute("src")).toBe(
+      "loofah-media://localhost/authorized",
+    );
   });
 
   it("scrolls the caret after the image into view once the image loads", () => {
@@ -68,7 +100,11 @@ describe("ResizableImageView", () => {
 });
 
 function renderImage() {
-  return render(
+  return render(image());
+}
+
+function image(attachmentId: string | null = null) {
+  return (
     <ResizableImageView
       nodeProps={
         {
@@ -77,7 +113,7 @@ function renderImage() {
               src: "asset:/image.png",
               alt: null,
               title: null,
-              attachmentId: null,
+              attachmentId,
               sharedAttachmentId: null,
               editorWidth: 80,
             },
@@ -86,6 +122,6 @@ function renderImage() {
           getPos: () => 4,
         } as any
       }
-    />,
+    />
   );
 }

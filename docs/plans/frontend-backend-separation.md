@@ -1134,3 +1134,46 @@ intact when a resource cannot be displayed. Validate hostile device/native URLs,
 unavailable resources, profile/window disposal and normal local image/file
 opening before enabling remote rich-editor rendering. This work does not add
 support for dormant shared-attachment or bases functionality.
+
+### Client-provided attachment presentation
+
+`VaultClient` now supplies an attachment presentation capability. The existing
+local adapter retains native asset URLs and open/reveal behavior. The scoped
+adapter accepts file actions only from client-resolved resource callbacks;
+unresolved node/server paths cannot become device open/reveal commands. Image
+presentation refuses raw device/native/relative URLs and explicit local address
+forms, while keeping supported public web and inline image sources. This URL
+classification is a rendering policy, not a DNS-resolving network proxy.
+
+Image and file node views consume the provided presentation result without
+checking transport. `NoteEditor` inherits the surrounding policy, so a nested
+editor does not silently reset a stricter parent. Resolution can return actions
+without a filesystem path. A dedicated package export keeps this capability
+from pulling the editor/component barrel into every client. Stored attributes
+and the Markdown serializer are unchanged. The remote notes preview has not
+switched to the rich editor yet; native scoped URLs and authorized resource
+callbacks still need their real media adapter.
+
+Validation: all 1,712 desktop frontend tests and 300 editor-package tests pass.
+The final awaited-action refinement also passes focused policy/file-view tests.
+Desktop/editor typechecking, formatting, UI build, strict compilation of all
+547 locale messages and scoped lint pass with zero scoped lint warnings. Tests
+cover inherited policy through an actual editor mount, raw/forged native URLs,
+explicit local address forms, server-path refusal, client-only action callbacks,
+public/inline image compatibility and local macOS/Windows path handling.
+
+A freshly built disposable macOS bundle started locally without server login.
+A PNG attachment rendered through the unchanged local asset path. Its file
+control revealed the exact attachment in Finder and opened the expected text in
+TextEdit. The attachment URL was under test session
+`f3b3ffdb-2c09-4d8a-8666-5664d7d1c192`; note and attachment bytes and the
+pre-existing QA note retained their hashes. The app quit through its menu and
+the Vite process stopped. The tested binary SHA-256 was
+`0f8b40b33dccfce4edac567544bf347ffffc1ec6cdaea8232ae3383e583087cb`.
+This focused development-bundle check does not replace remote media, signed
+production, Windows UI, long-recording or full critical-UX validation.
+
+The preceding pushed recording-metadata checkpoint subsequently passed every
+hosted gate, including native Windows x64 and ARM64. The recording-range,
+waveform-input, attachment-descriptor and client-presentation batch still needs
+its own hosted results. All local artifacts remain on T7.
