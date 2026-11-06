@@ -14,7 +14,13 @@ impl VaultContext {
         session_id: &str,
     ) -> Result<Option<AudioFileMetadata>, ApplicationError> {
         self.read_recording(session_id, |source| {
-            recording_with_metadata(source).map(|(_, metadata, _)| metadata)
+            recording_with_metadata(source, |filename, file, _| {
+                hypr_fs_sync_core::audio::metadata_from_reader(filename, file)
+                    .map_err(media_error)?
+                    .map(|metadata| (metadata, ()))
+                    .ok_or_else(|| error(ErrorCode::Internal, "Unsupported recording format"))
+            })
+            .map(|(_, metadata, _, ())| metadata)
         })
         .await
     }
@@ -72,14 +78,12 @@ impl VaultContext {
     }
 }
 
-pub(crate) fn recording_with_metadata(
+pub(crate) fn recording_with_metadata<T>(
     mut source: OpenedRecording,
-) -> Result<(OpenedRecording, AudioFileMetadata, std::fs::Metadata), ApplicationError> {
+    read: impl FnOnce(&str, &mut std::fs::File, u64) -> Result<(AudioFileMetadata, T), ApplicationError>,
+) -> Result<(OpenedRecording, AudioFileMetadata, std::fs::Metadata, T), ApplicationError> {
     let before = source.file.metadata().map_err(media_error)?;
-    let metadata =
-        hypr_fs_sync_core::audio::metadata_from_reader(source.filename, &mut source.file)
-            .map_err(media_error)?
-            .ok_or_else(|| error(ErrorCode::Internal, "Unsupported recording format"))?;
+    let (metadata, extra) = read(source.filename, &mut source.file, before.len())?;
     let after = source.file.metadata().map_err(media_error)?;
     if before.len() != after.len()
         || before.modified().ok() != after.modified().ok()
@@ -90,7 +94,7 @@ pub(crate) fn recording_with_metadata(
             "Recording changed while its metadata was read",
         ));
     }
-    Ok((source, metadata, after))
+    Ok((source, metadata, after, extra))
 }
 
 fn media_error(cause: std::io::Error) -> ApplicationError {

@@ -10,12 +10,16 @@ use std::{
 };
 
 use hypr_loofah_protocol::{ApplicationError, AudioFileMetadata, ErrorCode, RecordingLease};
+use sha2::{Digest, Sha256};
 use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore};
 
 use crate::{VaultContext, vault::error};
 
 pub use hypr_loofah_protocol::RECORDING_CHUNK_LIMIT;
 const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
+const HASH_CHUNK_SIZE: usize = 64 * 1024;
+const HASH_INDEX_BUDGET: usize = 64 * 1024 * 1024;
+const HASH_INDEX_LIMIT: usize = 16 * 1024 * 1024;
 
 /// Hosts supply an authenticated member or device-window generation as the owner.
 /// A lease ID alone never grants access. Hosts must recheck vault authorization on every read.
@@ -25,6 +29,8 @@ pub struct RecordingLeases(Arc<Registry>);
 struct Registry {
     state: Mutex<State>,
     slots: Arc<Semaphore>,
+    index_budget: Arc<Semaphore>,
+    index_limit: usize,
     owner_limit: usize,
     idle_timeout: Duration,
 }
@@ -53,6 +59,20 @@ struct Recording {
     file: Mutex<File>,
     metadata: AudioFileMetadata,
     modified: Option<SystemTime>,
+    chunks: ChunkIndex,
+}
+
+struct ChunkIndex {
+    hashes: Vec<[u8; 32]>,
+    // Retain memory admission until all readers and cancelled blocking work finish.
+    _memory: OwnedSemaphorePermit,
+}
+
+struct IndexedReader<R> {
+    reader: R,
+    hashes: Vec<[u8; 32]>,
+    hasher: Sha256,
+    pending: usize,
 }
 
 #[derive(Clone)]
@@ -69,9 +89,27 @@ impl Default for RecordingLeases {
 
 impl RecordingLeases {
     fn new(capacity: usize, owner_limit: usize, idle_timeout: Duration) -> Self {
+        Self::with_index_limits(
+            capacity,
+            owner_limit,
+            idle_timeout,
+            HASH_INDEX_BUDGET,
+            HASH_INDEX_LIMIT,
+        )
+    }
+
+    fn with_index_limits(
+        capacity: usize,
+        owner_limit: usize,
+        idle_timeout: Duration,
+        index_budget: usize,
+        index_limit: usize,
+    ) -> Self {
         Self(Arc::new(Registry {
             state: Mutex::new(State::default()),
             slots: Arc::new(Semaphore::new(capacity)),
+            index_budget: Arc::new(Semaphore::new(index_budget)),
+            index_limit,
             owner_limit,
             idle_timeout,
         }))
@@ -146,15 +184,23 @@ impl RecordingLeases {
             let result = entry
                 .recording
                 .get_or_init(|| async {
+                    let budget = leases.0.index_budget.clone();
+                    let limit = leases.0.index_limit;
                     entry
                         .context
-                        .read_recording(&entry.session, |source| {
-                            let (source, metadata, after) =
-                                crate::media::recording_with_metadata(source)?;
+                        .read_recording(&entry.session, move |source| {
+                            let (source, metadata, after, chunks) =
+                                crate::media::recording_with_metadata(
+                                    source,
+                                    |filename, file, size| {
+                                        ChunkIndex::collect(filename, file, size, budget, limit)
+                                    },
+                                )?;
                             Ok(Arc::new(Recording {
                                 file: Mutex::new(source.file),
                                 metadata,
                                 modified: after.modified().ok(),
+                                chunks,
                             }))
                         })
                         .await
@@ -316,11 +362,34 @@ impl RecordingReader {
             reader.entry.touch()?;
             let mut file = reader.recording.file.lock().unwrap();
             reader.verify(&file)?;
-            file.seek(SeekFrom::Start(offset)).map_err(read_error)?;
             let length =
                 (reader.recording.metadata.size_bytes - offset).min(length as u64) as usize;
-            let mut bytes = vec![0; length];
-            file.read_exact(&mut bytes).map_err(read_error)?;
+            let end = offset + length as u64;
+            let first = offset / HASH_CHUNK_SIZE as u64;
+            let last = (end - 1) / HASH_CHUNK_SIZE as u64;
+            file.seek(SeekFrom::Start(first * HASH_CHUNK_SIZE as u64))
+                .map_err(read_error)?;
+            let mut bytes = Vec::with_capacity(length);
+            let mut buffer = [0; HASH_CHUNK_SIZE];
+            for index in first..=last {
+                let start = index * HASH_CHUNK_SIZE as u64;
+                let count = (reader.recording.metadata.size_bytes - start)
+                    .min(HASH_CHUNK_SIZE as u64) as usize;
+                file.read_exact(&mut buffer[..count]).map_err(|cause| {
+                    if cause.kind() == std::io::ErrorKind::UnexpectedEof {
+                        reader.changed()
+                    } else {
+                        read_error(cause)
+                    }
+                })?;
+                let hash: [u8; 32] = Sha256::digest(&buffer[..count]).into();
+                if hash != reader.recording.chunks.hashes[index as usize] {
+                    return Err(reader.changed());
+                }
+                let from = offset.saturating_sub(start) as usize;
+                let to = (end - start).min(count as u64) as usize;
+                bytes.extend_from_slice(&buffer[from..to]);
+            }
             reader.verify(&file)?;
             reader.entry.touch()?;
             Ok(bytes)
@@ -334,11 +403,84 @@ impl RecordingReader {
         if metadata.len() != self.recording.metadata.size_bytes
             || metadata.modified().ok() != self.recording.modified
         {
-            self.entry.closed.store(true, Ordering::Release);
-            return Err(changed_error());
+            return Err(self.changed());
         }
         Ok(())
     }
+
+    fn changed(&self) -> ApplicationError {
+        self.entry.closed.store(true, Ordering::Release);
+        changed_error()
+    }
+}
+
+impl ChunkIndex {
+    fn collect(
+        filename: &str,
+        file: &mut File,
+        size: u64,
+        budget: Arc<Semaphore>,
+        limit: usize,
+    ) -> Result<(AudioFileMetadata, Self), ApplicationError> {
+        let count = size.div_ceil(HASH_CHUNK_SIZE as u64);
+        let memory = count.checked_mul(32).ok_or_else(index_limit_error)?;
+        if memory > limit as u64 || memory > u32::MAX as u64 {
+            return Err(index_limit_error());
+        }
+        let permit = budget
+            .try_acquire_many_owned(memory as u32)
+            .map_err(|_| capacity_error())?;
+        let mut hashes = Vec::new();
+        hashes
+            .try_reserve_exact(count as usize)
+            .map_err(|_| capacity_error())?;
+        // A growing file cannot expand the admitted index while hashing.
+        let mut indexed = IndexedReader {
+            reader: file.take(size),
+            hashes,
+            hasher: Sha256::new(),
+            pending: 0,
+        };
+        let metadata = hypr_fs_sync_core::audio::metadata_from_reader(filename, &mut indexed)
+            .map_err(read_error)?
+            .ok_or_else(|| error(ErrorCode::Internal, "Unsupported recording format"))?;
+        if indexed.pending != 0 {
+            indexed.hashes.push(indexed.hasher.finalize().into());
+        }
+        Ok((
+            metadata,
+            Self {
+                hashes: indexed.hashes,
+                _memory: permit,
+            },
+        ))
+    }
+}
+
+impl<R: Read> Read for IndexedReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let count = self.reader.read(buffer)?;
+        let mut bytes = &buffer[..count];
+        while !bytes.is_empty() {
+            let take = bytes.len().min(HASH_CHUNK_SIZE - self.pending);
+            self.hasher.update(&bytes[..take]);
+            self.pending += take;
+            bytes = &bytes[take..];
+            if self.pending == HASH_CHUNK_SIZE {
+                self.hashes
+                    .push(std::mem::take(&mut self.hasher).finalize().into());
+                self.pending = 0;
+            }
+        }
+        Ok(count)
+    }
+}
+
+fn index_limit_error() -> ApplicationError {
+    error(
+        ErrorCode::ResourceLimit,
+        "Recording exceeds the playback verification limit",
+    )
 }
 
 fn normalize_id(id: &str) -> Result<String, ApplicationError> {
@@ -582,6 +724,140 @@ mod tests {
         assert_eq!(leases.0.slots.available_permits(), 1);
     }
 
+    #[tokio::test]
+    async fn ranges_verify_full_overlapping_chunks_even_when_size_and_timestamp_are_unchanged() {
+        let (root, context) = fixture().await;
+        let path = root.path().join("sessions/note/audio.wav");
+        let original: Vec<u8> = (0..(HASH_CHUNK_SIZE * 2 + 17))
+            .map(|i| (i % 251) as u8)
+            .collect();
+        std::fs::write(&path, &original).unwrap();
+        let leases = RecordingLeases::default();
+        let id = id();
+        let info = leases
+            .open(context.clone(), "alice", &id, "note")
+            .await
+            .unwrap()
+            .unwrap();
+        let reader = leases.reader("alice", "vault", &id).unwrap();
+        for (offset, length) in [
+            (0, 1),
+            (23, 100),
+            (HASH_CHUNK_SIZE - 1, 2),
+            (HASH_CHUNK_SIZE, HASH_CHUNK_SIZE + 17),
+            (original.len() - 1, 100),
+        ] {
+            assert_eq!(
+                reader.read_chunk(offset as u64, length).await.unwrap(),
+                original[offset..(offset + length).min(original.len())]
+            );
+        }
+
+        let before = std::fs::metadata(&path).unwrap();
+        let modified = before.modified().unwrap();
+        let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        let mut writer = &file;
+        writer
+            .seek(SeekFrom::Start((HASH_CHUNK_SIZE + 7) as u64))
+            .unwrap();
+        std::io::Write::write_all(&mut writer, b"changed").unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let after = file.metadata().unwrap();
+        assert_eq!(after.len(), before.len());
+        assert_eq!(after.modified().unwrap(), modified);
+
+        // Unchanged chunks still match the opened representation. A read elsewhere in
+        // the changed chunk must fail even when its requested bytes were untouched.
+        assert_eq!(reader.read_chunk(0, 10).await.unwrap(), original[..10]);
+        assert_eq!(
+            reader
+                .read_chunk(HASH_CHUNK_SIZE as u64, 1)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Unavailable
+        );
+        assert!(leases.reader("alice", "vault", &id).is_err());
+        let replacement = leases
+            .open(context, "alice", &self::id(), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(replacement.metadata.sha256, info.metadata.sha256);
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("sessions/note/notes.md")).unwrap(),
+            "Unchanged note"
+        );
+    }
+
+    #[tokio::test]
+    async fn hash_memory_admission_counts_readers_after_close_and_releases_failed_opens() {
+        let (root, context) = fixture().await;
+        let file = File::options()
+            .write(true)
+            .open(root.path().join("sessions/note/audio.wav"))
+            .unwrap();
+        file.set_len(HASH_CHUNK_SIZE as u64 + 1).unwrap();
+        let leases = RecordingLeases::with_index_limits(4, 4, IDLE_TIMEOUT, 96, 64);
+        let id = id();
+        leases
+            .open(context.clone(), "alice", &id, "note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(leases.0.index_budget.available_permits(), 32);
+        let reader = leases.reader("alice", "vault", &id).unwrap();
+        leases.close("alice", "vault", &id).unwrap();
+        let failed_id = self::id();
+        let busy = leases
+            .open(context.clone(), "bob", &failed_id, "note")
+            .await
+            .unwrap_err();
+        assert_eq!(busy.code, ErrorCode::ResourceLimit);
+        assert!(busy.retryable);
+        assert_eq!(leases.0.slots.available_permits(), 3);
+        drop(reader);
+        assert_eq!(leases.0.index_budget.available_permits(), 96);
+        leases
+            .open(context, "bob", &failed_id, "note")
+            .await
+            .unwrap()
+            .unwrap();
+        leases.close_all();
+        assert_eq!(leases.0.index_budget.available_permits(), 96);
+        assert_eq!(leases.0.slots.available_permits(), 4);
+    }
+
+    #[tokio::test]
+    async fn oversized_recordings_are_rejected_before_hashing_and_do_not_leak_admission() {
+        let (root, context) = fixture().await;
+        let file = File::options()
+            .write(true)
+            .open(root.path().join("sessions/note/audio.wav"))
+            .unwrap();
+        file.set_len(HASH_CHUNK_SIZE as u64 + 1).unwrap();
+        let leases = RecordingLeases::with_index_limits(1, 1, IDLE_TIMEOUT, 64, 32);
+        let rejected = leases
+            .open(context.clone(), "alice", &id(), "note")
+            .await
+            .unwrap_err();
+        assert_eq!(rejected.code, ErrorCode::ResourceLimit);
+        assert!(!rejected.retryable);
+        assert_eq!(leases.0.index_budget.available_permits(), 64);
+        assert_eq!(leases.0.slots.available_permits(), 1);
+        file.set_len(0).unwrap();
+        let empty = leases
+            .open(context, "alice", &id(), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(empty.metadata.size_bytes, 0);
+        assert_eq!(leases.0.index_budget.available_permits(), 64);
+        leases.close_all();
+        assert_eq!(leases.0.slots.available_permits(), 1);
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancelled_chunk_retains_ownership_and_admission_until_blocking_io_finishes() {
         let (_root, context) = fixture().await;
@@ -610,6 +886,10 @@ mod tests {
         drop(reader);
         assert!(entry.upgrade().is_some());
         assert_eq!(
+            leases.0.index_budget.available_permits(),
+            HASH_INDEX_BUDGET - 32
+        );
+        assert_eq!(
             leases
                 .open(context.clone(), "bob", &self::id(), "note")
                 .await
@@ -632,6 +912,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(leases.0.slots.available_permits(), 1);
+        assert_eq!(leases.0.index_budget.available_permits(), HASH_INDEX_BUDGET);
         assert!(
             leases
                 .open(context, "bob", &self::id(), "note")

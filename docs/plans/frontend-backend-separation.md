@@ -1196,3 +1196,50 @@ The updated local frontend CI mirror passes: 302 shared editor tests and 1,712
 desktop tests, both typechecks, UI build, formatting and locale compilation.
 The workflow security check passes at the repository's configured high-severity
 threshold; two pre-existing low-severity local-action findings are unchanged.
+
+### Recording byte verification
+
+The size/mtime guard alone could miss an in-place recording edit when its length
+and timestamp were unchanged. Recording opens now collect fixed 64 KiB chunk
+SHA-256 hashes during the existing full-file metadata pass. Each bounded range
+read verifies all overlapping chunks before returning any requested bytes.
+Atomic replacement still preserves the opened descriptor's generation. A changed
+chunk closes that handle; subsequent access requires reopening and comparing the
+new full-file SHA-256. The metadata and canonical vault formats are unchanged.
+
+Verification hashes reserve memory before reading: at most 16 MiB per handle and
+64 MiB across the host, covering recordings up to 32 GiB. Per-file excess is a
+non-retryable resource-limit response; temporary shared exhaustion is retryable.
+Failed opens release admission. Closed handles and cancelled blocking reads keep
+their admission until the remaining work/readers finish. A growing source cannot
+expand its reservation because the initial metadata pass is byte-bounded.
+
+Core regressions cover unaligned ranges, chunk boundaries, final partial chunks,
+empty files, same-size writes with the original timestamp restored, memory
+exhaustion/retry, oversized-file refusal before hashing and cancellation. The
+HTTP range regression also refuses the changed bytes under the old ETag and
+expires the handle. The shared core, native client and server suites pass 86,
+42 and 32 tests respectively. Native media URLs and main-player integration
+remain separate outstanding work.
+
+A fresh HTTPS run with a synthetic 160 MiB recording passed lost-open retry,
+mid-response disconnect and exact-range resume, atomic replacement, service
+restart/expired handles and stale ETag refusal. A same-size edit with the exact
+original timestamp restored interrupted delivery and expired its handle without
+returning the changed bytes. At configured 50/150/500 ms round trips, 4 KiB
+requests took 105.2/245.6/774.7 ms including connection setup. All 61 pre-existing
+fixture files retained their hashes; note/metadata and unknown-file canaries
+were unchanged. The service and synthetic identity/HTTPS proxy stopped cleanly
+and the network fixture returned online.
+
+Evidence is saved on T7 as
+`/Volumes/T7/loofah-backend-build/remote-ui-qa/recording-chunk-integrity-evidence.json`.
+The tested server binary SHA-256 is
+`c8f33d38c775cdaa0de0c3d74a3c6c51fa86b95a870f17db57c5575b67fe6a76`.
+This verifies the transport primitive, not decoding, the native player or the
+two-hour recording/outage acceptance test.
+
+Desktop, CLI and server `cargo check` pass. Strict production Clippy passes for
+the shared core, server and native client. The final cancelled-read regression
+also confirms that hash-memory admission stays reserved until blocking work
+finishes, then returns to its full capacity.

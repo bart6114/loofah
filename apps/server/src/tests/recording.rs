@@ -173,6 +173,29 @@ async fn authenticated_recording_ranges_keep_a_generation_and_never_expose_paths
             StatusCode::NOT_FOUND
         );
     }
+    let pinned_path = directory.join("retired-user.mp3");
+    let modified = std::fs::metadata(&pinned_path).unwrap().modified().unwrap();
+    std::fs::write(&pinned_path, b"ABCDEFGHIJ").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&pinned_path)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(modified))
+        .unwrap();
+    let response = request(
+        &fixture,
+        "alice",
+        "GET",
+        &path,
+        &[("range", "bytes=2-4"), ("if-match", &etag)],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+    assert!(to_bytes(response.into_body(), 1024).await.is_err());
+    assert_eq!(
+        request(&fixture, "alice", "GET", &path, &[]).await.status(),
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(
         fixture.call("alice", "DELETE", &path, None).await.0,
         StatusCode::NO_CONTENT
