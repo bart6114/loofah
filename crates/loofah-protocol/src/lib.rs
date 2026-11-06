@@ -8,6 +8,7 @@ pub use hypr_agent_access::{
     SearchMeetingsInput, SearchPage as AgentSearchPage,
 };
 pub use hypr_transcript::RenderedTranscriptSegment;
+pub use hypr_vault_read::media::{AudioFileMetadata, AudioPeaks};
 pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
 
 pub const API_MAJOR: u32 = 1;

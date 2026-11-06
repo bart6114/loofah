@@ -14,6 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<AgentTranscript>()
         .register::<AgentSearchPage>()
         .register::<RenderedTranscriptSegment>()
+        .register::<AudioFileMetadata>()
+        .register::<AudioPeaks>()
         .register::<VaultInfo>()
         .register::<VaultMutation>()
         .register::<Membership>()

@@ -894,3 +894,34 @@ Validation: vault-write passes 320 tests (one existing ignored), CLI passes all
 attachment coverage includes cancellation, deduplication, Unicode names,
 canonical legacy IDs, Windows name mapping and retention of unknown files.
 Native Windows validation remains required for this new Rust change.
+
+### Shared audio response types
+
+Audio metadata hashing and waveform computation already live in portable
+`crates/fs-sync-core/src/audio/mod.rs`. Their existing `AudioFileMetadata` and
+`AudioPeaks` response shapes now live in `crates/vault-read/src/media.rs`, with
+re-exports at the old Rust paths and in the application protocol. The generated
+TypeScript contract retains the existing camelCase fields. The algorithms,
+waveform cache format, recording ownership and desktop commands are unchanged.
+This avoids copying media-processing behavior into an HTTPS handler. It does not
+yet expose media operations or implement authenticated playback/downloads.
+
+The repository guidance now points to the actual shared write/index modules and
+distinguishes existing desktop queries from the scoped client abstraction. Local
+startup remains offline and login-free. Linux desktop support stays out of
+scope.
+
+Validation for the shared audio types: all 21 existing portable audio tests pass,
+including metadata, waveform caching and supported import formats. Desktop,
+CLI and server Rust checks, native binding export and desktop typechecking pass.
+The generated native bindings have no API-shape change.
+
+The installed Tauri 2.10.3 asset implementation buffers URI responses and already
+caps individual byte-range responses to 1,000 KiB. Its no-range path reads the
+whole file. An authenticated native media adapter must account for both paths,
+preserve seeking and avoid buffering long remote recordings in full. Keep
+server credentials out of renderer/media URLs, use bounded reads and pin the
+chosen file generation during a playback/download operation. Validate the
+actual macOS and Windows media-element requests and the missing-waveform
+fallback before claiming playback parity; metadata contracts alone do not
+provide playback.

@@ -8,6 +8,8 @@ use crate::runtime::{AudioImportEvent, AudioImportRuntime};
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 
+pub use hypr_vault_read::media::{AudioFileMetadata, AudioPeaks};
+
 const AUDIO_FORMATS: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
 const AUDIO_ARTIFACTS: [&str; 9] = [
     "audio.mp3",
@@ -37,26 +39,6 @@ pub struct AudioSourceMetadata {
     pub created_at: Option<String>,
     pub modified_at: Option<String>,
     pub duration_ms: Option<u64>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioFileMetadata {
-    pub filename: String,
-    pub content_type: String,
-    pub size_bytes: u64,
-    pub sha256: String,
-}
-
-/// Per-channel waveform peaks precomputed for the audio player. Rendering from these skips
-/// pulling the whole recording into the webview and decoding it there (seconds for an
-/// hour-long file) -- WaveSurfer accepts pre-decoded peaks plus a duration and renders
-/// immediately, while playback itself still streams through the media element.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioPeaks {
-    pub duration_sec: f64,
-    pub channels: Vec<Vec<f32>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

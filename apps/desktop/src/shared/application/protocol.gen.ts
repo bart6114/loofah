@@ -7,6 +7,13 @@ export type AgentSearchHit = { session_id: string; title: string; created_at: nu
 
 export type ApplicationError = { code: ErrorCode; message: string; request_id: string | null; retryable: boolean; current_revision: string | null; mutation_outcome: MutationOutcome | null }
 
+export type AudioFileMetadata = { filename: string; contentType: string; sizeBytes: number; sha256: string }
+
+/**
+ * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
+ */
+export type AudioPeaks = { durationSec: number; channels: number[][] }
+
 export type Capabilities = { api_major: number; application_version: string; features: string[] }
 
 export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[] } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }

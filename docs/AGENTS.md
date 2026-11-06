@@ -16,7 +16,7 @@
 - Treat `apps/cli/src/cli.rs` as the CLI command contract.
 - Treat `apps/cli/src/mcp.rs` as the MCP tool and resource contract.
 - Treat current release automation as the source of truth for installation channels.
-- Do not infer product behavior from raw vault files; the write path is `apps/desktop/src-tauri/src/session_store/`.
+- Verify product behavior against the shared write path in `crates/vault-write/`, extracted operations in `crates/loofah-core/` and the relevant desktop/CLI/server adapter. Desktop session-store commands in `apps/desktop/src-tauri/src/session_store/` wrap the shared store. Do not infer supported behavior solely from raw vault files or schema definitions.
 
 ## Writing
 

@@ -1,10 +1,11 @@
 //! Read-only access to the on-disk vault layout: shared file-format types plus
-//! scanning/parsing helpers. The desktop store (`apps/desktop/src-tauri/src/session_store`)
-//! owns every write path and reuses the types and pure parse/render functions from here;
-//! `crates/agent-access` (loof CLI/MCP) reads vaults exclusively through this crate.
+//! scanning/parsing helpers. `crates/vault-write` owns the shared store and index;
+//! `crates/loofah-core` contains extracted application operations for IPC and HTTPS.
+//! `crates/agent-access` reuses these readers for CLI/MCP projections.
 
 pub mod enhanced;
 pub mod layout;
+pub mod media;
 pub mod meta;
 pub mod paths;
 pub mod people;
