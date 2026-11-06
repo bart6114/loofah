@@ -1,0 +1,44 @@
+import type { NoteDraftRecovery } from "~/types/tauri.gen";
+
+export class DraftRegistry<
+  D extends {
+    scope: string;
+    getSnapshot: () => { dirty: boolean };
+    recovery: () => NoteDraftRecovery;
+  },
+> {
+  private readonly drafts = new Map<string, D>();
+  private readonly scopes = new Map<string, number>();
+
+  retainScope(scope: string) {
+    this.scopes.set(scope, (this.scopes.get(scope) ?? 0) + 1);
+  }
+  releaseScope(scope: string) {
+    const remaining = Math.max(0, (this.scopes.get(scope) ?? 0) - 1);
+    if (remaining) this.scopes.set(scope, remaining);
+    else {
+      this.scopes.delete(scope);
+      this.sweep(scope);
+    }
+  }
+  clearSaved(scope: string) {
+    for (const [key, draft] of this.drafts) {
+      if (
+        draft.scope === scope &&
+        !draft.getSnapshot().dirty &&
+        !draft.recovery().uncertain
+      )
+        this.drafts.delete(key);
+    }
+  }
+  sweep(scope: string) {
+    if (!this.scopes.has(scope)) this.clearSaved(scope);
+  }
+  get(scope: string, id: string): D | undefined {
+    return this.drafts.get(JSON.stringify([scope, id]));
+  }
+  protected set(scope: string, id: string, draft: D) {
+    this.drafts.set(JSON.stringify([scope, id]), draft);
+    return draft;
+  }
+}

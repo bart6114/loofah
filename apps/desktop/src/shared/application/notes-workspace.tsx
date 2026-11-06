@@ -21,10 +21,12 @@ import { Button } from "@hypr/ui/components/ui/button";
 import { DeviceRecovery } from "./device-recovery";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { NativeDraftStore } from "./draft-store";
-import { ApplicationRequestError } from "./errors";
 import { NoteDrafts, type NoteDraft, type NoteDraftClient } from "./note-draft";
+import { noteEditorDrafts } from "./note-editor-draft";
 import type { DocumentTarget } from "./protocol.gen";
+import { useDraftPersistence } from "./use-draft-persistence";
 import type { VaultClient } from "./vault-client";
+import { VaultNoteEditor } from "./vault-note-editor";
 import { VaultScope } from "./vault-scope";
 
 import type { NoteDraftRecovery, NoteSnapshot } from "~/types/tauri.gen";
@@ -42,6 +44,7 @@ export function VaultNotesWorkspace({
   useEffect(() => {
     const current = new VaultScope(client);
     drafts.retainScope(client.scope);
+    noteEditorDrafts.retainScope(client.scope);
     setScope(current);
     const changed = current.onChange((change) => {
       if (change.kind === "catalog_changed") onCatalogChanged?.();
@@ -51,6 +54,7 @@ export function VaultNotesWorkspace({
       changed();
       current.dispose();
       drafts.releaseScope(client.scope);
+      noteEditorDrafts.releaseScope(client.scope);
     };
   }, [client, onCatalogChanged]);
   if (!scope || scope.client !== client)
@@ -111,16 +115,19 @@ function Notes({ scope }: { scope: VaultScope }) {
     networkMode: "always",
     mutationFn: async () => {
       if (sessionId) {
-        const draft = drafts.get(
-          scope.client.scope,
-          activeDraft.current ?? sessionId,
-        );
+        const id = activeDraft.current ?? sessionId;
+        const draft =
+          drafts.get(scope.client.scope, id) ??
+          noteEditorDrafts.get(scope.client.scope, id);
         if (draft) await writeText(draft.recovery().draft.markdown);
       }
     },
   });
   useEffect(() => {
-    if (denied) drafts.clearSaved(scope.client.scope);
+    if (denied) {
+      drafts.clearSaved(scope.client.scope);
+      noteEditorDrafts.clearSaved(scope.client.scope);
+    }
   }, [denied, scope]);
   const rows = sessions.data?.pages.flatMap((page) => page.sessions) ?? [];
   return (
@@ -266,6 +273,7 @@ function Notes({ scope }: { scope: VaultScope }) {
               scope={scope}
               sessionId={sessionId}
               onActiveDraft={onActiveDraft}
+              onSelectSession={setSessionId}
             />
           ) : (
             <p className="text-muted-foreground p-4 text-sm">
@@ -287,10 +295,12 @@ function SessionPane({
   scope,
   sessionId,
   onActiveDraft,
+  onSelectSession,
 }: {
   scope: VaultScope;
   sessionId: string;
   onActiveDraft: (id: string) => void;
+  onSelectSession: (id: string) => void;
 }) {
   const { t } = useLingui();
   const [view, setView] = useState<
@@ -335,11 +345,31 @@ function SessionPane({
         </div>
       )}
       {view === "note" ? (
-        <NotePane
-          scope={scope}
-          sessionId={sessionId}
-          onActiveDraft={onActiveDraft}
-        />
+        scope.client.features.includes("note_editor_read") &&
+        scope.client.features.includes("note_editor_write") ? (
+          <VaultNoteEditor
+            scope={scope}
+            sessionId={sessionId}
+            onActiveDraft={onActiveDraft}
+            onSelectSession={onSelectSession}
+            hasLegacyDraft={
+              !!drafts.get(scope.client.scope, sessionId)?.getSnapshot().dirty
+            }
+            legacyEditor={
+              <NotePane
+                scope={scope}
+                sessionId={sessionId}
+                onActiveDraft={onActiveDraft}
+              />
+            }
+          />
+        ) : (
+          <NotePane
+            scope={scope}
+            sessionId={sessionId}
+            onActiveDraft={onActiveDraft}
+          />
+        )
       ) : view === "documents" ? (
         <DocumentsPane
           scope={scope}
@@ -709,65 +739,17 @@ function NoteFields({
     value.receive(note);
     return value;
   });
-  const snapshot = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
-  const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
-  const persist = useMutation({
-    networkMode: "always",
-    mutationFn: async (beforeRequest: boolean) => {
-      const value = draft.recovery();
-      if (beforeRequest) value.uncertain = true;
-      if (draft.getSnapshot().dirty || value.uncertain) await store.save(value);
-      else {
-        await store.remove(sessionId);
-        if (
-          ![
-            "closed",
-            "access_denied",
-            "login_required",
-            "incompatible",
-          ].includes(scope.getSnapshot().state)
-        ) {
-          scope.queryClient.setQueryData(
-            ["device-draft", client.scope, sessionId],
-            null,
-          );
-        }
-      }
-    },
-  });
-  const lastSubmitted = useRef<{ markdown: string; title: string } | null>(
-    null,
-  );
-  const save = useMutation({
-    mutationFn: async () => {
-      await persist.mutateAsync(true).catch(() => {});
-      if (scope.getSnapshot().state !== "connected")
-        throw new ApplicationRequestError({
-          code: "unavailable",
-          message:
-            "Reconnect before saving. Your draft is kept on this device.",
-          request_id: null,
-          retryable: true,
-          current_revision: null,
-          mutation_outcome: "not_committed",
-        });
-      try {
-        lastSubmitted.current = draft.getSnapshot().draft;
-        return await scope.saveAndConfirm(
-          queryKey,
-          () => draft.save(),
-          confirm,
-        );
-      } catch (error) {
-        if (
-          error instanceof ApplicationRequestError &&
-          error.detail.code === "not_found"
-        ) {
-          await scope.queryClient.invalidateQueries({ queryKey, exact: true });
-        }
-        throw error;
-      } finally {
-        await persist.mutateAsync(false).catch(() => {});
+  const { snapshot, connection, editable, persist, save, resolve } =
+    useDraftPersistence({
+      scope,
+      draft,
+      queryKey,
+      confirm,
+      available,
+      recovery,
+      store,
+      recoveryId: sessionId,
+      onSettled: () => {
         if (
           ["access_denied", "login_required", "closed"].includes(
             scope.getSnapshot().state,
@@ -775,89 +757,20 @@ function NoteFields({
         )
           drafts.clearSaved(scope.client.scope);
         else drafts.sweep(scope.client.scope);
-      }
-    },
-  });
-  const editable =
-    available &&
-    connection.state === "connected" &&
-    scope.client.canEdit &&
-    (!snapshot.conflict || save.isPending);
+      },
+    });
   const form = useForm({
     defaultValues: snapshot.draft,
     onSubmit: async () => {
       await save.mutateAsync();
     },
   });
-  const persistRef = useRef(persist.mutateAsync);
-  persistRef.current = persist.mutateAsync;
-  const saveRef = useRef(save.mutate);
-  saveRef.current = save.mutate;
-  const saveOnLeave = useRef(false);
-  saveOnLeave.current =
-    available &&
-    scope.client.canEdit &&
-    !(save.error && lastSubmitted.current === snapshot.draft);
   useEffect(() => {
     if (scope.queryClient.getQueryData(queryKey) === note) draft.receive(note);
   }, [draft, note, scope, queryKey]);
   useEffect(() => {
     if (!snapshot.dirty) form.reset(snapshot.draft);
   }, [form, snapshot.baseline.revision, snapshot.dirty, snapshot.draft]);
-  useEffect(() => {
-    if (!snapshot.dirty && !recovery) return;
-    const timer = setTimeout(() => {
-      void persistRef.current(false).catch(() => {});
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [snapshot, recovery]);
-  useEffect(() => {
-    if (
-      !snapshot.dirty ||
-      !editable ||
-      save.isPending ||
-      (save.error && lastSubmitted.current === snapshot.draft)
-    )
-      return;
-    const timer = setTimeout(() => saveRef.current(), 500);
-    return () => clearTimeout(timer);
-  }, [snapshot, editable, save.isPending, save.error]);
-  useEffect(() => {
-    if (connection.state === "connected") lastSubmitted.current = null;
-  }, [connection.state]);
-  useEffect(
-    () => () => {
-      void persistRef.current(false).catch(() => {});
-      const current = draft.getSnapshot();
-      if (
-        saveOnLeave.current &&
-        current.dirty &&
-        !current.conflict &&
-        scope.getSnapshot().state === "connected"
-      )
-        saveRef.current();
-    },
-    [draft, scope],
-  );
-  const resolve = useMutation({
-    mutationFn: async ({
-      keep,
-      revision,
-    }: {
-      keep: boolean;
-      revision: string;
-    }) => {
-      if (keep) draft.keepDraft(revision);
-      else draft.useServerVersion(revision);
-      const current = draft.getSnapshot();
-      form.reset(current.draft);
-      if (keep) await save.mutateAsync();
-      else {
-        await confirm(current.baseline);
-        await persist.mutateAsync(false);
-      }
-    },
-  });
   return (
     <form
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-3"

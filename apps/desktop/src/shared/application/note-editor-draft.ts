@@ -1,5 +1,6 @@
 import { hashKey } from "@tanstack/react-query";
 
+import { DraftRegistry } from "./draft-registry";
 import type { NoteEditorSnapshot, TaskInput } from "./protocol.gen";
 import {
   DraftConflictError,
@@ -169,3 +170,34 @@ export class NoteEditorDraft extends RevisionDraft<
     );
   }
 }
+
+export class NoteEditorDrafts extends DraftRegistry<NoteEditorDraft> {
+  open(client: EditorClient, sessionId: string, snapshot: NoteEditorSnapshot) {
+    const key = noteEditorDraftId(sessionId);
+    const existing = this.get(client.scope, key);
+    if (existing) {
+      existing.rebind(client);
+      existing.receive(snapshot);
+      return existing;
+    }
+    return this.set(
+      client.scope,
+      key,
+      new NoteEditorDraft(client, sessionId, snapshot),
+    );
+  }
+
+  restore(
+    client: EditorClient,
+    sessionId: string,
+    recovery: NoteDraftRecovery,
+  ) {
+    return this.set(
+      client.scope,
+      noteEditorDraftId(sessionId),
+      NoteEditorDraft.restore(client, sessionId, recovery),
+    );
+  }
+}
+
+export const noteEditorDrafts = new NoteEditorDrafts();

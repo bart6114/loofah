@@ -179,6 +179,13 @@ export class RevisionDraft<S, D> {
           });
         if (this.snapshot.conflict)
           throw this.contract.conflict(this.snapshot.conflict);
+        // A manual save and the editor's trailing flush can contain the same
+        // revision. Reuse its confirmed result instead of writing it twice.
+        if (
+          !this.uncertain &&
+          this.contract.matches(draft, this.snapshot.baseline)
+        )
+          return this.snapshot.baseline;
         const outcome = await client.save(
           this.sessionId,
           draft,

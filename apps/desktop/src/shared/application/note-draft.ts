@@ -1,3 +1,4 @@
+import { DraftRegistry } from "./draft-registry";
 import type { NoteSnapshot } from "./protocol.gen";
 import {
   DraftConflictError,
@@ -92,52 +93,19 @@ export class NoteDraft extends RevisionDraft<NoteSnapshot, NoteText> {
   }
 }
 
-export class NoteDrafts {
-  private readonly drafts = new Map<string, NoteDraft>();
-  private readonly scopes = new Map<string, number>();
-
-  retainScope(scope: string) {
-    this.scopes.set(scope, (this.scopes.get(scope) ?? 0) + 1);
-  }
-  releaseScope(scope: string) {
-    const remaining = Math.max(0, (this.scopes.get(scope) ?? 0) - 1);
-    if (remaining) this.scopes.set(scope, remaining);
-    else {
-      this.scopes.delete(scope);
-      this.sweep(scope);
-    }
-  }
-  clearSaved(scope: string) {
-    for (const [key, draft] of this.drafts) {
-      if (
-        draft.scope === scope &&
-        !draft.getSnapshot().dirty &&
-        !draft.recovery().uncertain
-      )
-        this.drafts.delete(key);
-    }
-  }
-  sweep(scope: string) {
-    if (!this.scopes.has(scope)) this.clearSaved(scope);
-  }
-
-  get(scope: string, sessionId: string): NoteDraft | undefined {
-    return this.drafts.get(JSON.stringify([scope, sessionId]));
-  }
-
+export class NoteDrafts extends DraftRegistry<NoteDraft> {
   open(
     client: NoteDraftClient,
     sessionId: string,
     note: NoteSnapshot,
   ): NoteDraft {
-    const key = JSON.stringify([client.scope, sessionId]);
-    let draft = this.drafts.get(key);
+    let draft = this.get(client.scope, sessionId);
     if (draft) {
       draft.rebind(client);
       draft.receive(note);
     } else {
       draft = new NoteDraft(client, sessionId, note);
-      this.drafts.set(key, draft);
+      this.set(client.scope, sessionId, draft);
     }
     return draft;
   }
@@ -156,7 +124,7 @@ export class NoteDrafts {
       recovery.draft,
       recovery.uncertain,
     );
-    this.drafts.set(JSON.stringify([client.scope, recovery.sessionId]), draft);
+    this.set(client.scope, recovery.sessionId, draft);
     return draft;
   }
 }

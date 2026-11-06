@@ -52,6 +52,11 @@ import {
   withNodeViewErrorBoundary,
 } from "../node-views";
 import {
+  MentionNavigationContext,
+  useMentionNavigation,
+  type MentionNavigation,
+} from "../node-views/mention-navigation";
+import {
   autolinkPlugin,
   type FileHandlerConfig,
   type FileUploadCandidate,
@@ -143,6 +148,7 @@ export {
   setCommentAnchors,
 } from "../plugins/comment-anchors";
 export { useLinkedItemOpenBehavior };
+export type { MentionNavigation };
 
 export interface JSONContent {
   type?: string;
@@ -208,6 +214,7 @@ export interface NoteEditorProps {
   resolveAttachment?: AttachmentResolver;
   attachmentPresentation?: AttachmentPresentation;
   mentionConfig?: MentionConfig;
+  onMentionNavigate?: MentionNavigation;
   placeholderComponent?: PlaceholderFunction;
   fileHandlerConfig?: FileHandlerConfig;
   onNavigateToTitle?: (pixelWidth?: number) => void;
@@ -612,6 +619,7 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
       resolveAttachment,
       attachmentPresentation,
       mentionConfig,
+      onMentionNavigate,
       placeholderComponent,
       fileHandlerConfig,
       onNavigateToTitle,
@@ -636,6 +644,7 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
     commentAnchorsEventRef.current = onCommentAnchorsEvent;
 
     const inheritedAttachmentPresentation = useAttachmentPresentation();
+    const inheritedMentionNavigation = useMentionNavigation();
     const taskStorage = useTaskStorageOptional();
     const reconciledInitialContent = useMemo(() => {
       if (!initialContent) {
@@ -1041,42 +1050,46 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
             <AttachmentResolverContext.Provider
               value={resolveAttachment ?? null}
             >
-              <LinkedItemOpenBehaviorContext.Provider
-                value={linkedItemOpenBehavior}
+              <MentionNavigationContext.Provider
+                value={onMentionNavigate ?? inheritedMentionNavigation}
               >
-                <ProseMirror
-                  state={editorState}
-                  dispatchTransaction={dispatchTransaction}
-                  nodeViewComponents={nodeViews}
-                  editable={() => !readOnly}
-                  attributes={{
-                    spellCheck: "false",
-                    autoComplete: "off",
-                    autoCorrect: "off",
-                    autoCapitalize: "off",
-                    role: readOnly ? "document" : "textbox",
-                    "aria-readonly": readOnly ? "true" : "false",
-                    class: cn([
-                      "prosemirror-editor",
-                      enforceTitleHeading && "note-title-editor",
-                      className,
-                    ]),
-                  }}
+                <LinkedItemOpenBehaviorContext.Provider
+                  value={linkedItemOpenBehavior}
                 >
-                  <ProseMirrorDoc />
-                  <ViewCapture
-                    viewRef={viewRef}
-                    onViewReady={onViewReady}
-                    onViewDisposed={handleViewDisposed}
-                  />
-                  <EditorCommandsBridge commandsRef={commandsRef} />
-                  {showFormatToolbar && !readOnly && <FormatToolbar />}
-                  {showSlashCommand && !readOnly && <SlashCommandMenu />}
-                  {mentionConfig && !readOnly && (
-                    <MentionSuggestion config={mentionConfig} />
-                  )}
-                </ProseMirror>
-              </LinkedItemOpenBehaviorContext.Provider>
+                  <ProseMirror
+                    state={editorState}
+                    dispatchTransaction={dispatchTransaction}
+                    nodeViewComponents={nodeViews}
+                    editable={() => !readOnly}
+                    attributes={{
+                      spellCheck: "false",
+                      autoComplete: "off",
+                      autoCorrect: "off",
+                      autoCapitalize: "off",
+                      role: readOnly ? "document" : "textbox",
+                      "aria-readonly": readOnly ? "true" : "false",
+                      class: cn([
+                        "prosemirror-editor",
+                        enforceTitleHeading && "note-title-editor",
+                        className,
+                      ]),
+                    }}
+                  >
+                    <ProseMirrorDoc />
+                    <ViewCapture
+                      viewRef={viewRef}
+                      onViewReady={onViewReady}
+                      onViewDisposed={handleViewDisposed}
+                    />
+                    <EditorCommandsBridge commandsRef={commandsRef} />
+                    {showFormatToolbar && !readOnly && <FormatToolbar />}
+                    {showSlashCommand && !readOnly && <SlashCommandMenu />}
+                    {mentionConfig && !readOnly && (
+                      <MentionSuggestion config={mentionConfig} />
+                    )}
+                  </ProseMirror>
+                </LinkedItemOpenBehaviorContext.Provider>
+              </MentionNavigationContext.Provider>
             </AttachmentResolverContext.Provider>
           </AttachmentPresentationContext.Provider>
         </AttachmentEditingContext.Provider>

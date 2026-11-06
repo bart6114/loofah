@@ -2,6 +2,8 @@
 
 Status: implementation in progress. The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
 
+Current usable surface: the opt-in server notes workspace now mounts the existing rich editor against checked note/task operations. It supports guarded saves and device recovery through disconnects. The main desktop shell/profile migration, media and imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
+
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
 ## 1. Architecture and verified starting point
@@ -1243,3 +1245,55 @@ Desktop, CLI and server `cargo check` pass. Strict production Clippy passes for
 the shared core, server and native client. The final cancelled-read regression
 also confirms that hash-memory admission stays reserved until blocking work
 finishes, then returns to its full capacity.
+
+### Rich editor mounted on the shared client
+
+The opt-in notes workspace now mounts the existing ProseMirror `NoteEditor`
+through `VaultClient`, `VaultScope` and `NoteEditorDraft`. Title, Markdown and
+explicit source-task intent use the existing compound checked save, including
+both revision baselines. The existing serializer preserves tables, formatting
+and portable attachment references. Rich note checkboxes retain task identity,
+status and dates. The separate task list is still read-only.
+
+`useDraftPersistence` shares recovery, saving, disconnect and conflict lifecycle
+between rich notes and the existing source/output editors. `DraftRegistry`
+shares scoped retention and cleanup. A trailing editor flush reuses an already
+confirmed identical save; uncertain outcomes still require verification. An
+existing source-editor recovery stays in its original editor until resolved,
+without silently manufacturing task intent or overwriting a task-aware record.
+Capability checks retain older-server compatibility without transport branches
+inside the editor.
+
+Mention navigation is now host-provided and inherited by nested editors. The
+legacy local callback is unchanged; the scoped workspace routes session mentions
+within its selected vault and never calls the local desktop router. Task
+checkbox callbacks reject a read-only editor before dispatch. Raw server/device
+attachment paths cannot become native file actions; existing attachment
+references remain stored while the actual media/upload adapters are pending.
+
+Mounted tests cover compound title/task saves, tables, stable identities and
+dates, newer edits during a slow request, explicit conflict review, reader
+restrictions, revocation/copy, reconnect, legacy recovery and already-committed
+lost-save recovery. Full editor and desktop suites pass 303 and 1,722 tests.
+Both typechecks and UI build pass. Locale source references are regenerated for
+the new component; message count remains unchanged. Scoped lint has no warnings
+or errors. Main-shell/profile migration, mention insertion and media remain open.
+
+A disposable macOS development bundle started locally without server login.
+Through the synthetic company sign-in and real HTTPS fixture, it created a note
+with a table and task, toggled the task, and saved its title and Markdown. A
+20-second proxy delay allowed interruption before the next body reached the
+canonical note. The app became read-only, kept its unsaved text and wrote a
+schema 2 device recovery record containing task intent. Reconnection at 500 ms
+round-trip latency saved the exact recovered Markdown and original task ID.
+The note reopened as saved with the table and checked task present. A known
+pre-existing local note retained its baseline hash. The app quit through its menu
+and its owned server, proxy and Vite processes stopped; network fixture settings
+returned to their baseline.
+
+Evidence: `/Volumes/T7/loofah-backend-build/remote-ui-qa/rich-editor/native-reconnect-evidence.json`.
+The tested native binary SHA-256 was
+`0f8b40b33dccfce4edac567544bf347ffffc1ec6cdaea8232ae3383e583087cb`,
+with the current worktree frontend served by Vite. This focused development-bundle
+check does not replace production performance, Windows UI, recording or full
+feature-parity validation.

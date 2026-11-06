@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +10,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
+  views: [] as import("prosemirror-view").EditorView[],
   draftCacheGet: vi.fn(),
   draftCacheInventory: vi.fn(),
   draftCacheRecovery: vi.fn(),
@@ -17,13 +19,45 @@ const native = vi.hoisted(() => ({
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
+vi.mock("@hypr/editor/note", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@hypr/editor/note")>();
+  const { createElement, forwardRef, useCallback } = await import("react");
+  return {
+    ...original,
+    NoteEditor: forwardRef<
+      import("@hypr/editor/note").NoteEditorRef,
+      import("@hypr/editor/note").NoteEditorProps
+    >((props, ref) => {
+      const { onViewReady } = props;
+      const ready = useCallback(
+        (view: import("prosemirror-view").EditorView) => {
+          native.views.push(view);
+          onViewReady?.(view);
+        },
+        [onViewReady],
+      );
+      return createElement(original.NoteEditor, {
+        ...props,
+        ref,
+        onViewReady: ready,
+      });
+    }),
+  };
+});
 
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
+import { scopedAttachmentPresentation } from "@hypr/editor/attachment-presentation";
+
 import { documentDraftId } from "./document-draft";
 import { ApplicationRequestError } from "./errors";
+import { noteEditorDraftId } from "./note-editor-draft";
 import { VaultNotesWorkspace } from "./notes-workspace";
-import type { NoteSnapshot, DocumentSnapshot } from "./protocol.gen";
+import type {
+  NoteSnapshot,
+  DocumentSnapshot,
+  TasksSnapshot,
+} from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
 import { flushDatabaseWrites } from "~/shared/write-queue";
@@ -33,9 +67,11 @@ const note = (markdown: string, revision: string): NoteSnapshot => ({
   title: "Seed",
   revision,
 });
-function fixture() {
+function fixture(rich = false) {
   const listeners = new Set<(event: VaultClientEvent) => void>();
   let current = note("Original", "a");
+  let currentTasks: TasksSnapshot = { tasks: [], revision: "tasks-a" };
+  let editorSequence = 0;
   let currentDocument: DocumentSnapshot = {
     document: {
       id: "same",
@@ -53,7 +89,44 @@ function fixture() {
     scope: crypto.randomUUID(),
     networkMode: "always",
     canEdit: true,
-    features: ["notes", "search"],
+    features: [
+      "notes",
+      "search",
+      ...(rich ? ["note_editor_read", "note_editor_write"] : []),
+    ],
+    attachmentPresentation: scopedAttachmentPresentation,
+    readNoteEditor: vi.fn(async () => ({ note: current, tasks: currentTasks })),
+    saveNoteEditor: vi.fn(async (_id, input) => {
+      if (
+        input.expected_revision !== current.revision ||
+        input.expected_tasks_revision !== currentTasks.revision
+      )
+        return {
+          kind: "conflict",
+          snapshot: { note: current, tasks: currentTasks },
+        };
+      editorSequence += 1;
+      current = {
+        markdown: input.markdown,
+        title: input.title ?? current.title,
+        revision: `editor-${editorSequence}`,
+      };
+      currentTasks = {
+        revision: `editor-tasks-${editorSequence}`,
+        tasks: input.tasks.map((task: any) => ({
+          ...task,
+          source_type: "session_raw_note",
+          source_id: _id,
+          assignee: "",
+          created_at: "",
+          updated_at: "",
+        })),
+      };
+      return {
+        kind: "saved",
+        snapshot: { note: current, tasks: currentTasks },
+      };
+    }),
     documents: vi.fn(async () =>
       currentDocument.document ? [currentDocument.document] : [],
     ),
@@ -142,6 +215,7 @@ function fixture() {
     }),
   } as unknown as VaultClient & {
     saveNote: ReturnType<typeof vi.fn>;
+    saveNoteEditor: ReturnType<typeof vi.fn<VaultClient["saveNoteEditor"]>>;
     saveDocument: ReturnType<typeof vi.fn>;
     search: ReturnType<typeof vi.fn>;
   };
@@ -149,6 +223,9 @@ function fixture() {
     client,
     set: (value: NoteSnapshot) => {
       current = value;
+    },
+    setTasks: (value: TasksSnapshot) => {
+      currentTasks = value;
     },
     setDocument: (value: DocumentSnapshot) => {
       currentDocument = value;
@@ -170,6 +247,7 @@ async function open(client: VaultClient) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.views.length = 0;
   native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [] });
   native.draftCacheRecovery.mockResolvedValue({ status: "ok", data: null });
   native.draftCacheGet.mockResolvedValue({ status: "ok", data: null });
@@ -179,6 +257,377 @@ beforeEach(() => {
 afterEach(async () => {
   cleanup();
   await flushDatabaseWrites();
+});
+
+async function openRich(client: VaultClient) {
+  const rendered = render(
+    <StrictMode>
+      <VaultNotesWorkspace client={client} />
+    </StrictMode>,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Seed" }));
+  await waitFor(() => expect(native.views.length).toBeGreaterThan(0));
+  return { ...rendered, view: native.views[native.views.length - 1] };
+}
+
+function richFixture() {
+  const backend = fixture(true);
+  backend.set(
+    note(
+      "# Seed\n\n- [ ] Follow up\n\n| Keep | Table |\n| --- | --- |\n| Rich | Content |",
+      "a",
+    ),
+  );
+  backend.setTasks({
+    revision: "tasks-a",
+    tasks: [
+      {
+        id: "stable-task",
+        source_type: "session_raw_note",
+        source_id: "same",
+        source_order: 0,
+        status: "in_progress",
+        text: "Follow up",
+        body: [
+          { type: "paragraph", content: [{ type: "text", text: "Follow up" }] },
+        ],
+        due_at: "2027-01-01",
+        assignee: "",
+        created_at: "",
+        updated_at: "",
+      },
+    ],
+  });
+  return backend;
+}
+
+describe("mounted shared rich editor", () => {
+  it("saves title, Markdown and explicit task intent together without writing on mount", async () => {
+    const backend = richFixture();
+    const { view, container } = await openRich(backend.client);
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+    expect(container.querySelector("table")).not.toBeNull();
+    expect(
+      container.querySelector('[data-task-id="stable-task"]'),
+    ).not.toBeNull();
+    act(() => view.dispatch(view.state.tr.insertText("Updated ", 1)));
+    fireEvent.click(container.querySelector('input[type="checkbox"]')!);
+    await waitFor(
+      () => expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce(),
+      { timeout: 3000 },
+    );
+    const input = backend.client.saveNoteEditor.mock.calls[0][1];
+    expect(input).toMatchObject({
+      title: "Updated Seed",
+      expected_revision: "a",
+      expected_tasks_revision: "tasks-a",
+      tasks: [{ id: "stable-task", status: "done", due_at: "2027-01-01" }],
+    });
+    expect(input.markdown).toContain("# Updated Seed");
+    expect(input.markdown).toContain("- [x] Follow up");
+    expect(input.markdown).toContain("| Keep | Table |");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save" })).toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+    expect(backend.client.saveNote).not.toHaveBeenCalled();
+    expect(native.draftCachePut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: noteEditorDraftId("same"),
+        editorTasks: expect.objectContaining({
+          draft: expect.arrayContaining([
+            expect.objectContaining({
+              id: "stable-task",
+              due_at: "2027-01-01",
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it("preserves edits made during a slow save and uses its returned revisions for the next save", async () => {
+    const backend = richFixture();
+    let finish!: () => void;
+    const waiting = new Promise<void>((done) => {
+      finish = done;
+    });
+    const commit = backend.client.saveNoteEditor.getMockImplementation()!;
+    backend.client.saveNoteEditor.mockImplementationOnce(async (...args) => {
+      await waiting;
+      return commit(...args);
+    });
+    const { view } = await openRich(backend.client);
+    act(() => view.dispatch(view.state.tr.insertText("First ", 1)));
+    await waitFor(
+      () => expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce(),
+      { timeout: 3000 },
+    );
+    act(() => view.dispatch(view.state.tr.insertText("Second ", 1)));
+    finish();
+    await waitFor(
+      () => expect(backend.client.saveNoteEditor).toHaveBeenCalledTimes(2),
+      { timeout: 3000 },
+    );
+    expect(backend.client.saveNoteEditor.mock.calls[1][1]).toMatchObject({
+      expected_revision: "editor-1",
+      expected_tasks_revision: "editor-tasks-1",
+      title: "Second First Seed",
+    });
+    expect(view.state.doc.textContent).toContain("Second First Seed");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save" })).toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+  });
+
+  it("retains task-aware device recovery through a disconnect and saves after reconnection", async () => {
+    const backend = richFixture();
+    const { view, container } = await openRich(backend.client);
+    act(() => {
+      view.dispatch(view.state.tr.insertText("Disconnected ", 1));
+      backend.emit({ kind: "connection", state: "reconnecting", error: null });
+    });
+    await waitFor(() => expect(view.editable).toBe(false));
+    const before = view.state.doc.toJSON();
+    fireEvent.click(container.querySelector('input[type="checkbox"]')!);
+    expect(view.state.doc.toJSON()).toEqual(before);
+    await waitFor(() =>
+      expect(native.draftCachePut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          editorTasks: expect.any(Object),
+          draft: expect.objectContaining({ title: "Disconnected Seed" }),
+        }),
+      ),
+    );
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+    act(() =>
+      backend.emit({ kind: "connection", state: "connected", error: null }),
+    );
+    await waitFor(
+      () => expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce(),
+      { timeout: 3000 },
+    );
+    expect(
+      backend.client.saveNoteEditor.mock.calls[0][1].tasks[0],
+    ).toMatchObject({
+      id: "stable-task",
+      status: "in_progress",
+      due_at: "2027-01-01",
+    });
+  });
+
+  it("does not expose raw device image URLs or send scoped mentions to the local desktop router", async () => {
+    const backend = fixture(true);
+    backend.set(
+      note(
+        '# Seed\n\n<mention data-id="other" data-type="session" data-label="Other note"></mention>\n\n![Private](asset://localhost/private/secret.png)',
+        "a",
+      ),
+    );
+    const legacy = vi.fn();
+    (window as any).__HYPR_NAVIGATE__ = legacy;
+    try {
+      const { container } = await openRich(backend.client);
+      expect(container.querySelector("img")?.getAttribute("src")).toBeNull();
+      fireEvent.click(container.querySelector('[data-mention="true"]')!);
+      expect(legacy).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(backend.client.readNoteEditor).toHaveBeenCalledWith(
+          "other",
+          expect.anything(),
+        ),
+      );
+    } finally {
+      delete (window as any).__HYPR_NAVIGATE__;
+    }
+  });
+
+  it("keeps an existing Markdown recovery in its original editor instead of silently changing save contracts", async () => {
+    const backend = richFixture();
+    native.draftCacheGet.mockImplementation(async (_scope, id) => ({
+      status: "ok",
+      data:
+        id === "same"
+          ? {
+              scope: backend.client.scope,
+              sessionId: "same",
+              baseline: note("Original", "a"),
+              draft: { markdown: "Older recovery", title: "Seed" },
+              uncertain: true,
+              editorTasks: null,
+            }
+          : null,
+    }));
+    render(<VaultNotesWorkspace client={backend.client} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Seed" }));
+    const editor = await screen.findByRole("textbox", { name: "Markdown" });
+    expect(editor).toHaveProperty("value", "Older recovery");
+    expect(native.views).toHaveLength(0);
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+  });
+
+  it("reviews a conflicting remote note and discards the old editor's pending flush when choosing the server version", async () => {
+    const backend = richFixture();
+    const { view } = await openRich(backend.client);
+    act(() => view.dispatch(view.state.tr.insertText("Mine ", 1)));
+    backend.set({
+      title: "Server",
+      markdown: "# Server\n\n- [x] Changed remotely",
+      revision: "remote-b",
+    });
+    backend.setTasks({
+      revision: "remote-tasks",
+      tasks: [
+        {
+          id: "remote-task",
+          source_type: "session_raw_note",
+          source_id: "same",
+          source_order: 0,
+          status: "done",
+          text: "Changed remotely",
+          body: [],
+          due_at: "2027-02-01",
+          assignee: "",
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+    });
+    act(() =>
+      backend.emit({ kind: "change", change: { kind: "resync_required" } }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Use server version" }),
+    );
+    await waitFor(() =>
+      expect(
+        native.views[native.views.length - 1].state.doc.textContent,
+      ).toContain("Changed remotely"),
+    );
+    expect(
+      native.views[native.views.length - 1].state.doc.textContent,
+    ).not.toContain("Mine");
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
+  it("keeps a reader's rich note and task checkboxes read-only without generating recovery writes", async () => {
+    const backend = richFixture();
+    const { view, container } = await openRich({
+      ...backend.client,
+      canEdit: false,
+    });
+    expect(view.editable).toBe(false);
+    const before = view.state.doc.toJSON();
+    fireEvent.click(container.querySelector('input[type="checkbox"]')!);
+    expect(view.state.doc.toJSON()).toEqual(before);
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+    expect(native.draftCachePut).not.toHaveBeenCalled();
+  });
+
+  it("keeps and copies the latest rich draft when vault access is revoked before autosave", async () => {
+    const backend = richFixture();
+    const { view } = await openRich(backend.client);
+    act(() => {
+      view.dispatch(view.state.tr.insertText("Keep this ", 1));
+      backend.emit({ kind: "connection", state: "access_denied", error: null });
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copy unsaved text" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("# Keep this Seed"),
+      ),
+    );
+    await waitFor(() =>
+      expect(native.draftCachePut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: noteEditorDraftId("same"),
+          editorTasks: expect.any(Object),
+          draft: expect.objectContaining({ title: "Keep this Seed" }),
+        }),
+      ),
+    );
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Markdown" })).toBeNull();
+  });
+
+  it("does not repeat a manual save when the editor's debounce later flushes the same content", async () => {
+    const backend = richFixture();
+    const { view } = await openRich(backend.client);
+    act(() => view.dispatch(view.state.tr.insertText("Manual ", 1)));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce(),
+    );
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 750));
+    });
+    expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
+  it("recognizes a task-aware recovery whose lost save was already committed without sending another write", async () => {
+    const backend = richFixture();
+    const baseline = await backend.client.readNoteEditor("same");
+    const committed = {
+      ...baseline.note,
+      title: "Recovered",
+      markdown: "# Recovered\n\n- [x] Follow up",
+      revision: "saved-b",
+    };
+    const tasks = baseline.tasks.tasks.map((task) => ({
+      ...task,
+      status: "done",
+    }));
+    backend.set(committed);
+    backend.setTasks({ tasks, revision: "saved-tasks" });
+    native.draftCacheGet.mockImplementation(async (_scope, id) => ({
+      status: "ok",
+      data:
+        id === noteEditorDraftId("same")
+          ? {
+              scope: backend.client.scope,
+              sessionId: id,
+              baseline: baseline.note,
+              draft: { title: committed.title, markdown: committed.markdown },
+              uncertain: true,
+              editorTasks: {
+                baseline: baseline.tasks,
+                draft: tasks.map(
+                  ({ id, source_order, status, text, body, due_at }) => ({
+                    id,
+                    source_order,
+                    status,
+                    text,
+                    body,
+                    due_at,
+                  }),
+                ),
+              },
+            }
+          : null,
+    }));
+    const { view } = await openRich(backend.client);
+    expect(view.state.doc.textContent).toContain("Recovered");
+    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+  });
 });
 
 describe("shared note workspace", () => {
