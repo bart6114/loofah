@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod test_fixtures;
 
+pub mod attachment;
 pub mod audio;
 pub mod error;
 pub mod export;
@@ -46,8 +47,6 @@ impl FsSyncCore {
         std::fs::create_dir_all(&attachments_dir)?;
 
         let safe_filename = sanitize_filename(filename)?;
-        #[cfg(target_os = "windows")]
-        let safe_filename = hypr_storage::fs::windows_safe_filename(&safe_filename);
         let (file_path, final_filename) =
             write_unique_file(&attachments_dir, &safe_filename, data)?;
 
@@ -76,8 +75,6 @@ impl FsSyncCore {
             .and_then(|name| name.to_str())
             .ok_or_else(|| Error::Path("attachment_source_filename_invalid".into()))?;
         let safe_filename = sanitize_filename(filename)?;
-        #[cfg(target_os = "windows")]
-        let safe_filename = hypr_storage::fs::windows_safe_filename(&safe_filename);
         let session_dir = self.resolve_session_dir(session_id)?;
         let attachments_dir = session_dir.join("attachments");
         std::fs::create_dir_all(&attachments_dir)?;
@@ -197,23 +194,9 @@ impl FsSyncCore {
 }
 
 fn sanitize_filename(filename: &str) -> Result<String> {
-    let path = std::path::Path::new(filename);
-
-    let clean_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
-        Error::from(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Invalid filename",
-        ))
-    })?;
-
-    if clean_name.is_empty() || clean_name.contains(['/', '\\', '\0']) {
-        return Err(Error::from(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Invalid filename characters",
-        )));
-    }
-
-    Ok(clean_name.to_string())
+    attachment::basename(filename)
+        .map(str::to_owned)
+        .map_err(Into::into)
 }
 
 fn write_unique_file(
@@ -229,70 +212,9 @@ fn write_unique_file(
 fn write_unique_file_with(
     dir: &std::path::Path,
     filename: &str,
-    mut write_data: impl FnMut(&mut std::fs::File) -> std::io::Result<()>,
+    write_data: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
 ) -> Result<(PathBuf, String)> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-
-    let (temporary_path, mut temporary_file) = loop {
-        let path = dir.join(format!(".attachment-{}.tmp", uuid::Uuid::new_v4()));
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => break (path, file),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
-        }
-    };
-
-    if let Err(error) = write_data(&mut temporary_file).and_then(|_| temporary_file.flush()) {
-        drop(temporary_file);
-        remove_partial_attachment(&temporary_path);
-        return Err(error.into());
-    }
-    drop(temporary_file);
-
-    let path = std::path::Path::new(filename);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(filename);
-    let extension = path.extension().and_then(|e| e.to_str());
-
-    let mut counter = 0;
-    loop {
-        let candidate_filename = if counter == 0 {
-            filename.to_string()
-        } else {
-            match extension {
-                Some(ext) => format!("{} {}.{}", stem, counter, ext),
-                None => format!("{} {}", stem, counter),
-            }
-        };
-
-        let candidate_path = dir.join(&candidate_filename);
-
-        match std::fs::hard_link(&temporary_path, &candidate_path) {
-            Ok(()) => {
-                remove_partial_attachment(&temporary_path);
-                return Ok((candidate_path, candidate_filename));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                counter += 1;
-                continue;
-            }
-            Err(e) => {
-                remove_partial_attachment(&temporary_path);
-                return Err(e.into());
-            }
-        }
-    }
-}
-
-fn remove_partial_attachment(path: &std::path::Path) {
-    if let Err(error) = std::fs::remove_file(path)
-        && error.kind() != std::io::ErrorKind::NotFound
-    {
-        tracing::warn!(error = %error, "Failed to remove temporary attachment");
-    }
+    Ok(attachment::StagedAttachment::prepare(dir, write_data)?.publish_unique(filename)?)
 }
 
 fn attachment_info(path: PathBuf, attachment_id: String) -> Result<AttachmentInfo> {

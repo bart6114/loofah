@@ -307,7 +307,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel is implemented; uploads and checked removal remain open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented; uploads remain open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -1979,3 +1979,36 @@ mutation parity, lifecycle/backup/upgrade gates, production performance and nati
 Windows acceptance still require work. The preceding `a1f11012a` checkpoint has
 now passed hosted macOS, Linux backend, CLI and Windows x64/ARM64 checks, including
 both Windows installers. Newer checkpoints need their own hosted checks.
+
+### Shared attachment staging before transport upload integration
+
+`fs-sync-core::attachment::StagedAttachment` now supplies one hidden staging and
+exclusive-publication primitive. The fs-sync helper previously staged then used
+hard links; `vault-write::save_attachment` wrote directly into the final name.
+Both now use the shared primitive: sync the completed temporary file, close its
+writer, then publish through `storage::rename_no_replace`. Existing basename,
+Unicode, Windows-safe-name and counter-suffix behavior is retained. It does not
+require hard-link support. Failed or abandoned stages remove only their own
+private file; existing attachments and unknown files remain unchanged. Readers
+and watchers cannot observe a partial final attachment.
+
+`SessionStore::stage_attachment` adds a streaming preparation path for the new
+upload pipeline. It requires an existing session and releases the vault write
+lock before consuming input. Its reservation blocks deletion of that session and
+whole-vault relocation through actual I/O completion, including after caller
+cancellation. Dropping a prepared stage removes its unpublished bytes. Publication
+rechecks readiness and session identity, holds the write reservation through the
+exclusive move and flush, and emits the final deduplicated attachment ID. This
+reservation is separate from recording state. The existing legacy fs-sync UI
+upload path has not yet moved onto the new session reservation.
+
+Storage validation passes 97 fs-sync tests and 354 vault-write tests (one
+ignored), including hidden staging, collisions, failed writes, unwinding,
+cancellation, reader responsiveness and session/relocation protection. Headless
+application/client/server and native desktop/CLI compilation pass. The native
+desktop suite passes 61 tests (one ignored), plus four fs-sync plugin tests.
+Clippy reports existing warnings in other storage modules, with none in the new
+staging modules. HTTP receiving, content-checksum validation, persistent upload receipts and status,
+native file/clipboard/drop adapters and shared frontend upload UX remain required.
+Crash cleanup and restart recovery of incoming uploads remain lifecycle gates;
+this primitive alone does not establish durable remote upload completion.

@@ -5,6 +5,7 @@ use std::sync::Arc;
 pub mod agents_doc;
 pub mod attachment_list;
 pub mod attachment_remove;
+pub mod attachment_stage;
 pub mod attachments;
 pub mod audio;
 mod audio_layout;
@@ -83,6 +84,7 @@ pub struct SessionStore {
     /// Backend recording reservations also protect whole-vault relocation.
     active_recordings: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     attachment_removals: Arc<tokio::sync::Mutex<()>>,
+    attachment_stages: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
@@ -233,6 +235,7 @@ impl SessionStore {
             deleted_sessions: Arc::new(std::sync::Mutex::new(Default::default())),
             startup_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             attachment_removals: Arc::new(tokio::sync::Mutex::new(())),
+            attachment_stages: Arc::new(std::sync::Mutex::new(HashMap::new())),
             storage_stats: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -352,6 +355,11 @@ impl SessionStore {
     pub async fn freeze_for_vault_move(&self) -> Result<VaultMoveGuard<'_>, StoreError> {
         self.flush_all().await?;
         let guard = self.lock_writes().await;
+        if !self.attachment_stages.lock().unwrap().is_empty() {
+            return Err(StoreError::Conflict(
+                "an attachment transfer is in progress; finish it before moving the vault".into(),
+            ));
+        }
         if !self.active_recordings.lock().unwrap().is_empty() {
             return Err(StoreError::Conflict(
                 "a recording is in progress; stop it before moving the vault".to_string(),

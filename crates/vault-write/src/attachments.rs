@@ -1,8 +1,8 @@
 //! Note-attachment storage under `<session_dir>/attachments/`. Same semantics as the
-//! fs-sync plugin's `attachment_save`: sanitize to a basename, then a `create_new`
-//! dedupe loop so an existing file is never overwritten.
+//! fs-sync plugin's `attachment_save`: hidden staging, durable bytes and exclusive
+//! deduplicated publication so existing files are never overwritten.
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(test)]
 use hypr_storage::fs::windows_safe_filename as windows_basename;
 use std::path::{Path, PathBuf};
 
@@ -90,11 +90,18 @@ impl SessionStore {
             let relative_dir = dir.join("attachments");
             let abs_dir = store.vault_base.join(&relative_dir);
             let final_filename = tokio::task::spawn_blocking(move || {
-                std::fs::create_dir_all(&abs_dir).map_err(|e| {
-                    StoreError::Io(format!("failed to create attachments dir: {e}"))
-                })?;
-                let safe_filename = sanitize_filename(&filename)?;
-                write_unique_file(&abs_dir, &safe_filename, &bytes)
+                use std::io::Write;
+                let filename = hypr_fs_sync_core::attachment::sanitize_filename(&filename)
+                    .map_err(|cause| StoreError::Io(cause.to_string()))?;
+                let staged =
+                    hypr_fs_sync_core::attachment::StagedAttachment::prepare(&abs_dir, |file| {
+                        file.write_all(&bytes)
+                    })
+                    .map_err(|cause| StoreError::Io(cause.to_string()))?;
+                staged
+                    .publish_unique(&filename)
+                    .map(|(_, name)| name)
+                    .map_err(|cause| StoreError::Io(cause.to_string()))
             })
             .await
             .map_err(|e| StoreError::Io(format!("attachment file worker failed: {e}")))??;
@@ -115,101 +122,6 @@ fn attachment_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, StoreEr
         Ok(metadata) => Ok(Some(metadata)),
         Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(cause) => Err(StoreError::Io(cause.to_string())),
-    }
-}
-
-/// Basename only — a caller-supplied path must not be able to place the file outside
-/// the session's `attachments/` directory.
-fn sanitize_filename(filename: &str) -> Result<String, StoreError> {
-    let clean_name = Path::new(filename)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| StoreError::Io("invalid attachment filename".to_string()))?;
-
-    if clean_name.is_empty() || clean_name.contains(['/', '\\', '\0']) {
-        return Err(StoreError::Io(
-            "invalid attachment filename characters".to_string(),
-        ));
-    }
-
-    #[cfg(target_os = "windows")]
-    return Ok(windows_basename(clean_name));
-    #[cfg(not(target_os = "windows"))]
-    Ok(clean_name.to_string())
-}
-
-/// First try the sanitized name verbatim, then `{stem} {counter}.{ext}` — `create_new`
-/// makes the existence check and the create one atomic step, so two concurrent saves
-/// can never claim the same name.
-fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, StoreError> {
-    use std::io::Write;
-
-    let path = Path::new(filename);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(filename);
-    let extension = path.extension().and_then(|e| e.to_str());
-
-    let mut counter = 0;
-    loop {
-        let candidate_filename = if counter == 0 {
-            filename.to_string()
-        } else {
-            match extension {
-                Some(ext) => format!("{} {}.{}", stem, counter, ext),
-                None => format!("{} {}", stem, counter),
-            }
-        };
-
-        let candidate_path = dir.join(&candidate_filename);
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate_path)
-        {
-            Ok(mut file) => {
-                if let Err(error) = file.write_all(data).and_then(|_| file.sync_all()) {
-                    drop(file);
-                    if let Err(cleanup_error) = std::fs::remove_file(&candidate_path) {
-                        tracing::warn!(
-                            error = %cleanup_error,
-                            "failed to remove partially written attachment"
-                        );
-                    }
-                    return Err(StoreError::Io(format!(
-                        "failed to write attachment: {error}"
-                    )));
-                }
-                #[cfg(unix)]
-                {
-                    std::fs::File::open(dir)
-                        .and_then(|directory| directory.sync_all())
-                        .map_err(|error| {
-                            StoreError::Io(format!("failed to flush attachment directory: {error}"))
-                        })?;
-                    if let Some(parent) = dir.parent() {
-                        std::fs::File::open(parent)
-                            .and_then(|directory| directory.sync_all())
-                            .map_err(|error| {
-                                StoreError::Io(format!(
-                                    "failed to flush attachment parent: {error}"
-                                ))
-                            })?;
-                    }
-                }
-                return Ok(candidate_filename);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                counter += 1;
-                continue;
-            }
-            Err(e) => {
-                return Err(StoreError::Io(format!(
-                    "failed to create attachment file: {e}"
-                )));
-            }
-        }
     }
 }
 

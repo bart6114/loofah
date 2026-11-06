@@ -502,6 +502,12 @@ impl SessionStore {
         validate_session_id(id)?;
         let _operation = self.transcript_operations.lock(id).await;
         let guard = self.lock_writes().await;
+        if self.attachment_stages.lock().unwrap().contains_key(id) {
+            return Err(StoreError::Conflict(
+                "an attachment transfer is in progress; finish it before removing the session"
+                    .into(),
+            ));
+        }
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
         let vault_base = self.vault_base.clone();
