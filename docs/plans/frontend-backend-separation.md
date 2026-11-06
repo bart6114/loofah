@@ -1046,3 +1046,34 @@ with 412. Notes, metadata, unknown-file canaries and all 56 pre-existing fixture
 files retained their hashes. Processes stopped cleanly and network settings
 were restored. All artifacts stayed on T7. These are binary transport tests,
 using synthetic data; they do not establish decoder, waveform or player parity.
+
+### Waveform input preparation
+
+Portable waveform calculation can now accept a pinned seekable reader with a
+known byte length. It uses the existing decoder settings and the same windowing,
+max-downsampling and rounding implementation. The current desktop path-based
+reader and `audio.peaks.json` writer remain unchanged. The new helper publishes
+no cache beside a potentially replaced or deleted session; a later admitted
+waveform operation must validate its generation and own cache/job lifecycle.
+
+The 22 portable audio tests pass, including exact waveform parity for WAV,
+MP3, OGG and stereo MP3 inputs, invalid-input refusal, existing cache invalidation
+and every existing import format. Audio utilities pass 15 tests. This provides
+a reusable computation boundary; it does not expose a waveform endpoint or
+mount the desktop player. Server-side admission, cancellation, long-input cost
+bounds and derived-cache ownership remain part of that next operation.
+
+Current player coupling is concrete: `session/index.tsx` resolves a local
+`audioPath` with `convertFileSrc`, and `audio-player/provider.tsx` queries
+`audioExist`/`audioPeaks` directly. When peaks are null it supplies no precomputed
+data to WaveSurfer, which starts its whole-file fetch/decode fallback. A remote
+adapter must provide bounded native media access and deliberate missing-waveform
+behavior before those hooks switch transports. `useAttachmentResolver.ts` also
+maps native attachment paths to asset URLs. Keep these device URL decisions in
+the client adapter, with a scoped lifetime; do not expose server filesystem paths
+or put transport branches in player/editor components.
+
+Rust checks for desktop, CLI and server pass after the reader extraction. Strict
+Clippy on `audio-utils` reports two pre-existing `needless_range_loop` warnings
+in `src/file_pcm.rs:163-164`; that code is unchanged. This lint result is recorded
+separately from the passing codec/waveform tests and compilation checks.

@@ -171,6 +171,15 @@ pub fn peaks(session_dir: &Path) -> std::io::Result<Option<AudioPeaks>> {
     Ok(Some(peaks))
 }
 
+/// Computes the existing waveform from a pinned input without publishing a path-based cache.
+/// The caller owns generation validation and admission for potentially long decoding work.
+pub fn peaks_from_reader<R>(reader: R, byte_len: u64) -> Option<AudioPeaks>
+where
+    R: Read + std::io::Seek + Send + Sync + 'static,
+{
+    compute_peaks(hypr_audio_utils::source_from_reader(reader, byte_len).ok()?)
+}
+
 fn read_peaks_cache(
     cache_path: &Path,
     source_size_bytes: u64,
@@ -538,6 +547,27 @@ mod tests {
         std::fs::write(&audio_path, &audio_bytes).unwrap();
         let recomputed = peaks(session_dir).unwrap().unwrap();
         assert_eq!(recomputed.duration_sec, computed.duration_sec);
+    }
+
+    #[test]
+    fn pinned_waveform_readers_preserve_the_existing_wav_mp3_and_ogg_results() {
+        for path in [
+            hypr_data::english_1::AUDIO_PATH,
+            hypr_data::english_1::AUDIO_MP3_PATH,
+            hypr_data::english_1::AUDIO_OGG_PATH,
+            hypr_data::english_10::AUDIO_MP3_PATH,
+        ] {
+            let expected =
+                compute_peaks(hypr_audio_utils::source_from_path(path).unwrap()).unwrap();
+            let bytes = std::fs::read(path).unwrap();
+            let len = bytes.len() as u64;
+            let actual = peaks_from_reader(std::io::Cursor::new(bytes), len).unwrap();
+            assert_eq!(actual, expected, "{path}");
+        }
+        assert!(
+            peaks_from_reader(std::io::Cursor::new(b"Not an audio recording".to_vec()), 22)
+                .is_none()
+        );
     }
 
     macro_rules! test_import_audio {
