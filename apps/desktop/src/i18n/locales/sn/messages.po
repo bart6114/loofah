@@ -969,6 +969,7 @@ msgstr ""
 msgid "Loading connection…"
 msgstr ""
 
+#: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
 msgid "Loading content…"
@@ -1545,6 +1546,7 @@ msgstr ""
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
+#: src/session/components/note-input/raw.tsx
 #: src/session/components/note-input/transcript/loading.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
@@ -2023,7 +2025,7 @@ msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
-msgid "This content changed in another client. Review the server version before choosing."
+msgid "This content changed elsewhere. Review the saved version before choosing."
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -2192,7 +2194,7 @@ msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
-msgid "Use server version"
+msgid "Use saved version"
 msgstr ""
 
 #: src/onboarding/permissions.tsx

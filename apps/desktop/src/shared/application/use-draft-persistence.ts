@@ -1,11 +1,15 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import type { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
 import type { RevisionDraft } from "./revision-draft";
 import type { VaultScope } from "./vault-scope";
 
+import {
+  enqueueDatabaseWrite,
+  registerWriteFlusher,
+} from "~/shared/write-queue";
 import type { NoteDraftRecovery } from "~/types/tauri.gen";
 
 export function useDraftPersistence<S, D>({
@@ -57,7 +61,7 @@ export function useDraftPersistence<S, D>({
     },
   });
   const lastSubmitted = useRef<D | null>(null);
-  const save = useMutation({
+  const mutation = useMutation({
     networkMode: "always",
     mutationFn: async () => {
       await persist.mutateAsync(true).catch(() => {});
@@ -100,6 +104,18 @@ export function useDraftPersistence<S, D>({
       }
     },
   });
+  const writeKey =
+    scope.client.noteWriteQueueKey?.(draft.sessionId) ??
+    `vault-write:${JSON.stringify([draft.scope, draft.sessionId])}`;
+  const execute = mutation.mutateAsync;
+  const saveAsync = useCallback(
+    () => enqueueDatabaseWrite(writeKey, () => execute()),
+    [writeKey, execute],
+  );
+  const saveNow = useCallback(() => {
+    void saveAsync().catch(() => {});
+  }, [saveAsync]);
+  const save = { ...mutation, mutateAsync: saveAsync, mutate: saveNow };
   const editable =
     available &&
     connection.state === "connected" &&
@@ -114,6 +130,29 @@ export function useDraftPersistence<S, D>({
     available &&
     scope.client.canEdit &&
     !(save.error && lastSubmitted.current === snapshot.draft);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
+  flushRef.current = async () => {
+    let copyError: unknown;
+    try {
+      await persist.mutateAsync(false);
+    } catch (error) {
+      copyError = error;
+    }
+    const current = draft.getSnapshot();
+    if (
+      current.dirty &&
+      !current.conflict &&
+      available &&
+      scope.client.canEdit &&
+      scope.getSnapshot().state === "connected"
+    )
+      await saveAsync();
+    else if (copyError) throw copyError;
+  };
+  useEffect(
+    () => registerWriteFlusher(writeKey, () => flushRef.current()),
+    [writeKey],
+  );
   useEffect(() => {
     if (!snapshot.dirty && !recovery) return;
     const timer = setTimeout(() => {

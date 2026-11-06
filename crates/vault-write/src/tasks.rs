@@ -9,11 +9,12 @@ pub use hypr_vault_read::{TaskItem, TasksFile};
 
 pub use hypr_loofah_protocol::TaskInput;
 
-pub(super) const TASKS_LIMIT: usize = 8 * 1024 * 1024;
-
-pub(super) fn validate_task_file_size(tasks: &[TaskItem]) -> Result<(), StoreError> {
+pub(super) fn validate_task_file_size(tasks: &[TaskItem], limit: usize) -> Result<(), StoreError> {
+    if limit == usize::MAX {
+        return Ok(());
+    }
     use serde::ser::{SerializeMap, Serializer};
-    let mut serializer = serde_json::Serializer::pretty(TaskFileBudget(TASKS_LIMIT));
+    let mut serializer = serde_json::Serializer::pretty(TaskFileBudget(limit));
     let result = (|| {
         let mut object = serializer.serialize_map(Some(1))?;
         object.serialize_entry("tasks", tasks)?;
@@ -326,7 +327,7 @@ impl SessionStore {
             }
             next.push(task);
         }
-        validate_task_file_size(&next)?;
+        validate_task_file_size(&next, self.content_limits.tasks_file_bytes)?;
         Ok(next)
     }
 

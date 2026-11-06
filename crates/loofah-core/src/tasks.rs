@@ -28,8 +28,9 @@ impl VaultContext {
         input: ReplaceTasksRequest,
     ) -> Result<TasksSaveOutcome, ApplicationError> {
         self.validate(session_id)?;
+        let limits = self.store.content_limits();
         let input = tokio::task::spawn_blocking(move || {
-            validate(&input)?;
+            validate(&input, limits)?;
             Ok::<_, ApplicationError>(input)
         })
         .await
@@ -54,13 +55,19 @@ impl VaultContext {
     }
 }
 
-fn validate(input: &ReplaceTasksRequest) -> Result<(), ApplicationError> {
-    validate_task_fields(&input.tasks, &input.expected_revision)?;
+fn validate(
+    input: &ReplaceTasksRequest,
+    limits: hypr_vault_write::ContentLimits,
+) -> Result<(), ApplicationError> {
+    validate_task_fields(&input.tasks, &input.expected_revision, limits)?;
     if let TaskSource::TemplateOutput { document_id } = &input.source {
         hypr_vault_read::paths::validate_session_id(document_id)
             .map_err(|_| error(ErrorCode::Validation, "Invalid task source identifier"))?;
     }
-    serde_json::to_writer(RequestBudget(4 * 1024 * 1024), input).map_err(|_| {
+    if limits.task_request_bytes == usize::MAX {
+        return Ok(());
+    }
+    serde_json::to_writer(RequestBudget(limits.task_request_bytes), input).map_err(|_| {
         error(
             ErrorCode::ResourceLimit,
             "Task replacement exceeds its size limit",
@@ -72,6 +79,7 @@ fn validate(input: &ReplaceTasksRequest) -> Result<(), ApplicationError> {
 pub(crate) fn validate_task_fields(
     tasks: &[TaskInput],
     expected_revision: &str,
+    limits: hypr_vault_write::ContentLimits,
 ) -> Result<(), ApplicationError> {
     if expected_revision.is_empty() || expected_revision.len() > 128 {
         return Err(error(
@@ -79,7 +87,7 @@ pub(crate) fn validate_task_fields(
             "Expected task revision is required",
         ));
     }
-    if tasks.len() > 2000 {
+    if tasks.len() > limits.task_count {
         return Err(error(
             ErrorCode::ResourceLimit,
             "Too many tasks in one replacement",
@@ -93,10 +101,10 @@ pub(crate) fn validate_task_fields(
                 "Task identifiers must be nonempty and unique, with a nonempty status",
             ));
         }
-        if task.id.len() > 512
-            || task.status.len() > 128
-            || task.text.len() > 16 * 1024
-            || task.due_at.len() > 256
+        if task.id.len() > limits.task_id_bytes
+            || task.status.len() > limits.task_status_bytes
+            || task.text.len() > limits.task_text_bytes
+            || task.due_at.len() > limits.task_due_bytes
         {
             return Err(error(
                 ErrorCode::ResourceLimit,

@@ -341,9 +341,11 @@ pub async fn main() {
                     Ok(base) => {
                         let startup = startup::state(&app_handle, Some(base.as_std_path()));
                         app_handle.manage(startup.clone());
-                        let store = std::sync::Arc::new(session_store::SessionStore::new(
-                            base.as_std_path().to_path_buf(),
-                        ));
+                        let store =
+                            std::sync::Arc::new(session_store::SessionStore::with_content_limits(
+                                base.as_std_path().to_path_buf(),
+                                hypr_vault_write::ContentLimits::unlimited(),
+                            ));
                         store.set_startup_pending(true);
                         app_handle.manage(store.clone());
                         use sha2::{Digest, Sha256};

@@ -7,6 +7,7 @@ pub mod attachments;
 pub mod audio;
 mod audio_layout;
 pub mod content;
+mod content_limits;
 mod document_operation;
 mod document_revision;
 pub mod enhanced;
@@ -36,6 +37,7 @@ pub use attachments::SavedAttachment;
 pub use content::{
     NoteSaveOutcome, NoteSnapshot, SessionMeta, SessionMetaPatch, TagSuggestionState,
 };
+pub use content_limits::ContentLimits;
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
 pub use index::{
     IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord,
@@ -52,6 +54,7 @@ pub use transcript::TranscriptDelta;
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     vault_base: PathBuf,
+    content_limits: ContentLimits,
     journal: Arc<journal::WriteJournal>,
     rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
     rebuild_generation: Arc<std::sync::atomic::AtomicU64>,
@@ -201,9 +204,14 @@ impl SessionStore {
     }
 
     pub fn new(vault_base: PathBuf) -> Self {
+        Self::with_content_limits(vault_base, ContentLimits::default())
+    }
+
+    pub fn with_content_limits(vault_base: PathBuf, content_limits: ContentLimits) -> Self {
         let (index_changes_tx, index_changes_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             vault_base,
+            content_limits,
             journal: Arc::new(journal::WriteJournal::new()),
             rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
             rebuild_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -240,6 +248,10 @@ impl SessionStore {
 
     pub fn vault_base(&self) -> &std::path::Path {
         &self.vault_base
+    }
+
+    pub fn content_limits(&self) -> ContentLimits {
+        self.content_limits
     }
 
     /// Whether the current on-disk bytes at `relative` match the hash this store itself last

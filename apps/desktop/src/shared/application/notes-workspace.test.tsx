@@ -11,6 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   views: [] as import("prosemirror-view").EditorView[],
+  serialize: null as
+    | null
+    | typeof import("@hypr/editor/markdown").json2mdStrict,
   draftCacheGet: vi.fn(),
   draftCacheInventory: vi.fn(),
   draftCacheRecovery: vi.fn(),
@@ -19,6 +22,12 @@ const native = vi.hoisted(() => ({
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
+vi.mock("@hypr/editor/markdown", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@hypr/editor/markdown")>();
+  native.serialize = original.json2mdStrict;
+  return { ...original, json2mdStrict: vi.fn(original.json2mdStrict) };
+});
 vi.mock("@hypr/editor/note", async (importOriginal) => {
   const original = await importOriginal<typeof import("@hypr/editor/note")>();
   const { createElement, forwardRef, useCallback } = await import("react");
@@ -48,10 +57,11 @@ vi.mock("@hypr/editor/note", async (importOriginal) => {
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 import { scopedAttachmentPresentation } from "@hypr/editor/attachment-presentation";
+import * as editorMarkdown from "@hypr/editor/markdown";
 
 import { documentDraftId } from "./document-draft";
 import { ApplicationRequestError } from "./errors";
-import { noteEditorDraftId } from "./note-editor-draft";
+import { noteEditorDraftId, noteEditorDrafts } from "./note-editor-draft";
 import { VaultNotesWorkspace } from "./notes-workspace";
 import type {
   NoteSnapshot,
@@ -247,6 +257,7 @@ async function open(client: VaultClient) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(editorMarkdown.json2mdStrict).mockImplementation(native.serialize!);
   native.views.length = 0;
   native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [] });
   native.draftCacheRecovery.mockResolvedValue({ status: "ok", data: null });
@@ -266,7 +277,12 @@ async function openRich(client: VaultClient) {
     </StrictMode>,
   );
   fireEvent.click(await screen.findByRole("button", { name: "Seed" }));
-  await waitFor(() => expect(native.views.length).toBeGreaterThan(0));
+  await waitFor(() => {
+    const view = native.views[native.views.length - 1];
+    expect(view?.dom.isConnected).toBe(true);
+    expect(view?.isDestroyed).toBe(false);
+    expect(view?.editable).toBe(client.canEdit);
+  });
   return { ...rendered, view: native.views[native.views.length - 1] };
 }
 
@@ -302,6 +318,133 @@ function richFixture() {
 }
 
 describe("mounted shared rich editor", () => {
+  it("releases a clean editor draft while its vault workspace remains open", async () => {
+    const backend = richFixture();
+    const client = {
+      ...backend.client,
+      features: [...backend.client.features, "content_read"],
+    };
+    const mounted = await openRich(client);
+    const id = noteEditorDraftId("same");
+    const first = noteEditorDrafts.get(client.scope, id);
+    expect(first).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    await waitFor(() => expect(mounted.view.isDestroyed).toBe(true));
+    expect(noteEditorDrafts.get(client.scope, id)).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: "Note" }));
+    await waitFor(() =>
+      expect(native.views[native.views.length - 1].dom.isConnected).toBe(true),
+    );
+    expect(noteEditorDrafts.get(client.scope, id)).toBeDefined();
+    expect(noteEditorDrafts.get(client.scope, id)).not.toBe(first);
+  });
+
+  it("keeps an unmounted pending draft until its save confirms, then releases it", async () => {
+    const backend = richFixture();
+    const client = {
+      ...backend.client,
+      features: [...backend.client.features, "content_read"],
+    };
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const actualSave = backend.client.saveNoteEditor.getMockImplementation()!;
+    backend.client.saveNoteEditor.mockImplementationOnce(async (...args) => {
+      await pending;
+      return actualSave(...args);
+    });
+    const mounted = await openRich(client);
+    act(() =>
+      mounted.view.dispatch(mounted.view.state.tr.insertText("Pending ", 1)),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.saveNoteEditor).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    await waitFor(() => expect(mounted.view.isDestroyed).toBe(true));
+    const id = noteEditorDraftId("same");
+    expect(noteEditorDrafts.get(client.scope, id)?.getSnapshot().dirty).toBe(
+      true,
+    );
+    await act(async () => {
+      finish();
+      await flushDatabaseWrites();
+    });
+    await waitFor(() =>
+      expect(noteEditorDrafts.get(client.scope, id)).toBeUndefined(),
+    );
+    expect((await client.readNoteEditor("same")).note.title).toBe(
+      "Pending Seed",
+    );
+  });
+
+  it("flushes an edit through the existing local note key before its editor debounce fires", async () => {
+    const backend = richFixture();
+    backend.client.noteWriteQueueKey = (id) => `session:${id}:note`;
+    const mounted = await openRich(backend.client);
+    act(() =>
+      mounted.view.dispatch(mounted.view.state.tr.insertText("Flushed ", 1)),
+    );
+    await act(async () => {
+      await flushDatabaseWrites(["session:same:note"]);
+    });
+    expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce();
+    expect(backend.client.saveNoteEditor.mock.calls[0][1].title).toBe(
+      "Flushed Seed",
+    );
+    expect(native.draftCachePut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft: expect.objectContaining({ title: "Flushed Seed" }),
+      }),
+    );
+  });
+  it("keeps the rendered draft through a serialization failure and remount until a safe save succeeds", async () => {
+    const backend = richFixture();
+    const mounted = await openRich(backend.client);
+    const serialize = vi
+      .mocked(editorMarkdown.json2mdStrict)
+      .mockImplementation(() => {
+        throw new Error("Serialization refused this content");
+      });
+    try {
+      act(() =>
+        mounted.view.dispatch(
+          mounted.view.state.tr.insertText("Keep rendered ", 1),
+        ),
+      );
+      await screen.findAllByText(
+        "This content cannot be safely serialized by the current editor",
+        {},
+        { timeout: 3000 },
+      );
+      expect(backend.client.saveNoteEditor).not.toHaveBeenCalled();
+      mounted.unmount();
+      const reopened = await openRich(backend.client);
+      expect(reopened.view.state.doc.textContent).toContain(
+        "Keep rendered Seed",
+      );
+      await screen.findAllByText(
+        "This content cannot be safely serialized by the current editor",
+        {},
+        { timeout: 3000 },
+      );
+      serialize.mockImplementation(native.serialize!);
+      act(() =>
+        reopened.view.dispatch(reopened.view.state.tr.insertText("Fixed ", 1)),
+      );
+      await waitFor(
+        () => expect(backend.client.saveNoteEditor).toHaveBeenCalled(),
+        { timeout: 3000 },
+      );
+      expect(
+        backend.client.saveNoteEditor.mock.calls[
+          backend.client.saveNoteEditor.mock.calls.length - 1
+        ][1].title,
+      ).toBe("Fixed Keep rendered Seed");
+    } finally {
+      serialize.mockImplementation(native.serialize!);
+    }
+  });
   it("saves title, Markdown and explicit task intent together without writing on mount", async () => {
     const backend = richFixture();
     const { view, container } = await openRich(backend.client);
@@ -502,7 +645,7 @@ describe("mounted shared rich editor", () => {
       backend.emit({ kind: "change", change: { kind: "resync_required" } }),
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "Use server version" }),
+      await screen.findByRole("button", { name: "Use saved version" }),
     );
     await waitFor(() =>
       expect(
@@ -1293,7 +1436,7 @@ describe("shared note workspace", () => {
       kind: "change",
       change: { kind: "index_changed", entity: "sessions", ids: ["same"] },
     });
-    await screen.findByRole("button", { name: "Use server version" });
+    await screen.findByRole("button", { name: "Use saved version" });
     expect((editor as HTMLTextAreaElement).value).toBe("My text");
     expect(backend.client.saveNote).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Save my version" }));

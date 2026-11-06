@@ -2,7 +2,7 @@ use std::path::Path;
 
 use hypr_loofah_protocol::{DocumentTarget, TaskSource, TasksSaveOutcome, TasksSnapshot};
 
-use crate::tasks::{TASKS_LIMIT, TasksFile};
+use crate::tasks::TasksFile;
 use crate::{SessionStore, StoreError, TaskInput, WriteGuard, paths};
 
 impl SessionStore {
@@ -71,7 +71,7 @@ impl SessionStore {
         };
         let existing = current.tasks;
         let next = crate::tasks::replaced_source_tasks(&existing, source_type, source_id, inputs);
-        crate::tasks::validate_task_file_size(&next)?;
+        crate::tasks::validate_task_file_size(&next, self.content_limits.tasks_file_bytes)?;
         self.persist_generated_tasks(&guard, session_id, &next)
             .await?;
         let saved = self
@@ -97,6 +97,7 @@ impl SessionStore {
         let vault = self.vault_base.clone();
         let dir = paths::validated_session_dir(session_id)?;
         let id = session_id.to_owned();
+        let limit = self.content_limits.tasks_file_bytes;
         let snapshot = tokio::task::spawn_blocking(move || {
             let path = vault.join(paths::session_tasks_path_in(&dir));
             let raw = match std::fs::symlink_metadata(&path) {
@@ -107,7 +108,7 @@ impl SessionStore {
                         "Session tasks are not a regular file".into(),
                     ));
                 }
-                Ok(meta) if meta.len() > TASKS_LIMIT as u64 => {
+                Ok(meta) if meta.len() > limit as u64 => {
                     return Err(StoreError::ResourceLimit(
                         "Session tasks exceed their size limit".into(),
                     ));
@@ -117,10 +118,10 @@ impl SessionStore {
                     let mut bytes = Vec::new();
                     std::fs::File::open(&path)
                         .map_err(|cause| StoreError::Io(cause.to_string()))?
-                        .take(TASKS_LIMIT as u64 + 1)
+                        .take(limit.saturating_add(1) as u64)
                         .read_to_end(&mut bytes)
                         .map_err(|cause| StoreError::Io(cause.to_string()))?;
-                    if bytes.len() > TASKS_LIMIT {
+                    if bytes.len() > limit {
                         return Err(StoreError::ResourceLimit(
                             "Session tasks exceed their size limit".into(),
                         ));
@@ -162,6 +163,7 @@ impl SessionStore {
 mod tests {
     use super::*;
     use serde_json::json;
+    const TASKS_LIMIT: usize = 8 * 1024 * 1024;
 
     async fn fixture() -> (tempfile::TempDir, SessionStore, std::path::PathBuf) {
         let root = tempfile::tempdir().unwrap();

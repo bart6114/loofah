@@ -2,8 +2,6 @@ use hypr_loofah_protocol::{MetadataSaveOutcome, MetadataSnapshot};
 
 use crate::{SessionMetaPatch, SessionStore, StoreError, WriteGuard, paths};
 
-const METADATA_LIMIT: usize = 8 * 1024 * 1024;
-
 impl SessionStore {
     pub async fn read_recovered_metadata_snapshot(
         &self,
@@ -67,7 +65,7 @@ impl SessionStore {
         }
         let mut meta = current.meta;
         crate::content::apply_meta_patch(&mut meta, patch);
-        validate_metadata_size(&meta)?;
+        validate_metadata_size(&meta, self.content_limits.metadata_bytes)?;
         self.write_meta_locked(guard, &meta).await?;
         let snapshot = self
             .metadata_snapshot_locked(guard, id)
@@ -86,6 +84,7 @@ impl SessionStore {
         let vault = self.vault_base.clone();
         let directory = paths::validated_session_dir(id)?;
         let id = id.to_owned();
+        let limit = self.content_limits.metadata_bytes;
         tokio::task::spawn_blocking(move || {
             let path = vault.join(paths::meta_path_in(&directory));
             for (candidate, is_file) in [
@@ -105,7 +104,7 @@ impl SessionStore {
                             "Session metadata path is not a regular file or directory".into(),
                         ));
                     }
-                    Ok(meta) if is_file && meta.len() > METADATA_LIMIT as u64 => {
+                    Ok(meta) if is_file && meta.len() > limit as u64 => {
                         return Err(StoreError::Serialize(
                             "Session metadata exceeds its size limit".into(),
                         ));
@@ -119,11 +118,11 @@ impl SessionStore {
                 Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(cause) => return Err(StoreError::Io(cause.to_string())),
                 Ok(file) => file
-                    .take(METADATA_LIMIT as u64 + 1)
+                    .take(limit.saturating_add(1) as u64)
                     .read_to_end(&mut raw)
                     .map_err(|cause| StoreError::Io(cause.to_string()))?,
             };
-            if raw.len() > METADATA_LIMIT {
+            if raw.len() > limit {
                 return Err(StoreError::Serialize(
                     "Session metadata exceeds its size limit".into(),
                 ));
@@ -149,10 +148,16 @@ impl SessionStore {
     }
 }
 
-pub(super) fn validate_metadata_size(meta: &crate::SessionMeta) -> Result<(), StoreError> {
+pub(super) fn validate_metadata_size(
+    meta: &crate::SessionMeta,
+    limit: usize,
+) -> Result<(), StoreError> {
+    if limit == usize::MAX {
+        return Ok(());
+    }
     let bytes = serde_json::to_vec_pretty(meta)
         .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
-    if bytes.len() > METADATA_LIMIT {
+    if bytes.len() > limit {
         return Err(StoreError::ResourceLimit(
             "Session metadata exceeds its size limit".into(),
         ));
@@ -165,6 +170,7 @@ mod tests {
     use super::*;
     use crate::NoteSaveOutcome;
     use serde_json::json;
+    const METADATA_LIMIT: usize = 8 * 1024 * 1024;
 
     async fn fixture() -> (tempfile::TempDir, SessionStore) {
         let root = tempfile::tempdir().unwrap();

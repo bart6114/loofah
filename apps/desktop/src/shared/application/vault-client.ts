@@ -68,6 +68,7 @@ export type VaultClient = {
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
+  noteWriteQueueKey?: (sessionId: string) => string;
   audioMetadata: (
     sessionId: string,
     options?: RequestOptions,
@@ -205,6 +206,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     networkMode: "always",
     canEdit: true,
     attachmentPresentation: legacyAttachmentPresentation,
+    noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       "notes",
       "note_editor_read",

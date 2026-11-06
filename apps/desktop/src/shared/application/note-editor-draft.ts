@@ -116,6 +116,9 @@ export class NoteEditorDraft extends RevisionDraft<
         matches: (draft, value) =>
           value.note.markdown === draft.markdown && sameText(draft, value),
         isDirty: (draft, value) => !sameText(draft, value),
+        canAdvance: (baseline, value) =>
+          baseline.note.revision === value.note.revision &&
+          sameText(editorText(baseline), value),
         conflict: (value) => new EditorConflictError(value),
       },
       structuredClone(baseline),

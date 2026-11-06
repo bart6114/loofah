@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{SessionStore, StoreError, TaskItem, WriteGuard, paths};
 
-const MAX_INTENT: u64 = 32 * 1024 * 1024;
-
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Intent {
@@ -121,7 +119,8 @@ impl SessionStore {
         path: &Path,
     ) -> Result<(), StoreError> {
         let read_path = path.to_path_buf();
-        let intent = tokio::task::spawn_blocking(move || read(&read_path))
+        let limit = self.content_limits.recovery_bytes;
+        let intent = tokio::task::spawn_blocking(move || read(&read_path, limit))
             .await
             .map_err(join_error)??;
         let Some(intent) = intent else {
@@ -371,10 +370,11 @@ impl SessionStore {
         self.validate_document_root(root)?;
         let path = intent_path(root, &intent.session_id);
         let write_path = path.clone();
+        let limit = self.content_limits.recovery_bytes;
         tokio::task::spawn_blocking(move || {
             let bytes =
                 serde_json::to_string(&intent).map_err(|e| StoreError::Serialize(e.to_string()))?;
-            if bytes.len() as u64 > MAX_INTENT {
+            if bytes.len() > limit {
                 return Err(StoreError::Io(
                     "document recovery record exceeds its size limit".into(),
                 ));
@@ -461,10 +461,10 @@ fn regular_directory(path: &Path) -> Result<bool, StoreError> {
     }
 }
 
-fn read(path: &Path) -> Result<Option<Intent>, StoreError> {
+fn read(path: &Path, limit: usize) -> Result<Option<Intent>, StoreError> {
     regular_directory(path.parent().unwrap())?;
     match std::fs::symlink_metadata(path) {
-        Ok(meta) if !meta.is_file() || meta.len() > MAX_INTENT => {
+        Ok(meta) if !meta.is_file() || meta.len() > limit as u64 => {
             return Err(StoreError::Io("invalid document recovery file".into()));
         }
         Ok(_) => {}
@@ -475,10 +475,10 @@ fn read(path: &Path) -> Result<Option<Intent>, StoreError> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)
         .map_err(io_error)?
-        .take(MAX_INTENT + 1)
+        .take(limit.saturating_add(1) as u64)
         .read_to_end(&mut bytes)
         .map_err(io_error)?;
-    if bytes.len() as u64 > MAX_INTENT {
+    if bytes.len() > limit {
         return Err(StoreError::Io(
             "document recovery record exceeds its size limit".into(),
         ));

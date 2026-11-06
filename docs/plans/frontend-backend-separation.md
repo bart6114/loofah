@@ -2,7 +2,7 @@
 
 Status: implementation in progress. The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
 
-Current usable surface: the opt-in server notes workspace now mounts the existing rich editor against checked note/task operations. It supports guarded saves and device recovery through disconnects. The main desktop shell/profile migration, media and imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
+Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The main desktop remote shell/profile migration, media and imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
@@ -305,7 +305,7 @@ This delivers a standalone local application and a multi-vault remote applicatio
 Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backend-separation` worktree. Keep all local build artifacts, target caches, compiler caches, temporary build files and validation artifacts on T7. This audit records progress against the original scope; passing a phase does not complete the full plan.
 
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
-- [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. Remaining: cover all requests, assets, settings, jobs and capture; connection selection and cache lifecycle; typed error and revision UX. The existing editor still uses its original local save contract pending that migration.
+- [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: actual editor/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Remaining remote content operations, media/import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
@@ -1297,3 +1297,66 @@ The tested native binary SHA-256 was
 with the current worktree frontend served by Vite. This focused development-bundle
 check does not replace production performance, Windows UI, recording or full
 feature-parity validation.
+
+### Default local note editor uses the shared operation
+
+`ClassicMainLayout` now hosts a login-free `LocalVaultProvider`. The default
+`RawEditor` mounts the same `VaultNoteEditor` and compound revision controller as
+the remote workspace. Native attachment actions, file handlers, mention
+navigation, title/tag trailer, search/focus commands and the existing document
+scroll owner remain device-provided. The old independent task writer is omitted
+from this editor because its task projection now commits with the note. This
+prevents a task-only write from invalidating the note's own compound save.
+
+The write queue now registers mounted draft flushers. App-exit flushing and the
+existing session-note flush used by summary generation first capture current
+editor intent, persist its device recovery copy, and drain its tracked save. A
+recovery copy is attempted before waiting behind an earlier network request.
+Disposed views cannot enqueue a new canonical save after their scope closes.
+Rendered ProseMirror content remains in the existing scoped in-memory draft
+cache when serialization fails, so remounting cannot quietly reset the input.
+
+A changed task-file revision can advance automatically only when the raw-note
+projection and note revision are unchanged. Task assignment or another output's
+tasks therefore do not manufacture an editing conflict. Note text and raw-note
+task changes still require review; retries remain bounded to one unchanged-
+projection conflict and retain both canonical revision checks.
+
+Size admission is now selected by the trusted host when constructing its store.
+The server retains its existing request, note, task-file, metadata and recovery
+bounds. The desktop and local CLI writers select unlimited content admission,
+preserving the prior local editing capacity while using the same validation, write lock, revision,
+legacy-note migration and compound recovery operations. No client request can
+select its own policy. Device recovery copies retain their separate disk quota;
+copy failures are visible and do not prevent an otherwise valid canonical save.
+
+Frontend validation passed all 1,735 desktop and 303 editor tests, both
+TypeScript checks, locale checks and desktop lint (75 existing warnings, no
+errors). Focused coverage includes early keyed flushing, serialization failure
+and remount, StrictMode subscription lifetime, offline local bootstrap, queued
+focus and stale-view disposal. Clean unmounted rich-editor drafts leave memory
+while their vault remains open; a pending draft stays until save confirmation.
+Native macOS development QA created a local rich
+note with a table and tasks, changed a checkbox, quit through the app menu and
+reopened its exact title, text and checked tasks. Existing image/file actions
+still render. All eight pre-existing fixture files retain their baseline hashes.
+The command-Q attempt did not quit this QA bundle; the menu quit succeeded, so
+this run does not establish a native pre-debounce quit timing guarantee.
+
+Evidence: `/Volumes/T7/loofah-backend-build/native-qa/main-editor/native-restart-evidence.json`.
+That run used native binary SHA-256
+`0f8b40b33dccfce4edac567544bf347ffffc1ec6cdaea8232ae3383e583087cb`
+with the current frontend through Vite. The subsequent Rust admission-policy change passes 88 core and 325 storage tests
+(one existing storage test is ignored), plus 32 server tests and the headless
+executable startup/shutdown smoke test. These include a 17 MiB legacy note,
+metadata over 8 MiB, a 2,001-task set with over 8 MiB of task data, preserved
+unknown files, stale-write conflicts and retained remote admission limits.
+Desktop Rust checking and 45 desktop unit tests pass (one existing ignored).
+All 119 CLI tests pass, including editing a local note while preserving another
+source's task data above the server quota. Generated desktop bindings retain
+their existing contract. Production core/server Clippy passes. Native platform
+CI for this change remains pending.
+Strict all-target Clippy also reports existing findings in unrelated storage
+code and older core/server fixtures; this checkpoint does not claim that check
+is clean. Full remote main-shell selection,
+remaining feature migration and release gates are still open.

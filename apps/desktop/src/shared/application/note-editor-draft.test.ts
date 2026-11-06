@@ -55,6 +55,93 @@ function deferred<T>() {
 }
 
 describe("compound editor drafts", () => {
+  it("advances an unchanged note projection when other task sources change", async () => {
+    const backend = client();
+    const draft = new NoteEditorDraft(backend, "note", snapshot());
+    draft.edit({ ...editorText(snapshot()), markdown: "Edited note" });
+    draft.receive(snapshot("n0", "summary-tasks"));
+    expect(draft.getSnapshot().conflict).toBeNull();
+    expect(draft.getSnapshot().draft.markdown).toBe("Edited note");
+    backend.saveNoteEditor.mockResolvedValue({
+      kind: "saved",
+      snapshot: {
+        ...snapshot("n1", "t2"),
+        note: { markdown: "Edited note", title: "Title", revision: "n1" },
+      },
+    });
+    await draft.save();
+    expect(
+      backend.saveNoteEditor.mock.calls[0][1].expected_tasks_revision,
+    ).toBe("summary-tasks");
+  });
+
+  it("retries a task-file conflict once when the displayed note and its source tasks are unchanged", async () => {
+    const backend = client();
+    const saved = snapshot("n1", "t2");
+    saved.note.markdown = "Edited note";
+    backend.saveNoteEditor
+      .mockResolvedValueOnce({
+        kind: "conflict",
+        snapshot: snapshot("n0", "summary-tasks"),
+      })
+      .mockResolvedValueOnce({ kind: "saved", snapshot: saved });
+    const draft = new NoteEditorDraft(backend, "note", snapshot());
+    draft.edit({ ...editorText(snapshot()), markdown: "Edited note" });
+    await draft.save();
+    expect(backend.saveNoteEditor).toHaveBeenCalledTimes(2);
+    expect(backend.saveNoteEditor.mock.calls[1][1]).toMatchObject({
+      expected_revision: "n0",
+      expected_tasks_revision: "summary-tasks",
+      markdown: "Edited note",
+    });
+    expect(draft.getSnapshot().dirty).toBe(false);
+  });
+
+  it("does not clear a meaningful conflict or retry without a bound under continuous task-file churn", async () => {
+    const backend = client();
+    backend.saveNoteEditor
+      .mockResolvedValueOnce({
+        kind: "conflict",
+        snapshot: snapshot("n0", "t1"),
+      })
+      .mockResolvedValueOnce({
+        kind: "conflict",
+        snapshot: snapshot("n0", "t2"),
+      });
+    const draft = new NoteEditorDraft(backend, "note", snapshot());
+    draft.edit({ ...editorText(snapshot()), markdown: "Edited note" });
+    await expect(draft.save()).rejects.toBeInstanceOf(EditorConflictError);
+    expect(backend.saveNoteEditor).toHaveBeenCalledTimes(2);
+    expect(draft.getSnapshot().conflict?.tasks.revision).toBe("t2");
+    const other = new NoteEditorDraft(backend, "note", snapshot());
+    other.edit({ ...editorText(snapshot()), markdown: "Mine" });
+    other.receive(snapshot("n0", "meaningful", "2027-04-01"));
+    other.receive(snapshot("n0", "unrelated"));
+    expect(other.getSnapshot().conflict?.tasks.revision).toBe("meaningful");
+    await expect(other.save()).rejects.toBeInstanceOf(EditorConflictError);
+    expect(backend.saveNoteEditor).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a newer meaningful read when an unrelated conflict response arrives late", async () => {
+    const backend = client();
+    const waiting = deferred<unknown>();
+    backend.saveNoteEditor.mockReturnValueOnce(waiting.promise);
+    const draft = new NoteEditorDraft(backend, "note", snapshot());
+    draft.edit({ ...editorText(snapshot()), markdown: "Mine" });
+    const saving = draft.save();
+    await vi.waitFor(() =>
+      expect(backend.saveNoteEditor).toHaveBeenCalledOnce(),
+    );
+    draft.receive(snapshot("n1", "meaningful", "2027-04-01"));
+    waiting.resolve({
+      kind: "conflict",
+      snapshot: snapshot("n0", "unrelated"),
+    });
+    await expect(saving).rejects.toBeInstanceOf(EditorConflictError);
+    expect(backend.saveNoteEditor).toHaveBeenCalledOnce();
+    expect(draft.getSnapshot().conflict?.tasks.revision).toBe("meaningful");
+  });
+
   it("saves task-only changes with both baselines while preserving newer local task input", async () => {
     const backend = client();
     const first = deferred<unknown>();

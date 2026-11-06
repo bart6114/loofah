@@ -5,9 +5,60 @@ import {
   flushDatabaseWrites,
   flushDatabaseWritesByPrefix,
   flushDatabaseWritesWithin,
+  registerWriteFlusher,
 } from "./write-queue";
 
 describe("database write queue", () => {
+  it("materializes matching deferred edits before flushing a selected note key", async () => {
+    const write = vi.fn(async () => {});
+    const unrelated = vi.fn(async () => {});
+    const remove = registerWriteFlusher("deferred-note", async () => {
+      await enqueueDatabaseWrite("deferred-note", write);
+    });
+    const removeOther = registerWriteFlusher("other-note", unrelated);
+    try {
+      await flushDatabaseWrites(["deferred-note"]);
+      expect(write).toHaveBeenCalledOnce();
+      expect(unrelated).not.toHaveBeenCalled();
+      remove();
+      await flushDatabaseWrites(["deferred-note"]);
+      expect(write).toHaveBeenCalledOnce();
+    } finally {
+      remove();
+      removeOther();
+    }
+  });
+
+  it("drains admitted writes even when a deferred edit cannot be flushed", async () => {
+    let finish!: () => void;
+    const pending = enqueueDatabaseWrite(
+      "admitted",
+      () =>
+        new Promise<void>((done) => {
+          finish = done;
+        }),
+    );
+    const error = new Error("Cannot serialize the deferred edit");
+    const remove = registerWriteFlusher("refused", async () => {
+      throw error;
+    });
+    try {
+      const settled = vi.fn();
+      const flushing = flushDatabaseWrites().catch((cause) => {
+        settled();
+        throw cause;
+      });
+      const expected = expect(flushing).rejects.toBe(error);
+      await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+      expect(settled).not.toHaveBeenCalled();
+      finish();
+      await pending;
+      await expected;
+    } finally {
+      remove();
+    }
+  });
+
   it("serializes writes for the same record", async () => {
     let releaseFirst: (() => void) | undefined;
     const order: string[] = [];

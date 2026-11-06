@@ -827,8 +827,8 @@ function NoteFields({
           <div className="rounded border p-3 text-xs">
             <p>
               <Trans>
-                This content changed in another client. Review the server
-                version before choosing.
+                This content changed elsewhere. Review the saved version before
+                choosing.
               </Trans>
             </p>
             <pre className="my-2 max-h-40 overflow-auto whitespace-pre-wrap">
@@ -847,7 +847,7 @@ function NoteFields({
                   })
                 }
               >
-                <Trans>Use server version</Trans>
+                <Trans>Use saved version</Trans>
               </Button>
               <Button
                 type="button"

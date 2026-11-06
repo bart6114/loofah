@@ -79,6 +79,7 @@ impl VaultContext {
             &request.markdown,
             request.title.as_deref(),
             &request.expected_revision,
+            self.store.content_limits(),
         )?;
         // Existence is rechecked under the store's write lock before any bytes are replaced.
         self.read_note(session_id).await?;
@@ -150,6 +151,7 @@ pub(crate) fn validate_note_fields(
     markdown: &str,
     title: Option<&str>,
     expected_revision: &str,
+    limits: hypr_vault_write::ContentLimits,
 ) -> Result<(), ApplicationError> {
     if expected_revision.is_empty() || expected_revision.len() > 128 {
         return Err(error(
@@ -157,7 +159,9 @@ pub(crate) fn validate_note_fields(
             "Expected note revision is required",
         ));
     }
-    if markdown.len() > 4 * 1024 * 1024 || title.is_some_and(|title| title.len() > 4096) {
+    if markdown.len() > limits.note_write_bytes
+        || title.is_some_and(|title| title.len() > limits.title_bytes)
+    {
         return Err(error(
             ErrorCode::ResourceLimit,
             "Note exceeds the size limit",

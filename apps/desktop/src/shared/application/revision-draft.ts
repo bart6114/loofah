@@ -9,7 +9,7 @@ export class DraftConflictError<T> extends ApplicationRequestError {
     super({
       code: "conflict",
       message:
-        "This content changed in another client. Review both versions before saving.",
+        "This content changed elsewhere. Review both versions before saving.",
       request_id: null,
       retryable: false,
       current_revision: revision,
@@ -52,6 +52,7 @@ export class RevisionDraft<S, D> {
       matches: (draft: D, snapshot: S) => boolean;
       isDirty?: (draft: D, snapshot: S) => boolean;
       conflict: (snapshot: S) => DraftConflictError<S>;
+      canAdvance?: (baseline: S, value: S) => boolean;
     },
     baseline: S,
     draft?: D,
@@ -108,6 +109,24 @@ export class RevisionDraft<S, D> {
       return;
     }
     if (this.snapshot.dirty || this.pending > 0) {
+      const unchanged = this.contract.canAdvance?.(
+        this.snapshot.baseline,
+        value,
+      );
+      if (
+        unchanged &&
+        this.snapshot.conflict &&
+        !this.contract.canAdvance?.(
+          this.snapshot.baseline,
+          this.snapshot.conflict,
+        )
+      )
+        return;
+      if (this.pending === 0 && unchanged) {
+        this.snapshot = { ...this.snapshot, baseline: value, conflict: null };
+        this.update();
+        return;
+      }
       if (
         this.contract.revision(value) !==
         this.contract.revision(this.snapshot.baseline)
@@ -186,13 +205,37 @@ export class RevisionDraft<S, D> {
           this.contract.matches(draft, this.snapshot.baseline)
         )
           return this.snapshot.baseline;
-        const outcome = await client.save(
+        const baseline = this.snapshot.baseline;
+        let outcome = await client.save(
           this.sessionId,
           draft,
-          this.snapshot.baseline,
+          baseline,
           options,
         );
         if (epoch !== this.epoch) throw superseded();
+        if (
+          outcome.kind === "conflict" &&
+          this.contract.canAdvance?.(baseline, outcome.snapshot)
+        ) {
+          const observed = this.snapshot.conflict;
+          if (!observed || this.contract.canAdvance(baseline, observed)) {
+            this.snapshot = {
+              ...this.snapshot,
+              baseline: outcome.snapshot,
+              conflict: null,
+            };
+            this.update();
+            outcome = await client.save(
+              this.sessionId,
+              draft,
+              outcome.snapshot,
+              options,
+            );
+            if (epoch !== this.epoch) throw superseded();
+          } else {
+            outcome = { kind: "conflict", snapshot: observed };
+          }
+        }
         if (
           outcome.kind === "conflict" &&
           !this.contract.matches(draft, outcome.snapshot)

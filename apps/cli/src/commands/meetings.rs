@@ -7,6 +7,7 @@ use hypr_agent_access::{
     Document, GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, MeetingListItem,
     SearchHit, SearchMeetingsInput,
 };
+#[cfg(test)]
 use hypr_vault_write::SessionStore;
 
 pub async fn run(
@@ -99,7 +100,7 @@ pub(crate) async fn run_with_reader(
             let vault = reader.vault()?;
             // Read the body before touching the vault, so a bad --note path creates nothing.
             let body = note.as_deref().map(read_body).transpose()?;
-            let store = SessionStore::new(vault.to_path_buf());
+            let store = crate::vault::local_store(vault);
             let meta = super::create_session(
                 vault,
                 &store,
@@ -283,7 +284,7 @@ pub(crate) async fn run_with_reader(
 }
 
 async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Result<()> {
-    let store = SessionStore::new(vault.to_path_buf());
+    let store = crate::vault::local_store(vault);
     store
         .read_meta(id)
         .await
@@ -322,7 +323,7 @@ async fn edit_note(
     append: Option<&Path>,
     json: bool,
 ) -> Result<()> {
-    let store = SessionStore::new(vault.to_path_buf());
+    let store = crate::vault::local_store(vault);
     let exists = store
         .read_meta(id)
         .await
@@ -391,7 +392,7 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let store = SessionStore::new(vault.to_path_buf());
+    let store = crate::vault::local_store(vault);
     let meta = store
         .read_meta(id)
         .await
@@ -497,7 +498,7 @@ async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
         .map_err(|error| Error::operation("resolve vault path", error.to_string()))?;
     let path = vault.join(relative);
     output::track_write(id)?;
-    let trash_path = SessionStore::new(vault)
+    let trash_path = crate::vault::local_store(&vault)
         .delete_session(id)
         .await
         .map_err(|error| Error::operation("delete session", error.to_string()))?
@@ -569,7 +570,7 @@ async fn attach_file(
             })?,
     };
 
-    let store = SessionStore::new(vault.to_path_buf());
+    let store = crate::vault::local_store(vault);
     store
         .read_meta(id)
         .await
@@ -744,6 +745,46 @@ mod tests {
             to_portable_attachment_src("présentation.png"),
             "attachments/pr%C3%A9sentation.png"
         );
+    }
+
+    #[tokio::test]
+    async fn local_note_edits_preserve_large_task_data_from_other_sources() {
+        let root = tempfile::tempdir().unwrap();
+        let vault = root.path().join("vault");
+        let store = SessionStore::new(vault.clone());
+        let meta = super::super::create_session(
+            &vault,
+            &store,
+            "create meeting",
+            "Large local task set".to_string(),
+            super::super::NewSessionOptions::default(),
+        )
+        .await
+        .unwrap();
+        let task = serde_json::json!({
+            "id":"other-task", "source_type":"enhanced_note", "source_id":"output",
+            "source_order":0, "status":"todo", "text":"Unchanged output task",
+            "body":{"preserve":"x".repeat(9 * 1024 * 1024)},
+            "due_at":"", "assignee":"", "created_at":"", "updated_at":""
+        });
+        let tasks_path = vault.join("sessions").join(&meta.id).join("tasks.json");
+        std::fs::write(
+            &tasks_path,
+            serde_json::to_vec(&serde_json::json!({"tasks":[task.clone()]})).unwrap(),
+        )
+        .unwrap();
+        let input = root.path().join("note.md");
+        std::fs::write(&input, "Updated through the local CLI").unwrap();
+        edit_note(&vault, &meta.id, Some(&input), None, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.read_note(&meta.id).await.unwrap().as_deref(),
+            Some("Updated through the local CLI")
+        );
+        let after: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(tasks_path).unwrap()).unwrap();
+        assert!(after["tasks"][0] == task);
     }
 
     #[tokio::test]

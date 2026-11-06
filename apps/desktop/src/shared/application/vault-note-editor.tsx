@@ -3,18 +3,23 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type Ref,
 } from "react";
 
 import {
   NoteEditor,
   type JSONContent,
   type MentionNavigation,
+  type NoteEditorProps,
+  type NoteEditorRef,
 } from "@hypr/editor/note";
 import { Button } from "@hypr/ui/components/ui/button";
+import { cn } from "@hypr/utils";
 
 import { NativeDraftStore } from "./draft-store";
 import {
@@ -33,8 +38,40 @@ import {
   noteEditorContent,
 } from "~/editor-bridge/note-editor-content";
 import { openEditorLink } from "~/editor-bridge/open-editor-link";
+import {
+  captureNoteDraft,
+  acknowledgeNoteDraft,
+  discardNoteDraft,
+  persistNoteDraft,
+  usePendingNoteDraft,
+} from "~/session/pending-note-drafts";
 import { documentTitlePlaceholder } from "~/session/title-content";
 import type { NoteDraftRecovery } from "~/types/tauri.gen";
+
+export type VaultNoteEditorHost = {
+  layout?: "pane" | "document";
+  editorRef?: Ref<NoteEditorRef>;
+  editorOptions?: Pick<
+    NoteEditorProps,
+    | "className"
+    | "resolveAttachment"
+    | "mentionConfig"
+    | "sessionMentionDropConfig"
+    | "onNavigateToTitle"
+    | "onLinkOpen"
+    | "onMentionNavigate"
+    | "extraNodeViews"
+    | "fileHandlerConfig"
+    | "onViewReady"
+    | "onViewDisposed"
+    | "titleTrailerElement"
+    | "showFormatToolbar"
+    | "syncContentWhenFocused"
+  >;
+  showSaveControls?: boolean;
+  onSaveError?: (error: Error) => void;
+};
+const emptyContent: JSONContent = { type: "doc", content: [] };
 
 export function VaultNoteEditor({
   scope,
@@ -43,6 +80,7 @@ export function VaultNoteEditor({
   onSelectSession,
   legacyEditor,
   hasLegacyDraft,
+  ...host
 }: {
   scope: VaultScope;
   sessionId: string;
@@ -50,7 +88,7 @@ export function VaultNoteEditor({
   onSelectSession: (id: string) => void;
   legacyEditor: ReactNode;
   hasLegacyDraft: boolean;
-}) {
+} & VaultNoteEditorHost) {
   const id = noteEditorDraftId(sessionId);
   const store = useMemo(
     () => new NativeDraftStore(scope.client.scope),
@@ -94,6 +132,7 @@ export function VaultNoteEditor({
     >
       {snapshot ? (
         <EditorDraft
+          {...host}
           scope={scope}
           sessionId={sessionId}
           note={snapshot}
@@ -131,7 +170,7 @@ function EditorMode({
   return keepLegacy ? legacyEditor : children;
 }
 
-function EditorDraft(props: {
+type LoadedEditorProps = VaultNoteEditorHost & {
   scope: VaultScope;
   sessionId: string;
   note: NoteEditorSnapshot;
@@ -143,7 +182,9 @@ function EditorDraft(props: {
   store: NativeDraftStore;
   onActiveDraft: (id: string) => void;
   onSelectSession: (id: string) => void;
-}) {
+};
+
+function EditorDraft(props: LoadedEditorProps) {
   const [loaded] = useState(() => {
     try {
       const draft =
@@ -196,23 +237,26 @@ function EditorFields({
   draft,
   onActiveDraft,
   onSelectSession,
-}: {
-  scope: VaultScope;
-  sessionId: string;
-  note: NoteEditorSnapshot;
-  queryKey: readonly unknown[];
-  available: boolean;
-  noteError: Error | null;
-  recovery: NoteDraftRecovery | null;
-  recoveryError: Error | null;
-  store: NativeDraftStore;
-  draft: NoteEditorDraft;
-  onActiveDraft: (id: string) => void;
-  onSelectSession: (id: string) => void;
-}) {
+  editorRef,
+  editorOptions,
+  showSaveControls = true,
+  onSaveError,
+  layout = "pane",
+}: LoadedEditorProps & { draft: NoteEditorDraft }) {
+  const viewKey = JSON.stringify(["vault-note", scope.client.scope, sessionId]);
   const confirm = useCallback(
-    (saved: NoteEditorSnapshot) => scope.confirmNoteEditor(sessionId, saved),
-    [scope, sessionId],
+    async (saved: NoteEditorSnapshot) => {
+      try {
+        acknowledgeNoteDraft(
+          viewKey,
+          noteEditorContent(sessionId, editorText(saved)).content,
+        );
+      } catch {
+        // A future node must not discard the rendered draft.
+      }
+      await scope.confirmNoteEditor(sessionId, saved);
+    },
+    [scope, sessionId, viewKey],
   );
   const { snapshot, connection, editable, persist, save, resolve } =
     useDraftPersistence({
@@ -232,7 +276,11 @@ function EditorFields({
           )
         )
           noteEditorDrafts.clearSaved(scope.client.scope);
-        else noteEditorDrafts.sweep(scope.client.scope);
+        else
+          noteEditorDrafts.sweepDraft(
+            scope.client.scope,
+            noteEditorDraftId(sessionId),
+          );
       },
     });
   const model = useMemo(() => {
@@ -245,16 +293,30 @@ function EditorFields({
     }
   }, [sessionId, snapshot.draft]);
   const [editorEpoch, setEditorEpoch] = useState(0);
+  const { initialDraft, confirmedDraft } = usePendingNoteDraft(
+    viewKey,
+    model.value?.content ?? emptyContent,
+  );
+  useEffect(() => {
+    if (!snapshot.dirty && !snapshot.conflict && model.value)
+      acknowledgeNoteDraft(viewKey, model.value.content);
+  }, [snapshot.dirty, snapshot.conflict, model.value, viewKey]);
   const generation = useRef(0);
   const active = useRef(false);
   const editing = useRef(false);
   editing.current = editable && !resolve.isPending && !!model.value;
-  useEffect(() => {
+  useLayoutEffect(() => {
     active.current = true;
+    const release = noteEditorDrafts.retainDraft(
+      scope.client.scope,
+      noteEditorDraftId(sessionId),
+      draft,
+    );
     return () => {
       active.current = false;
+      release();
     };
-  }, []);
+  }, [draft, scope.client.scope, sessionId]);
   useEffect(() => {
     onActiveDraft(noteEditorDraftId(sessionId));
   }, [onActiveDraft, sessionId]);
@@ -264,6 +326,9 @@ function EditorFields({
   const wasReady = useRef(false);
   const ready = editable && !resolve.isPending;
   const { mutate: saveNow, mutateAsync: saveAsync, isPending: saving } = save;
+  useEffect(() => {
+    if (save.error) onSaveError?.(save.error);
+  }, [save.error, onSaveError]);
   useEffect(() => {
     const resumed = ready && !wasReady.current;
     wasReady.current = ready;
@@ -289,35 +354,39 @@ function EditorFields({
       if (
         !active.current ||
         !editing.current ||
-        generation.current !== editorEpoch
+        generation.current !== editorEpoch ||
+        scope.getSnapshot().state !== "connected"
       )
         return;
+      captureNoteDraft(viewKey, getContent);
       draft.capture(() =>
         captureNoteEditorContent(sessionId, getContent(), model.value!.tasks),
       );
     },
-    [draft, sessionId, model.value, editorEpoch],
+    [draft, sessionId, model.value, editorEpoch, viewKey, scope],
   );
   const change = useCallback(
     async (content: JSONContent) => {
       if (
         !active.current ||
         !editing.current ||
-        generation.current !== editorEpoch
+        generation.current !== editorEpoch ||
+        scope.getSnapshot().state !== "connected"
       )
         throw new Error("Editing is paused");
-      draft.edit(
+      draft.capture(() =>
         captureNoteEditorContent(sessionId, content, model.value!.tasks),
       );
-      await saveAsync();
-      return () => {
-        const current = draft.getSnapshot();
-        if (current.dirty) throw new Error("Newer edits are still pending");
-        return noteEditorContent(sessionId, editorText(current.baseline))
-          .content;
-      };
+      return persistNoteDraft(viewKey, content, async () => {
+        await saveAsync();
+        return () => {
+          const current = draft.getSnapshot();
+          return noteEditorContent(sessionId, editorText(current.baseline))
+            .content;
+        };
+      });
     },
-    [draft, sessionId, model.value, saveAsync, editorEpoch],
+    [draft, sessionId, model.value, saveAsync, editorEpoch, viewKey, scope],
   );
   const chooseServer = () => {
     if (!snapshot.conflict) return;
@@ -326,26 +395,52 @@ function EditorFields({
     const next = generation.current;
     resolve.mutate(
       { keep: false, revision: editorRevision(snapshot.conflict) },
-      { onSettled: () => setEditorEpoch(next) },
+      {
+        onSettled: () => {
+          if (!draft.getSnapshot().dirty) discardNoteDraft(viewKey);
+          setEditorEpoch(next);
+        },
+      },
     );
   };
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <div
+      className={cn([
+        layout === "document"
+          ? "min-w-0"
+          : "flex min-h-0 flex-1 flex-col gap-3",
+      ])}
+    >
+      <div
+        className={cn([
+          layout === "document" ? "min-w-0" : "min-h-0 flex-1 overflow-y-auto",
+        ])}
+      >
         {noteError && <p role="alert">{noteError.message}</p>}
         {model.value ? (
           <NoteEditor
+            {...editorOptions}
+            ref={editorRef}
             key={editorEpoch}
             initialContent={model.value.content}
-            className="min-h-32 px-3 py-2"
+            initialDraft={initialDraft}
+            confirmedDraft={confirmedDraft}
+            className={cn([
+              layout === "pane" && "min-h-32",
+              editorOptions?.className ?? "px-3 py-2",
+            ])}
             handleChange={change}
             onDraftChange={capture}
             attachmentPresentation={scope.client.attachmentPresentation}
-            onMentionNavigate={navigateMention}
-            onLinkOpen={openHref}
+            onMentionNavigate={
+              editorOptions?.onMentionNavigate ?? navigateMention
+            }
+            onLinkOpen={editorOptions?.onLinkOpen ?? openHref}
             placeholderComponent={documentTitlePlaceholder}
             readOnly={!editing.current}
-            syncContentWhenFocused
+            syncContentWhenFocused={
+              editorOptions?.syncContentWhenFocused ?? true
+            }
           />
         ) : (
           <div role="alert">
@@ -357,8 +452,8 @@ function EditorFields({
           <div className="rounded border p-3 text-xs">
             <p>
               <Trans>
-                This content changed in another client. Review the server
-                version before choosing.
+                This content changed elsewhere. Review the saved version before
+                choosing.
               </Trans>
             </p>
             <pre className="my-2 max-h-40 overflow-auto whitespace-pre-wrap">
@@ -380,7 +475,7 @@ function EditorFields({
                 disabled={resolve.isPending}
                 onClick={chooseServer}
               >
-                <Trans>Use server version</Trans>
+                <Trans>Use saved version</Trans>
               </Button>
               <Button
                 size="sm"
@@ -416,22 +511,24 @@ function EditorFields({
           </p>
         )}
       </div>
-      <div className="flex items-center justify-between">
-        <p role="status" className="text-muted-foreground text-xs">
-          {snapshot.dirty ? (
-            <Trans>Unsaved changes</Trans>
-          ) : (
-            <Trans>Saved</Trans>
-          )}
-        </p>
-        <Button
-          size="sm"
-          disabled={!editing.current || !snapshot.dirty || save.isPending}
-          onClick={() => save.mutate()}
-        >
-          <Trans>Save</Trans>
-        </Button>
-      </div>
+      {showSaveControls && (
+        <div className="flex items-center justify-between">
+          <p role="status" className="text-muted-foreground text-xs">
+            {snapshot.dirty ? (
+              <Trans>Unsaved changes</Trans>
+            ) : (
+              <Trans>Saved</Trans>
+            )}
+          </p>
+          <Button
+            size="sm"
+            disabled={!editing.current || !snapshot.dirty || save.isPending}
+            onClick={() => save.mutate()}
+          >
+            <Trans>Save</Trans>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

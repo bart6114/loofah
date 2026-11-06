@@ -22,6 +22,17 @@ function notify(key: string) {
   listeners.get(key)?.forEach((listener) => listener());
 }
 
+export function discardNoteDraft(key: string) {
+  drafts.delete(key);
+  notify(key);
+}
+
+export function acknowledgeNoteDraft(key: string, content: JSONContent) {
+  const draft = drafts.get(key);
+  if (draft && areEquivalentEditorContents(draft.getContent(), content))
+    discardNoteDraft(key);
+}
+
 export function captureNoteDraft(
   key: string,
   getContent: () => JSONContent,

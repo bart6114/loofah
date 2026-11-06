@@ -64,7 +64,7 @@ impl VaultContext {
                 "Expected document revision is required",
             ));
         }
-        if input.markdown.len() > 4 * 1024 * 1024 {
+        if input.markdown.len() > self.store.content_limits().note_write_bytes {
             return Err(error(
                 ErrorCode::ResourceLimit,
                 "Document content is too large",

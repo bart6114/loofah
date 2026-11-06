@@ -66,7 +66,7 @@ impl SessionStore {
                 &id,
                 input.tasks,
             );
-            crate::tasks::validate_task_file_size(&next)?;
+            crate::tasks::validate_task_file_size(&next, store.content_limits.tasks_file_bytes)?;
             let request = SaveNoteRequest {
                 markdown: input.markdown,
                 title: input.title,
@@ -245,7 +245,10 @@ impl SessionStore {
                 ));
             }
             meta.title = title.into();
-            crate::metadata_revision::validate_metadata_size(&meta)?;
+            crate::metadata_revision::validate_metadata_size(
+                &meta,
+                self.content_limits.metadata_bytes,
+            )?;
         }
         let pending = self
             .begin_note_write_locked(

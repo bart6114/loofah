@@ -149,6 +149,7 @@ export {
 } from "../plugins/comment-anchors";
 export { useLinkedItemOpenBehavior };
 export type { MentionNavigation };
+export { useMentionNavigation };
 
 export interface JSONContent {
   type?: string;

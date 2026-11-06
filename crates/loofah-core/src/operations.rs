@@ -89,7 +89,10 @@ impl VaultContext {
             .map_err(|_| error(ErrorCode::Unavailable, "Vault is not ready"))?;
         let request_id = uuid::Uuid::parse_str(&request_id)
             .map_err(|_| error(ErrorCode::Validation, "A UUID request ID is required"))?;
-        if request.markdown.len() > 4 * 1024 * 1024 || request.title.len() > 4096 {
+        let limits = self.store.content_limits();
+        if request.markdown.len() > limits.note_write_bytes
+            || request.title.len() > limits.title_bytes
+        {
             return Err(error(
                 ErrorCode::ResourceLimit,
                 "Note exceeds the size limit",

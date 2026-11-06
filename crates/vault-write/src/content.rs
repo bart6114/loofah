@@ -10,8 +10,6 @@ pub use hypr_loofah_protocol::SessionMetaPatch;
 
 pub use hypr_loofah_protocol::{NoteSaveOutcome, NoteSnapshot};
 
-const NOTE_READ_LIMIT: usize = 16 * 1024 * 1024;
-
 impl SessionStore {
     pub async fn read_session_document(
         &self,
@@ -331,6 +329,7 @@ impl SessionStore {
             return Ok(None);
         };
         let dir = self.vault_base.join(self.session_dir(id).await?);
+        let limit = self.content_limits.note_read_bytes;
         let raw = tokio::task::spawn_blocking(move || {
             for path in [paths::note_path_in(&dir), paths::legacy_note_path_in(&dir)] {
                 match std::fs::symlink_metadata(&path) {
@@ -339,7 +338,7 @@ impl SessionStore {
                     Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
                         return Err(StoreError::Io("Note is not a regular file".into()));
                     }
-                    Ok(meta) if meta.len() > NOTE_READ_LIMIT as u64 => {
+                    Ok(meta) if meta.len() > limit as u64 => {
                         return Err(StoreError::ResourceLimit(
                             "Note exceeds its read size limit".into(),
                         ));
@@ -349,10 +348,10 @@ impl SessionStore {
                 use std::io::Read;
                 let mut bytes = Vec::new();
                 match std::fs::File::open(path).and_then(|file| {
-                    file.take(NOTE_READ_LIMIT as u64 + 1)
+                    file.take(limit.saturating_add(1) as u64)
                         .read_to_end(&mut bytes)
                 }) {
-                    Ok(_) if bytes.len() > NOTE_READ_LIMIT => {
+                    Ok(_) if bytes.len() > limit => {
                         return Err(StoreError::ResourceLimit(
                             "Note exceeds its read size limit".into(),
                         ));

@@ -40,7 +40,7 @@ pub async fn run(
         return Err(Error::NotFound(format!("audio file {}", file.display())));
     }
 
-    let store = SessionStore::new(vault.to_path_buf());
+    let store = crate::vault::local_store(vault);
     // `--into` targets an existing meeting; otherwise a new session is created,
     // titled after the file when no `--title` is given (clap rejects `--into`
     // together with `--title` or the timestamp overrides, so `title` is None
