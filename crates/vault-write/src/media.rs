@@ -72,26 +72,27 @@ impl SessionStore {
 
 fn open_recording_in(directory: &Path) -> Result<Option<OpenedRecording>, StoreError> {
     for filename in ["audio.mp3", "audio.wav", "audio.ogg"] {
-        let path = directory.join(filename);
-        match std::fs::symlink_metadata(&path) {
-            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(cause) => return Err(io_error(cause)),
-            Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
-                return Err(StoreError::Io(
-                    "Recording path is not a regular file".into(),
-                ));
-            }
-            Ok(_) => {}
+        if let Some(file) = open_regular_file(&directory.join(filename))? {
+            return Ok(Some(OpenedRecording { file, filename }));
         }
-        let file = File::open(path).map_err(io_error)?;
-        if !file.metadata().map_err(io_error)?.is_file() {
-            return Err(StoreError::Io(
-                "Recording handle is not a regular file".into(),
-            ));
-        }
-        return Ok(Some(OpenedRecording { file, filename }));
     }
     Ok(None)
+}
+
+pub(crate) fn open_regular_file(path: &Path) -> Result<Option<File>, StoreError> {
+    match std::fs::symlink_metadata(path) {
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(cause) => return Err(io_error(cause)),
+        Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
+            return Err(StoreError::Io("Vault file is not a regular file".into()));
+        }
+        Ok(_) => {}
+    }
+    let file = File::open(path).map_err(io_error)?;
+    if !file.metadata().map_err(io_error)?.is_file() {
+        return Err(StoreError::Io("Vault handle is not a regular file".into()));
+    }
+    Ok(Some(file))
 }
 
 fn io_error(cause: std::io::Error) -> StoreError {

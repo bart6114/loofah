@@ -1077,3 +1077,40 @@ Rust checks for desktop, CLI and server pass after the reader extraction. Strict
 Clippy on `audio-utils` reports two pre-existing `needless_range_loop` warnings
 in `src/file_pcm.rs:163-164`; that code is unchanged. This lint result is recorded
 separately from the passing codec/waveform tests and compilation checks.
+
+The additional strict check of `fs-sync-core` reports existing warnings in its
+audio-import error conversion and `session_content.rs` conditional. Those paths
+are unchanged. The new reader helpers do not introduce a lint warning; the
+broader crate checks cannot be described as passing with warnings denied.
+
+### Attachment descriptor read boundary
+
+`SessionStore::open_attachment` now validates an exact non-hidden basename and
+opens only the owned `attachments/` directory for an existing session. It shares
+recording reads' regular-file/symlink policy. A file descriptor pins the selected
+generation; the store lock ends before content reading. Root-level unknown
+files remain ignored and untouched, even when explicitly requested as an
+attachment ID. Reserved root artifact names can still be ordinary filenames
+inside the owned attachment directory.
+
+The validator preserves existing Unix attachment spellings, including names
+that need mapping when saved on Windows. Windows reads additionally refuse
+reserved device names, alternate-stream aliases and trailing-dot/space aliases.
+The existing portable session-ID rules reuse the same Windows-name check
+without changing their validation behavior. Save/import filename sanitization
+and deduplication remain unchanged.
+
+Validation: all 325 storage tests pass, with one existing ignored test, plus the
+vault-read suite and desktop/CLI/server compilation checks. New coverage keeps
+the original opened bytes after replacement, verifies subsequent reads see the
+new file, preserves Unicode names and unknown-file canaries, rejects hidden and
+traversal IDs/nonregular files/symlink parents, and permits note editing while a
+returned descriptor is held. The existing legacy-ID attachment case now reads
+its saved file through this boundary as well. Strict broader Clippy checks find
+existing warnings in vault-read resolution and 22 in other vault-write modules;
+the changed read helpers are not among those diagnostics. They remain recorded
+without unrelated lint rewrites.
+
+This is the Rust read boundary, not an attachment transfer endpoint. Typed
+path-free attachment results, authenticated download/presentation, durable
+upload receipts/checksums and final native/platform validation remain open.

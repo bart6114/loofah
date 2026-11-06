@@ -16,7 +16,63 @@ pub struct SavedAttachment {
     pub relative_path: PathBuf,
 }
 
+#[derive(Debug)]
+pub struct OpenedAttachment {
+    pub file: std::fs::File,
+    pub attachment_id: String,
+}
+
 impl SessionStore {
+    pub async fn open_attachment(
+        &self,
+        id: &str,
+        attachment_id: &str,
+    ) -> Result<Option<OpenedAttachment>, StoreError> {
+        validate_session_id(id)?;
+        hypr_vault_read::paths::validate_attachment_id(attachment_id)?;
+        let store = self.clone();
+        let id = id.to_owned();
+        let attachment_id = attachment_id.to_owned();
+        tokio::spawn(async move {
+            let snapshot = store.lock_snapshot().await;
+            store.ensure_ready()?;
+            if store
+                .metadata_snapshot_locked(&snapshot._guard, &id)
+                .await?
+                .is_none()
+            {
+                return Ok(None);
+            }
+            let directory = store
+                .vault_base
+                .join(store.session_dir_locked(&snapshot._guard, &id).await?)
+                .join("attachments");
+            tokio::task::spawn_blocking(move || {
+                let _snapshot = snapshot;
+                let Some(metadata) = attachment_metadata(&directory)? else {
+                    return Ok(None);
+                };
+                if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                    return Err(StoreError::Io(
+                        "Attachment directory is not a regular directory".into(),
+                    ));
+                }
+                let Some(file) = crate::media::open_regular_file(&directory.join(&attachment_id))?
+                else {
+                    return Ok(None);
+                };
+                Ok(Some(OpenedAttachment {
+                    file,
+                    attachment_id,
+                }))
+            })
+            .await
+            .map_err(|cause| StoreError::Io(format!("attachment read worker failed: {cause}")))?
+        })
+        .await
+        .map_err(|cause| StoreError::Io(format!("attachment request worker failed: {cause}")))?
+    }
+
     pub async fn save_attachment(
         &self,
         id: &str,
@@ -51,6 +107,14 @@ impl SessionStore {
         })
         .await
         .map_err(|e| StoreError::Io(format!("attachment save worker failed: {e}")))?
+    }
+}
+
+fn attachment_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, StoreError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(cause) => Err(StoreError::Io(cause.to_string())),
     }
 }
 
@@ -153,6 +217,134 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
 mod tests {
     use super::super::SessionMeta;
     use super::*;
+
+    #[tokio::test]
+    async fn attachment_readers_open_only_owned_basenames_and_release_the_store_lock() {
+        use std::io::Read;
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Attachments")).await.unwrap();
+        let directory = vault.path().join("sessions/s1");
+        std::fs::write(directory.join("unknown-user.pdf"), b"Never content").unwrap();
+        assert!(
+            store
+                .open_attachment("s1", "unknown-user.pdf")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .open_attachment("missing", "file.txt")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let saved = store
+            .save_attachment("s1", "présentation été.pdf", b"Original bytes".to_vec())
+            .await
+            .unwrap();
+        let mut source = store
+            .open_attachment("s1", &saved.attachment_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(source.attachment_id, saved.attachment_id);
+        std::fs::rename(
+            vault.path().join(&saved.relative_path),
+            directory.join("retired-user.pdf"),
+        )
+        .unwrap();
+        std::fs::write(
+            vault.path().join(&saved.relative_path),
+            b"Replacement bytes",
+        )
+        .unwrap();
+        let mut original = vec![];
+        source.file.read_to_end(&mut original).unwrap();
+        assert_eq!(original, b"Original bytes");
+        let mut current = store
+            .open_attachment("s1", &saved.attachment_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut replacement = vec![];
+        current.file.read_to_end(&mut replacement).unwrap();
+        assert_eq!(replacement, b"Replacement bytes");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            store.save_note("s1", "Editing stays responsive", None),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            std::fs::read(directory.join("unknown-user.pdf")).unwrap(),
+            b"Never content"
+        );
+        assert_eq!(
+            std::fs::read(directory.join("retired-user.pdf")).unwrap(),
+            b"Original bytes"
+        );
+        store
+            .save_attachment(
+                "s1",
+                "_meta.json",
+                b"Owned attachment, not session metadata".to_vec(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            store
+                .open_attachment("s1", "_meta.json")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        for id in [
+            "../_meta.json",
+            "nested/file.txt",
+            "nested\\file.txt",
+            ".hidden",
+            "..",
+            "",
+        ] {
+            assert!(store.open_attachment("s1", id).await.is_err(), "{id:?}");
+        }
+        assert!(store.open_attachment("../s1", "file.txt").await.is_err());
+        std::fs::create_dir(directory.join("attachments/directory.txt")).unwrap();
+        assert!(store.open_attachment("s1", "directory.txt").await.is_err());
+        store.set_startup_pending(true);
+        assert!(
+            store
+                .open_attachment("s1", &saved.attachment_id)
+                .await
+                .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn attachment_readers_refuse_symlinked_files_and_directories() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Attachments")).await.unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("private.pdf"), b"Private outside bytes").unwrap();
+        let directory = vault.path().join("sessions/s1/attachments");
+        std::os::unix::fs::symlink(outside.path(), &directory).unwrap();
+        assert!(store.open_attachment("s1", "private.pdf").await.is_err());
+        std::fs::remove_file(&directory).unwrap();
+        std::fs::create_dir(&directory).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("private.pdf"),
+            directory.join("link.pdf"),
+        )
+        .unwrap();
+        assert!(store.open_attachment("s1", "link.pdf").await.is_err());
+        assert_eq!(
+            std::fs::read(outside.path().join("private.pdf")).unwrap(),
+            b"Private outside bytes"
+        );
+    }
 
     #[test]
     fn cancelled_attachment_save_keeps_its_reservation_until_blocking_io_completes() {
@@ -355,6 +547,15 @@ mod tests {
             b"png-bytes"
         );
         assert!(vault.path().join("sessions/abc123").exists());
+        use std::io::Read;
+        let mut source = store
+            .open_attachment("abc123", &saved.attachment_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut bytes = vec![];
+        source.file.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"png-bytes");
     }
 
     #[tokio::test]

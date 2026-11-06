@@ -6,6 +6,34 @@ pub fn sessions_root() -> PathBuf {
 
 /// Validate a portable filename component without touching the filesystem.
 pub fn validate_session_id(id: &str) -> crate::Result<()> {
+    if id.is_empty()
+        || id.starts_with('.')
+        || !is_windows_filename(id)
+        || std::path::Path::new(id).is_absolute()
+        || id.len() > 255
+    {
+        return Err(crate::Error::Parse(format!("invalid session id: {id:?}")));
+    }
+    Ok(())
+}
+
+/// Attachment IDs are exact basenames, never caller-supplied paths. Existing Unix names
+/// retain their spelling; Windows additionally rejects device/stream aliases.
+pub fn validate_attachment_id(id: &str) -> crate::Result<()> {
+    if id.is_empty() || id.starts_with('.') || id.contains(['/', '\\', '\0']) || id.len() > 4096 {
+        return Err(crate::Error::Parse("invalid attachment id".into()));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let safe = is_windows_filename(id);
+        if !safe {
+            return Err(crate::Error::Parse("invalid attachment id".into()));
+        }
+    }
+    Ok(())
+}
+
+fn is_windows_filename(id: &str) -> bool {
     let stem = id
         .split('.')
         .next()
@@ -17,19 +45,11 @@ pub fn validate_session_id(id: &str) -> crate::Result<()> {
     ) || (stem.len() == 4
         && (stem.starts_with("COM") || stem.starts_with("LPT"))
         && matches!(stem.as_bytes()[3], b'1'..=b'9'));
-    if id.is_empty()
-        || id.starts_with('.')
-        || id.ends_with(['.', ' '])
-        || id
+    !reserved
+        && !id.ends_with(['.', ' '])
+        && !id
             .chars()
-            .any(|c| c.is_control() || "/\\:<>\"|?*".contains(c))
-        || std::path::Path::new(id).is_absolute()
-        || reserved
-        || id.len() > 255
-    {
-        return Err(crate::Error::Parse(format!("invalid session id: {id:?}")));
-    }
-    Ok(())
+            .any(|value| value.is_control() || "/\\:<>\"|?*".contains(value))
 }
 
 pub fn validated_session_dir(id: &str) -> crate::Result<PathBuf> {
@@ -94,6 +114,56 @@ pub fn tags_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attachment_identifiers_preserve_basenames_and_reject_hidden_names_and_paths() {
+        for id in [
+            "image 73.png",
+            "présentation été.pdf",
+            "_meta.json",
+            "with#fragment?.txt",
+            "emoji-🦆.png",
+        ] {
+            #[cfg(not(target_os = "windows"))]
+            assert!(validate_attachment_id(id).is_ok(), "{id}");
+            #[cfg(target_os = "windows")]
+            assert_eq!(
+                validate_attachment_id(id).is_ok(),
+                is_windows_filename(id),
+                "{id}"
+            );
+        }
+        for id in [
+            "",
+            ".",
+            "..",
+            ".hidden",
+            "../secret",
+            "nested/image.png",
+            "nested\\image.png",
+            "nul\0byte",
+        ] {
+            assert!(validate_attachment_id(id).is_err(), "{id:?}");
+        }
+        for id in [
+            "NUL.txt",
+            "con",
+            "com1.log",
+            "LPT³.txt",
+            "photo.jpg:secret",
+            "file.",
+            "file ",
+            "newline\n.txt",
+        ] {
+            assert!(!is_windows_filename(id), "{id:?}");
+            #[cfg(target_os = "windows")]
+            assert!(validate_attachment_id(id).is_err(), "{id:?}");
+            #[cfg(not(target_os = "windows"))]
+            assert!(validate_attachment_id(id).is_ok(), "{id:?}");
+        }
+        assert!(is_windows_filename("_NUL.txt"));
+        assert!(is_windows_filename("a🦆.png"));
+    }
 
     #[test]
     fn in_helpers_join_fixed_artifact_names_onto_the_session_dir() {
