@@ -59,8 +59,8 @@ function scoped(resolved: AttachmentResolution | null = null) {
 
 it("keeps default local open and reveal behavior", () => {
   render(file());
-  fireEvent.mouseDown(screen.getByTitle("Open file"));
-  fireEvent.mouseDown(screen.getByTitle("Show in Finder"));
+  fireEvent.click(screen.getByTitle("Open file"));
+  fireEvent.click(screen.getByTitle("Show in Finder"));
   expect(commands.openPath).toHaveBeenCalledWith(
     "C:\\private\\secret.pdf",
     null,
@@ -87,8 +87,8 @@ it("uses only scoped client actions and never a resolved server path", () => {
     open,
     reveal,
   });
-  fireEvent.mouseDown(screen.getByTitle("Open file"));
-  fireEvent.mouseDown(screen.getByTitle("Show in Finder"));
+  fireEvent.click(screen.getByTitle("Open file"));
+  fireEvent.click(screen.getByTitle("Show in Finder"));
   expect(open).toHaveBeenCalledOnce();
   expect(reveal).toHaveBeenCalledOnce();
   expect(commands.openPath).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ it("does not infer native actions from a resolved URL or server path", () => {
 it("opens an action-only resource without requiring an inline URL or path", () => {
   const open = vi.fn();
   scoped({ open });
-  fireEvent.mouseDown(screen.getByTitle("Open file"));
+  fireEvent.click(screen.getByTitle("Open file"));
   expect(open).toHaveBeenCalledOnce();
   expect(screen.queryByTitle("Show in Finder")).toBeNull();
   expect(commands.openPath).not.toHaveBeenCalled();

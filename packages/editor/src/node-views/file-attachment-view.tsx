@@ -3,9 +3,7 @@ import {
   useEditorEventCallback,
 } from "@handlewithcare/react-prosemirror";
 import {
-  ExternalLinkIcon,
   FileIcon,
-  FolderIcon,
   FileSpreadsheetIcon,
   FileTextIcon,
   ImageIcon,
@@ -16,10 +14,12 @@ import { forwardRef } from "react";
 
 import { cn } from "@hypr/utils";
 
+import { AttachmentActions, AttachmentFeedback } from "./attachment-feedback";
 import {
   useAttachmentEditingEnabled,
   useAttachmentPresentation,
-  useAttachmentResolver,
+  AttachmentResource,
+  type AttachmentResolution,
 } from "./attachment-resolver";
 import { getSafeNodePos } from "./error-boundary";
 
@@ -101,20 +101,46 @@ export const FileAttachmentView = forwardRef<
   HTMLDivElement,
   NodeViewComponentProps
 >(function FileAttachmentView({ nodeProps, ...htmlAttrs }, ref) {
+  const attachmentId =
+    typeof nodeProps.node.attrs.sharedAttachmentId === "string"
+      ? nodeProps.node.attrs.sharedAttachmentId
+      : nodeProps.node.attrs.attachmentId;
+  return (
+    <div
+      ref={ref}
+      {...htmlAttrs}
+      className="select-none [&_*::selection]:bg-transparent [&::selection]:bg-transparent"
+    >
+      <AttachmentResource attachmentId={attachmentId}>
+        {(resolved) => (
+          <ResolvedFileAttachmentView
+            nodeProps={nodeProps}
+            resolved={resolved}
+          />
+        )}
+      </AttachmentResource>
+    </div>
+  );
+});
+
+function ResolvedFileAttachmentView({
+  nodeProps,
+  resolved,
+}: {
+  nodeProps: NodeViewComponentProps["nodeProps"];
+  resolved: AttachmentResolution | null;
+}) {
   const { node, getPos } = nodeProps;
-  const resolveAttachment = useAttachmentResolver();
   const attachmentEditingEnabled = useAttachmentEditingEnabled();
   const attachmentId =
     typeof node.attrs.sharedAttachmentId === "string"
       ? node.attrs.sharedAttachmentId
       : node.attrs.attachmentId;
-  const resolvedAttachment =
-    typeof attachmentId === "string" ? resolveAttachment?.(attachmentId) : null;
   const { name, mimeType, size } = node.attrs;
-  const { src, open, reveal } = useAttachmentPresentation()({
+  const resource = useAttachmentPresentation()({
     src: node.attrs.src,
     path: node.attrs.path,
-    resolved: resolvedAttachment,
+    resolved,
     attachmentId: typeof attachmentId === "string" ? attachmentId : undefined,
   });
 
@@ -135,11 +161,7 @@ export const FileAttachmentView = forwardRef<
   const isImage = typeof mimeType === "string" && mimeType.startsWith("image/");
 
   return (
-    <div
-      ref={ref}
-      {...htmlAttrs}
-      className="select-none [&_*::selection]:bg-transparent [&::selection]:bg-transparent"
-    >
+    <>
       <div
         contentEditable={false}
         suppressContentEditableWarning
@@ -149,9 +171,9 @@ export const FileAttachmentView = forwardRef<
           "transition-colors",
         ])}
       >
-        {isImage && src ? (
+        {isImage && resource.src ? (
           <img
-            src={src}
+            src={resource.src}
             alt={name}
             className="h-10 w-10 shrink-0 rounded object-cover"
           />
@@ -170,35 +192,8 @@ export const FileAttachmentView = forwardRef<
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {open && (
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void open();
-              }}
-              className="hover:bg-accent rounded p-1"
-              title="Open file"
-            >
-              <ExternalLinkIcon size={14} className="text-muted-foreground" />
-            </button>
-          )}
-          {reveal && (
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void reveal();
-              }}
-              className="hover:bg-accent rounded p-1"
-              title="Show in Finder"
-            >
-              <FolderIcon size={14} className="text-muted-foreground" />
-            </button>
-          )}
+        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+          <AttachmentActions resource={resource} />
           {attachmentEditingEnabled ? (
             <button
               type="button"
@@ -215,6 +210,7 @@ export const FileAttachmentView = forwardRef<
           ) : null}
         </div>
       </div>
-    </div>
+      <AttachmentFeedback resource={resource} />
+    </>
   );
-});
+}

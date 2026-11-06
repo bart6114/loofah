@@ -8,7 +8,7 @@ export type AttachmentPresentation = (input: {
   path?: unknown;
   attachmentId?: string;
   resolved?: AttachmentResolution | null;
-}) => { src?: string; open?: AttachmentAction; reveal?: AttachmentAction };
+}) => AttachmentResolution;
 
 export const legacyAttachmentPresentation: AttachmentPresentation = ({
   src,
@@ -18,6 +18,7 @@ export const legacyAttachmentPresentation: AttachmentPresentation = ({
   const location =
     resolved?.path ?? (typeof path === "string" ? path : undefined);
   return {
+    ...resolved,
     src: resolved?.src ?? (typeof src === "string" ? src : undefined),
     open:
       resolved?.open ??
@@ -41,6 +42,14 @@ export const scopedAttachmentPresentation: AttachmentPresentation = ({
   attachmentId,
   resolved,
 }) => ({
+  ...(resolved && {
+    save: resolved.save,
+    labels: resolved.labels,
+    preview: resolved.preview,
+    pending: resolved.pending,
+    feedback: resolved.feedback,
+    retry: resolved.retry,
+  }),
   src: resolved
     ? resolved.src
     : attachmentId

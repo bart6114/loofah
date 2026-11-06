@@ -1,4 +1,9 @@
-import { createContext, useContext } from "react";
+import {
+  createContext,
+  useContext,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 
 import {
   legacyAttachmentPresentation,
@@ -10,8 +15,36 @@ export type AttachmentResolution = {
   path?: string;
   open?: AttachmentAction;
   reveal?: AttachmentAction;
+  save?: AttachmentAction;
   src?: string;
+  labels?: { open: string; reveal: string; save?: string; retry: string };
+  preview?: { loading: string; error: string; unavailable: string };
+  pending?: boolean;
+  feedback?: { message: string; error?: boolean };
+  retry?: AttachmentAction;
 };
+
+export type AttachmentResourceLoader = ComponentType<{
+  attachmentId: string;
+  children: (resolved: AttachmentResolution | null) => ReactNode;
+}>;
+
+export const AttachmentResourceContext =
+  createContext<AttachmentResourceLoader | null>(null);
+
+export function AttachmentResource({
+  attachmentId,
+  children,
+}: {
+  attachmentId: unknown;
+  children: (resolved: AttachmentResolution | null) => ReactNode;
+}) {
+  const Loader = useContext(AttachmentResourceContext);
+  const resolve = useAttachmentResolver();
+  if (typeof attachmentId !== "string") return children(null);
+  if (Loader) return <Loader attachmentId={attachmentId}>{children}</Loader>;
+  return children(resolve?.(attachmentId) ?? null);
+}
 
 export type AttachmentResolver = (
   attachmentId: string,

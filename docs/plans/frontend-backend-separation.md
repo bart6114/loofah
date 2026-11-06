@@ -306,8 +306,8 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
-- [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: actual editor/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads and native scoped preview/copy operations are implemented; editor attachment integration remains open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; attachment panel/uploads remain open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -1775,3 +1775,60 @@ service, observes scoped attachment notifications over an authenticated stream,
 and verifies an external note reaches the in-memory projection. It preserves
 metadata and an unknown attachment. This keeps native service wiring covered
 alongside the injected-source route fixtures.
+
+### Attachments mounted in the shared rich note editor
+
+The shared `VaultNoteEditor` now installs `VaultAttachmentProvider` for image and
+file nodes. It uses the existing `VaultScope.attachmentOptions` query and the
+client-owned resource, with no transport branch in a node view. Duplicate nodes
+share a resource. The editor package accepts an optional resource-loader component
+through context, so existing consumers need no query or localization dependency.
+The default local editor retains its existing synchronous cached resolver and
+performs no new attachment request. Source/output editors keep their existing
+Markdown editing behavior; this checkpoint does not migrate those outputs to a
+rich editor.
+
+Image and file views show localized loading, missing-file and retry feedback.
+Remote actions explicitly identify downloaded copies. Original saves report
+pending/success/error state through TanStack mutations and never retry themselves
+automatically. An uncertain reply tells the user a copy may already be in
+Downloads/Loofah. Actions cancel on resource replacement or unmount; loss of access
+removes the actions and stops new attachment queries. Inline image failures offer
+an explicit retry, and oversized images retain original-file actions.
+
+The ProseMirror node root remains stable while its asynchronous content changes;
+resource replacement cannot replace that root. Focused integration tests inspect
+the actual node DOM, exercise StrictMode cancellation, resource sharing and
+teardown, and save through the actual workspace host. Runtime media URLs, native
+paths, loading state and action labels never enter canonical note attributes or
+Markdown. Loading an attachment alone does not create an edit.
+
+The final source passes all 1,788 desktop frontend tests, 303 shared editor tests,
+shared editor/desktop typechecks, scoped lint with zero warnings/errors, strict
+locale compilation and a production frontend build. Full native/headless Rust
+source is unchanged from the preceding checkpoint. The wider production and
+platform acceptance gates remain open.
+
+A disposable native macOS debug window mounted the actual `VaultNoteEditor` over
+trusted HTTPS using synthetic OIDC. It rendered the owned image, checked its exact
+SHA-256, and exposed file-copy actions at 50/150/500 ms RTT. The full fixture
+settled in approximately 1.5/2.5/6.0 seconds, including original-image verification,
+missing/oversized resources and the proxy's per-chunk delays. These figures are
+fixture measurements, not production performance acceptance. The first SVG check
+incorrectly assumed fixed natural dimensions; WebKit reports dimensions affected
+by layout for this SVG, so the final check uses successful decoding plus exact
+byte verification. That initial failed result is retained with the QA artifacts.
+
+The native run also saved a byte-identical original from the file node, refreshed
+a preview after an external attachment replacement, recovered through explicit
+retry after a disconnect, and resynced after server restart. The canonical note
+and metadata, all 150 preexisting fixture files, and existing local notes were
+unchanged. Computer-use inspection confirmed the rendered image, copy labels,
+missing/oversized feedback and final result. Evidence:
+`/Volumes/T7/loofah-backend-build/native-qa/editor-attachments/evidence.json`.
+The owned QA processes were stopped and its synthetic credential was removed.
+
+The full implementation remains incomplete. Attachment panel/list/upload/delete,
+imports/exports, main-shell/profile and remote-only startup, processing/jobs,
+durable capture/upload recovery, CLI ownership/mutation parity, backups/upgrades,
+and full macOS/Windows and realistic performance gates remain required.

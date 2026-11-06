@@ -31,6 +31,7 @@ import {
 } from "./note-editor-draft";
 import type { NoteEditorSnapshot } from "./protocol.gen";
 import { useDraftPersistence } from "./use-draft-persistence";
+import { VaultAttachmentProvider } from "./vault-attachment-provider";
 import type { VaultScope } from "./vault-scope";
 
 import {
@@ -418,30 +419,36 @@ function EditorFields({
       >
         {noteError && <p role="alert">{noteError.message}</p>}
         {model.value ? (
-          <NoteEditor
-            {...editorOptions}
-            ref={editorRef}
-            key={editorEpoch}
-            initialContent={model.value.content}
-            initialDraft={initialDraft}
-            confirmedDraft={confirmedDraft}
-            className={cn([
-              layout === "pane" && "min-h-32",
-              editorOptions?.className ?? "px-3 py-2",
-            ])}
-            handleChange={change}
-            onDraftChange={capture}
-            attachmentPresentation={scope.client.attachmentPresentation}
-            onMentionNavigate={
-              editorOptions?.onMentionNavigate ?? navigateMention
-            }
-            onLinkOpen={editorOptions?.onLinkOpen ?? openHref}
-            placeholderComponent={documentTitlePlaceholder}
-            readOnly={!editing.current}
-            syncContentWhenFocused={
-              editorOptions?.syncContentWhenFocused ?? true
-            }
-          />
+          <VaultAttachmentProvider
+            scope={scope}
+            sessionId={sessionId}
+            enabled={!editorOptions?.resolveAttachment}
+          >
+            <NoteEditor
+              {...editorOptions}
+              ref={editorRef}
+              key={editorEpoch}
+              initialContent={model.value.content}
+              initialDraft={initialDraft}
+              confirmedDraft={confirmedDraft}
+              className={cn([
+                layout === "pane" && "min-h-32",
+                editorOptions?.className ?? "px-3 py-2",
+              ])}
+              handleChange={change}
+              onDraftChange={capture}
+              attachmentPresentation={scope.client.attachmentPresentation}
+              onMentionNavigate={
+                editorOptions?.onMentionNavigate ?? navigateMention
+              }
+              onLinkOpen={editorOptions?.onLinkOpen ?? openHref}
+              placeholderComponent={documentTitlePlaceholder}
+              readOnly={!editing.current}
+              syncContentWhenFocused={
+                editorOptions?.syncContentWhenFocused ?? true
+              }
+            />
+          </VaultAttachmentProvider>
         ) : (
           <div role="alert">
             <p>{model.error?.message}</p>

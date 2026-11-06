@@ -190,8 +190,16 @@ msgstr ""
 msgid "Assignees:"
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Attachment access is unavailable. Reconnect or sign in again."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Attachment added"
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Attachment not found."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
@@ -491,6 +499,22 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Copying…"
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not complete file action. Check your connection and try again."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not load attachment. Retry when connected."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not load preview. Retry or save the original copy."
 msgstr ""
 
 #: src/session/components/session-tags.tsx
@@ -969,6 +993,10 @@ msgstr ""
 msgid "Loading"
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Loading attachment…"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Loading connection…"
 msgstr ""
@@ -997,6 +1025,10 @@ msgstr ""
 
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Loading preview…"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1292,6 +1324,10 @@ msgstr ""
 msgid "Open on GitHub"
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Opened file."
+msgstr ""
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Opening your browser…"
 msgstr ""
@@ -1351,12 +1387,20 @@ msgstr ""
 msgid "Preparing export..."
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Preparing file…"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr ""
 
 #: src/main/about-debug.tsx
 msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Preview unavailable. You can open or save the original file."
 msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
@@ -1571,6 +1615,7 @@ msgstr ""
 #: src/session/components/note-input/transcript/loading.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
+#: src/shared/application/vault-attachment-provider.tsx
 msgid "Retry"
 msgstr ""
 
@@ -1629,6 +1674,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Saved original copy."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1807,6 +1856,10 @@ msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show tray icon"
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Showing file."
 msgstr ""
 
 #: src/settings/ai/llm/configure.tsx

@@ -105,6 +105,7 @@ function fixture(rich = false) {
       ...(rich ? ["note_editor_read", "note_editor_write"] : []),
     ],
     attachmentPresentation: scopedAttachmentPresentation,
+    openAttachment: vi.fn(),
     readNoteEditor: vi.fn(async () => ({ note: current, tasks: currentTasks })),
     saveNoteEditor: vi.fn(async (_id, input) => {
       if (
@@ -225,6 +226,7 @@ function fixture(rich = false) {
     }),
   } as unknown as VaultClient & {
     saveNote: ReturnType<typeof vi.fn>;
+    openAttachment: ReturnType<typeof vi.fn>;
     saveNoteEditor: ReturnType<typeof vi.fn<VaultClient["saveNoteEditor"]>>;
     saveDocument: ReturnType<typeof vi.fn>;
     search: ReturnType<typeof vi.fn>;
@@ -1515,4 +1517,43 @@ describe("shared note workspace", () => {
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(backend.client.saveNote).toHaveBeenCalledOnce();
   });
+});
+
+it("mounts owned attachments through the actual shared note host and saves portable references", async () => {
+  const backend = fixture(true);
+  backend.set(note("# Seed\n\n![Owned image](attachments/chart.png)", "a"));
+  const close = vi.fn().mockResolvedValue(undefined);
+  backend.client.openAttachment.mockResolvedValue({
+    id: "opaque-chart",
+    info: { filename: "chart.png", contentType: "image/png", sizeBytes: 42 },
+    src: "loofah-media://localhost/opaque-chart",
+    labels: {
+      open: { id: "open", message: "Open downloaded copy" },
+      reveal: { id: "reveal", message: "Show downloaded copy" },
+    },
+    open: vi.fn(),
+    reveal: vi.fn(),
+    close,
+  });
+  const { view, unmount } = await openRich(backend.client);
+  await waitFor(() =>
+    expect(screen.getByAltText("Owned image").getAttribute("src")).toBe(
+      "loofah-media://localhost/opaque-chart",
+    ),
+  );
+  expect(backend.client.openAttachment).toHaveBeenCalledWith(
+    "same",
+    "chart.png",
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  act(() => view.dispatch(view.state.tr.insertText(" edited", 5)));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(backend.client.saveNoteEditor).toHaveBeenCalledTimes(1),
+  );
+  const saved = backend.client.saveNoteEditor.mock.calls[0][1];
+  expect(saved.markdown).toContain("attachments/chart.png");
+  expect(saved.markdown).not.toContain("loofah-media:");
+  unmount();
+  await waitFor(() => expect(close).toHaveBeenCalled());
 });

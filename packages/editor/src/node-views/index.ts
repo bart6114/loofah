@@ -9,6 +9,9 @@ export { attachmentNodeSpec, AttachmentChipView } from "./attachment-view";
 export {
   type AttachmentResolution,
   type AttachmentResolver,
+  type AttachmentResourceLoader,
+  AttachmentResource,
+  AttachmentResourceContext,
   AttachmentEditingContext,
   AttachmentPresentationContext,
   useAttachmentPresentation,
