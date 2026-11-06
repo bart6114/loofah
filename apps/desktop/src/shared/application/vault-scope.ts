@@ -1,4 +1,4 @@
-import { QueryClient, queryOptions } from "@tanstack/react-query";
+import { QueryClient, hashKey, queryOptions } from "@tanstack/react-query";
 
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { ApplicationRequestError, connectionClosed } from "./errors";
@@ -25,6 +25,8 @@ export class VaultScope {
   constructor(readonly client: VaultClient) {
     this.queryClient = new QueryClient({
       defaultOptions: {
+        // Native requests report connectivity; pausing here would silently queue edits.
+        mutations: { networkMode: "always" },
         queries: {
           networkMode: client.networkMode,
           staleTime: Infinity,
@@ -97,6 +99,45 @@ export class VaultScope {
         });
       }
       throw error;
+    }
+  }
+
+  async saveAndConfirm<T>(
+    key: readonly unknown[],
+    operation: () => Promise<T>,
+    confirm: (value: T) => Promise<void>,
+  ): Promise<T> {
+    const initial = this.queryClient.getQueryState(key);
+    let refresh =
+      !initial || initial.isInvalidated || initial.fetchStatus !== "idle";
+    const hash = hashKey(key);
+    const stop = this.queryClient.getQueryCache().subscribe((event) => {
+      if (event.query.queryHash !== hash) return;
+      if (
+        event.type === "removed" ||
+        (event.type === "updated" &&
+          (event.action.type === "invalidate" ||
+            event.action.type === "fetch" ||
+            (event.action.type === "success" && !event.action.manual)))
+      )
+        refresh = true;
+    });
+    try {
+      const result = await this.run(operation);
+      await confirm(result);
+      // A newer canonical read/event can precede an older, delayed save reply.
+      if (
+        refresh &&
+        !this.disposed &&
+        !["access_denied", "login_required", "closed", "incompatible"].includes(
+          this.snapshot.state,
+        )
+      ) {
+        void this.queryClient.invalidateQueries({ queryKey: key, exact: true });
+      }
+      return result;
+    } finally {
+      stop();
     }
   }
 

@@ -124,6 +124,8 @@ Extend existing entity/ID invalidations with vault identity, server epoch, and s
 - Emit search-ready changes after projection updates so a query is not left stale after an early content notification.
 - Job state and transcript snapshots remain queryable; progress events are not the sole record.
 - Namespace caches and pending operations by connection, authenticated principal, and vault ID.
+- Preserve invalidations and newer reads that arrive before an older save acknowledgement; refresh that resource after confirmation rather than leaving an old reply cached indefinitely.
+- Run native mutations without the browser offline queue. Device recovery writes and clipboard operations remain available offline; remote requests report native connectivity errors and require their explicit retry/conflict policy.
 - Tear down subscriptions and clear visible remote data on account changes or lost access.
 
 Preserve local offline query behavior. Remote connection handling must not pause local-mode queries merely because the machine has no internet connection.
@@ -550,3 +552,30 @@ one recovery ID. Both exact clipboard readbacks passed, the dialog and Copy
 control fit the default window, all original/new recovery record hashes stayed
 unchanged, and the existing local note hash remained unchanged. The app quit
 through its menu. Full feature/platform release gates remain open.
+
+### Save confirmation and browser-offline scheduling
+
+Confirmed note/output saves now retain the need to refresh when a canonical
+read or invalidation overlaps the request. A delayed save acknowledgement
+cancels older reads, publishes its confirmed snapshot, then revalidates that
+resource when necessary. Ordinary acknowledgements add no read. Creation
+receipts also revalidate their new note because another client can edit before
+the creation response arrives. A temporary query-cache subscription tracks only
+the affected resource and is removed on success, failure or lost access; late
+replies cannot restore cleared private data.
+
+The scoped client no longer lets TanStack's browser connectivity queue pause
+native mutations. Local saves remain available without internet. Remote
+requests run their native connectivity/error path rather than being silently
+queued until browser reconnection. Known server disconnection still disables
+editing, and the existing revision/conflict policy remains in force. Device
+recovery persistence and Copy explicitly run offline. Three regression tests
+first reproduced paused device writes, paused local saves and a queued remote
+save; all pass after this change. A remote failure is not automatically resent
+when browser connectivity returns.
+
+Validation: 1,684 frontend tests pass, including 102 scoped application tests.
+The delayed-acknowledgement tests use a real TanStack query observer and cover
+an intervening completed read, a pending read, output invalidation, failure and
+authorization teardown. Desktop typechecking, scoped application lint and
+formatting pass. This does not enable offline editing of remote vaults.

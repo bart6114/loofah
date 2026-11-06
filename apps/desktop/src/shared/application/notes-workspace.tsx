@@ -99,11 +99,16 @@ function Notes({ scope }: { scope: VaultScope }) {
         scope.client.createSession({ title: "", markdown: "" }, { requestId }),
       );
       await scope.confirmNote(result.meta.id, result.note);
+      void scope.queryClient.invalidateQueries({
+        queryKey: scope.noteOptions(result.meta.id).queryKey,
+        exact: true,
+      });
       return result;
     },
     onSuccess: (session) => setSessionId(session.meta.id),
   });
   const copy = useMutation({
+    networkMode: "always",
     mutationFn: async () => {
       if (sessionId) {
         const draft = drafts.get(
@@ -707,6 +712,7 @@ function NoteFields({
   const snapshot = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const persist = useMutation({
+    networkMode: "always",
     mutationFn: async (beforeRequest: boolean) => {
       const value = draft.recovery();
       if (beforeRequest) value.uncertain = true;
@@ -747,9 +753,11 @@ function NoteFields({
         });
       try {
         lastSubmitted.current = draft.getSnapshot().draft;
-        const saved = await scope.run(() => draft.save());
-        await confirm(saved);
-        return saved;
+        return await scope.saveAndConfirm(
+          queryKey,
+          () => draft.save(),
+          confirm,
+        );
       } catch (error) {
         if (
           error instanceof ApplicationRequestError &&

@@ -182,6 +182,91 @@ afterEach(async () => {
 });
 
 describe("shared note workspace", () => {
+  it("persists and copies unsaved text while the browser is offline and vault access is lost", async () => {
+    const { onlineManager } = await import("@tanstack/react-query");
+    const backend = fixture();
+    const editor = await open(backend.client);
+    onlineManager.setOnline(false);
+    try {
+      fireEvent.change(editor, {
+        target: { value: "Durable device text while offline" },
+      });
+      backend.emit({ kind: "connection", state: "reconnecting", error: null });
+      await waitFor(() =>
+        expect(native.draftCachePut).toHaveBeenCalledWith(
+          expect.objectContaining({
+            draft: expect.objectContaining({
+              markdown: "Durable device text while offline",
+            }),
+          }),
+        ),
+      );
+      backend.emit({ kind: "connection", state: "access_denied", error: null });
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Copy unsaved text" }),
+      );
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(
+          "Durable device text while offline",
+        ),
+      );
+      expect(backend.client.saveNote).not.toHaveBeenCalled();
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it("saves a local note immediately without an internet connection", async () => {
+    const { onlineManager } = await import("@tanstack/react-query");
+    const backend = fixture();
+    const editor = await open(backend.client);
+    onlineManager.setOnline(false);
+    try {
+      fireEvent.change(editor, { target: { value: "Standalone local text" } });
+      await waitFor(() =>
+        expect(backend.client.saveNote).toHaveBeenCalledOnce(),
+      );
+      expect(backend.client.saveNote.mock.calls[0][1].markdown).toBe(
+        "Standalone local text",
+      );
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it("reports a remote failure immediately instead of queuing a write until browser reconnection", async () => {
+    const { onlineManager } = await import("@tanstack/react-query");
+    const backend = fixture();
+    backend.client.saveNote.mockRejectedValue(
+      new ApplicationRequestError({
+        code: "unavailable",
+        message: "The server connection stopped",
+        retryable: true,
+        request_id: "remote-request",
+        current_revision: null,
+        mutation_outcome: "unknown",
+      }),
+    );
+    const editor = await open({ ...backend.client, networkMode: "online" });
+    onlineManager.setOnline(false);
+    try {
+      fireEvent.change(editor, {
+        target: { value: "Keep my remote draft on this device" },
+      });
+      await waitFor(() =>
+        expect(backend.client.saveNote).toHaveBeenCalledOnce(),
+      );
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "The server connection stopped",
+      );
+      onlineManager.setOnline(true);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(backend.client.saveNote).toHaveBeenCalledOnce();
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
   it("durably marks a draft uncertain before sending its replacement", async () => {
     const backend = fixture();
     let finish!: (value: unknown) => void;

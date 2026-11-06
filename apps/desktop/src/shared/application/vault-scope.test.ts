@@ -1,3 +1,4 @@
+import { QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApplicationRequestError } from "./errors";
@@ -34,6 +35,182 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("refreshes a newer canonical note again when its change and read precede an older save acknowledgement", async () => {
+    const { active, backend, emit } = fixture("scope");
+    await active.start();
+    const options = active.noteOptions("note");
+    const older = {
+      markdown: "My committed text",
+      title: "Title",
+      revision: "b",
+    };
+    const newer = {
+      markdown: "Another client's newer text",
+      title: "Title",
+      revision: "c",
+    };
+    active.queryClient.setQueryData(options.queryKey, {
+      markdown: "Original",
+      title: "Title",
+      revision: "a",
+    });
+    const otherKey = active.noteOptions("other").queryKey;
+    active.queryClient.setQueryData(otherKey, older);
+    backend.readNote.mockResolvedValue(newer);
+    const observer = new QueryObserver(active.queryClient, options);
+    const stop = observer.subscribe(() => {});
+    let acknowledge!: (value: NoteSnapshot) => void;
+    const saving = active.saveAndConfirm(
+      options.queryKey,
+      () =>
+        new Promise<NoteSnapshot>((resolve) => {
+          acknowledge = resolve;
+        }),
+      (value) => active.confirmNote("note", value),
+    );
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "sessions", ids: ["note"] },
+    });
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toEqual(newer),
+    );
+    acknowledge(older);
+    await saving;
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toEqual(newer),
+    );
+    expect(backend.readNote).toHaveBeenCalledTimes(2);
+    expect(active.queryClient.getQueryData(otherKey)).toEqual(older);
+    expect(active.queryClient.getQueryState(otherKey)?.isInvalidated).toBe(
+      false,
+    );
+    stop();
+    active.dispose();
+  });
+
+  it("retains a refresh started during a save even before that read or a change event completes", async () => {
+    const { active, backend } = fixture("scope");
+    await active.start();
+    const options = active.noteOptions("note");
+    const saved = { markdown: "Saved", title: "Title", revision: "b" };
+    active.queryClient.setQueryData(options.queryKey, {
+      markdown: "Original",
+      title: "Title",
+      revision: "a",
+    });
+    let acknowledge!: (value: NoteSnapshot) => void;
+    const saving = active.saveAndConfirm(
+      options.queryKey,
+      () =>
+        new Promise<NoteSnapshot>((resolve) => {
+          acknowledge = resolve;
+        }),
+      (value) => active.confirmNote("note", value),
+    );
+    let finishRead!: (value: NoteSnapshot) => void;
+    backend.readNote.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishRead = resolve;
+      }),
+    );
+    const reading = active.queryClient
+      .fetchQuery({ ...options, staleTime: 0 })
+      .catch(() => {});
+    acknowledge(saved);
+    await saving;
+    finishRead({
+      markdown: "Another client's newer text",
+      title: "Title",
+      revision: "c",
+    });
+    await reading;
+    expect(active.queryClient.getQueryData(options.queryKey)).toEqual(saved);
+    expect(
+      active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+    ).toBe(true);
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    active.dispose();
+  });
+
+  it("does not add a read for an ordinary acknowledgement without an intervening change", async () => {
+    const { active, backend } = fixture("scope");
+    await active.start();
+    const options = active.noteOptions("note");
+    const saved = { markdown: "Saved", title: "Title", revision: "b" };
+    active.queryClient.setQueryData(options.queryKey, {
+      markdown: "Original",
+      title: "Title",
+      revision: "a",
+    });
+    await active.saveAndConfirm(
+      options.queryKey,
+      async () => saved,
+      (value) => active.confirmNote("note", value),
+    );
+    expect(active.queryClient.getQueryData(options.queryKey)).toEqual(saved);
+    expect(
+      active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+    ).toBe(false);
+    expect(backend.readNote).not.toHaveBeenCalled();
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    active.dispose();
+  });
+
+  it("preserves output invalidation through a delayed reply and unsubscribes after failure or authorization loss", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const target = { kind: "summary" as const };
+    const options = active.documentTextOptions("note", target);
+    const saved = { markdown: "Summary", title: "", revision: "b" };
+    active.queryClient.setQueryData(options.queryKey, saved);
+    let acknowledge!: (value: NoteSnapshot) => void;
+    const saving = active.saveAndConfirm(
+      options.queryKey,
+      () =>
+        new Promise<NoteSnapshot>((resolve) => {
+          acknowledge = resolve;
+        }),
+      (value) => active.confirmDocumentText("note", target, value),
+    );
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "docs", ids: ["note"] },
+    });
+    acknowledge(saved);
+    await saving;
+    expect(
+      active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+    ).toBe(true);
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    const failure = new Error("The connection stopped");
+    await expect(
+      active.saveAndConfirm(
+        options.queryKey,
+        async () => {
+          throw failure;
+        },
+        vi.fn(),
+      ),
+    ).rejects.toBe(failure);
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    let finish!: (value: NoteSnapshot) => void;
+    const lost = active.saveAndConfirm(
+      options.queryKey,
+      () =>
+        new Promise<NoteSnapshot>((resolve) => {
+          finish = resolve;
+        }),
+      (value) => active.confirmDocumentText("note", target, value),
+    );
+    emit({ kind: "connection", state: "access_denied", error: null });
+    finish(saved);
+    await lost;
+    expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(active.queryClient.getQueryCache().hasListeners()).toBe(false);
+    active.dispose();
+  });
+
   it("invalidates metadata for the changed session without invalidating another session or vault", async () => {
     const { active, emit } = fixture("scope");
     await active.start();
