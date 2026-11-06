@@ -70,6 +70,10 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    AudioMetadata {
+        vault_id: String,
+        session_id: String,
+    },
     Tasks {
         vault_id: String,
         session_id: String,
@@ -165,6 +169,7 @@ pub enum RemoteReply {
     Document(DocumentSnapshot),
     DocumentSave(DocumentSaveOutcome),
     Transcripts(Vec<TranscriptWithData>),
+    AudioMetadata(Option<AudioFileMetadata>),
     Tasks(Vec<TaskItem>),
     TasksSnapshot(TasksSnapshot),
     TasksSave(TasksSaveOutcome),
@@ -201,6 +206,7 @@ impl RemoteClient {
         let required_feature = match &operation {
             RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
+            RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
             _ => None,
         };
         if required_feature.is_some_and(|required| {
@@ -210,9 +216,16 @@ impl RemoteClient {
                 .iter()
                 .any(|feature| feature == required)
         }) {
+            let description = if matches!(operation, RemoteOperation::AudioMetadata { .. }) {
+                "recording metadata"
+            } else {
+                "the note editor"
+            };
             let mut error = failure(
                 ErrorCode::IncompatibleVersion,
-                "This server does not support the note editor. Upgrade the server, then reconnect.",
+                &format!(
+                    "This server does not support {description}. Upgrade the server, then reconnect."
+                ),
             );
             error.request_id = Some(request_id.to_owned());
             if matches!(operation, RemoteOperation::SaveNoteEditor { .. }) {
@@ -342,6 +355,15 @@ impl RemoteClient {
             } => (
                 Method::GET,
                 vec!["vaults", vault_id, "sessions", session_id, "tasks"],
+            ),
+            RemoteOperation::AudioMetadata {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults", vault_id, "sessions", session_id, "audio", "metadata",
+                ],
             ),
             RemoteOperation::People { vault_id } => {
                 (Method::GET, vec!["vaults", vault_id, "people"])
@@ -595,6 +617,9 @@ impl RemoteClient {
                 }
                 RemoteOperation::NoteEditor { .. } => {
                     RemoteReply::NoteEditor(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::AudioMetadata { .. } => {
+                    RemoteReply::AudioMetadata(json_body(response, 256 * 1024).await?)
                 }
                 RemoteOperation::SaveNoteEditor { .. } => {
                     RemoteReply::NoteEditorSave(json_body(response, 32 * 1024 * 1024).await?)

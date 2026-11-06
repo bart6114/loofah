@@ -17,6 +17,7 @@ pub struct VaultContext {
     pub events: EventHub,
     pub(crate) lease: Option<std::fs::File>,
     pub(crate) operations: Option<crate::operations::SessionOperations>,
+    pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
 }
 
 impl VaultContext {
@@ -35,6 +36,7 @@ impl VaultContext {
             events: EventHub::new(id, 256),
             lease: None,
             operations: None,
+            media_readers: Arc::new(tokio::sync::Semaphore::new(4)),
         }
     }
 

@@ -1,3 +1,4 @@
+mod audio_metadata;
 mod metadata;
 mod note_editor;
 mod tasks;
@@ -1672,6 +1673,29 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     assert_eq!(current, saved);
     assert!(
         matches!(request(second.clone(), RemoteOperation::TasksSnapshot { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::TasksSnapshot(current) if current == saved_tasks)
+    );
+    assert!(matches!(
+        request(
+            first.clone(),
+            RemoteOperation::AudioMetadata {
+                vault_id: vault_id.clone(),
+                session_id: created.meta.id.clone()
+            }
+        )
+        .await,
+        RemoteReply::AudioMetadata(None)
+    ));
+    let context = fixture.service.vault(&vault_id).await.unwrap();
+    let recording = context
+        .store
+        .vault_base()
+        .join("sessions")
+        .join(&created.meta.id)
+        .join("audio.mp3");
+    std::fs::write(recording, b"Native recording metadata bytes").unwrap();
+    let expected = context.audio_metadata(&created.meta.id).await.unwrap();
+    assert!(
+        matches!(request(second.clone(),RemoteOperation::AudioMetadata {vault_id:vault_id.clone(),session_id:created.meta.id.clone()}).await,RemoteReply::AudioMetadata(metadata) if metadata == expected)
     );
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),

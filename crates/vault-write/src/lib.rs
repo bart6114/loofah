@@ -15,6 +15,7 @@ mod flat_layout_tests;
 pub mod index;
 pub mod journal;
 pub mod legacy_templates;
+pub mod media;
 mod metadata_revision;
 pub mod migrate;
 mod note_revision;

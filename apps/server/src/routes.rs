@@ -40,6 +40,10 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
+            "/vaults/{vault}/sessions/{session}/audio/metadata",
+            get(audio_metadata),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/note/editor",
             get(note_editor).put(save_note_editor),
         )
@@ -140,6 +144,7 @@ async fn capabilities() -> Json<Capabilities> {
             "notes".into(),
             "note_editor_read".into(),
             "note_editor_write".into(),
+            "audio_metadata_read".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
@@ -598,6 +603,25 @@ async fn save_document(
     })
     .await
 }
+async fn audio_metadata(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    let media_permit = service
+        .media_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Recording readers are busy; retry shortly"))?;
+    content_read(&service, access, 256 * 1024, async move {
+        let _media_permit = media_permit;
+        context.audio_metadata(&session).await
+    })
+    .await
+}
+
 async fn transcripts(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,

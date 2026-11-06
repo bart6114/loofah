@@ -23,6 +23,7 @@ const native = vi.hoisted(() => ({
     applicationReadDocument: vi.fn(),
     applicationSaveDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
+    applicationAudioMetadata: vi.fn(),
     applicationTasks: vi.fn(),
     applicationTasksSnapshot: vi.fn(),
     applicationReplaceTasks: vi.fn(),
@@ -72,6 +73,41 @@ beforeEach(() => {
     native.commands.applicationTags,
   ])
     command.mockResolvedValue({ status: "ok", data: [] });
+});
+
+it("reads recording metadata through either transport without a filesystem path", async () => {
+  const metadata = {
+    filename: "audio.mp3",
+    contentType: "audio/mpeg",
+    sizeBytes: 42,
+    sha256: "a".repeat(64),
+  };
+  native.commands.applicationAudioMetadata.mockResolvedValue({
+    status: "ok",
+    data: metadata,
+  });
+  const local = await connectLocalVault();
+  expect(await local.audioMetadata("same")).toEqual(metadata);
+  expect(native.commands.applicationAudioMetadata).toHaveBeenCalledWith("same");
+  const request = vi.fn().mockResolvedValue(metadata);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://server.example/",
+        capabilities: { features: ["audio_metadata_read"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "alice",
+    vault,
+  );
+  expect(await remote.audioMetadata("same")).toEqual(metadata);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "audio_metadata", vault_id: vault.id, session_id: "same" },
+    "audio_metadata",
+    undefined,
+  );
+  expect(metadata).not.toHaveProperty("path");
 });
 
 it("reads one coherent note/task snapshot through both transports", async () => {

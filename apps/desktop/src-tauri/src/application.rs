@@ -109,6 +109,15 @@ pub async fn application_documents<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_audio_metadata<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<Option<hypr_loofah_protocol::AudioFileMetadata>, ApplicationError> {
+    context(&app)?.audio_metadata(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_transcripts<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,

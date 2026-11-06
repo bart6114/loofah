@@ -248,6 +248,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationAudioMetadata(
+    sessionId: string,
+  ): Promise<Result<AudioFileMetadata | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_audio_metadata", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationTasks(
     sessionId: string,
   ): Promise<Result<TaskItem[], ApplicationError>> {
@@ -1480,6 +1493,12 @@ export type ApplicationError = {
   current_revision: string | null;
   mutation_outcome: MutationOutcome | null;
 };
+export type AudioFileMetadata = {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+};
 export type Capabilities = {
   api_major: number;
   application_version: string;
@@ -1824,6 +1843,7 @@ export type RemoteOperation =
       input: SaveDocumentRequest;
     }
   | { kind: "transcripts"; vault_id: string; session_id: string }
+  | { kind: "audio_metadata"; vault_id: string; session_id: string }
   | { kind: "tasks"; vault_id: string; session_id: string }
   | { kind: "people"; vault_id: string }
   | { kind: "tags"; vault_id: string }
@@ -1876,6 +1896,7 @@ export type RemoteReply =
   | { kind: "document"; value: DocumentSnapshot }
   | { kind: "document_save"; value: DocumentSaveOutcome }
   | { kind: "transcripts"; value: TranscriptWithData[] }
+  | { kind: "audio_metadata"; value: AudioFileMetadata | null }
   | { kind: "tasks"; value: TaskItem[] }
   | { kind: "tasks_snapshot"; value: TasksSnapshot }
   | { kind: "tasks_save"; value: TasksSaveOutcome }

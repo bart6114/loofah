@@ -582,6 +582,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_read_document::<tauri::Wry>,
             application::application_save_document::<tauri::Wry>,
             application::application_transcripts::<tauri::Wry>,
+            application::application_audio_metadata::<tauri::Wry>,
             application::application_tasks::<tauri::Wry>,
             application::application_tasks_snapshot::<tauri::Wry>,
             application::application_replace_tasks::<tauri::Wry>,

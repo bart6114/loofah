@@ -328,6 +328,29 @@ async fn events(
 }
 
 #[tokio::test]
+async fn recording_metadata_requires_a_capability_before_credential_access() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let error = client
+        .execute(
+            RemoteOperation::AudioMetadata {
+                vault_id: "test".into(),
+                session_id: "note".into(),
+            },
+            &request_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(error.request_id.as_deref(), Some(request_id.as_str()));
+    assert!(error.message.contains("recording metadata"));
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn coherent_editor_reads_require_an_advertised_feature_before_authentication_or_requests() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

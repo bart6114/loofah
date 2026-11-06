@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 chrono = { workspace = true }
 hypr-agent-access = { workspace = true }
+hypr-fs-sync-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }

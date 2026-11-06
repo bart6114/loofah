@@ -79,6 +79,13 @@ pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>
         return Ok(None);
     };
 
+    metadata_from_reader(filename, std::fs::File::open(&path)?)
+}
+
+pub fn metadata_from_reader(
+    filename: &str,
+    mut reader: impl Read,
+) -> std::io::Result<Option<AudioFileMetadata>> {
     let content_type = match filename {
         "audio.mp3" => "audio/mpeg",
         "audio.wav" => "audio/wav",
@@ -86,13 +93,12 @@ pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>
         _ => return Ok(None),
     };
 
-    let mut file = std::fs::File::open(&path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     let mut size_bytes = 0_u64;
 
     loop {
-        let bytes_read = file.read(&mut buffer)?;
+        let bytes_read = reader.read(&mut buffer)?;
         if bytes_read == 0 {
             break;
         }

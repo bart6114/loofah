@@ -7673,6 +7673,7 @@ version = "0.1.0"
 dependencies = [
  "agent-access",
  "chrono",
+ "fs-sync-core",
  "loofah-protocol",
  "search-cache",
  "serde",

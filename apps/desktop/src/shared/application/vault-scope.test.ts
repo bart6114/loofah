@@ -39,6 +39,36 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates recording metadata only for matching artifact changes or resync", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const first = active.audioMetadataOptions("first").queryKey;
+    const second = active.audioMetadataOptions("second").queryKey;
+    const other = ["vault", "another", "audio_metadata", "first"];
+    for (const key of [first, second, other])
+      active.queryClient.setQueryData(key, null);
+    for (const entity of ["sessions", "session_headers", "tasks"] as const) {
+      emit({
+        kind: "change",
+        change: { kind: "index_changed", entity, ids: ["first"] },
+      });
+      expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(
+        false,
+      );
+    }
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "artifacts", ids: ["first"] },
+    });
+    expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(second)?.isInvalidated).toBe(false);
+    expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(false);
+    active.resync();
+    expect(active.queryClient.getQueryState(second)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(false);
+    active.dispose();
+  });
+
   it("refreshes newer task-only canonical state after an older compound save reply", async () => {
     const { active, backend, emit } = fixture("scope");
     await active.start();

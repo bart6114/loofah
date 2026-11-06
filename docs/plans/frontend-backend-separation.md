@@ -925,3 +925,57 @@ chosen file generation during a playback/download operation. Validate the
 actual macOS and Windows media-element requests and the missing-waveform
 fallback before claiming playback parity; metadata contracts alone do not
 provide playback.
+
+### Shared recording metadata operation
+
+`VaultContext::audio_metadata` now provides the portable metadata operation to
+IPC, HTTPS, the native client and `VaultClient`. The additive capability is
+`audio_metadata_read`; older servers are refused before credential access. The
+response retains the existing filename/contentType/sizeBytes/sha256 fields and
+never exposes a server path. Missing recordings return null; missing or
+inaccessible sessions return 404. Active capture or unfinished import returns
+retryable 503. Capacity admission uses the server's existing retryable 429
+contract.
+
+The store validates session identity and opens only exact canonical recording
+names, with the known legacy `audio/` fallback. Unknown files, dotfiles,
+per-channel captures and transients are ignored. Symlinked paths are refused.
+An opened file descriptor pins the generation for this read, including when a
+canonical pathname is replaced. Metadata hashing then runs outside the store
+lock through the existing portable implementation. Four per-vault slots bound
+embedded reads; the server permits at most two recording readers within its
+four content-reader slots so note reads retain capacity. Cancellation does not
+release admission or vault ownership while blocking work continues. Metadata
+queries invalidate for matching artifact changes and resync, avoiding a rehash
+on note/title edits.
+
+Validation includes stable open descriptors across file replacement, legacy and
+canonical precedence, busy/missing/invalid sessions, symlinks, reader/private
+vault boundaries, bounded admission and note editing during a cancelled media
+read. Core passes 76 tests, storage 323 (one existing ignored), server 28 plus
+executable lifecycle coverage, and native client 40. The final admission
+refinement also passes a focused HTTP test proving note reads stay available
+while metadata capacity is occupied. All 21 portable audio tests and all 1,711
+frontend tests pass, including 122 scoped application tests. Native binding
+export, desktop typechecking, scoped lint and production-library Clippy pass.
+
+Desktop Rust also passes 45 tests (one existing ignored). The Linux server's
+normal dependency graph still excludes Tauri, Soniqo and desktop capture crates
+after adding the direct portable media dependency. This checkpoint still needs
+its own hosted Windows checks; the preceding pushed batch's x64 checks passed
+and its ARM64 installer build remains in progress.
+
+Real HTTPS verified the metadata response at configured 50/150/500 ms round
+trips, with observed request times of 68.6/168.4/522.3 ms. It refused a
+disconnected request and an unfinished import, then read the changed canonical
+recording after a service restart. The recording SHA-256 changed from
+`96417506b75a78b788bb30f4316c8186501124d10e796a235c2390bbec3083a5`
+to `18452419efab4e7123f5425378dfe28448ccf8252e6a1f14cca48515ca57a8cc`.
+The note and metadata bytes, unknown-file canaries and all 51 pre-existing
+fixture file hashes remained unchanged. Fixture processes stopped and network
+settings were restored. All artifacts stayed on T7.
+
+The desktop audio player still uses its existing local path. Metadata does not
+provide recording bytes or a persistent playback handle. Authenticated range
+reads, waveform operations, attachment transfer, native media presentation and
+complete audio/platform performance validation remain open.

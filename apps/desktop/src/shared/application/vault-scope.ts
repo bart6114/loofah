@@ -166,6 +166,13 @@ export class VaultScope {
         this.run(() => this.client.readNoteEditor(sessionId, { signal })),
     });
   }
+  audioMetadataOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "audio_metadata", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.audioMetadata(sessionId, { signal })),
+    });
+  }
   sessionOptions(sessionId: string) {
     const client = this.client;
     return queryOptions({
@@ -393,6 +400,10 @@ export class VaultScope {
             return true;
           if (kind === "session_page")
             return ["sessions", "session_headers"].includes(change.entity);
+          if (kind === "audio_metadata")
+            return (
+              change.entity === "artifacts" && (all || ids.has(String(id)))
+            );
           if (kind === "tasks_snapshot")
             return (
               ["tasks", "sessions", "session_headers"].includes(
