@@ -736,3 +736,48 @@ converter does not cover every current editor node, including tables and session
 links. Shared Rust operations must accept explicit editor task identity/status
 with its revision while retaining the existing serialized vault format; they
 must not silently discard unsupported rich content.
+
+### Compound editor save contract
+
+The shared Rust layer now accepts explicit editor task intent with both note and
+task revisions. IPC and HTTPS use `SaveNoteEditorRequest` and return the same
+coherent saved/conflict snapshot. The additive `note_editor_write` capability is
+checked before the native client accesses credentials or sends an unsupported
+write. Stale input writes nothing, including when another writer changes only a
+task's due date or status while the note revision stays unchanged.
+
+The operation keeps existing task replacement rules, stable IDs on renamed
+tasks, assignment/creation metadata, other task sources and rich task JSON. It
+persists the existing frontend Markdown serialization without converting it
+through the Rust converter. The same schema 2 intent recovers body, title and
+explicit tasks. Prospective metadata and task sizes are checked before the body
+commit; failures after admission conservatively retain an unknown outcome.
+
+Validation covers role/isolation checks, both stale revisions, concurrent
+editors, deletion, aggregate request limits, metadata growth and task-only
+recovery before CAS. Vault-write passes 319 tests (one existing ignored), core
+73, server 27 plus its executable lifecycle test, native client 37 and desktop
+45 (one existing ignored). All 1,689 frontend tests pass, including 107 scoped
+application tests, with no scoped lint warnings or errors. Desktop
+typechecking, generated bindings and production-library Clippy pass. The broader
+Clippy invocation also reported existing warnings in dependencies such as
+`storage` and `fs-format`; these unrelated files were left unchanged.
+
+A real HTTPS fixture at 150 ms round trips preserved table/session-link
+Markdown, explicit task identity and status. A task-only stale save received
+409. A disconnected PUT queued nothing. SIGKILL between the note body and
+remaining compound commits left a schema 2 intent; restart recovered all 2,000
+explicit tasks, including IDs, statuses, bodies and due dates, without resending.
+The pending intent SHA-256 was
+`99da58cf88c7f288b7bba30016da835166b7964a2d6edec09d22ae16bd64e2a4`;
+the recovered note SHA-256 was
+`5ffa5491a1a85b15c17b6579df2f388e72d872fc5db4bb6297d5e651758cf853`.
+All 38 pre-existing fixture file hashes and unknown attachment canaries remained
+unchanged. Fixture processes stopped and network settings were restored. Build,
+temporary and QA artifacts stayed on T7.
+
+The main editor is still on its existing local path. Its draft must retain task
+intent and both baselines through pending saves, uncertain acknowledgements,
+device recovery and explicit conflict resolution before it can use this
+contract. Completing these contracts alone does not complete editor or remote
+feature parity.

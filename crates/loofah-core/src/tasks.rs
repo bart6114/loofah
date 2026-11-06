@@ -1,5 +1,6 @@
 use hypr_loofah_protocol::{
-    ApplicationError, ErrorCode, ReplaceTasksRequest, TaskSource, TasksSaveOutcome, TasksSnapshot,
+    ApplicationError, ErrorCode, ReplaceTasksRequest, TaskInput, TaskSource, TasksSaveOutcome,
+    TasksSnapshot,
 };
 
 use crate::{
@@ -54,24 +55,38 @@ impl VaultContext {
 }
 
 fn validate(input: &ReplaceTasksRequest) -> Result<(), ApplicationError> {
-    if input.expected_revision.is_empty() || input.expected_revision.len() > 128 {
+    validate_task_fields(&input.tasks, &input.expected_revision)?;
+    if let TaskSource::TemplateOutput { document_id } = &input.source {
+        hypr_vault_read::paths::validate_session_id(document_id)
+            .map_err(|_| error(ErrorCode::Validation, "Invalid task source identifier"))?;
+    }
+    serde_json::to_writer(RequestBudget(4 * 1024 * 1024), input).map_err(|_| {
+        error(
+            ErrorCode::ResourceLimit,
+            "Task replacement exceeds its size limit",
+        )
+    })?;
+    Ok(())
+}
+
+pub(crate) fn validate_task_fields(
+    tasks: &[TaskInput],
+    expected_revision: &str,
+) -> Result<(), ApplicationError> {
+    if expected_revision.is_empty() || expected_revision.len() > 128 {
         return Err(error(
             ErrorCode::Validation,
             "Expected task revision is required",
         ));
     }
-    if let TaskSource::TemplateOutput { document_id } = &input.source {
-        hypr_vault_read::paths::validate_session_id(document_id)
-            .map_err(|_| error(ErrorCode::Validation, "Invalid task source identifier"))?;
-    }
-    if input.tasks.len() > 2000 {
+    if tasks.len() > 2000 {
         return Err(error(
             ErrorCode::ResourceLimit,
             "Too many tasks in one replacement",
         ));
     }
     let mut ids = std::collections::HashSet::new();
-    for task in &input.tasks {
+    for task in tasks {
         if task.id.is_empty() || task.status.trim().is_empty() || !ids.insert(&task.id) {
             return Err(error(
                 ErrorCode::Validation,
@@ -89,16 +104,10 @@ fn validate(input: &ReplaceTasksRequest) -> Result<(), ApplicationError> {
             ));
         }
     }
-    serde_json::to_writer(RequestBudget(4 * 1024 * 1024), input).map_err(|_| {
-        error(
-            ErrorCode::ResourceLimit,
-            "Task replacement exceeds its size limit",
-        )
-    })?;
     Ok(())
 }
 
-struct RequestBudget(usize);
+pub(crate) struct RequestBudget(pub(crate) usize);
 impl std::io::Write for RequestBudget {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         if bytes.len() > self.0 {

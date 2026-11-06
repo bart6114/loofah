@@ -1,4 +1,5 @@
 mod metadata;
+mod note_editor;
 mod tasks;
 
 use std::sync::Arc;
@@ -1670,7 +1671,39 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     };
     assert_eq!(current, saved);
     assert!(
-        matches!(request(second.clone(), RemoteOperation::TasksSnapshot { vault_id, session_id: created.meta.id }).await, RemoteReply::TasksSnapshot(current) if current == saved_tasks)
+        matches!(request(second.clone(), RemoteOperation::TasksSnapshot { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::TasksSnapshot(current) if current == saved_tasks)
+    );
+    let input = SaveNoteEditorRequest {
+        markdown: "Changed\n\n- [x] Renamed native task".into(),
+        title: None,
+        expected_revision: saved.revision,
+        expected_tasks_revision: saved_tasks.revision,
+        tasks: vec![TaskInput {
+            id: saved_tasks.tasks[0].id.clone(),
+            source_order: 0,
+            status: "done".into(),
+            text: "Renamed native task".into(),
+            body: serde_json::json!([{"type":"paragraph","content":[{"type":"text","text":"Renamed native task"}]}]),
+            due_at: "2026-12-01".into(),
+        }],
+    };
+    let RemoteReply::NoteEditorSave(NoteEditorSaveOutcome::Saved(editor)) = request(
+        first.clone(),
+        RemoteOperation::SaveNoteEditor {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            input: input.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("native editor save response")
+    };
+    assert_eq!(editor.tasks.tasks[0].id, saved_tasks.tasks[0].id);
+    assert_eq!(editor.tasks.tasks[0].status, "done");
+    assert_eq!(editor.tasks.tasks[0].due_at, "2026-12-01");
+    assert!(
+        matches!(request(second.clone(), RemoteOperation::SaveNoteEditor { vault_id, session_id: created.meta.id, input }).await, RemoteReply::NoteEditorSave(NoteEditorSaveOutcome::Conflict(current)) if current == editor)
     );
     subscription.close().await;
     first.disconnect();

@@ -41,7 +41,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
             "/vaults/{vault}/sessions/{session}/note/editor",
-            get(note_editor),
+            get(note_editor).put(save_note_editor),
         )
         .route(
             "/vaults/{vault}/sessions/{session}/metadata",
@@ -139,6 +139,7 @@ async fn capabilities() -> Json<Capabilities> {
         features: vec![
             "notes".into(),
             "note_editor_read".into(),
+            "note_editor_write".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
@@ -798,6 +799,29 @@ async fn note_editor(
     let context = service.vault(&id).await?;
     content_read(&service, access, 32 * 1024 * 1024, async move {
         context.read_note_editor(&session).await
+    })
+    .await
+}
+
+async fn save_note_editor(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiJson(input): ApiJson<SaveNoteEditorRequest>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    write(&service, access, async move {
+        let result = context.save_note_editor(&session, input).await?;
+        let status = if matches!(result, NoteEditorSaveOutcome::Conflict(_)) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::OK
+        };
+        let bytes = tokio::task::spawn_blocking(move || encode_content(&result, 32 * 1024 * 1024))
+            .await
+            .map_err(ApiError::internal)??;
+        Ok((status, [("content-type", "application/json")], bytes).into_response())
     })
     .await
 }

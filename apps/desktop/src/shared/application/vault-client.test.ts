@@ -11,6 +11,7 @@ const native = vi.hoisted(() => ({
     applicationAgentSegments: vi.fn(),
     applicationReadNote: vi.fn(),
     applicationReadNoteEditor: vi.fn(),
+    applicationSaveNoteEditor: vi.fn(),
     applicationReadMetadata: vi.fn(),
     applicationSaveMetadata: vi.fn(),
     applicationSaveNote: vi.fn(),
@@ -100,6 +101,48 @@ it("reads one coherent note/task snapshot through both transports", async () => 
   expect(request).toHaveBeenCalledWith(
     { kind: "note_editor", vault_id: vault.id, session_id: "same" },
     "note_editor",
+    undefined,
+  );
+});
+
+it("sends editor task identity and both revisions through both transports", async () => {
+  const input = {
+    markdown: "Updated",
+    title: "Title",
+    expected_revision: "a",
+    expected_tasks_revision: "tasks-a",
+    tasks: [],
+  };
+  const outcome = {
+    kind: "conflict",
+    snapshot: { note, tasks: { tasks: [], revision: "tasks-b" } },
+  };
+  native.commands.applicationSaveNoteEditor.mockResolvedValue({
+    status: "ok",
+    data: outcome,
+  });
+  const local = await connectLocalVault();
+  expect(await local.saveNoteEditor("same", input)).toEqual(outcome);
+  expect(native.commands.applicationSaveNoteEditor).toHaveBeenCalledWith(
+    "same",
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(outcome);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://server.example/",
+        capabilities: { features: ["note_editor_write"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "alice",
+    vault,
+  );
+  expect(await remote.saveNoteEditor("same", input)).toEqual(outcome);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "save_note_editor", vault_id: vault.id, session_id: "same", input },
+    "note_editor_save",
     undefined,
   );
 });

@@ -12,5 +12,6 @@ pub use runtime::VaultRuntime;
 mod agent;
 mod content;
 mod metadata;
+mod note_editor;
 mod operations;
 mod tasks;

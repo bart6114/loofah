@@ -67,13 +67,7 @@ impl SessionStore {
         }
         let mut meta = current.meta;
         crate::content::apply_meta_patch(&mut meta, patch);
-        let bytes = serde_json::to_vec_pretty(&meta)
-            .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
-        if bytes.len() > METADATA_LIMIT {
-            return Err(StoreError::Serialize(
-                "Session metadata exceeds its size limit".into(),
-            ));
-        }
+        validate_metadata_size(&meta)?;
         self.write_meta_locked(guard, &meta).await?;
         let snapshot = self
             .metadata_snapshot_locked(guard, id)
@@ -153,6 +147,17 @@ impl SessionStore {
         .await
         .map_err(|cause| StoreError::Io(cause.to_string()))?
     }
+}
+
+pub(super) fn validate_metadata_size(meta: &crate::SessionMeta) -> Result<(), StoreError> {
+    let bytes = serde_json::to_vec_pretty(meta)
+        .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
+    if bytes.len() > METADATA_LIMIT {
+        return Err(StoreError::ResourceLimit(
+            "Session metadata exceeds its size limit".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

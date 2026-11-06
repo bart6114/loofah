@@ -257,6 +257,22 @@ pub struct NoteEditorSnapshot {
     pub tasks: TasksSnapshot,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SaveNoteEditorRequest {
+    pub markdown: String,
+    pub title: Option<String>,
+    pub expected_revision: String,
+    pub expected_tasks_revision: String,
+    pub tasks: Vec<TaskInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", content = "snapshot", rename_all = "snake_case")]
+pub enum NoteEditorSaveOutcome {
+    Saved(NoteEditorSnapshot),
+    Conflict(NoteEditorSnapshot),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DocumentTarget {

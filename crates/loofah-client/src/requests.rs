@@ -92,6 +92,11 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    SaveNoteEditor {
+        vault_id: String,
+        session_id: String,
+        input: SaveNoteEditorRequest,
+    },
     TasksSnapshot {
         vault_id: String,
         session_id: String,
@@ -167,6 +172,7 @@ pub enum RemoteReply {
     Tags(Vec<TagItem>),
     Note(NoteSnapshot),
     NoteEditor(NoteEditorSnapshot),
+    NoteEditorSave(NoteEditorSaveOutcome),
     Metadata(MetadataSnapshot),
     MetadataSave(MetadataSaveOutcome),
     NoteSave(NoteSaveOutcome),
@@ -192,18 +198,26 @@ impl RemoteClient {
         if self.stop.is_cancelled() || cancel.is_cancelled() {
             return Err(cancelled());
         }
-        if matches!(operation, RemoteOperation::NoteEditor { .. })
-            && !self
+        let required_feature = match &operation {
+            RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
+            RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
+            _ => None,
+        };
+        if required_feature.is_some_and(|required| {
+            !self
                 .capabilities
                 .features
                 .iter()
-                .any(|feature| feature == "note_editor_read")
-        {
+                .any(|feature| feature == required)
+        }) {
             let mut error = failure(
                 ErrorCode::IncompatibleVersion,
                 "This server does not support the note editor. Upgrade the server, then reconnect.",
             );
             error.request_id = Some(request_id.to_owned());
+            if matches!(operation, RemoteOperation::SaveNoteEditor { .. }) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
             return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
@@ -347,6 +361,17 @@ impl RemoteClient {
                 Method::GET,
                 vec!["vaults", vault_id, "sessions", session_id, "note", "editor"],
             ),
+            RemoteOperation::SaveNoteEditor {
+                vault_id,
+                session_id,
+                input,
+            } => {
+                body = Some(value(input)?);
+                (
+                    Method::PUT,
+                    vec!["vaults", vault_id, "sessions", session_id, "note", "editor"],
+                )
+            }
             RemoteOperation::SaveNote {
                 vault_id,
                 session_id,
@@ -498,6 +523,13 @@ impl RemoteClient {
                 ));
             }
             if status == reqwest::StatusCode::CONFLICT
+                && matches!(operation, RemoteOperation::SaveNoteEditor { .. })
+            {
+                return Ok(RemoteReply::NoteEditorSave(
+                    json_body(response, 32 * 1024 * 1024).await?,
+                ));
+            }
+            if status == reqwest::StatusCode::CONFLICT
                 && matches!(operation, RemoteOperation::SaveMetadata { .. })
             {
                 return Ok(RemoteReply::MetadataSave(
@@ -563,6 +595,9 @@ impl RemoteClient {
                 }
                 RemoteOperation::NoteEditor { .. } => {
                     RemoteReply::NoteEditor(json_body(response, 32 * 1024 * 1024).await?)
+                }
+                RemoteOperation::SaveNoteEditor { .. } => {
+                    RemoteReply::NoteEditorSave(json_body(response, 32 * 1024 * 1024).await?)
                 }
                 RemoteOperation::Documents { .. } => {
                     RemoteReply::Documents(json_body(response, 32 * 1024 * 1024).await?)

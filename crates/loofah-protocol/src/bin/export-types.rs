@@ -42,6 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<ApplicationError>()
         .register::<SaveNoteRequest>()
         .register::<NoteEditorSnapshot>()
+        .register::<SaveNoteEditorRequest>()
+        .register::<NoteEditorSaveOutcome>()
         .register::<MetadataSnapshot>()
         .register::<SaveMetadataRequest>()
         .register::<MetadataSaveOutcome>()

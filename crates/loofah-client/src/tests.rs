@@ -351,6 +351,37 @@ async fn coherent_editor_reads_require_an_advertised_feature_before_authenticati
 }
 
 #[tokio::test]
+async fn editor_writes_refuse_a_missing_feature_as_not_committed_before_authentication() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let input = SaveNoteEditorRequest {
+        markdown: "Never send".into(),
+        title: None,
+        expected_revision: "note".into(),
+        expected_tasks_revision: "tasks".into(),
+        tasks: vec![],
+    };
+    let error = client
+        .execute(
+            RemoteOperation::SaveNoteEditor {
+                vault_id: "test".into(),
+                session_id: "note".into(),
+                input,
+            },
+            &request_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(error.request_id.as_deref(), Some(request_id.as_str()));
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn browser_pkce_login_keeps_only_refresh_credentials_and_restores_without_browser() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

@@ -86,6 +86,8 @@ export type MetadataSnapshot = { meta: SessionMeta; revision: string }
 
 export type MutationOutcome = "not_committed" | "persisted" | "unknown"
 
+export type NoteEditorSaveOutcome = { kind: "saved"; snapshot: NoteEditorSnapshot } | { kind: "conflict"; snapshot: NoteEditorSnapshot }
+
 export type NoteEditorSnapshot = { note: NoteSnapshot;
 /**
  * Raw-note tasks only; the revision guards the canonical session task file.
@@ -109,6 +111,8 @@ export type ReplaceTasksRequest = { source: TaskSource; tasks: TaskInput[]; expe
 export type SaveDocumentRequest = { markdown: string; expected_revision: string }
 
 export type SaveMetadataRequest = { patch: SessionMetaPatch; expected_revision: string }
+
+export type SaveNoteEditorRequest = { markdown: string; title: string | null; expected_revision: string; expected_tasks_revision: string; tasks: TaskInput[] }
 
 export type SaveNoteRequest = { markdown: string; title: string | null; expected_revision: string }
 

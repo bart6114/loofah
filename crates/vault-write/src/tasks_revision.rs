@@ -76,7 +76,8 @@ impl SessionStore {
             .await?;
         let saved = self
             .tasks_snapshot_locked(&guard, session_id)
-            .await?
+            .await
+            .map_err(StoreError::after_commit)?
             .ok_or_else(|| StoreError::Io("Session disappeared after replacing tasks".into()))?;
         Ok(Some(TasksSaveOutcome::Saved(saved)))
     }

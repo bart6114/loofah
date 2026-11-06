@@ -363,6 +363,23 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationSaveNoteEditor(
+    sessionId: string,
+    input: SaveNoteEditorRequest,
+  ): Promise<Result<NoteEditorSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_note_editor", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationReadMetadata(
     sessionId: string,
   ): Promise<Result<MetadataSnapshot, ApplicationError>> {
@@ -1697,6 +1714,9 @@ export type NoteDraftRecovery = {
   draft: DraftText;
   uncertain: boolean;
 };
+export type NoteEditorSaveOutcome =
+  | { kind: "saved"; snapshot: NoteEditorSnapshot }
+  | { kind: "conflict"; snapshot: NoteEditorSnapshot };
 export type NoteEditorSnapshot = {
   note: NoteSnapshot;
   /**
@@ -1805,6 +1825,12 @@ export type RemoteOperation =
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
   | { kind: "note"; vault_id: string; session_id: string }
   | { kind: "note_editor"; vault_id: string; session_id: string }
+  | {
+      kind: "save_note_editor";
+      vault_id: string;
+      session_id: string;
+      input: SaveNoteEditorRequest;
+    }
   | { kind: "tasks_snapshot"; vault_id: string; session_id: string }
   | {
       kind: "replace_tasks";
@@ -1852,6 +1878,7 @@ export type RemoteReply =
   | { kind: "tags"; value: TagItem[] }
   | { kind: "note"; value: NoteSnapshot }
   | { kind: "note_editor"; value: NoteEditorSnapshot }
+  | { kind: "note_editor_save"; value: NoteEditorSaveOutcome }
   | { kind: "metadata"; value: MetadataSnapshot }
   | { kind: "metadata_save"; value: MetadataSaveOutcome }
   | { kind: "note_save"; value: NoteSaveOutcome }
@@ -1884,6 +1911,13 @@ export type SaveDocumentRequest = {
 export type SaveMetadataRequest = {
   patch: SessionMetaPatch;
   expected_revision: string;
+};
+export type SaveNoteEditorRequest = {
+  markdown: string;
+  title: string | null;
+  expected_revision: string;
+  expected_tasks_revision: string;
+  tasks: TaskInput[];
 };
 export type SaveNoteRequest = {
   markdown: string;

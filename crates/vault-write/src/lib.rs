@@ -124,6 +124,18 @@ impl std::fmt::Display for StoreError {
 
 impl std::error::Error for StoreError {}
 
+impl StoreError {
+    // A failed confirmation cannot establish that an admitted write committed nothing.
+    pub(crate) fn after_commit(self) -> Self {
+        match self {
+            Self::ResourceLimit(message) => Self::Io(format!(
+                "Cannot confirm the saved content; reload its recovery state: {message}"
+            )),
+            error => error,
+        }
+    }
+}
+
 impl From<hypr_vault_read::Error> for StoreError {
     fn from(err: hypr_vault_read::Error) -> Self {
         match err {

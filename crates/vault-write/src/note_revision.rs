@@ -1,6 +1,10 @@
 use std::path::Path;
 
-use crate::{NoteSaveOutcome, NoteSnapshot, SessionStore, StoreError};
+use crate::{NoteSaveOutcome, NoteSnapshot, SessionStore, StoreError, TaskItem, WriteGuard};
+use hypr_loofah_protocol::{
+    NoteEditorSaveOutcome, NoteEditorSnapshot, SaveNoteEditorRequest, SaveNoteRequest,
+    TasksSnapshot,
+};
 
 impl SessionStore {
     pub async fn read_note_editor(
@@ -18,20 +22,70 @@ impl SessionStore {
                 else {
                     return Ok(None);
                 };
-                let Some(mut tasks) = store.tasks_snapshot_locked(&snapshot._guard, &id).await?
-                else {
+                let Some(tasks) = store.tasks_snapshot_locked(&snapshot._guard, &id).await? else {
                     return Ok(None);
                 };
-                tasks
-                    .tasks
-                    .retain(|task| task.source_type == "session_raw_note" && task.source_id == id);
-                Ok(Some(hypr_loofah_protocol::NoteEditorSnapshot {
-                    note,
-                    tasks,
-                }))
+                Ok(Some(editor_snapshot(note, tasks, &id)))
             },
         )
         .await
+    }
+
+    pub async fn save_note_editor(
+        &self,
+        operation_root: &Path,
+        session_id: &str,
+        input: SaveNoteEditorRequest,
+    ) -> Result<Option<NoteEditorSaveOutcome>, StoreError> {
+        crate::validate_session_id(session_id)?;
+        let store = self.clone();
+        let root = operation_root.to_path_buf();
+        let id = session_id.to_owned();
+        tokio::spawn(async move {
+            let guard = store.lock_writes().await;
+            store.ensure_ready()?;
+            store
+                .recover_document_write_locked(&guard, &root, &id)
+                .await?;
+            let Some(note) = store.read_note_snapshot_locked(&guard, &id).await? else {
+                return Ok(None);
+            };
+            let Some(tasks) = store.tasks_snapshot_locked(&guard, &id).await? else {
+                return Ok(None);
+            };
+            if note.revision != input.expected_revision
+                || tasks.revision != input.expected_tasks_revision
+            {
+                return Ok(Some(NoteEditorSaveOutcome::Conflict(editor_snapshot(
+                    note, tasks, &id,
+                ))));
+            }
+            let next = crate::tasks::replaced_source_tasks(
+                &tasks.tasks,
+                "session_raw_note",
+                &id,
+                input.tasks,
+            );
+            crate::tasks::validate_task_file_size(&next)?;
+            let request = SaveNoteRequest {
+                markdown: input.markdown,
+                title: input.title,
+                expected_revision: input.expected_revision,
+            };
+            let saved = store
+                .commit_note_locked(&guard, &root, &id, &note, &request, &next)
+                .await?;
+            let tasks = store
+                .tasks_snapshot_locked(&guard, &id)
+                .await
+                .map_err(StoreError::after_commit)?
+                .ok_or_else(|| StoreError::Io("session disappeared after editor save".into()))?;
+            Ok(Some(NoteEditorSaveOutcome::Saved(editor_snapshot(
+                saved, tasks, &id,
+            ))))
+        })
+        .await
+        .map_err(|cause| StoreError::Io(format!("editor save worker failed: {cause}")))?
     }
 
     pub async fn reconcile_note_tasks(
@@ -150,30 +204,83 @@ impl SessionStore {
                     &content,
                 )
                 .await?;
-            let pending = store
-                .begin_note_write_locked(
-                    &guard,
-                    &root,
-                    &id,
-                    &current,
-                    (&markdown, title.as_deref().unwrap_or(&current.title)),
-                    &tasks,
-                )
-                .await?;
-            store
-                .save_note_locked(&guard, &id, &markdown, title.as_deref())
-                .await?;
-            store.persist_generated_tasks(&guard, &id, &tasks).await?;
-            pending.finish().await?;
+            let request = SaveNoteRequest {
+                markdown,
+                title,
+                expected_revision,
+            };
             let saved = store
-                .read_note_snapshot_locked(&guard, &id)
-                .await?
-                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+                .commit_note_locked(&guard, &root, &id, &current, &request, &tasks)
+                .await?;
             Ok(NoteSaveOutcome::Saved(saved))
         })
         .await
         .map_err(|cause| StoreError::Io(format!("note save worker failed: {cause}")))?
     }
+
+    async fn commit_note_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        root: &Path,
+        id: &str,
+        current: &NoteSnapshot,
+        request: &SaveNoteRequest,
+        tasks: &[TaskItem],
+    ) -> Result<NoteSnapshot, StoreError> {
+        if let Some(title) = request
+            .title
+            .as_deref()
+            .filter(|title| *title != current.title)
+        {
+            let mut meta = self
+                .metadata_snapshot_locked(guard, id)
+                .await?
+                .ok_or_else(|| {
+                    StoreError::Conflict("session was deleted while preparing its title".into())
+                })?
+                .meta;
+            if meta.title != current.title {
+                return Err(StoreError::Conflict(
+                    "session title changed while preparing the save".into(),
+                ));
+            }
+            meta.title = title.into();
+            crate::metadata_revision::validate_metadata_size(&meta)?;
+        }
+        let pending = self
+            .begin_note_write_locked(
+                guard,
+                root,
+                id,
+                current,
+                (
+                    &request.markdown,
+                    request.title.as_deref().unwrap_or(&current.title),
+                ),
+                tasks,
+            )
+            .await?;
+        let result = async {
+            self.save_note_locked(guard, id, &request.markdown, request.title.as_deref())
+                .await?;
+            self.persist_generated_tasks(guard, id, tasks).await?;
+            let saved = self
+                .read_note_snapshot_locked(guard, id)
+                .await?
+                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+            pending.finish().await?;
+            Ok(saved)
+        }
+        .await;
+        result.map_err(StoreError::after_commit)
+    }
+}
+
+fn editor_snapshot(note: NoteSnapshot, mut tasks: TasksSnapshot, id: &str) -> NoteEditorSnapshot {
+    tasks
+        .tasks
+        .retain(|task| task.source_type == "session_raw_note" && task.source_id == id);
+    NoteEditorSnapshot { note, tasks }
 }
 
 #[cfg(test)]
@@ -205,6 +312,318 @@ mod tests {
             panic!("expected saved note")
         };
         value
+    }
+
+    fn editor_request(before: &NoteEditorSnapshot, markdown: &str) -> SaveNoteEditorRequest {
+        SaveNoteEditorRequest {
+            markdown: markdown.into(),
+            title: None,
+            expected_revision: before.note.revision.clone(),
+            expected_tasks_revision: before.tasks.revision.clone(),
+            tasks: before
+                .tasks
+                .tasks
+                .iter()
+                .map(|task| crate::TaskInput {
+                    id: task.id.clone(),
+                    source_order: task.source_order,
+                    status: task.status.clone(),
+                    text: task.text.clone(),
+                    body: task.body.clone(),
+                    due_at: task.due_at.clone(),
+                })
+                .collect(),
+        }
+    }
+    fn editor_saved(outcome: Option<NoteEditorSaveOutcome>) -> NoteEditorSnapshot {
+        let Some(NoteEditorSaveOutcome::Saved(snapshot)) = outcome else {
+            panic!("expected saved editor snapshot")
+        };
+        snapshot
+    }
+
+    #[tokio::test]
+    async fn editor_intent_preserves_task_identity_through_renames_hydrated_status_and_rich_content()
+     {
+        let (_root, store, operations) = fixture("- [ ] Original task").await;
+        store
+            .reconcile_note_tasks(&operations, "note")
+            .await
+            .unwrap();
+        store.ensure_summary("note").await.unwrap();
+        store
+            .update_generated_summary("note", "- [ ] Other source", Some(""))
+            .await
+            .unwrap();
+        let directory = store.vault_base().join("sessions/note");
+        let mut file: TasksFile =
+            serde_json::from_slice(&std::fs::read(directory.join("tasks.json")).unwrap()).unwrap();
+        let prior = file
+            .tasks
+            .iter_mut()
+            .find(|task| task.source_type == "session_raw_note")
+            .unwrap();
+        prior.status = "in_progress".into();
+        prior.assignee = "person".into();
+        prior.due_at = "2026-12-01".into();
+        let original = prior.clone();
+        let other = file
+            .tasks
+            .iter()
+            .find(|task| task.source_type == "session_summary")
+            .unwrap()
+            .clone();
+        std::fs::write(
+            directory.join("tasks.json"),
+            serde_json::to_vec(&file).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(directory.join("foreign.md"), "Attachment canary").unwrap();
+        std::fs::write(directory.join(".hidden"), "Private canary").unwrap();
+        let before = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        let markdown = "# New title\n\n- [ ] Renamed task\n\n| Keep | Table |\n| --- | --- |\n| a | b |\n\n<session data-id=\"linked\"></session>";
+        let mut input = editor_request(&before, markdown);
+        input.title = Some("New title".into());
+        input.tasks[0].text = "Renamed task".into();
+        input.tasks[0].status = "todo".into();
+        input.tasks[0].body = json!([{"type":"paragraph","content":[{"type":"text","text":"Renamed task"}]},{"type":"table","attrs":{"layout":"retained"},"content":[]},{"type":"session","attrs":{"id":"linked"}}]);
+        let expected_body = input.tasks[0].body.clone();
+        let saved = editor_saved(
+            store
+                .save_note_editor(&operations, "note", input)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(saved.note.markdown.as_deref(), Some(markdown));
+        assert_eq!(saved.note.title, "New title");
+        assert_eq!(saved.tasks.tasks.len(), 1);
+        let task = &saved.tasks.tasks[0];
+        assert_eq!(task.id, original.id);
+        assert_eq!(task.created_at, original.created_at);
+        assert_eq!(task.assignee, original.assignee);
+        assert_eq!(task.due_at, original.due_at);
+        assert_eq!(task.status, "todo");
+        assert_eq!(task.body, expected_body);
+        assert_eq!(
+            tasks(&store).await.iter().find(|task| task.id == other.id),
+            Some(&other)
+        );
+        let mut due_change = editor_request(&saved, markdown);
+        due_change.tasks[0].due_at = "2026-12-02".into();
+        let updated = editor_saved(
+            store
+                .save_note_editor(&operations, "note", due_change)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(updated.note, saved.note);
+        assert_ne!(updated.tasks.revision, saved.tasks.revision);
+        assert_eq!(updated.tasks.tasks[0].id, original.id);
+        assert_eq!(updated.tasks.tasks[0].due_at, "2026-12-02");
+        assert_eq!(
+            std::fs::read_to_string(directory.join("notes.md")).unwrap(),
+            markdown
+        );
+        assert_eq!(
+            std::fs::read_to_string(directory.join("foreign.md")).unwrap(),
+            "Attachment canary"
+        );
+        assert_eq!(
+            std::fs::read_to_string(directory.join(".hidden")).unwrap(),
+            "Private canary"
+        );
+        assert_eq!(
+            store.read_meta("note").await.unwrap().unwrap().extra["future"],
+            json!({"preserve":true})
+        );
+        assert_eq!(std::fs::read_dir(&operations).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn editor_saves_reject_either_stale_revision_including_task_only_changes_and_file_presence()
+     {
+        let (_root, store, operations) = fixture("- [ ] Task").await;
+        store
+            .reconcile_note_tasks(&operations, "note")
+            .await
+            .unwrap();
+        let before = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        let mut change = editor_request(&before, "Never write a stale editor draft");
+        let mut task_change = change.tasks[0].clone();
+        task_change.status = "done".into();
+        store
+            .replace_tasks("session_raw_note", "note", vec![task_change])
+            .await
+            .unwrap();
+        let current = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.note.revision, before.note.revision);
+        assert_ne!(current.tasks.revision, before.tasks.revision);
+        assert_eq!(
+            store
+                .save_note_editor(&operations, "note", change.clone())
+                .await
+                .unwrap(),
+            Some(NoteEditorSaveOutcome::Conflict(current.clone()))
+        );
+        change.expected_tasks_revision = current.tasks.revision;
+        store
+            .write_note("note", "Changed outside the editor")
+            .await
+            .unwrap();
+        let current = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store
+                .save_note_editor(&operations, "note", change)
+                .await
+                .unwrap(),
+            Some(NoteEditorSaveOutcome::Conflict(current.clone()))
+        );
+        assert_eq!(
+            store.read_note("note").await.unwrap().as_deref(),
+            Some("Changed outside the editor")
+        );
+        assert_eq!(current.tasks.tasks[0].status, "done");
+        let (_root, store, operations) = fixture("No task file").await;
+        let before = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        std::fs::write(
+            store.vault_base().join("sessions/note/tasks.json"),
+            "{\"tasks\":[]}",
+        )
+        .unwrap();
+        assert!(matches!(
+            store
+                .save_note_editor(&operations, "note", editor_request(&before, "Do not write"))
+                .await
+                .unwrap(),
+            Some(NoteEditorSaveOutcome::Conflict(_))
+        ));
+        assert_eq!(
+            store.read_note("note").await.unwrap().as_deref(),
+            Some("No task file")
+        );
+    }
+
+    #[tokio::test]
+    async fn simultaneous_editor_saves_have_one_coherent_winner_and_deleted_notes_are_not_recreated()
+     {
+        let (_root, store, operations) = fixture("Seed").await;
+        let before = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        let input = |name: &str| {
+            let mut input = editor_request(&before, &format!("- [ ] {name}"));
+            input.title = Some(name.into());
+            input.tasks = vec![crate::TaskInput {
+                id: name.into(),
+                source_order: 0,
+                status: "todo".into(),
+                text: name.into(),
+                body: json!([]),
+                due_at: String::new(),
+            }];
+            input
+        };
+        let (alice, bob) = tokio::join!(
+            store.save_note_editor(&operations, "note", input("Alice")),
+            store.save_note_editor(&operations, "note", input("Bob"))
+        );
+        let results = [alice.unwrap().unwrap(), bob.unwrap().unwrap()];
+        assert_eq!(
+            results
+                .iter()
+                .filter(|value| matches!(value, NoteEditorSaveOutcome::Saved(_)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            results
+                .iter()
+                .filter(|value| matches!(value, NoteEditorSaveOutcome::Conflict(_)))
+                .count(),
+            1
+        );
+        let current = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.tasks.tasks[0].text, current.note.title);
+        assert_eq!(
+            current.note.markdown,
+            Some(format!("- [ ] {}", current.note.title))
+        );
+        store.delete_session("note").await.unwrap();
+        assert!(
+            store
+                .save_note_editor(
+                    &operations,
+                    "note",
+                    editor_request(&current, "Never resurrect")
+                )
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(!store.vault_base().join("sessions/note").exists());
+    }
+
+    #[tokio::test]
+    async fn title_growth_is_rejected_before_the_body_or_recovery_intent_commits() {
+        let (_root, store, operations) = fixture("Original").await;
+        let mut meta = store.read_meta("note").await.unwrap().unwrap();
+        meta.extra
+            .insert("large".into(), json!("x".repeat(8 * 1024 * 1024 - 2048)));
+        store.write_meta(&meta).await.unwrap();
+        let before = store
+            .read_note_editor(Some(&operations), "note")
+            .await
+            .unwrap()
+            .unwrap();
+        let path = store.vault_base().join("sessions/note/_meta.json");
+        let meta_hash = crate::sha256(&std::fs::read(&path).unwrap());
+        let mut input = editor_request(&before, "Do not write this body");
+        input.title = Some("x".repeat(4096));
+        assert!(matches!(
+            store.save_note_editor(&operations, "note", input).await,
+            Err(StoreError::ResourceLimit(_))
+        ));
+        assert!(matches!(
+            store
+                .save_note_with_recovery(
+                    &operations,
+                    "note",
+                    "Do not write either",
+                    Some(&"x".repeat(4096)),
+                    &before.note.revision
+                )
+                .await,
+            Err(StoreError::ResourceLimit(_))
+        ));
+        assert_eq!(snapshot(&store, &operations).await, before.note);
+        assert_eq!(crate::sha256(&std::fs::read(path).unwrap()), meta_hash);
+        assert!(!operations.exists());
     }
 
     #[tokio::test]

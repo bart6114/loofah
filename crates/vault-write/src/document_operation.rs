@@ -899,6 +899,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn editor_cas_recovers_task_only_intent_before_comparing_both_revisions() {
+        let (vault, runtime, store, _) = fixture().await;
+        admit_note(&store, runtime.path(), 4).await;
+        store.recover_document_writes(runtime.path()).await.unwrap();
+        let before = store
+            .read_note_editor(Some(runtime.path()), "s1")
+            .await
+            .unwrap()
+            .unwrap();
+        let mut tasks = store.session_tasks("s1").await.unwrap();
+        let task = tasks.iter_mut().find(|task| task.id == "raw").unwrap();
+        task.status = "in_progress".into();
+        task.due_at = "2027-01-01".into();
+        task.body =
+            json!([{"type":"paragraph","content":[{"type":"session","attrs":{"id":"linked"}}]}]);
+        {
+            let guard = store.lock_writes().await;
+            store
+                .begin_note_tasks_locked(&guard, runtime.path(), "s1", &before.note, &tasks)
+                .await
+                .unwrap();
+        }
+        let body = std::fs::read(vault.path().join("sessions/s1/notes.md")).unwrap();
+        let outcome = store
+            .save_note_editor(
+                runtime.path(),
+                "s1",
+                hypr_loofah_protocol::SaveNoteEditorRequest {
+                    markdown: "An older editor must not replace the recovered task".into(),
+                    title: None,
+                    expected_revision: before.note.revision.clone(),
+                    expected_tasks_revision: before.tasks.revision.clone(),
+                    tasks: vec![],
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let hypr_loofah_protocol::NoteEditorSaveOutcome::Conflict(current) = outcome else {
+            panic!("recovered task-only change must conflict with the older editor");
+        };
+        assert_eq!(current.note, before.note);
+        assert_ne!(current.tasks.revision, before.tasks.revision);
+        assert_eq!(current.tasks.tasks.len(), 1);
+        assert_eq!(current.tasks.tasks[0].status, "in_progress");
+        assert_eq!(current.tasks.tasks[0].due_at, "2027-01-01");
+        assert_eq!(
+            current.tasks.tasks[0].body,
+            tasks.iter().find(|task| task.id == "raw").unwrap().body
+        );
+        assert_eq!(
+            std::fs::read(vault.path().join("sessions/s1/notes.md")).unwrap(),
+            body
+        );
+        assert!(!intent_path(runtime.path(), "s1").exists());
+    }
+
+    #[tokio::test]
     async fn queued_document_reads_recover_a_partial_writer_before_publishing_content() {
         use std::future::{Future, poll_fn};
 
