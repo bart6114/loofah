@@ -781,3 +781,36 @@ intent and both baselines through pending saves, uncertain acknowledgements,
 device recovery and explicit conflict resolution before it can use this
 contract. Completing these contracts alone does not complete editor or remote
 feature parity.
+
+### Task-aware device draft recovery
+
+The compound editor draft now retains explicit task input and both revision
+baselines. Text-only and compound drafts share the existing serialized save,
+lazy capture, conflict review and uncertain-acknowledgement lifecycle. A
+task-only change marks the draft dirty; an acknowledgement requires the same
+Markdown, title and authored task fields, including rich bodies. Matching
+Markdown alone cannot clear an uncertain due-date or status edit. Conflict
+review guards both revisions. Delayed save replies preserve a newer observed
+task conflict and trigger a canonical cache refresh.
+
+Native device recovery extends the existing bounded, private atomic cache with
+schema 2 task-aware copies. Schema 1 text-only copies remain readable and retain
+their format. Main-editor resources use separate keys from the Markdown
+preview, with account/vault and window isolation unchanged. A text-only save
+cannot downgrade a task-aware copy. Future/damaged/mismatched records remain
+untouched. Signed-out and offline device recovery can copy all task recovery
+data as well as exact Markdown without contacting a service.
+
+Validation: all 1,702 frontend tests pass, including 120 scoped application
+tests. Native client passes 39 tests; desktop passes 45 with one existing
+ignored test. Desktop/CLI/server Rust checks, native binding export, desktop
+typechecking, scoped lint, strict compilation of 547 locale messages and
+formatting pass. New regressions cover task-only pending saves and conflicts,
+lost responses, immutable queued task bodies, reviewed version changes,
+account/vault isolation, old/new recovery formats, restart, quotas and offline
+clipboard recovery. The preceding checked-note checkpoint passed all hosted
+checks, including native Windows x64 and ARM64; this batch needs its own CI.
+
+The main editor has not switched to this controller yet. Its content/task bridge
+and mounted save lifecycle remain necessary; this is recovery infrastructure,
+not a claim of full rich-editor or remote feature parity.

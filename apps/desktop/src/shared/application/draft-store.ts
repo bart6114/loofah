@@ -48,11 +48,7 @@ export class NativeDraftStore {
           "This recovery draft belongs to a different account or vault",
         ),
       );
-    const captured = {
-      ...recovery,
-      baseline: { ...recovery.baseline },
-      draft: { ...recovery.draft },
-    };
+    const captured = structuredClone(recovery);
     return enqueueDatabaseWrite(this.key(captured.sessionId), async () => {
       applicationResult(await commands.draftCachePut(captured));
     });

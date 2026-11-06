@@ -6,6 +6,7 @@ import type {
   ApplicationError,
   Change,
   NoteSnapshot,
+  NoteEditorSnapshot,
   DocumentTarget,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
@@ -253,7 +254,9 @@ export class VaultScope {
   }
 
   async confirmNote(sessionId: string, note: NoteSnapshot) {
-    if (!(await this.confirmText(this.noteOptions(sessionId).queryKey, note)))
+    if (
+      !(await this.confirmSnapshot(this.noteOptions(sessionId).queryKey, note))
+    )
       return;
     void this.queryClient.invalidateQueries({
       queryKey: ["vault", this.client.scope, "session_page"],
@@ -263,13 +266,37 @@ export class VaultScope {
     });
   }
 
+  async confirmNoteEditor(sessionId: string, snapshot: NoteEditorSnapshot) {
+    if (
+      !(await this.confirmSnapshot(
+        this.noteEditorOptions(sessionId).queryKey,
+        snapshot,
+      ))
+    )
+      return;
+    for (const kind of [
+      "note",
+      "metadata",
+      "tasks",
+      "tasks_snapshot",
+      "session",
+    ]) {
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, kind, sessionId],
+      });
+    }
+    void this.queryClient.invalidateQueries({
+      queryKey: ["vault", this.client.scope, "session_page"],
+    });
+  }
+
   async confirmDocumentText(
     sessionId: string,
     target: DocumentTarget,
     note: NoteSnapshot,
   ) {
     if (
-      !(await this.confirmText(
+      !(await this.confirmSnapshot(
         this.documentTextOptions(sessionId, target).queryKey,
         note,
       ))
@@ -285,7 +312,7 @@ export class VaultScope {
     }
   }
 
-  private async confirmText(key: readonly unknown[], note: NoteSnapshot) {
+  private async confirmSnapshot<T>(key: readonly unknown[], value: T) {
     await this.queryClient.cancelQueries({ queryKey: key, exact: true });
     if (
       this.disposed ||
@@ -294,7 +321,7 @@ export class VaultScope {
       )
     )
       return false;
-    this.queryClient.setQueryData(key, note);
+    this.queryClient.setQueryData(key, value);
     return true;
   }
 

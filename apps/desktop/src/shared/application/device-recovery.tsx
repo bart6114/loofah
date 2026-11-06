@@ -63,6 +63,11 @@ function RecoveryDialog({ scope }: { scope?: string }) {
     networkMode: "always",
     mutationFn: (value: NoteDraftRecovery) => writeText(value.draft.markdown),
   });
+  const copyAll = useMutation({
+    networkMode: "always",
+    mutationFn: (value: NoteDraftRecovery) =>
+      writeText(JSON.stringify(value, null, 2)),
+  });
   return (
     <Dialog open={expanded} onOpenChange={setExpanded}>
       <DialogTrigger asChild>
@@ -126,6 +131,7 @@ function RecoveryDialog({ scope }: { scope?: string }) {
                   onClick={() => {
                     setSelected({ scope: group.scope, id: entry.id });
                     copy.reset();
+                    copyAll.reset();
                   }}
                 >
                   <RecoveryLabel entry={entry} />
@@ -173,9 +179,15 @@ function RecoveryDialog({ scope }: { scope?: string }) {
                   value={recovery.data.draft.markdown}
                 />
               </label>
+              {recovery.data.editorTasks && (
+                <p>
+                  <Trans>Copy all recovery data to keep task changes.</Trans>
+                </p>
+              )}
             </>
           )}
           {copy.error && <p role="alert">{copy.error.message}</p>}
+          {copyAll.error && <p role="alert">{copyAll.error.message}</p>}
         </div>
         {recovery.data && (
           <Button
@@ -185,6 +197,16 @@ function RecoveryDialog({ scope }: { scope?: string }) {
             onClick={() => copy.mutate(recovery.data!)}
           >
             <Trans>Copy saved text</Trans>
+          </Button>
+        )}
+        {recovery.data?.editorTasks && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={copyAll.isPending}
+            onClick={() => copyAll.mutate(recovery.data!)}
+          >
+            <Trans>Copy all recovery data</Trans>
           </Button>
         )}
       </DialogContent>
@@ -223,7 +245,7 @@ function recoveryResource(id: string): string {
     const resource: unknown = JSON.parse(id);
     if (
       Array.isArray(resource) &&
-      ["summary", "template_output"].includes(resource[0]) &&
+      ["summary", "template_output", "note_editor"].includes(resource[0]) &&
       typeof resource[1] === "string"
     )
       return resource[1];

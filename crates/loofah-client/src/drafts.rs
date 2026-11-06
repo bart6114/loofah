@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use hypr_loofah_protocol::{ApplicationError, ErrorCode, NoteSnapshot};
+use hypr_loofah_protocol::{ApplicationError, ErrorCode, NoteSnapshot, TaskInput, TasksSnapshot};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
@@ -17,6 +17,12 @@ pub struct DraftText {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct EditorTaskRecovery {
+    pub baseline: TasksSnapshot,
+    pub draft: Vec<TaskInput>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteDraftRecovery {
     pub scope: String,
@@ -24,6 +30,9 @@ pub struct NoteDraftRecovery {
     pub baseline: NoteSnapshot,
     pub draft: DraftText,
     pub uncertain: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub editor_tasks: Option<EditorTaskRecovery>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -236,7 +245,11 @@ impl DraftCache {
         tokio::task::spawn_blocking(move || {
             let _guard = guard;
             let bytes = serde_json::to_string(&StoredDraft {
-                schema_version: 1,
+                schema_version: if recovery.editor_tasks.is_some() {
+                    2
+                } else {
+                    1
+                },
                 editor_id: editor_id.clone(),
                 recovery: recovery.clone(),
             })
@@ -246,7 +259,16 @@ impl DraftCache {
             }
             let path = cache.path(&editor_id, &recovery.scope, &recovery.session_id);
             cache.prepare(&path)?;
-            cache.read(&path, &editor_id, &recovery.scope, &recovery.session_id)?;
+            let previous_record =
+                cache.read(&path, &editor_id, &recovery.scope, &recovery.session_id)?;
+            if previous_record.is_some_and(|record| record.editor_tasks.is_some())
+                && recovery.editor_tasks.is_none()
+            {
+                return Err(failure(
+                    ErrorCode::IncompatibleVersion,
+                    "This recovery copy includes editor tasks. Its file was kept.",
+                ));
+            }
             let previous = std::fs::metadata(&path)
                 .map(|metadata| metadata.len())
                 .unwrap_or(0);
@@ -409,17 +431,19 @@ impl DraftCache {
             return Err(damaged());
         }
         let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| damaged())?;
-        if value
+        let version = value
             .get("schema_version")
-            .and_then(serde_json::Value::as_u64)
-            != Some(1)
-        {
+            .and_then(serde_json::Value::as_u64);
+        if !matches!(version, Some(1 | 2)) {
             return Err(failure(
                 ErrorCode::IncompatibleVersion,
                 "This saved draft requires a different Loofah version. The file was kept.",
             ));
         }
         let stored: StoredDraft = serde_json::from_value(value).map_err(|_| damaged())?;
+        if (stored.schema_version == 2) != stored.recovery.editor_tasks.is_some() {
+            return Err(damaged());
+        }
         Ok(Some(stored))
     }
 }
@@ -510,7 +534,137 @@ mod tests {
                 title: "Title".into(),
             },
             uncertain: true,
+            editor_tasks: None,
         }
+    }
+
+    #[tokio::test]
+    async fn editor_task_recovery_survives_restart_and_cannot_be_replaced_by_text_only_input() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("cache");
+        let cache = Arc::new(DraftCache::new(directory.clone()).unwrap());
+        let id = "[\"note_editor\",\"note\"]";
+        let mut original = recovery("alice:vault", id, "- [ ] Unsaved task");
+        original.editor_tasks = Some(EditorTaskRecovery {
+            baseline: TasksSnapshot {
+                tasks: vec![],
+                revision: "before-tasks".into(),
+            },
+            draft: vec![TaskInput {
+                id: "stable-task".into(),
+                source_order: 0,
+                status: "in_progress".into(),
+                text: "Unsaved task".into(),
+                body: serde_json::json!([{"type":"paragraph","content":[{"type":"session","attrs":{"id":"related"}}]}]),
+                due_at: "2027-01-01".into(),
+            }],
+        });
+        cache
+            .put("closed-window".into(), original.clone())
+            .await
+            .unwrap();
+        cache
+            .put(
+                "other-window".into(),
+                recovery("bob:vault", id, "Other account"),
+            )
+            .await
+            .unwrap();
+        let path = cache.path("closed-window", &original.scope, id);
+        let bytes = std::fs::read(&path).unwrap();
+        let serialized: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(serialized["schema_version"], 2);
+        drop(cache);
+        let cache = Arc::new(DraftCache::new(directory).unwrap());
+        assert_eq!(
+            cache
+                .get("closed-window".into(), original.scope.clone(), id.into())
+                .await
+                .unwrap(),
+            Some(original.clone())
+        );
+        let inventory = cache.all_inventory().await.unwrap();
+        assert_eq!(inventory.len(), 2);
+        let entry = &inventory
+            .iter()
+            .find(|group| group.scope == original.scope)
+            .unwrap()
+            .entries[0];
+        assert_eq!(
+            cache
+                .recovery(original.scope.clone(), entry.id.clone())
+                .await
+                .unwrap(),
+            Some(original.clone())
+        );
+        let mut downgraded = original.clone();
+        downgraded.editor_tasks = None;
+        assert_eq!(
+            cache
+                .put("closed-window".into(), downgraded)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::IncompatibleVersion
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        for (version, tasks) in [(1, true), (2, false), (3, true)] {
+            let mut damaged = serialized.clone();
+            damaged["schema_version"] = serde_json::json!(version);
+            if !tasks {
+                damaged["recovery"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("editorTasks");
+            }
+            let contents = serde_json::to_vec(&damaged).unwrap();
+            std::fs::write(&path, &contents).unwrap();
+            assert!(
+                cache
+                    .get("closed-window".into(), original.scope.clone(), id.into())
+                    .await
+                    .is_err()
+            );
+            assert!(
+                cache
+                    .put("closed-window".into(), original.clone())
+                    .await
+                    .is_err()
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), contents);
+        }
+    }
+
+    #[tokio::test]
+    async fn editor_task_recovery_counts_nested_task_bodies_toward_the_existing_quota() {
+        let root = tempfile::tempdir().unwrap();
+        let mut bounded = DraftCache::new(root.path().join("cache")).unwrap();
+        bounded.record_limit = 2048;
+        let cache = Arc::new(bounded);
+        let original = recovery("scope", "note", "Keep this text-only copy");
+        cache.put("main".into(), original.clone()).await.unwrap();
+        let path = cache.path("main", "scope", "note");
+        let before = std::fs::read(&path).unwrap();
+        let mut oversized = original;
+        oversized.editor_tasks = Some(EditorTaskRecovery {
+            baseline: TasksSnapshot {
+                tasks: vec![],
+                revision: "tasks".into(),
+            },
+            draft: vec![TaskInput {
+                id: "task".into(),
+                source_order: 0,
+                status: "todo".into(),
+                text: "Task".into(),
+                body: serde_json::json!({"rich":"x".repeat(4096)}),
+                due_at: String::new(),
+            }],
+        });
+        assert_eq!(
+            cache.put("main".into(), oversized).await.unwrap_err().code,
+            ErrorCode::ResourceLimit
+        );
+        assert_eq!(std::fs::read(path).unwrap(), before);
     }
 
     #[tokio::test]
@@ -585,14 +739,14 @@ mod tests {
             bounded.all_inventory().await.unwrap_err().code,
             ErrorCode::ResourceLimit
         );
-        std::fs::write(&alice, r#"{"schema_version":2}"#).unwrap();
+        std::fs::write(&alice, r#"{"schema_version":3}"#).unwrap();
         assert_eq!(
             cache.all_inventory().await.unwrap_err().code,
             ErrorCode::IncompatibleVersion
         );
         assert_eq!(
             std::fs::read_to_string(&alice).unwrap(),
-            r#"{"schema_version":2}"#
+            r#"{"schema_version":3}"#
         );
         std::fs::write(&alice, &alice_bytes).unwrap();
         std::fs::write(&bob, &alice_bytes).unwrap();
@@ -700,7 +854,7 @@ mod tests {
         for (content, code) in [
             ("invalid JSON".to_owned(), ErrorCode::Internal),
             (
-                serde_json::to_string(&serde_json::json!({"schema_version":2})).unwrap(),
+                serde_json::to_string(&serde_json::json!({"schema_version":3})).unwrap(),
                 ErrorCode::IncompatibleVersion,
             ),
         ] {
@@ -894,7 +1048,7 @@ mod tests {
         assert!(path.starts_with(root.path().join("cache")));
         for bytes in [
             b"{broken".as_slice(),
-            b"{\"schema_version\":2,\"recovery\":{}}".as_slice(),
+            b"{\"schema_version\":3,\"recovery\":{}}".as_slice(),
         ] {
             std::fs::write(&path, bytes).unwrap();
             assert!(

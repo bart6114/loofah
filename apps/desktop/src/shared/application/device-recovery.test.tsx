@@ -61,6 +61,65 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("device recovery inventory", () => {
+  it("copies complete editor task recovery without requiring a server or losing exact text", async () => {
+    const { onlineManager } = await import("@tanstack/react-query");
+    onlineManager.setOnline(false);
+    const source = {
+      ...value("signed-out:alice:vault"),
+      sessionId: '["note_editor","note"]',
+      editorTasks: {
+        baseline: { revision: "tasks", tasks: [] },
+        draft: [
+          {
+            id: "stable-task",
+            source_order: 0,
+            status: "in_progress",
+            text: "Keep task state",
+            body: [{ type: "session", attrs: { id: "related" } }],
+            due_at: "2027-01-01",
+          },
+        ],
+      },
+    };
+    native.draftCacheAllInventory.mockResolvedValue({
+      status: "ok",
+      data: [
+        {
+          scope: source.scope,
+          entries: [
+            { ...entry, title: "Task draft", sessionId: source.sessionId },
+          ],
+        },
+      ],
+    });
+    native.draftCacheRecovery.mockResolvedValue({ status: "ok", data: source });
+    try {
+      open(null);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Device recovery drafts" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Task draft/ }),
+      );
+      const copyAll = await screen.findByRole("button", {
+        name: "Copy all recovery data",
+      });
+      expect(
+        screen.getByRole("textbox", { name: "Recovered Markdown" }),
+      ).toHaveProperty("value", source.draft.markdown);
+      fireEvent.click(copyAll);
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(JSON.stringify(source, null, 2)),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Copy saved text" }));
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(source.draft.markdown),
+      );
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
   it("recovers signed-out and revoked vault copies with colliding record IDs without any server connection", async () => {
     const { onlineManager } = await import("@tanstack/react-query");
     const alice = JSON.stringify([

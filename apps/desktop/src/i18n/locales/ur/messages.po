@@ -453,6 +453,14 @@ msgstr ""
 msgid "Copied"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Copy all recovery data"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Copy all recovery data to keep task changes."
+msgstr ""
+
 #: src/main/about-debug.tsx
 msgid "Copy debug information"
 msgstr ""

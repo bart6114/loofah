@@ -31,6 +31,46 @@ beforeEach(() => {
 });
 
 describe("native device draft persistence", () => {
+  it("pins nested editor task intent and its baseline before a queued native write", async () => {
+    const store = new NativeDraftStore("alice");
+    const value = {
+      ...recovery("alice"),
+      editorTasks: {
+        baseline: { revision: "tasks", tasks: [] },
+        draft: [
+          {
+            id: "task",
+            source_order: 0,
+            status: "in_progress",
+            text: "Task",
+            body: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Keep exact body" }],
+              },
+            ],
+            due_at: "2027-01-01",
+          },
+        ],
+      },
+    };
+    const saved = store.save(value);
+    value.editorTasks.draft[0].body[0].content[0].text =
+      "Changed after enqueue";
+    value.editorTasks.draft[0].due_at = "Changed after enqueue";
+    value.editorTasks.baseline.revision = "Changed after enqueue";
+    await saved;
+    expect(native.draftCachePut.mock.calls[0][0].editorTasks).toMatchObject({
+      baseline: { revision: "tasks" },
+      draft: [
+        {
+          due_at: "2027-01-01",
+          body: [{ content: [{ text: "Keep exact body" }] }],
+        },
+      ],
+    });
+  });
+
   it("flushes pending device drafts from every scope before listing signed-out connections", async () => {
     const alice = new NativeDraftStore("alice");
     const bob = new NativeDraftStore("bob");

@@ -1559,6 +1559,10 @@ export type DocumentTarget =
   | { kind: "summary" }
   | { kind: "template_output"; document_id: string };
 export type DraftText = { markdown: string; title: string };
+export type EditorTaskRecovery = {
+  baseline: TasksSnapshot;
+  draft: TaskInput[];
+};
 export type EmbeddedCliState =
   | "installed"
   | "missing"
@@ -1713,6 +1717,7 @@ export type NoteDraftRecovery = {
   baseline: NoteSnapshot;
   draft: DraftText;
   uncertain: boolean;
+  editorTasks?: EditorTaskRecovery | null;
 };
 export type NoteEditorSaveOutcome =
   | { kind: "saved"; snapshot: NoteEditorSnapshot }

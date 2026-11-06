@@ -10,7 +10,9 @@ mod requests;
 mod sse;
 
 pub use auth::LoginAttempt;
-pub use drafts::{DraftCache, DraftText, NoteDraftRecovery, RecoveryEntry, RecoveryScope};
+pub use drafts::{
+    DraftCache, DraftText, EditorTaskRecovery, NoteDraftRecovery, RecoveryEntry, RecoveryScope,
+};
 pub use events::{ConnectionState, RemoteEvent, Subscription};
 #[cfg(feature = "os-credentials")]
 pub use os_credentials::OsCredentials;

@@ -2,7 +2,7 @@ import { QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApplicationRequestError } from "./errors";
-import type { NoteSnapshot } from "./protocol.gen";
+import type { NoteEditorSnapshot, NoteSnapshot } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultScope } from "./vault-scope";
 
@@ -16,6 +16,7 @@ function fixture(scope: string) {
     readNote: vi
       .fn()
       .mockResolvedValue({ markdown: scope, title: "Title", revision: scope }),
+    readNoteEditor: vi.fn(),
     session: vi.fn(),
     sessions: vi.fn(),
     search: vi.fn(),
@@ -24,7 +25,10 @@ function fixture(scope: string) {
       listener({ kind: "connection", state: "connected", error: null });
       return unsubscribe;
     }),
-  } as unknown as VaultClient & { readNote: ReturnType<typeof vi.fn> };
+  } as unknown as VaultClient & {
+    readNote: ReturnType<typeof vi.fn>;
+    readNoteEditor: ReturnType<typeof vi.fn>;
+  };
   const active = new VaultScope(backend);
   return {
     backend,
@@ -35,6 +39,64 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("refreshes newer task-only canonical state after an older compound save reply", async () => {
+    const { active, backend, emit } = fixture("scope");
+    await active.start();
+    const options = active.noteEditorOptions("note");
+    const value = (revision: string): NoteEditorSnapshot => ({
+      note: {
+        markdown: "Same Markdown",
+        title: "Title",
+        revision: "same-note",
+      },
+      tasks: { tasks: [], revision },
+    });
+    const initial = value("t0"),
+      saved = value("t1"),
+      newer = value("t2");
+    active.queryClient.setQueryData(options.queryKey, initial);
+    const otherKey = active.noteEditorOptions("other").queryKey;
+    active.queryClient.setQueryData(otherKey, initial);
+    const tasksKey = active.tasksSnapshotOptions("note").queryKey;
+    active.queryClient.setQueryData(tasksKey, initial.tasks);
+    backend.readNoteEditor.mockResolvedValue(newer);
+    const observer = new QueryObserver(active.queryClient, options);
+    const stop = observer.subscribe(() => {});
+    let acknowledge!: (value: NoteEditorSnapshot) => void;
+    const saving = active.saveAndConfirm(
+      options.queryKey,
+      () =>
+        new Promise<NoteEditorSnapshot>((done) => {
+          acknowledge = done;
+        }),
+      (result) => active.confirmNoteEditor("note", result),
+    );
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tasks", ids: ["note"] },
+    });
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toEqual(newer),
+    );
+    acknowledge(saved);
+    await saving;
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toEqual(newer),
+    );
+    expect(backend.readNoteEditor).toHaveBeenCalledTimes(2);
+    expect(active.queryClient.getQueryState(tasksKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(active.queryClient.getQueryData(otherKey)).toEqual(initial);
+    expect(active.queryClient.getQueryState(otherKey)?.isInvalidated).toBe(
+      false,
+    );
+    stop();
+    active.dispose();
+    await active.confirmNoteEditor("note", saved);
+    expect(active.queryClient.getQueryData(options.queryKey)).toBeUndefined();
+  });
+
   it("invalidates coherent editor snapshots for matching note or task events", async () => {
     const { active, emit } = fixture("scope");
     await active.start();
