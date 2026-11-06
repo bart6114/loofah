@@ -261,6 +261,23 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationAttachmentInfo(
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<Result<FileInfo | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachment_info", {
+          sessionId,
+          attachmentId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationDeleteRecording(
     sessionId: string,
     input: DeleteRecordingRequest,
@@ -1704,6 +1721,11 @@ export type ErrorCode =
   | "resource_limit"
   | "cancelled"
   | "internal";
+export type FileInfo = {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+};
 export type FileMetadata = {
   filename: string;
   contentType: string;
@@ -1915,6 +1937,12 @@ export type RemoteOperation =
   | { kind: "transcripts"; vault_id: string; session_id: string }
   | { kind: "audio_metadata"; vault_id: string; session_id: string }
   | {
+      kind: "attachment_info";
+      vault_id: string;
+      session_id: string;
+      attachment_id: string;
+    }
+  | {
       kind: "delete_recording";
       vault_id: string;
       session_id: string;
@@ -1973,6 +2001,7 @@ export type RemoteReply =
   | { kind: "document_save"; value: DocumentSaveOutcome }
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "audio_metadata"; value: FileMetadata | null }
+  | { kind: "attachment_info"; value: FileInfo | null }
   | { kind: "recording_deleted"; value: boolean }
   | { kind: "tasks"; value: TaskItem[] }
   | { kind: "tasks_snapshot"; value: TasksSnapshot }

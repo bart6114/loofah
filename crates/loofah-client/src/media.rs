@@ -77,15 +77,23 @@ impl<'a> MediaRef<'a> {
                 .sha256
                 .bytes()
                 .all(|value| value.is_ascii_digit() || (b'a'..=b'f').contains(&value))
-            || metadata.content_type.len() > 256
-            || !metadata.content_type.is_ascii()
-            || !metadata.content_type.contains('/')
-            || reqwest::header::HeaderValue::from_str(&metadata.content_type).is_err()
         {
             return Err(invalid_response());
         }
+        validate_content_type(&metadata.content_type)?;
         Ok(())
     }
+}
+
+pub(crate) fn validate_content_type(value: &str) -> Result<()> {
+    if value.len() > 256
+        || !value.is_ascii()
+        || !value.contains('/')
+        || reqwest::header::HeaderValue::from_str(value).is_err()
+    {
+        return Err(invalid_response());
+    }
+    Ok(())
 }
 
 impl RemoteClient {

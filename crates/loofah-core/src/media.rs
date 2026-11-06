@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hypr_loofah_protocol::{ApplicationError, ErrorCode, FileMetadata};
+use hypr_loofah_protocol::{ApplicationError, ErrorCode, FileInfo, FileMetadata};
 use hypr_vault_write::media::RecordingSnapshot;
 
 use crate::{
@@ -21,6 +21,26 @@ pub(crate) struct OpenedMedia {
 }
 
 impl VaultContext {
+    pub async fn attachment_info(
+        self: &Arc<Self>,
+        session_id: &str,
+        attachment_id: &str,
+    ) -> Result<Option<FileInfo>, ApplicationError> {
+        self.read_media(
+            session_id,
+            MediaSource::Attachment(attachment_id.to_owned()),
+            |source| {
+                let metadata = source.file.metadata().map_err(media_error)?;
+                Ok(FileInfo {
+                    filename: source.filename,
+                    content_type: source.content_type,
+                    size_bytes: metadata.len(),
+                })
+            },
+        )
+        .await
+    }
+
     pub async fn delete_recording(
         self: &Arc<Self>,
         session_id: &str,
@@ -446,6 +466,116 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"Keep until authorized");
         assert!(context.delete_recording("note", input).await.unwrap());
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn attachment_info_reads_only_explicit_owned_names_without_paths_hashes_or_capture_coupling()
+     {
+        let (root, context) = fixture().await;
+        let before = std::fs::read(root.path().join("sessions/note/notes.md")).unwrap();
+        let name = "diagram + # ü.png";
+        context
+            .store
+            .save_attachment("note", name, b"image".to_vec())
+            .await
+            .unwrap();
+        std::fs::write(
+            root.path().join("sessions/note/unknown.png"),
+            b"Ignore this attachment",
+        )
+        .unwrap();
+        context.store.note_recording_active("note");
+        let info = context
+            .attachment_info("note", name)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(info.filename, name);
+        assert_eq!(info.content_type, "image/png");
+        assert_eq!(info.size_bytes, 5);
+        let value = serde_json::to_value(&info).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 3);
+        assert!(value.get("sha256").is_none() && value.get("path").is_none());
+        assert!(
+            context
+                .attachment_info("missing", name)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        for id in ["missing.png", "notes.md", "unknown.png"] {
+            assert!(context.attachment_info("note", id).await.unwrap().is_none());
+        }
+        for id in ["", ".private", "../notes.md", "a/b", "a\\b"] {
+            assert_eq!(
+                context.attachment_info("note", id).await.unwrap_err().code,
+                ErrorCode::Validation
+            );
+        }
+        std::fs::write(
+            root.path().join("sessions/note/attachments").join(name),
+            b"updated image",
+        )
+        .unwrap();
+        assert_eq!(
+            context
+                .attachment_info("note", name)
+                .await
+                .unwrap()
+                .unwrap()
+                .size_bytes,
+            13
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("sessions/note/notes.md")).unwrap(),
+            before
+        );
+        context.store.set_startup_pending(true);
+        assert_eq!(
+            context
+                .attachment_info("note", name)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Unavailable
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn attachment_info_stats_a_large_sparse_file_without_hashing_or_download_limits() {
+        let (root, context) = fixture().await;
+        context
+            .store
+            .save_attachment("note", "large.bin", Vec::new())
+            .await
+            .unwrap();
+        let size = 33_u64 * 1024 * 1024 * 1024;
+        let path = root.path().join("sessions/note/attachments/large.bin");
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len(size)
+            .unwrap();
+        let info = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            context.attachment_info("note", "large.bin"),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_eq!(info.size_bytes, size);
+        assert_eq!(info.content_type, "application/octet-stream");
+        std::fs::remove_file(&path).unwrap();
+        assert!(
+            context
+                .attachment_info("note", "large.bin")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]

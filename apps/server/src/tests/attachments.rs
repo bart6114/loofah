@@ -3,6 +3,95 @@ use super::*;
 use std::time::Duration;
 
 #[tokio::test]
+async fn attachment_information_is_scoped_pathless_and_does_not_consume_download_leases() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.login("alice").await;
+    fixture.login("bob").await;
+    let vault = &alice.personal_vault_id;
+    let (_, created) = fixture
+        .call(
+            "alice",
+            "POST",
+            &format!("/api/v1/vaults/{vault}/sessions"),
+            Some(json!({"title":"File information","markdown":"Keep note"})),
+        )
+        .await;
+    let session = created["meta"]["id"].as_str().unwrap();
+    let context = fixture.service.vault(vault).await.unwrap();
+    context
+        .store
+        .save_attachment(session, "chart + # ü.png", b"image bytes".to_vec())
+        .await
+        .unwrap();
+    let prefix = format!("/api/v1/vaults/{vault}/sessions/{session}/attachments");
+    let asset = format!("{prefix}/chart%20%2B%20%23%20%C3%BC.png");
+    let info_path = format!("{asset}/info");
+    assert_eq!(
+        fixture.call("bob", "GET", &info_path, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, info) = fixture.call("alice", "GET", &info_path, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        info,
+        json!({"filename":"chart + # ü.png","contentType":"image/png","sizeBytes":11})
+    );
+    for _ in 0..8 {
+        assert_eq!(
+            fixture
+                .call(
+                    "alice",
+                    "PUT",
+                    &format!("{asset}/leases/{}", uuid::Uuid::new_v4()),
+                    None
+                )
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    let (_, limit) = fixture
+        .call(
+            "alice",
+            "PUT",
+            &format!("{asset}/leases/{}", uuid::Uuid::new_v4()),
+            None,
+        )
+        .await;
+    assert_eq!(limit["code"], "resource_limit");
+    assert_eq!(
+        fixture.call("alice", "GET", &info_path, None).await,
+        (StatusCode::OK, info)
+    );
+    for id in ["missing.png", "notes.md", "unknown-user.png"] {
+        let (status, missing) = fixture
+            .call("alice", "GET", &format!("{prefix}/{id}/info"), None)
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(missing.is_null());
+    }
+    assert_eq!(
+        fixture
+            .call("alice", "GET", &format!("{prefix}/.private/info"), None)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        std::fs::read_to_string(
+            context
+                .store
+                .vault_base()
+                .join("sessions")
+                .join(session)
+                .join("notes.md")
+        )
+        .unwrap(),
+        "Keep note"
+    );
+}
+
+#[tokio::test]
 async fn attachment_ranges_preserve_owned_paths_pinned_generations_and_endpoint_isolation() {
     let fixture = Fixture::new().await;
     let alice = fixture.login("alice").await;
@@ -194,8 +283,8 @@ async fn attachment_ranges_preserve_owned_paths_pinned_generations_and_endpoint_
 }
 
 #[tokio::test]
-async fn metadata_and_both_media_open_kinds_release_catalog_grants_then_recheck_revocation() {
-    for kind in ["attachment", "recording", "metadata"] {
+async fn media_info_and_open_requests_release_catalog_grants_then_recheck_revocation() {
+    for kind in ["attachment", "recording", "metadata", "info"] {
         let fixture = Fixture::new().await;
         fixture.login("alice").await;
         let bob = fixture.login("bob").await;
@@ -238,6 +327,18 @@ async fn metadata_and_both_media_open_kinds_release_catalog_grants_then_recheck_
             b"audio data",
         )
         .unwrap();
+        if kind == "info" {
+            let (status, info) = fixture
+                .call(
+                    "bob",
+                    "GET",
+                    &format!("/api/v1/vaults/{vault}/sessions/note/attachments/a.png/info"),
+                    None,
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(info["sizeBytes"], 10);
+        }
         let snapshot = context.store.lock_snapshot().await;
         let lease = uuid::Uuid::new_v4();
         let (method, path) = match kind {
@@ -248,6 +349,10 @@ async fn metadata_and_both_media_open_kinds_release_catalog_grants_then_recheck_
             "recording" => (
                 "PUT",
                 format!("/api/v1/vaults/{vault}/sessions/note/audio/leases/{lease}"),
+            ),
+            "info" => (
+                "GET",
+                format!("/api/v1/vaults/{vault}/sessions/note/attachments/a.png/info"),
             ),
             _ => (
                 "GET",

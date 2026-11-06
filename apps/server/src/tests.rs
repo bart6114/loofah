@@ -1841,6 +1841,21 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         .await
         .unwrap();
     let attachment_id = uuid::Uuid::new_v4().to_string();
+    let RemoteReply::AttachmentInfo(Some(info)) = request(
+        first.clone(),
+        RemoteOperation::AttachmentInfo {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            attachment_id: attachment.attachment_id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("attachment information response")
+    };
+    assert_eq!(info.filename, attachment.attachment_id);
+    assert_eq!(info.content_type, "application/pdf");
+    assert_eq!(info.size_bytes, payload.len() as u64);
     let attachment_lease = first
         .open_attachment(
             &vault_id,

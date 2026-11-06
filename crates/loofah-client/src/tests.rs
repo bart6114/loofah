@@ -139,6 +139,10 @@ impl Fixture {
                 get(waveform_fixture),
             )
             .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/info",
+                get(attachments::info),
+            )
+            .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/leases/{lease}",
                 axum::routing::put(attachments::open),
             )

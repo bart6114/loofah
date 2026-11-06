@@ -52,6 +52,8 @@ markdown: string }
 
 export type ErrorCode = "validation" | "not_found" | "unauthenticated" | "forbidden" | "conflict" | "unavailable" | "incompatible_version" | "resource_limit" | "cancelled" | "internal"
 
+export type FileInfo = { filename: string; contentType: string; sizeBytes: number }
+
 export type FileMetadata = { filename: string; contentType: string; sizeBytes: number; sha256: string }
 
 export type GetMeetingInput = { meeting_id: string }

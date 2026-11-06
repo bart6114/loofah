@@ -30,6 +30,34 @@ fn authenticated(headers: &HeaderMap) {
     assert!(uuid::Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).is_ok());
 }
 
+pub(super) async fn info(
+    State(state): State<Arc<Provider>>,
+    Path((vault, session, attachment)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    authenticated(&headers);
+    assert_eq!(vault, "test");
+    assert_eq!(session, "note");
+    let mode = state.attachment_mode.load(Ordering::SeqCst);
+    if mode == 10 {
+        return Json(Value::Null).into_response();
+    }
+    if mode == 11 {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
+    let mut value =
+        json!({"filename":attachment,"contentType":"application/octet-stream","sizeBytes":10});
+    match mode {
+        1 => value["filename"] = json!("different.bin"),
+        3 => value["contentType"] = json!("image/png\r\nx-injected: true"),
+        12 => value["padding"] = json!("a".repeat(20 * 1024)),
+        13 => value["sizeBytes"] = json!(-1),
+        14 => value["contentType"] = json!("a".repeat(257)),
+        _ => {}
+    }
+    Json(value).into_response()
+}
+
 pub(super) async fn open(
     State(state): State<Arc<Provider>>,
     Path((vault, session, attachment, id)): Path<(String, String, String, String)>,
@@ -147,7 +175,7 @@ async fn capable(fixture: &Fixture) -> Arc<RemoteClient> {
         .unwrap()
         .capabilities
         .features
-        .push("attachment_leases".into());
+        .extend(["attachment_leases".into(), "attachment_info".into()]);
     client
 }
 
@@ -346,4 +374,138 @@ async fn attachment_open_and_chunk_cancellation_do_not_wait_for_the_network_time
         );
         assert!(started.elapsed() < Duration::from_secs(1));
     }
+}
+
+fn info_operation(name: &str) -> RemoteOperation {
+    RemoteOperation::AttachmentInfo {
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        attachment_id: name.into(),
+    }
+}
+
+#[tokio::test]
+async fn attachment_information_requires_capability_and_valid_names_before_credentials() {
+    let fixture = Fixture::new().await;
+    let request = uuid::Uuid::new_v4().to_string();
+    let unsupported = fixture.client().await;
+    let cause = unsupported
+        .execute(
+            info_operation("valid.bin"),
+            &request,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(cause.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(cause.request_id.as_deref(), Some(request.as_str()));
+    let client = capable(&fixture).await;
+    for name in ["", ".private", "../note.md", "nested/a", "a\\b", "a\0b"] {
+        assert_eq!(
+            client
+                .execute(info_operation(name), &request, CancellationToken::new())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+    }
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    assert_eq!(
+        client
+            .execute(info_operation("valid.bin"), &request, cancel)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Cancelled
+    );
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn attachment_information_validates_https_replies_and_preserves_opaque_names() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(50))).await;
+    let client = capable(&fixture).await;
+    fixture.login(&client).await;
+    let request = uuid::Uuid::new_v4().to_string();
+    for name in ["chart + # ü.png", "CON.txt"] {
+        let RemoteReply::AttachmentInfo(Some(info)) = client
+            .execute(info_operation(name), &request, CancellationToken::new())
+            .await
+            .unwrap()
+        else {
+            panic!("missing information")
+        };
+        assert_eq!(info.filename, name);
+        assert_eq!(info.size_bytes, 10);
+        assert_eq!(
+            serde_json::to_value(info)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+    fixture.state.attachment_mode.store(10, Ordering::SeqCst);
+    assert!(matches!(
+        client
+            .execute(
+                info_operation("missing.bin"),
+                &request,
+                CancellationToken::new()
+            )
+            .await
+            .unwrap(),
+        RemoteReply::AttachmentInfo(None)
+    ));
+    for mode in [1, 3, 12, 13, 14] {
+        fixture.state.attachment_mode.store(mode, Ordering::SeqCst);
+        let cause = client
+            .execute(
+                info_operation("valid.bin"),
+                &request,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            cause.code,
+            if mode == 12 {
+                ErrorCode::ResourceLimit
+            } else {
+                ErrorCode::IncompatibleVersion
+            },
+            "mode {mode}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn attachment_information_cancellation_interrupts_a_pending_https_reply() {
+    let fixture = Fixture::with_tls(Some(Duration::from_millis(150))).await;
+    let client = capable(&fixture).await;
+    fixture.login(&client).await;
+    fixture.state.attachment_mode.store(11, Ordering::SeqCst);
+    let cancel = CancellationToken::new();
+    let stopped = cancel.clone();
+    let started = std::time::Instant::now();
+    let request = tokio::spawn(async move {
+        client
+            .execute(
+                info_operation("valid.bin"),
+                &uuid::Uuid::new_v4().to_string(),
+                stopped,
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    cancel.cancel();
+    assert_eq!(
+        request.await.unwrap().unwrap_err().code,
+        ErrorCode::Cancelled
+    );
+    assert!(started.elapsed() < Duration::from_secs(1));
 }

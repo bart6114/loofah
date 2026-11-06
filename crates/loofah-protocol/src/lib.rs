@@ -8,7 +8,7 @@ pub use hypr_agent_access::{
     SearchMeetingsInput, SearchPage as AgentSearchPage,
 };
 pub use hypr_transcript::RenderedTranscriptSegment;
-pub use hypr_vault_read::media::{AudioPeaks, FileMetadata};
+pub use hypr_vault_read::media::{AudioPeaks, FileInfo, FileMetadata};
 pub use hypr_vault_read::paths::validate_attachment_basename;
 pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
 

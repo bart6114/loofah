@@ -24,6 +24,7 @@ const native = vi.hoisted(() => ({
     applicationSaveDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationAudioMetadata: vi.fn(),
+    applicationAttachmentInfo: vi.fn(),
     applicationDeleteRecording: vi.fn(),
     applicationTasks: vi.fn(),
     applicationTasksSnapshot: vi.fn(),
@@ -169,6 +170,71 @@ it("reads recording metadata through either transport without a filesystem path"
     undefined,
   );
   expect(metadata).not.toHaveProperty("path");
+});
+
+it("reads attachment information through either transport without a path or download lease", async () => {
+  const info = {
+    filename: "chart + # ü.png",
+    contentType: "image/png",
+    sizeBytes: 42,
+  };
+  native.commands.applicationAttachmentInfo.mockResolvedValue({
+    status: "ok",
+    data: info,
+  });
+  const local = await connectLocalVault();
+  const controller = new AbortController();
+  const options = { signal: controller.signal };
+  expect(local.features).toContain("attachment_info");
+  expect(await local.attachmentInfo("same", info.filename, options)).toEqual(
+    info,
+  );
+  expect(native.commands.applicationAttachmentInfo).toHaveBeenCalledWith(
+    "same",
+    info.filename,
+  );
+  const request = vi.fn().mockResolvedValue(info);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://server.example/",
+        capabilities: { features: ["attachment_info"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "alice",
+    vault,
+  );
+  expect(await remote.attachmentInfo("same", info.filename, options)).toEqual(
+    info,
+  );
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "attachment_info",
+      vault_id: vault.id,
+      session_id: "same",
+      attachment_id: info.filename,
+    },
+    "attachment_info",
+    options,
+  );
+  native.commands.applicationAttachmentInfo.mockResolvedValue({
+    status: "ok",
+    data: null,
+  });
+  expect(await local.attachmentInfo("same", "missing.png")).toBeNull();
+  request.mockResolvedValue(null);
+  expect(await remote.attachmentInfo("same", "missing.png")).toBeNull();
+  controller.abort();
+  native.commands.applicationAttachmentInfo.mockClear();
+  await expect(
+    local.attachmentInfo("same", info.filename, options),
+  ).rejects.toMatchObject({
+    name: "AbortError",
+  });
+  expect(native.commands.applicationAttachmentInfo).not.toHaveBeenCalled();
+  expect(info).not.toHaveProperty("path");
+  expect(info).not.toHaveProperty("sha256");
 });
 
 it("reads one coherent note/task snapshot through both transports", async () => {

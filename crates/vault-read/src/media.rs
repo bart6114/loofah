@@ -1,5 +1,13 @@
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
+pub struct FileInfo {
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct FileMetadata {
     pub filename: String,
     pub content_type: String,

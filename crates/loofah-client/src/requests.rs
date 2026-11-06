@@ -74,6 +74,11 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    AttachmentInfo {
+        vault_id: String,
+        session_id: String,
+        attachment_id: String,
+    },
     DeleteRecording {
         vault_id: String,
         session_id: String,
@@ -175,6 +180,7 @@ pub enum RemoteReply {
     DocumentSave(DocumentSaveOutcome),
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<FileMetadata>),
+    AttachmentInfo(Option<FileInfo>),
     RecordingDeleted(bool),
     Tasks(Vec<TaskItem>),
     TasksSnapshot(TasksSnapshot),
@@ -213,6 +219,7 @@ impl RemoteClient {
             RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
+            RemoteOperation::AttachmentInfo { .. } => Some("attachment_info"),
             RemoteOperation::DeleteRecording { .. } => Some("recording_delete"),
             _ => None,
         };
@@ -225,6 +232,7 @@ impl RemoteClient {
         }) {
             let description = match operation {
                 RemoteOperation::AudioMetadata { .. } => "recording metadata",
+                RemoteOperation::AttachmentInfo { .. } => "attachment information",
                 RemoteOperation::DeleteRecording { .. } => "recording deletion",
                 _ => "the note editor",
             };
@@ -242,6 +250,10 @@ impl RemoteClient {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
+        }
+        if let RemoteOperation::AttachmentInfo { attachment_id, .. } = &operation {
+            validate_attachment_basename(attachment_id)
+                .map_err(|_| invalid("Invalid attachment ID"))?;
         }
         let mut query: Vec<(&str, String)> = Vec::new();
         let mut body = None;
@@ -384,6 +396,22 @@ impl RemoteClient {
                 Method::GET,
                 vec![
                     "vaults", vault_id, "sessions", session_id, "audio", "metadata",
+                ],
+            ),
+            RemoteOperation::AttachmentInfo {
+                vault_id,
+                session_id,
+                attachment_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "sessions",
+                    session_id,
+                    "attachments",
+                    attachment_id,
+                    "info",
                 ],
             ),
             RemoteOperation::People { vault_id } => {
@@ -641,6 +669,19 @@ impl RemoteClient {
                 }
                 RemoteOperation::AudioMetadata { .. } => {
                     RemoteReply::AudioMetadata(json_body(response, 256 * 1024).await?)
+                }
+                RemoteOperation::AttachmentInfo { attachment_id, .. } => {
+                    let info: Option<FileInfo> = json_body(response, 16 * 1024).await?;
+                    if let Some(info) = &info {
+                        if info.filename != attachment_id {
+                            return Err(failure(
+                                ErrorCode::IncompatibleVersion,
+                                "Invalid attachment information",
+                            ));
+                        }
+                        crate::media::validate_content_type(&info.content_type)?;
+                    }
+                    RemoteReply::AttachmentInfo(info)
                 }
                 RemoteOperation::SaveNoteEditor { .. } => {
                     RemoteReply::NoteEditorSave(json_body(response, 32 * 1024 * 1024).await?)

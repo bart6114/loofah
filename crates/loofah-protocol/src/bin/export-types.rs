@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<AgentTranscript>()
         .register::<AgentSearchPage>()
         .register::<RenderedTranscriptSegment>()
+        .register::<FileInfo>()
         .register::<FileMetadata>()
         .register::<RecordingLease>()
         .register::<AttachmentLease>()

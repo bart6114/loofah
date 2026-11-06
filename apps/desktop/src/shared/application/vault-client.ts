@@ -13,6 +13,7 @@ import {
 import type {
   ApplicationError,
   DeleteRecordingRequest,
+  FileInfo,
   FileMetadata,
   MetadataSnapshot,
   MetadataSaveOutcome,
@@ -88,6 +89,11 @@ export type VaultClient = {
     sessionId: string,
     options?: RequestOptions,
   ) => Promise<FileMetadata | null>;
+  attachmentInfo: (
+    sessionId: string,
+    attachmentId: string,
+    options?: RequestOptions,
+  ) => Promise<FileInfo | null>;
   readMetadata: (
     sessionId: string,
     options?: RequestOptions,
@@ -229,6 +235,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "note_editor_read",
       "note_editor_write",
       "audio_metadata_read",
+      "attachment_info",
       "search",
       "content_read",
       "document_edit",
@@ -277,6 +284,11 @@ export async function connectLocalVault(): Promise<VaultClient> {
       ipc(() => commands.applicationTranscripts(sessionId), options),
     audioMetadata: (sessionId, options) =>
       ipc(() => commands.applicationAudioMetadata(sessionId), options),
+    attachmentInfo: (sessionId, attachmentId, options) =>
+      ipc(
+        () => commands.applicationAttachmentInfo(sessionId, attachmentId),
+        options,
+      ),
     tasks: (sessionId, options) =>
       ipc(() => commands.applicationTasks(sessionId), options),
     tasksSnapshot: (sessionId, options) =>
@@ -458,6 +470,17 @@ export function connectRemoteVault(
       connection.request(
         { kind: "audio_metadata", vault_id: vaultId, session_id: sessionId },
         "audio_metadata",
+        options,
+      ),
+    attachmentInfo: (sessionId, attachmentId, options) =>
+      connection.request(
+        {
+          kind: "attachment_info",
+          vault_id: vaultId,
+          session_id: sessionId,
+          attachment_id: attachmentId,
+        },
+        "attachment_info",
         options,
       ),
     replaceTasks: (sessionId, input, options) =>
