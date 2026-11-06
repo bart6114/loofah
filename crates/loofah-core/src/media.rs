@@ -83,15 +83,27 @@ impl VaultContext {
                 .store
                 .prepare_recording_deletion(&session_id, &input.expected_sha256)
                 .await;
+            let checked = match prepared {
+                Ok(Some(RecordingDeletionPlan::Prepared(commit))) => {
+                    (*commit).recheck().await.map(Some)
+                }
+                Ok(Some(RecordingDeletionPlan::Finished(status))) => {
+                    Ok(Some(RecordingDeletionPlan::Finished(status)))
+                }
+                Ok(None) => Ok(None),
+                Err(cause) => Err(cause),
+            };
             let _grant = authorize().await.map_err(|mut cause| {
                 cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
                 cause
             })?;
-            let result = match prepared {
-                Ok(Some(RecordingDeletionPlan::Prepared(commit))) => (*commit).commit().await,
-                Ok(Some(RecordingDeletionPlan::Finished(status))) => Ok(Some(status)),
-                Ok(None) => Ok(None),
-                Err(cause) => Err(cause),
+            let (result, commit_started) = match checked {
+                Ok(Some(RecordingDeletionPlan::Prepared(commit))) => {
+                    ((*commit).commit().await, true)
+                }
+                Ok(Some(RecordingDeletionPlan::Finished(status))) => (Ok(Some(status)), false),
+                Ok(None) => (Ok(None), false),
+                Err(cause) => (Err(cause), false),
             };
             match result {
                 Ok(Some(RecordingDeletion::Deleted)) => Ok(true),
@@ -105,7 +117,13 @@ impl VaultContext {
                     "The recording changed; reload it before deleting",
                 )),
                 Ok(None) => Err(rejected(ErrorCode::NotFound, "Session not found")),
-                Err(cause) => Err(storage_error(cause, true)),
+                Err(cause) => {
+                    let mut cause = storage_error(cause, commit_started);
+                    if !commit_started {
+                        cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+                    }
+                    Err(cause)
+                }
             }
         })
         .await
@@ -369,6 +387,65 @@ mod tests {
             std::fs::read_to_string(directory.join("notes.md")).unwrap(),
             "Notes remain unchanged"
         );
+    }
+
+    #[tokio::test]
+    async fn deletion_preparation_failure_is_known_not_committed_and_fresh_authorization_still_runs()
+     {
+        use hypr_loofah_protocol::{DeleteRecordingRequest, MutationOutcome};
+        let (root, context) = fixture().await;
+        std::fs::create_dir(root.path().join("sessions/note/audio.wav")).unwrap();
+        let authorized = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed = authorized.clone();
+        let cause = context
+            .delete_recording_authorized(
+                "note",
+                DeleteRecordingRequest {
+                    expected_sha256: "0".repeat(64),
+                },
+                move || async move {
+                    observed.store(true, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(authorized.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(cause.code, ErrorCode::Internal);
+        assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("sessions/note/notes.md")).unwrap(),
+            "Notes remain unchanged"
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_refusal_after_byte_checks_preserves_the_recording_and_releases_ownership()
+     {
+        use hypr_loofah_protocol::{DeleteRecordingRequest, MutationOutcome};
+        let (root, context) = fixture().await;
+        let path = root.path().join("sessions/note/audio.wav");
+        std::fs::write(&path, b"Keep until authorized").unwrap();
+        let sha256 = context
+            .audio_metadata("note")
+            .await
+            .unwrap()
+            .unwrap()
+            .sha256;
+        let input = DeleteRecordingRequest {
+            expected_sha256: sha256,
+        };
+        let cause = context
+            .delete_recording_authorized("note", input.clone(), || async {
+                Err::<(), _>(error(ErrorCode::Forbidden, "Access revoked"))
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(cause.code, ErrorCode::Forbidden);
+        assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(std::fs::read(&path).unwrap(), b"Keep until authorized");
+        assert!(context.delete_recording("note", input).await.unwrap());
+        assert!(!path.exists());
     }
 
     #[tokio::test]

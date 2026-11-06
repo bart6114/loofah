@@ -307,7 +307,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: actual editor/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs and a common local/remote player are implemented, with native macOS latency/restart checks. Remaining remote content operations, recording deletion, attachments/import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases and typed SDK reads are implemented; native attachment presentation remains open. Remaining remote content operations, attachment UI/uploads, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -1434,8 +1434,11 @@ new choice; the player does not queue offline deletions or retry automatically,
 even under an ambient query client that normally pauses or retries mutations.
 
 Preparation retains the session audio reservation through hashing and cancellation
-while releasing the vault write lock. Commit obtains fresh authorization, checks
-busy state and the original file handles/change metadata, validates every owned
+while releasing the vault write lock. A second byte check validates every prepared
+recording descriptor before obtaining fresh authorization. Windows shared file
+locks then remain held through commit, allowing ordinary playback reads while
+excluding ordinary writes through other handles. Commit checks busy state and
+the original file handles/change metadata, validates every owned
 cleanup path before unlinking, and removes the selected primary recording last.
 Unknown and dot-prefixed files in the legacy audio directory survive as well as
 ordinary user attachments. Partial cleanup failure emits invalidation and leaves
@@ -1444,7 +1447,7 @@ compound-deletion journal; crash recovery for all compound operations remains an
 open acceptance gate. Successful/absent server deletion invalidates all session
 recording leases.
 
-Nine focused storage tests cover exact ownership, stale bytes with restored mtime,
+The initial nine focused storage tests cover exact ownership, stale bytes with restored mtime,
 atomic replacement, active capture/import, cancellation during hashing and commit,
 post-preparation edits, symlink prevalidation and injected partial cleanup failure.
 Server tests prove reader refusal, vault isolation, lease invalidation and that
@@ -1452,7 +1455,7 @@ membership removal completes while a deletion waits, then prevents that commit.
 Frontend validation passed 1,762 tests, including lazy local revision reads,
 remote pinned revisions, device guards, reader actions, explicit error/reload,
 no offline queue or automatic retry, and ignored late errors from replaced players.
-Fresh executable suites passed: storage 334 (one ignored), core 93, SDK 44,
+At that checkpoint, executable suites passed: storage 334 (one ignored), core 93, SDK 44,
 server 36 plus executable, and CLI 119. The CLI documentation check was stopped
 after more than five minutes waiting in macOS library loading; it is incomplete.
 Final desktop compilation and typechecking passed; all 50 native tests passed
@@ -1469,9 +1472,26 @@ hashes remained intact; all 72 preexisting fixture files were unchanged. Evidenc
 `/Volumes/T7/loofah-backend-build/remote-ui-qa/recording-delete-evidence.json`.
 These automated route/player checks do not constitute native destructive-UI,
 Windows WebView2, production-performance or full recording/outage acceptance.
-The Windows change-time implementation still requires both native CI architectures
-for this increment. Attachments/import/export, processing, resilient capture upload,
+The initial deletion commit passed native Windows x64, but ARM64 exposed a real
+post-preparation edit that unchanged Windows change metadata failed to detect.
+That implementation has been replaced with byte rechecking and standard-library
+shared Windows file locks. The original failing test remains in place. Native
+Windows x64 and ARM64 must both pass on the corrected implementation before this
+gate is closed. Attachments/import/export, processing, resilient capture upload,
 CLI ownership, remote-only startup and the remaining plan gates stay open.
+
+The correction passes all 11 focused storage tests on macOS, including secondary
+recording edits and cancellation during byte rechecking; two Windows-only tests
+cover shared-lock read/write behavior and refusal under an existing exclusive lock.
+Fresh local suites pass: storage 336 (one ignored), core 100, server 40 and headless
+startup/shutdown. Desktop/CLI compilation, repository formatting and scoped
+production core/SDK/server Clippy pass. Preparation/recheck failures now report
+`not_committed` rather than an uncertain mutation. Fresh trusted HTTPS deletion
+QA passes at 50/150/500 ms RTT (77/188/542 ms observed), disconnects, lost replies
+and stale retries after restart. All 103 preexisting fixture files retained their
+hashes. Evidence is in
+`/Volumes/T7/loofah-backend-build/remote-ui-qa/recording-delete-recheck-evidence.json`.
+These local results do not close the pending native Windows gates.
 
 The remaining ONNX binary cache was moved from the internal drive to
 `/Volumes/T7/loofah-backend-build/ort-shared-cache` after Rust builds finished.

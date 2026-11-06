@@ -16024,7 +16024,6 @@ dependencies = [
  "tracing",
  "uuid",
  "vault-read",
- "windows 0.62.2",
 ]
 
 [[package]]

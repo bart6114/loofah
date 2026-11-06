@@ -1,5 +1,6 @@
 use std::{
     fs::Metadata,
+    io::{Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 
@@ -26,8 +27,8 @@ struct Candidate {
     change: (i64, i64),
 }
 
-pub enum RecordingDeletionPlan {
-    Prepared(Box<RecordingDeletionCommit>),
+pub enum RecordingDeletionPlan<T = RecordingDeletionCommit> {
+    Prepared(Box<T>),
     Finished(RecordingDeletion),
 }
 
@@ -36,8 +37,11 @@ pub struct RecordingDeletionCommit {
     id: String,
     directory: PathBuf,
     original: Vec<Candidate>,
+    hashes: Vec<String>,
     _audio: tokio::sync::OwnedMutexGuard<()>,
 }
+
+pub struct CheckedRecordingDeletionCommit(RecordingDeletionCommit);
 
 impl SessionStore {
     pub async fn delete_recording_checked(
@@ -115,25 +119,14 @@ impl SessionStore {
             })
             .await
             .map_err(worker_error)??;
-            let (original, sha256) = tokio::task::spawn_blocking(move || {
+            let (original, hashes) = tokio::task::spawn_blocking(move || {
                 before_hash();
-                let hash = original
-                    .first()
-                    .map(|candidate| {
-                        hypr_fs_sync_core::audio::metadata_from_reader(
-                            candidate.filename,
-                            candidate.handle.as_file(),
-                        )
-                        .map_err(io_error)?
-                        .map(|value| value.sha256)
-                        .ok_or_else(|| StoreError::Io("Unsupported recording format".into()))
-                    })
-                    .transpose()?;
-                Ok::<_, StoreError>((original, hash))
+                let hashes = recording_hashes(&original)?;
+                Ok::<_, StoreError>((original, hashes))
             })
             .await
             .map_err(worker_error)??;
-            if sha256.as_ref().is_some_and(|sha| sha != &expected) {
+            if hashes.first().is_some_and(|sha| sha != &expected) {
                 return Ok(Some(RecordingDeletionPlan::Finished(
                     RecordingDeletion::Changed,
                 )));
@@ -144,6 +137,7 @@ impl SessionStore {
                     id,
                     directory,
                     original,
+                    hashes,
                     _audio: audio,
                 },
             ))))
@@ -154,6 +148,53 @@ impl SessionStore {
 }
 
 impl RecordingDeletionCommit {
+    pub async fn recheck(
+        self,
+    ) -> Result<RecordingDeletionPlan<CheckedRecordingDeletionCommit>, StoreError> {
+        self.recheck_with(|| {}).await
+    }
+
+    async fn recheck_with(
+        self,
+        before_hash: impl FnOnce() + Send + 'static,
+    ) -> Result<RecordingDeletionPlan<CheckedRecordingDeletionCommit>, StoreError> {
+        tokio::task::spawn_blocking(move || {
+            if !lock_for_recheck(&self.original)? {
+                return Ok(RecordingDeletionPlan::Finished(RecordingDeletion::Busy));
+            }
+            before_hash();
+            // Windows can preserve all change metadata after an in-place edit.
+            if recording_hashes(&self.original)? != self.hashes {
+                return Ok(RecordingDeletionPlan::Finished(RecordingDeletion::Changed));
+            }
+            Ok(RecordingDeletionPlan::Prepared(Box::new(
+                CheckedRecordingDeletionCommit(self),
+            )))
+        })
+        .await
+        .map_err(worker_error)?
+    }
+
+    pub async fn commit(self) -> Result<Option<RecordingDeletion>, StoreError> {
+        self.commit_with(|| {}, |path| std::fs::remove_file(path))
+            .await
+    }
+
+    async fn commit_with(
+        self,
+        before_lock: impl FnOnce() + Send + 'static,
+        remove: impl FnMut(&Path) -> std::io::Result<()> + Send + 'static,
+    ) -> Result<Option<RecordingDeletion>, StoreError> {
+        match self.recheck().await? {
+            RecordingDeletionPlan::Prepared(checked) => {
+                (*checked).commit_with(before_lock, remove).await
+            }
+            RecordingDeletionPlan::Finished(status) => Ok(Some(status)),
+        }
+    }
+}
+
+impl CheckedRecordingDeletionCommit {
     pub async fn commit(self) -> Result<Option<RecordingDeletion>, StoreError> {
         self.commit_with(|| {}, |path| std::fs::remove_file(path))
             .await
@@ -165,28 +206,30 @@ impl RecordingDeletionCommit {
         mut remove: impl FnMut(&Path) -> std::io::Result<()> + Send + 'static,
     ) -> Result<Option<RecordingDeletion>, StoreError> {
         tokio::spawn(async move {
+            let prepared = self.0;
             before_lock();
-            let snapshot = self.store.lock_snapshot().await;
-            self.store.ensure_ready()?;
-            let Some(meta) = self
+            let snapshot = prepared.store.lock_snapshot().await;
+            prepared.store.ensure_ready()?;
+            let Some(meta) = prepared
                 .store
-                .metadata_snapshot_locked(&snapshot._guard, &self.id)
+                .metadata_snapshot_locked(&snapshot._guard, &prepared.id)
                 .await?
             else {
                 return Ok(None);
             };
-            if unavailable(&self.store, &self.id, &meta.meta) {
+            if unavailable(&prepared.store, &prepared.id, &meta.meta) {
                 return Ok(Some(RecordingDeletion::Busy));
             }
             tokio::task::spawn_blocking(move || {
                 let _snapshot = snapshot;
-                let current = candidates(&self.directory)?;
-                let _audio = self._audio;
-                if !same_candidates(&self.original, &current)? {
+                let _audio = prepared._audio;
+                let original = prepared.original;
+                let current = candidates(&prepared.directory)?;
+                if !same_candidates(&original, &current)? {
                     return Ok(Some(RecordingDeletion::Changed));
                 }
                 let mut paths = Vec::new();
-                for base in [&self.directory, &self.directory.join("audio")] {
+                for base in [&prepared.directory, &prepared.directory.join("audio")] {
                     if !regular_directory(base)? {
                         continue;
                     }
@@ -202,7 +245,7 @@ impl RecordingDeletionCommit {
                         }
                     }
                 }
-                let primary = self.original.first().map(|entry| &entry.path);
+                let primary = original.first().map(|entry| &entry.path);
                 paths.sort_by_key(|path| Some(path) == primary);
                 let mut changed = false;
                 let result = (|| {
@@ -210,14 +253,14 @@ impl RecordingDeletionCommit {
                         remove(&path).map_err(io_error)?;
                         changed = true;
                     }
-                    Ok(Some(if self.original.is_empty() {
+                    Ok(Some(if original.is_empty() {
                         RecordingDeletion::Absent
                     } else {
                         RecordingDeletion::Deleted
                     }))
                 })();
                 if changed {
-                    self.store.notify_artifacts_changed(&self.id);
+                    prepared.store.notify_artifacts_changed(&prepared.id);
                 }
                 result
             })
@@ -262,6 +305,38 @@ fn candidates(directory: &Path) -> Result<Vec<Candidate>, StoreError> {
     Ok(candidates)
 }
 
+fn recording_hashes(candidates: &[Candidate]) -> Result<Vec<String>, StoreError> {
+    candidates
+        .iter()
+        .map(|candidate| {
+            let mut file = candidate.handle.as_file();
+            file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+            hypr_fs_sync_core::audio::metadata_from_reader(candidate.filename, file)
+                .map_err(io_error)?
+                .map(|value| value.sha256)
+                .ok_or_else(|| StoreError::Io("Unsupported recording format".into()))
+        })
+        .collect()
+}
+
+#[cfg(windows)]
+fn lock_for_recheck(candidates: &[Candidate]) -> Result<bool, StoreError> {
+    for candidate in candidates {
+        // Shared Windows locks allow playback and prevent ordinary writes until commit exits.
+        match candidate.handle.as_file().try_lock_shared() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => return Ok(false),
+            Err(std::fs::TryLockError::Error(cause)) => return Err(io_error(cause)),
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(not(windows))]
+fn lock_for_recheck(_: &[Candidate]) -> Result<bool, StoreError> {
+    Ok(true)
+}
+
 fn same_candidates(before: &[Candidate], after: &[Candidate]) -> Result<bool, StoreError> {
     if before.len() != after.len() {
         return Ok(false);
@@ -295,28 +370,7 @@ fn file_change(file: &std::fs::File) -> Result<(i64, i64), StoreError> {
     Ok((metadata.ctime(), metadata.ctime_nsec()))
 }
 
-#[cfg(windows)]
-fn file_change(file: &std::fs::File) -> Result<(i64, i64), StoreError> {
-    use std::os::windows::io::AsRawHandle;
-    use windows::Win32::{
-        Foundation::HANDLE,
-        Storage::FileSystem::{FILE_BASIC_INFO, FileBasicInfo, GetFileInformationByHandleEx},
-    };
-    let mut info = FILE_BASIC_INFO::default();
-    // The handle stays owned by the caller and the buffer has the exact requested Windows layout.
-    unsafe {
-        GetFileInformationByHandleEx(
-            HANDLE(file.as_raw_handle()),
-            FileBasicInfo,
-            (&mut info as *mut FILE_BASIC_INFO).cast(),
-            std::mem::size_of::<FILE_BASIC_INFO>() as u32,
-        )
-    }
-    .map_err(|cause| StoreError::Io(format!("Cannot inspect recording change time: {cause}")))?;
-    Ok((info.ChangeTime, 0))
-}
-
-#[cfg(not(any(unix, windows)))]
+#[cfg(not(unix))]
 fn file_change(_: &std::fs::File) -> Result<(i64, i64), StoreError> {
     Ok((0, 0))
 }
@@ -637,6 +691,145 @@ mod tests {
             Some(RecordingDeletion::Changed)
         );
         assert_eq!(std::fs::read(path).unwrap(), b"Changed! recording");
+    }
+
+    #[tokio::test]
+    async fn changed_secondary_recording_is_rejected_even_when_the_primary_and_timestamps_match() {
+        let (root, store, sha) = fixture().await;
+        let path = root.path().join("sessions/note/audio.ogg");
+        std::fs::write(&path, b"Original recording").unwrap();
+        let initial = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let Some(RecordingDeletionPlan::Prepared(commit)) = store
+            .prepare_recording_deletion("note", &sha)
+            .await
+            .unwrap()
+        else {
+            panic!("missing commit");
+        };
+        use std::io::Write;
+        let mut writer = std::fs::File::options().write(true).open(&path).unwrap();
+        writer.write_all(b"Changed! recording").unwrap();
+        writer
+            .set_times(std::fs::FileTimes::new().set_modified(initial))
+            .unwrap();
+        assert_eq!(
+            (*commit).commit().await.unwrap(),
+            Some(RecordingDeletion::Changed)
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"Changed! recording");
+        assert_eq!(
+            std::fs::read(root.path().join("sessions/note/audio.wav")).unwrap(),
+            b"Original recording"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelled_recheck_retains_ownership_without_holding_the_vault_write_lock() {
+        let (root, store, sha) = fixture().await;
+        let Some(RecordingDeletionPlan::Prepared(commit)) = store
+            .prepare_recording_deletion("note", &sha)
+            .await
+            .unwrap()
+        else {
+            panic!("missing commit");
+        };
+        let reservation = store.audio_operations.lock().unwrap()["note"].clone();
+        let (started, wait) = tokio::sync::oneshot::channel();
+        let (finish, blocked) = std::sync::mpsc::channel();
+        let request = tokio::spawn((*commit).recheck_with(move || {
+            started.send(()).unwrap();
+            blocked
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+        }));
+        wait.await.unwrap();
+        request.abort();
+        let Err(cause) = request.await else {
+            panic!("recheck caller was not cancelled");
+        };
+        assert!(cause.is_cancelled());
+        assert!(reservation.clone().try_lock_owned().is_err());
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            store.save_note("note", "Still responsive", None),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        finish.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                if let Ok(guard) = reservation.clone().try_lock_owned() {
+                    drop(guard);
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join("sessions/note/audio.wav")).unwrap(),
+            b"Original recording"
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn recheck_blocks_writes_from_an_existing_handle_while_allowing_playback_until_dropped() {
+        use std::io::Write;
+        let (root, store, sha) = fixture().await;
+        let path = root.path().join("sessions/note/audio.wav");
+        let mut writer = std::fs::File::options().write(true).open(&path).unwrap();
+        let Some(RecordingDeletionPlan::Prepared(commit)) = store
+            .prepare_recording_deletion("note", &sha)
+            .await
+            .unwrap()
+        else {
+            panic!("missing commit");
+        };
+        let RecordingDeletionPlan::Prepared(checked) = (*commit).recheck().await.unwrap() else {
+            panic!("missing checked commit");
+        };
+        assert!(writer.write_all(b"Changed! recording").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"Original recording");
+        drop(checked);
+        writer.seek(SeekFrom::Start(0)).unwrap();
+        writer.write_all(b"Changed! recording").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"Changed! recording");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn existing_exclusive_lock_refuses_deletion_without_removing_owned_artifacts() {
+        let (root, store, sha) = fixture().await;
+        let directory = root.path().join("sessions/note");
+        let Some(RecordingDeletionPlan::Prepared(commit)) = store
+            .prepare_recording_deletion("note", &sha)
+            .await
+            .unwrap()
+        else {
+            panic!("missing commit");
+        };
+        std::fs::write(directory.join("audio.peaks.json"), b"Keep peaks").unwrap();
+        let writer = std::fs::File::options()
+            .write(true)
+            .open(directory.join("audio.wav"))
+            .unwrap();
+        writer.try_lock().unwrap();
+        assert_eq!(
+            (*commit).commit().await.unwrap(),
+            Some(RecordingDeletion::Busy)
+        );
+        assert_eq!(
+            std::fs::read(directory.join("audio.peaks.json")).unwrap(),
+            b"Keep peaks"
+        );
+        drop(writer);
+        assert_eq!(
+            std::fs::read(directory.join("audio.wav")).unwrap(),
+            b"Original recording"
+        );
     }
 
     #[tokio::test]
