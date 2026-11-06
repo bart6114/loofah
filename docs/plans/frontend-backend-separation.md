@@ -1608,3 +1608,32 @@ Desktop typechecking and focused client lint pass. This increment still needs it
 own Linux and native Windows x64/ARM64 hosted checks. Native image delivery,
 original downloads/open/reveal, resource/cache ownership, scoped attachment
 invalidation, uploads and editor integration remain open.
+
+### Verified full attachment downloads
+
+`loofah-client::media::download` now streams complete attachments into an empty,
+unpublished async sink. Memory previews and private client files can share the
+same header/range checks, full SHA-256 verification, bounded buffering and
+cancellation semantics. `download_attachment_with_guard` retains host admission
+and temporary-file ownership through actual buffered writes and flushes after
+caller cancellation. It also refuses late delivery after cancellation or logout.
+
+The stream uses a 35-second byte-progress idle deadline, two bounded transient
+retries and one checked lease reopen after expiry/restart. Resume keeps the
+original checksum and exact metadata, so changed generations cannot be mixed.
+Recording range requests retain their existing total deadline. The native host
+still owns preview-size budgets, file sync/publication, lease cleanup and actions;
+the SDK does not publish a device copy or add attachment UI by itself.
+
+All 59 SDK tests pass, including a 9 MiB transfer at 500 ms RTT that remains on a
+single response beyond the recording request's 35-second limit. Tests also cover
+50/150 ms HTTPS, complete and empty payloads, received-byte resume, restart and
+stale-generation refusal, malformed headers, checksum mismatch, idle stalls,
+private-file cleanup and admission retained during an actual pending sink flush.
+The real service/TCP SDK test downloads complete and empty files through the
+existing authenticated API. Desktop/CLI compilation, five native playback
+regressions and scoped production core/SDK/server Clippy pass. No frontend or
+native attachment presentation is established by these tests. Linux and both
+native Windows checks are still required for this increment. Native attachment
+resources, complete image delivery, original-copy open/reveal, scoped invalidation,
+uploads and editor integration remain open.

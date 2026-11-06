@@ -1,4 +1,5 @@
 mod attachments;
+mod downloads;
 use std::{
     collections::HashMap,
     sync::{
@@ -70,6 +71,8 @@ struct Provider {
     stalled_events: AtomicBool,
     recording_mode: AtomicUsize,
     attachment_mode: AtomicUsize,
+    download_offsets: Mutex<Vec<u64>>,
+    download_opens: AtomicUsize,
     delay: AtomicUsize,
     event_connections: Mutex<Vec<Option<String>>>,
 }
@@ -110,6 +113,8 @@ impl Fixture {
             stalled_events: AtomicBool::new(false),
             recording_mode: AtomicUsize::new(0),
             attachment_mode: AtomicUsize::new(0),
+            download_offsets: Mutex::new(Vec::new()),
+            download_opens: AtomicUsize::new(0),
             delay: AtomicUsize::new(0),
             event_connections: Mutex::new(Vec::new()),
         });

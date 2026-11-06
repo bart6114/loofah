@@ -1,3 +1,5 @@
+mod download;
+
 use std::{sync::Arc, time::Duration};
 
 use hypr_loofah_protocol::{
@@ -482,6 +484,17 @@ impl RemoteClient {
         segments: &[&str],
         headers: &[(&str, &str)],
     ) -> Result<Response> {
+        self.media_request_with_timeout(method, segments, headers, Some(Duration::from_secs(35)))
+            .await
+    }
+
+    async fn media_request_with_timeout(
+        self: &Arc<Self>,
+        method: Method,
+        segments: &[&str],
+        headers: &[(&str, &str)],
+        timeout: Option<Duration>,
+    ) -> Result<Response> {
         let url = self.endpoint(segments)?;
         let access = self.access_token().await?;
         let mut request = self
@@ -490,8 +503,10 @@ impl RemoteClient {
             .bearer_auth(&access)
             .header("x-loofah-api-major", API_MAJOR.to_string())
             .header("x-request-id", uuid::Uuid::new_v4().to_string())
-            .header("accept-encoding", "identity")
-            .timeout(Duration::from_secs(35));
+            .header("accept-encoding", "identity");
+        if let Some(timeout) = timeout {
+            request = request.timeout(timeout);
+        }
         for (name, value) in headers {
             request = request.header(*name, *value);
         }

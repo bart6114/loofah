@@ -1897,6 +1897,36 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
             .code,
         ErrorCode::NotFound
     );
+    for (name, bytes) in [
+        ("full-download.bin", payload.as_slice()),
+        ("empty-download.bin", b"".as_slice()),
+    ] {
+        context
+            .store
+            .save_attachment(&created.meta.id, name, bytes.to_vec())
+            .await
+            .unwrap();
+        let lease = first
+            .open_attachment(
+                &vault_id,
+                &created.meta.id,
+                name,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let downloaded = first
+            .download_attachment(lease.clone(), Vec::new(), CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(downloaded, bytes);
+        first
+            .close_attachment(&vault_id, &lease.id, CancellationToken::new())
+            .await
+            .unwrap();
+    }
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),
         title: None,

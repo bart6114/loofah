@@ -67,6 +67,9 @@ pub(super) async fn open(
     assert_eq!(vault, "test");
     assert_eq!(session, "note");
     let mode = state.attachment_mode.load(Ordering::SeqCst);
+    if mode >= 30 {
+        return super::downloads::open(state, &id, &attachment);
+    }
     if mode == 10 {
         return Json(Value::Null).into_response();
     }
@@ -110,6 +113,9 @@ pub(super) async fn read(
     headers: HeaderMap,
 ) -> axum::response::Response {
     authenticated(&headers);
+    if state.attachment_mode.load(Ordering::SeqCst) >= 30 {
+        return super::downloads::read(state, headers).await;
+    }
     assert_eq!(headers["range"], "bytes=2-4");
     assert_eq!(headers["accept-encoding"], "identity");
     assert_eq!(
