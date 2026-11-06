@@ -99,7 +99,7 @@ impl SessionStore {
             .await
             .map_err(|e| StoreError::Io(format!("attachment file worker failed: {e}")))??;
             drop(guard);
-            store.notify_artifacts_changed(&id);
+            store.notify_attachment_changed(&id, Some(&final_filename));
             Ok(SavedAttachment {
                 relative_path: relative_dir.join(&final_filename),
                 attachment_id: final_filename,
@@ -217,6 +217,34 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
 mod tests {
     use super::super::SessionMeta;
     use super::*;
+
+    #[tokio::test]
+    async fn attachment_writes_notify_the_final_deduplicated_basename() {
+        use crate::index::{ArtifactChange, ArtifactTarget, IndexEntity};
+        let (store, _vault) = test_store().await;
+        store.write_meta(&meta("s1", "Attachments")).await.unwrap();
+        let mut changes = store.subscribe_index_changes();
+        for expected in ["report.pdf", "report 1.pdf"] {
+            let saved = store
+                .save_attachment("s1", "report.pdf", b"Complete original".to_vec())
+                .await
+                .unwrap();
+            assert_eq!(saved.attachment_id, expected);
+            let changed = changes.try_recv().unwrap();
+            assert_eq!(changed.entity, IndexEntity::Artifacts);
+            assert_eq!(changed.ids, ["s1"]);
+            assert_eq!(
+                changed.artifacts,
+                Some(vec![ArtifactChange {
+                    session_id: "s1".into(),
+                    target: ArtifactTarget::Attachment {
+                        attachment_id: expected.into()
+                    }
+                }])
+            );
+            assert!(changes.try_recv().is_err());
+        }
+    }
 
     #[tokio::test]
     async fn attachment_readers_open_only_owned_basenames_and_release_the_store_lock() {

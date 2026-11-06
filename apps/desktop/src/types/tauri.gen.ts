@@ -1619,6 +1619,12 @@ export type ApplicationError = {
   current_revision: string | null;
   mutation_outcome: MutationOutcome | null;
 };
+export type ArtifactChange = { session_id: string; target: ArtifactTarget };
+export type ArtifactTarget =
+  | { kind: "recording" }
+  | { kind: "attachments" }
+  | { kind: "attachment"; attachment_id: string }
+  | { kind: "all" };
 export type AttachmentCopyAction = "save" | "open" | "reveal";
 export type AttachmentTarget = {
   vault_id: string;
@@ -1635,7 +1641,12 @@ export type Capabilities = {
   features: string[];
 };
 export type Change =
-  | { kind: "index_changed"; entity: IndexEntity; ids: string[] }
+  | {
+      kind: "index_changed";
+      entity: IndexEntity;
+      ids: string[];
+      artifacts?: ArtifactChange[] | null;
+    }
   | { kind: "search_ready" }
   | { kind: "catalog_changed" }
   | { kind: "resync_required" }
@@ -1788,7 +1799,11 @@ export type HighlightRange = { start: number; end: number };
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
  */
-export type IndexChanged = { entity: IndexEntity; ids: string[] };
+export type IndexChanged = {
+  entity: IndexEntity;
+  ids: string[];
+  artifacts?: ArtifactChange[] | null;
+};
 /**
  * Which index map changed. Serialized as the lowercase strings the frontend matches
  * on in the `index-changed` payload.

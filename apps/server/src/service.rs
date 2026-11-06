@@ -17,6 +17,8 @@ use crate::{
 
 pub struct Service {
     #[cfg(test)]
+    pub(crate) injected_changes: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
     pub(crate) startup_pause:
         std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>,
     pub auth: Authenticator,
@@ -50,6 +52,8 @@ impl Service {
         let catalog = Catalog::open(&config.storage_root).await?;
         let auth = Authenticator::discover(&config).await?;
         let service = Arc::new(Self {
+            #[cfg(test)]
+            injected_changes: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             startup_pause: Default::default(),
             auth,
@@ -135,6 +139,10 @@ impl Service {
         let catalog = self.catalog.clone();
         #[cfg(test)]
         let pause = self.startup_pause.lock().unwrap().take();
+        #[cfg(test)]
+        let injected_changes = self
+            .injected_changes
+            .load(std::sync::atomic::Ordering::Acquire);
         // Initialization owns its lifetime; a timed-out read cannot cancel migration or release its lease.
         tokio::spawn(async move {
             let _catalog = catalog;
@@ -150,6 +158,21 @@ impl Service {
                         .map_err(ApiError::internal)?;
                     }
                     reject_symlinks(&root).await?;
+                    #[cfg(test)]
+                    if injected_changes {
+                        return VaultRuntime::open_with_changes(
+                            id,
+                            &root,
+                            &cache,
+                            &runtime,
+                            tokio::sync::mpsc::unbounded_channel().1,
+                        )
+                        .await
+                        .map_err(|cause| {
+                            tracing::error!(%cause, "vault startup failed");
+                            ApiError::new(ErrorCode::Unavailable, "Vault could not be opened")
+                        });
+                    }
                     VaultRuntime::open(id, &root, &cache, &runtime)
                         .await
                         .map_err(|cause| {

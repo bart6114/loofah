@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use super::{EnhancedDoc, PersonItem, SessionMeta, SessionStore, StoreError, TagItem, TaskItem};
 use hypr_fs_format::TranscriptWithData;
 
-pub use hypr_loofah_protocol::IndexEntity;
+pub use hypr_loofah_protocol::{ArtifactChange, ArtifactTarget, IndexEntity};
 
 /// Emitted (coalesced) to every webview as the `index-changed` event.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -39,6 +39,18 @@ pub use hypr_loofah_protocol::IndexEntity;
 pub struct IndexChanged {
     pub entity: IndexEntity,
     pub ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<Vec<ArtifactChange>>,
+}
+
+impl IndexChanged {
+    pub fn new(entity: IndexEntity, ids: Vec<String>) -> Self {
+        Self {
+            entity,
+            ids,
+            artifacts: None,
+        }
+    }
 }
 
 /// `meta` + note markdown for one session; the unit of the `sessions` map. The note
@@ -208,8 +220,8 @@ impl VaultIndex {
     }
 }
 
-pub(crate) type IndexChangeSender = tokio::sync::mpsc::UnboundedSender<(IndexEntity, Vec<String>)>;
-pub type IndexChangeReceiver = tokio::sync::mpsc::UnboundedReceiver<(IndexEntity, Vec<String>)>;
+pub(crate) type IndexChangeSender = tokio::sync::mpsc::UnboundedSender<IndexChanged>;
+pub type IndexChangeReceiver = tokio::sync::mpsc::UnboundedReceiver<IndexChanged>;
 
 // -- queries ---------------------------------------------------------------------
 
@@ -494,18 +506,49 @@ impl SessionStore {
         self.notify_index_changed(IndexEntity::Artifacts, vec![session_id.to_string()]);
     }
 
+    pub fn notify_recording_changed(&self, session_id: &str) {
+        self.notify_artifact_changed(session_id, ArtifactTarget::Recording);
+    }
+
+    pub fn notify_attachment_changed(&self, session_id: &str, attachment_id: Option<&str>) {
+        self.notify_artifact_changed(
+            session_id,
+            match attachment_id {
+                Some(id) => ArtifactTarget::Attachment {
+                    attachment_id: id.to_owned(),
+                },
+                None => ArtifactTarget::Attachments,
+            },
+        );
+    }
+
+    fn notify_artifact_changed(&self, session_id: &str, target: ArtifactTarget) {
+        self.notify_change(IndexChanged {
+            entity: IndexEntity::Artifacts,
+            ids: vec![session_id.to_owned()],
+            artifacts: Some(vec![ArtifactChange {
+                session_id: session_id.to_owned(),
+                target,
+            }]),
+        });
+    }
+
     pub(super) fn notify_index_changed(&self, entity: IndexEntity, ids: Vec<String>) {
-        if ids.is_empty() {
+        self.notify_change(IndexChanged::new(entity, ids));
+    }
+
+    fn notify_change(&self, change: IndexChanged) {
+        if change.ids.is_empty() {
             return;
         }
         self.index_change_taps
             .lock()
             .unwrap()
-            .retain(|tap| tap.send((entity, ids.clone())).is_ok());
-        let _ = self.index_changes_tx.send((entity, ids));
+            .retain(|tap| tap.send(change.clone()).is_ok());
+        let _ = self.index_changes_tx.send(change);
     }
 
-    /// Fan out a private copy of the raw change stream (the same tuples the
+    /// Fan out a private copy of the raw change stream (the same events the
     /// `index-changed` dispatcher coalesces). The Tantivy search projection is the
     /// intended consumer -- subscribe before the startup `rebuild_index` so changes
     /// found on disk while the app was closed reach the projection too.
@@ -884,11 +927,30 @@ const ENTITY_ORDER: [IndexEntity; 8] = [
 
 /// One coalesced flush: group a drained batch by entity, dedupe ids preserving
 /// first-seen order, one `IndexChanged` per entity.
-fn coalesce(batch: Vec<(IndexEntity, Vec<String>)>) -> Vec<IndexChanged> {
+fn coalesce(batch: Vec<IndexChanged>) -> Vec<IndexChanged> {
     let mut grouped: HashMap<IndexEntity, Vec<String>> = HashMap::new();
-    for (entity, ids) in batch {
-        let seen = grouped.entry(entity).or_default();
-        for id in ids {
+    let mut artifacts = Vec::new();
+    let mut seen_artifacts = HashSet::new();
+    for event in batch {
+        if event.entity == IndexEntity::Artifacts {
+            let details = event.artifacts.unwrap_or_else(|| {
+                event
+                    .ids
+                    .iter()
+                    .map(|id| ArtifactChange {
+                        session_id: id.clone(),
+                        target: ArtifactTarget::All,
+                    })
+                    .collect()
+            });
+            for detail in details {
+                if seen_artifacts.insert(detail.clone()) {
+                    artifacts.push(detail);
+                }
+            }
+        }
+        let seen = grouped.entry(event.entity).or_default();
+        for id in event.ids {
             if !seen.contains(&id) {
                 seen.push(id);
             }
@@ -897,9 +959,11 @@ fn coalesce(batch: Vec<(IndexEntity, Vec<String>)>) -> Vec<IndexChanged> {
     ENTITY_ORDER
         .into_iter()
         .filter_map(|entity| {
-            grouped
-                .remove(&entity)
-                .map(|ids| IndexChanged { entity, ids })
+            grouped.remove(&entity).map(|ids| IndexChanged {
+                entity,
+                ids,
+                artifacts: (entity == IndexEntity::Artifacts).then(|| artifacts.clone()),
+            })
         })
         .collect()
 }
@@ -1012,7 +1076,7 @@ mod tests {
             .expect("receiver taken once per test");
         let mut changes = Vec::new();
         while let Ok(change) = rx.try_recv() {
-            changes.push(change);
+            changes.push((change.entity, change.ids));
         }
         // put it back for a later drain in the same test
         *store.index_changes_rx.lock().unwrap() = Some(rx);
@@ -1693,6 +1757,51 @@ mod tests {
 
     // -- coalescing --
 
+    #[test]
+    fn artifact_coalescing_keeps_named_targets_and_scoped_legacy_fallbacks() {
+        let named = |session: &str, target| IndexChanged {
+            entity: IndexEntity::Artifacts,
+            ids: vec![session.into()],
+            artifacts: Some(vec![ArtifactChange {
+                session_id: session.into(),
+                target,
+            }]),
+        };
+        let image = ArtifactTarget::Attachment {
+            attachment_id: "a.png".into(),
+        };
+        let events = coalesce(vec![
+            named("first", ArtifactTarget::Recording),
+            named("first", image.clone()),
+            named("first", image.clone()),
+            IndexChanged::new(IndexEntity::Artifacts, vec!["second".into()]),
+            named("third", ArtifactTarget::Attachments),
+        ]);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].ids, vec!["first", "second", "third"]);
+        assert_eq!(
+            events[0].artifacts,
+            Some(vec![
+                ArtifactChange {
+                    session_id: "first".into(),
+                    target: ArtifactTarget::Recording
+                },
+                ArtifactChange {
+                    session_id: "first".into(),
+                    target: image
+                },
+                ArtifactChange {
+                    session_id: "second".into(),
+                    target: ArtifactTarget::All
+                },
+                ArtifactChange {
+                    session_id: "third".into(),
+                    target: ArtifactTarget::Attachments
+                },
+            ])
+        );
+    }
+
     #[tokio::test]
     async fn dispatcher_coalesces_a_burst_into_one_event_per_entity() {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1702,14 +1811,17 @@ mod tests {
             sink.lock().unwrap().push(event);
         }));
 
-        tx.send((IndexEntity::Sessions, vec!["s1".to_string()]))
-            .unwrap();
-        tx.send((
+        tx.send(IndexChanged::new(
+            IndexEntity::Sessions,
+            vec!["s1".to_string()],
+        ))
+        .unwrap();
+        tx.send(IndexChanged::new(
             IndexEntity::Sessions,
             vec!["s2".to_string(), "s1".to_string()],
         ))
         .unwrap();
-        tx.send((IndexEntity::Docs, vec!["s1".to_string()]))
+        tx.send(IndexChanged::new(IndexEntity::Docs, vec!["s1".to_string()]))
             .unwrap();
         drop(tx);
         handle.await.unwrap();
@@ -1721,10 +1833,12 @@ mod tests {
                 IndexChanged {
                     entity: IndexEntity::Sessions,
                     ids: vec!["s1".to_string(), "s2".to_string()],
+                    artifacts: None,
                 },
                 IndexChanged {
                     entity: IndexEntity::Docs,
                     ids: vec!["s1".to_string()],
+                    artifacts: None,
                 },
             ],
             "three sends within the window collapse to one event per entity, ids deduped"
@@ -1740,14 +1854,20 @@ mod tests {
             sink.lock().unwrap().push(event);
         }));
 
-        tx.send((IndexEntity::Sessions, vec!["s1".to_string()]))
-            .unwrap();
+        tx.send(IndexChanged::new(
+            IndexEntity::Sessions,
+            vec!["s1".to_string()],
+        ))
+        .unwrap();
         // let the first window elapse and flush before the second change arrives
         tokio::time::sleep(COALESCE_WINDOW * 5).await;
         assert_eq!(emitted.lock().unwrap().len(), 1);
 
-        tx.send((IndexEntity::Sessions, vec!["s2".to_string()]))
-            .unwrap();
+        tx.send(IndexChanged::new(
+            IndexEntity::Sessions,
+            vec!["s2".to_string()],
+        ))
+        .unwrap();
         drop(tx);
         handle.await.unwrap();
 
@@ -1765,6 +1885,7 @@ mod tests {
         let payload = serde_json::to_value(IndexChanged {
             entity: IndexEntity::Sessions,
             ids: vec!["s1".to_string()],
+            artifacts: None,
         })
         .unwrap();
         assert_eq!(

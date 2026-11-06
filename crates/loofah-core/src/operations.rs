@@ -260,8 +260,22 @@ fn io_error(cause: std::io::Error) -> ApplicationError {
 
 #[cfg(test)]
 mod tests {
+    async fn open_runtime(
+        id: String,
+        vault: &std::path::Path,
+        cache: &std::path::Path,
+        operations: &std::path::Path,
+    ) -> Result<crate::VaultRuntime, hypr_vault_write::StoreError> {
+        crate::VaultRuntime::open_with_changes(
+            id,
+            vault,
+            cache,
+            operations,
+            tokio::sync::mpsc::unbounded_channel().1,
+        )
+        .await
+    }
     use super::*;
-    use crate::VaultRuntime;
     use hypr_loofah_protocol::NoteSaveOutcome;
 
     #[tokio::test]
@@ -269,7 +283,7 @@ mod tests {
         let vault = tempfile::tempdir().unwrap();
         let runtime_root = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),
@@ -348,7 +362,7 @@ mod tests {
         let vault = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
         let operations = tempfile::tempdir().unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),
@@ -402,7 +416,7 @@ mod tests {
         let vault = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
         let operations = tempfile::tempdir().unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),
@@ -463,7 +477,7 @@ mod tests {
         let vault = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
         let operations = tempfile::tempdir().unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),
@@ -505,7 +519,7 @@ mod tests {
             .unwrap();
         assert_ne!(other.meta.id, first.meta.id);
         runtime.shutdown().await.unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),
@@ -539,7 +553,7 @@ mod tests {
         let directory = vault.path().join("sessions").join(&first.meta.id);
         std::fs::remove_file(directory.join("_meta.json")).unwrap();
         std::fs::write(directory.join("user-attachment.pdf"), "owned by user").unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),

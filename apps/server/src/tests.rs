@@ -368,6 +368,10 @@ impl Fixture {
             allow_insecure_loopback: true,
         };
         let service = Service::open(config).await.unwrap();
+        // Route fixtures isolate source delivery; native delivery has its own filesystem/HTTPS checks.
+        service
+            .injected_changes
+            .store(true, std::sync::atomic::Ordering::Release);
         let app = routes::router(service.clone());
         Self {
             _root: root,
@@ -1109,6 +1113,114 @@ async fn next_event(response: &mut reqwest::Response, buffer: &mut String) -> Ch
     .unwrap()
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn production_native_source_delivers_external_attachment_events_over_authenticated_tcp() {
+    let fixture = Fixture::new().await;
+    fixture
+        .service
+        .injected_changes
+        .store(false, std::sync::atomic::Ordering::Release);
+    let me = fixture.login("alice").await;
+    let root = fixture
+        .service
+        .config
+        .storage_root
+        .join("vaults")
+        .join(&me.personal_vault_id);
+    let seed = hypr_vault_write::SessionStore::new(root.clone());
+    let meta = serde_json::from_value(
+        json!({"id":"note","title":"Native source","created_at":"2026-11-06T19:00:00Z","tags":[]}),
+    )
+    .unwrap();
+    seed.create_note_session(&meta, "Before external edit")
+        .await
+        .unwrap();
+    seed.save_attachment("note", "image.svg", b"<svg/>".to_vec())
+        .await
+        .unwrap();
+    let directory = root.join("sessions/note");
+    std::fs::write(
+        directory.join("unknown-user.txt"),
+        b"Keep unknown attachment",
+    )
+    .unwrap();
+    let before_meta = std::fs::read(directory.join("_meta.json")).unwrap();
+    let (url, task) = fixture.tcp().await;
+    let mut stream = reqwest::Client::new()
+        .get(format!(
+            "{url}/api/v1/vaults/{}/events",
+            me.personal_vault_id
+        ))
+        .bearer_auth(fixture.token("alice"))
+        .header("x-loofah-api-major", "1")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream.status(), StatusCode::OK);
+    let mut buffer = String::new();
+    assert_eq!(
+        next_event(&mut stream, &mut buffer).await.change,
+        Change::ResyncRequired
+    );
+    let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
+    std::fs::write(
+        directory.join("attachments/image.svg"),
+        b"<svg><!--external--></svg>",
+    )
+    .unwrap();
+    std::fs::write(directory.join("notes.md"), b"After external edit").unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let event = next_event(&mut stream, &mut buffer).await;
+            assert_eq!(event.vault_id, me.personal_vault_id);
+            if let Change::IndexChanged {
+                entity: IndexEntity::Artifacts,
+                artifacts: Some(details),
+                ..
+            } = event.change
+                && details.contains(&ArtifactChange {
+                    session_id: "note".into(),
+                    target: ArtifactTarget::Attachment {
+                        attachment_id: "image.svg".into(),
+                    },
+                })
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("production source must deliver a scoped attachment notification");
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while context
+            .store
+            .session_get("note")
+            .unwrap()
+            .note_markdown
+            .as_deref()
+            != Some("After external edit")
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("production service must reconcile external canonical edits");
+    assert_eq!(
+        std::fs::read(directory.join("_meta.json")).unwrap(),
+        before_meta
+    );
+    assert_eq!(
+        std::fs::read(directory.join("unknown-user.txt")).unwrap(),
+        b"Keep unknown attachment"
+    );
+    drop(stream);
+    fixture.service.shutdown().await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
 #[tokio::test]
 async fn catalog_changes_invalidate_an_already_open_personal_vault_stream() {
     let fixture = Fixture::new().await;
@@ -1616,6 +1728,7 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
                         Change::IndexChanged {
                             entity: IndexEntity::Sessions,
                             ids,
+                            ..
                         },
                     ..
                 },

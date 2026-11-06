@@ -156,6 +156,7 @@ async fn capabilities() -> Json<Capabilities> {
             "recording_delete".into(),
             "attachment_leases".into(),
             "attachment_info".into(),
+            "artifact_details".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),

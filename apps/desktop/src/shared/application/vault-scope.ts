@@ -1,5 +1,7 @@
 import { QueryClient, hashKey, queryOptions } from "@tanstack/react-query";
 
+import { artifactInvalidation } from "./artifact-invalidation";
+import type { AttachmentResource } from "./attachments";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { ApplicationRequestError, connectionClosed } from "./errors";
 import type { PlaybackRecording } from "./playback";
@@ -23,8 +25,11 @@ export class VaultScope {
   private startPromise?: Promise<void>;
   private unsubscribe?: () => void;
   private disposed = false;
-  private readonly recordings = new Map<string, PlaybackRecording>();
-  private readonly stopRecordingCache: () => void;
+  private readonly resources = new Map<
+    string,
+    PlaybackRecording | AttachmentResource
+  >();
+  private readonly stopResourceCache: () => void;
 
   constructor(readonly client: VaultClient) {
     this.queryClient = new QueryClient({
@@ -41,14 +46,14 @@ export class VaultScope {
         },
       },
     });
-    this.stopRecordingCache = this.queryClient
+    this.stopResourceCache = this.queryClient
       .getQueryCache()
       .subscribe((event) => {
         const [prefix, scope, kind] = event.query.queryKey;
         if (
           prefix !== "vault" ||
           scope !== client.scope ||
-          kind !== "audio_resource"
+          (kind !== "audio_resource" && kind !== "attachment_resource")
         )
           return;
         if (
@@ -56,14 +61,17 @@ export class VaultScope {
           !(event.type === "updated" && event.action.type === "success")
         )
           return;
-        const previous = this.recordings.get(event.query.queryHash);
+        const previous = this.resources.get(event.query.queryHash);
         const next =
           event.type === "removed"
             ? null
-            : (event.query.state.data as PlaybackRecording | null);
+            : (event.query.state.data as
+                | PlaybackRecording
+                | AttachmentResource
+                | null);
         if (previous === next) return;
-        this.recordings.delete(event.query.queryHash);
-        if (next) this.recordings.set(event.query.queryHash, next);
+        this.resources.delete(event.query.queryHash);
+        if (next) this.resources.set(event.query.queryHash, next);
         if (previous) void previous.close().catch(() => {});
       });
   }
@@ -199,6 +207,47 @@ export class VaultScope {
       queryKey: ["vault", this.client.scope, "audio_metadata", sessionId],
       queryFn: ({ signal }) =>
         this.run(() => this.client.audioMetadata(sessionId, { signal })),
+    });
+  }
+  attachmentInfoOptions(sessionId: string, attachmentId: string) {
+    return queryOptions({
+      queryKey: [
+        "vault",
+        this.client.scope,
+        "attachment_info",
+        sessionId,
+        attachmentId,
+      ],
+      queryFn: ({ signal }) =>
+        this.run(() =>
+          this.client.attachmentInfo(sessionId, attachmentId, { signal }),
+        ),
+    });
+  }
+  attachmentOptions(sessionId: string, attachmentId: string) {
+    return queryOptions({
+      queryKey: [
+        "vault",
+        this.client.scope,
+        "attachment_resource",
+        sessionId,
+        attachmentId,
+      ],
+      gcTime: 0,
+      structuralSharing: false,
+      queryFn: ({ signal }) =>
+        this.run(async () => {
+          const attachment = await this.client.openAttachment(
+            sessionId,
+            attachmentId,
+            { signal },
+          );
+          if (signal.aborted || this.disposed) {
+            await attachment?.close().catch(() => {});
+            throw connectionClosed();
+          }
+          return attachment;
+        }),
     });
   }
   recordingOptions(sessionId: string) {
@@ -413,7 +462,7 @@ export class VaultScope {
     document.removeEventListener("visibilitychange", this.visible);
     void this.queryClient.cancelQueries();
     this.queryClient.clear();
-    this.stopRecordingCache();
+    this.stopResourceCache();
     this.snapshot = { state: "closed", error: null };
     for (const listener of this.listeners) listener();
     this.listeners.clear();
@@ -456,9 +505,10 @@ export class VaultScope {
     } else if (change.kind === "index_changed") {
       const ids = new Set(change.ids);
       const all = ids.size === 0;
+      const assetChanged = artifactInvalidation(change);
       void this.queryClient.invalidateQueries({
         predicate: (query) => {
-          const [prefix, scope, kind, id] = query.queryKey;
+          const [prefix, scope, kind, id, attachmentId] = query.queryKey;
           if (prefix !== "vault" || scope !== this.client.scope) return false;
           if (
             (change.entity === "people" || change.entity === "tags") &&
@@ -472,8 +522,18 @@ export class VaultScope {
               String(kind),
             )
           )
-            return (
-              change.entity === "artifacts" && (all || ids.has(String(id)))
+            return assetChanged("recording", String(id));
+          if (
+            [
+              "attachment_info",
+              "attachment_resource",
+              "attachment_list",
+            ].includes(String(kind))
+          )
+            return assetChanged(
+              "attachments",
+              String(id),
+              typeof attachmentId === "string" ? attachmentId : undefined,
             );
           if (kind === "tasks_snapshot")
             return (

@@ -237,7 +237,7 @@ impl SessionStore {
         // A resumed capture may already hold another reservation while this stamp
         // waits in the ordered lifecycle queue.
         self.release_recording_reservation(id);
-        self.notify_artifacts_changed(id);
+        self.notify_recording_changed(id);
 
         let mut meta = self
             .read_meta(id)

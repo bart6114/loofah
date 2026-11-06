@@ -13,10 +13,13 @@ use crate::{
     startup::{self, StartupPhase, StartupState},
 };
 
+mod watch;
+
 pub struct VaultRuntime {
     pub context: Arc<VaultContext>,
     stop: CancellationToken,
     workers: Vec<tokio::task::JoinHandle<()>>,
+    watcher: Option<watch::FileWatcher>,
 }
 
 impl VaultRuntime {
@@ -25,6 +28,34 @@ impl VaultRuntime {
         vault: &Path,
         cache_root: &Path,
         operation_root: &Path,
+    ) -> Result<Self, StoreError> {
+        Self::open_inner(id, vault, cache_root, operation_root, None).await
+    }
+
+    /// Reuse a host-owned change source when the host manages filesystem observation.
+    pub async fn open_with_changes(
+        id: String,
+        vault: &Path,
+        cache_root: &Path,
+        operation_root: &Path,
+        changes: tokio::sync::mpsc::UnboundedReceiver<String>,
+    ) -> Result<Self, StoreError> {
+        Self::open_inner(
+            id,
+            vault,
+            cache_root,
+            operation_root,
+            Some(crate::vault_watch::ChangeSource::Unbounded(changes)),
+        )
+        .await
+    }
+
+    async fn open_inner(
+        id: String,
+        vault: &Path,
+        cache_root: &Path,
+        operation_root: &Path,
+        changes: Option<crate::vault_watch::ChangeSource>,
     ) -> Result<Self, StoreError> {
         let vault = vault.to_path_buf();
         let (vault, lease) = tokio::task::spawn_blocking(move || {
@@ -53,6 +84,17 @@ impl VaultRuntime {
         .map_err(|error| StoreError::Io(error.to_string()))??;
         let store = Arc::new(SessionStore::new(vault.clone()));
         store.set_startup_pending(true);
+        let (watcher, source) = if let Some(changes) = changes {
+            (None, changes)
+        } else {
+            let watched = vault.clone();
+            let (watcher, source) = tokio::task::spawn_blocking(move || watch::start(&watched))
+                .await
+                .map_err(|error| {
+                    StoreError::Io(format!("vault watcher startup failed: {error}"))
+                })??;
+            (Some(watcher), source)
+        };
         store
             .recover_document_writes(&operation_root.join("document-saves"))
             .await?;
@@ -71,6 +113,14 @@ impl VaultRuntime {
         context.lease = Some(lease);
         let context = Arc::new(context);
         let stop = CancellationToken::new();
+        let watch_store = store.clone();
+        let watch_stop = stop.clone();
+        let watch_worker = tokio::spawn(async move {
+            tokio::select! {
+                _ = watch_stop.cancelled() => {},
+                _ = crate::vault_watch::run_source(watch_store, source) => {},
+            }
+        });
         let changes = store
             .take_index_change_receiver()
             .expect("new store owns its change receiver");
@@ -80,7 +130,7 @@ impl VaultRuntime {
             tokio::select! {
                 _ = events_stop.cancelled() => {},
                 _ = hypr_vault_write::index::run_index_change_dispatcher(changes, move |event| {
-                    events.publish(Change::IndexChanged { entity: event.entity, ids: event.ids });
+                    events.publish(Change::IndexChanged { entity: event.entity, ids: event.ids, artifacts: event.artifacts });
                 }) => {},
             }
         });
@@ -108,7 +158,8 @@ impl VaultRuntime {
         Ok(Self {
             context,
             stop,
-            workers: vec![events_worker, search_worker],
+            workers: vec![events_worker, search_worker, watch_worker],
+            watcher,
         })
     }
 
@@ -117,6 +168,10 @@ impl VaultRuntime {
         self.context.startup.set_phase(StartupPhase::Stopping);
         self.stop.cancel();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let watcher = self
+            .watcher
+            .take()
+            .map(|watcher| tokio::task::spawn_blocking(move || drop(watcher)));
         let flush = tokio::time::timeout_at(deadline, self.context.store.flush_all())
             .await
             .map_err(|_| StoreError::Io("vault flush exceeded shutdown deadline".into()))?;
@@ -129,6 +184,12 @@ impl VaultRuntime {
                 })?
                 .map_err(|error| StoreError::Io(format!("vault worker failed: {error}")))?;
         }
+        if let Some(watcher) = watcher {
+            tokio::time::timeout_at(deadline, watcher)
+                .await
+                .map_err(|_| StoreError::Io("vault watcher exceeded shutdown deadline".into()))?
+                .map_err(|error| StoreError::Io(format!("vault watcher did not stop: {error}")))?;
+        }
         self.context.startup.set_phase(StartupPhase::Stopped);
         Ok(())
     }
@@ -140,6 +201,13 @@ impl Drop for VaultRuntime {
         for worker in &self.workers {
             worker.abort();
         }
+        if let Some(watcher) = self.watcher.take() {
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn_blocking(move || drop(watcher));
+            } else {
+                drop(watcher);
+            }
+        }
     }
 }
 
@@ -149,6 +217,21 @@ fn io_error(error: std::io::Error) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    async fn open_runtime(
+        id: String,
+        vault: &std::path::Path,
+        cache: &std::path::Path,
+        operations: &std::path::Path,
+    ) -> Result<crate::VaultRuntime, hypr_vault_write::StoreError> {
+        crate::VaultRuntime::open_with_changes(
+            id,
+            vault,
+            cache,
+            operations,
+            tokio::sync::mpsc::unbounded_channel().1,
+        )
+        .await
+    }
     use super::*;
     use hypr_loofah_protocol::{NoteSaveOutcome, SaveNoteRequest};
 
@@ -215,7 +298,7 @@ mod tests {
         hypr_storage::fs::copy_dir_recursive(bookkeeping.path(), restored_runtime.path(), None)
             .await
             .unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "restored".into(),
             restored_vault.path(),
             cache.path(),
@@ -260,7 +343,7 @@ mod tests {
     async fn headless_lifecycle_exclusively_owns_vault_and_reopens_canonical_notes() {
         let vault = tempfile::tempdir().unwrap();
         let cache = tempfile::tempdir().unwrap();
-        let runtime = VaultRuntime::open(
+        let runtime = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),
@@ -270,7 +353,7 @@ mod tests {
         .unwrap();
         assert!(runtime.context.startup.is_ready());
         assert!(matches!(
-            VaultRuntime::open(
+            open_runtime(
                 "other".into(),
                 vault.path(),
                 cache.path(),
@@ -307,7 +390,7 @@ mod tests {
             hypr_loofah_protocol::ErrorCode::Unavailable
         );
         assert!(matches!(
-            VaultRuntime::open(
+            open_runtime(
                 "other".into(),
                 vault.path(),
                 cache.path(),
@@ -317,7 +400,7 @@ mod tests {
             Err(StoreError::Conflict(_))
         ));
         drop(remaining_client);
-        let reopened = VaultRuntime::open(
+        let reopened = open_runtime(
             "private".into(),
             vault.path(),
             cache.path(),

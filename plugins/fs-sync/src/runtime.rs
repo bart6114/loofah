@@ -37,7 +37,7 @@ impl<R: tauri::Runtime> AudioImportRuntime for TauriAudioImportRuntime<R> {
                 .app
                 .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()
         {
-            store.notify_artifacts_changed(session_id);
+            store.notify_recording_changed(session_id);
         }
         let _ = event.emit(&self.app);
     }

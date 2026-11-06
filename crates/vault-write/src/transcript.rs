@@ -1522,8 +1522,10 @@ mod tests {
             .unwrap();
 
         let mut saw_transcripts_change = false;
-        while let Ok((entity, ids)) = rx.try_recv() {
-            if entity == super::super::IndexEntity::Transcripts && ids.contains(&"s1".to_string()) {
+        while let Ok(change) = rx.try_recv() {
+            if change.entity == super::super::IndexEntity::Transcripts
+                && change.ids.contains(&"s1".to_string())
+            {
                 saw_transcripts_change = true;
             }
         }

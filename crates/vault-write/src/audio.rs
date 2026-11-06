@@ -120,7 +120,7 @@ impl SessionStore {
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
         if result.is_ok() {
-            self.notify_artifacts_changed(session_id);
+            self.notify_recording_changed(session_id);
         }
         result
     }
@@ -211,7 +211,7 @@ impl SessionStore {
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
         if result.is_ok() {
-            self.notify_artifacts_changed(session_id);
+            self.notify_recording_changed(session_id);
         }
         result
     }

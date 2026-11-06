@@ -7677,6 +7677,7 @@ dependencies = [
  "fs-sync-core",
  "loofah-protocol",
  "mime_guess",
+ "notify",
  "search-cache",
  "serde",
  "serde_json",

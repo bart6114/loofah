@@ -7,6 +7,10 @@ export type AgentSearchHit = { session_id: string; title: string; created_at: nu
 
 export type ApplicationError = { code: ErrorCode; message: string; request_id: string | null; retryable: boolean; current_revision: string | null; mutation_outcome: MutationOutcome | null }
 
+export type ArtifactChange = { session_id: string; target: ArtifactTarget }
+
+export type ArtifactTarget = { kind: "recording" } | { kind: "attachments" } | { kind: "attachment"; attachment_id: string } | { kind: "all" }
+
 export type AttachmentLease = { id: string; vault_id: string; session_id: string; attachment_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
 /**
@@ -16,7 +20,7 @@ export type AudioPeaks = { durationSec: number; channels: number[][] }
 
 export type Capabilities = { api_major: number; application_version: string; features: string[] }
 
-export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[] } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
+export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
 
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change }
 

@@ -4,6 +4,11 @@ import {
   scopedAttachmentPresentation,
 } from "@hypr/editor/attachment-presentation";
 
+import {
+  openLocalAttachment,
+  openRemoteAttachment,
+  type AttachmentResource,
+} from "./attachments";
 import { applicationResult, ApplicationRequestError } from "./errors";
 import {
   openLocalRecording,
@@ -75,6 +80,11 @@ export type VaultClient = {
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
+  openAttachment: (
+    sessionId: string,
+    attachmentId: string,
+    options?: RequestOptions,
+  ) => Promise<AttachmentResource | null>;
   noteWriteQueueKey?: (sessionId: string) => string;
   deleteRecording: (
     sessionId: string,
@@ -236,6 +246,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "note_editor_write",
       "audio_metadata_read",
       "attachment_info",
+      "artifact_details",
       "search",
       "content_read",
       "document_edit",
@@ -244,6 +255,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "agent_read",
     ],
     openRecording: openLocalRecording,
+    openAttachment: openLocalAttachment,
     deleteRecording: (sessionId, input, options) =>
       ipc(
         () => commands.applicationDeleteRecording(sessionId, input),
@@ -371,6 +383,14 @@ export function connectRemoteVault(
       ),
     openRecording: (sessionId, options) =>
       openRemoteRecording(connection, vaultId, sessionId, options),
+    openAttachment: (sessionId, attachmentId, options) =>
+      openRemoteAttachment(
+        connection,
+        vaultId,
+        sessionId,
+        attachmentId,
+        options,
+      ),
     readMetadata: (sessionId, options) =>
       connection.request(
         { kind: "metadata", vault_id: vaultId, session_id: sessionId },

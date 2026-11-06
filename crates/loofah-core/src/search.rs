@@ -92,18 +92,18 @@ impl SearchService {
             let full = tokio::select! {
                 _ = stop.cancelled() => return,
                 change = changes.recv() => match change {
-                    Some((entity, ids)) => {
-                        if affects_sessions(entity) { pending.extend(ids); }
-                        else if entity != IndexEntity::Tags { continue; }
+                    Some(change) => {
+                        if affects_sessions(change.entity) { pending.extend(change.ids); }
+                        else if change.entity != IndexEntity::Tags { continue; }
                         false
                     },
                     None => return,
                 },
                 _ = tokio::time::sleep(Duration::from_secs(5)) => true,
             };
-            while let Ok((entity, ids)) = changes.try_recv() {
-                if affects_sessions(entity) {
-                    pending.extend(ids);
+            while let Ok(change) = changes.try_recv() {
+                if affects_sessions(change.entity) {
+                    pending.extend(change.ids);
                 }
             }
             let ids = (!full).then(|| pending.iter().cloned().collect());

@@ -339,6 +339,7 @@ async fn events(
         Change::IndexChanged {
             entity: IndexEntity::Sessions,
             ids: vec!["note".into()],
+            artifacts: None,
         }
     };
     let event = ChangeEvent {

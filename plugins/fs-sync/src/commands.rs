@@ -214,7 +214,7 @@ pub(crate) async fn audio_delete<R: tauri::Runtime>(
             .clear_audio_metadata(&session_id)
             .await
             .map_err(|e| e.to_string())?;
-        store.notify_artifacts_changed(&session_id);
+        store.notify_recording_changed(&session_id);
     }
     Ok(deleted)
 }

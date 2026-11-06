@@ -1263,6 +1263,14 @@ msgstr ""
 msgid "Open {0} settings"
 msgstr ""
 
+#: src/shared/application/attachments.ts
+msgid "Open downloaded copy"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Open file"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Open floating panel"
 msgstr ""
@@ -1609,6 +1617,10 @@ msgstr ""
 msgid "Save my version"
 msgstr ""
 
+#: src/shared/application/attachments.ts
+msgid "Save original copy"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
@@ -1746,6 +1758,14 @@ msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show app in taskbar"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Show downloaded copy"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Show file"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx

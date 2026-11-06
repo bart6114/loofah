@@ -1695,3 +1695,83 @@ The first native run caught Tauri's encoded path separator; the handler and its
 regression now accept that exact URI grammar without general path decoding.
 This is host-operation validation in a disposable harness, not completed editor
 integration, production performance, remote capture or Windows WebView2 acceptance.
+
+### Scoped artifact events and shared attachment resources
+
+`index_changed` now carries optional `artifacts` details for recordings, whole
+attachment directories, exact attachment basenames and broad session media changes.
+The existing entity/session IDs stay compatible. The shared store coalesces and
+deduplicates these details; the event hub bounds their serialized size and retains
+scoped invalidation when details are dropped. Unknown future targets deserialize
+to a safe broad refresh. Both IPC and HTTPS publish the same data. The server
+advertises `artifact_details` without changing API major 1.
+
+The shared watcher identifies individual owned attachment files and recording
+files, ignores hidden/unknown/nested content, and keeps attachment notifications
+working during active capture. Session-directory changes preserve a broad media
+fallback. Local attachment save/import/remove, recording finalization/import and
+the shared attachment writer now emit the appropriate targets. Named attachment
+changes cannot invalidate recording resources or other files in the same note;
+recording-only events cannot trigger attachment re-fetches.
+
+`VaultClient.openAttachment`, in `shared/application/attachments.ts`, now supplies
+a common resource with descriptive info, an approved preview URL, actions and an
+explicit close. The local adapter retains ordinary device URLs and open/reveal;
+the remote adapter uses cheap metadata/native handles and explicit downloaded-copy
+actions, with no device/server path in its result. Large/non-image resources still
+have original-copy actions. Action labels are localized descriptors provided by
+the client. No runtime URL is written into a note.
+
+`VaultScope` shares attachment resources across duplicate references and owns
+replacement, last-observer removal, access-loss and disposal cleanup. A resource
+returned after cancellation is closed before caching. Its query invalidation uses
+the exact artifact details and accepts older events through the broad fallback.
+The asynchronous editor provider, image/file action feedback, attachment panel,
+uploads and all wider unfinished plan gates remain open; this checkpoint does not
+claim that the editor is already displaying these resources.
+
+Real filesystem/HTTPS validation exposed that the headless runtime did not start a
+watcher: the shared reconciliation code had only been connected by the desktop
+host. The headless runtime now starts a portable `notify` source before vault
+initialization and feeds that same code. A 256-path input queue and 1,024-path
+batch budget fall back to a full shallow rescan on overflow/errors; busy input has
+a fixed two-second batch bound. Watch creation failure prevents vault opening.
+Native tests cover actual external attachment delivery, note projection refresh,
+overflow wakeup and refusal to ingest changes after shutdown.
+
+Parallel macOS tests exposed `FSEventStreamStop` blocked in `f2d_unregister_rpc`.
+Canonical flush and worker shutdown now complete independently of macOS native
+watch deallocation; cleanup holds no SessionStore or vault lifetime lock. Linux and Windows keep
+awaited native cleanup. This does not change the existing desktop watch plugin.
+The initial production server remains Linux, with native portability, service
+load and the broader lifecycle acceptance gates still open.
+
+This checkpoint passes 109 core tests, 338 storage tests (one ignored), three
+protocol tests, 59 SDK tests and 42 server tests. The native desktop suite passes
+61 tests (one ignored) plus four fs-sync plugin tests; all 1,777 desktop frontend
+tests pass. Desktop/CLI compilation, generated-contract drift, desktop typecheck,
+production frontend build, repository formatting and scoped production
+core/SDK/server Clippy pass. The headless production dependency tree contains no
+Tauri, webview or device-capture stack. Core/HTTP fixtures can inject a change
+channel; real filesystem and HTTPS acceptance use the production native source.
+
+The final executable passed trusted HTTPS notification checks at 50/150/500 ms
+RTT. Owned attachment edits delivered exact file IDs after the two-second batch
+window; reconnect replay retained recording targets, and restart required resync.
+Canonical note, metadata and task hashes and all 145 preexisting fixture files were
+unchanged. Evidence:
+`/Volumes/T7/loofah-backend-build/remote-ui-qa/artifact-events-evidence.json`.
+Its recorded executable SHA-256 was checked unchanged across the run/restart.
+This does not establish editor mounting, native Windows watcher/WebView behavior,
+production performance or the remaining full recording/job/lifecycle gates.
+
+All hosted CI has also completed successfully for attachment SDK commit
+`78dafb748`, including Windows x64 and ARM64 tests/installers. The native-resource
+commit and this scoped-resource/watcher increment require their own hosted checks.
+The work remains draft and the full plan objective remains incomplete.
+
+A repository TCP regression also enables the production native source in the
+service, observes scoped attachment notifications over an authenticated stream,
+and verifies an external note reaches the in-memory projection. It preserves
+metadata and an unknown attachment. This keeps native service wiring covered
+alongside the injected-source route fixtures.

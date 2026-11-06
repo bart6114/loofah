@@ -338,6 +338,8 @@ pub enum Change {
     IndexChanged {
         entity: IndexEntity,
         ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        artifacts: Option<Vec<ArtifactChange>>,
     },
     SearchReady,
     CatalogChanged,
@@ -347,6 +349,24 @@ pub enum Change {
     },
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+pub struct ArtifactChange {
+    pub session_id: String,
+    pub target: ArtifactTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArtifactTarget {
+    Recording,
+    Attachments,
+    Attachment {
+        attachment_id: String,
+    },
+    #[serde(other)]
+    All,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -416,6 +436,20 @@ pub enum NoteSaveOutcome {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn artifact_details_are_additive_and_unknown_targets_refresh_safely() {
+        let legacy = json!({"kind":"index_changed","entity":"artifacts","ids":["note"]});
+        let event: Change = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(serde_json::to_value(event).unwrap(), legacy);
+        let current = json!({"kind":"index_changed","entity":"artifacts","ids":["note"],
+            "artifacts":[{"session_id":"note","target":{"kind":"attachment","attachment_id":"chart ü.png"}}]});
+        let event: Change = serde_json::from_value(current.clone()).unwrap();
+        assert_eq!(serde_json::to_value(event).unwrap(), current);
+        let target: ArtifactTarget =
+            serde_json::from_value(json!({"kind":"future_asset","future_id":"opaque"})).unwrap();
+        assert_eq!(target, ArtifactTarget::All);
+    }
 
     #[test]
     fn additive_request_fields_are_accepted_but_expected_revision_is_required() {

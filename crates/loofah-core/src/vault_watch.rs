@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use hypr_vault_write::SessionStore;
@@ -69,10 +70,23 @@ pub fn classify_event(relative: &str, journal_match: bool) -> WatchAction {
         return match session_id {
             Some(id) => {
                 let artifact = relative.split(['/', '\\']).nth(2);
-                if artifact.is_some_and(|name| {
-                    !hypr_vault_read::is_session_owned_name(name)
-                        || hypr_vault_read::SESSION_TRANSIENT_FILES.contains(&name)
-                }) {
+                let mut components = relative.split('/');
+                let attachment = if artifact == Some("attachments") {
+                    components.nth(3)
+                } else {
+                    None
+                };
+                let invalid_attachment = artifact == Some("attachments")
+                    && (components.next().is_some()
+                        || attachment.is_some_and(|name| {
+                            hypr_vault_read::paths::validate_attachment_basename(name).is_err()
+                        }));
+                if invalid_attachment
+                    || artifact.is_some_and(|name| {
+                        !hypr_vault_read::is_session_owned_name(name)
+                            || hypr_vault_read::SESSION_TRANSIENT_FILES.contains(&name)
+                    })
+                {
                     WatchAction::Ignore
                 } else {
                     WatchAction::Refresh(id.to_string())
@@ -188,13 +202,18 @@ async fn ids_to_refresh(store: &SessionStore, changed: &HashSet<String>) -> Refr
         match classify_event(relative, journal_match) {
             WatchAction::Refresh(id) => {
                 let artifact = relative.split(['/', '\\']).nth(2);
-                if artifact.is_some_and(|name| {
-                    name == "attachments" || name == "audio" || name.starts_with("audio.")
-                }) {
+                if artifact == Some("attachments") {
+                    let attachment = relative.split(['/', '\\']).nth(3);
+                    store.notify_attachment_changed(&id, attachment);
+                } else if artifact.is_some_and(|name| name == "audio" || name.starts_with("audio."))
+                {
                     if !store.is_recording(&id) {
-                        store.notify_artifacts_changed(&id);
+                        store.notify_recording_changed(&id);
                     }
                 } else {
+                    if artifact.is_none() {
+                        store.notify_artifacts_changed(&id);
+                    }
                     plan.session_ids.insert(id);
                 }
             }
@@ -269,20 +288,70 @@ async fn handle_batch(store: &SessionStore, changed: &HashSet<String>) {
     }
 }
 
+pub(crate) enum ChangeSource {
+    Unbounded(tokio::sync::mpsc::UnboundedReceiver<String>),
+    Bounded {
+        paths: tokio::sync::mpsc::Receiver<String>,
+        overflow: Arc<AtomicBool>,
+        wake: Arc<tokio::sync::Notify>,
+    },
+}
+
+impl ChangeSource {
+    async fn recv(&mut self) -> Option<String> {
+        match self {
+            Self::Unbounded(paths) => paths.recv().await,
+            Self::Bounded {
+                paths,
+                overflow,
+                wake,
+            } => loop {
+                if overflow.swap(false, Ordering::AcqRel) {
+                    return Some("sessions".into());
+                }
+                tokio::select! {
+                    path = paths.recv() => return path,
+                    _ = wake.notified() => {},
+                }
+            },
+        }
+    }
+}
+
 pub async fn run(
     store: Arc<SessionStore>,
-    mut changed_paths: tokio::sync::mpsc::UnboundedReceiver<String>,
+    changed_paths: tokio::sync::mpsc::UnboundedReceiver<String>,
 ) {
+    run_source(store, ChangeSource::Unbounded(changed_paths)).await;
+}
+
+pub(crate) async fn run_source(store: Arc<SessionStore>, mut changed_paths: ChangeSource) {
     loop {
         let Some(first) = changed_paths.recv().await else {
             break;
         };
         let mut changed = HashSet::from([first]);
+        let deadline = tokio::time::Instant::now() + COALESCE_WINDOW;
+        let bounded = matches!(&changed_paths, ChangeSource::Bounded { .. });
 
         loop {
-            match tokio::time::timeout(COALESCE_WINDOW, changed_paths.recv()).await {
+            if bounded && tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            let wait = if bounded {
+                deadline.saturating_duration_since(tokio::time::Instant::now())
+            } else {
+                COALESCE_WINDOW
+            };
+            match tokio::time::timeout(wait, changed_paths.recv()).await {
                 Ok(Some(path)) => {
-                    changed.insert(path);
+                    if !bounded || !changed.contains("sessions") {
+                        changed.insert(path);
+                    }
+                    if bounded && changed.len() > 1024 {
+                        changed.clear();
+                        changed.insert("sessions".into());
+                    }
                 }
                 Ok(None) => break,
                 Err(_elapsed) => break,
@@ -297,6 +366,122 @@ pub async fn run(
 mod tests {
     use super::*;
     use hypr_vault_write::SessionMeta;
+
+    #[tokio::test]
+    async fn bounded_sources_flush_during_a_continuous_burst_instead_of_waiting_forever_for_quiet()
+    {
+        let (store, vault) = test_store().await;
+        store
+            .create_note_session(&meta("s1", "Busy source"), "Before")
+            .await
+            .unwrap();
+        std::fs::write(
+            vault.path().join("sessions/s1/notes.md"),
+            "Externally updated note",
+        )
+        .unwrap();
+        let store = Arc::new(store);
+        let (tx, paths) = tokio::sync::mpsc::channel(256);
+        let source = ChangeSource::Bounded {
+            paths,
+            overflow: Arc::new(AtomicBool::new(false)),
+            wake: Arc::new(tokio::sync::Notify::new()),
+        };
+        let watcher = tokio::spawn(run_source(store.clone(), source));
+        let producer = tokio::spawn(async move {
+            for _ in 0..300 {
+                if tx.send("sessions/s1/notes.md".into()).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                if store.session_get("s1").unwrap().note_markdown.as_deref()
+                    == Some("Externally updated note")
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("a continuous source must refresh before its six-second burst ends");
+        assert!(!producer.is_finished());
+        producer.abort();
+        watcher.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn oversized_bounded_batches_rescan_owned_content_and_keep_unknown_files() {
+        let (store, vault) = test_store().await;
+        store.write_meta(&meta("s1", "Preserved")).await.unwrap();
+        let unknown = vault.path().join("sessions/s1/unknown-user.txt");
+        std::fs::write(&unknown, b"Do not enumerate as content").unwrap();
+        let mut changes = store.subscribe_index_changes();
+        let store = Arc::new(store);
+        let (tx, paths) = tokio::sync::mpsc::channel(256);
+        let source = ChangeSource::Bounded {
+            paths,
+            overflow: Arc::new(AtomicBool::new(false)),
+            wake: Arc::new(tokio::sync::Notify::new()),
+        };
+        let watcher = tokio::spawn(run_source(store.clone(), source));
+        for n in 0..1100 {
+            tx.send(format!("sessions/unindexed{n}/notes.md"))
+                .await
+                .unwrap();
+        }
+        drop(tx);
+        watcher.await.unwrap();
+        let mut rescanned = false;
+        while let Ok(event) = changes.try_recv() {
+            rescanned |=
+                event.entity == hypr_vault_write::IndexEntity::Artifacts && event.ids == ["s1"];
+        }
+        assert!(
+            rescanned,
+            "overflow must rescan instead of retaining an unbounded path set"
+        );
+        assert_eq!(
+            std::fs::read(unknown).unwrap(),
+            b"Do not enumerate as content"
+        );
+        assert!(store.session_get("s1").is_some());
+    }
+
+    #[tokio::test]
+    async fn bounded_source_overflow_and_watch_errors_wake_a_full_rescan_without_losing_queued_paths()
+     {
+        let (tx, paths) = tokio::sync::mpsc::channel(1);
+        let overflow = Arc::new(AtomicBool::new(false));
+        let wake = Arc::new(tokio::sync::Notify::new());
+        let mut source = ChangeSource::Bounded {
+            paths,
+            overflow: overflow.clone(),
+            wake: wake.clone(),
+        };
+        tx.try_send("sessions/note/notes.md".into()).unwrap();
+        overflow.store(true, Ordering::Release);
+        wake.notify_one();
+        assert_eq!(source.recv().await.as_deref(), Some("sessions"));
+        assert_eq!(
+            source.recv().await.as_deref(),
+            Some("sessions/note/notes.md")
+        );
+        let waiting = tokio::spawn(async move { source.recv().await });
+        overflow.store(true, Ordering::Release);
+        wake.notify_one();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), waiting)
+                .await
+                .unwrap()
+                .unwrap()
+                .as_deref(),
+            Some("sessions")
+        );
+    }
 
     // -- the four brief-mandated routing tests --
 
@@ -820,17 +1005,84 @@ mod tests {
             "sessions/s1/audio.wav",
             "sessions/s1/audio.peaks.json",
             "sessions/s1/attachments/image.png",
+            "sessions\\s1\\attachments\\image.png",
         ] {
             let plan = ids_to_refresh(&store, &HashSet::from([path.to_string()])).await;
             assert!(plan.session_ids.is_empty());
             assert!(!plan.rebuild_sessions);
+            let event = changes.try_recv().unwrap();
+            assert_eq!(event.entity, hypr_vault_write::IndexEntity::Artifacts);
+            assert_eq!(event.ids, vec!["s1".to_string()]);
+            let target = if path.contains("attachments") {
+                hypr_loofah_protocol::ArtifactTarget::Attachment {
+                    attachment_id: "image.png".into(),
+                }
+            } else {
+                hypr_loofah_protocol::ArtifactTarget::Recording
+            };
             assert_eq!(
-                changes.try_recv().unwrap(),
-                (
-                    hypr_vault_write::IndexEntity::Artifacts,
-                    vec!["s1".to_string()]
-                )
+                event.artifacts.unwrap(),
+                vec![hypr_loofah_protocol::ArtifactChange {
+                    session_id: "s1".into(),
+                    target
+                }]
             );
         }
+    }
+
+    #[tokio::test]
+    async fn attachment_edits_during_capture_are_not_suppressed_or_treated_as_audio() {
+        use hypr_loofah_protocol::{ArtifactChange, ArtifactTarget};
+        let (store, _vault) = test_store().await;
+        store.write_meta(&meta("s1", "Recording")).await.unwrap();
+        store.prepare_recording("s1").await.unwrap();
+        let mut changes = store.subscribe_index_changes();
+        assert!(store.is_recording("s1"));
+        let paths = HashSet::from([
+            "sessions/s1/audio.wav".to_owned(),
+            "sessions/s1/attachments/image.png".to_owned(),
+        ]);
+        let plan = ids_to_refresh(&store, &paths).await;
+        assert!(plan.session_ids.is_empty());
+        assert_eq!(
+            changes.try_recv().unwrap().artifacts,
+            Some(vec![ArtifactChange {
+                session_id: "s1".into(),
+                target: ArtifactTarget::Attachment {
+                    attachment_id: "image.png".into()
+                },
+            }])
+        );
+        assert!(changes.try_recv().is_err());
+        let plan = ids_to_refresh(&store, &HashSet::from(["sessions/s1/attachments".into()])).await;
+        assert!(plan.session_ids.is_empty());
+        assert_eq!(
+            changes.try_recv().unwrap().artifacts,
+            Some(vec![ArtifactChange {
+                session_id: "s1".into(),
+                target: ArtifactTarget::Attachments,
+            }])
+        );
+        for path in [
+            "sessions/s1/unknown.png",
+            "sessions/s1/attachments/.private",
+            "sessions/s1/attachments/nested/file.png",
+            "sessions/s1/attachments/../private.png",
+        ] {
+            assert_eq!(classify_event(path, false), WatchAction::Ignore);
+        }
+        assert!(changes.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_directory_events_refresh_unknown_media_generations_without_loading_bytes() {
+        let (store, _vault) = test_store().await;
+        let mut changes = store.subscribe_index_changes();
+        let plan = ids_to_refresh(&store, &HashSet::from(["sessions/s1".into()])).await;
+        assert_eq!(plan.session_ids, HashSet::from(["s1".into()]));
+        let changed = changes.try_recv().unwrap();
+        assert_eq!(changed.entity, hypr_vault_write::IndexEntity::Artifacts);
+        assert_eq!(changed.ids, ["s1"]);
+        assert_eq!(changed.artifacts, None);
     }
 }

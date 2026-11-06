@@ -1,6 +1,7 @@
 import { QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
+import type { AttachmentResource } from "./attachments";
 import { ApplicationRequestError } from "./errors";
 import type { PlaybackRecording } from "./playback";
 import type { NoteEditorSnapshot, NoteSnapshot } from "./protocol.gen";
@@ -19,6 +20,7 @@ function fixture(scope: string) {
       .mockResolvedValue({ markdown: scope, title: "Title", revision: scope }),
     readNoteEditor: vi.fn(),
     openRecording: vi.fn(),
+    openAttachment: vi.fn(),
     session: vi.fn(),
     sessions: vi.fn(),
     search: vi.fn(),
@@ -31,6 +33,7 @@ function fixture(scope: string) {
     readNote: ReturnType<typeof vi.fn>;
     readNoteEditor: ReturnType<typeof vi.fn>;
     openRecording: ReturnType<typeof vi.fn>;
+    openAttachment: ReturnType<typeof vi.fn>;
   };
   const active = new VaultScope(backend);
   return {
@@ -56,6 +59,232 @@ function watchCacheCleanup(scope: VaultScope) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("shares attachment handles across duplicate references and closes them on replacement and last-observer removal", async () => {
+    const { active, backend, emit } = fixture("scope");
+    await active.start();
+    const resource = (id: string): AttachmentResource => ({
+      id,
+      info: { filename: "a.png", contentType: "image/png", sizeBytes: 42 },
+      src: `media:${id}`,
+      labels: { open: { id: "open" }, reveal: { id: "reveal" } },
+      open: vi.fn(),
+      reveal: vi.fn(),
+      close: vi.fn().mockResolvedValue(undefined),
+    });
+    const first = resource("one"),
+      second = resource("two"),
+      other = resource("other");
+    backend.openAttachment
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second)
+      .mockResolvedValueOnce(other);
+    const options = active.attachmentOptions("note", "a.png");
+    const observer = new QueryObserver(active.queryClient, options);
+    const duplicate = new QueryObserver(active.queryClient, options);
+    const stop = observer.subscribe(() => {});
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toBe(first),
+    );
+    const stopDuplicate = duplicate.subscribe(() => {});
+    expect(duplicate.getCurrentResult().data).toBe(first);
+    expect(backend.openAttachment).toHaveBeenCalledTimes(1);
+    stop();
+    expect(first.close).not.toHaveBeenCalled();
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "artifacts",
+        ids: ["note"],
+        artifacts: [{ session_id: "note", target: { kind: "recording" } }],
+      },
+    });
+    expect(backend.openAttachment).toHaveBeenCalledTimes(1);
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "artifacts",
+        ids: ["note"],
+        artifacts: [
+          {
+            session_id: "note",
+            target: { kind: "attachment", attachment_id: "a.png" },
+          },
+        ],
+      },
+    });
+    await vi.waitFor(() =>
+      expect(duplicate.getCurrentResult().data).toBe(second),
+    );
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(second.close).not.toHaveBeenCalled();
+    stopDuplicate();
+    await vi.waitFor(() => expect(second.close).toHaveBeenCalledOnce());
+    await active.queryClient.fetchQuery(
+      active.attachmentOptions("other", "a.png"),
+    );
+    emit({ kind: "connection", state: "access_denied", error: null });
+    expect(other.close).toHaveBeenCalledOnce();
+    active.dispose();
+    expect(other.close).toHaveBeenCalledOnce();
+  });
+
+  it("closes attachment handles that arrive after cancellation or scope disposal", async () => {
+    for (const dispose of [false, true]) {
+      const { active, backend } = fixture(`scope:${dispose}`);
+      let finish!: (resource: AttachmentResource) => void;
+      backend.openAttachment.mockReturnValue(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const options = active.attachmentOptions("note", "a.png");
+      const opening = active.queryClient.fetchQuery(options);
+      const rejected = expect(opening).rejects.toThrow();
+      if (dispose) active.dispose();
+      else
+        await active.queryClient.cancelQueries({ queryKey: options.queryKey });
+      const close = vi.fn().mockResolvedValue(undefined);
+      finish({
+        id: "late",
+        info: { filename: "a.png", contentType: "image/png", sizeBytes: 42 },
+        labels: { open: { id: "open" }, reveal: { id: "reveal" } },
+        open: vi.fn(),
+        reveal: vi.fn(),
+        close,
+      });
+      await rejected;
+      await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+      expect(active.queryClient.getQueryData(options.queryKey)).toBeUndefined();
+      active.dispose();
+    }
+  });
+
+  it("invalidates only the named media resource and keeps legacy broad events safe", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const keys = {
+      audio: ["vault", "scope", "audio_resource", "first"],
+      otherAudio: ["vault", "scope", "audio_resource", "second"],
+      image: ["vault", "scope", "attachment_resource", "first", "a.png"],
+      otherImage: ["vault", "scope", "attachment_resource", "first", "b.png"],
+      info: ["vault", "scope", "attachment_info", "first", "a.png"],
+      list: ["vault", "scope", "attachment_list", "first"],
+      otherNoteImage: [
+        "vault",
+        "scope",
+        "attachment_resource",
+        "second",
+        "a.png",
+      ],
+      foreign: ["vault", "other", "attachment_resource", "first", "a.png"],
+      note: ["vault", "scope", "note", "first"],
+    };
+    const reset = () => {
+      for (const key of Object.values(keys))
+        active.queryClient.setQueryData(key, null);
+    };
+    const invalidated = () =>
+      Object.entries(keys)
+        .filter(
+          ([, key]) => active.queryClient.getQueryState(key)?.isInvalidated,
+        )
+        .map(([name]) => name);
+    reset();
+    for (let i = 0; i < 100; i++)
+      emit({
+        kind: "change",
+        change: {
+          kind: "index_changed",
+          entity: "artifacts",
+          ids: ["first"],
+          artifacts: [{ session_id: "first", target: { kind: "recording" } }],
+        },
+      });
+    expect(invalidated()).toEqual(["audio"]);
+    reset();
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "artifacts",
+        ids: ["first"],
+        artifacts: [
+          {
+            session_id: "first",
+            target: { kind: "attachment", attachment_id: "a.png" },
+          },
+        ],
+      },
+    });
+    expect(invalidated()).toEqual(["image", "info", "list"]);
+    reset();
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "artifacts",
+        ids: ["first", "second"],
+        artifacts: [
+          { session_id: "first", target: { kind: "attachments" } },
+          { session_id: "second", target: { kind: "recording" } },
+        ],
+      },
+    });
+    expect(invalidated()).toEqual([
+      "otherAudio",
+      "image",
+      "otherImage",
+      "info",
+      "list",
+    ]);
+    reset();
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "artifacts",
+        ids: ["first"],
+        artifacts: [{ session_id: "first", target: { kind: "all" } }],
+      },
+    });
+    expect(invalidated()).toEqual([
+      "audio",
+      "image",
+      "otherImage",
+      "info",
+      "list",
+    ]);
+    reset();
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "artifacts", ids: ["first"] },
+    });
+    expect(invalidated()).toEqual([
+      "audio",
+      "image",
+      "otherImage",
+      "info",
+      "list",
+    ]);
+    reset();
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "artifacts", ids: [] },
+    });
+    expect(invalidated()).toEqual([
+      "audio",
+      "otherAudio",
+      "image",
+      "otherImage",
+      "info",
+      "list",
+      "otherNoteImage",
+    ]);
+    active.dispose();
+  });
+
   it("does not reopen recordings for note, title or task edits, and scopes artifact invalidation", async () => {
     const { active, emit } = fixture("scope");
     await active.start();

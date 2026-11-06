@@ -41,12 +41,23 @@ impl EventHub {
 
     pub fn publish(&self, change: Change) -> ChangeEvent {
         let change = match change {
-            Change::IndexChanged { entity, ids }
-                if ids.len() > 256 || ids.iter().map(String::len).sum::<usize>() > 32 * 1024 =>
-            {
+            Change::IndexChanged {
+                entity,
+                mut ids,
+                mut artifacts,
+            } => {
+                if ids.len() > 256 || ids.iter().map(String::len).sum::<usize>() > 32 * 1024 {
+                    ids.clear();
+                    artifacts = None;
+                } else if artifacts.as_ref().is_some_and(|details| {
+                    serde_json::to_vec(details).map_or(true, |bytes| bytes.len() > 32 * 1024)
+                }) {
+                    artifacts = None;
+                }
                 Change::IndexChanged {
                     entity,
-                    ids: Vec::new(),
+                    ids,
+                    artifacts,
                 }
             }
             change => change,
@@ -147,18 +158,62 @@ impl Subscription {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn detail_budget_falls_back_to_scoped_invalidation_and_replays_small_details() {
+        use hypr_loofah_protocol::{ArtifactChange, ArtifactTarget, IndexEntity};
+        let hub = EventHub::new("vault".into(), 4);
+        let cursor = hub.publish(Change::SearchReady).cursor;
+        let small = Change::IndexChanged {
+            entity: IndexEntity::Artifacts,
+            ids: vec!["first".into()],
+            artifacts: Some(vec![ArtifactChange {
+                session_id: "first".into(),
+                target: ArtifactTarget::Attachment {
+                    attachment_id: "image.png".into(),
+                },
+            }]),
+        };
+        hub.publish(small.clone());
+        let mut replay = hub.subscribe(Some(&cursor));
+        assert_eq!(replay.recv().await.unwrap().change, small);
+        let overflow = hub.publish(Change::IndexChanged {
+            entity: IndexEntity::Artifacts,
+            ids: vec!["first".into(), "second".into()],
+            artifacts: Some(
+                (0..500)
+                    .map(|i| ArtifactChange {
+                        session_id: "first".into(),
+                        target: ArtifactTarget::Attachment {
+                            attachment_id: format!("{}-{i}.png", "a".repeat(200)),
+                        },
+                    })
+                    .collect(),
+            ),
+        });
+        assert_eq!(
+            overflow.change,
+            Change::IndexChanged {
+                entity: IndexEntity::Artifacts,
+                ids: vec!["first".into(), "second".into()],
+                artifacts: None
+            }
+        );
+    }
+
     #[test]
     fn bulk_invalidations_are_bounded_without_losing_the_changed_entity() {
         let hub = EventHub::new("vault".into(), 4);
         let event = hub.publish(Change::IndexChanged {
             entity: hypr_loofah_protocol::IndexEntity::Sessions,
             ids: (0..1000).map(|id| id.to_string()).collect(),
+            artifacts: None,
         });
         assert_eq!(
             event.change,
             Change::IndexChanged {
                 entity: hypr_loofah_protocol::IndexEntity::Sessions,
                 ids: vec![],
+                artifacts: None,
             }
         );
     }

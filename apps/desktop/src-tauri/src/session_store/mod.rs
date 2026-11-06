@@ -37,6 +37,7 @@ pub fn spawn_dispatcher(app: tauri::AppHandle) {
                 hypr_loofah_protocol::Change::IndexChanged {
                     entity: event.entity,
                     ids: event.ids.clone(),
+                    artifacts: event.artifacts.clone(),
                 },
             );
             if let Err(error) = event.emit(&app) {

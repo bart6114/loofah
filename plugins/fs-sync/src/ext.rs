@@ -23,14 +23,14 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> FsSync<'a, R, M> {
         Ok(hypr_fs_sync_core::FsSyncCore::new(base_dir))
     }
 
-    fn notify_artifacts_changed(&self, id: &str) {
+    fn notify_attachment_changed(&self, id: &str, attachment: &str) {
         use tauri::Manager;
         if let Some(store) = self
             .manager
             .app_handle()
             .try_state::<std::sync::Arc<hypr_vault_write::SessionStore>>()
         {
-            store.notify_artifacts_changed(id);
+            store.notify_attachment_changed(id, Some(attachment));
         }
     }
 
@@ -41,7 +41,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> FsSync<'a, R, M> {
         filename: &str,
     ) -> Result<crate::AttachmentSaveResult, crate::Error> {
         let result = self.core()?.attachment_save(session_id, data, filename)?;
-        self.notify_artifacts_changed(session_id);
+        self.notify_attachment_changed(session_id, &result.attachment_id);
         Ok(result)
     }
 
@@ -53,7 +53,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> FsSync<'a, R, M> {
         let result = self
             .core()?
             .attachment_import_path(session_id, source_path)?;
-        self.notify_artifacts_changed(session_id);
+        self.notify_attachment_changed(session_id, &result.attachment_id);
         Ok(result)
     }
 
@@ -82,7 +82,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> FsSync<'a, R, M> {
         attachment_id: &str,
     ) -> Result<(), crate::Error> {
         self.core()?.attachment_remove(session_id, attachment_id)?;
-        self.notify_artifacts_changed(session_id);
+        self.notify_attachment_changed(session_id, attachment_id);
         Ok(())
     }
 }
