@@ -737,6 +737,14 @@ links. Shared Rust operations must accept explicit editor task identity/status
 with its revision while retaining the existing serialized vault format; they
 must not silently discard unsupported rich content.
 
+Subsequent bridge tests also found that the frontend Markdown schema lacks the
+editor's `session` and `appLink` nodes. Keeping the current serializer alone does
+not provide parity for those nodes. Resolve their serialization/readback in both
+local and remote paths before switching the main editor; new links must not lose
+identity or content during device recovery. Existing inline mentions and normal
+link marks have supported Markdown representations. The bridge explicitly
+rejects unsupported nodes; no new vault syntax was introduced in this extraction.
+
 ### Compound editor save contract
 
 The shared Rust layer now accepts explicit editor task intent with both note and
@@ -814,3 +822,41 @@ checks, including native Windows x64 and ARM64; this batch needs its own CI.
 The main editor has not switched to this controller yet. Its content/task bridge
 and mounted save lifecycle remain necessary; this is recovery infrastructure,
 not a claim of full rich-editor or remote feature parity.
+
+### Main-editor content bridge
+
+A transport-independent bridge now hydrates the existing ProseMirror content
+from Markdown and explicit task input, then captures the current frontend
+serialization plus task IDs, statuses, rich bodies and dates for the compound
+operation. Task record conversion is shared with the existing desktop task
+storage. Title handling and portable attachment URL normalization reuse the
+existing helpers. File I/O and persistence remain in Rust.
+
+Regressions cover stable task identity on rename/reopen, due-date-only edits,
+explicit checkbox changes, tables, inline session mentions, normal links,
+portable image/file references, legacy task-body fallback, account-independent
+content conversion, wrong-note task rejection, malformed/duplicate task IDs and
+unsupported node failures. Initial hydration can assign IDs to untracked
+Markdown tasks; saving requires already-normalized editor identities so repeated
+saves cannot invent new IDs. Existing desktop task-storage tests still pass.
+The bridge is not mounted yet, and attachment transport plus session/app-link
+serializer parity remain required before a full main-editor switch.
+
+Validation: all 1,709 frontend tests pass, including 32 editor-bridge tests and
+the preceding 120 scoped application tests. Desktop typechecking and scoped lint
+pass. No Rust behavior changed in this bridge extraction.
+
+A freshly built disposable macOS QA bundle read a schema 2 device fixture
+through native IPC while signed out and with no server running. The rendered
+recovery dialog offered both text and full-data copying. Clipboard readback
+matched the complete task recovery object, including both revision baselines,
+task identity/status/date and rich body; its SHA-256 was
+`3520f5afa09e3600e4c8b7d24d3a166e251a855d6c297f218be2db688d484704`.
+The exact Markdown clipboard SHA-256 was
+`02e4d84d4cce89a99632ca528f6ac78780a42614f5706e814cf5e2db2bab7647`.
+The original schema 2 file and local QA note retained their hashes, and the app
+quit through its menu. This checks native reading/rendering/copying of a seeded
+recovery record; native cache writes/restart/quotas are covered by Rust tests.
+LaunchServices initially stalled in the disposable bundle's logging directory
+access; the normal development-shell launch was used for this focused check.
+It does not replace signed production or full critical-UX validation.
