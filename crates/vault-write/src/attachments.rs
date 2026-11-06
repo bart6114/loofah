@@ -24,27 +24,33 @@ impl SessionStore {
         bytes: Vec<u8>,
     ) -> Result<SavedAttachment, StoreError> {
         validate_session_id(id)?;
-        let guard = self.lock_writes().await;
-        let dir = self.session_dir_locked(&guard, id).await?;
-
-        let relative_dir = dir.join("attachments");
-        let abs_dir = self.vault_base.join(&relative_dir);
+        let store = self.clone();
+        let id = id.to_owned();
         let filename = filename.to_string();
-        let final_filename = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&abs_dir)
-                .map_err(|e| StoreError::Io(format!("failed to create attachments dir: {e}")))?;
-            let safe_filename = sanitize_filename(&filename)?;
-            write_unique_file(&abs_dir, &safe_filename, &bytes)
+        // Blocking file I/O outlives request cancellation; its write reservation must too.
+        tokio::spawn(async move {
+            let guard = store.lock_writes().await;
+            let dir = store.session_dir_locked(&guard, &id).await?;
+            let relative_dir = dir.join("attachments");
+            let abs_dir = store.vault_base.join(&relative_dir);
+            let final_filename = tokio::task::spawn_blocking(move || {
+                std::fs::create_dir_all(&abs_dir).map_err(|e| {
+                    StoreError::Io(format!("failed to create attachments dir: {e}"))
+                })?;
+                let safe_filename = sanitize_filename(&filename)?;
+                write_unique_file(&abs_dir, &safe_filename, &bytes)
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("attachment file worker failed: {e}")))??;
+            drop(guard);
+            store.notify_artifacts_changed(&id);
+            Ok(SavedAttachment {
+                relative_path: relative_dir.join(&final_filename),
+                attachment_id: final_filename,
+            })
         })
         .await
-        .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
-        drop(guard);
-        self.notify_artifacts_changed(id);
-
-        Ok(SavedAttachment {
-            relative_path: relative_dir.join(&final_filename),
-            attachment_id: final_filename,
-        })
+        .map_err(|e| StoreError::Io(format!("attachment save worker failed: {e}")))?
     }
 }
 
@@ -99,7 +105,7 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
             .open(&candidate_path)
         {
             Ok(mut file) => {
-                if let Err(error) = file.write_all(data) {
+                if let Err(error) = file.write_all(data).and_then(|_| file.sync_all()) {
                     drop(file);
                     if let Err(cleanup_error) = std::fs::remove_file(&candidate_path) {
                         tracing::warn!(
@@ -110,6 +116,23 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
                     return Err(StoreError::Io(format!(
                         "failed to write attachment: {error}"
                     )));
+                }
+                #[cfg(unix)]
+                {
+                    std::fs::File::open(dir)
+                        .and_then(|directory| directory.sync_all())
+                        .map_err(|error| {
+                            StoreError::Io(format!("failed to flush attachment directory: {error}"))
+                        })?;
+                    if let Some(parent) = dir.parent() {
+                        std::fs::File::open(parent)
+                            .and_then(|directory| directory.sync_all())
+                            .map_err(|error| {
+                                StoreError::Io(format!(
+                                    "failed to flush attachment parent: {error}"
+                                ))
+                            })?;
+                    }
                 }
                 return Ok(candidate_filename);
             }
@@ -130,6 +153,67 @@ fn write_unique_file(dir: &Path, filename: &str, data: &[u8]) -> Result<String, 
 mod tests {
     use super::super::SessionMeta;
     use super::*;
+
+    #[test]
+    fn cancelled_attachment_save_keeps_its_reservation_until_blocking_io_completes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (store, vault) = test_store().await;
+            store.write_meta(&meta("s1", "Standup")).await.unwrap();
+            let (started, waiting) = tokio::sync::oneshot::channel();
+            let (finish, completed) = std::sync::mpsc::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                started.send(()).unwrap();
+                completed
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
+            });
+            waiting.await.unwrap();
+            let writer = store.clone();
+            let request = tokio::spawn(async move {
+                writer
+                    .save_attachment("s1", "record.txt", b"Complete attachment".to_vec())
+                    .await
+            });
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                while store.write_lock.try_lock().is_ok() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            request.abort();
+            assert!(request.await.unwrap_err().is_cancelled());
+            let subsequent = store.lock_snapshot();
+            tokio::pin!(subsequent);
+            let held = tokio::time::timeout(std::time::Duration::from_millis(30), &mut subsequent)
+                .await
+                .is_err();
+            finish.send(()).unwrap();
+            blocker.await.unwrap();
+            assert!(
+                held,
+                "request cancellation released the attachment writer's reservation"
+            );
+            let guard = tokio::time::timeout(std::time::Duration::from_secs(2), subsequent)
+                .await
+                .unwrap();
+            assert_eq!(
+                std::fs::read(vault.path().join("sessions/s1/attachments/record.txt")).unwrap(),
+                b"Complete attachment"
+            );
+            drop(guard);
+            let next = store
+                .save_attachment("s1", "record.txt", b"Next attachment".to_vec())
+                .await
+                .unwrap();
+            assert_eq!(next.attachment_id, "record 1.txt");
+        });
+    }
 
     #[test]
     fn windows_attachment_names_cannot_address_devices_or_alternate_data_streams() {

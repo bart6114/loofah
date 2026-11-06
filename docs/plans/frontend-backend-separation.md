@@ -865,3 +865,32 @@ recovery record; native cache writes/restart/quotas are covered by Rust tests.
 LaunchServices initially stalled in the disposable bundle's logging directory
 access; the normal development-shell launch was used for this focused check.
 It does not replace signed production or full critical-UX validation.
+
+### Attachment writer cancellation boundary
+
+The existing attachment paths have different boundaries: the desktop's Tauri
+wrapper calls portable `FsSyncCore::attachment_save`, while CLI writes use
+`SessionStore::save_attachment` in vault-write. Neither discovery justifies
+treating attachment behavior as inherently Tauri-bound. They retain their
+current filename, basename, deduplication and Windows name rules during this
+migration.
+
+The vault-write save now keeps its store reservation in an owned worker until
+blocking file I/O finishes, including after the requesting task is cancelled.
+A subsequent writer cannot delete or relocate the session while that cancelled
+request's file worker continues. It flushes file contents before success and,
+on Unix, the attachment directory and its parent. This does not claim complete
+power-loss validation or change the desktop's existing FsSyncCore path.
+
+A deterministic regression occupies the blocking pool, admits an attachment
+save, cancels its caller, and proves a subsequent store writer remains blocked
+until the complete attachment is present. The next same-name write keeps both
+files using the existing counter suffix. Authenticated media reads, checked
+uploads/retry receipts and merging the desktop/CLI application operations remain
+open; this preparatory change does not expose remote attachment writes.
+
+Validation: vault-write passes 320 tests (one existing ignored), CLI passes all
+118 unit/integration tests, and desktop/CLI/server Rust checks pass. Focused
+attachment coverage includes cancellation, deduplication, Unicode names,
+canonical legacy IDs, Windows name mapping and retention of unknown files.
+Native Windows validation remains required for this new Rust change.
