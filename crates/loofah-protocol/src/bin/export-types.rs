@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<RemoteAuthConfig>()
         .register::<ApplicationError>()
         .register::<SaveNoteRequest>()
+        .register::<NoteEditorSnapshot>()
         .register::<MetadataSnapshot>()
         .register::<SaveMetadataRequest>()
         .register::<MetadataSaveOutcome>()

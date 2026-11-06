@@ -328,6 +328,29 @@ async fn events(
 }
 
 #[tokio::test]
+async fn coherent_editor_reads_require_an_advertised_feature_before_authentication_or_requests() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let error = client
+        .execute(
+            RemoteOperation::NoteEditor {
+                vault_id: "test".into(),
+                session_id: "note".into(),
+            },
+            &request_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(error.request_id.as_deref(), Some(request_id.as_str()));
+    assert!(!error.retryable);
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn browser_pkce_login_keeps_only_refresh_credentials_and_restores_without_browser() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

@@ -55,6 +55,18 @@ impl VaultContext {
             .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
     }
 
+    pub async fn read_note_editor(
+        &self,
+        session_id: &str,
+    ) -> Result<hypr_loofah_protocol::NoteEditorSnapshot, ApplicationError> {
+        self.validate(session_id)?;
+        self.store
+            .read_note_editor(self.document_operation_root().as_deref(), session_id)
+            .await
+            .map_err(|cause| storage_error(cause, false))?
+            .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
+    }
+
     pub async fn save_note(
         &self,
         session_id: &str,
@@ -280,6 +292,9 @@ mod tests {
         let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Title","created_at":"2026-11-05T10:00:00Z","tags":[]})).unwrap();
         store.create_note_session(&meta, "Original").await.unwrap();
         let before = context.read_note("note").await.unwrap();
+        let editor = context.read_note_editor("note").await.unwrap();
+        assert_eq!(editor.note, before);
+        assert!(editor.tasks.tasks.is_empty());
         let result = context
             .save_note(
                 "note",

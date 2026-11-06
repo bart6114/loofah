@@ -62,6 +62,15 @@ pub async fn application_read_note<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_read_note_editor<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::NoteEditorSnapshot, ApplicationError> {
+    context(&app)?.read_note_editor(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_save_note<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,

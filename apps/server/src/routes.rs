@@ -40,6 +40,10 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
+            "/vaults/{vault}/sessions/{session}/note/editor",
+            get(note_editor),
+        )
+        .route(
             "/vaults/{vault}/sessions/{session}/metadata",
             get(metadata).patch(save_metadata),
         )
@@ -134,6 +138,7 @@ async fn capabilities() -> Json<Capabilities> {
         application_version: env!("LOOFAH_VERSION").into(),
         features: vec![
             "notes".into(),
+            "note_editor_read".into(),
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
@@ -782,6 +787,19 @@ fn encode_content(value: &impl serde::Serialize, limit: usize) -> Result<Vec<u8>
         });
     }
     Ok(buffer.bytes)
+}
+
+async fn note_editor(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 32 * 1024 * 1024, async move {
+        context.read_note_editor(&session).await
+    })
+    .await
 }
 
 async fn save_note(

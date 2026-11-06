@@ -3,6 +3,37 @@ use std::path::Path;
 use crate::{NoteSaveOutcome, NoteSnapshot, SessionStore, StoreError};
 
 impl SessionStore {
+    pub async fn read_note_editor(
+        &self,
+        operation_root: Option<&Path>,
+        session_id: &str,
+    ) -> Result<Option<hypr_loofah_protocol::NoteEditorSnapshot>, StoreError> {
+        self.recovered_read(
+            operation_root,
+            session_id,
+            |store, snapshot, id| async move {
+                let Some(note) = store
+                    .read_note_snapshot_locked(&snapshot._guard, &id)
+                    .await?
+                else {
+                    return Ok(None);
+                };
+                let Some(mut tasks) = store.tasks_snapshot_locked(&snapshot._guard, &id).await?
+                else {
+                    return Ok(None);
+                };
+                tasks
+                    .tasks
+                    .retain(|task| task.source_type == "session_raw_note" && task.source_id == id);
+                Ok(Some(hypr_loofah_protocol::NoteEditorSnapshot {
+                    note,
+                    tasks,
+                }))
+            },
+        )
+        .await
+    }
+
     pub async fn reconcile_note_tasks(
         &self,
         operation_root: &Path,
@@ -174,6 +205,48 @@ mod tests {
             panic!("expected saved note")
         };
         value
+    }
+
+    #[tokio::test]
+    async fn editor_snapshots_do_not_mix_note_and_task_revisions_during_concurrent_saves() {
+        let (_root, store, operations) = fixture("Seed").await;
+        let writer = store.clone();
+        let root = operations.clone();
+        let writes = tokio::spawn(async move {
+            for number in 1..=30 {
+                let prior = snapshot(&writer, &root).await;
+                saved(
+                    writer
+                        .save_note_with_recovery(
+                            &root,
+                            "note",
+                            &format!("- [ ] {number}"),
+                            Some(&number.to_string()),
+                            &prior.revision,
+                        )
+                        .await
+                        .unwrap(),
+                );
+            }
+        });
+        for _ in 0..30 {
+            let editor = store
+                .read_note_editor(Some(&operations), "note")
+                .await
+                .unwrap()
+                .unwrap();
+            if editor.tasks.tasks.is_empty() {
+                assert_eq!(editor.note.markdown.as_deref(), Some("Seed"));
+            } else {
+                assert_eq!(editor.tasks.tasks.len(), 1);
+                assert_eq!(editor.tasks.tasks[0].text, editor.note.title);
+                assert_eq!(
+                    editor.note.markdown,
+                    Some(format!("- [ ] {}", editor.note.title))
+                );
+            }
+        }
+        writes.await.unwrap();
     }
 
     #[tokio::test]

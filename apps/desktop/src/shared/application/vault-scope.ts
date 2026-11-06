@@ -157,6 +157,14 @@ export class VaultScope {
         this.run(() => client.readNote(sessionId, { signal })),
     });
   }
+
+  noteEditorOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "note_editor", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.readNoteEditor(sessionId, { signal })),
+    });
+  }
   sessionOptions(sessionId: string) {
     const client = this.client;
     return queryOptions({
@@ -368,6 +376,11 @@ export class VaultScope {
           if (kind === "metadata")
             return (
               ["sessions", "session_headers"].includes(change.entity) &&
+              (all || ids.has(String(id)))
+            );
+          if (kind === "note_editor")
+            return (
+              ["sessions", "tasks"].includes(change.entity) &&
               (all || ids.has(String(id)))
             );
           if (kind === "note" || kind === "session")

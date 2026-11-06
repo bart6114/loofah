@@ -35,6 +35,45 @@ function fixture(scope: string) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates coherent editor snapshots for matching note or task events", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const first = active.noteEditorOptions("first").queryKey;
+    const second = active.noteEditorOptions("second").queryKey;
+    const outside = ["vault", "other", "note_editor", "first"];
+    const snapshot = {
+      note: { markdown: null, title: "", revision: "note" },
+      tasks: { tasks: [], revision: "tasks" },
+    };
+    for (const key of [first, second, outside])
+      active.queryClient.setQueryData(key, snapshot);
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "session_headers",
+        ids: ["first"],
+      },
+    });
+    expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(false);
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tasks", ids: ["first"] },
+    });
+    expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(second)?.isInvalidated).toBe(false);
+    expect(active.queryClient.getQueryState(outside)?.isInvalidated).toBe(
+      false,
+    );
+    active.queryClient.setQueryData(first, snapshot);
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "sessions", ids: ["first"] },
+    });
+    expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(true);
+    active.dispose();
+  });
+
   it("refreshes a newer canonical note again when its change and read precede an older save acknowledgement", async () => {
     const { active, backend, emit } = fixture("scope");
     await active.start();

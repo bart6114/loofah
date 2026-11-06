@@ -350,6 +350,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationReadNoteEditor(
+    sessionId: string,
+  ): Promise<Result<NoteEditorSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_read_note_editor", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationReadMetadata(
     sessionId: string,
   ): Promise<Result<MetadataSnapshot, ApplicationError>> {
@@ -1684,6 +1697,13 @@ export type NoteDraftRecovery = {
   draft: DraftText;
   uncertain: boolean;
 };
+export type NoteEditorSnapshot = {
+  note: NoteSnapshot;
+  /**
+   * Raw-note tasks only; the revision guards the canonical session task file.
+   */
+  tasks: TasksSnapshot;
+};
 export type NoteSaveOutcome =
   | { kind: "saved"; note: NoteSnapshot }
   | { kind: "conflict"; note: NoteSnapshot };
@@ -1784,6 +1804,7 @@ export type RemoteOperation =
   | { kind: "tags"; vault_id: string }
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
   | { kind: "note"; vault_id: string; session_id: string }
+  | { kind: "note_editor"; vault_id: string; session_id: string }
   | { kind: "tasks_snapshot"; vault_id: string; session_id: string }
   | {
       kind: "replace_tasks";
@@ -1830,6 +1851,7 @@ export type RemoteReply =
   | { kind: "people"; value: PersonItem[] }
   | { kind: "tags"; value: TagItem[] }
   | { kind: "note"; value: NoteSnapshot }
+  | { kind: "note_editor"; value: NoteEditorSnapshot }
   | { kind: "metadata"; value: MetadataSnapshot }
   | { kind: "metadata_save"; value: MetadataSaveOutcome }
   | { kind: "note_save"; value: NoteSaveOutcome }

@@ -250,6 +250,13 @@ pub struct SaveNoteRequest {
     pub expected_revision: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct NoteEditorSnapshot {
+    pub note: NoteSnapshot,
+    /// Raw-note tasks only; the revision guards the canonical session task file.
+    pub tasks: TasksSnapshot,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DocumentTarget {

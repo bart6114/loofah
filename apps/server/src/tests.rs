@@ -1649,6 +1649,9 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
     assert_eq!(saved_tasks.tasks.len(), 1);
     assert_eq!(saved_tasks.tasks[0].text, "Native note task");
     assert_eq!(saved_tasks.tasks[0].status, "todo");
+    assert!(
+        matches!(request(second.clone(), RemoteOperation::NoteEditor { vault_id: vault_id.clone(), session_id: created.meta.id.clone() }).await, RemoteReply::NoteEditor(editor) if editor.note == saved && editor.tasks == saved_tasks)
+    );
     let RemoteReply::NoteSave(NoteSaveOutcome::Conflict(current)) = request(
         second.clone(),
         RemoteOperation::SaveNote {

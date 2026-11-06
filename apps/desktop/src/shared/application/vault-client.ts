@@ -21,6 +21,7 @@ import type {
   EnhancedDoc,
   NoteSaveOutcome,
   NoteSnapshot,
+  NoteEditorSnapshot,
   PersonItem,
   SaveNoteRequest,
   SessionDocument,
@@ -138,6 +139,10 @@ export type VaultClient = {
     sessionId: string,
     options?: RequestOptions,
   ) => Promise<NoteSnapshot>;
+  readNoteEditor: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<NoteEditorSnapshot>;
   saveNote: (
     sessionId: string,
     input: SaveNoteRequest,
@@ -182,6 +187,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     canEdit: true,
     features: [
       "notes",
+      "note_editor_read",
       "search",
       "content_read",
       "document_edit",
@@ -247,6 +253,8 @@ export async function connectLocalVault(): Promise<VaultClient> {
     },
     readNote: (sessionId, options) =>
       ipc(() => commands.applicationReadNote(sessionId), options),
+    readNoteEditor: (sessionId, options) =>
+      ipc(() => commands.applicationReadNoteEditor(sessionId), options),
     saveNote: (sessionId, input, options) =>
       ipc(() => commands.applicationSaveNote(sessionId, input), options, true),
     search: (input, options) =>
@@ -417,6 +425,12 @@ export function connectRemoteVault(
       connection.request(
         { kind: "note", vault_id: vaultId, session_id: sessionId },
         "note",
+        options,
+      ),
+    readNoteEditor: (sessionId, options) =>
+      connection.request(
+        { kind: "note_editor", vault_id: vaultId, session_id: sessionId },
+        "note_editor",
         options,
       ),
     saveNote: (sessionId, input, options) =>

@@ -81,7 +81,7 @@ impl SessionStore {
         Ok(Some(TasksSaveOutcome::Saved(saved)))
     }
 
-    async fn tasks_snapshot_locked(
+    pub(super) async fn tasks_snapshot_locked(
         &self,
         guard: &WriteGuard<'_>,
         session_id: &str,

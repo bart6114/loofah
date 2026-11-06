@@ -683,11 +683,36 @@ mod tests {
             assert_eq!(intent["target"]["kind"], "note");
             drop(store);
             let store = SessionStore::new(vault.path().to_path_buf());
+            let editor = store
+                .read_note_editor(Some(runtime.path()), "s1")
+                .await
+                .unwrap()
+                .unwrap();
             let restored = store
                 .read_recovered_session_document(Some(runtime.path()), "s1")
                 .await
                 .unwrap()
                 .unwrap();
+            assert_eq!(editor.note, restored.note);
+            assert_eq!(
+                editor.tasks.tasks,
+                store
+                    .session_tasks("s1")
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .filter(|task| task.source_type == "session_raw_note" && task.source_id == "s1")
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                editor.tasks.revision,
+                store
+                    .read_tasks_snapshot(Some(runtime.path()), "s1")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .revision
+            );
             if stage == 0 {
                 assert_eq!(restored.note, before);
                 assert_eq!(

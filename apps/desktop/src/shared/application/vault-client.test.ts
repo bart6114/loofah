@@ -10,6 +10,7 @@ const native = vi.hoisted(() => ({
     applicationAgentExport: vi.fn(),
     applicationAgentSegments: vi.fn(),
     applicationReadNote: vi.fn(),
+    applicationReadNoteEditor: vi.fn(),
     applicationReadMetadata: vi.fn(),
     applicationSaveMetadata: vi.fn(),
     applicationSaveNote: vi.fn(),
@@ -70,6 +71,37 @@ beforeEach(() => {
     native.commands.applicationTags,
   ])
     command.mockResolvedValue({ status: "ok", data: [] });
+});
+
+it("reads one coherent note/task snapshot through both transports", async () => {
+  const snapshot = { note, tasks: { tasks: [], revision: "tasks" } };
+  native.commands.applicationReadNoteEditor.mockResolvedValue({
+    status: "ok",
+    data: snapshot,
+  });
+  const local = await connectLocalVault();
+  expect(await local.readNoteEditor("same")).toEqual(snapshot);
+  expect(native.commands.applicationReadNoteEditor).toHaveBeenCalledWith(
+    "same",
+  );
+  const request = vi.fn().mockResolvedValue(snapshot);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://server.example/",
+        capabilities: { features: ["note_editor_read"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "alice",
+    vault,
+  );
+  expect(await remote.readNoteEditor("same")).toEqual(snapshot);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "note_editor", vault_id: vault.id, session_id: "same" },
+    "note_editor",
+    undefined,
+  );
 });
 
 describe("shared vault request and subscription contract", () => {

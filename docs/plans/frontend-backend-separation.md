@@ -705,3 +705,34 @@ editor task IDs, due dates or a checkbox hydrated from `tasks.json`; text-only
 matching is insufficient for task renames and those hydrated checkbox edits.
 The legacy editor remains active until these cases, structured editing, assets,
 profile/bootstrap migration and the rest of the feature matrix are validated.
+
+### Coherent main-editor read contract
+
+The shared layer now reads a `NoteEditorSnapshot`: canonical note/title content,
+raw-note tasks and the opaque revision of the full session task file. Recovery
+and both reads hold the same lock. Summary/template tasks are omitted from this
+editor projection and stay protected by its full-file task revision. A reader
+cannot mix one admitted note save's body with another save's task projection.
+
+IPC and HTTPS expose the same snapshot through the native client and scoped
+frontend queries. The additive `note_editor_read` capability is required before
+the native client authenticates or sends the new operation to an older server.
+It uses the existing four content-reader permits and a 32 MiB response bound.
+Matching note/task changes invalidate its cache; a transcript-only header change
+does not reload the editor. Existing note reads and the preview remain intact.
+
+Validation includes 30 interleaved checked saves and editor reads, note recovery
+at every crash boundary, reader/hidden-vault route checks, real TCP native-client
+decoding, and a missing-capability refusal before credential access. All 314
+storage tests pass (one existing ignored), with 72 core tests, 26 server tests
+plus executable lifecycle coverage, 36 native-client tests, and 106 scoped
+frontend tests. All 1,688 frontend tests pass. Desktop/CLI/server checks,
+production-library Clippy, native binding export and desktop typechecking pass.
+This is the read boundary for main-editor migration; explicit
+task-intent saves and mounting the existing editor remain open.
+
+Keep the current frontend Markdown serializer during that migration. The Rust
+converter does not cover every current editor node, including tables and session
+links. Shared Rust operations must accept explicit editor task identity/status
+with its revision while retaining the existing serialized vault format; they
+must not silently discard unsupported rich content.

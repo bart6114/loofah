@@ -46,6 +46,13 @@ async fn task_replacements_are_revision_checked_reader_protected_and_isolated_fr
     let before_meta = std::fs::read(directory.join("_meta.json")).unwrap();
     let (status, before) = fixture.call("bob", "GET", &snapshot_path, None).await;
     assert_eq!(status, StatusCode::OK);
+    let (editor_status, editor) = fixture
+        .call("bob", "GET", &format!("{base}/{session}/note/editor"), None)
+        .await;
+    assert_eq!(editor_status, StatusCode::OK);
+    assert_eq!(editor["note"]["markdown"], "User content");
+    assert_eq!(editor["tasks"], before);
+    assert!(!editor.to_string().contains("CANARY"));
     assert_eq!(
         before,
         serde_json::to_value(context.read_tasks_snapshot(session).await.unwrap()).unwrap()
@@ -64,6 +71,18 @@ async fn task_replacements_are_revision_checked_reader_protected_and_isolated_fr
         assert_eq!(
             fixture
                 .call(subject, "GET", &format!("{other}/snapshot"), None)
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            fixture
+                .call(
+                    subject,
+                    "GET",
+                    &format!("/api/v1/vaults/{vault}/sessions/{session}/note/editor"),
+                    None
+                )
                 .await
                 .0,
             StatusCode::NOT_FOUND

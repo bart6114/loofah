@@ -86,6 +86,12 @@ export type MetadataSnapshot = { meta: SessionMeta; revision: string }
 
 export type MutationOutcome = "not_committed" | "persisted" | "unknown"
 
+export type NoteEditorSnapshot = { note: NoteSnapshot;
+/**
+ * Raw-note tasks only; the revision guards the canonical session task file.
+ */
+tasks: TasksSnapshot }
+
 export type NoteSaveOutcome = { kind: "saved"; note: NoteSnapshot } | { kind: "conflict"; note: NoteSnapshot }
 
 export type NoteSnapshot = { markdown: string | null; title: string; revision: string }

@@ -88,6 +88,10 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    NoteEditor {
+        vault_id: String,
+        session_id: String,
+    },
     TasksSnapshot {
         vault_id: String,
         session_id: String,
@@ -162,6 +166,7 @@ pub enum RemoteReply {
     People(Vec<PersonItem>),
     Tags(Vec<TagItem>),
     Note(NoteSnapshot),
+    NoteEditor(NoteEditorSnapshot),
     Metadata(MetadataSnapshot),
     MetadataSave(MetadataSaveOutcome),
     NoteSave(NoteSaveOutcome),
@@ -186,6 +191,20 @@ impl RemoteClient {
         }
         if self.stop.is_cancelled() || cancel.is_cancelled() {
             return Err(cancelled());
+        }
+        if matches!(operation, RemoteOperation::NoteEditor { .. })
+            && !self
+                .capabilities
+                .features
+                .iter()
+                .any(|feature| feature == "note_editor_read")
+        {
+            let mut error = failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support the note editor. Upgrade the server, then reconnect.",
+            );
+            error.request_id = Some(request_id.to_owned());
+            return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
         let mut body = None;
@@ -320,6 +339,13 @@ impl RemoteClient {
             } => (
                 Method::GET,
                 vec!["vaults", vault_id, "sessions", session_id, "note"],
+            ),
+            RemoteOperation::NoteEditor {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec!["vaults", vault_id, "sessions", session_id, "note", "editor"],
             ),
             RemoteOperation::SaveNote {
                 vault_id,
@@ -534,6 +560,9 @@ impl RemoteClient {
                 }
                 RemoteOperation::Note { .. } => {
                     RemoteReply::Note(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::NoteEditor { .. } => {
+                    RemoteReply::NoteEditor(json_body(response, 32 * 1024 * 1024).await?)
                 }
                 RemoteOperation::Documents { .. } => {
                     RemoteReply::Documents(json_body(response, 32 * 1024 * 1024).await?)
