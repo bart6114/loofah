@@ -579,3 +579,40 @@ The delayed-acknowledgement tests use a real TanStack query observer and cover
 an intervening completed read, a pending read, output invalidation, failure and
 authorization teardown. Desktop typechecking, scoped application lint and
 formatting pass. This does not enable offline editing of remote vaults.
+
+### Checked task operations
+
+The shared application layer now reads revisioned task snapshots and replaces
+one existing source's tasks with a compare-and-swap request. Both IPC and HTTPS
+use the same operation and generated contracts; the existing task-list response
+remains compatible. A stale request returns the current snapshot without
+writing. The revision covers exact canonical `tasks.json` bytes and distinguishes
+a missing file from an empty file. Pending document/task recovery finishes under
+the same write lock before reading or checking that revision.
+
+Source validation uses the requested session's canonical metadata and document
+files, including template outputs with duplicate IDs in different sessions.
+Legacy summary coordinates are projected without writing during reads. The
+replacement shares the existing task construction rules, preserving timestamps,
+assignees and tasks from other sources. Request and file size limits reject
+oversized replacements before commit. Unknown attachments, dotfiles, note bodies
+and metadata stay outside this operation. HTTPS enforces the existing vault
+membership and editor permissions. The native client, scoped frontend queries
+and change invalidation expose the new `tasks_edit` capability. This checkpoint
+does not yet mount task editing in the main editor or implement cross-session
+task moves.
+
+Validation includes concurrent replacements with one winner, exact-byte stale
+checks, missing/deleted sources, duplicate output IDs, malformed/oversized files,
+symlinks, interrupted document recovery and legacy summary projection. Route
+tests cover roles and hidden vaults, and a real TCP native-client test covers
+successful and conflicting replacements. All 1,686 frontend tests pass with
+desktop typechecking. Production-library Clippy passes; optional all-target
+Clippy stops on existing test-only `items_after_test_module`,
+`bool_assert_comparison`, `type_complexity` and `collapsible_if` warnings. Native
+Windows checks remain required for this checkpoint.
+
+The relevant Rust suites pass 295 storage tests (one existing ignored), 70 core
+tests, 26 server tests plus the executable startup test, 16 agent-access tests,
+118 CLI tests and 35 native-client tests. Desktop Rust passes 45 tests with one
+existing ignored; native bindings were regenerated from those command exports.

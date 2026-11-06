@@ -27,6 +27,9 @@ import type {
   SessionPage,
   TagItem,
   TaskItem,
+  TasksSnapshot,
+  TasksSaveOutcome,
+  ReplaceTasksRequest,
   TranscriptWithData,
   VaultInfo,
 } from "./protocol.gen";
@@ -107,6 +110,15 @@ export type VaultClient = {
     options?: RequestOptions,
   ) => Promise<TranscriptWithData[]>;
   tasks: (sessionId: string, options?: RequestOptions) => Promise<TaskItem[]>;
+  tasksSnapshot: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<TasksSnapshot>;
+  replaceTasks: (
+    sessionId: string,
+    input: ReplaceTasksRequest,
+    options?: RequestOptions,
+  ) => Promise<TasksSaveOutcome>;
   people: (options?: RequestOptions) => Promise<PersonItem[]>;
   tags: (options?: RequestOptions) => Promise<TagItem[]>;
   sessions: (
@@ -174,6 +186,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "content_read",
       "document_edit",
       "metadata_edit",
+      "tasks_edit",
       "agent_read",
     ],
     agentList: (input, options) =>
@@ -210,6 +223,14 @@ export async function connectLocalVault(): Promise<VaultClient> {
       ipc(() => commands.applicationTranscripts(sessionId), options),
     tasks: (sessionId, options) =>
       ipc(() => commands.applicationTasks(sessionId), options),
+    tasksSnapshot: (sessionId, options) =>
+      ipc(() => commands.applicationTasksSnapshot(sessionId), options),
+    replaceTasks: (sessionId, input, options) =>
+      ipc(
+        () => commands.applicationReplaceTasks(sessionId, input),
+        options,
+        true,
+      ),
     people: (options) => ipc(() => commands.applicationPeople(), options),
     tags: (options) => ipc(() => commands.applicationTags(), options),
     sessions: (limit, after, options) =>
@@ -347,6 +368,23 @@ export function connectRemoteVault(
       connection.request(
         { kind: "tasks", vault_id: vaultId, session_id: sessionId },
         "tasks",
+        options,
+      ),
+    tasksSnapshot: (sessionId, options) =>
+      connection.request(
+        { kind: "tasks_snapshot", vault_id: vaultId, session_id: sessionId },
+        "tasks_snapshot",
+        options,
+      ),
+    replaceTasks: (sessionId, input, options) =>
+      connection.request(
+        {
+          kind: "replace_tasks",
+          vault_id: vaultId,
+          session_id: sessionId,
+          input,
+        },
+        "tasks_save",
         options,
       ),
     people: (options) =>

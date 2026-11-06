@@ -59,7 +59,14 @@ pub fn router(service: Arc<Service>) -> Router {
             "/vaults/{vault}/sessions/{session}/transcripts",
             get(transcripts),
         )
-        .route("/vaults/{vault}/sessions/{session}/tasks", get(tasks))
+        .route(
+            "/vaults/{vault}/sessions/{session}/tasks",
+            get(tasks).put(replace_tasks),
+        )
+        .route(
+            "/vaults/{vault}/sessions/{session}/tasks/snapshot",
+            get(tasks_snapshot),
+        )
         .route("/vaults/{vault}/people", get(people))
         .route("/vaults/{vault}/tags", get(tags))
         .route(
@@ -130,6 +137,7 @@ async fn capabilities() -> Json<Capabilities> {
             "content_read".into(),
             "document_edit".into(),
             "metadata_edit".into(),
+            "tasks_edit".into(),
             "agent_read".into(),
             "search".into(),
             "vault_membership".into(),
@@ -433,6 +441,42 @@ async fn save_metadata(
     write(&service, access, async move {
         let result = context.save_metadata(&session, input).await?;
         let status = if matches!(result, MetadataSaveOutcome::Conflict(_)) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::OK
+        };
+        let bytes = tokio::task::spawn_blocking(move || encode_content(&result, 16 * 1024 * 1024))
+            .await
+            .map_err(ApiError::internal)??;
+        Ok((status, [("content-type", "application/json")], bytes).into_response())
+    })
+    .await
+}
+
+async fn tasks_snapshot(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 16 * 1024 * 1024, async move {
+        context.read_tasks_snapshot(&session).await
+    })
+    .await
+}
+
+async fn replace_tasks(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((id, session)): ApiPath<(String, String)>,
+    ApiJson(input): ApiJson<ReplaceTasksRequest>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    let context = service.vault(&id).await?;
+    write(&service, access, async move {
+        let result = context.replace_tasks(&session, input).await?;
+        let status = if matches!(result, TasksSaveOutcome::Conflict(_)) {
             StatusCode::CONFLICT
         } else {
             StatusCode::OK

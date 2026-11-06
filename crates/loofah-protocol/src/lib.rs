@@ -159,6 +159,48 @@ impl std::fmt::Display for ApplicationError {
 
 impl std::error::Error for ApplicationError {}
 
+/// What the frontend sends on a write: source coordinates come from the command arguments,
+/// timestamps and `assignee` are managed store-side (preserved from the existing entry when
+/// the task already exists).
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct TaskInput {
+    pub id: String,
+    pub source_order: i32,
+    pub status: String,
+    pub text: String,
+    pub body: serde_json::Value,
+    #[serde(default)]
+    pub due_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TaskSource {
+    RawNote,
+    Summary,
+    TemplateOutput { document_id: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct TasksSnapshot {
+    pub tasks: Vec<TaskItem>,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct ReplaceTasksRequest {
+    pub source: TaskSource,
+    pub tasks: Vec<TaskInput>,
+    pub expected_revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", content = "snapshot", rename_all = "snake_case")]
+pub enum TasksSaveOutcome {
+    Saved(TasksSnapshot),
+    Conflict(TasksSnapshot),
+}
+
 /// Partial update for `_meta.json`: `None` means "leave as-is", so callers can patch a single
 /// field without knowing the rest. There is deliberately no way to clear a field back to
 /// absent -- no mutation site needs that today.

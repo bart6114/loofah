@@ -261,6 +261,36 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationTasksSnapshot(
+    sessionId: string,
+  ): Promise<Result<TasksSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_tasks_snapshot", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationReplaceTasks(
+    sessionId: string,
+    input: ReplaceTasksRequest,
+  ): Promise<Result<TasksSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_replace_tasks", {
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationPeople(): Promise<Result<PersonItem[], ApplicationError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("application_people") };
@@ -1754,6 +1784,13 @@ export type RemoteOperation =
   | { kind: "tags"; vault_id: string }
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
   | { kind: "note"; vault_id: string; session_id: string }
+  | { kind: "tasks_snapshot"; vault_id: string; session_id: string }
+  | {
+      kind: "replace_tasks";
+      vault_id: string;
+      session_id: string;
+      input: ReplaceTasksRequest;
+    }
   | { kind: "metadata"; vault_id: string; session_id: string }
   | {
       kind: "save_metadata";
@@ -1788,6 +1825,8 @@ export type RemoteReply =
   | { kind: "document_save"; value: DocumentSaveOutcome }
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "tasks"; value: TaskItem[] }
+  | { kind: "tasks_snapshot"; value: TasksSnapshot }
+  | { kind: "tasks_save"; value: TasksSaveOutcome }
   | { kind: "people"; value: PersonItem[] }
   | { kind: "tags"; value: TagItem[] }
   | { kind: "note"; value: NoteSnapshot }
@@ -1810,6 +1849,11 @@ export type RenderedTranscriptSegment = {
   end_ms: number;
   text: string;
   words: SegmentWord[];
+};
+export type ReplaceTasksRequest = {
+  source: TaskSource;
+  tasks: TaskInput[];
+  expected_revision: string;
 };
 export type SaveDocumentRequest = {
   markdown: string;
@@ -2042,6 +2086,14 @@ export type TaskItem = {
   created_at: string;
   updated_at: string;
 };
+export type TaskSource =
+  | { kind: "raw_note" }
+  | { kind: "summary" }
+  | { kind: "template_output"; document_id: string };
+export type TasksSaveOutcome =
+  | { kind: "saved"; snapshot: TasksSnapshot }
+  | { kind: "conflict"; snapshot: TasksSnapshot };
+export type TasksSnapshot = { tasks: TaskItem[]; revision: string };
 export type Transcript = {
   id: string;
   started_at_ms: number;

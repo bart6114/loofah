@@ -211,6 +211,26 @@ describe("vault-scoped query lifecycle", () => {
     active.dispose();
   });
 
+  it("invalidates checked task snapshots for the affected session without touching another session or vault", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const first = active.tasksSnapshotOptions("first").queryKey;
+    const second = active.tasksSnapshotOptions("second").queryKey;
+    const outside = ["vault", "outside", "tasks_snapshot", "first"];
+    for (const key of [first, second, outside])
+      active.queryClient.setQueryData(key, { tasks: [], revision: "r" });
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tasks", ids: ["first"] },
+    });
+    expect(active.queryClient.getQueryState(first)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(second)?.isInvalidated).toBe(false);
+    expect(active.queryClient.getQueryState(outside)?.isInvalidated).toBe(
+      false,
+    );
+    active.dispose();
+  });
+
   it("invalidates metadata for the changed session without invalidating another session or vault", async () => {
     const { active, emit } = fixture("scope");
     await active.start();

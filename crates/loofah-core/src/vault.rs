@@ -138,6 +138,13 @@ pub(crate) fn error(code: ErrorCode, message: &str) -> ApplicationError {
 }
 
 pub(crate) fn storage_error(cause: StoreError, mutation: bool) -> ApplicationError {
+    if let StoreError::ResourceLimit(message) = cause {
+        let mut result = error(ErrorCode::ResourceLimit, &message);
+        if mutation {
+            result.mutation_outcome = Some(MutationOutcome::NotCommitted);
+        }
+        return result;
+    }
     tracing::error!(%cause, "vault operation failed");
     let mut result = error(ErrorCode::Internal, "Vault operation failed");
     if mutation {

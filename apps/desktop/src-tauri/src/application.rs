@@ -240,3 +240,22 @@ pub async fn application_save_metadata<R: tauri::Runtime>(
 ) -> Result<hypr_loofah_protocol::MetadataSaveOutcome, ApplicationError> {
     context(&app)?.save_metadata(&session_id, input).await
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_tasks_snapshot<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+) -> Result<hypr_loofah_protocol::TasksSnapshot, ApplicationError> {
+    context(&app)?.read_tasks_snapshot(&session_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_replace_tasks<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    input: hypr_loofah_protocol::ReplaceTasksRequest,
+) -> Result<hypr_loofah_protocol::TasksSaveOutcome, ApplicationError> {
+    context(&app)?.replace_tasks(&session_id, input).await
+}

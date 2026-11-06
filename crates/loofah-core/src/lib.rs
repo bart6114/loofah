@@ -13,3 +13,4 @@ mod agent;
 mod content;
 mod metadata;
 mod operations;
+mod tasks;

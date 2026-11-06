@@ -98,6 +98,8 @@ export type RemoteAuthConfig = { issuer: string; authorization_endpoint: string;
 
 export type RenderedTranscriptSegment = { is_current_user?: boolean | null; id: string; key: SegmentKey; speaker_label: string; start_ms: number; end_ms: number; text: string; words: SegmentWord[] }
 
+export type ReplaceTasksRequest = { source: TaskSource; tasks: TaskInput[]; expected_revision: string }
+
 export type SaveDocumentRequest = { markdown: string; expected_revision: string }
 
 export type SaveMetadataRequest = { patch: SessionMetaPatch; expected_revision: string }
@@ -155,6 +157,13 @@ export type TagItem = { id: string; name?: string }
 export type TagSuggestionState = { items: string[]; dismissed: string[] }
 
 /**
+ * What the frontend sends on a write: source coordinates come from the command arguments,
+ * timestamps and `assignee` are managed store-side (preserved from the existing entry when
+ * the task already exists).
+ */
+export type TaskInput = { id: string; source_order: number; status: string; text: string; body: JsonValue; due_at?: string }
+
+/**
  * One action item, file-canonical in `sessions/<session_id>/tasks.json` (or the vault-root
  * `tasks.json` for a source that cannot be tied to a session). Mirrors the live columns of
  * the legacy `action_items` table minus the ownership columns (dropped per plan decision
@@ -181,6 +190,12 @@ text: string;
  * held it stringified).
  */
 body: JsonValue; due_at?: string; assignee?: string; created_at: string; updated_at: string }
+
+export type TaskSource = { kind: "raw_note" } | { kind: "summary" } | { kind: "template_output"; document_id: string }
+
+export type TasksSaveOutcome = { kind: "saved"; snapshot: TasksSnapshot } | { kind: "conflict"; snapshot: TasksSnapshot }
+
+export type TasksSnapshot = { tasks: TaskItem[]; revision: string }
 
 export type Transcript = { id: string; started_at_ms: number; ended_at_ms: number | null; memo: string; text: string; words: JsonValue[]; speaker_hints: JsonValue[] }
 

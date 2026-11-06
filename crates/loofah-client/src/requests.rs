@@ -88,6 +88,15 @@ pub enum RemoteOperation {
         vault_id: String,
         session_id: String,
     },
+    TasksSnapshot {
+        vault_id: String,
+        session_id: String,
+    },
+    ReplaceTasks {
+        vault_id: String,
+        session_id: String,
+        input: ReplaceTasksRequest,
+    },
     Metadata {
         vault_id: String,
         session_id: String,
@@ -148,6 +157,8 @@ pub enum RemoteReply {
     DocumentSave(DocumentSaveOutcome),
     Transcripts(Vec<TranscriptWithData>),
     Tasks(Vec<TaskItem>),
+    TasksSnapshot(TasksSnapshot),
+    TasksSave(TasksSaveOutcome),
     People(Vec<PersonItem>),
     Tags(Vec<TagItem>),
     Note(NoteSnapshot),
@@ -374,6 +385,26 @@ impl RemoteClient {
                     "vaults", vault_id, "agent", "sessions", session_id, "segments",
                 ],
             ),
+            RemoteOperation::TasksSnapshot {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec![
+                    "vaults", vault_id, "sessions", session_id, "tasks", "snapshot",
+                ],
+            ),
+            RemoteOperation::ReplaceTasks {
+                vault_id,
+                session_id,
+                input,
+            } => {
+                body = Some(value(input)?);
+                (
+                    Method::PUT,
+                    vec!["vaults", vault_id, "sessions", session_id, "tasks"],
+                )
+            }
             RemoteOperation::Metadata {
                 vault_id,
                 session_id,
@@ -447,6 +478,13 @@ impl RemoteClient {
                     json_body(response, 16 * 1024 * 1024).await?,
                 ));
             }
+            if status == reqwest::StatusCode::CONFLICT
+                && matches!(operation, RemoteOperation::ReplaceTasks { .. })
+            {
+                return Ok(RemoteReply::TasksSave(
+                    json_body(response, 16 * 1024 * 1024).await?,
+                ));
+            }
             if !status.is_success() {
                 return Err(json_body::<ApplicationError>(response, 131_072)
                     .await
@@ -481,6 +519,12 @@ impl RemoteClient {
                 }
                 RemoteOperation::CreateSession { .. } | RemoteOperation::Session { .. } => {
                     RemoteReply::Session(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::TasksSnapshot { .. } => {
+                    RemoteReply::TasksSnapshot(json_body(response, 16 * 1024 * 1024).await?)
+                }
+                RemoteOperation::ReplaceTasks { .. } => {
+                    RemoteReply::TasksSave(json_body(response, 16 * 1024 * 1024).await?)
                 }
                 RemoteOperation::Metadata { .. } => {
                     RemoteReply::Metadata(json_body(response, 16 * 1024 * 1024).await?)

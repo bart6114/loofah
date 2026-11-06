@@ -209,6 +209,13 @@ export class VaultScope {
         this.run(() => this.client.tasks(sessionId, { signal })),
     });
   }
+  tasksSnapshotOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "tasks_snapshot", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.tasksSnapshot(sessionId, { signal })),
+    });
+  }
   peopleOptions() {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "people"],
@@ -351,6 +358,13 @@ export class VaultScope {
             return true;
           if (kind === "session_page")
             return ["sessions", "session_headers"].includes(change.entity);
+          if (kind === "tasks_snapshot")
+            return (
+              ["tasks", "sessions", "session_headers"].includes(
+                change.entity,
+              ) &&
+              (all || ids.has(String(id)))
+            );
           if (kind === "metadata")
             return (
               ["sessions", "session_headers"].includes(change.entity) &&

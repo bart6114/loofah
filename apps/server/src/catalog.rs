@@ -339,10 +339,10 @@ impl Catalog {
         revision: &str,
     ) -> Result<VaultMutation> {
         self.mutate(identity, id, revision, |stored, vault| {
-            if !stored
+            if stored
                 .members
                 .get(target)
-                .is_some_and(|member| member.issuer == identity.issuer)
+                .is_none_or(|member| member.issuer != identity.issuer)
             {
                 return Err(ApiError::new(
                     ErrorCode::NotFound,

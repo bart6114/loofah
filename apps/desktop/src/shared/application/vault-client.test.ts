@@ -22,6 +22,8 @@ const native = vi.hoisted(() => ({
     applicationSaveDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationTasks: vi.fn(),
+    applicationTasksSnapshot: vi.fn(),
+    applicationReplaceTasks: vi.fn(),
     applicationPeople: vi.fn(),
     applicationTags: vi.fn(),
   },
@@ -71,6 +73,60 @@ beforeEach(() => {
 });
 
 describe("shared vault request and subscription contract", () => {
+  it("shares checked source-task replacements across IPC and a pinned remote vault", async () => {
+    const snapshot = { tasks: [], revision: "tasks-r" };
+    const input = {
+      source: { kind: "raw_note" as const },
+      tasks: [],
+      expected_revision: "tasks-r",
+    };
+    const outcome = { kind: "conflict", snapshot };
+    native.commands.applicationTasksSnapshot.mockResolvedValue({
+      status: "ok",
+      data: snapshot,
+    });
+    native.commands.applicationReplaceTasks.mockResolvedValue({
+      status: "ok",
+      data: outcome,
+    });
+    const local = await connectLocalVault();
+    expect(await local.tasksSnapshot("same")).toEqual(snapshot);
+    expect(await local.replaceTasks("same", input)).toEqual(outcome);
+    expect(native.commands.applicationReplaceTasks).toHaveBeenCalledWith(
+      "same",
+      input,
+    );
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce(outcome);
+    const remote = connectRemoteVault(
+      {
+        info: {
+          server: "https://company.example/",
+          capabilities: { features: ["tasks_edit"] },
+        },
+        request,
+      } as unknown as NativeRemoteConnection,
+      "alice",
+      vault,
+    );
+    expect(await remote.tasksSnapshot("same")).toEqual(snapshot);
+    expect(await remote.replaceTasks("same", input)).toEqual(outcome);
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      { kind: "tasks_snapshot", vault_id: "first", session_id: "same" },
+      "tasks_snapshot",
+      undefined,
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      { kind: "replace_tasks", vault_id: "first", session_id: "same", input },
+      "tasks_save",
+      undefined,
+    );
+  });
+
   it("uses the same revision-checked metadata patch in local IPC and pinned HTTPS", async () => {
     const snapshot = {
       meta: { id: "same", title: "Title" },

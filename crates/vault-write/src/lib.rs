@@ -26,6 +26,7 @@ pub mod storage_stats;
 pub mod summary;
 pub mod tags;
 pub mod tasks;
+mod tasks_revision;
 pub mod transcript;
 mod transcript_operation;
 
@@ -99,6 +100,8 @@ impl StartupLayout {
 
 #[derive(Debug, Clone)]
 pub enum StoreError {
+    /// A size or cost limit rejected the request before its mutation committed.
+    ResourceLimit(String),
     Io(String),
     Serialize(String),
     /// A compare-and-swap guard didn't match current file content. Stringifies with a
@@ -110,6 +113,7 @@ pub enum StoreError {
 impl std::fmt::Display for StoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            StoreError::ResourceLimit(msg) => write!(f, "resource limit: {}", msg),
             StoreError::Io(msg) => write!(f, "I/O error: {}", msg),
             StoreError::Serialize(msg) => write!(f, "Serialization error: {}", msg),
             StoreError::Conflict(msg) => write!(f, "conflict: {}", msg),

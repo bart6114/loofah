@@ -1,4 +1,5 @@
 mod metadata;
+mod tasks;
 
 use std::sync::Arc;
 
@@ -1507,6 +1508,44 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         )
         .await,
         RemoteReply::MetadataSave(MetadataSaveOutcome::Conflict(_))
+    ));
+    let RemoteReply::TasksSnapshot(task_snapshot) = request(
+        first.clone(),
+        RemoteOperation::TasksSnapshot {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("task snapshot response");
+    };
+    let tasks_input = ReplaceTasksRequest {
+        source: TaskSource::RawNote,
+        tasks: vec![TaskInput {
+            id: "native-task".into(),
+            source_order: 0,
+            status: "done".into(),
+            text: "Native task".into(),
+            body: json!([]),
+            due_at: "".into(),
+        }],
+        expected_revision: task_snapshot.revision,
+    };
+    assert!(
+        matches!(request(first.clone(),RemoteOperation::ReplaceTasks{vault_id:vault_id.clone(),session_id:created.meta.id.clone(),input:tasks_input.clone()}).await,RemoteReply::TasksSave(TasksSaveOutcome::Saved(snapshot)) if snapshot.tasks.len()==1 && snapshot.tasks[0].id=="native-task")
+    );
+    assert!(matches!(
+        request(
+            second.clone(),
+            RemoteOperation::ReplaceTasks {
+                vault_id: vault_id.clone(),
+                session_id: created.meta.id.clone(),
+                input: tasks_input
+            }
+        )
+        .await,
+        RemoteReply::TasksSave(TasksSaveOutcome::Conflict(_))
     ));
     wait_agent_projection(&context).await;
     assert!(

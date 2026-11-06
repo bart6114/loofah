@@ -48,7 +48,7 @@ impl SessionStore {
         Ok(Some(MetadataSaveOutcome::Saved(snapshot)))
     }
 
-    async fn metadata_snapshot_locked(
+    pub(super) async fn metadata_snapshot_locked(
         &self,
         _guard: &WriteGuard<'_>,
         id: &str,
