@@ -5,6 +5,17 @@ use crate::{SessionMetaPatch, SessionStore, StoreError, WriteGuard, paths};
 const METADATA_LIMIT: usize = 8 * 1024 * 1024;
 
 impl SessionStore {
+    pub async fn read_recovered_metadata_snapshot(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        id: &str,
+    ) -> Result<Option<MetadataSnapshot>, StoreError> {
+        self.recovered_read(operation_root, id, |store, snapshot, id| async move {
+            store.metadata_snapshot_locked(&snapshot._guard, &id).await
+        })
+        .await
+    }
+
     pub async fn read_metadata_snapshot(
         &self,
         id: &str,
@@ -20,10 +31,35 @@ impl SessionStore {
         patch: SessionMetaPatch,
         expected_revision: &str,
     ) -> Result<Option<MetadataSaveOutcome>, StoreError> {
-        crate::validate_session_id(id)?;
-        let guard = self.lock_writes().await;
+        self.update_metadata_with_recovery(None, id, patch, expected_revision)
+            .await
+    }
+
+    pub async fn update_metadata_with_recovery(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        id: &str,
+        patch: SessionMetaPatch,
+        expected_revision: &str,
+    ) -> Result<Option<MetadataSaveOutcome>, StoreError> {
+        let expected_revision = expected_revision.to_owned();
+        self.recovered_read(operation_root, id, move |store, snapshot, id| async move {
+            store
+                .update_metadata_locked(&snapshot._guard, &id, patch, &expected_revision)
+                .await
+        })
+        .await
+    }
+
+    async fn update_metadata_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        patch: SessionMetaPatch,
+        expected_revision: &str,
+    ) -> Result<Option<MetadataSaveOutcome>, StoreError> {
         self.ensure_ready()?;
-        let Some(current) = self.metadata_snapshot_locked(&guard, id).await? else {
+        let Some(current) = self.metadata_snapshot_locked(guard, id).await? else {
             return Ok(None);
         };
         if current.revision != expected_revision {
@@ -38,9 +74,9 @@ impl SessionStore {
                 "Session metadata exceeds its size limit".into(),
             ));
         }
-        self.write_meta_locked(&guard, &meta).await?;
+        self.write_meta_locked(guard, &meta).await?;
         let snapshot = self
-            .metadata_snapshot_locked(&guard, id)
+            .metadata_snapshot_locked(guard, id)
             .await?
             .ok_or_else(|| {
                 StoreError::Io("Session disappeared after metadata replacement".into())

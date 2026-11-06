@@ -15,7 +15,7 @@ impl VaultContext {
     ) -> Result<MetadataSnapshot, ApplicationError> {
         self.validate(session_id)?;
         self.store
-            .read_metadata_snapshot(session_id)
+            .read_recovered_metadata_snapshot(self.document_operation_root().as_deref(), session_id)
             .await
             .map_err(|cause| storage_error(cause, false))?
             .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
@@ -29,7 +29,12 @@ impl VaultContext {
         self.validate(session_id)?;
         validate_patch(&input)?;
         self.store
-            .update_metadata_if_revision(session_id, input.patch, &input.expected_revision)
+            .update_metadata_with_recovery(
+                self.document_operation_root().as_deref(),
+                session_id,
+                input.patch,
+                &input.expected_revision,
+            )
             .await
             .map_err(|cause| storage_error(cause, true))?
             .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))

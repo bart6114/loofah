@@ -2,10 +2,8 @@ use std::path::Path;
 
 use hypr_loofah_protocol::{DocumentTarget, TaskSource, TasksSaveOutcome, TasksSnapshot};
 
-use crate::tasks::TasksFile;
+use crate::tasks::{TASKS_LIMIT, TasksFile};
 use crate::{SessionStore, StoreError, TaskInput, WriteGuard, paths};
-
-const TASKS_LIMIT: usize = 8 * 1024 * 1024;
 
 impl SessionStore {
     pub async fn read_tasks_snapshot(
@@ -73,17 +71,7 @@ impl SessionStore {
         };
         let existing = current.tasks;
         let next = crate::tasks::replaced_source_tasks(&existing, source_type, source_id, inputs);
-        if serde_json::to_vec_pretty(&TasksFile {
-            tasks: next.clone(),
-        })
-        .map_err(|cause| StoreError::Serialize(cause.to_string()))?
-        .len()
-            > TASKS_LIMIT
-        {
-            return Err(StoreError::ResourceLimit(
-                "Session tasks exceed their size limit".into(),
-            ));
-        }
+        crate::tasks::validate_task_file_size(&next)?;
         self.persist_generated_tasks(&guard, session_id, &next)
             .await?;
         let saved = self

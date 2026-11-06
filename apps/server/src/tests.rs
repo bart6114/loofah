@@ -1592,7 +1592,7 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
             vault_id: vault_id.clone(),
             session_id: created.meta.id.clone(),
             input: SaveNoteRequest {
-                markdown: "Changed".into(),
+                markdown: "Changed\n\n- [ ] Native note task".into(),
                 title: None,
                 expected_revision: created.note.revision.clone(),
             },
@@ -1635,11 +1635,25 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         panic!("read response");
     };
     assert_eq!(current, saved);
+    let RemoteReply::TasksSnapshot(saved_tasks) = request(
+        second.clone(),
+        RemoteOperation::TasksSnapshot {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("task snapshot response")
+    };
+    assert_eq!(saved_tasks.tasks.len(), 1);
+    assert_eq!(saved_tasks.tasks[0].text, "Native note task");
+    assert_eq!(saved_tasks.tasks[0].status, "todo");
     let RemoteReply::NoteSave(NoteSaveOutcome::Conflict(current)) = request(
         second.clone(),
         RemoteOperation::SaveNote {
-            vault_id,
-            session_id: created.meta.id,
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
             input: SaveNoteRequest {
                 markdown: "Stale".into(),
                 title: None,
@@ -1652,6 +1666,9 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
         panic!("conflict response");
     };
     assert_eq!(current, saved);
+    assert!(
+        matches!(request(second.clone(), RemoteOperation::TasksSnapshot { vault_id, session_id: created.meta.id }).await, RemoteReply::TasksSnapshot(current) if current == saved_tasks)
+    );
     subscription.close().await;
     first.disconnect();
     second.disconnect();

@@ -49,7 +49,7 @@ impl VaultContext {
     pub async fn read_note(&self, session_id: &str) -> Result<NoteSnapshot, ApplicationError> {
         self.validate(session_id)?;
         self.store
-            .read_note_snapshot(session_id)
+            .read_recovered_note_snapshot(self.document_operation_root().as_deref(), session_id)
             .await
             .map_err(|cause| storage_error(cause, false))?
             .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
@@ -61,16 +61,34 @@ impl VaultContext {
         request: SaveNoteRequest,
     ) -> Result<NoteSaveOutcome, ApplicationError> {
         self.validate(session_id)?;
-        if request.expected_revision.is_empty() {
+        if request.expected_revision.is_empty() || request.expected_revision.len() > 128 {
             return Err(error(
                 ErrorCode::Validation,
                 "Expected note revision is required",
             ));
         }
+        if request.markdown.len() > 4 * 1024 * 1024
+            || request
+                .title
+                .as_ref()
+                .is_some_and(|title| title.len() > 4096)
+        {
+            return Err(error(
+                ErrorCode::ResourceLimit,
+                "Note exceeds the size limit",
+            ));
+        }
         // Existence is rechecked under the store's write lock before any bytes are replaced.
         self.read_note(session_id).await?;
+        let root = self.document_operation_root().ok_or_else(|| {
+            error(
+                ErrorCode::Unavailable,
+                "Operation storage is not configured",
+            )
+        })?;
         self.store
-            .save_note_if_revision(
+            .save_note_with_recovery(
+                &root,
                 session_id,
                 &request.markdown,
                 request.title.as_deref(),
@@ -160,6 +178,7 @@ mod tests {
     #[tokio::test]
     async fn headless_note_operations_enforce_readiness_validate_and_report_conflicts() {
         let vault = tempfile::tempdir().unwrap();
+        let operations = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(vault.path().into()));
         let context = VaultContext::new(
             "private".into(),
@@ -167,7 +186,8 @@ mod tests {
             StartupState::new(Some(vault.path())),
             Arc::new(ConfigState::load_or_default(vault.path())),
             Arc::new(SearchService::default()),
-        );
+        )
+        .with_operation_storage(operations.path().to_path_buf());
         store.set_startup_pending(true);
         assert_eq!(
             context.read_note("note").await.unwrap_err().code,
@@ -204,5 +224,73 @@ mod tests {
         assert_eq!(latest.markdown.as_deref(), Some("saved"));
         assert_eq!(latest.title, "New");
         assert_eq!(context.read_note("note").await.unwrap(), latest);
+        for (request, code) in [
+            (
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: None,
+                    expected_revision: String::new(),
+                },
+                ErrorCode::Validation,
+            ),
+            (
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: None,
+                    expected_revision: "x".repeat(129),
+                },
+                ErrorCode::Validation,
+            ),
+            (
+                SaveNoteRequest {
+                    markdown: "x".repeat(4 * 1024 * 1024 + 1),
+                    title: None,
+                    expected_revision: latest.revision.clone(),
+                },
+                ErrorCode::ResourceLimit,
+            ),
+            (
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: Some("x".repeat(4097)),
+                    expected_revision: latest.revision.clone(),
+                },
+                ErrorCode::ResourceLimit,
+            ),
+        ] {
+            assert_eq!(
+                context.save_note("note", request).await.unwrap_err().code,
+                code
+            );
+            assert_eq!(context.read_note("note").await.unwrap(), latest);
+        }
+    }
+
+    #[tokio::test]
+    async fn checked_note_saves_require_operation_storage_but_local_reads_do_not_require_login() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(vault.path().to_path_buf()));
+        let context = VaultContext::new(
+            "local".into(),
+            store.clone(),
+            StartupState::new(Some(vault.path())),
+            Arc::new(ConfigState::load_or_default(vault.path())),
+            Arc::new(SearchService::default()),
+        );
+        let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Title","created_at":"2026-11-05T10:00:00Z","tags":[]})).unwrap();
+        store.create_note_session(&meta, "Original").await.unwrap();
+        let before = context.read_note("note").await.unwrap();
+        let result = context
+            .save_note(
+                "note",
+                SaveNoteRequest {
+                    markdown: "Do not write".into(),
+                    title: None,
+                    expected_revision: before.revision.clone(),
+                },
+            )
+            .await;
+        assert_eq!(result.unwrap_err().code, ErrorCode::Unavailable);
+        assert_eq!(context.read_note("note").await.unwrap(), before);
     }
 }

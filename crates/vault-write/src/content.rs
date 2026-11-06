@@ -10,6 +10,8 @@ pub use hypr_loofah_protocol::SessionMetaPatch;
 
 pub use hypr_loofah_protocol::{NoteSaveOutcome, NoteSnapshot};
 
+const NOTE_READ_LIMIT: usize = 16 * 1024 * 1024;
+
 impl SessionStore {
     pub async fn read_session_document(
         &self,
@@ -17,11 +19,19 @@ impl SessionStore {
     ) -> Result<Option<hypr_loofah_protocol::SessionDocument>, StoreError> {
         validate_session_id(id)?;
         let guard = self.lock_writes().await;
+        self.session_document_locked(&guard, id).await
+    }
+
+    pub(super) async fn session_document_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+    ) -> Result<Option<hypr_loofah_protocol::SessionDocument>, StoreError> {
         let Some(meta) = self.read_meta(id).await? else {
             return Ok(None);
         };
         let note = self
-            .read_note_snapshot_locked(&guard, id)
+            .read_note_snapshot_locked(guard, id)
             .await?
             .ok_or_else(|| StoreError::Io("session disappeared during read".into()))?;
         Ok(Some(hypr_loofah_protocol::SessionDocument { meta, note }))
@@ -308,19 +318,46 @@ impl SessionStore {
         Ok(NoteSaveOutcome::Saved(saved))
     }
 
-    async fn read_note_snapshot_locked(
+    pub(super) async fn read_note_snapshot_locked(
         &self,
-        _guard: &WriteGuard<'_>,
+        guard: &WriteGuard<'_>,
         id: &str,
     ) -> Result<Option<NoteSnapshot>, StoreError> {
-        let Some(meta) = self.read_meta(id).await? else {
+        let Some(meta) = self
+            .metadata_snapshot_locked(guard, id)
+            .await?
+            .map(|value| value.meta)
+        else {
             return Ok(None);
         };
         let dir = self.vault_base.join(self.session_dir(id).await?);
         let raw = tokio::task::spawn_blocking(move || {
             for path in [paths::note_path_in(&dir), paths::legacy_note_path_in(&dir)] {
-                match std::fs::read(path) {
-                    Ok(bytes) => return Ok(Some(bytes)),
+                match std::fs::symlink_metadata(&path) {
+                    Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(cause) => return Err(StoreError::Io(cause.to_string())),
+                    Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+                        return Err(StoreError::Io("Note is not a regular file".into()));
+                    }
+                    Ok(meta) if meta.len() > NOTE_READ_LIMIT as u64 => {
+                        return Err(StoreError::ResourceLimit(
+                            "Note exceeds its read size limit".into(),
+                        ));
+                    }
+                    Ok(_) => {}
+                }
+                use std::io::Read;
+                let mut bytes = Vec::new();
+                match std::fs::File::open(path).and_then(|file| {
+                    file.take(NOTE_READ_LIMIT as u64 + 1)
+                        .read_to_end(&mut bytes)
+                }) {
+                    Ok(_) if bytes.len() > NOTE_READ_LIMIT => {
+                        return Err(StoreError::ResourceLimit(
+                            "Note exceeds its read size limit".into(),
+                        ));
+                    }
+                    Ok(_) => return Ok(Some(bytes)),
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                     Err(error) => {
                         return Err(StoreError::Io(format!("failed to read note: {error}")));
@@ -332,14 +369,7 @@ impl SessionStore {
         .await
         .map_err(|error| StoreError::Io(format!("task join error: {error}")))??;
         // Hash canonical bytes, including frontmatter, but exclude metadata unrelated to editing.
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&(meta.title.len() as u64).to_be_bytes());
-        bytes.extend_from_slice(meta.title.as_bytes());
-        bytes.push(u8::from(raw.is_some()));
-        if let Some(raw) = &raw {
-            bytes.extend_from_slice(raw);
-        }
-        let revision = super::sha256(&bytes);
+        let revision = note_revision(&meta.title, raw.as_deref());
         let markdown = raw
             .map(String::from_utf8)
             .transpose()
@@ -352,7 +382,7 @@ impl SessionStore {
         }))
     }
 
-    async fn save_note_locked(
+    pub(super) async fn save_note_locked(
         &self,
         guard: &WriteGuard<'_>,
         id: &str,
@@ -648,6 +678,17 @@ pub(super) fn apply_meta_patch(meta: &mut SessionMeta, patch: SessionMetaPatch) 
     if let Some(author) = author {
         meta.author = Some(author);
     }
+}
+
+pub(super) fn note_revision(title: &str, raw: Option<&[u8]>) -> String {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&(title.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(title.as_bytes());
+    bytes.push(u8::from(raw.is_some()));
+    if let Some(raw) = raw {
+        bytes.extend_from_slice(raw);
+    }
+    super::sha256(&bytes)
 }
 
 #[cfg(test)]

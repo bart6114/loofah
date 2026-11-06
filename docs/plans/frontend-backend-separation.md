@@ -644,3 +644,64 @@ note/title consistency tests pass. Optional strict Clippy for the storage
 crate additionally reports existing style warnings, including nested `if`
 statements, long argument lists and the rebuild lock's complex type. These are
 not failures of the storage tests. Full feature and platform gates remain open.
+
+### Checked note saves own their task projection
+
+Checked note creation initializes tasks in Rust without rewriting the note body
+or metadata. Checked replacements use the same task matching and metadata rules
+as summaries and template outputs. A source replacement preserves tasks from
+other sources; unchanged checkboxes retain their stored status, while explicitly
+changed Markdown checkboxes update it. Matching tasks retain their IDs, assignees,
+creation timestamps and due dates. Stale note revisions still write nothing.
+The existing local main editor keeps its current save path until its migration
+is ready; local startup still needs no login or server.
+
+A durable schema-2 note intent shares `document-saves/` with the existing
+schema-1 summary/template records. It covers the intermediate revision after
+body commit but before title and task commit. Recovery finishes admitted work
+only against the recorded body/title revisions and unchanged or already-planned
+tasks. It preserves unrelated metadata, repairs the current projection, removes
+completed intents without rewriting completed files, and never recreates deleted
+sessions. Unknown attachments and dotfiles remain outside note content.
+Ambiguous external changes keep their exact bytes and recovery record for review.
+Note, session-document and metadata reads now use the recovered snapshot path;
+checked metadata updates recover before comparing their revision. A rollback to
+an older binary must use its matching storage backup because older binaries
+cannot read schema-2 runtime records. Canonical vault formats are unchanged.
+
+Notes accept at most 4 MiB of new Markdown and 4,096-byte titles. Checked reads
+bound canonical note files to 16 MiB and reject symlinks. One shared counting
+serializer bounds prospective task files to 8 MiB for checked replacements and
+generated note/output projections before the new body commits. Oversized source
+files are kept, and failures never silently truncate content. Unchanged initial
+task projections do not create recovery records or rewrite files.
+
+Validation: 313 storage tests pass (one existing ignored), with 72 core tests,
+26 server tests plus executable lifecycle coverage, 45 desktop Rust tests
+(one existing ignored), and 118 CLI tests. Desktop/CLI checks, core/server
+production-library Clippy, desktop typechecking, contract drift checks and
+formatting pass. Five note crash boundaries cover intent-only, body-only,
+body/title, body/tasks and completed writes. Additional cases cover missing
+notes, legacy fallback migration, metadata CAS after recovery, task-file quotas,
+symlinks, future/misplaced records and external note/title/task edits.
+
+The real headless executable also passed trusted loopback HTTPS checks at
+150 ms round trips: idempotent creation retained task IDs, checked saves updated
+tasks, stale writes were refused, and disconnecting queued no write. At
+3,000 ms round trips, SIGKILL after body commit caught a pending schema-2 intent.
+Restart recovered the title and all 2,000 task IDs/metadata exactly without
+resending the note. The recovered note SHA-256 was
+`3e5558b2378ae676bcf7cb5e1a770e1fa4724448890bf87c4c089335c6f85d6a`.
+All 30 pre-existing fixture files kept their hashes on the verification run,
+including unknown attachments and dotfiles; fixture processes stopped cleanly.
+An earlier run's broad hash guard included the managed vault guide regenerated
+from the already-updated CLI docs; its previous version remained in trash.
+All artifacts stayed on T7. The preceding CLI/recovery checkpoint passed both
+Windows architectures; this new batch still requires its native CI results.
+
+The next main-editor integration must carry explicit task identity/status intent
+and the checked task revision into its compound save. Markdown cannot represent
+editor task IDs, due dates or a checkbox hydrated from `tasks.json`; text-only
+matching is insufficient for task renames and those hydrated checkbox edits.
+The legacy editor remains active until these cases, structured editing, assets,
+profile/bootstrap migration and the rest of the feature matrix are validated.

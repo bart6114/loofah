@@ -72,7 +72,7 @@ impl VaultContext {
     pub async fn session_document(&self, id: &str) -> Result<SessionDocument, ApplicationError> {
         self.validate(id)?;
         self.store
-            .read_session_document(id)
+            .read_recovered_session_document(self.document_operation_root().as_deref(), id)
             .await
             .map_err(|cause| storage_error(cause, false))?
             .ok_or_else(|| error(ErrorCode::NotFound, "Session not found"))
@@ -151,7 +151,10 @@ impl SessionOperations {
             }
             if stored.response.is_some() {
                 return store
-                    .read_session_document(&stored.session_id)
+                    .read_recovered_session_document(
+                        Some(&self.root.join("document-saves")),
+                        &stored.session_id,
+                    )
                     .await
                     .map_err(|cause| storage_error(cause, false))?
                     .ok_or_else(|| {
@@ -211,9 +214,13 @@ impl SessionOperations {
                 .map_err(|cause| storage_error(cause, true))?;
         }
         let response = store
-            .read_session_document(&meta.id)
+            .reconcile_note_tasks(&self.root.join("document-saves"), &meta.id)
             .await
-            .map_err(|cause| storage_error(cause, false))?
+            .map_err(|cause| {
+                let mut error = storage_error(cause, false);
+                error.mutation_outcome = Some(MutationOutcome::Unknown);
+                error
+            })?
             .ok_or_else(|| error(ErrorCode::Internal, "Session creation did not persist"))?;
         creation.response = Some(response.clone());
         persist(&path, &creation).await?;
@@ -252,6 +259,86 @@ fn io_error(cause: std::io::Error) -> ApplicationError {
 mod tests {
     use super::*;
     use crate::VaultRuntime;
+    use hypr_loofah_protocol::NoteSaveOutcome;
+
+    #[tokio::test]
+    async fn created_note_tasks_are_initialized_once_and_checked_saves_preserve_their_ids() {
+        let vault = tempfile::tempdir().unwrap();
+        let runtime_root = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let runtime = VaultRuntime::open(
+            "private".into(),
+            vault.path(),
+            cache.path(),
+            runtime_root.path(),
+        )
+        .await
+        .unwrap();
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let input = CreateSessionRequest {
+            title: "Task note".into(),
+            markdown: "- [ ] First task".into(),
+        };
+        let created = runtime
+            .context
+            .create_session("alice".into(), request_id.clone(), input.clone())
+            .await
+            .unwrap();
+        let tasks = runtime
+            .context
+            .session_tasks(&created.meta.id)
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].text, "First task");
+        assert_eq!(tasks[0].status, "todo");
+        runtime
+            .context
+            .create_session("alice".into(), request_id, input)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime
+                .context
+                .session_tasks(&created.meta.id)
+                .await
+                .unwrap(),
+            tasks
+        );
+        let NoteSaveOutcome::Saved(saved) = runtime
+            .context
+            .save_note(
+                &created.meta.id,
+                hypr_loofah_protocol::SaveNoteRequest {
+                    markdown: "- [x] First task".into(),
+                    title: None,
+                    expected_revision: created.note.revision,
+                },
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("expected saved note")
+        };
+        let updated = runtime
+            .context
+            .session_tasks(&created.meta.id)
+            .await
+            .unwrap();
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0].id, tasks[0].id);
+        assert_eq!(updated[0].status, "done");
+        assert_eq!(
+            runtime
+                .context
+                .session_document(&created.meta.id)
+                .await
+                .unwrap()
+                .note,
+            saved
+        );
+        runtime.shutdown().await.unwrap();
+    }
 
     #[tokio::test]
     async fn session_pages_share_bounded_ordering_and_enforce_startup_readiness() {
@@ -434,7 +521,11 @@ mod tests {
         runtime.shutdown().await.unwrap();
         // Reproduce a crash after the note landed but before metadata and the response receipt.
         for entry in std::fs::read_dir(operations.path()).unwrap() {
-            let path = entry.unwrap().path();
+            let entry = entry.unwrap();
+            if !entry.file_type().unwrap().is_file() {
+                continue;
+            }
+            let path = entry.path();
             let mut receipt: Creation =
                 serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
             if receipt.session_id == first.meta.id {

@@ -12,11 +12,35 @@ const MAX_INTENT: u64 = 32 * 1024 * 1024;
 struct Intent {
     schema_version: u32,
     session_id: String,
-    target: DocumentTarget,
+    target: RecoveryTarget,
     before_revision: String,
     after_revision: String,
     before_tasks_hash: String,
     tasks: Vec<TaskItem>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum RecoveryTarget {
+    Summary,
+    TemplateOutput {
+        document_id: String,
+    },
+    Note {
+        title: String,
+        body_revision: String,
+    },
+}
+
+impl From<&DocumentTarget> for RecoveryTarget {
+    fn from(target: &DocumentTarget) -> Self {
+        match target {
+            DocumentTarget::Summary => Self::Summary,
+            DocumentTarget::TemplateOutput { document_id } => Self::TemplateOutput {
+                document_id: document_id.clone(),
+            },
+        }
+    }
 }
 
 pub(super) struct PendingDocument(PathBuf);
@@ -104,7 +128,12 @@ impl SessionStore {
             return Ok(());
         };
         crate::validate_session_id(&intent.session_id)?;
-        if intent.schema_version != 1
+        let schema_version = if matches!(intent.target, RecoveryTarget::Note { .. }) {
+            2
+        } else {
+            1
+        };
+        if intent.schema_version != schema_version
             || path.file_name()
                 != intent_path(path.parent().unwrap(), &intent.session_id).file_name()
         {
@@ -112,8 +141,22 @@ impl SessionStore {
                 "invalid document recovery identity or version".into(),
             ));
         }
+        let target = match &intent.target {
+            RecoveryTarget::Note {
+                title,
+                body_revision,
+            } => {
+                return self
+                    .recover_note_write_locked(guard, path, &intent, title, body_revision)
+                    .await;
+            }
+            RecoveryTarget::Summary => DocumentTarget::Summary,
+            RecoveryTarget::TemplateOutput { document_id } => DocumentTarget::TemplateOutput {
+                document_id: document_id.clone(),
+            },
+        };
         let current = self
-            .document_snapshot_locked(guard, &intent.session_id, &intent.target)
+            .document_snapshot_locked(guard, &intent.session_id, &target)
             .await?;
         let pending = PendingDocument(path.to_path_buf());
         let Some(current) = current else {
@@ -122,25 +165,10 @@ impl SessionStore {
         let before_tasks =
             self.document_tasks_hash(&intent.session_id).await? == intent.before_tasks_hash;
         if current.revision == intent.after_revision {
-            let tasks = self.session_tasks(&intent.session_id).await?;
-            let mut planned = intent.tasks.clone();
-            planned.sort_by(|a, b| {
-                (&a.source_type, &a.source_id, a.source_order, &a.id).cmp(&(
-                    &b.source_type,
-                    &b.source_id,
-                    b.source_order,
-                    &b.id,
-                ))
-            });
-            if tasks != planned {
-                if !before_tasks {
-                    return Err(StoreError::Conflict("tasks changed during an interrupted document write; recovery requires review".into()));
-                }
-                self.persist_generated_tasks(guard, &intent.session_id, &intent.tasks)
-                    .await?;
-            }
+            self.finish_intent_tasks_locked(guard, &intent, before_tasks)
+                .await?;
             if let Some(document) = current.document {
-                match intent.target {
+                match target {
                     DocumentTarget::Summary => {
                         self.index_set_summary(&intent.session_id, Some(document.markdown));
                     }
@@ -163,6 +191,148 @@ impl SessionStore {
         }
     }
 
+    async fn finish_intent_tasks_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        intent: &Intent,
+        before_tasks: bool,
+    ) -> Result<(), StoreError> {
+        let tasks = self.session_tasks(&intent.session_id).await?;
+        let mut planned = intent.tasks.clone();
+        crate::tasks::sort_tasks(&mut planned);
+        if tasks != planned {
+            if !before_tasks {
+                return Err(StoreError::Conflict(
+                    "tasks changed during an interrupted document write; recovery requires review"
+                        .into(),
+                ));
+            }
+            self.persist_generated_tasks(guard, &intent.session_id, &intent.tasks)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn recover_note_write_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        path: &Path,
+        intent: &Intent,
+        title: &str,
+        body_revision: &str,
+    ) -> Result<(), StoreError> {
+        let pending = PendingDocument(path.to_owned());
+        let Some(current) = self
+            .read_note_snapshot_locked(guard, &intent.session_id)
+            .await?
+        else {
+            return pending.finish().await;
+        };
+        let before_tasks =
+            self.document_tasks_hash(&intent.session_id).await? == intent.before_tasks_hash;
+        if current.revision == intent.after_revision || current.revision == body_revision {
+            self.finish_intent_tasks_locked(guard, intent, before_tasks)
+                .await?;
+            let mut meta = self.read_meta(&intent.session_id).await?.ok_or_else(|| {
+                StoreError::Conflict("session was deleted during note recovery".into())
+            })?;
+            if meta.title != current.title {
+                return Err(StoreError::Conflict(
+                    "title changed during note recovery; review its saved copies".into(),
+                ));
+            }
+            if meta.title != title {
+                meta.title = title.to_owned();
+                self.write_session_title_file_locked(guard, &meta).await?;
+            }
+            let actual = self
+                .read_note_snapshot_locked(guard, &intent.session_id)
+                .await?
+                .ok_or_else(|| {
+                    StoreError::Conflict("session was deleted during note recovery".into())
+                })?;
+            if actual.revision != intent.after_revision {
+                return Err(StoreError::Conflict(
+                    "note changed during recovery; review its saved copies".into(),
+                ));
+            }
+            if let Some(markdown) = actual.markdown {
+                self.index_set_note_and_meta(&meta, markdown);
+            } else {
+                self.index_upsert_meta(&meta);
+                self.index_set_note(&intent.session_id, None);
+                self.notify_index_changed(
+                    crate::IndexEntity::Sessions,
+                    vec![intent.session_id.clone()],
+                );
+            }
+            pending.finish().await
+        } else if current.revision == intent.before_revision && before_tasks {
+            pending.finish().await
+        } else {
+            Err(StoreError::Conflict(
+                "note changed during an interrupted write; recovery requires review".into(),
+            ))
+        }
+    }
+
+    pub(super) async fn begin_note_write_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        root: &Path,
+        session_id: &str,
+        before: &crate::NoteSnapshot,
+        after: (&str, &str),
+        tasks: &[TaskItem],
+    ) -> Result<PendingDocument, StoreError> {
+        let (markdown, title) = after;
+        self.write_document_intent(
+            root,
+            Intent {
+                schema_version: 2,
+                session_id: session_id.into(),
+                target: RecoveryTarget::Note {
+                    title: title.into(),
+                    body_revision: crate::content::note_revision(
+                        &before.title,
+                        Some(markdown.as_bytes()),
+                    ),
+                },
+                before_revision: before.revision.clone(),
+                after_revision: crate::content::note_revision(title, Some(markdown.as_bytes())),
+                before_tasks_hash: self.document_tasks_hash(session_id).await?,
+                tasks: tasks.to_vec(),
+            },
+        )
+        .await
+    }
+
+    pub(super) async fn begin_note_tasks_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        root: &Path,
+        session_id: &str,
+        current: &crate::NoteSnapshot,
+        tasks: &[TaskItem],
+    ) -> Result<PendingDocument, StoreError> {
+        self.write_document_intent(
+            root,
+            Intent {
+                schema_version: 2,
+                session_id: session_id.into(),
+                target: RecoveryTarget::Note {
+                    title: current.title.clone(),
+                    body_revision: current.revision.clone(),
+                },
+                before_revision: current.revision.clone(),
+                after_revision: current.revision.clone(),
+                before_tasks_hash: self.document_tasks_hash(session_id).await?,
+                tasks: tasks.to_vec(),
+            },
+        )
+        .await
+    }
+
     pub(super) async fn begin_document_write_locked(
         &self,
         guard: &WriteGuard<'_>,
@@ -180,7 +350,7 @@ impl SessionStore {
         let intent = Intent {
             schema_version: 1,
             session_id: session_id.into(),
-            target: target.clone(),
+            target: target.into(),
             before_revision: current.revision,
             after_revision: super::document_revision::revision(
                 session_id,
@@ -190,7 +360,16 @@ impl SessionStore {
             before_tasks_hash: self.document_tasks_hash(session_id).await?,
             tasks: tasks.to_vec(),
         };
-        let path = intent_path(root, session_id);
+        self.write_document_intent(root, intent).await
+    }
+
+    async fn write_document_intent(
+        &self,
+        root: &Path,
+        intent: Intent,
+    ) -> Result<PendingDocument, StoreError> {
+        self.validate_document_root(root)?;
+        let path = intent_path(root, &intent.session_id);
         let write_path = path.clone();
         tokio::task::spawn_blocking(move || {
             let bytes =
@@ -399,6 +578,299 @@ mod tests {
                 .await
                 .unwrap();
         }
+    }
+
+    async fn admit_note(
+        store: &SessionStore,
+        root: &Path,
+        stage: u8,
+    ) -> (crate::NoteSnapshot, Vec<TaskItem>) {
+        store
+            .save_note("s1", "- [ ] Call Alice", None)
+            .await
+            .unwrap();
+        store
+            .replace_tasks(
+                "session_raw_note",
+                "s1",
+                vec![crate::TaskInput {
+                    id: "raw".into(),
+                    source_order: 0,
+                    status: "todo".into(),
+                    text: "Call Alice".into(),
+                    body: json!([]),
+                    due_at: "2026-12-01".into(),
+                }],
+            )
+            .await
+            .unwrap();
+        let before = store.read_note_snapshot("s1").await.unwrap().unwrap();
+        let content = hypr_tiptap::md_to_tiptap_json("- [x] Call Alice").unwrap();
+        let tasks = store
+            .prepare_edited_tasks("s1", "session_raw_note", "s1", "- [ ] Call Alice", &content)
+            .await
+            .unwrap();
+        let guard = store.lock_writes().await;
+        store
+            .begin_note_write_locked(
+                &guard,
+                root,
+                "s1",
+                &before,
+                ("- [x] Call Alice", "New title"),
+                &tasks,
+            )
+            .await
+            .unwrap();
+        if stage >= 1 {
+            store
+                .write_file_locked(
+                    &guard,
+                    PathBuf::from("sessions/s1/notes.md"),
+                    b"- [x] Call Alice".to_vec(),
+                )
+                .await
+                .unwrap();
+        }
+        if stage == 2 || stage == 4 {
+            let mut meta = store.read_meta("s1").await.unwrap().unwrap();
+            meta.title = "New title".into();
+            store
+                .write_session_title_file_locked(&guard, &meta)
+                .await
+                .unwrap();
+        }
+        if stage >= 3 {
+            store
+                .persist_generated_tasks(&guard, "s1", &tasks)
+                .await
+                .unwrap();
+        }
+        (before, tasks)
+    }
+
+    #[tokio::test]
+    async fn interrupted_note_saves_recover_body_title_and_tasks_without_resending_or_rewriting_completed_files()
+     {
+        for stage in 0..=4 {
+            let (vault, runtime, store, _) = fixture().await;
+            let directory = vault.path().join("sessions/s1");
+            std::fs::write(directory.join("foreign.md"), "Attachment canary").unwrap();
+            std::fs::write(directory.join(".hidden"), "Private canary").unwrap();
+            let mut meta = store.read_meta("s1").await.unwrap().unwrap();
+            meta.extra.insert("future".into(), json!({"preserve":true}));
+            store.write_meta(&meta).await.unwrap();
+            let (before, mut planned) = admit_note(&store, runtime.path(), stage).await;
+            crate::tasks::sort_tasks(&mut planned);
+            let paths = ["notes.md", "_meta.json", "tasks.json"];
+            let bytes: Vec<_> = paths
+                .iter()
+                .map(|path| std::fs::read(directory.join(path)).unwrap())
+                .collect();
+            let modified: Vec<_> = paths
+                .iter()
+                .map(|path| {
+                    std::fs::metadata(directory.join(path))
+                        .unwrap()
+                        .modified()
+                        .unwrap()
+                })
+                .collect();
+            let intent: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(intent_path(runtime.path(), "s1")).unwrap())
+                    .unwrap();
+            assert_eq!(intent["schema_version"], 2);
+            assert_eq!(intent["target"]["kind"], "note");
+            drop(store);
+            let store = SessionStore::new(vault.path().to_path_buf());
+            let restored = store
+                .read_recovered_session_document(Some(runtime.path()), "s1")
+                .await
+                .unwrap()
+                .unwrap();
+            if stage == 0 {
+                assert_eq!(restored.note, before);
+                assert_eq!(
+                    store
+                        .session_tasks("s1")
+                        .await
+                        .unwrap()
+                        .iter()
+                        .find(|task| task.id == "raw")
+                        .unwrap()
+                        .status,
+                    "todo"
+                );
+            } else {
+                assert_eq!(restored.note.markdown.as_deref(), Some("- [x] Call Alice"));
+                assert_eq!(restored.note.title, "New title");
+                assert_eq!(restored.meta.title, "New title");
+                assert_eq!(store.session_tasks("s1").await.unwrap(), planned);
+                assert_eq!(
+                    store.session_get("s1").unwrap().note_markdown,
+                    restored.note.markdown
+                );
+            }
+            assert_eq!(restored.meta.extra["future"], json!({"preserve":true}));
+            assert_eq!(
+                std::fs::read_to_string(directory.join("foreign.md")).unwrap(),
+                "Attachment canary"
+            );
+            assert_eq!(
+                std::fs::read_to_string(directory.join(".hidden")).unwrap(),
+                "Private canary"
+            );
+            assert_eq!(
+                std::fs::read_to_string(directory.join("summary.md")).unwrap(),
+                "- [ ] Call Alice"
+            );
+            assert!(!intent_path(runtime.path(), "s1").exists());
+            if stage == 0 || stage == 4 {
+                for (index, path) in paths.iter().enumerate() {
+                    assert_eq!(std::fs::read(directory.join(path)).unwrap(), bytes[index]);
+                    assert_eq!(
+                        std::fs::metadata(directory.join(path))
+                            .unwrap()
+                            .modified()
+                            .unwrap(),
+                        modified[index]
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn pending_note_recovery_precedes_metadata_compare_and_swap() {
+        let (_vault, runtime, store, _) = fixture().await;
+        admit_note(&store, runtime.path(), 1).await;
+        let before = store.read_metadata_snapshot("s1").await.unwrap().unwrap();
+        let result = store
+            .update_metadata_with_recovery(
+                Some(runtime.path()),
+                "s1",
+                crate::SessionMetaPatch {
+                    tags: Some(vec!["Do not apply a stale patch".into()]),
+                    ..Default::default()
+                },
+                &before.revision,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let hypr_loofah_protocol::MetadataSaveOutcome::Conflict(latest) = result else {
+            panic!("expected conflict with the recovered title")
+        };
+        assert_eq!(latest.meta.title, "New title");
+        assert!(latest.meta.tags.is_empty());
+        assert_eq!(
+            store
+                .session_tasks("s1")
+                .await
+                .unwrap()
+                .iter()
+                .find(|task| task.id == "raw")
+                .unwrap()
+                .status,
+            "done"
+        );
+        assert!(!intent_path(runtime.path(), "s1").exists());
+    }
+
+    #[tokio::test]
+    async fn external_note_title_body_or_task_changes_after_interruption_are_preserved_for_review()
+    {
+        for changed in ["notes.md", "_meta.json", "tasks.json"] {
+            let (vault, runtime, store, _) = fixture().await;
+            admit_note(&store, runtime.path(), 1).await;
+            let directory = vault.path().join("sessions/s1");
+            let path = directory.join(changed);
+            if changed == "notes.md" {
+                std::fs::write(path, "External note edit").unwrap();
+            } else {
+                let mut value: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                if changed == "_meta.json" {
+                    value["title"] = json!("External title");
+                } else {
+                    value["tasks"][0]["text"] = json!("External task edit");
+                }
+                std::fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+            }
+            let paths = ["notes.md", "_meta.json", "tasks.json"];
+            let before: Vec<_> = paths
+                .iter()
+                .map(|path| std::fs::read(directory.join(path)).unwrap())
+                .collect();
+            assert!(matches!(
+                store
+                    .read_recovered_note_snapshot(Some(runtime.path()), "s1")
+                    .await,
+                Err(StoreError::Conflict(_))
+            ));
+            for (index, path) in paths.iter().enumerate() {
+                assert_eq!(std::fs::read(directory.join(path)).unwrap(), before[index]);
+            }
+            assert!(intent_path(runtime.path(), "s1").exists());
+        }
+        let (vault, runtime, store, _) = fixture().await;
+        admit_note(&store, runtime.path(), 1).await;
+        store.delete_session("s1").await.unwrap();
+        assert!(
+            store
+                .read_recovered_note_snapshot(Some(runtime.path()), "s1")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(!vault.path().join("sessions/s1").exists());
+        assert!(!intent_path(runtime.path(), "s1").exists());
+    }
+
+    #[tokio::test]
+    async fn note_recovery_rejects_downgraded_future_misplaced_and_unknown_target_fields() {
+        for change in ["old-version", "future-version", "identity", "unknown-field"] {
+            let (vault, runtime, store, _) = fixture().await;
+            admit_note(&store, runtime.path(), 1).await;
+            let path = intent_path(runtime.path(), "s1");
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            match change {
+                "old-version" => value["schema_version"] = json!(1),
+                "future-version" => value["schema_version"] = json!(3),
+                "identity" => value["session_id"] = json!("other"),
+                _ => value["target"]["future"] = json!(true),
+            }
+            let record = serde_json::to_vec(&value).unwrap();
+            std::fs::write(&path, &record).unwrap();
+            let body_path = vault.path().join("sessions/s1/notes.md");
+            let before = std::fs::read(&body_path).unwrap();
+            assert!(store.recover_document_writes(runtime.path()).await.is_err());
+            assert_eq!(std::fs::read(path).unwrap(), record);
+            assert_eq!(std::fs::read(body_path).unwrap(), before);
+        }
+    }
+
+    #[tokio::test]
+    async fn task_initialization_recovery_keeps_a_missing_note_file_absent() {
+        let (vault, runtime, store, _) = fixture().await;
+        std::fs::remove_file(vault.path().join("sessions/s1/notes.md")).unwrap();
+        let current = store.read_note_snapshot("s1").await.unwrap().unwrap();
+        let tasks = store.session_tasks("s1").await.unwrap();
+        {
+            let guard = store.lock_writes().await;
+            store
+                .begin_note_tasks_locked(&guard, runtime.path(), "s1", &current, &tasks)
+                .await
+                .unwrap();
+        }
+        store.recover_document_writes(runtime.path()).await.unwrap();
+        assert_eq!(
+            store.read_note_snapshot("s1").await.unwrap().unwrap(),
+            current
+        );
+        assert!(store.session_get("s1").unwrap().note_markdown.is_none());
+        assert!(!vault.path().join("sessions/s1/notes.md").exists());
     }
 
     #[tokio::test]

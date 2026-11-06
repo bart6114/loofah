@@ -17,6 +17,7 @@ pub mod journal;
 pub mod legacy_templates;
 mod metadata_revision;
 pub mod migrate;
+mod note_revision;
 pub mod paths;
 pub mod people;
 pub mod rebuild;

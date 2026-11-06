@@ -9,6 +9,35 @@ pub use hypr_vault_read::{TaskItem, TasksFile};
 
 pub use hypr_loofah_protocol::TaskInput;
 
+pub(super) const TASKS_LIMIT: usize = 8 * 1024 * 1024;
+
+pub(super) fn validate_task_file_size(tasks: &[TaskItem]) -> Result<(), StoreError> {
+    use serde::ser::{SerializeMap, Serializer};
+    let mut serializer = serde_json::Serializer::pretty(TaskFileBudget(TASKS_LIMIT));
+    let result = (|| {
+        let mut object = serializer.serialize_map(Some(1))?;
+        object.serialize_entry("tasks", tasks)?;
+        object.end()
+    })();
+    result.map_err(|_: serde_json::Error| {
+        StoreError::ResourceLimit("Session tasks exceed their size limit".into())
+    })
+}
+
+struct TaskFileBudget(usize);
+impl std::io::Write for TaskFileBudget {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.0 {
+            return Err(std::io::Error::other("task file size limit"));
+        }
+        self.0 -= bytes.len();
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Which `tasks.json` a source's tasks live in. Both production source types are
 /// session-scoped; `Vault` only catches a source type this build doesn't know, so a future
 /// non-session source degrades to the vault-root file instead of erroring or misfiling.
@@ -297,10 +326,7 @@ impl SessionStore {
             }
             next.push(task);
         }
-        serde_json::to_vec(&TasksFile {
-            tasks: next.clone(),
-        })
-        .map_err(|error| StoreError::Serialize(error.to_string()))?;
+        validate_task_file_size(&next)?;
         Ok(next)
     }
 
