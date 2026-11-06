@@ -1114,3 +1114,23 @@ without unrelated lint rewrites.
 This is the Rust read boundary, not an attachment transfer endpoint. Typed
 path-free attachment results, authenticated download/presentation, durable
 upload receipts/checksums and final native/platform validation remain open.
+
+### Client asset actions before rich-editor mounting
+
+The existing image node view falls back to `node.attrs.src` when an attachment
+resolver has no result. The file node view also falls back to `node.attrs.path`
+and calls the native opener/reveal commands. See
+`packages/editor/src/node-views/image-view.tsx`, `file-attachment-view.tsx` and
+`attachment-resolver.tsx`. The current notes preview renders Markdown source;
+these findings are prerequisites for mounting the rich editor on remote content.
+
+Move asset presentation and open/reveal actions behind client-provided
+capabilities. A remote document must not grant access to a device path or native
+asset URL through an unresolved image/file attribute. Only the client adapter
+may produce a native media URL or a device open/reveal action from a scoped,
+authorized attachment handle. Keep local legacy attachment behavior through its
+adapter, with no transport branches in node views. Keep stored Markdown/IDs
+intact when a resource cannot be displayed. Validate hostile device/native URLs,
+unavailable resources, profile/window disposal and normal local image/file
+opening before enabling remote rich-editor rendering. This work does not add
+support for dormant shared-attachment or bases functionality.
