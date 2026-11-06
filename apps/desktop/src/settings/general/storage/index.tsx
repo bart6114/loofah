@@ -4,6 +4,12 @@ import { lazy, Suspense } from "react";
 import { ChangeLocationRow } from "./change-location";
 import { RebuildIndexRow } from "./rebuild-index";
 
+const DeviceRecovery = lazy(() =>
+  import("~/shared/application/device-recovery").then((module) => ({
+    default: module.DeviceRecovery,
+  })),
+);
+
 const ServerPreview = lazy(() => import("~/shared/application/server-preview"));
 
 export function StorageSettingsView() {
@@ -23,6 +29,7 @@ export function StorageSettingsView() {
         {import.meta.env.VITE_REMOTE_PREVIEW === "true" && (
           <Suspense fallback={null}>
             <ServerPreview />
+            <DeviceRecovery />
           </Suspense>
         )}
         <details className="rounded-lg border px-4 py-3">

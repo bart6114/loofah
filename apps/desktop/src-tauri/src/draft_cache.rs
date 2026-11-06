@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hypr_loofah_client::{DraftCache, NoteDraftRecovery, RecoveryEntry, failure};
+use hypr_loofah_client::{DraftCache, NoteDraftRecovery, RecoveryEntry, RecoveryScope, failure};
 use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 use tauri::Manager;
 
@@ -88,4 +88,12 @@ pub async fn draft_cache_recovery<R: tauri::Runtime>(
     id: String,
 ) -> Result<Option<NoteDraftRecovery>, ApplicationError> {
     cache(&app).await?.recovery(scope, id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn draft_cache_all_inventory<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Vec<RecoveryScope>, ApplicationError> {
+    cache(&app).await?.all_inventory().await
 }

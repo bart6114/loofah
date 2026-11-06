@@ -35,6 +35,19 @@ pub struct RecoveryEntry {
     pub uncertain: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct RecoveryScope {
+    pub scope: String,
+    pub entries: Vec<RecoveryEntry>,
+}
+
+#[derive(Default)]
+struct InventoryBudget {
+    bytes: u64,
+    records: usize,
+    entries: usize,
+}
+
 #[derive(Serialize, Deserialize)]
 struct StoredDraft {
     schema_version: u32,
@@ -88,52 +101,104 @@ impl DraftCache {
         let guard = self.gate.clone().lock_owned().await;
         tokio::task::spawn_blocking(move || {
             let _guard = guard;
-            let directory = cache.root.join(key(&scope));
-            cache.check_path(&directory.join("inventory.json"))?;
-            let entries = match std::fs::read_dir(&directory) {
-                Ok(entries) => entries,
-                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-                Err(cause) => return Err(io_error(cause)),
-            };
             let mut result = Vec::new();
-            let mut total = 0_u64;
-            for (count, entry) in entries.enumerate() {
-                if count >= 4096 {
-                    return Err(limit(
-                        "Draft recovery directory has too many entries. Its files were kept.",
-                    ));
+            for (record_scope, entry) in cache.inventory_directory(
+                &cache.root.join(key(&scope)),
+                &mut InventoryBudget::default(),
+            )? {
+                if record_scope != scope {
+                    return Err(damaged());
                 }
-                let entry = entry.map_err(io_error)?;
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if !owned_filename(&name) {
-                    continue;
-                }
-                let path = entry.path();
-                cache.check_path(&path)?;
-                total = total.saturating_add(entry.metadata().map_err(io_error)?.len());
-                if total > cache.scope_limit || result.len() >= 512 {
-                    return Err(limit(
-                        "Draft recovery storage exceeds the inventory limit. Its files were kept.",
-                    ));
-                }
-                if let Some(stored) = cache.read_inventory_record(&path, &scope)? {
-                    result.push(RecoveryEntry {
-                        id: name.strip_suffix(".json").unwrap().into(),
-                        session_id: stored.recovery.session_id,
-                        title: stored.recovery.draft.title.chars().take(200).collect(),
-                        uncertain: stored.recovery.uncertain,
-                    });
-                }
+                result.push(entry);
             }
-            result.sort_by(|left, right| {
-                left.session_id
-                    .cmp(&right.session_id)
-                    .then_with(|| left.id.cmp(&right.id))
-            });
+            sort_inventory(&mut result);
             Ok(result)
         })
         .await
         .map_err(|_| worker_error())?
+    }
+
+    pub async fn all_inventory(self: &Arc<Self>) -> Result<Vec<RecoveryScope>> {
+        let cache = self.clone();
+        let guard = self.gate.clone().lock_owned().await;
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            cache.check_path(&cache.root.join("inventory.json"))?;
+            let directories = match std::fs::read_dir(&cache.root) {
+                Ok(entries) => entries,
+                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+                Err(cause) => return Err(io_error(cause)),
+            };
+            let mut scopes = std::collections::BTreeMap::<String, Vec<RecoveryEntry>>::new();
+            let mut budget = InventoryBudget::default();
+            for (count, entry) in directories.enumerate() {
+                if count >= 4096 {
+                    return Err(inventory_limit());
+                }
+                let entry = entry.map_err(io_error)?;
+                if !owned_key(&entry.file_name().to_string_lossy()) {
+                    continue;
+                }
+                for (scope, record) in cache.inventory_directory(&entry.path(), &mut budget)? {
+                    scopes.entry(scope).or_default().push(record);
+                }
+            }
+            Ok(scopes
+                .into_iter()
+                .map(|(scope, mut entries)| {
+                    sort_inventory(&mut entries);
+                    RecoveryScope { scope, entries }
+                })
+                .collect())
+        })
+        .await
+        .map_err(|_| worker_error())?
+    }
+
+    fn inventory_directory(
+        &self,
+        directory: &Path,
+        budget: &mut InventoryBudget,
+    ) -> Result<Vec<(String, RecoveryEntry)>> {
+        self.check_path(&directory.join("inventory.json"))?;
+        let entries = match std::fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(cause) => return Err(io_error(cause)),
+        };
+        let mut result = Vec::new();
+        for entry in entries {
+            budget.entries += 1;
+            if budget.entries > 4096 {
+                return Err(inventory_limit());
+            }
+            let entry = entry.map_err(io_error)?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !owned_filename(&name) {
+                continue;
+            }
+            let path = entry.path();
+            self.check_path(&path)?;
+            budget.bytes = budget
+                .bytes
+                .saturating_add(entry.metadata().map_err(io_error)?.len());
+            budget.records += 1;
+            if budget.bytes > self.scope_limit || budget.records > 512 {
+                return Err(inventory_limit());
+            }
+            if let Some(stored) = self.read_inventory_record(&path, None)? {
+                result.push((
+                    stored.recovery.scope,
+                    RecoveryEntry {
+                        id: name.strip_suffix(".json").unwrap().into(),
+                        session_id: stored.recovery.session_id,
+                        title: stored.recovery.draft.title.chars().take(200).collect(),
+                        uncertain: stored.recovery.uncertain,
+                    },
+                ));
+            }
+        }
+        Ok(result)
     }
 
     pub async fn recovery(
@@ -153,7 +218,7 @@ impl DraftCache {
             let path = cache.root.join(key(&scope)).join(format!("{id}.json"));
             cache.check_path(&path)?;
             Ok(cache
-                .read_inventory_record(&path, &scope)?
+                .read_inventory_record(&path, Some(&scope))?
                 .map(|stored| stored.recovery))
         })
         .await
@@ -300,7 +365,11 @@ impl DraftCache {
         Ok(Some(stored.recovery))
     }
 
-    fn read_inventory_record(&self, path: &Path, scope: &str) -> Result<Option<StoredDraft>> {
+    fn read_inventory_record(
+        &self,
+        path: &Path,
+        scope: Option<&str>,
+    ) -> Result<Option<StoredDraft>> {
         let Some(stored) = self.read_stored(path)? else {
             return Ok(None);
         };
@@ -310,8 +379,12 @@ impl DraftCache {
             &stored.recovery.session_id,
         )
         .map_err(|_| damaged())?;
-        if stored.recovery.scope != scope
-            || self.path(&stored.editor_id, scope, &stored.recovery.session_id) != path
+        if scope.is_some_and(|scope| stored.recovery.scope != scope)
+            || self.path(
+                &stored.editor_id,
+                &stored.recovery.scope,
+                &stored.recovery.session_id,
+            ) != path
         {
             return Err(damaged());
         }
@@ -372,9 +445,21 @@ fn key(value: &str) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect()
 }
+fn owned_key(name: &str) -> bool {
+    name.len() == 64 && name.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
 fn owned_filename(name: &str) -> bool {
-    name.strip_suffix(".json")
-        .is_some_and(|name| name.len() == 64 && name.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    name.strip_suffix(".json").is_some_and(owned_key)
+}
+fn sort_inventory(entries: &mut [RecoveryEntry]) {
+    entries.sort_by(|left, right| {
+        left.session_id
+            .cmp(&right.session_id)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+fn inventory_limit() -> ApplicationError {
+    limit("Draft recovery storage exceeds the inventory limit. Its files were kept.")
 }
 fn limit(message: &str) -> ApplicationError {
     failure(ErrorCode::ResourceLimit, message)
@@ -426,6 +511,112 @@ mod tests {
             },
             uncertain: true,
         }
+    }
+
+    #[tokio::test]
+    async fn device_inventory_recovers_all_accounts_without_authorization_and_keeps_full_text_on_demand()
+     {
+        let root = tempfile::tempdir().unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        assert!(cache.all_inventory().await.unwrap().is_empty());
+        assert!(!root.path().join("cache").exists());
+        let first = recovery(
+            "signed-out-alice:vault",
+            "deleted-note",
+            "Private Alice body",
+        );
+        let second = recovery("revoked-bob:vault", "deleted-note", "Private Bob body");
+        cache
+            .put("closed-window".into(), first.clone())
+            .await
+            .unwrap();
+        cache
+            .put("closed-window".into(), second.clone())
+            .await
+            .unwrap();
+        let first_path = cache.path("closed-window", &first.scope, &first.session_id);
+        let second_path = cache.path("closed-window", &second.scope, &second.session_id);
+        let before = [
+            std::fs::read(&first_path).unwrap(),
+            std::fs::read(&second_path).unwrap(),
+        ];
+        let unknown = cache.root.join("unknown");
+        std::fs::create_dir(&unknown).unwrap();
+        std::fs::write(unknown.join("user.md"), "Not recovery content").unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        let scopes = cache.all_inventory().await.unwrap();
+        assert_eq!(scopes.len(), 2);
+        let text = serde_json::to_string(&scopes).unwrap();
+        assert!(!text.contains("Private"));
+        assert!(!text.contains("Not recovery content"));
+        assert_eq!(scopes[0].entries[0].id, scopes[1].entries[0].id);
+        for group in scopes {
+            let record = cache
+                .recovery(group.scope, group.entries[0].id.clone())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(record == first || record == second);
+        }
+        assert_eq!(std::fs::read(&first_path).unwrap(), before[0]);
+        assert_eq!(std::fs::read(&second_path).unwrap(), before[1]);
+    }
+
+    #[tokio::test]
+    async fn global_inventory_pools_limits_and_refuses_misplaced_or_future_data_without_modifying_it()
+     {
+        let root = tempfile::tempdir().unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        for scope in ["alice", "bob"] {
+            cache
+                .put("main".into(), recovery(scope, "note", "body"))
+                .await
+                .unwrap();
+        }
+        let alice = cache.path("main", "alice", "note");
+        let bob = cache.path("main", "bob", "note");
+        let alice_bytes = std::fs::read(&alice).unwrap();
+        let bob_bytes = std::fs::read(&bob).unwrap();
+        let mut bounded = DraftCache::new(root.path().join("cache")).unwrap();
+        bounded.scope_limit = alice_bytes.len() as u64 + 1;
+        let bounded = Arc::new(bounded);
+        assert_eq!(bounded.inventory("alice".into()).await.unwrap().len(), 1);
+        assert_eq!(
+            bounded.all_inventory().await.unwrap_err().code,
+            ErrorCode::ResourceLimit
+        );
+        std::fs::write(&alice, r#"{"schema_version":2}"#).unwrap();
+        assert_eq!(
+            cache.all_inventory().await.unwrap_err().code,
+            ErrorCode::IncompatibleVersion
+        );
+        assert_eq!(
+            std::fs::read_to_string(&alice).unwrap(),
+            r#"{"schema_version":2}"#
+        );
+        std::fs::write(&alice, &alice_bytes).unwrap();
+        std::fs::write(&bob, &alice_bytes).unwrap();
+        assert!(cache.all_inventory().await.is_err());
+        assert_eq!(std::fs::read(&bob).unwrap(), alice_bytes);
+        std::fs::write(&bob, &bob_bytes).unwrap();
+        assert_eq!(cache.all_inventory().await.unwrap().len(), 2);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn global_inventory_never_follows_a_scope_directory_symlink() {
+        let root = tempfile::tempdir().unwrap();
+        let cache = Arc::new(DraftCache::new(root.path().join("cache")).unwrap());
+        cache
+            .put("main".into(), recovery("scope", "note", "body"))
+            .await
+            .unwrap();
+        let directory = cache.root.join(key("scope"));
+        let foreign = root.path().join("foreign");
+        std::fs::rename(&directory, &foreign).unwrap();
+        std::os::unix::fs::symlink(&foreign, &directory).unwrap();
+        assert!(cache.all_inventory().await.is_err());
+        assert_eq!(std::fs::read_dir(&foreign).unwrap().count(), 1);
     }
 
     #[tokio::test]

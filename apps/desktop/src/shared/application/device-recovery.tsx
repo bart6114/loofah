@@ -17,14 +17,26 @@ import { NativeDraftStore } from "./draft-store";
 
 import type { NoteDraftRecovery, RecoveryEntry } from "~/types/tauri.gen";
 
-export function DeviceRecovery({ scope }: { scope: string }) {
-  const store = useMemo(() => new NativeDraftStore(scope), [scope]);
+export function DeviceRecovery({ scope }: { scope?: string }) {
+  return <RecoveryDialog key={JSON.stringify(scope ?? null)} scope={scope} />;
+}
+
+function RecoveryDialog({ scope }: { scope?: string }) {
+  const store = useMemo(
+    () => (scope === undefined ? null : new NativeDraftStore(scope)),
+    [scope],
+  );
   const [expanded, setExpanded] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{
+    scope: string;
+    id: string;
+  } | null>(null);
   const inventory = useQuery({
-    queryKey: ["device_recovery", scope, "inventory"],
+    queryKey: ["device_recovery", scope ?? null, "inventory"],
     queryFn: async ({ signal }) => {
-      const result = await store.inventory();
+      const result = store
+        ? [{ scope: store.scope, entries: await store.inventory() }]
+        : await NativeDraftStore.allInventory();
       signal.throwIfAborted();
       return result;
     },
@@ -34,9 +46,11 @@ export function DeviceRecovery({ scope }: { scope: string }) {
     retry: false,
   });
   const recovery = useQuery({
-    queryKey: ["device_recovery", scope, "record", selected],
+    queryKey: ["device_recovery", selected?.scope, "record", selected?.id],
     queryFn: async ({ signal }) => {
-      const result = await store.recovery(selected!);
+      const result = await new NativeDraftStore(selected!.scope).recovery(
+        selected!.id,
+      );
       signal.throwIfAborted();
       return result;
     },
@@ -46,6 +60,7 @@ export function DeviceRecovery({ scope }: { scope: string }) {
     retry: false,
   });
   const copy = useMutation({
+    networkMode: "always",
     mutationFn: (value: NoteDraftRecovery) => writeText(value.draft.markdown),
   });
   return (
@@ -61,11 +76,19 @@ export function DeviceRecovery({ scope }: { scope: string }) {
             <Trans>Device recovery drafts</Trans>
           </DialogTitle>
           <DialogDescription>
-            <Trans>
-              Recovery copies for this vault from closed windows and deleted
-              notes or outputs. Copy text to recover it; this view does not save
-              to the vault.
-            </Trans>
+            {scope === undefined ? (
+              <Trans>
+                Recovery copies saved on this device, including signed-out
+                connections and vaults you can no longer access. Copy text to
+                recover it; this view does not save to any vault.
+              </Trans>
+            ) : (
+              <Trans>
+                Recovery copies for this vault from closed windows and deleted
+                notes or outputs. Copy text to recover it; this view does not
+                save to the vault.
+              </Trans>
+            )}
           </DialogDescription>
         </DialogHeader>
         <Button
@@ -86,33 +109,40 @@ export function DeviceRecovery({ scope }: { scope: string }) {
             </p>
           )}
           {inventory.error && <p role="alert">{inventory.error.message}</p>}
-          {inventory.data?.length === 0 && (
+          {inventory.data?.every((group) => group.entries.length === 0) && (
             <p>
               <Trans>No saved recovery drafts.</Trans>
             </p>
           )}
           <div className="flex max-h-32 shrink-0 flex-col gap-1 overflow-y-auto">
-            {inventory.data?.map((entry) => (
-              <button
-                key={entry.id}
-                className="hover:bg-muted aria-pressed:bg-muted flex flex-col rounded border px-2 py-1 text-left"
-                aria-pressed={selected === entry.id}
-                onClick={() => {
-                  setSelected(entry.id);
-                  copy.reset();
-                }}
-              >
-                <RecoveryLabel entry={entry} />
-                <span className="text-muted-foreground break-all">
-                  {recoveryResource(entry.sessionId)}
-                </span>
-                {entry.uncertain && (
-                  <span>
-                    <Trans>Save confirmation was not received</Trans>
+            {inventory.data?.flatMap((group) =>
+              group.entries.map((entry) => (
+                <button
+                  key={JSON.stringify([group.scope, entry.id])}
+                  className="hover:bg-muted aria-pressed:bg-muted flex flex-col rounded border px-2 py-1 text-left"
+                  aria-pressed={
+                    selected?.scope === group.scope && selected?.id === entry.id
+                  }
+                  onClick={() => {
+                    setSelected({ scope: group.scope, id: entry.id });
+                    copy.reset();
+                  }}
+                >
+                  <RecoveryLabel entry={entry} />
+                  {scope === undefined && (
+                    <RecoveryLocation scope={group.scope} />
+                  )}
+                  <span className="text-muted-foreground break-all">
+                    {recoveryResource(entry.sessionId)}
                   </span>
-                )}
-              </button>
-            ))}
+                  {entry.uncertain && (
+                    <span>
+                      <Trans>Save confirmation was not received</Trans>
+                    </span>
+                  )}
+                </button>
+              )),
+            )}
           </div>
           {selected && recovery.isPending && (
             <p>
@@ -199,4 +229,27 @@ function recoveryResource(id: string): string {
       return resource[1];
   } catch {}
   return id;
+}
+
+function RecoveryLocation({ scope }: { scope: string }) {
+  try {
+    const source: unknown = JSON.parse(scope);
+    if (
+      Array.isArray(source) &&
+      source.length === 4 &&
+      source[0] === "remote" &&
+      source.slice(1).every((value) => typeof value === "string")
+    ) {
+      return (
+        <span className="text-muted-foreground break-all">
+          {source[1]} · {source[2]} · {source[3]}
+        </span>
+      );
+    }
+  } catch {}
+  return (
+    <span className="text-muted-foreground break-all">
+      <Trans>Device vault</Trans> · {scope}
+    </span>
+  );
 }

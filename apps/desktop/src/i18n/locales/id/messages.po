@@ -622,6 +622,10 @@ msgstr ""
 msgid "Device recovery drafts"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Device vault"
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Diagnostics"
 msgstr ""
@@ -1399,6 +1403,10 @@ msgstr ""
 
 #: src/shared/application/device-recovery.tsx
 msgid "Recovery copies for this vault from closed windows and deleted notes or outputs. Copy text to recover it; this view does not save to the vault."
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovery copies saved on this device, including signed-out connections and vaults you can no longer access. Copy text to recover it; this view does not save to any vault."
 msgstr ""
 
 #: src/shared/application/notes-workspace.tsx

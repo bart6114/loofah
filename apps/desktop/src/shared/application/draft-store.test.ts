@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   draftCacheGet: vi.fn(),
   draftCacheInventory: vi.fn(),
+  draftCacheAllInventory: vi.fn(),
   draftCacheRecovery: vi.fn(),
   draftCachePut: vi.fn(),
   draftCacheRemove: vi.fn(),
@@ -21,6 +22,7 @@ const recovery = (scope: string) => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.draftCacheAllInventory.mockResolvedValue({ status: "ok", data: [] });
   native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [] });
   native.draftCacheRecovery.mockResolvedValue({ status: "ok", data: null });
   native.draftCacheGet.mockResolvedValue({ status: "ok", data: null });
@@ -29,6 +31,26 @@ beforeEach(() => {
 });
 
 describe("native device draft persistence", () => {
+  it("flushes pending device drafts from every scope before listing signed-out connections", async () => {
+    const alice = new NativeDraftStore("alice");
+    const bob = new NativeDraftStore("bob");
+    let finish!: (value: unknown) => void;
+    native.draftCachePut.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const writing = alice.save(recovery("alice"));
+    await vi.waitFor(() => expect(native.draftCachePut).toHaveBeenCalledOnce());
+    await bob.save(recovery("bob"));
+    const listing = NativeDraftStore.allInventory();
+    expect(native.draftCacheAllInventory).not.toHaveBeenCalled();
+    finish({ status: "ok", data: undefined });
+    await writing;
+    await listing;
+    expect(native.draftCacheAllInventory).toHaveBeenCalledOnce();
+  });
+
   it("flushes queued device writes before inventory and pins recovery lookups to the original scope", async () => {
     const store = new NativeDraftStore("alice");
     let finish!: (value: unknown) => void;

@@ -514,5 +514,39 @@ binding was refused, and offline logout removed credentials/profile access
 from an already-open MCP process. Canonical fixture files, unknown attachments,
 dotfiles and the existing local QA note hash stayed unchanged across reads.
 All test data, profiles and logs stayed on T7; synthetic sign-in credentials
-were removed and fixture processes stopped. Native Windows validation remains
+were removed and fixture processes stopped. OS keychain readback confirmed that
+no credential entry remained for any of the three synthetic CLI profiles. The
+production CLI release build and help/version/profile/MCP smoke checks pass. Native Windows validation remains
 required for this checkpoint.
+
+### Recovery without a current server connection
+
+The opt-in development Storage settings now open a device recovery inventory
+before server sign-in or vault selection. It lists saved copies across their
+original server/member/vault scopes, including revoked or removed vaults and
+signed-out accounts. Exact bodies load only when selected and remain plain,
+read-only text. Copy works when the browser reports offline. The selected-vault
+recovery view remains available as before. These are recovery copies owned by
+the current OS user; server logout does not discard unsaved text. Opening this
+view performs no server requests and never writes or uploads to a vault.
+
+Both inventories use one bounded native directory reader that verifies the
+record's hashed scope/editor/resource coordinates. The global view pools its
+128 MiB / 512-record budget across scopes and bounds directory enumeration.
+Unknown runtime files are ignored; misplaced, malformed, future-format and
+symlinked records fail explicitly and stay untouched. Pending device draft
+writes from every scope finish before global inventory. The record format
+remains schema 1. No frontend vault file I/O was added.
+
+Validation: all 1,677 frontend tests and desktop typechecking pass; the focused
+recovery/store suite has 10 tests, including colliding record IDs in different
+accounts and offline clipboard writes. Native draft tests pass 12 cases, and
+the full native-client suite passes 35 with its fixture feature. Desktop Rust
+passes 45 tests (one existing ignored), and native-client Clippy passes.
+Generated native bindings and 545-message locale catalogs are refreshed with
+strict compilation. Native rendered QA used the disposable T7 debug profile
+with the server stopped and two synthetic signed-out account scopes sharing
+one recovery ID. Both exact clipboard readbacks passed, the dialog and Copy
+control fit the default window, all original/new recovery record hashes stayed
+unchanged, and the existing local note hash remained unchanged. The app quit
+through its menu. Full feature/platform release gates remain open.

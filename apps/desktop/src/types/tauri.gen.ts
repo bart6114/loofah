@@ -32,6 +32,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async draftCacheAllInventory(): Promise<
+    Result<RecoveryScope[], ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("draft_cache_all_inventory"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async draftCacheRecovery(
     scope: string,
     id: string,
@@ -1684,6 +1697,7 @@ export type RecoveryEntry = {
   title: string;
   uncertain: boolean;
 };
+export type RecoveryScope = { scope: string; entries: RecoveryEntry[] };
 export type RemoteConnectionInfo = {
   connection_id: string;
   server: string;

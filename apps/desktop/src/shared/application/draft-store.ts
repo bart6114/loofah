@@ -12,6 +12,11 @@ export class NativeDraftStore {
     this.prefix = `draft:${JSON.stringify(scope)}:`;
   }
 
+  static async allInventory() {
+    await flushDatabaseWritesByPrefix(["draft:"]);
+    return applicationResult(await commands.draftCacheAllInventory());
+  }
+
   async inventory() {
     await this.flush();
     return applicationResult(await commands.draftCacheInventory(this.scope));

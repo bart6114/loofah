@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   draftCacheInventory: vi.fn(),
+  draftCacheAllInventory: vi.fn(),
   draftCacheRecovery: vi.fn(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
@@ -36,13 +37,13 @@ const value = (scope: string) => ({
   uncertain: true,
 });
 
-function open(scope = "server:alice:vault") {
+function open(scope: string | null = "server:alice:vault") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const result = render(
     <QueryClientProvider client={client}>
-      <DeviceRecovery scope={scope} />
+      <DeviceRecovery scope={scope ?? undefined} />
     </QueryClientProvider>,
   );
   return { client, ...result };
@@ -50,6 +51,7 @@ function open(scope = "server:alice:vault") {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.draftCacheAllInventory.mockResolvedValue({ status: "ok", data: [] });
   native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [entry] });
   native.draftCacheRecovery.mockResolvedValue({
     status: "ok",
@@ -59,6 +61,88 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("device recovery inventory", () => {
+  it("recovers signed-out and revoked vault copies with colliding record IDs without any server connection", async () => {
+    const { onlineManager } = await import("@tanstack/react-query");
+    const alice = JSON.stringify([
+      "remote",
+      "https://old.example",
+      "alice",
+      "removed-vault",
+    ]);
+    const bob = JSON.stringify([
+      "remote",
+      "https://company.example",
+      "bob",
+      "revoked-vault",
+    ]);
+    native.draftCacheAllInventory.mockResolvedValue({
+      status: "ok",
+      data: [
+        {
+          scope: alice,
+          entries: [{ ...entry, title: "Alice signed-out copy" }],
+        },
+        { scope: bob, entries: [{ ...entry, title: "Bob revoked copy" }] },
+      ],
+    });
+    native.draftCacheRecovery.mockImplementation(async (scope) => ({
+      status: "ok",
+      data: {
+        ...value(scope),
+        draft: {
+          title: scope === alice ? "Alice" : "Bob",
+          markdown: scope === alice ? "Private Alice text" : "Private Bob text",
+        },
+      },
+    }));
+    onlineManager.setOnline(false);
+    try {
+      open(null);
+      expect(native.draftCacheAllInventory).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Device recovery drafts" }),
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Bob revoked copy/ }),
+      );
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("textbox", {
+              name: "Recovered Markdown",
+            }) as HTMLTextAreaElement
+          ).value,
+        ).toBe("Private Bob text"),
+      );
+      expect(native.draftCacheRecovery).toHaveBeenLastCalledWith(bob, entry.id);
+      expect(screen.queryByDisplayValue("Private Alice text")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Copy saved text" }));
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith("Private Bob text"),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /Alice signed-out copy/ }),
+      );
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("textbox", {
+              name: "Recovered Markdown",
+            }) as HTMLTextAreaElement
+          ).value,
+        ).toBe("Private Alice text"),
+      );
+      expect(native.draftCacheRecovery).toHaveBeenLastCalledWith(
+        alice,
+        entry.id,
+      );
+      expect(native.draftCacheInventory).not.toHaveBeenCalled();
+      expect(native.draftCacheAllInventory).toHaveBeenCalledOnce();
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
   it("opens orphaned output copies on demand and copies exact plain text without a vault operation", async () => {
     open();
     expect(native.draftCacheInventory).not.toHaveBeenCalled();
