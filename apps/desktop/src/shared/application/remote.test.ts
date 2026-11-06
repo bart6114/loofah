@@ -16,6 +16,7 @@ const native = vi.hoisted(() => ({
   remoteAttachmentOpen: vi.fn(),
   remoteAttachmentClose: vi.fn(),
   remoteAttachmentCopy: vi.fn(),
+  remoteUploadAttachmentPath: vi.fn(),
   attachmentTargets: new Map<string, string>(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
@@ -49,6 +50,53 @@ const error = {
   current_revision: null,
   mutation_outcome: null,
 };
+
+it("keeps upload paths native, preserves the original request ID, and cancels an in-flight upload", async () => {
+  const connection = await NativeRemoteConnection.connect(info.server);
+  const input = { filename: "file.pdf", size_bytes: 7, sha256: "1".repeat(64) };
+  const metadata = {
+    filename: "file 1.pdf",
+    sizeBytes: 7,
+    sha256: input.sha256,
+    contentType: "application/pdf",
+  };
+  const requestId = crypto.randomUUID();
+  let finish!: (result: unknown) => void;
+  native.remoteUploadAttachmentPath.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const controller = new AbortController();
+  const uploading = connection.uploadAttachmentPath(
+    "vault",
+    "note",
+    "/device/file.pdf",
+    input,
+    { requestId, signal: controller.signal },
+  );
+  expect(native.remoteUploadAttachmentPath).toHaveBeenCalledWith(
+    info.connection_id,
+    { vault_id: "vault", session_id: "note", request_id: requestId, input },
+    "/device/file.pdf",
+  );
+  controller.abort();
+  expect(native.remoteCancelRequest).toHaveBeenCalledWith(
+    info.connection_id,
+    requestId,
+  );
+  finish({ status: "ok", data: metadata });
+  await expect(uploading).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      request_id: requestId,
+      mutation_outcome: "unknown",
+    },
+  });
+  expect(native.remoteUploadAttachmentPath).toHaveBeenCalledTimes(1);
+  await connection.disconnect();
+});
 
 beforeEach(() => {
   vi.resetAllMocks();

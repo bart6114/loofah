@@ -5,6 +5,7 @@ import {
   ApplicationRequestError,
   connectionClosed,
 } from "./errors";
+import type { FileMetadata, UploadAttachmentRequest } from "./protocol.gen";
 import type { RequestOptions } from "./vault-client";
 
 import {
@@ -60,6 +61,52 @@ export class NativeRemoteConnection {
 
   restore(): Promise<Me> {
     return this.request({ kind: "provision" }, "me");
+  }
+
+  async uploadAttachmentPath(
+    vaultId: string,
+    sessionId: string,
+    sourcePath: string,
+    input: UploadAttachmentRequest,
+    options: RequestOptions & { requestId: string },
+  ): Promise<FileMetadata> {
+    this.assertOpen();
+    const { signal, requestId } = options;
+    signal?.throwIfAborted();
+    const cancel = () => {
+      void commands
+        .remoteCancelRequest(this.info.connection_id, requestId)
+        .catch(() => {});
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const metadata = applicationResult(
+        await commands.remoteUploadAttachmentPath(
+          this.info.connection_id,
+          {
+            vault_id: vaultId,
+            session_id: sessionId,
+            request_id: requestId,
+            input,
+          },
+          sourcePath,
+        ),
+      );
+      if (this.closed || signal?.aborted) {
+        throw new ApplicationRequestError({
+          code: "cancelled",
+          message:
+            "The upload was cancelled after being sent; check its status before retrying",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "unknown",
+        });
+      }
+      return metadata;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
   }
 
   async openAttachment(

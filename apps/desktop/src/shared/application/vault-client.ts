@@ -18,6 +18,8 @@ import {
 import type {
   ApplicationError,
   AttachmentPage,
+  AttachmentUploadStatus,
+  UploadAttachmentRequest,
   DeleteRecordingRequest,
   RemoveAttachmentRequest,
   FileInfo,
@@ -82,6 +84,22 @@ export type VaultClient = {
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
+  prepareAttachmentUpload: (
+    sourcePath: string,
+    options?: RequestOptions,
+  ) => Promise<UploadAttachmentRequest>;
+  uploadAttachmentPath: (
+    sessionId: string,
+    sourcePath: string,
+    input: UploadAttachmentRequest,
+    options: RequestOptions & { requestId: string },
+  ) => Promise<FileMetadata>;
+  attachmentUploadStatus: (
+    sessionId: string,
+    uploadId: string,
+    input: UploadAttachmentRequest,
+    options?: RequestOptions,
+  ) => Promise<AttachmentUploadStatus>;
   openAttachment: (
     sessionId: string,
     attachmentId: string,
@@ -258,6 +276,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     attachmentPresentation: legacyAttachmentPresentation,
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
+      "attachment_upload",
       "audio_playback",
       "recording_delete",
       "notes",
@@ -277,6 +296,29 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "agent_read",
     ],
     openRecording: openLocalRecording,
+    prepareAttachmentUpload: prepareDeviceAttachmentUpload,
+    uploadAttachmentPath: (sessionId, sourcePath, input, options) =>
+      ipc(
+        () =>
+          commands.applicationUploadAttachmentPath(
+            options.requestId,
+            sessionId,
+            input,
+            sourcePath,
+          ),
+        options,
+        true,
+      ),
+    attachmentUploadStatus: (sessionId, uploadId, input, options) =>
+      ipc(
+        () =>
+          commands.applicationAttachmentUploadStatus(
+            uploadId,
+            sessionId,
+            input,
+          ),
+        options,
+      ),
     openAttachment: openLocalAttachment,
     deleteRecording: (sessionId, input, options) =>
       ipc(
@@ -428,6 +470,29 @@ export function connectRemoteVault(
         options,
       ),
     features: connection.info.capabilities.features,
+    prepareAttachmentUpload: prepareDeviceAttachmentUpload,
+    uploadAttachmentPath: (sessionId, sourcePath, input, options) =>
+      connection.uploadAttachmentPath(
+        vaultId,
+        sessionId,
+        sourcePath,
+        input,
+        options,
+      ),
+    attachmentUploadStatus: (sessionId, uploadId, input, options) =>
+      connection.request(
+        {
+          kind: "attachment_upload_status",
+          upload: {
+            vault_id: vaultId,
+            session_id: sessionId,
+            request_id: uploadId,
+            input,
+          },
+        },
+        "attachment_upload_status",
+        options,
+      ),
     attachmentMetadata: (sessionId, attachmentId, options) =>
       connection.request(
         {
@@ -663,4 +728,11 @@ export function connectRemoteVault(
         else listener(event);
       }),
   };
+}
+
+function prepareDeviceAttachmentUpload(
+  sourcePath: string,
+  options?: RequestOptions,
+) {
+  return ipc(() => commands.devicePrepareAttachmentUpload(sourcePath), options);
 }

@@ -90,6 +90,9 @@ pub enum RemoteOperation {
         attachment_id: String,
         input: RemoveAttachmentRequest,
     },
+    AttachmentUploadStatus {
+        upload: crate::AttachmentUpload,
+    },
     Attachments {
         vault_id: String,
         session_id: String,
@@ -200,6 +203,7 @@ pub enum RemoteReply {
     AttachmentInfo(Option<FileInfo>),
     AttachmentMetadata(Option<FileMetadata>),
     AttachmentRemoved(bool),
+    AttachmentUploadStatus(AttachmentUploadStatus),
     Attachments(AttachmentPage),
     RecordingDeleted(bool),
     Tasks(Vec<TaskItem>),
@@ -242,6 +246,7 @@ impl RemoteClient {
             RemoteOperation::AttachmentInfo { .. } => Some("attachment_info"),
             RemoteOperation::AttachmentMetadata { .. } => Some("attachment_metadata"),
             RemoteOperation::RemoveAttachment { .. } => Some("attachment_remove"),
+            RemoteOperation::AttachmentUploadStatus { .. } => Some("attachment_upload"),
             RemoteOperation::Attachments { .. } => Some("attachment_list"),
             RemoteOperation::DeleteRecording { .. } => Some("recording_delete"),
             _ => None,
@@ -258,6 +263,7 @@ impl RemoteClient {
                 RemoteOperation::AttachmentInfo { .. } => "attachment information",
                 RemoteOperation::AttachmentMetadata { .. } => "attachment metadata",
                 RemoteOperation::RemoveAttachment { .. } => "attachment removal",
+                RemoteOperation::AttachmentUploadStatus { .. } => "attachment uploads",
                 RemoteOperation::Attachments { .. } => "attachment listing",
                 RemoteOperation::DeleteRecording { .. } => "recording deletion",
                 _ => "the note editor",
@@ -312,6 +318,31 @@ impl RemoteClient {
         let mut query: Vec<(&str, String)> = Vec::new();
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::AttachmentUploadStatus { upload } => {
+                validate_upload_attachment_request(&upload.input).map_err(|message| {
+                    let mut cause = invalid(message);
+                    cause.request_id = Some(request_id.into());
+                    cause
+                })?;
+                uuid::Uuid::parse_str(&upload.request_id)
+                    .map_err(|_| invalid("A UUID upload request ID is required"))?;
+                query.extend([
+                    ("filename", upload.input.filename.clone()),
+                    ("size_bytes", upload.input.size_bytes.to_string()),
+                    ("sha256", upload.input.sha256.clone()),
+                ]);
+                (
+                    Method::GET,
+                    vec![
+                        "vaults",
+                        &upload.vault_id,
+                        "sessions",
+                        &upload.session_id,
+                        "attachment-uploads",
+                        &upload.request_id,
+                    ],
+                )
+            }
             RemoteOperation::Provision => (Method::POST, vec!["me"]),
             RemoteOperation::Me => (Method::GET, vec!["me"]),
             RemoteOperation::Vaults => (Method::GET, vec!["vaults"]),
@@ -798,6 +829,13 @@ impl RemoteClient {
                 }
                 RemoteOperation::RemoveAttachment { .. } => {
                     RemoteReply::AttachmentRemoved(json_body(response, 16 * 1024).await?)
+                }
+                RemoteOperation::AttachmentUploadStatus { upload } => {
+                    let status: AttachmentUploadStatus = json_body(response, 16 * 1024).await?;
+                    if let AttachmentUploadStatus::Committed(metadata) = &status {
+                        crate::uploads::validate_uploaded_metadata(metadata, &upload.input)?;
+                    }
+                    RemoteReply::AttachmentUploadStatus(status)
                 }
                 RemoteOperation::Attachments { limit, after, .. } => {
                     let page: AttachmentPage = json_body(response, 256 * 1024).await?;

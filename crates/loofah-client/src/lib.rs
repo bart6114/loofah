@@ -9,6 +9,7 @@ mod os_credentials;
 mod profiles;
 mod requests;
 mod sse;
+mod uploads;
 
 pub use auth::LoginAttempt;
 pub use drafts::{
@@ -19,6 +20,7 @@ pub use events::{ConnectionState, RemoteEvent, Subscription};
 pub use os_credentials::OsCredentials;
 pub use profiles::{ConnectionProfile, ConnectionProfiles, ProfileLease};
 pub use requests::{RemoteOperation, RemoteReply};
+pub use uploads::AttachmentUpload;
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
@@ -49,6 +51,7 @@ pub struct RemoteClient {
     credentials: Arc<dyn CredentialStore>,
     tokens: Mutex<auth::TokenState>,
     stop: CancellationToken,
+    upload_writers: Arc<tokio::sync::Semaphore>,
 }
 
 impl RemoteClient {
@@ -137,6 +140,7 @@ impl RemoteClient {
             credentials,
             tokens: Mutex::new(auth::TokenState::default()),
             stop: CancellationToken::new(),
+            upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
         }))
     }
 

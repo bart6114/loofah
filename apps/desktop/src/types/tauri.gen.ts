@@ -314,6 +314,61 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationUploadAttachmentPath(
+    requestId: string,
+    sessionId: string,
+    input: UploadAttachmentRequest,
+    sourcePath: string,
+  ): Promise<Result<FileMetadata, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_upload_attachment_path", {
+          requestId,
+          sessionId,
+          input,
+          sourcePath,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationAttachmentUploadStatus(
+    requestId: string,
+    sessionId: string,
+    input: UploadAttachmentRequest,
+  ): Promise<Result<AttachmentUploadStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_attachment_upload_status", {
+          requestId,
+          sessionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async devicePrepareAttachmentUpload(
+    sourcePath: string,
+  ): Promise<Result<UploadAttachmentRequest, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_prepare_attachment_upload", {
+          sourcePath,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationRemoveAttachment(
     requestId: string,
     sessionId: string,
@@ -582,6 +637,25 @@ export const commands = {
           connectionId,
           requestId,
           operation,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteUploadAttachmentPath(
+    connectionId: string,
+    upload: AttachmentUpload,
+    sourcePath: string,
+  ): Promise<Result<FileMetadata, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_upload_attachment_path", {
+          connectionId,
+          upload,
+          sourcePath,
         }),
       };
     } catch (e) {
@@ -1689,6 +1763,17 @@ export type AttachmentTarget = {
   session_id: string;
   attachment_id: string;
 };
+export type AttachmentUpload = {
+  vault_id: string;
+  session_id: string;
+  request_id: string;
+  input: UploadAttachmentRequest;
+};
+export type AttachmentUploadStatus =
+  | { kind: "missing" }
+  | { kind: "committed"; value: FileMetadata }
+  | { kind: "rejected" }
+  | { kind: "uncertain" };
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
@@ -2085,6 +2170,7 @@ export type RemoteOperation =
       attachment_id: string;
       input: RemoveAttachmentRequest;
     }
+  | { kind: "attachment_upload_status"; upload: AttachmentUpload }
   | {
       kind: "attachments";
       vault_id: string;
@@ -2154,6 +2240,7 @@ export type RemoteReply =
   | { kind: "attachment_info"; value: FileInfo | null }
   | { kind: "attachment_metadata"; value: FileMetadata | null }
   | { kind: "attachment_removed"; value: boolean }
+  | { kind: "attachment_upload_status"; value: AttachmentUploadStatus }
   | { kind: "attachments"; value: AttachmentPage }
   | { kind: "recording_deleted"; value: boolean }
   | { kind: "tasks"; value: TaskItem[] }
@@ -2479,6 +2566,11 @@ export type TranscriptWord = {
   metadata?: Partial<{ [key in string]: JsonValue }> | null;
 };
 export type UpdateVaultRequest = { name: string; expected_revision: string };
+export type UploadAttachmentRequest = {
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+};
 export type VaultInfo = {
   id: string;
   name: string;

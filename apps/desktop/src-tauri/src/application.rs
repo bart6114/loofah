@@ -22,6 +22,38 @@ fn context<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_upload_attachment_path<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request_id: String,
+    session_id: String,
+    input: hypr_loofah_protocol::UploadAttachmentRequest,
+    source_path: String,
+) -> Result<hypr_loofah_protocol::FileMetadata, ApplicationError> {
+    let context = context(&app)?;
+    let source = app
+        .state::<crate::attachment_upload::DeviceUploadIo>()
+        .source(source_path, &input)?;
+    let _admission = source.admission();
+    context
+        .upload_attachment("desktop".into(), request_id, &session_id, input, source)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_attachment_upload_status<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request_id: String,
+    session_id: String,
+    input: hypr_loofah_protocol::UploadAttachmentRequest,
+) -> Result<hypr_loofah_protocol::AttachmentUploadStatus, ApplicationError> {
+    context(&app)?
+        .attachment_upload_status("desktop".into(), request_id, &session_id, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_delete_recording<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,

@@ -1,5 +1,6 @@
 mod appearance;
 mod application;
+mod attachment_upload;
 mod autostart;
 mod chatgpt;
 mod commands;
@@ -199,6 +200,7 @@ pub async fn main() {
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
         .manage(remote::RemoteState::default())
+        .manage(attachment_upload::DeviceUploadIo::default())
         .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
             let app = context.app_handle().clone();
             let label = context.webview_label().to_owned();
@@ -595,6 +597,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_attachment_info::<tauri::Wry>,
             application::application_attachments::<tauri::Wry>,
             application::application_attachment_metadata::<tauri::Wry>,
+            application::application_upload_attachment_path::<tauri::Wry>,
+            application::application_attachment_upload_status::<tauri::Wry>,
+            attachment_upload::device_prepare_attachment_upload::<tauri::Wry>,
             application::application_remove_attachment::<tauri::Wry>,
             application::application_delete_recording::<tauri::Wry>,
             application::application_tasks::<tauri::Wry>,
@@ -615,6 +620,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             remote::remote_login::<tauri::Wry>,
             remote::remote_cancel_login::<tauri::Wry>,
             remote::remote_request::<tauri::Wry>,
+            remote::remote_upload_attachment_path::<tauri::Wry>,
             remote::remote_cancel_request::<tauri::Wry>,
             remote::remote_subscribe::<tauri::Wry>,
             remote::remote_unsubscribe::<tauri::Wry>,

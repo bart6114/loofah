@@ -2081,6 +2081,54 @@ async fn native_clients_login_create_share_notes_receive_changes_and_reject_stal
             .await
             .unwrap();
     }
+    for bytes in [payload.as_slice(), b"".as_slice()] {
+        use sha2::Digest;
+        let upload = hypr_loofah_client::AttachmentUpload {
+            vault_id: vault_id.clone(),
+            session_id: created.meta.id.clone(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+            input: UploadAttachmentRequest {
+                filename: "network + # ü.pdf".into(),
+                size_bytes: bytes.len() as u64,
+                sha256: sha2::Sha256::digest(bytes)
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+            },
+        };
+        let attachments = context
+            .store
+            .vault_base()
+            .join("sessions")
+            .join(&created.meta.id)
+            .join("attachments");
+        let before = std::fs::read_dir(&attachments).unwrap().count();
+        let metadata = first
+            .upload_attachment(
+                upload.clone(),
+                std::io::Cursor::new(bytes.to_vec()),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(metadata.sha256, upload.input.sha256);
+        assert_eq!(
+            std::fs::read(attachments.join(&metadata.filename)).unwrap(),
+            bytes
+        );
+        assert_eq!(std::fs::read_dir(&attachments).unwrap().count(), before + 1);
+        assert!(
+            matches!(request(first.clone(), RemoteOperation::AttachmentUploadStatus { upload:upload.clone() }).await, RemoteReply::AttachmentUploadStatus(AttachmentUploadStatus::Committed(saved)) if saved == metadata)
+        );
+        assert_eq!(
+            first
+                .upload_attachment(upload, std::io::empty(), CancellationToken::new())
+                .await
+                .unwrap(),
+            metadata
+        );
+        assert_eq!(std::fs::read_dir(&attachments).unwrap().count(), before + 1);
+    }
     let input = SaveNoteEditorRequest {
         markdown: "Changed\n\n- [x] Renamed native task".into(),
         title: None,

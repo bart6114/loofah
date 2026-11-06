@@ -26,6 +26,9 @@ const native = vi.hoisted(() => ({
     applicationAudioMetadata: vi.fn(),
     applicationAttachmentInfo: vi.fn(),
     applicationAttachmentMetadata: vi.fn(),
+    devicePrepareAttachmentUpload: vi.fn(),
+    applicationUploadAttachmentPath: vi.fn(),
+    applicationAttachmentUploadStatus: vi.fn(),
     applicationRemoveAttachment: vi.fn(),
     applicationAttachments: vi.fn(),
     applicationDeleteRecording: vi.fn(),
@@ -101,6 +104,125 @@ beforeEach(() => {
     native.commands.applicationTags,
   ])
     command.mockResolvedValue({ status: "ok", data: [] });
+});
+
+it("uses device preparation and the same stable upload declaration through either vault adapter", async () => {
+  const input = {
+    filename: "chart ü.pdf",
+    size_bytes: 7,
+    sha256: "1".repeat(64),
+  };
+  const metadata = {
+    filename: "chart ü 1.pdf",
+    sizeBytes: 7,
+    sha256: input.sha256,
+    contentType: "application/pdf",
+  };
+  const id = crypto.randomUUID();
+  const options = { requestId: id };
+  native.commands.devicePrepareAttachmentUpload.mockResolvedValue({
+    status: "ok",
+    data: input,
+  });
+  native.commands.applicationUploadAttachmentPath.mockResolvedValue({
+    status: "ok",
+    data: metadata,
+  });
+  native.commands.applicationAttachmentUploadStatus.mockResolvedValue({
+    status: "ok",
+    data: { kind: "committed", value: metadata },
+  });
+  const local = await connectLocalVault();
+  expect(await local.prepareAttachmentUpload("/device/chart ü.pdf")).toEqual(
+    input,
+  );
+  expect(
+    await local.uploadAttachmentPath(
+      "note",
+      "/device/chart ü.pdf",
+      input,
+      options,
+    ),
+  ).toEqual(metadata);
+  expect(native.commands.applicationUploadAttachmentPath).toHaveBeenCalledWith(
+    id,
+    "note",
+    input,
+    "/device/chart ü.pdf",
+  );
+  expect(await local.attachmentUploadStatus("note", id, input)).toEqual({
+    kind: "committed",
+    value: metadata,
+  });
+  expect(
+    native.commands.applicationAttachmentUploadStatus,
+  ).toHaveBeenCalledWith(id, "note", input);
+  const uploadAttachmentPath = vi.fn().mockResolvedValue(metadata);
+  const request = vi
+    .fn()
+    .mockResolvedValue({ kind: "committed", value: metadata });
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://server.example/",
+        capabilities: { features: ["attachment_upload"] },
+      },
+      uploadAttachmentPath,
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  expect(await remote.prepareAttachmentUpload("/device/chart ü.pdf")).toEqual(
+    input,
+  );
+  expect(
+    await remote.uploadAttachmentPath(
+      "note",
+      "/device/chart ü.pdf",
+      input,
+      options,
+    ),
+  ).toEqual(metadata);
+  expect(uploadAttachmentPath).toHaveBeenCalledWith(
+    vault.id,
+    "note",
+    "/device/chart ü.pdf",
+    input,
+    options,
+  );
+  expect(await remote.attachmentUploadStatus("note", id, input)).toEqual({
+    kind: "committed",
+    value: metadata,
+  });
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "attachment_upload_status",
+      upload: { vault_id: vault.id, session_id: "note", request_id: id, input },
+    },
+    "attachment_upload_status",
+    undefined,
+  );
+});
+
+it("does not begin device review or local upload when already cancelled", async () => {
+  const local = await connectLocalVault();
+  const signal = AbortSignal.abort();
+  await expect(
+    local.prepareAttachmentUpload("/device/file.pdf", { signal }),
+  ).rejects.toThrow();
+  await expect(
+    local.uploadAttachmentPath(
+      "note",
+      "/device/file.pdf",
+      { filename: "file.pdf", size_bytes: 0, sha256: "1".repeat(64) },
+      { requestId: crypto.randomUUID(), signal },
+    ),
+  ).rejects.toThrow();
+  expect(native.commands.devicePrepareAttachmentUpload).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationUploadAttachmentPath,
+  ).not.toHaveBeenCalled();
 });
 
 it("uses the same typed checked deletion through local IPC or remote requests", async () => {

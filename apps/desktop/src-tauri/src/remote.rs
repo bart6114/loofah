@@ -470,6 +470,39 @@ pub async fn remote_request<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn remote_upload_attachment_path<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+    connection_id: String,
+    upload: hypr_loofah_client::AttachmentUpload,
+    source_path: String,
+) -> Result<hypr_loofah_protocol::FileMetadata, ApplicationError> {
+    let state = app.state::<RemoteState>();
+    let (client, cancel, _pending) =
+        state.admit(&connection_id, window.label(), &upload.request_id)?;
+    if !client
+        .capabilities()
+        .features
+        .iter()
+        .any(|feature| feature == "attachment_upload")
+    {
+        let mut cause = failure(
+            ErrorCode::IncompatibleVersion,
+            "This server does not support attachment uploads. Upgrade the server, then reconnect.",
+        );
+        cause.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::NotCommitted);
+        cause.request_id = Some(upload.request_id);
+        return Err(cause);
+    }
+    let source = app
+        .state::<crate::attachment_upload::DeviceUploadIo>()
+        .source(source_path, &upload.input)?;
+    let _admission = source.admission();
+    client.upload_attachment(upload, source, cancel).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn remote_cancel_request<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::Window<R>,

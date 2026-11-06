@@ -1,5 +1,6 @@
 mod attachments;
 mod downloads;
+mod uploads;
 use std::{
     collections::HashMap,
     sync::{
@@ -72,6 +73,8 @@ struct Provider {
     recording_mode: AtomicUsize,
     attachment_mode: AtomicUsize,
     attachment_removals: Mutex<Vec<String>>,
+    attachment_uploads: Mutex<Vec<(String, UploadAttachmentRequest, Vec<u8>)>>,
+    upload_attempts: AtomicUsize,
     download_offsets: Mutex<Vec<u64>>,
     download_opens: AtomicUsize,
     delay: AtomicUsize,
@@ -115,6 +118,8 @@ impl Fixture {
             recording_mode: AtomicUsize::new(0),
             attachment_mode: AtomicUsize::new(0),
             attachment_removals: Mutex::new(Vec::new()),
+            attachment_uploads: Mutex::new(Vec::new()),
+            upload_attempts: AtomicUsize::new(0),
             download_offsets: Mutex::new(Vec::new()),
             download_opens: AtomicUsize::new(0),
             delay: AtomicUsize::new(0),
@@ -144,6 +149,14 @@ impl Fixture {
             .route(
                 "/api/v1/vaults/test/audio/leases/{lease}/peaks",
                 get(waveform_fixture),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/attachments",
+                post(uploads::receive),
+            )
+            .route(
+                "/api/v1/vaults/{vault}/sessions/{session}/attachment-uploads/{upload}",
+                get(uploads::status),
             )
             .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/attachments/{attachment}/info",
