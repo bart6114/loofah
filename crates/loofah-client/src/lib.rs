@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+pub mod capture_spool;
 mod drafts;
 mod events;
 mod media;
