@@ -2991,9 +2991,13 @@ memory, append receipts release credits only after durable confirmation, and
 retryable storage contention retains the same chunk. Stop drains admitted audio;
 interruption retains an unsealed recoverable prefix. The existing local disk
 destination and serialized session parameters remain unchanged. The worker's
-74 listener-core tests pass; the six integrated desktop fixtures and full native
-check are pending at this checkpoint. Device disconnect/recovery behavior is
-under additional review.
+74 listener-core tests pass. All six integrated desktop fixtures also pass after
+correcting their server-origin spelling to the spool's canonical URL contract;
+the full native check is pending at this checkpoint. The fixtures cover exact
+reopened bytes, interrupted/unsealed output, retained retry chunks and exclusive
+capture admission. Device disconnect/recovery behavior is under additional
+review. The unwired internal bridge currently produces eight dead-code warnings
+in the native test build; they have not been suppressed.
 
 This is not an available remote recording flow. Public commands, observer/UI
 wiring, actual capture timestamps, shutdown ownership, server ingestion,
@@ -3016,4 +3020,6 @@ newer user action. Initial pin changes merge with the saved native baseline,
 including pins not yet displayed. Canonical remote lookups release the device
 write lane before waiting for the network. Production tab consumers and startup
 services are still being moved under a keyed immutable provider; no mutable
-global transport fallback is introduced.
+global transport fallback is introduced. The integrated frontend passes all
+1,929 tests across 240 files with two workers, plus desktop typechecking. This
+does not yet include the worker's production consumer/bootstrap wiring.
