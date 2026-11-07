@@ -346,11 +346,13 @@ impl SessionStore {
 
     pub(super) async fn sync_generated_summary_parents(&self, id: &str) -> Result<(), StoreError> {
         let directory = self.session_dir(id).await?;
-        let summary = self.vault_base.join(paths::summary_path_in(&directory));
-        let registry = self.vault_base.join(paths::tags_path());
+        let vault = self.vault_base.clone();
+        let id = id.to_owned();
         tokio::task::spawn_blocking(move || {
-            crate::operation_io::sync_parent(&summary)?;
-            crate::operation_io::sync_parent(&registry)
+            for path in generated_summary_sync_paths(&vault, &directory, &id)? {
+                crate::operation_io::sync_parent(&path)?;
+            }
+            Ok(())
         })
         .await
         .map_err(join_error)?
@@ -711,6 +713,22 @@ fn read(path: &Path, limit: usize) -> Result<Option<Intent>, StoreError> {
         .map_err(|e| StoreError::Serialize(e.to_string()))
 }
 
+fn generated_summary_sync_paths(
+    vault: &Path,
+    directory: &Path,
+    id: &str,
+) -> Result<[PathBuf; 3], StoreError> {
+    let session_file = paths::summary_path_in(directory);
+    let body = hypr_vault_read::summary::locate_in(vault, directory, id)?
+        .map(|located| located.relative_path)
+        .unwrap_or_else(|| session_file.clone());
+    Ok([
+        vault.join(body),
+        vault.join(session_file),
+        vault.join(paths::tags_path()),
+    ])
+}
+
 fn remove(path: &Path) -> Result<(), StoreError> {
     std::fs::remove_file(path).map_err(io_error)?;
     sync_parent(path)
@@ -737,6 +755,43 @@ fn join_error(e: tokio::task::JoinError) -> StoreError {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn generated_summary_syncs_the_located_body_session_and_registry_parents() {
+        let (vault, _, store, _) = fixture().await;
+        let directory = Path::new("sessions/s1");
+        let canonical = vault.path().join(directory).join("summary.md");
+        let registry = vault.path().join("tags.json");
+        assert_eq!(
+            generated_summary_sync_paths(vault.path(), directory, "s1").unwrap(),
+            [canonical.clone(), canonical.clone(), registry.clone()]
+        );
+        std::fs::remove_file(&canonical).unwrap();
+        store
+            .write_enhanced_doc(&crate::EnhancedDoc {
+                id: "legacy-summary".into(),
+                session_id: "s1".into(),
+                kind: "summary".into(),
+                title: "Legacy title".into(),
+                template_id: String::new(),
+                sort_order: 0,
+                markdown: "Legacy body".into(),
+            })
+            .await
+            .unwrap();
+        std::fs::write(&canonical, "Conflicting user file").unwrap();
+        assert_eq!(
+            generated_summary_sync_paths(vault.path(), directory, "s1").unwrap(),
+            [
+                vault
+                    .path()
+                    .join(directory)
+                    .join("enhanced/legacy-summary.md"),
+                canonical,
+                registry,
+            ]
+        );
+    }
 
     async fn fixture() -> (
         tempfile::TempDir,

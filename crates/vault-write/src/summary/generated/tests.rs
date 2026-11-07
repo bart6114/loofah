@@ -764,6 +764,51 @@ async fn legacy_summary_migration_and_filename_collision_preserve_task_identity_
 }
 
 #[tokio::test]
+async fn interrupted_legacy_collision_recovers_each_boundary_without_replacing_foreign_bytes() {
+    for stage in [
+        CommitStage::Intent,
+        CommitStage::Body,
+        CommitStage::Tasks,
+        CommitStage::Metadata,
+        CommitStage::Registry,
+    ] {
+        let (vault, runtime, store) = fixture().await;
+        let canonical = vault.path().join("sessions/note/summary.md");
+        std::fs::remove_file(&canonical).unwrap();
+        store
+            .write_enhanced_doc(&crate::EnhancedDoc {
+                id: "legacy-summary".into(),
+                session_id: "note".into(),
+                kind: "summary".into(),
+                title: "Legacy title".into(),
+                template_id: String::new(),
+                sort_order: 0,
+                markdown: BEFORE.into(),
+            })
+            .await
+            .unwrap();
+        std::fs::write(&canonical, "Conflicting user file").unwrap();
+        assert!(failed_at(&store, runtime.path(), stage).await.is_err());
+        drop(store);
+        let store = SessionStore::new(vault.path().into());
+        store.recover_document_writes(runtime.path()).await.unwrap();
+        assert_eq!(
+            store.read_summary("note").await.unwrap().as_deref(),
+            Some(if stage == CommitStage::Intent {
+                BEFORE
+            } else {
+                AFTER
+            })
+        );
+        assert_eq!(
+            std::fs::read_to_string(&canonical).unwrap(),
+            "Conflicting user file"
+        );
+        assert!(!intent(runtime.path()).exists());
+    }
+}
+
+#[tokio::test]
 async fn future_intents_are_retained_and_deleted_sessions_are_never_recreated() {
     let (vault, runtime, store) = fixture().await;
     assert!(
