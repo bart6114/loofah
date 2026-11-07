@@ -2841,3 +2841,33 @@ All 46 transcript tests and the shared-write Rust check pass locally; a fresh
 native Windows run remains required. The decoded failure excerpt and local
 results are saved in `windows-16f-arm-transcript-failure.txt` and
 `processing-settings-transcript-readiness*.log` under the T7 build-log directory.
+
+### Main desktop scoped-search requests
+
+The first isolated frontend worker slice routes main full-text search through the
+captured `VaultScope`/`VaultClient`, with the local vault host outside the search
+provider. Requests retain normalization, date filters, limits, snippets and mapping
+through both adapters. Caller cancellation, scope retirement and connection/access
+loss stop requests and prevent late replies from appearing in another vault.
+
+Cmd-K uses the selected scope's query client and scope-qualified search keys,
+resets query presentation when the scope changes, and retains previous data only
+inside that scope. Session/header invalidation and reconnect/resync refresh the
+matching search queries. StrictMode cleanup/replay, unmount and mention-consumer
+behavior have focused coverage; default local use stays offline and login-free.
+
+This is the search-request seam, not full main-shell remote support. Cmd-K's
+session-summary reads and empty-query mention suggestions still use local hooks,
+and recent-session persistence still uses bare device IDs. The next bounded
+summary-query/scoped-device-state increment must remove those remaining sources
+before exposing main-shell profile selection. No worker introduced a mutable
+global active client or enabled remote-only startup in this slice.
+
+Worker validation passes 36 focused tests, typechecking and zero owned-file lint
+warnings/errors. After integration, all 1,885 frontend tests across 235 files and
+desktop typechecking pass; full frontend lint retains 88 baseline warnings and no
+errors. Evidence is in the worker `agents/ui/logs` and
+`scoped-search-integration-*` logs under the T7 build directory. These controlled
+adapter/component tests do not replace actual HTTPS or native production QA.
+The capture-spool and compound-generation workers remain isolated and unmerged
+until their own validation/review passes.
