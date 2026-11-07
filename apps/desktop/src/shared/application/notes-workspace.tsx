@@ -33,7 +33,8 @@ import { VaultAttachmentsPane } from "./vault-attachments-pane";
 import type { VaultClient } from "./vault-client";
 import { VaultNoteEditor } from "./vault-note-editor";
 import { VaultProcessing } from "./vault-processing";
-import { VaultScope } from "./vault-scope";
+import { VaultClientProvider, useVaultHost } from "./vault-provider";
+import type { VaultScope } from "./vault-scope";
 
 import { RecordingPlayer } from "~/audio-player/recording";
 import type { NoteDraftRecovery, NoteSnapshot } from "~/types/tauri.gen";
@@ -45,24 +46,21 @@ export function VaultNotesWorkspace({
   client: VaultClient;
   onCatalogChanged?: () => void;
 }) {
-  const [scope, setScope] = useState<VaultScope | null>(null);
-  useEffect(() => {
-    const current = new VaultScope(client);
-    drafts.retainScope(client.scope);
-    noteEditorDrafts.retainScope(client.scope);
-    setScope(current);
-    const changed = current.onChange((change) => {
-      if (change.kind === "catalog_changed") onCatalogChanged?.();
-    });
-    void current.start().catch(() => {});
-    return () => {
-      changed();
-      current.dispose();
-      drafts.releaseScope(client.scope);
-      noteEditorDrafts.releaseScope(client.scope);
-    };
-  }, [client, onCatalogChanged]);
-  if (!scope || scope.client !== client)
+  return (
+    <VaultClientProvider
+      client={client}
+      onChange={(change) => {
+        if (change.kind === "catalog_changed") onCatalogChanged?.();
+      }}
+    >
+      <WorkspaceHost />
+    </VaultClientProvider>
+  );
+}
+
+function WorkspaceHost() {
+  const { scope } = useVaultHost();
+  if (!scope)
     return (
       <p>
         <Trans>Connecting…</Trans>

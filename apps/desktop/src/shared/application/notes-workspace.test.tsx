@@ -330,6 +330,44 @@ afterEach(async () => {
   await flushDatabaseWrites();
 });
 
+it("keeps the selected note and mounted editor when only its catalog callback changes", async () => {
+  const backend = fixture();
+  const original = vi.fn(),
+    replacement = vi.fn();
+  const mounted = render(
+    <StrictMode>
+      <VaultNotesWorkspace
+        client={backend.client}
+        onCatalogChanged={original}
+      />
+    </StrictMode>,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Seed" }));
+  const editor = await screen.findByRole("textbox", { name: "Markdown" });
+  fireEvent.change(editor, { target: { value: "Keep selected private text" } });
+  const subscriptions = vi.mocked(backend.client.subscribe).mock.calls.length;
+  mounted.rerender(
+    <StrictMode>
+      <VaultNotesWorkspace
+        client={backend.client}
+        onCatalogChanged={replacement}
+      />
+    </StrictMode>,
+  );
+  act(() =>
+    backend.emit({ kind: "change", change: { kind: "catalog_changed" } }),
+  );
+  expect(screen.getByRole("textbox", { name: "Markdown" })).toBe(editor);
+  expect((editor as HTMLTextAreaElement).value).toBe(
+    "Keep selected private text",
+  );
+  expect(vi.mocked(backend.client.subscribe)).toHaveBeenCalledTimes(
+    subscriptions,
+  );
+  expect(original).not.toHaveBeenCalled();
+  expect(replacement).toHaveBeenCalledOnce();
+});
+
 async function openRich(client: VaultClient) {
   const rendered = render(
     <StrictMode>
