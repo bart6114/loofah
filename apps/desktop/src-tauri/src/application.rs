@@ -22,17 +22,18 @@ fn context<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn application_upload_attachment_path<R: tauri::Runtime>(
+pub async fn application_upload_attachment_source<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
     request_id: String,
     session_id: String,
     input: hypr_loofah_protocol::UploadAttachmentRequest,
-    source_path: String,
+    source: crate::attachment_upload::DeviceAttachmentSource,
 ) -> Result<hypr_loofah_protocol::FileMetadata, ApplicationError> {
     let context = context(&app)?;
     let source = app
         .state::<crate::attachment_upload::DeviceUploadIo>()
-        .source(source_path, &input)?;
+        .reader(window.label(), source, &input)?;
     let _admission = source.admission();
     context
         .upload_attachment("desktop".into(), request_id, &session_id, input, source)

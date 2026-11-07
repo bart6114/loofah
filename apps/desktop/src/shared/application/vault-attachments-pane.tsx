@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 
 import {
   AttachmentResource,
@@ -12,6 +12,7 @@ import { Button } from "@hypr/ui/components/ui/button";
 import type { FileInfo } from "./protocol.gen";
 import { RemoveAttachmentDialog } from "./remove-attachment-dialog";
 import { VaultAttachmentProvider } from "./vault-attachment-provider";
+import { VaultAttachmentUploads } from "./vault-attachment-uploads";
 import type { VaultScope } from "./vault-scope";
 
 import { formatFileSize } from "~/shared/format-file-size";
@@ -25,6 +26,7 @@ export function VaultAttachmentsPane({
 }) {
   const { t } = useLingui();
   const [removing, setRemoving] = useState<string | null>(null);
+  const targetRef = useRef<HTMLElement>(null);
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const query = useInfiniteQuery(
     {
@@ -48,12 +50,21 @@ export function VaultAttachmentsPane({
   const files = query.data?.pages.flatMap((page) => page.files) ?? [];
   return (
     <section
+      ref={targetRef}
       aria-label={t`Attachments`}
       className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto"
     >
       <h3 className="text-sm font-medium">
         <Trans>Attachments</Trans>
       </h3>
+      {scope.client.canEdit &&
+        scope.client.features?.includes("attachment_upload") && (
+          <VaultAttachmentUploads
+            scope={scope}
+            sessionId={sessionId}
+            targetRef={targetRef}
+          />
+        )}
       {query.isPending && (
         <p role="status">
           <Trans>Loading attachments…</Trans>

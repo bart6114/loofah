@@ -314,20 +314,20 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async applicationUploadAttachmentPath(
+  async applicationUploadAttachmentSource(
     requestId: string,
     sessionId: string,
     input: UploadAttachmentRequest,
-    sourcePath: string,
+    source: DeviceAttachmentSource,
   ): Promise<Result<FileMetadata, ApplicationError>> {
     try {
       return {
         status: "ok",
-        data: await TAURI_INVOKE("application_upload_attachment_path", {
+        data: await TAURI_INVOKE("application_upload_attachment_source", {
           requestId,
           sessionId,
           input,
-          sourcePath,
+          source,
         }),
       };
     } catch (e) {
@@ -368,6 +368,62 @@ export const commands = {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };
     }
+  },
+  async deviceAttachmentSourceBegin(
+    sourceId: string,
+    filename: string,
+    sizeBytes: number,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_attachment_source_begin", {
+          sourceId,
+          filename,
+          sizeBytes,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceAppend(
+    sourceId: string,
+    offset: number,
+    data: number[],
+  ): Promise<Result<number, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_attachment_source_append", {
+          sourceId,
+          offset,
+          data,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceFinish(
+    sourceId: string,
+  ): Promise<Result<UploadAttachmentRequest, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_attachment_source_finish", {
+          sourceId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceAttachmentSourceClose(sourceId: string): Promise<void> {
+    await TAURI_INVOKE("device_attachment_source_close", { sourceId });
   },
   async applicationRemoveAttachment(
     requestId: string,
@@ -644,18 +700,18 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async remoteUploadAttachmentPath(
+  async remoteUploadAttachmentSource(
     connectionId: string,
     upload: AttachmentUpload,
-    sourcePath: string,
+    source: DeviceAttachmentSource,
   ): Promise<Result<FileMetadata, ApplicationError>> {
     try {
       return {
         status: "ok",
-        data: await TAURI_INVOKE("remote_upload_attachment_path", {
+        data: await TAURI_INVOKE("remote_upload_attachment_source", {
           connectionId,
           upload,
-          sourcePath,
+          source,
         }),
       };
     } catch (e) {
@@ -1843,6 +1899,9 @@ export type CreatedAtFilter = {
   eq: number | null;
 };
 export type DeleteRecordingRequest = { expected_sha256: string };
+export type DeviceAttachmentSource =
+  | { kind: "path"; path: string }
+  | { kind: "staged"; id: string };
 export type Document = {
   id: string;
   kind: string;

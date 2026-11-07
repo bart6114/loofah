@@ -2,7 +2,13 @@ import { isTauri } from "@tauri-apps/api/core";
 import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { platform } from "@tauri-apps/plugin-os";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import type { NativeEditorDragEvent } from "@hypr/editor/note";
 
@@ -11,6 +17,7 @@ export type NativeDropPoint = { x: number; y: number };
 export function useNativeFileDrop(
   targetRef: RefObject<HTMLElement | null>,
   callbacks: {
+    enabled?: boolean;
     onDrop: (paths: string[], point: NativeDropPoint) => void;
     onHoverPaths?: (paths: string[]) => void;
     onHoverEnd?: () => void;
@@ -18,13 +25,18 @@ export function useNativeFileDrop(
   },
 ) {
   const callbacksRef = useRef(callbacks);
-  callbacksRef.current = callbacks;
+  useLayoutEffect(() => {
+    callbacksRef.current = callbacks;
+  });
   const hoveringRef = useRef(false);
   const pathsRef = useRef<string[]>([]);
   const [isHovering, setIsHovering] = useState(false);
 
   useEffect(() => {
-    if (!isTauri()) {
+    if (callbacks.enabled === false || !isTauri()) {
+      hoveringRef.current = false;
+      pathsRef.current = [];
+      setIsHovering(false);
       return;
     }
 
@@ -33,7 +45,7 @@ export function useNativeFileDrop(
 
     void getCurrentWebview()
       .onDragDropEvent(({ payload }) => {
-        if (disposed) return;
+        if (disposed || callbacksRef.current.enabled === false) return;
 
         if (payload.type === "leave") {
           hoveringRef.current = false;
@@ -103,7 +115,7 @@ export function useNativeFileDrop(
       disposed = true;
       unlisten?.();
     };
-  }, [targetRef]);
+  }, [targetRef, callbacks.enabled]);
 
   return { isHovering };
 }

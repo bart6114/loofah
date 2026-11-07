@@ -31,6 +31,7 @@ import {
 } from "./note-editor-draft";
 import type { NoteEditorSnapshot } from "./protocol.gen";
 import { useDraftPersistence } from "./use-draft-persistence";
+import { useVaultNoteFileHandler } from "./use-vault-note-file-handler";
 import { VaultAttachmentProvider } from "./vault-attachment-provider";
 import type { VaultScope } from "./vault-scope";
 
@@ -244,6 +245,14 @@ function EditorFields({
   onSaveError,
   layout = "pane",
 }: LoadedEditorProps & { draft: NoteEditorDraft }) {
+  const fileUploads = useVaultNoteFileHandler(
+    scope,
+    sessionId,
+    !editorOptions?.fileHandlerConfig &&
+      scope.client.canEdit &&
+      !!scope.client.features?.includes("attachment_upload"),
+    editorOptions,
+  );
   const viewKey = JSON.stringify(["vault-note", scope.client.scope, sessionId]);
   const confirm = useCallback(
     async (saved: NoteEditorSnapshot) => {
@@ -406,6 +415,7 @@ function EditorFields({
   };
   return (
     <div
+      ref={fileUploads.targetRef}
       className={cn([
         layout === "document"
           ? "min-w-0"
@@ -426,6 +436,12 @@ function EditorFields({
           >
             <NoteEditor
               {...editorOptions}
+              fileHandlerConfig={
+                editorOptions?.fileHandlerConfig ??
+                fileUploads.fileHandlerConfig
+              }
+              onViewReady={fileUploads.onViewReady}
+              onViewDisposed={fileUploads.onViewDisposed}
               ref={editorRef}
               key={editorEpoch}
               initialContent={model.value.content}

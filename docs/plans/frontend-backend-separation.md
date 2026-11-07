@@ -2,7 +2,7 @@
 
 Status: implementation in progress. The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
 
-Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes. Attachments support authenticated reading, preview/copy actions, listing and checked removal. Checked binary upload publication, native SDK streaming and local/remote path adapters are implemented, but upload controls and clipboard/drop integration remain open. The main desktop remote shell/profile migration, imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
+Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes. Attachments support authenticated reading, preview/copy actions, listing and checked removal. Checked binary upload publication, native SDK streaming, device path/browser-file sources and shared attachment upload controls are implemented. The opt-in shared editor accepts clipboard files and native drops through these adapters; the default local editor retains its existing file/audio import host. Crash/restart upload recovery remains open. The main desktop remote shell/profile migration, imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
@@ -307,7 +307,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; upload controls, clipboard/drop sources and incoming-stage crash cleanup remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
+- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
 - [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
@@ -2112,3 +2112,58 @@ source. UI controls, clipboard/browser-file staging, drop integration, incoming
 stage crash cleanup, recording ingestion and the wider full implementation gates
 remain open. Native Windows and production native UI validation of these new
 adapters have not yet passed.
+
+### Device browser-file sources and shared upload controls
+
+The device host now stages browser/clipboard `File` sources using sequential
+64 KiB IPC chunks in a private cache outside the vault. The source registry
+belongs to a native window; cross-window access is refused. Source count and
+reserved-byte limits bound staging, and actual readers retain ownership and
+admission after cancellation. Finished sources freeze their length/checksum
+declaration. Repeated matching chunks and repeated finish are safe; conflicting
+or reordered chunks are refused. Unix cache directories/files use 0700/0600.
+Source close, scope loss, window destruction, page reload and application shutdown
+cancel and clean up owned sources. Crash orphan cleanup and durable restart
+recovery remain open; this cache is not the recording spool.
+
+`VaultClient.prepareAttachmentSource` and `uploadAttachmentSource` expose the
+same source/declaration contract through local IPC and HTTPS. A staged source is
+an opaque device ID; native paths remain confined to the client. The SDK's
+receipt preflight can confirm a completed upload without reopening its source.
+The shared `useVaultFileUpload` mutation retains the original request UUID,
+declaration and source for explicit retry. Failed attempts remain in the scoped
+mutation cache instead of expiring after the default five minutes. It never
+queues an upload while disconnected or retries a mutation automatically. Success
+or explicit removal releases the device copy; terminal scope/access loss also
+closes owned sources.
+
+`VaultAttachmentsPane` mounts a native file picker, native drop target and shared
+pending/error/retry/remove controls. `VaultNoteEditor` uses the same mutation for
+clipboard/browser files and native drops when its host supplies no file handler.
+Saved image/file nodes contain canonical attachment IDs; runtime URLs and source
+paths are supplied by scoped node views. The default local main editor retains
+its existing host handler, including audio-import interception. Remote audio
+imports, insertion/mention selection parity, attachment retry insertion after an
+editor becomes read-only, and the remaining local upload-host migration remain
+open.
+
+Validation of this increment passes 69 desktop unit tests (one ignored),
+desktop/CLI Rust checking, desktop Clippy with no new source-staging warnings,
+TypeScript checking, desktop lint, 1,832 frontend tests, locale extraction/strict
+compilation/checking, and the production frontend build. Locale changes update
+source references and placeholder comments only. Native macOS debug WKWebView validation passes against the real HTTPS service:
+50/150/500 ms simulated RTT uploads, rich-editor image paste and canonical
+Markdown save, a 6 MiB browser File, lost post-commit response followed by
+same-UUID reconciliation after restart, and mid-body disconnect followed by
+explicit retry without partial or duplicate publication. After remote logout and
+with HTTPS unavailable, a new local note uploads through IPC without login; the
+canonical local SHA-256 matches. All 286 preexisting fixture files and old local
+notes stay unchanged. Normal completion leaves no device sources or server
+stages. A source orphan created by deliberately terminating the earlier QA
+process was preserved separately, confirming the remaining crash/restart cleanup
+gap. Evidence is saved at
+`/Volumes/T7/loofah-backend-build/native-qa/attachment-upload/evidence.json`.
+Native picker/drop gestures, production performance and the full main shell are
+separate gates. The earlier pushed attachment backend checkpoint has passed
+native Windows x64/ARM64 checking, tests and installer smoke checks.
+These checkpoints do not complete phase 4 or the full plan.

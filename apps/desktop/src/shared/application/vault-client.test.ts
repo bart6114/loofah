@@ -27,7 +27,7 @@ const native = vi.hoisted(() => ({
     applicationAttachmentInfo: vi.fn(),
     applicationAttachmentMetadata: vi.fn(),
     devicePrepareAttachmentUpload: vi.fn(),
-    applicationUploadAttachmentPath: vi.fn(),
+    applicationUploadAttachmentSource: vi.fn(),
     applicationAttachmentUploadStatus: vi.fn(),
     applicationRemoveAttachment: vi.fn(),
     applicationAttachments: vi.fn(),
@@ -124,7 +124,7 @@ it("uses device preparation and the same stable upload declaration through eithe
     status: "ok",
     data: input,
   });
-  native.commands.applicationUploadAttachmentPath.mockResolvedValue({
+  native.commands.applicationUploadAttachmentSource.mockResolvedValue({
     status: "ok",
     data: metadata,
   });
@@ -144,12 +144,12 @@ it("uses device preparation and the same stable upload declaration through eithe
       options,
     ),
   ).toEqual(metadata);
-  expect(native.commands.applicationUploadAttachmentPath).toHaveBeenCalledWith(
-    id,
-    "note",
-    input,
-    "/device/chart ü.pdf",
-  );
+  expect(
+    native.commands.applicationUploadAttachmentSource,
+  ).toHaveBeenCalledWith(id, "note", input, {
+    kind: "path",
+    path: "/device/chart ü.pdf",
+  });
   expect(await local.attachmentUploadStatus("note", id, input)).toEqual({
     kind: "committed",
     value: metadata,
@@ -221,7 +221,7 @@ it("does not begin device review or local upload when already cancelled", async 
   ).rejects.toThrow();
   expect(native.commands.devicePrepareAttachmentUpload).not.toHaveBeenCalled();
   expect(
-    native.commands.applicationUploadAttachmentPath,
+    native.commands.applicationUploadAttachmentSource,
   ).not.toHaveBeenCalled();
 });
 

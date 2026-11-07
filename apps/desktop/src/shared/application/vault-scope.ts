@@ -7,6 +7,7 @@ import {
 
 import { artifactInvalidation } from "./artifact-invalidation";
 import type { AttachmentResource } from "./attachments";
+import type { PreparedAttachmentUpload } from "./device-attachment-source";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { ApplicationRequestError, connectionClosed } from "./errors";
 import type { PlaybackRecording } from "./playback";
@@ -30,6 +31,7 @@ export class VaultScope {
   private startPromise?: Promise<void>;
   private unsubscribe?: () => void;
   private disposed = false;
+  private readonly uploadSources = new Set<PreparedAttachmentUpload>();
   private readonly resources = new Map<
     string,
     PlaybackRecording | AttachmentResource
@@ -142,6 +144,98 @@ export class VaultScope {
       }
       throw error;
     }
+  }
+
+  async prepareAttachmentSource(
+    candidate: Parameters<VaultClient["prepareAttachmentSource"]>[0],
+  ) {
+    return this.runUpload(async (signal) => {
+      const prepared = await this.client.prepareAttachmentSource(candidate, {
+        signal,
+      });
+      if (signal.aborted) {
+        await prepared.close().catch(() => {});
+        throw connectionClosed();
+      }
+      let closing: Promise<void> | undefined;
+      const owned: PreparedAttachmentUpload = {
+        ...prepared,
+        close: () =>
+          (closing ??= (async () => {
+            this.uploadSources.delete(owned);
+            await prepared.close();
+          })()),
+      };
+      this.uploadSources.add(owned);
+      return owned;
+    }, false);
+  }
+
+  uploadAttachmentSource(
+    sessionId: string,
+    prepared: PreparedAttachmentUpload,
+    requestId: string,
+  ) {
+    return this.runUpload(
+      (signal) =>
+        this.client.uploadAttachmentSource(sessionId, prepared, {
+          signal,
+          requestId,
+        }),
+      true,
+    );
+  }
+
+  private async runUpload<T>(
+    operation: (signal: AbortSignal) => Promise<T>,
+    mutation: boolean,
+  ): Promise<T> {
+    if (
+      this.disposed ||
+      this.snapshot.state !== "connected" ||
+      !this.client.canEdit ||
+      !this.client.features.includes("attachment_upload")
+    ) {
+      throw new ApplicationRequestError({
+        code: "unavailable",
+        message:
+          "Attachment upload is unavailable; reconnect before trying again",
+        request_id: null,
+        retryable: false,
+        current_revision: null,
+        mutation_outcome: "not_committed",
+      });
+    }
+    const controller = new AbortController();
+    const stop = this.subscribe(() => {
+      if (
+        ["access_denied", "login_required", "closed", "incompatible"].includes(
+          this.snapshot.state,
+        )
+      )
+        controller.abort();
+    });
+    try {
+      const result = await this.run(() => operation(controller.signal));
+      if (controller.signal.aborted)
+        throw new ApplicationRequestError({
+          code: "cancelled",
+          message: "Attachment access ended while the request was running",
+          request_id: null,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: mutation ? "unknown" : "not_committed",
+        });
+      return result;
+    } finally {
+      stop();
+    }
+  }
+
+  private closeUploadSources() {
+    for (const source of this.uploadSources)
+      void source.close().catch(() => {});
+    this.uploadSources.clear();
   }
 
   async saveAndConfirm<T>(
@@ -488,6 +582,7 @@ export class VaultScope {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.closeUploadSources();
     this.unsubscribe?.();
     window.removeEventListener("focus", this.focus);
     document.removeEventListener("visibilitychange", this.visible);
@@ -518,6 +613,7 @@ export class VaultScope {
           event.state,
         )
       ) {
+        this.closeUploadSources();
         void this.queryClient.cancelQueries();
         this.queryClient.clear();
       } else if (event.state === "connected" && previous === "reconnecting")

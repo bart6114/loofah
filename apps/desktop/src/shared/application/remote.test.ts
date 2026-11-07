@@ -16,7 +16,7 @@ const native = vi.hoisted(() => ({
   remoteAttachmentOpen: vi.fn(),
   remoteAttachmentClose: vi.fn(),
   remoteAttachmentCopy: vi.fn(),
-  remoteUploadAttachmentPath: vi.fn(),
+  remoteUploadAttachmentSource: vi.fn(),
   attachmentTargets: new Map<string, string>(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
@@ -62,7 +62,7 @@ it("keeps upload paths native, preserves the original request ID, and cancels an
   };
   const requestId = crypto.randomUUID();
   let finish!: (result: unknown) => void;
-  native.remoteUploadAttachmentPath.mockImplementation(
+  native.remoteUploadAttachmentSource.mockImplementation(
     () =>
       new Promise((resolve) => {
         finish = resolve;
@@ -76,10 +76,10 @@ it("keeps upload paths native, preserves the original request ID, and cancels an
     input,
     { requestId, signal: controller.signal },
   );
-  expect(native.remoteUploadAttachmentPath).toHaveBeenCalledWith(
+  expect(native.remoteUploadAttachmentSource).toHaveBeenCalledWith(
     info.connection_id,
     { vault_id: "vault", session_id: "note", request_id: requestId, input },
-    "/device/file.pdf",
+    { kind: "path", path: "/device/file.pdf" },
   );
   controller.abort();
   expect(native.remoteCancelRequest).toHaveBeenCalledWith(
@@ -94,7 +94,7 @@ it("keeps upload paths native, preserves the original request ID, and cancels an
       mutation_outcome: "unknown",
     },
   });
-  expect(native.remoteUploadAttachmentPath).toHaveBeenCalledTimes(1);
+  expect(native.remoteUploadAttachmentSource).toHaveBeenCalledTimes(1);
   await connection.disconnect();
 });
 

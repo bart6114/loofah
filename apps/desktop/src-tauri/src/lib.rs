@@ -113,6 +113,10 @@ fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEven
     if matches!(event, tauri::WindowEvent::Destroyed) {
         window
             .app_handle()
+            .state::<attachment_upload::DeviceUploadIo>()
+            .release_window(window.label());
+        window
+            .app_handle()
             .state::<remote::RemoteState>()
             .release_window(window.label());
     }
@@ -197,6 +201,15 @@ pub async fn main() {
     legacy_db::retire_app_db(&context.config().identifier);
 
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+                && let Some(io) = webview
+                    .app_handle()
+                    .try_state::<attachment_upload::DeviceUploadIo>()
+            {
+                io.release_window(webview.window().label());
+            }
+        })
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
         .manage(remote::RemoteState::default())
@@ -492,6 +505,7 @@ pub async fn main() {
         tauri::RunEvent::Exit => {
             app.state::<chatgpt::ChatgptState>().shutdown();
             app.state::<remote::RemoteState>().shutdown();
+            app.state::<attachment_upload::DeviceUploadIo>().shutdown();
             // Last resort for any platform path where Exit fires without the
             // ExitRequested/complete_app_exit flush having run. flush_all is a no-op when
             // nothing is dirty, so this can never double-write.
@@ -597,9 +611,13 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_attachment_info::<tauri::Wry>,
             application::application_attachments::<tauri::Wry>,
             application::application_attachment_metadata::<tauri::Wry>,
-            application::application_upload_attachment_path::<tauri::Wry>,
+            application::application_upload_attachment_source::<tauri::Wry>,
             application::application_attachment_upload_status::<tauri::Wry>,
             attachment_upload::device_prepare_attachment_upload::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_begin::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_append::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_finish::<tauri::Wry>,
+            attachment_upload::staging::device_attachment_source_close::<tauri::Wry>,
             application::application_remove_attachment::<tauri::Wry>,
             application::application_delete_recording::<tauri::Wry>,
             application::application_tasks::<tauri::Wry>,
@@ -620,7 +638,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             remote::remote_login::<tauri::Wry>,
             remote::remote_cancel_login::<tauri::Wry>,
             remote::remote_request::<tauri::Wry>,
-            remote::remote_upload_attachment_path::<tauri::Wry>,
+            remote::remote_upload_attachment_source::<tauri::Wry>,
             remote::remote_cancel_request::<tauri::Wry>,
             remote::remote_subscribe::<tauri::Wry>,
             remote::remote_unsubscribe::<tauri::Wry>,

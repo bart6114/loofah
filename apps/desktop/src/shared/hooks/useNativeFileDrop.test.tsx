@@ -37,6 +37,26 @@ afterEach(() => {
 });
 
 describe("useNativeFileDrop", () => {
+  it("does not subscribe when disabled and releases its listener when disabled after mounting", async () => {
+    const props = { onDrop: vi.fn(), onHoverPaths: vi.fn() };
+    const view = render(<Harness {...props} enabled={false} />);
+    expect(mocks.handler).toBeNull();
+    view.rerender(<Harness {...props} enabled />);
+    await waitFor(() => expect(mocks.handler).not.toBeNull());
+    view.rerender(<Harness {...props} enabled={false} />);
+    await waitFor(() => expect(mocks.unlisten).toHaveBeenCalledTimes(1));
+    act(() => {
+      mocks.handler?.({
+        payload: {
+          type: "drop",
+          paths: ["/file.pdf"],
+          position: { x: 0, y: 0 },
+        },
+      });
+    });
+    expect(props.onDrop).not.toHaveBeenCalled();
+    expect(view.getByTestId("hover").textContent).toBe("no");
+  });
   it("forwards drags without file paths without showing the file hover state", async () => {
     const onDrop = vi.fn();
     const onHoverPaths = vi.fn();
@@ -184,16 +204,19 @@ describe("useNativeFileDrop", () => {
 });
 
 function Harness({
+  enabled,
   onDrop,
   onHoverPaths,
   onInternalDrag,
 }: {
+  enabled?: boolean;
   onDrop: (paths: string[], point: { x: number; y: number }) => void;
   onHoverPaths: (paths: string[]) => void;
   onInternalDrag?: Parameters<typeof useNativeFileDrop>[1]["onInternalDrag"];
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { isHovering } = useNativeFileDrop(ref, {
+    enabled,
     onDrop,
     onHoverPaths,
     onInternalDrag,

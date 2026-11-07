@@ -120,6 +120,7 @@ msgid "Add a meeting language to help transcription choose the right words."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Add attachments"
 msgstr ""
 
@@ -373,6 +374,7 @@ msgid "Choose the languages you expect to hear. Summary language is set separate
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Choosing…"
 msgstr ""
 
@@ -539,6 +541,7 @@ msgid "Couldn’t add {failed} attachments"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Couldn’t add 1 attachment"
 msgstr ""
 
@@ -555,6 +558,7 @@ msgid "Couldn’t check the attachment. Close this dialog and review it again."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Couldn’t choose attachments"
 msgstr ""
 
@@ -1067,6 +1071,7 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
+#: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/deferred-view.tsx
 msgid "Loading…"
 msgstr ""
@@ -1549,15 +1554,17 @@ msgid "Removal could not be confirmed. Check the attachment and vault Trash befo
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/application/vault-sharing.tsx
 msgid "Remove"
 msgstr ""
 
 #. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attempt.candidate.name
 #. placeholder {0}: getBaseLanguageDisplayName(code, i18n.locale)
-#. placeholder {0}: upload.candidate.name
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/general/spoken-languages.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Remove {0}"
 msgstr ""
 
@@ -1645,11 +1652,14 @@ msgstr ""
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
 #: src/shared/application/vault-attachment-provider.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Retry"
 msgstr ""
 
+#. placeholder {0}: attempt.candidate.name
 #. placeholder {0}: upload.candidate.name
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Retry {0}"
 msgstr ""
 

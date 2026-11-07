@@ -11,13 +11,45 @@ use hypr_loofah_protocol::{
 use tauri::Manager;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+pub(crate) mod staging;
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DeviceAttachmentSource {
+    Path { path: String },
+    Staged { id: String },
+}
+
+pub(crate) enum UploadReader {
+    Path(PathSource),
+    Staged(staging::StageSource),
+}
+impl Read for UploadReader {
+    fn read(&mut self, target: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::Path(source) => source.read(target),
+            Self::Staged(source) => source.read(target),
+        }
+    }
+}
+impl UploadReader {
+    pub(crate) fn admission(&self) -> Arc<OwnedSemaphorePermit> {
+        match self {
+            Self::Path(source) => source.admission(),
+            Self::Staged(source) => source.admission(),
+        }
+    }
+}
+
 pub struct DeviceUploadIo {
     slots: Arc<Semaphore>,
+    stages: staging::StagingRegistry,
 }
 impl Default for DeviceUploadIo {
     fn default() -> Self {
         Self {
             slots: Arc::new(Semaphore::new(2)),
+            stages: staging::StagingRegistry::default(),
         }
     }
 }
@@ -48,6 +80,30 @@ impl Read for PathSource {
     }
 }
 impl DeviceUploadIo {
+    pub(crate) fn reader(
+        &self,
+        owner: &str,
+        source: DeviceAttachmentSource,
+        input: &UploadAttachmentRequest,
+    ) -> Result<UploadReader, ApplicationError> {
+        match source {
+            DeviceAttachmentSource::Path { path } => {
+                self.source(path, input).map(UploadReader::Path)
+            }
+            DeviceAttachmentSource::Staged { id } => self
+                .stages
+                .reader(owner, &id, input, self.reserve()?)
+                .map(UploadReader::Staged),
+        }
+    }
+
+    pub(crate) fn release_window(&self, owner: &str) {
+        self.stages.release_window(owner);
+    }
+    pub(crate) fn shutdown(&self) {
+        self.stages.shutdown();
+        self.slots.close();
+    }
     fn reserve(&self) -> Result<Arc<OwnedSemaphorePermit>, ApplicationError> {
         self.slots
             .clone()
@@ -195,28 +251,38 @@ mod tests {
             .manage(context)
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
+            .build()
+            .unwrap();
+        let window = window.as_ref().window();
         let input =
             device_prepare_attachment_upload(app.handle().clone(), source.to_str().unwrap().into())
                 .await
                 .unwrap();
         let id = uuid::Uuid::new_v4().to_string();
-        let saved = crate::application::application_upload_attachment_path(
+        let saved = crate::application::application_upload_attachment_source(
             app.handle().clone(),
+            window.clone(),
             id.clone(),
             "note".into(),
             input.clone(),
-            source.to_str().unwrap().into(),
+            DeviceAttachmentSource::Path {
+                path: source.to_str().unwrap().into(),
+            },
         )
         .await
         .unwrap();
         assert_eq!(saved.filename, input.filename);
         std::fs::remove_file(&source).unwrap();
-        let replay = crate::application::application_upload_attachment_path(
+        let replay = crate::application::application_upload_attachment_source(
             app.handle().clone(),
+            window.clone(),
             id.clone(),
             "note".into(),
             input.clone(),
-            source.to_str().unwrap().into(),
+            DeviceAttachmentSource::Path {
+                path: source.to_str().unwrap().into(),
+            },
         )
         .await
         .unwrap();
@@ -244,6 +310,73 @@ mod tests {
             b"Canonical note"
         );
         assert_eq!(app.state::<DeviceUploadIo>().slots.available_permits(), 2);
+        let io = app.state::<DeviceUploadIo>();
+        let source_id = uuid::Uuid::new_v4().to_string();
+        let incoming = device.path().join("incoming");
+        io.stages
+            .begin(
+                incoming.clone(),
+                window.label().into(),
+                source_id.clone(),
+                "clipboard.png".into(),
+                15,
+                io.reserve().unwrap(),
+            )
+            .await
+            .unwrap();
+        io.stages
+            .append(
+                window.label(),
+                &source_id,
+                0,
+                b"Clipboard bytes".to_vec(),
+                io.reserve().unwrap(),
+            )
+            .await
+            .unwrap();
+        let input = io
+            .stages
+            .finish(window.label(), &source_id, io.reserve().unwrap())
+            .await
+            .unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let metadata = crate::application::application_upload_attachment_source(
+            app.handle().clone(),
+            window.clone(),
+            id.clone(),
+            "note".into(),
+            input.clone(),
+            DeviceAttachmentSource::Staged {
+                id: source_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        io.stages.close(window.label(), &source_id).await;
+        assert_eq!(std::fs::read_dir(incoming).unwrap().count(), 0);
+        assert_eq!(
+            std::fs::read(session.join("attachments").join(&metadata.filename)).unwrap(),
+            b"Clipboard bytes"
+        );
+        assert_eq!(
+            crate::application::application_upload_attachment_source(
+                app.handle().clone(),
+                window,
+                id,
+                "note".into(),
+                input,
+                DeviceAttachmentSource::Staged { id: source_id }
+            )
+            .await
+            .unwrap(),
+            metadata
+        );
+        assert_eq!(
+            std::fs::read_dir(session.join("attachments"))
+                .unwrap()
+                .count(),
+            2
+        );
     }
 
     #[tokio::test]

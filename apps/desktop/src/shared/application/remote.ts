@@ -20,6 +20,7 @@ import {
   type NativeAttachmentCopy,
   type AttachmentCopyAction,
   type RecordingWaveform,
+  type DeviceAttachmentSource,
 } from "~/types/tauri.gen";
 
 type Reply<K extends RemoteReply["kind"]> = Extract<
@@ -70,6 +71,22 @@ export class NativeRemoteConnection {
     input: UploadAttachmentRequest,
     options: RequestOptions & { requestId: string },
   ): Promise<FileMetadata> {
+    return this.uploadAttachmentSource(
+      vaultId,
+      sessionId,
+      { kind: "path", path: sourcePath },
+      input,
+      options,
+    );
+  }
+
+  async uploadAttachmentSource(
+    vaultId: string,
+    sessionId: string,
+    source: DeviceAttachmentSource,
+    input: UploadAttachmentRequest,
+    options: RequestOptions & { requestId: string },
+  ): Promise<FileMetadata> {
     this.assertOpen();
     const { signal, requestId } = options;
     signal?.throwIfAborted();
@@ -81,7 +98,7 @@ export class NativeRemoteConnection {
     signal?.addEventListener("abort", cancel, { once: true });
     try {
       const metadata = applicationResult(
-        await commands.remoteUploadAttachmentPath(
+        await commands.remoteUploadAttachmentSource(
           this.info.connection_id,
           {
             vault_id: vaultId,
@@ -89,7 +106,7 @@ export class NativeRemoteConnection {
             request_id: requestId,
             input,
           },
-          sourcePath,
+          source,
         ),
       );
       if (this.closed || signal?.aborted) {

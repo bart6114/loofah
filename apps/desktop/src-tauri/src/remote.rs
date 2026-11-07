@@ -470,12 +470,12 @@ pub async fn remote_request<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn remote_upload_attachment_path<R: tauri::Runtime>(
+pub async fn remote_upload_attachment_source<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::Window<R>,
     connection_id: String,
     upload: hypr_loofah_client::AttachmentUpload,
-    source_path: String,
+    source: crate::attachment_upload::DeviceAttachmentSource,
 ) -> Result<hypr_loofah_protocol::FileMetadata, ApplicationError> {
     let state = app.state::<RemoteState>();
     let (client, cancel, _pending) =
@@ -496,7 +496,7 @@ pub async fn remote_upload_attachment_path<R: tauri::Runtime>(
     }
     let source = app
         .state::<crate::attachment_upload::DeviceUploadIo>()
-        .source(source_path, &upload.input)?;
+        .reader(window.label(), source, &upload.input)?;
     let _admission = source.admission();
     client.upload_attachment(upload, source, cancel).await
 }

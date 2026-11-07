@@ -9,6 +9,10 @@ import {
   openRemoteAttachment,
   type AttachmentResource,
 } from "./attachments";
+import {
+  prepareDeviceAttachmentSource,
+  type PreparedAttachmentUpload,
+} from "./device-attachment-source";
 import { applicationResult, ApplicationRequestError } from "./errors";
 import {
   openLocalRecording,
@@ -84,6 +88,12 @@ export type VaultClient = {
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
+  prepareAttachmentSource: typeof prepareDeviceAttachmentSource;
+  uploadAttachmentSource: (
+    sessionId: string,
+    prepared: Pick<PreparedAttachmentUpload, "input" | "source">,
+    options: RequestOptions & { requestId: string },
+  ) => Promise<FileMetadata>;
   prepareAttachmentUpload: (
     sourcePath: string,
     options?: RequestOptions,
@@ -297,14 +307,27 @@ export async function connectLocalVault(): Promise<VaultClient> {
     ],
     openRecording: openLocalRecording,
     prepareAttachmentUpload: prepareDeviceAttachmentUpload,
+    prepareAttachmentSource: prepareDeviceAttachmentSource,
+    uploadAttachmentSource: (sessionId, prepared, options) =>
+      ipc(
+        () =>
+          commands.applicationUploadAttachmentSource(
+            options.requestId,
+            sessionId,
+            prepared.input,
+            prepared.source,
+          ),
+        options,
+        true,
+      ),
     uploadAttachmentPath: (sessionId, sourcePath, input, options) =>
       ipc(
         () =>
-          commands.applicationUploadAttachmentPath(
+          commands.applicationUploadAttachmentSource(
             options.requestId,
             sessionId,
             input,
-            sourcePath,
+            { kind: "path", path: sourcePath },
           ),
         options,
         true,
@@ -471,6 +494,15 @@ export function connectRemoteVault(
       ),
     features: connection.info.capabilities.features,
     prepareAttachmentUpload: prepareDeviceAttachmentUpload,
+    prepareAttachmentSource: prepareDeviceAttachmentSource,
+    uploadAttachmentSource: (sessionId, prepared, options) =>
+      connection.uploadAttachmentSource(
+        vaultId,
+        sessionId,
+        prepared.source,
+        prepared.input,
+        options,
+      ),
     uploadAttachmentPath: (sessionId, sourcePath, input, options) =>
       connection.uploadAttachmentPath(
         vaultId,
