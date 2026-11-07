@@ -44,6 +44,12 @@ pub enum DeviceHostPhase {
     NeverStarted,
 }
 
+impl DeviceHostPhase {
+    fn is_terminal(self) -> bool {
+        matches!(self, Self::Finished | Self::Failed | Self::NeverStarted)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DeviceHostSnapshot {
     pub key: DeviceCaptureKey,
@@ -362,18 +368,29 @@ impl DeviceCaptureHost {
         }
     }
 
-    fn update(&self, entry: &Entry, action: impl FnOnce(&mut DeviceHostSnapshot)) {
-        entry.status.send_modify(action);
-        self.changed
-            .send_modify(|version| *version = version.wrapping_add(1));
+    fn update(&self, entry: &Entry, action: impl FnOnce(&mut DeviceHostSnapshot)) -> bool {
+        let changed = entry.status.send_if_modified(|state| {
+            if state.phase.is_terminal() {
+                return false;
+            }
+            action(state);
+            true
+        });
+        if changed {
+            self.changed
+                .send_modify(|version| *version = version.wrapping_add(1));
+        }
+        changed
     }
     fn retire(&self, entry: &Entry, phase: DeviceHostPhase, error: Option<String>) {
-        self.update(entry, |state| {
+        if !self.update(entry, |state| {
             state.phase = phase;
             if error.is_some() {
                 state.error = error;
             }
-        });
+        }) {
+            return;
+        }
         entry.settled.cancel();
         if phase == DeviceHostPhase::Failed {
             return;
@@ -481,36 +498,48 @@ impl DeviceCaptureHost {
             }
             _ = entry.settled.cancelled() => return,
         };
+        self.apply_start_result(&entry, result);
+    }
+
+    fn apply_start_result(
+        self: &Arc<Self>,
+        entry: &Arc<Entry>,
+        result: Result<(), DeviceCaptureStartError>,
+    ) {
+        if entry.settled.is_cancelled() {
+            return;
+        }
         match result {
             Err(DeviceCaptureStartError::NotDispatched | DeviceCaptureStartError::Rejected) => {
                 self.retire(
-                    &entry,
+                    entry,
                     DeviceHostPhase::NeverStarted,
                     Some("Capture was not started".into()),
                 );
                 return;
             }
             Err(DeviceCaptureStartError::Unconfirmed) => {
-                self.update(&entry, |state| {
+                if self.update(entry, |state| {
                     state.phase = DeviceHostPhase::Pending;
                     state.error = Some(
                         "Capture start was not acknowledged; cleanup remains unconfirmed".into(),
                     );
-                });
-                entry.stop.cancel();
+                }) {
+                    entry.stop.cancel();
+                }
             }
-            Ok(()) => self.update(&entry, |state| {
-                if !entry.settled.is_cancelled() {
+            Ok(()) => {
+                self.update(entry, |state| {
                     state.phase = if entry.stop.is_cancelled() {
                         DeviceHostPhase::Stopping
                     } else {
                         DeviceHostPhase::Capturing
                     }
-                }
-            }),
+                });
+            }
         }
         if entry.stop.is_cancelled() {
-            self.ensure_stop_worker(&entry);
+            self.ensure_stop_worker(entry);
         }
     }
 

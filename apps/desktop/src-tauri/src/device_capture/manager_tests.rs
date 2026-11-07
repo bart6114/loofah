@@ -123,6 +123,7 @@ fn driver(ready: bool, mode: StartMode) -> Arc<Driver> {
 
 #[tokio::test]
 async fn no_root_fails_before_spool_begin() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let input = intent();
     let host = DeviceCaptureHost::with_driver(
@@ -143,6 +144,7 @@ async fn no_root_fails_before_spool_begin() {
 
 #[tokio::test]
 async fn definite_rejection_and_root_disappearance_do_not_wait_for_supervisor_receipts() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     for mode in [StartMode::Reject, StartMode::NotDispatched] {
         let (_temp, spool) = spool().await;
         let host = DeviceCaptureHost::with_driver(
@@ -167,6 +169,7 @@ async fn definite_rejection_and_root_disappearance_do_not_wait_for_supervisor_re
 
 #[tokio::test]
 async fn unconfirmed_start_and_closed_completion_stay_pending_and_preserve_manifest() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let input = intent();
     let host = DeviceCaptureHost::with_driver(
@@ -194,6 +197,7 @@ async fn unconfirmed_start_and_closed_completion_stay_pending_and_preserve_manif
 
 #[tokio::test]
 async fn never_acknowledged_start_has_bounded_host_states_and_shutdown_waiters() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let driver = driver(true, StartMode::NeverAcknowledged);
     let host = DeviceCaptureHost::with_driver(spool, Arc::new(Observer::default()), driver.clone());
@@ -231,6 +235,7 @@ async fn never_acknowledged_start_has_bounded_host_states_and_shutdown_waiters()
 
 #[tokio::test]
 async fn stop_before_preparation_and_dropped_ticket_never_dispatch_capture() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let driver = driver(true, StartMode::NeverAcknowledged);
     let host = DeviceCaptureHost::with_driver(
@@ -262,6 +267,7 @@ async fn stop_before_preparation_and_dropped_ticket_never_dispatch_capture() {
 
 #[tokio::test]
 async fn control_requires_the_original_profile_and_scope() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let host = DeviceCaptureHost::with_driver(
         spool,
@@ -527,6 +533,7 @@ fn frame() -> CaptureFrame {
 
 #[tokio::test]
 async fn shutdown_deadline_retains_real_source_then_drains_queued_frames_after_resource_release() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let observer = Arc::new(Observer::default());
     let (host, input, gate, root, handle) = root_host(
@@ -581,6 +588,7 @@ async fn shutdown_deadline_retains_real_source_then_drains_queued_frames_after_r
 
 #[tokio::test]
 async fn failed_source_has_independent_resource_proof_and_durable_interrupted_finish() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let observer = Arc::new(Observer::default());
     let (host, _input, _gate, root, handle) = root_host(
@@ -613,6 +621,7 @@ async fn failed_source_has_independent_resource_proof_and_durable_interrupted_fi
 
 #[tokio::test]
 async fn early_interrupted_ui_is_not_cleanup_or_durability_proof_and_observation_survives() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let observer = Arc::new(Observer::default());
     let (host, input, gate, root, handle) = root_host(
@@ -675,6 +684,7 @@ async fn early_interrupted_ui_is_not_cleanup_or_durability_proof_and_observation
 
 #[tokio::test]
 async fn resource_release_alone_cannot_finish_shutdown_while_durable_finalizer_is_blocked() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let finish = Arc::new(Semaphore::new(0));
     let (host, input, _gate, root, handle) = root_host(
@@ -719,6 +729,7 @@ async fn resource_release_alone_cannot_finish_shutdown_while_durable_finalizer_i
 #[tokio::test]
 async fn terminal_storage_failure_reports_resource_proof_and_preserved_prefix_without_durable_success()
  {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let (host, input, _gate, root, handle) = root_host(
         spool.clone(),
@@ -758,6 +769,7 @@ async fn terminal_storage_failure_reports_resource_proof_and_preserved_prefix_wi
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stop_during_owned_preparation_and_dropped_caller_retains_manifest_without_dispatch() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     struct Blocking {
         entered: AtomicBool,
         released: (Mutex<bool>, std::sync::Condvar),
@@ -819,6 +831,7 @@ async fn stop_during_owned_preparation_and_dropped_caller_retains_manifest_witho
 
 #[tokio::test]
 async fn event_loop_thread_can_request_shutdown_without_a_thread_local_runtime() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let (host, input, gate, root, handle) = root_host(
         spool,
@@ -850,6 +863,65 @@ async fn event_loop_thread_can_request_shutdown_without_a_thread_local_runtime()
             .unwrap()
             .safe_to_exit
     );
+    root.stop(None);
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn late_start_results_cannot_resurrect_a_retired_capture_ticket() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (_temp, spool) = spool().await;
+    let (host, input, _gate, root, handle) =
+        root_host(spool, Arc::new(Observer::default()), Config::default()).await;
+    let mut ticket = host.start(intent()).unwrap();
+    input.send(frame()).await.unwrap();
+    until(&mut ticket, |state| {
+        state.completion.first_admitted_audio_observed_at.is_some()
+    })
+    .await;
+    let entry = host
+        .state
+        .lock()
+        .unwrap()
+        .entries
+        .get(&ticket.key)
+        .unwrap()
+        .clone();
+    host.request_shutdown();
+    let terminal = until(&mut ticket, |state| {
+        state.phase == DeviceHostPhase::Finished
+    })
+    .await;
+    assert!(
+        host.wait_shutdown(Duration::from_secs(5))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
+    let history_len = host.state.lock().unwrap().history.len();
+    for result in [
+        Err(DeviceCaptureStartError::Unconfirmed),
+        Err(DeviceCaptureStartError::Rejected),
+        Err(DeviceCaptureStartError::NotDispatched),
+        Ok(()),
+    ] {
+        host.apply_start_result(&entry, result);
+        let current = ticket.current();
+        assert_eq!(current.phase, terminal.phase);
+        assert_eq!(current.completion, terminal.completion);
+        assert_eq!(current.durable_prefix, terminal.durable_prefix);
+        assert_eq!(current.end, terminal.end);
+        assert_eq!(current.error, terminal.error);
+        assert!(host.shutdown_report().safe_to_exit);
+    }
+    assert!(!host.update(&entry, |state| state.phase = DeviceHostPhase::Pending));
+    host.retire(
+        &entry,
+        DeviceHostPhase::NeverStarted,
+        Some("late rejection".into()),
+    );
+    assert_eq!(ticket.current().phase, DeviceHostPhase::Finished);
+    assert_eq!(host.state.lock().unwrap().history.len(), history_len);
     root.stop(None);
     handle.await.unwrap();
 }

@@ -6,6 +6,9 @@ mod sink;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+static CAPTURE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 use std::sync::{Arc, OnceLock};
 
 use hypr_loofah_client::capture_spool::{
