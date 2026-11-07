@@ -1,5 +1,5 @@
 import { useRouteContext } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useMemo } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { useLanguageModel } from "~/ai/hooks";
 import { DevtoolsFloatingPanelHost } from "~/devtools-panel/host";
@@ -13,6 +13,7 @@ import {
   useDesktopTabLifecycle,
 } from "~/shared/desktop-tab-lifecycle";
 import { UndoDeleteToast } from "~/sidebar/toast/undo-delete-toast";
+import { listenerStore } from "~/store/zustand/listener/instance";
 import { useTabs, useTabsStore } from "~/store/zustand/tabs";
 import { MainListenerControlBridge } from "~/stt/window-control";
 
@@ -20,15 +21,31 @@ export function useClassicMainLifecycle() {
   const store = useTabsStore();
   const { scope } = useVaultHost();
   const openNew = useTabs((state) => state.openNew);
-  const close = useMemo(
-    () =>
-      createSessionTabCloseHandler({
-        isActive: () => scope?.getSnapshot().state === "connected",
-        invalidateSessionResource: (id) =>
-          store.getState().invalidateResource("sessions", id),
-      }),
-    [scope, store],
-  );
+  const createClose = useCallback(() => {
+    if (!scope) return null;
+    const capture = listenerStore;
+    const state = (id: string) => {
+      const current = capture.getState();
+      if (current.live.loading) return "unknown";
+      const mode = current.getSessionMode(id);
+      return mode === "inactive" ? "idle" : mode;
+    };
+    return createSessionTabCloseHandler({
+      scope,
+      store,
+      captureState: state,
+      subscribeCapture: (id, changed) => {
+        let previous = state(id);
+        return capture.subscribe(() => {
+          const next = state(id);
+          if (next !== previous) {
+            previous = next;
+            changed();
+          }
+        });
+      },
+    });
+  }, [scope, store]);
 
   const openDefaultEmptyTab = useCallback(() => {
     openNew({ type: "empty" });
@@ -45,7 +62,7 @@ export function useClassicMainLifecycle() {
     onEmpty: openDefaultEmptyTab,
     onInitialized: openPendingWelcomeTab,
     onZeroTabs: openDefaultEmptyTab,
-    onClose: close,
+    createOnClose: createClose,
   });
 }
 

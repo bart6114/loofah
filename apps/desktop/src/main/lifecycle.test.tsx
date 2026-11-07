@@ -72,6 +72,8 @@ vi.mock("~/session/hooks/useDeleteSession", async () => {
 
 import { ClassicMainServices, useClassicMainLifecycle } from "./lifecycle";
 
+import { NativeDraftStore } from "~/shared/application/draft-store";
+
 let captured: ScopedTabsStore;
 function Probe() {
   useClassicMainLifecycle();
@@ -165,6 +167,41 @@ it("consumes the local welcome handoff once after restoration under StrictMode",
     { id: "pinned", pinned: true },
     { id: "welcome" },
   ]);
+});
+
+it("installs a fresh live close handler after StrictMode effect teardown", async () => {
+  const { scope } = scopedFixture("local:strict-cleanup");
+  const request = vi.fn().mockResolvedValue({ kind: "not_empty" });
+  Object.assign(scope.client, {
+    features: ["session_cleanup"],
+    networkMode: "always",
+    deleteEmptySession: request,
+  });
+  const resync = vi.fn();
+  Object.assign(scope, { resync });
+  const inventory = vi
+    .spyOn(NativeDraftStore.prototype, "inventory")
+    .mockResolvedValue([]);
+  const { device } = deviceFixture();
+  mocks.scope = scope;
+  render(
+    <StrictMode>
+      <ScopedTabsProvider scope={scope} deviceState={device} managePins>
+        <Probe />
+      </ScopedTabsProvider>
+    </StrictMode>,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("empty"),
+  );
+  act(() =>
+    captured.getState().openCurrent({ type: "sessions", id: "strict-note" }),
+  );
+  act(() => captured.getState().close(captured.getState().currentTab!));
+  expect(screen.getByRole("status").textContent).toBe("empty");
+  await waitFor(() => expect(request).toHaveBeenCalledOnce());
+  await waitFor(() => expect(resync).toHaveBeenCalledOnce());
+  inventory.mockRestore();
 });
 
 it("keeps startup callbacks pending until the captured local connection is ready", async () => {

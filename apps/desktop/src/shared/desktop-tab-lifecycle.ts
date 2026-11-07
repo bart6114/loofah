@@ -1,8 +1,14 @@
+import { onlineManager } from "@tanstack/react-query";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { isSessionEmpty, softDeleteSession } from "~/session/queries";
-import { listenerStore } from "~/store/zustand/listener/instance";
-import { type Tab, useTabs, useTabsStore } from "~/store/zustand/tabs";
+import { captureSessionCleanupGuard } from "~/shared/application/session-cleanup-guard";
+import type { VaultScope } from "~/shared/application/vault-scope";
+import {
+  type Tab,
+  type ScopedTabsStore,
+  useTabs,
+  useTabsStore,
+} from "~/store/zustand/tabs";
 import { useScopedTabsController } from "~/store/zustand/tabs/scoped-provider";
 
 type InitializeDesktopTabsOptions = {
@@ -14,11 +20,10 @@ type InitializeDesktopTabsOptions = {
 };
 
 type SessionTabCloseHandlerOptions = {
-  invalidateSessionResource: (sessionId: string) => void;
-  getSessionMode?: (sessionId: string) => string | null | undefined;
-  isSessionEmptyFn?: typeof isSessionEmpty;
-  deleteSessionFn?: typeof softDeleteSession;
-  isActive?: () => boolean;
+  scope: VaultScope;
+  store: ScopedTabsStore;
+  captureState?: (sessionId: string) => string | null | undefined;
+  subscribeCapture?: (sessionId: string, changed: () => void) => () => void;
 };
 
 export async function initializeDesktopTabs({
@@ -39,49 +44,135 @@ export async function initializeDesktopTabs({
 }
 
 export function createSessionTabCloseHandler({
-  invalidateSessionResource,
-  getSessionMode = (sessionId) =>
-    listenerStore.getState().getSessionMode(sessionId),
-  isSessionEmptyFn = isSessionEmpty,
-  deleteSessionFn = softDeleteSession,
-  isActive = () => true,
+  scope,
+  store,
+  captureState,
+  subscribeCapture,
 }: SessionTabCloseHandlerOptions) {
-  return (tab: Tab) => {
-    if (!isActive() || tab.type !== "sessions") {
-      return;
-    }
-
-    const sessionId = tab.id;
-    const sessionMode = getSessionMode(sessionId);
+  const client = scope.client;
+  const lifetime = new AbortController();
+  const available = () =>
+    !lifetime.signal.aborted &&
+    scope.client === client &&
+    store.scope === client.scope &&
+    scope.getSnapshot().state === "connected" &&
+    client.canEdit &&
+    client.features.includes("session_cleanup") &&
+    (client.networkMode === "always" || onlineManager.isOnline());
+  const handle = (tab: Tab) => {
     if (
-      sessionMode === "active" ||
-      sessionMode === "finalizing" ||
-      sessionMode === "running_batch"
-    ) {
+      tab.type !== "sessions" ||
+      !available() ||
+      !captureState ||
+      !subscribeCapture
+    )
+      return;
+    const sessionId = tab.id;
+    const isOpen = () =>
+      store
+        .getState()
+        .tabs.some(
+          (entry) => entry.type === "sessions" && entry.id === sessionId,
+        );
+    const idle = () => {
+      try {
+        return captureState(sessionId) === "idle";
+      } catch {
+        return false;
+      }
+    };
+    if (isOpen() || !idle()) return;
+    let invalidated = false;
+    let reopened = false;
+    const request = new AbortController();
+    const guard = captureSessionCleanupGuard(scope, sessionId, {
+      isOpen: () => reopened || isOpen(),
+    });
+    const stops: (() => void)[] = [];
+    const stop = () => {
+      for (const release of stops.splice(0)) release();
+    };
+    const invalidate = () => {
+      if (invalidated) return;
+      invalidated = true;
+      guard.dispose();
+      request.abort();
+      stop();
+    };
+    const own = (release: () => void) => {
+      if (invalidated) release();
+      else stops.push(release);
+    };
+    const current = () =>
+      !invalidated && !reopened && !isOpen() && available() && idle();
+    try {
+      lifetime.signal.addEventListener("abort", invalidate, { once: true });
+      own(() => lifetime.signal.removeEventListener("abort", invalidate));
+      own(
+        store.subscribe(() => {
+          if (isOpen()) {
+            reopened = true;
+            invalidate();
+          }
+        }),
+      );
+      own(
+        scope.subscribe(() => {
+          if (!current()) invalidate();
+        }),
+      );
+      own(
+        onlineManager.subscribe(() => {
+          if (!current()) invalidate();
+        }),
+      );
+      own(
+        subscribeCapture(sessionId, () => {
+          if (!idle()) invalidate();
+        }),
+      );
+    } catch {
+      invalidate();
       return;
     }
-
+    if (!current()) {
+      invalidate();
+      return;
+    }
+    const requestId = crypto.randomUUID();
     void (async () => {
-      if (!(await isSessionEmptyFn(sessionId)) || !isActive()) return;
-
-      const deleted = await deleteSessionFn(sessionId);
-      if (deleted && isActive()) invalidateSessionResource(sessionId);
-    })().catch((error) => {
-      console.error("session close cleanup", error);
-    });
+      if (!(await guard.prepare()) || !current() || !guard.canDelete()) return;
+      await scope.run(() =>
+        client.deleteEmptySession(
+          { session_id: sessionId },
+          { requestId, signal: request.signal },
+        ),
+      );
+      // Replayed outcomes describe the original intent, so refetch current state.
+      if (current() && guard.canDelete()) scope.resync();
+    })()
+      .catch((error) => {
+        if (current()) console.error("session close cleanup", error);
+      })
+      .finally(() => {
+        guard.dispose();
+        stop();
+        invalidated = true;
+      });
   };
+  return Object.assign(handle, { dispose: () => lifetime.abort() });
 }
 
 export function useDesktopTabLifecycle({
   onEmpty,
   onInitialized,
   onZeroTabs,
-  onClose,
+  createOnClose,
 }: {
   onEmpty?: (() => void) | null;
   onInitialized?: (() => void) | null;
   onZeroTabs?: (() => void) | null;
-  onClose: (tab: Tab) => void;
+  createOnClose: () => ReturnType<typeof createSessionTabCloseHandler> | null;
 }) {
   const { registerOnEmpty, registerCanClose, registerOnClose } = useTabs();
   const store = useTabsStore();
@@ -130,7 +221,11 @@ export function useDesktopTabLifecycle({
   }, [registerCanClose]);
 
   useEffect(() => {
+    const onClose = createOnClose();
     registerOnClose(onClose);
-    return () => registerOnClose(null);
-  }, [registerOnClose, onClose]);
+    return () => {
+      registerOnClose(null);
+      onClose?.dispose();
+    };
+  }, [registerOnClose, createOnClose]);
 }
