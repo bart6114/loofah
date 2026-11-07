@@ -2823,3 +2823,21 @@ strict dependency sweep reports four pre-existing style lints in
 were left unchanged. Frontend lint has zero errors and the same 88 baseline
 warnings. Generated protocol readback and formatting checks pass. Full hosted CI
 for this new checkpoint remains required.
+
+### Native transcript debounce readiness
+
+Hosted CI for `16f77389a` passed the general, CLI, backend and macOS desktop
+workflows and native Windows x64. Windows ARM64 failed the coalesced-append
+transcript fixture: it observed the new canonical file before the asynchronous
+flush published that transcript's index owner, then unwrapped a missing indexed
+read. `write_transcript_json_locked` deliberately replaces the file before
+publishing its index entry.
+
+The fixture now waits, within its existing deadline, for both the three-word
+canonical file and the three-word indexed read, and verifies the captured indexed
+words. It still relies on the real debounce timer and never forces a flush.
+Production persistence, debounce timing and platform behavior are unchanged.
+All 46 transcript tests and the shared-write Rust check pass locally; a fresh
+native Windows run remains required. The decoded failure excerpt and local
+results are saved in `windows-16f-arm-transcript-failure.txt` and
+`processing-settings-transcript-readiness*.log` under the T7 build-log directory.

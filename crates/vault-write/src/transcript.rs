@@ -1041,10 +1041,10 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // Busy native runners can service the debounce timer after a fixed sleep.
-        // Observe the persisted coalesced buffer without explicitly flushing it.
+        // File replacement precedes index publication; observing the file alone
+        // does not establish that the background flush has reached both readers.
         let path = vault.path().join("sessions/s1/transcript.json");
-        let json = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let (json, indexed) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 match std::fs::read(&path) {
                     Ok(bytes) => {
@@ -1053,7 +1053,11 @@ mod tests {
                             .as_array()
                             .is_some_and(|words| words.len() == 3)
                         {
-                            break json;
+                            if let Some(indexed) = store.transcript_get("t1").await.unwrap()
+                                && indexed.words.len() == 3
+                            {
+                                break (json, indexed);
+                            }
                         }
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1063,18 +1067,10 @@ mod tests {
             }
         })
         .await
-        .expect("the debounce timer must persist all three appends");
+        .expect("the debounce timer must persist and index all three appends");
         assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 3);
 
-        let texts: Vec<String> = store
-            .transcript_get("t1")
-            .await
-            .unwrap()
-            .unwrap()
-            .words
-            .into_iter()
-            .map(|w| w.text)
-            .collect();
+        let texts: Vec<String> = indexed.words.into_iter().map(|w| w.text).collect();
         assert_eq!(texts, vec!["a", "b", "c"]);
     }
 
