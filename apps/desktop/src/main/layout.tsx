@@ -29,19 +29,21 @@ export function ClassicMainLayout({
   }
 
   return (
-    <SearchEngineProvider>
-      <TaskStorageProvider storage={taskStorage}>
-        <OpenNoteDialogProvider>
-          <ShellProvider>
-            <AITaskProvider store={aiTaskStore}>
-              <NotificationProvider>
-                {includeServices ? <ClassicMainServices /> : null}
-                <LocalVaultProvider>{children}</LocalVaultProvider>
-              </NotificationProvider>
-            </AITaskProvider>
-          </ShellProvider>
-        </OpenNoteDialogProvider>
-      </TaskStorageProvider>
-    </SearchEngineProvider>
+    <LocalVaultProvider>
+      <SearchEngineProvider>
+        <TaskStorageProvider storage={taskStorage}>
+          <OpenNoteDialogProvider>
+            <ShellProvider>
+              <AITaskProvider store={aiTaskStore}>
+                <NotificationProvider>
+                  {includeServices ? <ClassicMainServices /> : null}
+                  {children}
+                </NotificationProvider>
+              </AITaskProvider>
+            </ShellProvider>
+          </OpenNoteDialogProvider>
+        </TaskStorageProvider>
+      </SearchEngineProvider>
+    </LocalVaultProvider>
   );
 }
