@@ -128,3 +128,5 @@ export class NoteDrafts extends DraftRegistry<NoteDraft> {
     return draft;
   }
 }
+
+export const noteDrafts = new NoteDrafts();

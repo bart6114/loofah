@@ -1,5 +1,10 @@
 import { applicationResult, ApplicationRequestError } from "./errors";
-import type { SummaryJobRequest, ProcessingJobSnapshot } from "./protocol.gen";
+import type {
+  DocumentTarget,
+  SummaryJobRequest,
+  ProcessingJobSnapshot,
+} from "./protocol.gen";
+import { captureSessionGenerationGuard } from "./session-generation-guard";
 import type { RequestOptions } from "./vault-client";
 import type { VaultScope } from "./vault-scope";
 
@@ -72,43 +77,106 @@ export class JobSubmissions {
   ) {}
 
   async generateSummary(sessionId: string, options?: RequestOptions) {
-    this.requireFeature();
-    // Refresh only acknowledged active receipts. Unknown submissions are resumed
-    // explicitly; loading device recovery never dispatches a generation.
-    for (const receipt of await this.store.list(sessionId)) {
-      if (receipt.job && activeJob(receipt.job))
-        await this.resume(receipt.request_id, options);
-    }
-    const baseline = await this.scope.run(() =>
-      this.scope.client.readDocument(sessionId, { kind: "summary" }, options),
+    return this.generateDocument(sessionId, { kind: "summary" }, options);
+  }
+
+  async generateDocument(
+    sessionId: string,
+    input: DocumentTarget,
+    options?: RequestOptions,
+  ) {
+    const target: DocumentTarget =
+      input.kind === "summary"
+        ? { kind: "summary" }
+        : { kind: "template_output", document_id: input.document_id };
+    this.requireFeature(target);
+    const guard = captureSessionGenerationGuard(
+      this.scope,
+      sessionId,
+      target,
+      options?.signal,
     );
-    options?.signal?.throwIfAborted();
-    const receipt = await this.store.prepare({
-      session_id: sessionId,
-      target: { kind: "summary" },
-      expected_revision: baseline.revision,
-    });
-    options?.signal?.throwIfAborted();
-    return this.resume(receipt.request_id, options);
+    try {
+      await guard.prepare();
+      // Refresh only acknowledged active receipts. Unknown submissions are resumed
+      // explicitly; loading device recovery never dispatches a generation.
+      const receipts = await this.store.list(sessionId);
+      guard.assertReady();
+      for (const receipt of receipts) {
+        if (receipt.job && activeJob(receipt.job))
+          await this.resume(receipt.request_id, options);
+        guard.assertReady();
+      }
+      const baseline = await this.scope.run(() =>
+        this.scope.client.readDocument(sessionId, target, options),
+      );
+      guard.assertReady();
+      if (
+        target.kind === "template_output" &&
+        (!baseline.document ||
+          baseline.document.kind !== "template_output" ||
+          baseline.document.session_id !== sessionId ||
+          baseline.document.id !== target.document_id)
+      )
+        throw new Error(
+          "This template output is no longer available for regeneration",
+        );
+      options?.signal?.throwIfAborted();
+      const receipt = await this.store.prepare({
+        session_id: sessionId,
+        target,
+        expected_revision: baseline.revision,
+      });
+      guard.assertReady();
+      options?.signal?.throwIfAborted();
+      return await this.dispatch(receipt.request_id, options, guard);
+    } finally {
+      guard.dispose();
+    }
   }
 
   async resume(requestId: string, options?: RequestOptions) {
+    return this.dispatch(requestId, options);
+  }
+
+  private async dispatch(
+    requestId: string,
+    options?: RequestOptions,
+    prepared?: ReturnType<typeof captureSessionGenerationGuard>,
+  ) {
     this.requireFeature();
     const receipt = await this.store.load(requestId);
     if (!receipt || receipt.scope !== this.scope.client.scope)
       throw new Error(
         "Saved summary request not found for this account and vault",
       );
+    prepared?.assertReady();
+    if (!receipt.job) this.requireFeature(receipt.input.target);
     options?.signal?.throwIfAborted();
-    const job = await this.scope.run(() =>
-      receipt.job
-        ? this.scope.client.processingJob(receipt.job.id, options)
-        : this.scope.client.submitSummaryJob(receipt.input, {
-            ...options,
-            requestId: receipt.request_id,
-          }),
-    );
-    return this.store.observe(requestId, job);
+    const guard = receipt.job
+      ? null
+      : (prepared ??
+        captureSessionGenerationGuard(
+          this.scope,
+          receipt.input.session_id,
+          receipt.input.target,
+          options?.signal,
+        ));
+    try {
+      if (guard && !prepared) await guard.prepare();
+      guard?.assertReady();
+      const job = await this.scope.run(() =>
+        receipt.job
+          ? this.scope.client.processingJob(receipt.job.id, options)
+          : this.scope.client.submitSummaryJob(receipt.input, {
+              ...options,
+              requestId: receipt.request_id,
+            }),
+      );
+      return this.store.observe(requestId, job);
+    } finally {
+      if (!prepared) guard?.dispose();
+    }
   }
 
   async cancel(jobId: string, options?: RequestOptions) {
@@ -124,8 +192,12 @@ export class JobSubmissions {
     return job;
   }
 
-  private requireFeature() {
-    if (!this.scope.client.features.includes("summary_body_jobs"))
+  private requireFeature(target?: DocumentTarget) {
+    if (
+      !this.scope.client.features.includes("summary_body_jobs") ||
+      (target?.kind === "template_output" &&
+        !this.scope.client.features.includes("template_output_jobs"))
+    )
       throw new ApplicationRequestError({
         code: "incompatible_version",
         message: "This connection does not support summary generation",

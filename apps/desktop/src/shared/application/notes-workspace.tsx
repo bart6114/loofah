@@ -21,7 +21,11 @@ import { Button } from "@hypr/ui/components/ui/button";
 import { DeviceRecovery } from "./device-recovery";
 import { documentDraftClient, documentDraftId } from "./document-draft";
 import { NativeDraftStore } from "./draft-store";
-import { NoteDrafts, type NoteDraft, type NoteDraftClient } from "./note-draft";
+import {
+  noteDrafts as drafts,
+  type NoteDraft,
+  type NoteDraftClient,
+} from "./note-draft";
 import { noteEditorDrafts } from "./note-editor-draft";
 import type { DocumentTarget } from "./protocol.gen";
 import { useDraftPersistence } from "./use-draft-persistence";
@@ -33,8 +37,6 @@ import { VaultScope } from "./vault-scope";
 
 import { RecordingPlayer } from "~/audio-player/recording";
 import type { NoteDraftRecovery, NoteSnapshot } from "~/types/tauri.gen";
-
-const drafts = new NoteDrafts();
 
 export function VaultNotesWorkspace({
   client,
@@ -388,7 +390,6 @@ function SessionPane({
         )
       ) : view === "documents" ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <VaultProcessing scope={scope} sessionId={sessionId} />
           <DocumentsPane
             scope={scope}
             sessionId={sessionId}
@@ -445,6 +446,14 @@ function DocumentsPane({
               ))}
           </h3>
         </div>
+        {(target.kind === "summary" ||
+          selected?.kind === "template_output") && (
+          <VaultProcessing
+            scope={scope}
+            sessionId={sessionId}
+            target={target}
+          />
+        )}
         <NotePane
           key={documentDraftId(sessionId, target)}
           scope={scope}
@@ -456,67 +465,70 @@ function DocumentsPane({
     );
   }
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto text-sm" role="document">
-      {documents.error && (
-        <p role="alert" className="text-destructive">
-          {documents.error.message}
-        </p>
-      )}
-      {documents.isPending ? (
-        <p className="text-muted-foreground">
-          <Trans>Loading content…</Trans>
-        </p>
-      ) : (
-        <>
-          {canEdit &&
-            !documents.error &&
-            !documents.data?.some((doc) => doc.kind === "summary") && (
-              <Button
-                size="sm"
-                className="mb-3"
-                disabled={
-                  connection.state !== "connected" || !scope.client.canEdit
-                }
-                onClick={() => setTarget({ kind: "summary" })}
-              >
-                <Trans>Add summary</Trans>
-              </Button>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <VaultProcessing scope={scope} sessionId={sessionId} />
+      <div className="min-h-0 flex-1 overflow-y-auto text-sm" role="document">
+        {documents.error && (
+          <p role="alert" className="text-destructive">
+            {documents.error.message}
+          </p>
+        )}
+        {documents.isPending ? (
+          <p className="text-muted-foreground">
+            <Trans>Loading content…</Trans>
+          </p>
+        ) : (
+          <>
+            {canEdit &&
+              !documents.error &&
+              !documents.data?.some((doc) => doc.kind === "summary") && (
+                <Button
+                  size="sm"
+                  className="mb-3"
+                  disabled={
+                    connection.state !== "connected" || !scope.client.canEdit
+                  }
+                  onClick={() => setTarget({ kind: "summary" })}
+                >
+                  <Trans>Add summary</Trans>
+                </Button>
+              )}
+            {documents.data?.length === 0 && (
+              <p className="text-muted-foreground">
+                <Trans>No content yet.</Trans>
+              </p>
             )}
-          {documents.data?.length === 0 && (
-            <p className="text-muted-foreground">
-              <Trans>No content yet.</Trans>
-            </p>
-          )}
-          {documents.data?.map((doc) => (
-            <section key={doc.id} className="mb-4">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="font-medium">{doc.title}</h3>
-                {canEdit && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={connection.state !== "connected"}
-                    onClick={() =>
-                      setTarget(
-                        doc.kind === "summary"
-                          ? { kind: "summary" }
-                          : { kind: "template_output", document_id: doc.id },
-                      )
-                    }
-                  >
-                    {scope.client.canEdit ? (
-                      <Trans>Edit</Trans>
-                    ) : (
-                      <Trans>View</Trans>
-                    )}
-                  </Button>
-                )}
-              </div>
-              <pre className="whitespace-pre-wrap">{doc.markdown}</pre>
-            </section>
-          ))}
-        </>
-      )}
+            {documents.data?.map((doc) => (
+              <section key={doc.id} className="mb-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h3 className="font-medium">{doc.title}</h3>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={connection.state !== "connected"}
+                      onClick={() =>
+                        setTarget(
+                          doc.kind === "summary"
+                            ? { kind: "summary" }
+                            : { kind: "template_output", document_id: doc.id },
+                        )
+                      }
+                    >
+                      {scope.client.canEdit ? (
+                        <Trans>Edit</Trans>
+                      ) : (
+                        <Trans>View</Trans>
+                      )}
+                    </Button>
+                  )}
+                </div>
+                <pre className="whitespace-pre-wrap">{doc.markdown}</pre>
+              </section>
+            ))}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@hypr/ui/components/ui/button";
 import {
@@ -14,7 +14,7 @@ import {
 } from "@hypr/ui/components/ui/dialog";
 
 import { activeJob, JobSubmissions } from "./job-submissions";
-import type { ProcessingJobSnapshot } from "./protocol.gen";
+import type { DocumentTarget, ProcessingJobSnapshot } from "./protocol.gen";
 import { VaultProcessingSettings } from "./vault-processing-settings";
 import type { VaultScope } from "./vault-scope";
 
@@ -23,13 +23,35 @@ import type { JobSubmissionReceipt } from "~/types/tauri.gen";
 export function VaultProcessing({
   scope,
   sessionId,
+  target = { kind: "summary" },
 }: {
   scope: VaultScope;
   sessionId: string;
+  target?: DocumentTarget;
 }) {
+  const [host, setHost] = useState(scope);
+  useEffect(() => setHost(scope), [scope]);
+  if (host !== scope) return null;
   if (!scope.client.features.includes("summary_body_jobs")) return null;
-  return <SummaryJobs key={sessionId} scope={scope} sessionId={sessionId} />;
+  if (
+    target.kind === "template_output" &&
+    !scope.client.features.includes("template_output_jobs")
+  )
+    return null;
+  return (
+    <SummaryJobs
+      key={JSON.stringify([sessionId, target])}
+      scope={scope}
+      sessionId={sessionId}
+      target={target}
+    />
+  );
 }
+
+const sameTarget = (a: DocumentTarget, b: DocumentTarget) =>
+  a.kind === b.kind &&
+  (a.kind === "summary" ||
+    (b.kind === "template_output" && a.document_id === b.document_id));
 
 function refresh(controller: JobSubmissions) {
   const { scope } = controller;
@@ -66,9 +88,11 @@ function useReceipts(
 function SummaryJobs({
   scope,
   sessionId,
+  target,
 }: {
   scope: VaultScope;
   sessionId: string;
+  target: DocumentTarget;
 }) {
   const { t } = useLingui();
   const controller = useMemo(() => new JobSubmissions(scope), [scope]);
@@ -103,6 +127,7 @@ function SummaryJobs({
         "processing_jobs",
         sessionId,
         "history",
+        target,
       ],
       initialPageParam: null as string | null,
       queryFn: ({ pageParam, signal }) =>
@@ -128,7 +153,7 @@ function SummaryJobs({
   );
   const generate = useMutation(
     {
-      mutationFn: () => controller.generateSummary(sessionId),
+      mutationFn: () => controller.generateDocument(sessionId, target),
       networkMode: "always",
       retry: false,
       onSettled: () => refresh(controller),
@@ -141,13 +166,17 @@ function SummaryJobs({
       ...(history.data?.pages.flatMap((page) => page.items) ?? []),
       ...(active.data?.items ?? []),
     ]) {
+      if (!sameTarget(job.target, target)) continue;
       const previous = merged.get(job.id);
       if (!previous || activeJob(previous)) merged.set(job.id, job);
     }
     return Array.from(merged.values());
-  }, [active.data, history.data]);
+  }, [active.data, history.data, target]);
   const known = new Map(rows.map((job) => [job.id, job]));
-  const pending = receipts.data?.some(
+  const targetReceipts = receipts.data?.filter((receipt) =>
+    sameTarget(receipt.input.target, target),
+  );
+  const pending = targetReceipts?.some(
     (receipt) =>
       !receipt.job || activeJob(known.get(receipt.job.id) ?? receipt.job),
   );
@@ -159,29 +188,35 @@ function SummaryJobs({
     >
       <div className="flex flex-wrap items-center gap-2">
         <VaultProcessingSettings scope={scope} />
-        <Button
-          size="sm"
-          disabled={
-            !connected ||
-            !scope.client.canEdit ||
-            generate.isPending ||
-            pending ||
-            receipts.isPending ||
-            receipts.isError ||
-            active.isPending ||
-            active.isError ||
-            active.data?.items.some((job) =>
-              activeJob(known.get(job.id) ?? job),
-            )
-          }
-          onClick={() => generate.mutate()}
-        >
-          {generate.isPending ? (
-            <Trans>Starting summary…</Trans>
-          ) : (
-            <Trans>Summarize saved notes</Trans>
-          )}
-        </Button>
+        {(target.kind === "summary" || scope.client.canEdit) && (
+          <Button
+            size="sm"
+            disabled={
+              !connected ||
+              !scope.client.canEdit ||
+              generate.isPending ||
+              pending ||
+              receipts.isPending ||
+              receipts.isError ||
+              active.isPending ||
+              active.isError ||
+              active.data?.items.some(
+                (job) =>
+                  sameTarget(job.target, target) &&
+                  activeJob(known.get(job.id) ?? job),
+              )
+            }
+            onClick={() => generate.mutate()}
+          >
+            {generate.isPending ? (
+              <Trans>Starting summary…</Trans>
+            ) : target.kind === "template_output" ? (
+              <Trans>Regenerate</Trans>
+            ) : (
+              <Trans>Summarize saved notes</Trans>
+            )}
+          </Button>
+        )}
         <AllDeviceRequests
           controller={controller}
           connected={connected}
@@ -198,7 +233,7 @@ function SummaryJobs({
       </div>
       <p className="text-muted-foreground text-xs">
         <Trans>
-          Uses the saved notes and transcript. Unsaved edits are kept separate.
+          Saves pending edits before using the saved notes and transcript.
         </Trans>
       </p>
       {(generate.error || active.error || history.error || receipts.error) && (
@@ -213,7 +248,7 @@ function SummaryJobs({
         controller={controller}
         connected={connected}
         onRecovered={generate.reset}
-        receipts={(receipts.data ?? []).filter((receipt) => !receipt.job)}
+        receipts={(targetReceipts ?? []).filter((receipt) => !receipt.job)}
       />
       <div className="flex max-h-52 flex-col gap-2 overflow-y-auto">
         {rows.map((job) => (

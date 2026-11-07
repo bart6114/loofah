@@ -1,16 +1,28 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("~/types/tauri.gen", () => ({ commands: {} }));
 
+import { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
 import { JobSubmissions } from "./job-submissions";
-import type { ProcessingJobSnapshot, SummaryJobRequest } from "./protocol.gen";
+import { noteDrafts } from "./note-draft";
+import type {
+  DocumentSnapshot,
+  DocumentTarget,
+  ProcessingJobSnapshot,
+  SummaryJobRequest,
+} from "./protocol.gen";
 import type { RequestOptions } from "./vault-client";
 import type { VaultScope } from "./vault-scope";
 
 import type { JobSubmissionReceipt } from "~/types/tauri.gen";
 
-function fixture() {
+const inventory = vi.spyOn(NativeDraftStore.prototype, "inventory");
+beforeEach(() => inventory.mockResolvedValue([]));
+
+function fixture(scopeId = "scope") {
+  let state = "connected";
+  const watches = new Set<() => void>();
   const disk: JobSubmissionReceipt[] = [];
   const order: string[] = [];
   const job: ProcessingJobSnapshot = {
@@ -39,7 +51,7 @@ function fixture() {
     prepare: vi.fn(async (input: SummaryJobRequest) => {
       order.push("persist");
       const value: JobSubmissionReceipt = {
-        scope: "scope",
+        scope: scopeId,
         request_id: crypto.randomUUID(),
         input,
         created_at_ms: 1,
@@ -57,9 +69,11 @@ function fixture() {
     forget: vi.fn(),
   };
   const client = {
-    scope: "scope",
+    scope: scopeId,
+    canEdit: true,
+    networkMode: "always",
     features: ["summary_body_jobs"],
-    readDocument: vi.fn(async () => {
+    readDocument: vi.fn(async (): Promise<DocumentSnapshot> => {
       order.push("read");
       return { document: null, revision: "baseline" };
     }),
@@ -82,6 +96,11 @@ function fixture() {
   };
   const scope = {
     client,
+    getSnapshot: () => ({ state, error: null }),
+    subscribe: (changed: () => void) => {
+      watches.add(changed);
+      return () => watches.delete(changed);
+    },
     run: vi.fn(async (operation: () => Promise<unknown>) => operation()),
   } as unknown as VaultScope;
   return {
@@ -92,6 +111,10 @@ function fixture() {
     client,
     job,
     order,
+    state(next: string) {
+      state = next;
+      for (const changed of watches) changed();
+    },
   };
 }
 
@@ -245,5 +268,155 @@ describe("durable device summary submissions", () => {
       },
     });
     expect(store.list).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { features: [] },
+    { features: ["summary_body_jobs"] },
+    { features: ["template_output_jobs"] },
+    {
+      features: ["summary_body_jobs", "template_library", "template_creation"],
+    },
+  ])(
+    "requires both base and existing-output capabilities with features $features",
+    async ({ features }) => {
+      const { controller, client, store } = fixture();
+      client.features = features;
+      await expect(
+        controller.generateDocument("note", {
+          kind: "template_output",
+          document_id: "output",
+        }),
+      ).rejects.toMatchObject({ detail: { code: "incompatible_version" } });
+      expect(store.list).not.toHaveBeenCalled();
+      expect(store.prepare).not.toHaveBeenCalled();
+      expect(client.readDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    null,
+    { id: "output", session_id: "note", kind: "summary" },
+    { id: "different", session_id: "note", kind: "template_output" },
+    { id: "output", session_id: "different", kind: "template_output" },
+  ])(
+    "refuses missing, legacy and mismatched canonical outputs %j",
+    async (document) => {
+      const { controller, client, store } = fixture();
+      client.features.push("template_output_jobs");
+      client.readDocument.mockResolvedValue({
+        document: document && {
+          ...document,
+          title: "Keep",
+          template_id: "template",
+          sort_order: 7,
+          markdown: "Body",
+        },
+        revision: "d0",
+      });
+      await expect(
+        controller.generateDocument("note", {
+          kind: "template_output",
+          document_id: "output",
+        }),
+      ).rejects.toThrow("no longer available");
+      expect(store.prepare).not.toHaveBeenCalled();
+      expect(client.submitSummaryJob).not.toHaveBeenCalled();
+    },
+  );
+
+  it("captures the existing target and resumes its exact lost-reply request without rebuilding its revision or policy", async () => {
+    const { controller, client, store, scope, disk } = fixture();
+    client.features.push("template_output_jobs");
+    const target: DocumentTarget = {
+      kind: "template_output",
+      document_id: "output",
+    };
+    client.readDocument.mockResolvedValue({
+      document: {
+        id: "output",
+        session_id: "note",
+        kind: "template_output",
+        title: "Keep title",
+        template_id: "keep-template",
+        sort_order: 7,
+        markdown: "Saved output",
+      },
+      revision: "d0",
+    });
+    const list = store.list.getMockImplementation()!;
+    store.list.mockImplementationOnce(async (id) => {
+      target.document_id = "changed-selection";
+      return list(id);
+    });
+    client.submitSummaryJob.mockRejectedValueOnce(new Error("Lost reply"));
+    await expect(controller.generateDocument("note", target)).rejects.toThrow(
+      "Lost reply",
+    );
+    const original = structuredClone(disk[0]);
+    expect(original.input).toEqual({
+      session_id: "note",
+      target: { kind: "template_output", document_id: "output" },
+      expected_revision: "d0",
+    });
+    const reopened = new JobSubmissions(scope, store);
+    await reopened.store.list();
+    expect(client.submitSummaryJob).toHaveBeenCalledOnce();
+    await reopened.resume(original.request_id);
+    expect(client.readDocument).toHaveBeenCalledOnce();
+    expect(client.submitSummaryJob.mock.calls[1]).toEqual([
+      original.input,
+      { requestId: original.request_id },
+    ]);
+    expect(store.prepare).toHaveBeenCalledOnce();
+  });
+
+  it.each(["baseline", "receipt"])(
+    "refuses newer typing during the %s await and retains any unsent receipt",
+    async (stage) => {
+      const { controller, client, store, disk } = fixture(`typing-${stage}`);
+      const draft = noteDrafts.open(
+        client as unknown as import("./vault-client").VaultClient,
+        "note",
+        { markdown: "Saved", title: "", revision: "n0" },
+      );
+      if (stage === "baseline")
+        client.readDocument.mockImplementationOnce(async () => {
+          draft.edit("New private input", "");
+          return { document: null, revision: "d0" };
+        });
+      else {
+        const prepare = store.prepare.getMockImplementation()!;
+        store.prepare.mockImplementationOnce(async (input) => {
+          const receipt = await prepare(input);
+          draft.edit("New private input", "");
+          return receipt;
+        });
+      }
+      await expect(controller.generateSummary("note")).rejects.toThrow(
+        "Confirm or recover",
+      );
+      expect(client.submitSummaryJob).not.toHaveBeenCalled();
+      expect(draft.getSnapshot().draft.markdown).toBe("New private input");
+      expect(disk).toHaveLength(stage === "receipt" ? 1 : 0);
+      await controller.store.list();
+      expect(client.submitSummaryJob).not.toHaveBeenCalled();
+    },
+  );
+
+  it("latches lost permission while preserving an unsent receipt after durability confirmation", async () => {
+    const context = fixture("lost-permission");
+    const prepare = context.store.prepare.getMockImplementation()!;
+    context.store.prepare.mockImplementationOnce(async (input) => {
+      const receipt = await prepare(input);
+      context.state("access_denied");
+      context.state("connected");
+      return receipt;
+    });
+    await expect(context.controller.generateSummary("note")).rejects.toThrow(
+      "Confirm or recover",
+    );
+    expect(context.disk).toHaveLength(1);
+    expect(context.client.submitSummaryJob).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,7 @@ const native = vi.hoisted(() => ({
   deviceJobSubmissionGet: vi.fn(),
   deviceJobSubmissionObserve: vi.fn(),
   deviceJobSubmissionForget: vi.fn(),
+  draftCacheInventory: vi.fn(),
   copy: vi.fn(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
@@ -26,6 +27,7 @@ import type {
   ProcessingJobSnapshot,
   ListProcessingJobsInput,
   SummaryJobRequest,
+  DocumentSnapshot,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultProcessing } from "./vault-processing";
@@ -41,6 +43,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.resetAllMocks();
   native.copy.mockResolvedValue(undefined);
+  native.draftCacheInventory.mockResolvedValue({ status: "ok", data: [] });
 });
 
 async function activate(client: VaultClient) {
@@ -133,11 +136,17 @@ async function fixture(
       ),
       next_cursor: null,
     })),
-    readDocument: vi.fn(async () => ({ document: null, revision: "baseline" })),
+    readDocument: vi.fn(
+      async (): Promise<DocumentSnapshot> => ({
+        document: null,
+        revision: "baseline",
+      }),
+    ),
     submitSummaryJob: vi.fn(
-      async (_input: SummaryJobRequest, _options: unknown) => {
-        data.jobs = [job];
-        return job;
+      async (input: SummaryJobRequest, _options: unknown) => {
+        const submitted = { ...job, target: input.target };
+        data.jobs = [submitted];
+        return submitted;
       },
     ),
     processingJob: vi.fn(async () => job),
@@ -183,6 +192,147 @@ it("hides unsupported processing without touching device request storage", async
   render(<VaultProcessing scope={scope} sessionId="note" />);
   expect(screen.queryByRole("region")).toBeNull();
   expect(native.deviceJobSubmissions).not.toHaveBeenCalled();
+});
+
+it.each([
+  { features: ["summary_body_jobs"], canEdit: true },
+  { features: ["template_output_jobs"], canEdit: true },
+  { features: ["summary_body_jobs", "template_library"], canEdit: true },
+  { features: ["summary_body_jobs", "template_output_jobs"], canEdit: false },
+])(
+  "never offers output regeneration to unsupported connections or readers $features/$canEdit",
+  async (options) => {
+    const { scope, calls } = await fixture(options);
+    render(
+      <VaultProcessing
+        scope={scope}
+        sessionId="note"
+        target={{ kind: "template_output", document_id: "output" }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(calls.readDocument).not.toHaveBeenCalled();
+    expect(calls.submitSummaryJob).not.toHaveBeenCalled();
+  },
+);
+
+it("regenerates an existing target and keeps summary jobs and ambiguous receipts isolated", async () => {
+  const { scope, client, calls, job, data } = await fixture({
+    features: ["summary_body_jobs", "template_output_jobs"],
+  });
+  data.jobs = [{ ...job, state: "running" }];
+  data.receipts = [
+    {
+      scope: client.scope,
+      request_id: "summary-request",
+      created_at_ms: Date.now(),
+      input: {
+        session_id: "note",
+        target: { kind: "summary" },
+        expected_revision: "summary-r0",
+      },
+      job: null,
+    },
+  ];
+  const target = { kind: "template_output" as const, document_id: "output" };
+  calls.readDocument.mockResolvedValue({
+    document: {
+      id: "output",
+      session_id: "note",
+      kind: "template_output",
+      template_id: "template",
+      title: "Keep output",
+      sort_order: 8,
+      markdown: "Saved output",
+    },
+    revision: "output-r0",
+  });
+  render(<VaultProcessing scope={scope} sessionId="note" target={target} />);
+  const button = screen.getByRole("button", { name: "Regenerate" });
+  await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  expect(screen.queryByRole("button", { name: "Resume request" })).toBeNull();
+  expect(screen.queryByText("Preparing summary")).toBeNull();
+  fireEvent.click(button);
+  await screen.findByText("Summary saved");
+  expect(calls.submitSummaryJob).toHaveBeenCalledWith(
+    { session_id: "note", target, expected_revision: "output-r0" },
+    { requestId: data.receipts[1].request_id },
+  );
+  expect(calls.submitSummaryJob).toHaveBeenCalledOnce();
+});
+
+it("remounts target status and errors when selection changes while a previous target read is delayed", async () => {
+  const { scope, calls, job, data } = await fixture({
+    features: ["summary_body_jobs", "template_output_jobs"],
+  });
+  let release!: (value: DocumentSnapshot) => void;
+  calls.readDocument.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  const target = { kind: "template_output" as const, document_id: "output" };
+  const mounted = render(
+    <VaultProcessing scope={scope} sessionId="note" target={target} />,
+  );
+  const button = screen.getByRole("button", { name: "Regenerate" });
+  await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(button);
+  await waitFor(() => expect(calls.readDocument).toHaveBeenCalledOnce());
+  data.jobs = [
+    {
+      ...job,
+      target: { kind: "summary" },
+      state: "failed",
+      failure: "source_unavailable",
+    },
+  ];
+  mounted.rerender(<VaultProcessing scope={scope} sessionId="note" />);
+  await screen.findByText("Saved notes or transcript could not be read.");
+  release({
+    document: {
+      id: "output",
+      session_id: "note",
+      kind: "template_output",
+      title: "Output",
+      template_id: "template",
+      sort_order: 2,
+      markdown: "Existing",
+    },
+    revision: "output-r0",
+  });
+  await waitFor(() => expect(calls.submitSummaryJob).toHaveBeenCalledOnce());
+  expect(calls.submitSummaryJob.mock.calls[0][0].target).toEqual(target);
+  expect(screen.queryByText("Summary saved")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+});
+
+it("replaces QueryObservers for a new immutable scope even when its scope string and note IDs match", async () => {
+  const first = await fixture();
+  first.data.jobs = [
+    { ...first.job, state: "failed", failure: "provider_failed" },
+  ];
+  const mounted = render(
+    <VaultProcessing scope={first.scope} sessionId="note" />,
+  );
+  await screen.findByText("The summary provider failed.");
+  const secondJob = {
+    ...first.job,
+    state: "failed" as const,
+    failure: "source_unavailable" as const,
+  };
+  const second = await activate({
+    ...first.client,
+    processingJobs: vi.fn(async () => ({
+      items: [secondJob],
+      next_cursor: null,
+    })),
+  });
+  mounted.rerender(<VaultProcessing scope={second} sessionId="note" />);
+  await screen.findByText("Saved notes or transcript could not be read.");
+  expect(screen.queryByText("The summary provider failed.")).toBeNull();
+  expect(first.scope.queryClient).not.toBe(second.queryClient);
 });
 
 it("persists before dispatch and disables repeat clicks while the device write is pending", async () => {

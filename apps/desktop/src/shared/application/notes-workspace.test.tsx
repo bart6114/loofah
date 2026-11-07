@@ -19,6 +19,12 @@ const native = vi.hoisted(() => ({
   draftCacheRecovery: vi.fn(),
   draftCachePut: vi.fn(),
   draftCacheRemove: vi.fn(),
+  deviceJobSubmissions: vi.fn(),
+  deviceJobSubmissionPrepare: vi.fn(),
+  deviceJobSubmissionGet: vi.fn(),
+  deviceJobSubmissionObserve: vi.fn(),
+  deviceJobSubmissionForget: vi.fn(),
+  receipts: [] as import("~/types/tauri.gen").JobSubmissionReceipt[],
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
@@ -67,6 +73,7 @@ import type {
   NoteSnapshot,
   DocumentSnapshot,
   TasksSnapshot,
+  SummaryJobRequest,
 } from "./protocol.gen";
 import { sessionEditorFlushKey } from "./session-cleanup-guard";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
@@ -163,6 +170,17 @@ function fixture(rich = false) {
       };
       return { kind: "saved", snapshot: currentDocument };
     }),
+    processingJobs: vi.fn(async () => ({ items: [], next_cursor: null })),
+    submitSummaryJob: vi.fn(async (input: SummaryJobRequest) => ({
+      id: crypto.randomUUID(),
+      session_id: input.session_id,
+      target: input.target,
+      state: "queued",
+      phase: null,
+      failure: null,
+      created_at: "2026-11-07T12:00:00Z",
+      updated_at: "2026-11-07T12:00:00Z",
+    })),
     transcripts: vi.fn(async () => [
       {
         id: "transcript",
@@ -231,8 +249,9 @@ function fixture(rich = false) {
     openAttachment: ReturnType<typeof vi.fn>;
     attachments: ReturnType<typeof vi.fn>;
     saveNoteEditor: ReturnType<typeof vi.fn<VaultClient["saveNoteEditor"]>>;
-    saveDocument: ReturnType<typeof vi.fn>;
+    saveDocument: ReturnType<typeof vi.fn<VaultClient["saveDocument"]>>;
     search: ReturnType<typeof vi.fn>;
+    submitSummaryJob: ReturnType<typeof vi.fn<VaultClient["submitSummaryJob"]>>;
   };
   return {
     client,
@@ -269,6 +288,42 @@ beforeEach(() => {
   native.draftCacheGet.mockResolvedValue({ status: "ok", data: null });
   native.draftCachePut.mockResolvedValue({ status: "ok", data: undefined });
   native.draftCacheRemove.mockResolvedValue({ status: "ok", data: undefined });
+  native.receipts.length = 0;
+  native.deviceJobSubmissions.mockImplementation(async (scope, sessionId) => ({
+    status: "ok",
+    data: native.receipts.filter(
+      (receipt) =>
+        receipt.scope === scope &&
+        (!sessionId || receipt.input.session_id === sessionId),
+    ),
+  }));
+  native.deviceJobSubmissionPrepare.mockImplementation(async (scope, input) => {
+    const receipt = {
+      scope,
+      input,
+      request_id: crypto.randomUUID(),
+      job: null,
+      created_at_ms: Date.now(),
+    };
+    native.receipts.push(receipt);
+    return { status: "ok", data: receipt };
+  });
+  native.deviceJobSubmissionGet.mockImplementation(async (scope, id) => ({
+    status: "ok",
+    data:
+      native.receipts.find(
+        (receipt) => receipt.scope === scope && receipt.request_id === id,
+      ) ?? null,
+  }));
+  native.deviceJobSubmissionObserve.mockImplementation(
+    async (scope, id, job) => {
+      const receipt = native.receipts.find(
+        (receipt) => receipt.scope === scope && receipt.request_id === id,
+      )!;
+      receipt.job = job;
+      return { status: "ok", data: receipt };
+    },
+  );
 });
 afterEach(async () => {
   cleanup();
@@ -1011,6 +1066,139 @@ describe("shared note workspace", () => {
       expect.objectContaining({
         scope: backend.client.scope,
         sessionId: documentDraftId("same", { kind: "summary" }),
+      }),
+    );
+  });
+
+  it("regenerates an existing output only after its first-500ms editor save confirms", async () => {
+    const backend = fixture();
+    backend.setDocument({
+      document: {
+        id: "output",
+        session_id: "same",
+        kind: "template_output",
+        title: "Kept title",
+        template_id: "kept-template",
+        sort_order: 7,
+        markdown: "Canonical output",
+      },
+      revision: "output-r0",
+    });
+    const save = backend.client.saveDocument.getMockImplementation()!;
+    let release!: () => void;
+    backend.client.saveDocument.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return save(...args);
+    });
+    await open({
+      ...backend.client,
+      features: [
+        "notes",
+        "content_read",
+        "document_edit",
+        "summary_body_jobs",
+        "template_output_jobs",
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    await screen.findByText("Canonical output");
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const editor = await screen.findByRole("textbox", { name: "Markdown" });
+    const generate = await screen.findByRole("button", { name: "Regenerate" });
+    await waitFor(() => expect(generate).toHaveProperty("disabled", false));
+    fireEvent.change(editor, { target: { value: "Just typed output" } });
+    expect(backend.client.saveDocument).not.toHaveBeenCalled();
+    fireEvent.click(generate);
+    await waitFor(() =>
+      expect(backend.client.saveDocument).toHaveBeenCalledOnce(),
+    );
+    expect(native.deviceJobSubmissionPrepare).not.toHaveBeenCalled();
+    expect(backend.client.submitSummaryJob).not.toHaveBeenCalled();
+    expect((editor as HTMLTextAreaElement).value).toBe("Just typed output");
+    release();
+    await waitFor(() =>
+      expect(backend.client.submitSummaryJob).toHaveBeenCalledOnce(),
+    );
+    expect(backend.client.saveDocument.mock.calls[0][2]).toEqual({
+      markdown: "Just typed output",
+      expected_revision: "output-r0",
+    });
+    expect(native.receipts[0].input).toEqual({
+      session_id: "same",
+      target: { kind: "template_output", document_id: "output" },
+      expected_revision: "doc-1",
+    });
+    expect(
+      backend.client.saveDocument.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      native.deviceJobSubmissionPrepare.mock.invocationCallOrder[0],
+    );
+    expect(backend.client.submitSummaryJob.mock.calls[0][0]).toEqual(
+      native.receipts[0].input,
+    );
+    expect(backend.client.saveNote).not.toHaveBeenCalled();
+    expect((editor as HTMLTextAreaElement).value).toBe("Just typed output");
+  });
+
+  it("keeps a target editor's lost-save recovery and skips generation instead of using the older body", async () => {
+    const backend = fixture();
+    backend.setDocument({
+      document: {
+        id: "output",
+        session_id: "same",
+        kind: "template_output",
+        title: "Output",
+        template_id: "template",
+        sort_order: 2,
+        markdown: "Canonical output",
+      },
+      revision: "output-r0",
+    });
+    backend.client.saveDocument.mockRejectedValueOnce(
+      new Error("Output save reply was lost"),
+    );
+    await open({
+      ...backend.client,
+      features: [
+        "notes",
+        "content_read",
+        "document_edit",
+        "summary_body_jobs",
+        "template_output_jobs",
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const editor = await screen.findByRole("textbox", { name: "Markdown" });
+    const generate = await screen.findByRole("button", { name: "Regenerate" });
+    await waitFor(() => expect(generate).toHaveProperty("disabled", false));
+    fireEvent.change(editor, { target: { value: "Preserved private output" } });
+    fireEvent.click(generate);
+    await waitFor(() =>
+      expect(backend.client.saveDocument).toHaveBeenCalledOnce(),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryAllByText("Output save reply was lost").length,
+      ).toBeGreaterThan(0),
+    );
+    expect(backend.client.submitSummaryJob).not.toHaveBeenCalled();
+    expect(native.deviceJobSubmissionPrepare).not.toHaveBeenCalled();
+    expect((editor as HTMLTextAreaElement).value).toBe(
+      "Preserved private output",
+    );
+    expect(native.draftCachePut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: backend.client.scope,
+        sessionId: documentDraftId("same", {
+          kind: "template_output",
+          document_id: "output",
+        }),
+        uncertain: true,
+        draft: { markdown: "Preserved private output", title: "" },
       }),
     );
   });
