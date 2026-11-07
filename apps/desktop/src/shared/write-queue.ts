@@ -34,9 +34,14 @@ export async function flushDatabaseWrites(
   keys?: readonly string[],
 ): Promise<void> {
   const selected = keys ? new Set(keys) : null;
-  const callbacks = [...flushers]
-    .filter(([key]) => !selected || selected.has(key))
-    .flatMap(([, callbacks]) => [...callbacks]);
+  // Aliases must not submit the same editor twice during a lifecycle flush.
+  const callbacks = [
+    ...new Set(
+      [...flushers]
+        .filter(([key]) => !selected || selected.has(key))
+        .flatMap(([, callbacks]) => [...callbacks]),
+    ),
+  ];
   const started = drainDatabaseWrites(keys);
   if (!callbacks.length) return started;
   const results = await Promise.allSettled([
@@ -50,7 +55,9 @@ export async function flushDatabaseWrites(
   if (refused) throw refused.reason;
 }
 
-async function drainDatabaseWrites(keys?: readonly string[]): Promise<void> {
+export async function drainDatabaseWrites(
+  keys?: readonly string[],
+): Promise<void> {
   let failed = false;
   let failure: unknown;
   if (keys) {

@@ -1,7 +1,20 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { NoteEditorRef } from "@hypr/editor/note";
+
 import { EnhancedEditor as SessionEnhancedEditor } from "./editor";
+
+import {
+  enhancedNoteDraftKey,
+  hasUnsavedSessionNoteDrafts,
+  discardNoteDraft,
+} from "~/session/pending-note-drafts";
+import { sessionEditorFlushKey } from "~/shared/application/session-cleanup-guard";
+import {
+  enqueueDatabaseWrite,
+  flushDatabaseWrites,
+} from "~/shared/write-queue";
 
 const hoisted = vi.hoisted(() => ({
   content: JSON.stringify({ type: "doc", content: [] }),
@@ -9,6 +22,15 @@ const hoisted = vi.hoisted(() => ({
   persistContent: vi.fn(() => Promise.resolve()),
   noteEditorProps: [] as Record<string, unknown>[],
   sonnerToastError: vi.fn(),
+  scope: "enhanced:default",
+}));
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({
+    scope: {
+      client: { scope: hoisted.scope, canEdit: true },
+      getSnapshot: () => ({ state: "connected" }),
+    },
+  }),
 }));
 
 vi.mock("@hypr/editor/markdown", () => ({
@@ -85,10 +107,114 @@ describe("EnhancedEditor", () => {
 
   beforeEach(() => {
     hoisted.noteEditorProps = [];
+    hoisted.scope = "enhanced:default";
     hoisted.sonnerToastError.mockClear();
     hoisted.content = JSON.stringify({ type: "doc", content: [] });
     hoisted.sessionTitle = "Weekly sync";
     hoisted.persistContent = vi.fn(() => Promise.resolve());
+  });
+
+  it("flushes pre-debounce content and waits for its captured write when cleanup starts", async () => {
+    let finish!: () => void;
+    hoisted.persistContent = vi.fn(() =>
+      enqueueDatabaseWrite(
+        "session:cleanup-summary",
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    );
+    const mounted = render(
+      <EnhancedEditor
+        sessionId="cleanup-summary"
+        enhancedNoteId="summary"
+        content={hoisted.content}
+      />,
+    );
+    const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
+    const input = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "First 500ms summary" }],
+        },
+      ],
+    };
+    (props.onDraftChange as (getContent: () => unknown) => void)(() => input);
+    let saving!: Promise<unknown>;
+    const flush = vi.fn(() => {
+      saving = (props.handleChange as (content: unknown) => Promise<unknown>)(
+        input,
+      );
+    });
+    (props.ref as (value: NoteEditorRef) => void)({
+      flushPendingChanges: flush,
+    } as unknown as NoteEditorRef);
+    expect(hasUnsavedSessionNoteDrafts(hoisted.scope, "cleanup-summary")).toBe(
+      true,
+    );
+    let completed = false;
+    const preparation = flushDatabaseWrites([
+      sessionEditorFlushKey(hoisted.scope, "cleanup-summary"),
+    ]).then(() => {
+      completed = true;
+    });
+    await vi.waitFor(() =>
+      expect(hoisted.persistContent).toHaveBeenCalledOnce(),
+    );
+    expect(flush).toHaveBeenCalledOnce();
+    expect(completed).toBe(false);
+    mounted.unmount();
+    await act(async () => {
+      finish();
+      await saving;
+      await preparation;
+    });
+    expect(completed).toBe(true);
+    expect(hasUnsavedSessionNoteDrafts(hoisted.scope, "cleanup-summary")).toBe(
+      false,
+    );
+    discardNoteDraft(
+      enhancedNoteDraftKey(hoisted.scope, "cleanup-summary", "summary"),
+    );
+  });
+
+  it("does not reuse a pending enhanced draft from an identical ID in a different scope", () => {
+    hoisted.scope = "enhanced:first";
+    const props = {
+      sessionId: "same-note",
+      enhancedNoteId: "same-output",
+      content: hoisted.content,
+    };
+    const first = render(<EnhancedEditor {...props} />);
+    const input = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "First scope private" }],
+        },
+      ],
+    };
+    (
+      hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]
+        .onDraftChange as (capture: () => unknown) => void
+    )(() => input);
+    first.unmount();
+    hoisted.scope = "enhanced:second";
+    render(<EnhancedEditor {...props} />);
+    expect(readInitialDraft()).toBeUndefined();
+    expect(hasUnsavedSessionNoteDrafts("enhanced:first", "same-note")).toBe(
+      true,
+    );
+    expect(hasUnsavedSessionNoteDrafts("enhanced:second", "same-note")).toBe(
+      false,
+    );
+    discardNoteDraft(
+      enhancedNoteDraftKey("enhanced:first", "same-note", "same-output"),
+    );
   });
 
   it("shows the session title as the first line for persisted notes", () => {

@@ -14,6 +14,7 @@ import {
 } from "@hypr/ui/components/ui/dialog";
 
 import { NativeDraftStore } from "./draft-store";
+import { draftSessionId } from "./session-cleanup-guard";
 
 import type { NoteDraftRecovery, RecoveryEntry } from "~/types/tauri.gen";
 
@@ -139,7 +140,7 @@ function RecoveryDialog({ scope }: { scope?: string }) {
                     <RecoveryLocation scope={group.scope} />
                   )}
                   <span className="text-muted-foreground break-all">
-                    {recoveryResource(entry.sessionId)}
+                    {draftSessionId(entry.sessionId)}
                   </span>
                   {entry.uncertain && (
                     <span>
@@ -238,19 +239,6 @@ function RecoveryLabel({ entry }: { entry: RecoveryEntry }) {
       <Trans>Untitled note draft</Trans>
     </span>
   );
-}
-
-function recoveryResource(id: string): string {
-  try {
-    const resource: unknown = JSON.parse(id);
-    if (
-      Array.isArray(resource) &&
-      ["summary", "template_output", "note_editor"].includes(resource[0]) &&
-      typeof resource[1] === "string"
-    )
-      return resource[1];
-  } catch {}
-  return id;
 }
 
 function RecoveryLocation({ scope }: { scope: string }) {

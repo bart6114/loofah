@@ -4,11 +4,17 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
 import type { RevisionDraft } from "./revision-draft";
+import {
+  draftWriteQueueKey,
+  draftSessionId,
+  sessionEditorFlushKey,
+} from "./session-cleanup-guard";
 import type { VaultScope } from "./vault-scope";
 
 import {
   enqueueDatabaseWrite,
   registerWriteFlusher,
+  drainDatabaseWrites,
 } from "~/shared/write-queue";
 import type { NoteDraftRecovery } from "~/types/tauri.gen";
 
@@ -104,9 +110,11 @@ export function useDraftPersistence<S, D>({
       }
     },
   });
-  const writeKey =
-    scope.client.noteWriteQueueKey?.(draft.sessionId) ??
-    `vault-write:${JSON.stringify([draft.scope, draft.sessionId])}`;
+  const writeKey = draftWriteQueueKey(scope.client, draft.sessionId);
+  const editorFlushKey = sessionEditorFlushKey(
+    draft.scope,
+    draftSessionId(recoveryId),
+  );
   const execute = mutation.mutateAsync;
   const saveAsync = useCallback(
     () => enqueueDatabaseWrite(writeKey, () => execute()),
@@ -149,10 +157,18 @@ export function useDraftPersistence<S, D>({
       await saveAsync();
     else if (copyError) throw copyError;
   };
-  useEffect(
-    () => registerWriteFlusher(writeKey, () => flushRef.current()),
-    [writeKey],
-  );
+  useEffect(() => {
+    const flush = async () => {
+      await flushRef.current();
+      await drainDatabaseWrites([writeKey]);
+    };
+    const stopWrite = registerWriteFlusher(writeKey, flush);
+    const stopEditor = registerWriteFlusher(editorFlushKey, flush);
+    return () => {
+      stopWrite();
+      stopEditor();
+    };
+  }, [editorFlushKey, writeKey]);
   useEffect(() => {
     if (!snapshot.dirty && !recovery) return;
     const timer = setTimeout(() => {

@@ -68,6 +68,7 @@ import type {
   DocumentSnapshot,
   TasksSnapshot,
 } from "./protocol.gen";
+import { sessionEditorFlushKey } from "./session-cleanup-guard";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
 import { flushDatabaseWrites } from "~/shared/write-queue";
@@ -399,6 +400,29 @@ describe("mounted shared rich editor", () => {
     expect(native.draftCachePut).toHaveBeenCalledWith(
       expect.objectContaining({
         draft: expect.objectContaining({ title: "Flushed Seed" }),
+      }),
+    );
+  });
+  it("flushes a rich editor's captured first-500ms change through the scoped cleanup owner key", async () => {
+    const backend = richFixture();
+    const mounted = await openRich(backend.client);
+    act(() =>
+      mounted.view.dispatch(mounted.view.state.tr.insertText("Owner ", 1)),
+    );
+    await act(async () => {
+      await flushDatabaseWrites([
+        sessionEditorFlushKey(backend.client.scope, "same"),
+      ]);
+    });
+    expect(backend.client.saveNoteEditor).toHaveBeenCalledOnce();
+    expect(backend.client.saveNoteEditor.mock.calls[0][1].title).toBe(
+      "Owner Seed",
+    );
+    expect(native.draftCachePut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: backend.client.scope,
+        sessionId: noteEditorDraftId("same"),
+        draft: expect.objectContaining({ title: "Owner Seed" }),
       }),
     );
   });
@@ -961,6 +985,34 @@ describe("shared note workspace", () => {
       markdown: "New summary",
       expected_revision: "absent",
     });
+  });
+
+  it("flushes a pending scoped summary draft through its owning session before autosave", async () => {
+    const backend = fixture();
+    await open({
+      ...backend.client,
+      features: ["notes", "content_read", "document_edit"],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    await screen.findByText("Canonical summary");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const editor = await screen.findByRole("textbox", { name: "Markdown" });
+    fireEvent.change(editor, { target: { value: "Owner-flushed summary" } });
+    await act(async () => {
+      await flushDatabaseWrites([
+        sessionEditorFlushKey(backend.client.scope, "same"),
+      ]);
+    });
+    expect(backend.client.saveDocument).toHaveBeenCalledOnce();
+    expect(backend.client.saveDocument.mock.calls[0][2].markdown).toBe(
+      "Owner-flushed summary",
+    );
+    expect(native.draftCachePut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: backend.client.scope,
+        sessionId: documentDraftId("same", { kind: "summary" }),
+      }),
+    );
   });
 
   it("allows readers to inspect an existing output without editable fields", async () => {

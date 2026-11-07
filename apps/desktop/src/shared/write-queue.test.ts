@@ -6,9 +6,40 @@ import {
   flushDatabaseWritesByPrefix,
   flushDatabaseWritesWithin,
   registerWriteFlusher,
+  drainDatabaseWrites,
 } from "./write-queue";
 
 describe("database write queue", () => {
+  it("materializes an aliased content/session owner only once during a global flush", async () => {
+    const flush = vi.fn(async () => {});
+    const stopContent = registerWriteFlusher("alias-content", flush);
+    const stopSession = registerWriteFlusher("alias-session", flush);
+    await flushDatabaseWrites();
+    expect(flush).toHaveBeenCalledOnce();
+    stopContent();
+    stopSession();
+  });
+  it("drains captured lanes without recursively invoking their registered flushers", async () => {
+    const flush = vi.fn(async () => {
+      throw new Error("must not recurse");
+    });
+    const remove = registerWriteFlusher("drain-owned", flush);
+    let finish!: () => void;
+    const write = enqueueDatabaseWrite(
+      "drain-owned",
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    const drain = drainDatabaseWrites(["drain-owned"]);
+    expect(flush).not.toHaveBeenCalled();
+    finish();
+    await Promise.all([write, drain]);
+    expect(flush).not.toHaveBeenCalled();
+    remove();
+  });
   it("materializes matching deferred edits before flushing a selected note key", async () => {
     const write = vi.fn(async () => {});
     const unrelated = vi.fn(async () => {});

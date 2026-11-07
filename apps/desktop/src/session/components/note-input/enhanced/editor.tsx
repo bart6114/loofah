@@ -1,5 +1,12 @@
 import type { EditorView } from "prosemirror-view";
-import { forwardRef, memo, useCallback, useMemo } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 
 import { parseJsonContent } from "@hypr/editor/markdown";
 import {
@@ -22,6 +29,7 @@ import {
   captureNoteDraft,
   persistNoteDraft,
   usePendingNoteDraft,
+  enhancedNoteDraftKey,
 } from "~/session/pending-note-drafts";
 import {
   useUpdateEnhancedNoteContent,
@@ -32,6 +40,12 @@ import {
   extractFirstLineTitle,
   documentTitlePlaceholder,
 } from "~/session/title-content";
+import { sessionEditorFlushKey } from "~/shared/application/session-cleanup-guard";
+import { useVaultHost } from "~/shared/application/vault-provider";
+import {
+  drainDatabaseWrites,
+  registerWriteFlusher,
+} from "~/shared/write-queue";
 
 const extraNodeViews = { appLink: AppLinkView, session: SessionNodeView };
 
@@ -69,6 +83,16 @@ const EnhancedEditorInner = forwardRef<
     },
     ref,
   ) => {
+    const { scope } = useVaultHost();
+    const editorRef = useRef<NoteEditorRef | null>(null);
+    const bindEditor = useCallback(
+      (editor: NoteEditorRef | null) => {
+        editorRef.current = editor;
+        if (typeof ref === "function") ref(editor);
+        else if (ref) ref.current = editor;
+      },
+      [ref],
+    );
     const refreshContent = useRefreshEnhancedNote(
       enhancedNoteId,
       sessionId,
@@ -89,15 +113,29 @@ const EnhancedEditorInner = forwardRef<
       [content, contentOverride, sessionTitle],
     );
     const persistChanges = contentOverride === undefined;
-    const draftKey = `session:${sessionId}:enhanced:${enhancedNoteId}`;
+    const draftKey = scope
+      ? enhancedNoteDraftKey(scope.client.scope, sessionId, enhancedNoteId)
+      : undefined;
+    useEffect(() => {
+      if (!scope || !persistChanges) return;
+      return registerWriteFlusher(
+        sessionEditorFlushKey(scope.client.scope, sessionId),
+        async () => {
+          if (scope.getSnapshot().state === "connected" && scope.client.canEdit)
+            editorRef.current?.flushPendingChanges();
+          await drainDatabaseWrites([`session:${sessionId}`, "tasks"]);
+        },
+      );
+    }, [scope, sessionId, persistChanges]);
     const { initialDraft, confirmedDraft } = usePendingNoteDraft(
       persistChanges ? draftKey : undefined,
       initialContent,
       generationId,
     );
     const handleDraftChange = useCallback(
-      (getContent: () => JSONContent) =>
-        captureNoteDraft(draftKey, getContent, generationId),
+      (getContent: () => JSONContent) => {
+        if (draftKey) captureNoteDraft(draftKey, getContent, generationId);
+      },
       [draftKey, generationId],
     );
     const editorKey = persistChanges
@@ -106,6 +144,8 @@ const EnhancedEditorInner = forwardRef<
 
     const handleChange = useCallback(
       (input: JSONContent) => {
+        if (!draftKey)
+          return Promise.reject(new Error("The editor has no vault scope"));
         const portableInput = normalizePortableAttachmentUrls(input);
         const title = extractFirstLineTitle(portableInput);
         const nextTitle =
@@ -143,16 +183,18 @@ const EnhancedEditorInner = forwardRef<
     return (
       <div className="relative h-full">
         <NoteEditor
-          ref={ref}
-          readOnly={readOnly}
+          ref={bindEditor}
+          readOnly={readOnly || !scope}
           className="session-note-editor enhanced-summary-editor"
           key={editorKey}
           initialContent={initialContent}
           initialDraft={initialDraft}
           confirmedDraft={confirmedDraft}
           resolveAttachment={resolveAttachment}
-          handleChange={persistChanges ? handleChange : undefined}
-          onDraftChange={persistChanges ? handleDraftChange : undefined}
+          handleChange={persistChanges && scope ? handleChange : undefined}
+          onDraftChange={
+            persistChanges && scope ? handleDraftChange : undefined
+          }
           placeholderComponent={documentTitlePlaceholder}
           mentionConfig={mentionConfig}
           sessionMentionDropConfig={
