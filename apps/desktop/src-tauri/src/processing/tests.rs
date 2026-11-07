@@ -44,18 +44,6 @@ async fn local_ipc_jobs_use_the_shared_worker_and_anonymous_model_without_login(
         .with_operation_storage(operations.path().into()),
     );
     context
-        .settings
-        .set_values(std::collections::HashMap::from([
-            ("current_llm_provider".into(), json!("ollama")),
-            ("current_llm_model".into(), json!("configured")),
-            (
-                "ai_providers".into(),
-                json!({"llm:ollama":{"type":"llm","base_url":base_url}}),
-            ),
-        ]))
-        .await
-        .unwrap();
-    context
         .store
         .create_note_session(
             &serde_json::from_value(json!({
@@ -101,6 +89,35 @@ async fn local_ipc_jobs_use_the_shared_worker_and_anonymous_model_without_login(
         .unwrap();
     assert!(application::application_processing_available(
         app.handle().clone()
+    ));
+    let policy = application::application_processing_policy(app.handle().clone()).unwrap();
+    assert!(
+        policy
+            .providers
+            .iter()
+            .any(|provider| provider.id == "chatgpt_subscription")
+    );
+    let mut settings = application::application_processing_settings(app.handle().clone())
+        .await
+        .unwrap();
+    assert!(settings.settings.summary_model.is_none());
+    settings.settings.summary_model = Some(hypr_loofah_protocol::SummaryModelSelection {
+        provider_id: "ollama".into(),
+        model_id: "configured".into(),
+        base_url,
+    });
+    let outcome = application::application_save_processing_settings(
+        app.handle().clone(),
+        hypr_loofah_protocol::SaveProcessingSettingsRequest {
+            settings: settings.settings,
+            expected_revision: settings.revision,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        outcome,
+        hypr_loofah_protocol::ProcessingSettingsSaveOutcome::Saved(_)
     ));
     let id = uuid::Uuid::new_v4().to_string();
     let submitted = application::application_submit_summary_job(

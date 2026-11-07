@@ -2,7 +2,7 @@
 
 The server is experimental. It currently exposes authenticated vault, note, existing-content, search, attachment-upload and change-stream APIs. The full server connection experience, server AI processing, recording ingestion and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
 
-The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated summary-body job APIs. The opt-in notes workspace has summary controls and durable device submission recovery. Settings endpoints, full title/tag application, streaming previews and server transcription remain unfinished. The existing local AI flow remains active.
+The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated summary-body job APIs. The opt-in notes workspace has summary controls and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Owner-managed vault keys, full title/tag application, streaming previews and server transcription remain unfinished. The existing local AI flow remains active.
 
 The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, title/tag application and the main desktop AI workflow migration remain unfinished. Native IPC jobs use the same worker through the existing local vault context.
 
@@ -16,7 +16,7 @@ Copies containing explicit editor task state also offer **Copy all recovery data
 
 Use **Create shared vault** for a separate company vault. **Vault members** shows its members; owners can add existing company members, set reader/editor/owner roles, remove members, rename the vault or explicitly delete its access. The last owner cannot be removed or downgraded. Personal vaults have no sharing controls. Catalog conflicts require a reload before another change. An uncertain creation retries its original request rather than silently creating another vault.
 
-This preview runs inside the existing local desktop host. It does not yet replace the main desktop shell or provide remote-only startup, processing or recording. Rich note content renders owned attachments through client resources; the Attachments tab supports bounded listing, original-copy actions and checked removal. File uploads, native drops and the existing mention-insertion picker still need migration. Do not use it as a complete remote deployment of Loofah. Keep `VITE_REMOTE_PREVIEW` unset for the existing standalone experience.
+This preview runs inside the existing local desktop host. It does not yet replace the main desktop shell or provide remote-only startup or recording. Rich note content renders owned attachments through client resources; the Attachments tab supports bounded listing, original-copy actions and checked removal. File uploads, native drops and the existing mention-insertion picker still need migration. Do not use it as a complete remote deployment of Loofah. Keep `VITE_REMOTE_PREVIEW` unset for the existing standalone experience.
 
 ## Configure company SSO
 
@@ -68,9 +68,11 @@ with a `processing` property in `server.json`:
 
 Replace the model placeholder with the ID already configured for your provider.
 Each vault's existing `current_llm_provider`/`current_llm_model` settings must select
-an allowed pair; there is no implicit model replacement. Settings/model selection
-UI and owner-managed secret updates remain to implement. Use the authenticated API
-or shared Rust SDK; desktop job controls remain to implement.
+an allowed pair; there is no implicit model replacement. In the opt-in notes
+workspace, open **Processing settings** to select an approved provider/model
+without editing the server files. Readers can inspect settings; editors and
+owners can save them. Owner-managed vault secret updates remain to implement;
+processing currently uses the operator credentials described below.
 
 Set the referenced key in the service environment, outside canonical vault
 content. The supplied systemd unit reads optional `/etc/loofah/server.env`; keep
@@ -241,6 +243,44 @@ name/MIME validity, ordering and advancing cursors. The shared desktop panel ope
 native resources only when a row's actions are expanded; pagination performs no
 media transfers. Attachment notifications and reconnects refresh all loaded
 pages. The panel also mounts the shared upload and checked-removal controls described above.
+
+## Processing settings
+
+A configured processing host advertises `processing_settings` alongside summary
+jobs. Both the local IPC adapter and authenticated HTTPS adapter use the same
+Rust settings operations. The opt-in notes workspace exposes them through
+**Processing settings**. The default local app retains its existing settings,
+OS credential storage and login-free experience.
+
+| Operation                         | Endpoint                                         |
+| --------------------------------- | ------------------------------------------------ |
+| Inspect approved providers/models | `GET /api/v1/vaults/{vault}/processing/policy`   |
+| Read vault processing settings    | `GET /api/v1/vaults/{vault}/processing/settings` |
+| Save vault processing settings    | `PUT /api/v1/vaults/{vault}/processing/settings` |
+
+The projection contains the summary provider/model/endpoint, output language,
+custom summary template and high-confidence tag policy. It contains no device
+appearance/capture preferences or credentials. PUT accepts `settings` and the
+projection's `expected_revision`; it requires a UUID `X-Request-ID`. A stale save
+returns a typed `conflict` outcome with the current snapshot and leaves it
+unchanged. The UI retains its draft until you explicitly load the current
+settings. It does not queue disconnected edits or automatically retry saves.
+
+The operator's policy restricts remote providers, exact model IDs, endpoints and
+custom templates. Invalid choices return validation errors without signing the
+client out. Local settings preserve custom model IDs/endpoints and local-only
+ChatGPT selection. Job execution still checks provider/account availability.
+Host policy can be read without contacting models or reading their credentials.
+There is no credential readback endpoint.
+
+The revision covers processing fields rather than the whole config. Shared
+writes read the current canonical `config.json`, preserve unrelated and unknown
+fields and provider metadata, and serialize persistence/reset through one lock.
+Cancellation after persistence starts cannot abandon the cache update or change
+notification. Malformed and symlinked configs are not overwritten by partial
+saves. `processing_settings_changed` invalidates only the selected vault's
+settings; reconnect/resync reloads authoritative state. Confirmed save replies
+cannot repopulate private caches after access loss.
 
 ## Summary body jobs
 

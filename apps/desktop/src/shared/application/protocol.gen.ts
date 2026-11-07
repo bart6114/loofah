@@ -24,7 +24,7 @@ export type AudioPeaks = { durationSec: number; channels: number[][] }
 
 export type Capabilities = { api_major: number; application_version: string; features: string[] }
 
-export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
+export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "processing_settings_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
 
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change }
 
@@ -137,6 +137,16 @@ export type ProcessingJobState = "queued" | "running" | "cancelling" | "cancelle
 
 export type ProcessingPhase = "preparing" | "generating" | "applying"
 
+export type ProcessingPolicy = { providers: ProcessingProviderPolicy[]; allow_custom_templates: boolean }
+
+export type ProcessingProviderPolicy = { id: string; models: string[]; base_url: string; allow_custom_model: boolean; allow_custom_endpoint: boolean; requires_key: boolean }
+
+export type ProcessingSettings = { summary_model: SummaryModelSelection | null; ai_language: string; summary_prompt: string; auto_apply_high_confidence_tags: boolean }
+
+export type ProcessingSettingsSaveOutcome = { kind: "saved"; snapshot: ProcessingSettingsSnapshot } | { kind: "conflict"; snapshot: ProcessingSettingsSnapshot }
+
+export type ProcessingSettingsSnapshot = { settings: ProcessingSettings; revision: string }
+
 export type ProcessingTagSuggestion = { name: string; confidence: number }
 
 export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: FileMetadata; idle_timeout_secs: number }
@@ -158,6 +168,8 @@ export type SaveMetadataRequest = { patch: SessionMetaPatch; expected_revision: 
 export type SaveNoteEditorRequest = { markdown: string; title: string | null; expected_revision: string; expected_tasks_revision: string; tasks: TaskInput[] }
 
 export type SaveNoteRequest = { markdown: string; title: string | null; expected_revision: string }
+
+export type SaveProcessingSettingsRequest = { settings: ProcessingSettings; expected_revision: string }
 
 export type SearchMeetingsInput = { query: string; limit: number | null; offset: number | null }
 
@@ -206,6 +218,8 @@ export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessio
 export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase; migrationIssues: string[] }
 
 export type SummaryJobRequest = { session_id: string; target: DocumentTarget; expected_revision: string }
+
+export type SummaryModelSelection = { provider_id: string; model_id: string; base_url: string }
 
 export type TagItem = { id: string; name?: string }
 

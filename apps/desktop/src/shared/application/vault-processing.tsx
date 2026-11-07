@@ -15,6 +15,7 @@ import {
 
 import { activeJob, JobSubmissions } from "./job-submissions";
 import type { ProcessingJobSnapshot } from "./protocol.gen";
+import { VaultProcessingSettings } from "./vault-processing-settings";
 import type { VaultScope } from "./vault-scope";
 
 import type { JobSubmissionReceipt } from "~/types/tauri.gen";
@@ -157,6 +158,7 @@ function SummaryJobs({
       aria-label={t`Summary generation`}
     >
       <div className="flex flex-wrap items-center gap-2">
+        <VaultProcessingSettings scope={scope} />
         <Button
           size="sm"
           disabled={

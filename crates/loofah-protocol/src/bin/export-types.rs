@@ -4,6 +4,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut types = specta::TypeCollection::default();
     types
         .register::<Capabilities>()
+        .register::<ProcessingPolicy>()
+        .register::<ProcessingSettingsSnapshot>()
+        .register::<SaveProcessingSettingsRequest>()
+        .register::<ProcessingSettingsSaveOutcome>()
         .register::<SummaryJobRequest>()
         .register::<ProcessingJobSnapshot>()
         .register::<ListProcessingJobsInput>()

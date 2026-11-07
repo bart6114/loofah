@@ -136,7 +136,7 @@ impl JobGenerator for ConfiguredSummaryGenerator {
                 };
                 let context = context.upgrade().ok_or(ProcessingJobFailure::SourceUnavailable)?;
                 context.store.ensure_ready().map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
-                let config = context.settings.snapshot();
+                let config = context.settings.read_current().await.map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
                 if !allow_custom_templates && !config.auto_summary_prompt.trim().is_empty() {
                     return Err(ProcessingJobFailure::AccessDenied);
                 }

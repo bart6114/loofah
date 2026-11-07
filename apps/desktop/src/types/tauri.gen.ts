@@ -97,6 +97,47 @@ export const commands = {
   async applicationProcessingAvailable(): Promise<boolean> {
     return await TAURI_INVOKE("application_processing_available");
   },
+  async applicationProcessingPolicy(): Promise<
+    Result<ProcessingPolicy, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_policy"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingSettings(): Promise<
+    Result<ProcessingSettingsSnapshot, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_settings"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveProcessingSettings(
+    input: SaveProcessingSettingsRequest,
+  ): Promise<Result<ProcessingSettingsSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_processing_settings", {
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSubmitSummaryJob(
     requestId: string,
     input: SummaryJobRequest,
@@ -2011,6 +2052,7 @@ export type Change =
     }
   | { kind: "search_ready" }
   | { kind: "catalog_changed" }
+  | { kind: "processing_settings_changed" }
   | { kind: "resync_required" }
   | { kind: "job_changed"; job_id: string }
   | { kind: "unknown" };
@@ -2346,6 +2388,31 @@ export type ProcessingJobState =
   | "interrupted"
   | "conflict";
 export type ProcessingPhase = "preparing" | "generating" | "applying";
+export type ProcessingPolicy = {
+  providers: ProcessingProviderPolicy[];
+  allow_custom_templates: boolean;
+};
+export type ProcessingProviderPolicy = {
+  id: string;
+  models: string[];
+  base_url: string;
+  allow_custom_model: boolean;
+  allow_custom_endpoint: boolean;
+  requires_key: boolean;
+};
+export type ProcessingSettings = {
+  summary_model: SummaryModelSelection | null;
+  ai_language: string;
+  summary_prompt: string;
+  auto_apply_high_confidence_tags: boolean;
+};
+export type ProcessingSettingsSaveOutcome =
+  | { kind: "saved"; snapshot: ProcessingSettingsSnapshot }
+  | { kind: "conflict"; snapshot: ProcessingSettingsSnapshot };
+export type ProcessingSettingsSnapshot = {
+  settings: ProcessingSettings;
+  revision: string;
+};
 export type ProcessingTagSuggestion = { name: string; confidence: number };
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
@@ -2389,6 +2456,13 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "processing_policy"; vault_id: string }
+  | { kind: "processing_settings"; vault_id: string }
+  | {
+      kind: "save_processing_settings";
+      vault_id: string;
+      input: SaveProcessingSettingsRequest;
+    }
   | { kind: "submit_summary_job"; vault_id: string; input: SummaryJobRequest }
   | {
       kind: "processing_jobs";
@@ -2510,6 +2584,9 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "processing_policy"; value: ProcessingPolicy }
+  | { kind: "processing_settings"; value: ProcessingSettingsSnapshot }
+  | { kind: "processing_settings_save"; value: ProcessingSettingsSaveOutcome }
   | { kind: "processing_job"; value: ProcessingJobSnapshot }
   | { kind: "processing_jobs"; value: ProcessingJobPage }
   | { kind: "processing_job_result"; value: ProcessingJobResult | null }
@@ -2584,6 +2661,10 @@ export type SaveNoteEditorRequest = {
 export type SaveNoteRequest = {
   markdown: string;
   title: string | null;
+  expected_revision: string;
+};
+export type SaveProcessingSettingsRequest = {
+  settings: ProcessingSettings;
   expected_revision: string;
 };
 export type ScoredTagSuggestion = { name: string; confidence: number };
@@ -2753,6 +2834,11 @@ export type SummaryJobRequest = {
   session_id: string;
   target: DocumentTarget;
   expected_revision: string;
+};
+export type SummaryModelSelection = {
+  provider_id: string;
+  model_id: string;
+  base_url: string;
 };
 export type TagContext = {
   available: string[];

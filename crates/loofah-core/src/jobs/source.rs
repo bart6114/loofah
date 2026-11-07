@@ -107,7 +107,11 @@ impl SummarySource for VaultSummarySource {
                 if cancel.is_cancelled() {
                     return Err(ProcessingJobFailure::Interrupted);
                 }
-                let config = context.settings.snapshot();
+                let config = context
+                    .settings
+                    .read_current()
+                    .await
+                    .map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
                 if !allow_custom_templates && !config.auto_summary_prompt.trim().is_empty() {
                     return Err(ProcessingJobFailure::AccessDenied);
                 }

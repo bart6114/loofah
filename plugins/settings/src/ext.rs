@@ -81,18 +81,8 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
         &self,
         values: std::collections::HashMap<String, serde_json::Value>,
     ) -> crate::Result<()> {
-        use tauri::Emitter;
-
         let state = self.manager.state::<std::sync::Arc<crate::ConfigState>>();
-        let next = state.set_values(values).await?;
-
-        // Broadcast the FULL new config to every webview, including the one
-        // that issued the write: the FE store replaces its snapshot
-        // idempotently, so the writer's own echo is harmless and keeps all
-        // windows converged on the same state.
-        self.manager
-            .app_handle()
-            .emit(crate::CONFIG_CHANGED_EVENT, &next)?;
+        state.set_values(values).await?;
         Ok(())
     }
 

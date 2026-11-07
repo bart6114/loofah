@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 mod jobs;
 pub use jobs::*;
+mod processing_settings;
+pub use processing_settings::*;
 
 pub use hypr_agent_access::{
     GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, Meeting as AgentMeeting,
@@ -390,6 +392,7 @@ pub enum Change {
     },
     SearchReady,
     CatalogChanged,
+    ProcessingSettingsChanged,
     ResyncRequired,
     JobChanged {
         job_id: String,

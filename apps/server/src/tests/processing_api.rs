@@ -522,6 +522,65 @@ async fn native_sdk_replays_a_lost_submission_reply_at_realistic_latency_without
         let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
         prepare(&context).await;
         let request = input(&context).await;
+        context
+            .settings
+            .set_values(std::collections::HashMap::from([
+                ("current_llm_provider".into(), Value::Null),
+                ("current_llm_model".into(), Value::Null),
+            ]))
+            .await
+            .unwrap();
+        let RemoteReply::ProcessingPolicy(policy) = client
+            .execute(
+                RemoteOperation::ProcessingPolicy {
+                    vault_id: me.personal_vault_id.clone(),
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("native policy response")
+        };
+        assert_eq!(policy.providers[0].models, vec!["configured"]);
+        let RemoteReply::ProcessingSettings(mut settings) = client
+            .execute(
+                RemoteOperation::ProcessingSettings {
+                    vault_id: me.personal_vault_id.clone(),
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("native settings response")
+        };
+        assert!(settings.settings.summary_model.is_none());
+        settings.settings.summary_model = Some(SummaryModelSelection {
+            provider_id: "ollama".into(),
+            model_id: "configured".into(),
+            base_url: String::new(),
+        });
+        let outcome = client
+            .execute(
+                RemoteOperation::SaveProcessingSettings {
+                    vault_id: me.personal_vault_id.clone(),
+                    input: SaveProcessingSettingsRequest {
+                        settings: settings.settings,
+                        expected_revision: settings.revision,
+                    },
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            RemoteReply::ProcessingSettingsSave(ProcessingSettingsSaveOutcome::Saved(_))
+        ));
         let device_root = tempfile::tempdir().unwrap();
         let device_path = device_root.path().join("submissions");
         let scope = serde_json::to_string(&(
@@ -705,4 +764,83 @@ async fn native_sdk_rejects_an_unsupported_job_capability_before_authentication_
     client.disconnect();
     fixture.service.shutdown().await.unwrap();
     server.abort();
+}
+
+#[tokio::test]
+async fn native_sdk_round_trips_maximum_json_escaped_processing_prompt() {
+    let provider = Provider::new(0).await;
+    let mut config = provider.config();
+    config.allow_custom_templates = true;
+    let fixture = Fixture::with_processing(Some(config)).await;
+    let gate = CancellationToken::new();
+    gate.cancel();
+    let (client, server) = native_client(&fixture, 0, gate).await;
+    let login = client.begin_login().await.unwrap();
+    let url = login.authorization_url().to_string();
+    let complete = tokio::spawn(login.complete());
+    assert!(reqwest::get(url).await.unwrap().status().is_success());
+    complete.await.unwrap().unwrap();
+    let RemoteReply::Me(me) = client
+        .execute(
+            RemoteOperation::Provision,
+            &uuid::Uuid::new_v4().to_string(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("provision response")
+    };
+    let vault_id = me.personal_vault_id;
+    let RemoteReply::ProcessingSettings(mut before) = client
+        .execute(
+            RemoteOperation::ProcessingSettings {
+                vault_id: vault_id.clone(),
+            },
+            &uuid::Uuid::new_v4().to_string(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("settings response")
+    };
+    before.settings.summary_prompt = "\u{1}".repeat(64 * 1024);
+    let input = SaveProcessingSettingsRequest {
+        settings: before.settings,
+        expected_revision: before.revision,
+    };
+    assert!(serde_json::to_vec(&input).unwrap().len() > 256 * 1024);
+    let RemoteReply::ProcessingSettingsSave(ProcessingSettingsSaveOutcome::Saved(saved)) = client
+        .execute(
+            RemoteOperation::SaveProcessingSettings {
+                vault_id: vault_id.clone(),
+                input: input.clone(),
+            },
+            &uuid::Uuid::new_v4().to_string(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("save response")
+    };
+    assert_eq!(saved.settings, input.settings);
+    let RemoteReply::ProcessingSettings(read) = client
+        .execute(
+            RemoteOperation::ProcessingSettings { vault_id },
+            &uuid::Uuid::new_v4().to_string(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("read response")
+    };
+    assert_eq!(read, saved);
+    assert!(provider.requests.lock().unwrap().is_empty());
+    client.disconnect();
+    fixture.service.shutdown().await.unwrap();
+    server.abort();
+    provider.close().await;
 }

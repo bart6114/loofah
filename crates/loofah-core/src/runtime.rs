@@ -115,6 +115,18 @@ impl VaultRuntime {
         context.lease = Some(lease);
         let context = Arc::new(context);
         let stop = CancellationToken::new();
+        let mut settings_changes = context.settings.subscribe_processing();
+        let settings_events = context.events.clone();
+        let settings_stop = stop.clone();
+        let settings_worker = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = settings_stop.cancelled() => break,
+                    change = settings_changes.changed() => if change.is_err() { break; },
+                }
+                settings_events.publish(Change::ProcessingSettingsChanged);
+            }
+        });
         let watch_store = store.clone();
         let watch_stop = stop.clone();
         let watch_worker = tokio::spawn(async move {
@@ -160,7 +172,7 @@ impl VaultRuntime {
         Ok(Self {
             context,
             stop,
-            workers: vec![events_worker, search_worker, watch_worker],
+            workers: vec![events_worker, search_worker, watch_worker, settings_worker],
             watcher,
             processing: None,
         })

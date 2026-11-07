@@ -11,6 +11,16 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    ProcessingPolicy {
+        vault_id: String,
+    },
+    ProcessingSettings {
+        vault_id: String,
+    },
+    SaveProcessingSettings {
+        vault_id: String,
+        input: SaveProcessingSettingsRequest,
+    },
     SubmitSummaryJob {
         vault_id: String,
         input: SummaryJobRequest,
@@ -207,6 +217,9 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    ProcessingPolicy(ProcessingPolicy),
+    ProcessingSettings(ProcessingSettingsSnapshot),
+    ProcessingSettingsSave(ProcessingSettingsSaveOutcome),
     ProcessingJob(ProcessingJobSnapshot),
     ProcessingJobs(ProcessingJobPage),
     ProcessingJobResult(Option<ProcessingJobResult>),
@@ -263,6 +276,9 @@ impl RemoteClient {
             return Err(cancelled());
         }
         let required_feature = match &operation {
+            RemoteOperation::ProcessingPolicy { .. }
+            | RemoteOperation::ProcessingSettings { .. }
+            | RemoteOperation::SaveProcessingSettings { .. } => Some("processing_settings"),
             RemoteOperation::SubmitSummaryJob { .. }
             | RemoteOperation::ProcessingJobs { .. }
             | RemoteOperation::ProcessingJob { .. }
@@ -287,6 +303,9 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::ProcessingPolicy { .. }
+                | RemoteOperation::ProcessingSettings { .. }
+                | RemoteOperation::SaveProcessingSettings { .. } => "processing settings",
                 RemoteOperation::SubmitSummaryJob { .. }
                 | RemoteOperation::ProcessingJobs { .. }
                 | RemoteOperation::ProcessingJob { .. }
@@ -311,6 +330,7 @@ impl RemoteClient {
             if matches!(
                 operation,
                 RemoteOperation::SaveNoteEditor { .. }
+                    | RemoteOperation::SaveProcessingSettings { .. }
                     | RemoteOperation::SubmitSummaryJob { .. }
                     | RemoteOperation::CancelProcessingJob { .. }
                     | RemoteOperation::DeleteRecording { .. }
@@ -353,6 +373,21 @@ impl RemoteClient {
         let mut query: Vec<(&str, String)> = Vec::new();
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::ProcessingPolicy { vault_id } => (
+                Method::GET,
+                vec!["vaults", vault_id, "processing", "policy"],
+            ),
+            RemoteOperation::ProcessingSettings { vault_id } => (
+                Method::GET,
+                vec!["vaults", vault_id, "processing", "settings"],
+            ),
+            RemoteOperation::SaveProcessingSettings { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::PUT,
+                    vec!["vaults", vault_id, "processing", "settings"],
+                )
+            }
             RemoteOperation::SubmitSummaryJob { vault_id, input } => {
                 body = Some(value(input)?);
                 (Method::POST, vec!["vaults", vault_id, "jobs"])
@@ -819,6 +854,15 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                RemoteOperation::ProcessingPolicy { .. } => {
+                    RemoteReply::ProcessingPolicy(json_body(response, 4 * 1024 * 1024).await?)
+                }
+                RemoteOperation::ProcessingSettings { .. } => {
+                    RemoteReply::ProcessingSettings(json_body(response, 1024 * 1024).await?)
+                }
+                RemoteOperation::SaveProcessingSettings { .. } => {
+                    RemoteReply::ProcessingSettingsSave(json_body(response, 1024 * 1024).await?)
+                }
                 RemoteOperation::SubmitSummaryJob { input, .. } => {
                     let job: ProcessingJobSnapshot = json_body(response, 131_072).await?;
                     if job.session_id != input.session_id

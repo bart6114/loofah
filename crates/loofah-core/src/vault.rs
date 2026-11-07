@@ -20,6 +20,7 @@ pub struct VaultContext {
     pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
     pub(crate) upload_writers: Arc<tokio::sync::Semaphore>,
     pub(crate) processing: std::sync::OnceLock<crate::jobs::ProcessingService>,
+    pub(crate) processing_policy: std::sync::OnceLock<hypr_loofah_protocol::ProcessingPolicy>,
 }
 
 impl VaultContext {
@@ -41,6 +42,7 @@ impl VaultContext {
             media_readers: Arc::new(tokio::sync::Semaphore::new(4)),
             upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
             processing: std::sync::OnceLock::new(),
+            processing_policy: std::sync::OnceLock::new(),
         }
     }
 

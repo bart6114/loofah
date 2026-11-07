@@ -4,6 +4,9 @@ const native = vi.hoisted(() => ({
   commands: {
     applicationScope: vi.fn(),
     applicationProcessingAvailable: vi.fn(),
+    applicationProcessingPolicy: vi.fn(),
+    applicationProcessingSettings: vi.fn(),
+    applicationSaveProcessingSettings: vi.fn(),
     applicationSubmitSummaryJob: vi.fn(),
     applicationProcessingJobs: vi.fn(),
     applicationProcessingJob: vi.fn(),
@@ -120,6 +123,80 @@ it("advertises local summary jobs only when the native worker is available", asy
   expect(local.features).not.toContain("summary_body_jobs");
   expect(local.canEdit).toBe(true);
   expect(local.networkMode).toBe("always");
+});
+
+it("uses matching typed processing settings contracts across both transports", async () => {
+  const policy = { providers: [], allow_custom_templates: false };
+  const snapshot = {
+    settings: {
+      summary_model: null,
+      ai_language: "en",
+      summary_prompt: "",
+      auto_apply_high_confidence_tags: true,
+    },
+    revision: "a".repeat(64),
+  };
+  const input = {
+    settings: snapshot.settings,
+    expected_revision: snapshot.revision,
+  };
+  const outcome = { kind: "saved", snapshot };
+  native.commands.applicationProcessingPolicy.mockResolvedValue({
+    status: "ok",
+    data: policy,
+  });
+  native.commands.applicationProcessingSettings.mockResolvedValue({
+    status: "ok",
+    data: snapshot,
+  });
+  native.commands.applicationSaveProcessingSettings.mockResolvedValue({
+    status: "ok",
+    data: outcome,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toContain("processing_settings");
+  expect(await local.processingPolicy()).toEqual(policy);
+  expect(await local.processingSettings()).toEqual(snapshot);
+  expect(await local.saveProcessingSettings(input)).toEqual(outcome);
+  expect(
+    native.commands.applicationSaveProcessingSettings,
+  ).toHaveBeenCalledWith(input);
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(policy)
+    .mockResolvedValueOnce(snapshot)
+    .mockResolvedValueOnce(outcome);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["processing_settings"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  await remote.processingPolicy();
+  await remote.processingSettings();
+  await remote.saveProcessingSettings(input);
+  expect(request.mock.calls).toEqual([
+    [
+      { kind: "processing_policy", vault_id: "first" },
+      "processing_policy",
+      undefined,
+    ],
+    [
+      { kind: "processing_settings", vault_id: "first" },
+      "processing_settings",
+      undefined,
+    ],
+    [
+      { kind: "save_processing_settings", vault_id: "first", input },
+      "processing_settings_save",
+      undefined,
+    ],
+  ]);
 });
 
 it("preserves summary receipt UUIDs and identical job operations across both transports", async () => {

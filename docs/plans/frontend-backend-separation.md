@@ -2,7 +2,9 @@
 
 Status: implementation in progress. The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
 
-Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes. Attachments support authenticated reading, preview/copy actions, listing and checked removal. Checked binary upload publication, native SDK streaming, device path/browser-file sources and shared attachment upload controls are implemented. The opt-in shared editor accepts clipboard files and native drops through these adapters; the default local editor now routes attachment uploads through the same checked operation while retaining its existing file presentation and audio-import host. Crash/restart upload recovery remains open. The main desktop remote shell/profile migration, imports/exports, reliable remote capture, complete processing/job UI migration, CLI owner routing/writes and full release validation remain open. Summary-body jobs now have shared Rust operations, optional server processing, native local providers and IPC/HTTPS clients; the existing summary UI is still active pending full workflow parity. Default local use stays offline and login-free.
+Parallel work allocation, ownership and integration gates are defined in [the distribution plan](./frontend-backend-distribution.md).
+
+Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes. Attachments support authenticated reading, preview/copy actions, listing and checked removal. Checked binary upload publication, native SDK streaming, device path/browser-file sources and shared attachment upload controls are implemented. The opt-in shared editor accepts clipboard files and native drops through these adapters; the default local editor now routes attachment uploads through the same checked operation while retaining its existing file presentation and audio-import host. Crash/restart upload recovery remains open. The main desktop remote shell/profile migration, imports/exports, reliable remote capture, complete processing/job UI migration, CLI owner routing/writes and full release validation remain open. Summary-body jobs now have shared Rust operations, optional server processing, native local providers and IPC/HTTPS clients. Shared processing settings and model selection are available in the opt-in workspace; vault-owner credential updates remain unfinished. The existing summary UI is still active pending full workflow parity. Default local use stays offline and login-free.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
@@ -308,7 +310,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Full summary/title/tag/template policy, previews and the main frontend AI migration, owner-managed provider settings/secrets, server model management and Linux inference parity remain to implement.
+- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Shared processing settings/model selection are implemented. Full summary/title/tag/template policy, previews and the main frontend AI migration, owner-managed provider secrets, server model management and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
@@ -2751,3 +2753,73 @@ install/uninstall smoke tests. This confirms the earlier ARM64 persistence-test
 fix on its native runner. Real speech-model tests were skipped. The newer local
 provider/client and device-recovery commits require their own hosted CI; none of
 these results waive the broader recording, production UX or deployment gates.
+
+### Shared processing settings and ordered configuration publication
+
+`loofah-protocol` defines the processing-settings projection, opaque revision,
+checked-save outcome and host provider/model policy. `VaultContext` owns shared
+read/save validation; IPC, HTTPS, the native SDK and `VaultClient` expose the same
+operations. The opt-in notes workspace mounts a common settings form for model,
+output language, custom summary template and high-confidence tag policy. It
+preserves typed changes during conflicts, failed background reads and disconnects;
+loading current settings is explicit. Readers can inspect settings, editors and
+owners can save them, and revoked/retired scopes cannot regain private cached data
+from late replies. This adds no account requirement to local mode.
+
+Server policy restricts provider IDs, exact models, outbound endpoints and custom
+templates. Invalid choices are validation errors rather than access-loss events.
+Local policy retains custom endpoints/models and local-only ChatGPT selection;
+actual execution still validates account/model/provider availability. Catalog reads
+do not contact models or read their secrets. Remote processing still uses operator
+environment keys; local processing retains the OS credential store. Vault-owner
+write-only keys remain unfinished.
+
+`ConfigState` now merges partial writes into the current canonical file rather
+than a startup cache, preserving unknown fields, unrelated settings and provider
+metadata. Writes and reset share one persistence lock. An owned blocking task
+retains the lock through disk commit, cache publication and notification even if
+its caller disappears. Partial writes refuse malformed/non-regular/symlinked
+configs. Processing revisions cover the projection, so device-only settings do
+not cause spurious conflicts.
+
+A separate processing generation advances on every projected change. Coalesced
+A-to-B-to-A commits still invalidate clients that read B. The settings plugin
+owns one ordered full-config publisher; legacy commands do not emit delayed
+per-caller snapshots. The frontend no longer merges older setter inputs over
+newer events, and guards bootstrap/read replies, including rejected native invokes,
+against newer events and later-dispatched reads. Plugin exit/drop stops publication.
+The typed processing change invalidates only that vault's settings; reconnect and
+resync reload authoritative state.
+
+Settings responses admit 1 MiB, covering worst-case JSON escaping of the accepted
+64-KiB template plus bounded selection/language fields. A real SDK regression saves
+and reads back the escaped boundary without invoking a model. The realistic-latency
+SDK fixture now clears the configured model and selects it through the public
+policy/settings API before recovering its lost summary reply at 50/150/500 ms RTT.
+
+A controlled Chrome renderer fixture verifies approved-model save, explicit
+conflict reload, retained disconnected input, access-loss dismissal/cache teardown,
+custom local model/endpoint/template preservation and a 420px layout without
+horizontal overflow. Screenshots, source hashes and renderer evidence are under
+`/Volumes/T7/loofah-backend-build/processing-settings-ui-qa/`. This does not replace
+native WKWebView, live-provider, production-performance or full recording acceptance.
+
+The independent review found and corrected the publication-order, coalescing and
+escaped-response-boundary cases above. Command/test evidence is in
+`/Volumes/T7/loofah-backend-build/logs/processing-settings-*`. The companion
+[distribution plan](./frontend-backend-distribution.md) defines the next isolated
+worker assignments. Main-shell remote-only startup, compound generation policy,
+credential administration, reliable capture, imports/exports, CLI ownership and
+all remaining original deployment/platform/release gates remain open.
+
+Checkpoint verification passes 26 focused settings/core tests, all 68 server
+tests, two native processing IPC tests and the mixed legacy/shared/reset native
+publisher regression. The final full frontend run passes 1,871 tests across 235
+files; the final direct-await cleanup is covered by 31 focused config/settings/UI
+tests and desktop typechecking. Desktop and core/client/server/CLI Rust checks
+pass, as does strict changed-crate production Clippy with `--no-deps`. A broader
+strict dependency sweep reports four pre-existing style lints in
+`storage/src/global.rs` and `fs-format/src/transcript.rs`; those unrelated files
+were left unchanged. Frontend lint has zero errors and the same 88 baseline
+warnings. Generated protocol readback and formatting checks pass. Full hosted CI
+for this new checkpoint remains required.

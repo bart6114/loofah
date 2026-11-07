@@ -6,6 +6,7 @@ mod metadata;
 mod note_editor;
 mod processing;
 mod processing_api;
+mod processing_settings;
 mod recording;
 mod recording_delete;
 mod tasks;

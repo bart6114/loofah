@@ -199,6 +199,10 @@ msgstr "Барнома"
 msgid "Appearance"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Apply high-confidence tag suggestions"
+msgstr ""
+
 #: src/task/resource-view.tsx
 msgid "Assignees:"
 msgstr ""
@@ -401,6 +405,10 @@ msgstr ""
 #: src/main/audio-import-dialog.tsx
 #: src/shared/application/notes-workspace.tsx
 msgid "Clear"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Clear unsupported template"
 msgstr ""
 
 #: src/changelog/index.tsx
@@ -646,6 +654,10 @@ msgstr ""
 
 #: src/settings/ai/llm/select.tsx
 msgid "Current connection"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Custom summary template"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1063,6 +1075,10 @@ msgstr ""
 msgid "LM Studio or Ollama"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Load current settings"
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 msgid "Load more"
@@ -1128,6 +1144,7 @@ msgid "Loading..."
 msgstr ""
 
 #: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-processing-settings.tsx
 #: src/shared/application/vault-processing.tsx
 #: src/shared/deferred-view.tsx
 msgid "Loading…"
@@ -1327,6 +1344,10 @@ msgstr ""
 msgid "No saved summary requests."
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "No summary model"
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
 msgstr ""
@@ -1513,8 +1534,16 @@ msgstr ""
 msgid "Processing may already have started. Resume uses the original request."
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Processing settings"
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Processing stopped before completion."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Provider endpoint"
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
@@ -1548,6 +1577,10 @@ msgstr ""
 
 #: src/shared/open-note-dialog.tsx
 msgid "Recent"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Reconnect to save settings. Your changes stay in this form."
 msgstr ""
 
 #: src/session/components/outer-header/index.tsx
@@ -1755,6 +1788,7 @@ msgstr ""
 #: src/settings/ai/stt/diarization-status.tsx
 #: src/shared/application/vault-attachment-provider.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-processing-settings.tsx
 msgid "Retry"
 msgstr ""
 
@@ -1807,6 +1841,10 @@ msgstr ""
 msgid "Save original copy"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Save settings"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
@@ -1831,6 +1869,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saving..."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Saving…"
 msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
@@ -1940,6 +1982,10 @@ msgstr ""
 #: src/main/empty.tsx
 #: src/sidebar/settings.tsx
 msgid "Settings"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Settings saved."
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -2186,7 +2232,12 @@ msgid "Summary is read-only while recording. Add text and images in Note."
 msgstr ""
 
 #: src/settings/general/main-language.tsx
+#: src/shared/application/vault-processing-settings.tsx
 msgid "Summary language"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Summary model"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -2195,6 +2246,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary prompt cannot be empty."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Summary provider"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -2312,6 +2367,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "The summary provider failed."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "These settings apply to this vault. Provider credentials are managed separately."
 msgstr ""
 
 #: src/shared/application/remove-attachment-dialog.tsx
@@ -2542,6 +2601,10 @@ msgstr ""
 msgid "Vault name"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Vault settings changed. Your draft has been kept. Loading current settings discards this draft."
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "Vault size by file type"
 msgstr ""
@@ -2597,6 +2660,10 @@ msgstr ""
 
 #: src/settings/ai/stt/select.tsx
 msgid "You can keep using Loofah while it downloads."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "You have read-only access to this vault."
 msgstr ""
 
 #: src/shared/startup-boundary.tsx

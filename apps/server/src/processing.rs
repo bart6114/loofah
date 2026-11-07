@@ -198,6 +198,26 @@ impl ProcessingHost {
     }
 
     pub async fn attach(&self, runtime: &mut VaultRuntime, catalog: Catalog) -> Result<()> {
+        runtime
+            .context
+            .configure_processing_policy(hypr_loofah_protocol::ProcessingPolicy {
+                providers: self
+                    .models
+                    .0
+                    .values()
+                    .map(|binding| hypr_loofah_protocol::ProcessingProviderPolicy {
+                        id: binding.config.id.clone(),
+                        models: binding.config.models.clone(),
+                        base_url: binding.base_url.clone(),
+                        allow_custom_model: false,
+                        allow_custom_endpoint: false,
+                        requires_key: provider_definition(&binding.config.id)
+                            .expect("validated provider")
+                            .requires_key,
+                    })
+                    .collect(),
+                allow_custom_templates: self.allow_custom_templates,
+            })?;
         let generator = Arc::new(ConfiguredSummaryGenerator::new(
             &runtime.context,
             SummaryIdentity::JobMember,
@@ -234,8 +254,10 @@ impl SummaryModels for OperatorModels {
                 return Err(ProcessingJobFailure::ProviderUnavailable);
             }
             if !selection.base_url.is_empty()
-                && url::Url::parse(selection.base_url.trim_end_matches('/')).ok()
-                    != url::Url::parse(binding.base_url.trim_end_matches('/')).ok()
+                && !hypr_loofah_core::processing_settings::same_endpoint(
+                    &selection.base_url,
+                    &binding.base_url,
+                )
             {
                 return Err(ProcessingJobFailure::AccessDenied);
             }

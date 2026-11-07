@@ -18,6 +18,7 @@ import type {
   NoteEditorSnapshot,
   DocumentTarget,
   ListProcessingJobsInput,
+  ProcessingSettingsSnapshot,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
@@ -503,6 +504,20 @@ export class VaultScope {
         this.run(() => this.client.processingJobs(input, { signal })),
     });
   }
+  processingPolicyOptions() {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "processing_policy"],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.processingPolicy({ signal })),
+    });
+  }
+  processingSettingsOptions() {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "processing_settings"],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.processingSettings({ signal })),
+    });
+  }
   processingJobOptions(jobId: string) {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "processing_job", jobId],
@@ -544,6 +559,13 @@ export class VaultScope {
     void this.queryClient.invalidateQueries({
       queryKey: ["vault", this.client.scope, "session", sessionId],
     });
+  }
+
+  async confirmProcessingSettings(snapshot: ProcessingSettingsSnapshot) {
+    return this.confirmSnapshot(
+      this.processingSettingsOptions().queryKey,
+      snapshot,
+    );
   }
 
   async confirmNoteEditor(sessionId: string, snapshot: NoteEditorSnapshot) {
@@ -658,7 +680,11 @@ export class VaultScope {
     for (const listener of this.changeListeners) listener(change);
     if (change.kind === "resync_required" || change.kind === "unknown")
       this.resync();
-    else if (change.kind === "job_changed") {
+    else if (change.kind === "processing_settings_changed") {
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, "processing_settings"],
+      });
+    } else if (change.kind === "job_changed") {
       void this.queryClient.invalidateQueries({
         predicate: (query) => {
           const [prefix, scope, kind, jobId] = query.queryKey;

@@ -39,6 +39,9 @@ impl ProcessingState {
             return Ok(());
         }
         let models = LocalModels::new(app);
+        context.configure_processing_policy(
+            hypr_loofah_core::processing_settings::local_processing_policy(),
+        )?;
         let generator = ConfiguredSummaryGenerator::new(
             context,
             SummaryIdentity::LocalOwner,

@@ -67,6 +67,10 @@ import type {
   ProcessingJobSnapshot,
   ProcessingJobPage,
   ProcessingJobResult,
+  ProcessingPolicy,
+  ProcessingSettingsSnapshot,
+  ProcessingSettingsSaveOutcome,
+  SaveProcessingSettingsRequest,
 } from "./protocol.gen";
 import type { NativeRemoteConnection } from "./remote";
 
@@ -93,6 +97,14 @@ export type VaultClient = {
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
+  processingPolicy: (options?: RequestOptions) => Promise<ProcessingPolicy>;
+  processingSettings: (
+    options?: RequestOptions,
+  ) => Promise<ProcessingSettingsSnapshot>;
+  saveProcessingSettings: (
+    input: SaveProcessingSettingsRequest,
+    options?: RequestOptions,
+  ) => Promise<ProcessingSettingsSaveOutcome>;
   submitSummaryJob: (
     input: SummaryJobRequest,
     options: RequestOptions & { requestId: string },
@@ -314,7 +326,9 @@ export async function connectLocalVault(): Promise<VaultClient> {
     attachmentPresentation: legacyAttachmentPresentation,
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
-      ...(processingAvailable ? ["summary_body_jobs"] : []),
+      ...(processingAvailable
+        ? ["summary_body_jobs", "processing_settings"]
+        : []),
       "attachment_upload",
       "audio_playback",
       "recording_delete",
@@ -334,6 +348,16 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "tasks_edit",
       "agent_read",
     ],
+    processingPolicy: (options) =>
+      ipc(() => commands.applicationProcessingPolicy(), options),
+    processingSettings: (options) =>
+      ipc(() => commands.applicationProcessingSettings(), options),
+    saveProcessingSettings: (input, options) =>
+      ipc(
+        () => commands.applicationSaveProcessingSettings(input),
+        options,
+        true,
+      ),
     submitSummaryJob: (input, options) =>
       ipc(
         () => commands.applicationSubmitSummaryJob(options.requestId, input),
@@ -536,6 +560,24 @@ export function connectRemoteVault(
         options,
       ),
     features: connection.info.capabilities.features,
+    processingPolicy: (options) =>
+      connection.request(
+        { kind: "processing_policy", vault_id: vaultId },
+        "processing_policy",
+        options,
+      ),
+    processingSettings: (options) =>
+      connection.request(
+        { kind: "processing_settings", vault_id: vaultId },
+        "processing_settings",
+        options,
+      ),
+    saveProcessingSettings: (input, options) =>
+      connection.request(
+        { kind: "save_processing_settings", vault_id: vaultId, input },
+        "processing_settings_save",
+        options,
+      ),
     submitSummaryJob: (input, options) =>
       connection.request(
         { kind: "submit_summary_job", vault_id: vaultId, input },

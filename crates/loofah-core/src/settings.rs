@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, RwLock};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,7 +26,7 @@ pub struct AiProviderEntry {
 }
 
 // Flat key space mirroring apps/desktop/src/settings/schema.ts. API keys are
-// never stored here — they live in the OS keychain.
+// never stored here — the host resolves them from device or service credentials.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct AppConfig {
@@ -139,6 +140,9 @@ fn load_config<E: std::fmt::Display>(
     path: &Path,
     persist: impl FnOnce(&str) -> Result<(), E>,
 ) -> AppConfig {
+    if check_config_file(path).is_err() {
+        return AppConfig::default();
+    }
     let Ok(content) = std::fs::read_to_string(path) else {
         return AppConfig::default();
     };
@@ -162,8 +166,14 @@ fn load_config<E: std::fmt::Display>(
 
 pub struct ConfigState {
     path: PathBuf,
-    config: std::sync::RwLock<AppConfig>,
-    write_lock: tokio::sync::Mutex<()>,
+    inner: Arc<ConfigInner>,
+}
+
+struct ConfigInner {
+    config: RwLock<AppConfig>,
+    write_lock: Mutex<()>,
+    changes: tokio::sync::watch::Sender<u64>,
+    processing_changes: tokio::sync::watch::Sender<u64>,
 }
 
 impl ConfigState {
@@ -173,57 +183,142 @@ impl ConfigState {
             hypr_storage::fs::atomic_write(&path, content)
         });
 
+        Self::from_config(path, config)
+    }
+
+    fn from_config(path: PathBuf, config: AppConfig) -> Self {
         Self {
             path,
-            config: std::sync::RwLock::new(config),
-            write_lock: tokio::sync::Mutex::new(()),
+            inner: Arc::new(ConfigInner {
+                config: RwLock::new(config),
+                write_lock: Mutex::new(()),
+                changes: tokio::sync::watch::channel(0).0,
+                processing_changes: tokio::sync::watch::channel(0).0,
+            }),
         }
     }
 
     pub fn snapshot(&self) -> AppConfig {
-        self.config.read().unwrap().clone()
+        self.inner.config.read().unwrap().clone()
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.inner.changes.subscribe()
+    }
+
+    pub fn subscribe_processing(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.inner.processing_changes.subscribe()
+    }
+
+    pub async fn read_current(&self) -> Result<AppConfig, ConfigError> {
+        self.edit(|config| Ok((config.clone(), false))).await
+    }
+
+    pub(crate) async fn edit<T: Send + 'static>(
+        &self,
+        edit: impl FnOnce(&mut AppConfig) -> Result<(T, bool), ConfigError> + Send + 'static,
+    ) -> Result<T, ConfigError> {
+        let path = self.path.clone();
+        let inner = self.inner.clone();
+        // The task owns the lock, disk commit, cache update and notification even
+        // when a webview or HTTP request disappears while persistence is running.
+        tokio::task::spawn_blocking(move || inner.edit(&path, edit))
+            .await
+            .map_err(|error| std::io::Error::other(error.to_string()))?
     }
 
     pub async fn set_values(
         &self,
         values: HashMap<String, Value>,
     ) -> Result<AppConfig, ConfigError> {
-        let _guard = self.write_lock.lock().await;
-
-        // A failed startup parse must never turn a later partial save into data loss.
-        match std::fs::read_to_string(&self.path) {
-            Ok(content) => {
-                serde_json::from_str::<AppConfig>(&content)?;
+        self.edit(move |current| {
+            let Value::Object(mut map) = serde_json::to_value(&*current)? else {
+                unreachable!("AppConfig always serializes to an object");
+            };
+            for (key, value) in values {
+                map.insert(key, value);
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
-        let current = self.snapshot();
-        let Value::Object(mut map) = serde_json::to_value(&current)? else {
-            unreachable!("AppConfig always serializes to an object");
-        };
-        for (key, value) in values {
-            map.insert(key, value);
-        }
-        let mut value = Value::Object(map);
-        normalize_retired_stt(&mut value);
-        let next: AppConfig = serde_json::from_value(value)?;
-
-        let content = serde_json::to_string_pretty(&next)?;
-        hypr_storage::fs::atomic_write_async(&self.path, &content).await?;
-
-        *self.config.write().unwrap() = next.clone();
-        Ok(next)
+            let mut value = Value::Object(map);
+            normalize_retired_stt(&mut value);
+            *current = serde_json::from_value(value)?;
+            Ok((current.clone(), true))
+        })
+        .await
     }
 
     pub fn reset(&self) -> Result<AppConfig, ConfigError> {
-        let next = AppConfig::default();
-        let content = serde_json::to_string_pretty(&next)?;
+        let _guard = self.inner.write_lock.lock().unwrap();
+        self.inner.persist(&self.path, AppConfig::default())
+    }
+}
 
-        let mut guard = self.config.write().unwrap();
-        hypr_storage::fs::atomic_write(&self.path, &content)?;
-        *guard = next.clone();
+impl ConfigInner {
+    fn edit<T>(
+        &self,
+        path: &Path,
+        edit: impl FnOnce(&mut AppConfig) -> Result<(T, bool), ConfigError>,
+    ) -> Result<T, ConfigError> {
+        let _guard = self.write_lock.lock().unwrap();
+        let mut current = read_config(path)?;
+        let (result, changed) = edit(&mut current)?;
+        if changed {
+            self.persist(path, current)?;
+        } else {
+            self.publish(current);
+        }
+        Ok(result)
+    }
+
+    fn publish(&self, next: AppConfig) {
+        let mut config = self.config.write().unwrap();
+        if *config != next {
+            let processing_changed = crate::processing_settings::projection(&config)
+                != crate::processing_settings::projection(&next);
+            *config = next;
+            drop(config);
+            self.changes
+                .send_modify(|version| *version = version.wrapping_add(1));
+            if processing_changed {
+                self.processing_changes
+                    .send_modify(|version| *version = version.wrapping_add(1));
+            }
+        }
+    }
+
+    fn persist(&self, path: &Path, next: AppConfig) -> Result<AppConfig, ConfigError> {
+        check_config_file(path)?;
+        hypr_storage::fs::atomic_write(path, &serde_json::to_string_pretty(&next)?)?;
+        self.publish(next.clone());
+        #[cfg(unix)]
+        std::fs::File::open(path.parent().expect("config has a parent"))?.sync_all()?;
         Ok(next)
+    }
+}
+
+fn check_config_file(path: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Config must be a regular file",
+        )),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_config(path: &Path) -> Result<AppConfig, ConfigError> {
+    check_config_file(path)?;
+    match std::fs::read_to_string(path) {
+        Ok(content) => {
+            let mut value: Value = serde_json::from_str(&content)?;
+            // Validate the original fields before applying a compatibility migration.
+            serde_json::from_value::<AppConfig>(value.clone())?;
+            normalize_retired_stt(&mut value);
+            Ok(serde_json::from_value(value)?)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(AppConfig::default()),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -591,11 +686,7 @@ mod tests {
             Some("soniqo-parakeet-batch")
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
-        let state = ConfigState {
-            path: path.clone(),
-            config: std::sync::RwLock::new(config),
-            write_lock: tokio::sync::Mutex::new(()),
-        };
+        let state = ConfigState::from_config(path.clone(), config);
         state
             .set_values(values(&[("theme", json!("dark"))]))
             .await
@@ -658,5 +749,158 @@ mod tests {
         let state = ConfigState::load_or_default(temp.path());
 
         assert_eq!(state.snapshot(), AppConfig::default());
+    }
+
+    #[tokio::test]
+    async fn partial_save_merges_the_current_file_instead_of_the_startup_cache() {
+        let temp = tempdir().unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        std::fs::write(
+            temp.path().join("config.json"),
+            json!({"ai_language":"nl","future":{"external":true}}).to_string(),
+        )
+        .unwrap();
+        state
+            .set_values(values(&[("theme", json!("dark"))]))
+            .await
+            .unwrap();
+        let reloaded = ConfigState::load_or_default(temp.path()).snapshot();
+        assert_eq!(reloaded.ai_language, "nl");
+        assert_eq!(reloaded.extra["future"], json!({"external":true}));
+        assert_eq!(reloaded.theme, "dark");
+        assert_eq!(state.snapshot(), reloaded);
+    }
+
+    #[tokio::test]
+    async fn processing_generation_retains_coalesced_aba_changes_and_ignores_device_fields() {
+        let temp = tempdir().unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        let mut changes = state.subscribe_processing();
+        let initial = crate::processing_settings::snapshot(&state.snapshot());
+        state
+            .set_values(values(&[("theme", json!("dark"))]))
+            .await
+            .unwrap();
+        assert!(!changes.has_changed().unwrap());
+        state
+            .set_values(values(&[("ai_language", json!("nl"))]))
+            .await
+            .unwrap();
+        let intermediate =
+            crate::processing_settings::snapshot(&state.read_current().await.unwrap());
+        assert_ne!(intermediate, initial);
+        state
+            .set_values(values(&[("ai_language", json!("en"))]))
+            .await
+            .unwrap();
+        assert_eq!(
+            crate::processing_settings::snapshot(&state.snapshot()),
+            initial
+        );
+        // A client may cache the intermediate read before the forwarding task runs.
+        assert!(changes.has_changed().unwrap());
+        assert_eq!(*changes.borrow_and_update(), 2);
+        state
+            .set_values(values(&[("theme", json!("light"))]))
+            .await
+            .unwrap();
+        assert!(!changes.has_changed().unwrap());
+    }
+
+    #[tokio::test]
+    async fn cancellation_keeps_the_lock_through_commit_cache_update_and_notification() {
+        let temp = tempdir().unwrap();
+        let state = Arc::new(ConfigState::load_or_default(temp.path()));
+        let mut changes = state.subscribe();
+        let (entered, waiting) = tokio::sync::oneshot::channel();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let writer = state.clone();
+        let pause = barrier.clone();
+        let task = tokio::spawn(async move {
+            writer
+                .edit(move |config| {
+                    config.ai_language = "nl".into();
+                    entered.send(()).unwrap();
+                    pause.wait();
+                    Ok(((), true))
+                })
+                .await
+        });
+        waiting.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        let writer = state.clone();
+        let following =
+            tokio::spawn(
+                async move { writer.set_values(values(&[("theme", json!("dark"))])).await },
+            );
+        tokio::task::spawn_blocking(move || barrier.wait())
+            .await
+            .unwrap();
+        following.await.unwrap().unwrap();
+        changes.changed().await.unwrap();
+        assert_eq!(state.snapshot().ai_language, "nl");
+        assert_eq!(state.snapshot().theme, "dark");
+        assert_eq!(
+            ConfigState::load_or_default(temp.path()).snapshot(),
+            state.snapshot()
+        );
+    }
+
+    #[tokio::test]
+    async fn reset_and_async_writes_share_one_persistence_lock() {
+        let temp = tempdir().unwrap();
+        let state = Arc::new(ConfigState::load_or_default(temp.path()));
+        let (entered, waiting) = tokio::sync::oneshot::channel();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let writer = state.clone();
+        let pause = barrier.clone();
+        let write = tokio::spawn(async move {
+            writer
+                .edit(move |config| {
+                    entered.send(()).unwrap();
+                    pause.wait();
+                    config.ai_language = "nl".into();
+                    Ok(((), true))
+                })
+                .await
+        });
+        waiting.await.unwrap();
+        let resetting = state.clone();
+        let reset = tokio::task::spawn_blocking(move || resetting.reset());
+        tokio::task::spawn_blocking(move || barrier.wait())
+            .await
+            .unwrap();
+        write.await.unwrap().unwrap();
+        reset.await.unwrap().unwrap();
+        assert_eq!(state.snapshot(), AppConfig::default());
+        assert_eq!(
+            ConfigState::load_or_default(temp.path()).snapshot(),
+            AppConfig::default()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlinked_config_is_never_read_migrated_or_replaced() {
+        let temp = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let original = r#"{"current_stt_provider":"am","ai_language":"private"}"#;
+        let target = outside.path().join("other-vault-config.json");
+        std::fs::write(&target, original).unwrap();
+        let link = temp.path().join("config.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let state = ConfigState::load_or_default(temp.path());
+        assert_eq!(state.snapshot(), AppConfig::default());
+        assert!(state.read_current().await.is_err());
+        assert!(
+            state
+                .set_values(values(&[("theme", json!("dark"))]))
+                .await
+                .is_err()
+        );
+        assert!(state.reset().is_err());
+        assert!(link.is_symlink());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), original);
     }
 }

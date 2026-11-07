@@ -263,6 +263,8 @@ pub fn publish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, change: hypr_loofah
 
 pub fn forward_changes<R: tauri::Runtime>(app: &tauri::AppHandle<R>, context: &Arc<VaultContext>) {
     use tauri_specta::Event;
+    let mut settings_changes = context.settings.subscribe_processing();
+    let settings_events = context.events.clone();
     let mut changes = context
         .events
         .subscribe_for(crate::processing::PRINCIPAL, None);
@@ -273,6 +275,11 @@ pub fn forward_changes<R: tauri::Runtime>(app: &tauri::AppHandle<R>, context: &A
             let event = tokio::select! {
                 biased;
                 _ = stopping.cancelled() => break,
+                change = settings_changes.changed() => {
+                    if change.is_err() { break; }
+                    settings_events.publish(hypr_loofah_protocol::Change::ProcessingSettingsChanged);
+                    continue;
+                },
                 event = changes.recv() => match event { Some(event) => event, None => break },
             };
             if let Err(error) = (ApplicationChanged { event }).emit(&app) {
@@ -286,6 +293,31 @@ pub fn forward_changes<R: tauri::Runtime>(app: &tauri::AppHandle<R>, context: &A
 #[specta::specta]
 pub fn application_processing_available<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
     context(&app).is_ok_and(|context| context.processing_jobs().is_ok())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn application_processing_policy<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<hypr_loofah_protocol::ProcessingPolicy, ApplicationError> {
+    context(&app)?.processing_policy()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_processing_settings<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<hypr_loofah_protocol::ProcessingSettingsSnapshot, ApplicationError> {
+    context(&app)?.read_processing_settings().await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_save_processing_settings<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::SaveProcessingSettingsRequest,
+) -> Result<hypr_loofah_protocol::ProcessingSettingsSaveOutcome, ApplicationError> {
+    context(&app)?.save_processing_settings(input).await
 }
 
 #[tauri::command]

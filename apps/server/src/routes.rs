@@ -21,11 +21,13 @@ use crate::{
 };
 
 mod jobs;
+mod processing_settings;
 
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
         .merge(crate::media::router())
         .merge(jobs::router())
+        .merge(processing_settings::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
         .route("/vaults", get(vaults).post(create_vault))
@@ -187,6 +189,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
     };
     if service.config.processing.is_some() {
         capabilities.features.push("summary_body_jobs".into());
+        capabilities.features.push("processing_settings".into());
     }
     Json(capabilities)
 }

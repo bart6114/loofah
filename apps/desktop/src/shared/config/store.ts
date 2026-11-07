@@ -47,6 +47,9 @@ let state: ConfigStoreState = {
 };
 const subscribers = new Set<() => void>();
 let initPromise: Promise<void> | null = null;
+let eventVersion = 0;
+let readSequence = 0;
+let appliedReadSequence = 0;
 
 function setState(next: ConfigStoreState): void {
   state = next;
@@ -99,16 +102,16 @@ export function initConfigStore(): Promise<void> {
 }
 
 async function startConfigStore(): Promise<void> {
+  const version = eventVersion;
   try {
-    // Subscribe before the initial fetch so no write is missed; the snapshot
-    // replace is idempotent, so an event racing the fetch is harmless.
+    // Subscribe first, and never let a delayed read replace a newer event.
     await listen<AppConfig>(CONFIG_CHANGED_EVENT, (event) => {
+      eventVersion++;
       applyConfigSnapshot(event.payload);
     });
-    const result = await settingsCommands.getConfig();
-    if (result.status === "error") throw new Error(result.error);
-    applyConfigSnapshot(result.data);
+    await fetchConfig();
   } catch (error) {
+    if (state.snapshot && version !== eventVersion) return;
     setState({
       snapshot: undefined,
       isLoading: false,
@@ -136,10 +139,28 @@ export function useConfigStoreState(): ConfigStoreState {
 }
 
 export async function fetchConfig(): Promise<AppConfig> {
-  const result = await settingsCommands.getConfig();
+  const version = eventVersion;
+  const sequence = ++readSequence;
+  let result: Awaited<ReturnType<typeof settingsCommands.getConfig>>;
+  try {
+    result = await settingsCommands.getConfig();
+  } catch (error) {
+    const newer = newerConfigSnapshot(version, sequence);
+    if (newer) return newer;
+    throw error;
+  }
+  const newer = newerConfigSnapshot(version, sequence);
+  if (newer) return newer;
   if (result.status === "error") throw new Error(result.error);
+  appliedReadSequence = sequence;
   applyConfigSnapshot(result.data);
   return result.data;
+}
+
+function newerConfigSnapshot(version: number, sequence: number) {
+  return version !== eventVersion || sequence < appliedReadSequence
+    ? state.snapshot?.config
+    : undefined;
 }
 
 export async function fetchStoredSettingValues(): Promise<StoredSettingValues> {
@@ -151,14 +172,12 @@ export async function writeConfigValues(
 ): Promise<void> {
   const result = await settingsCommands.setConfigValues(values);
   if (result.status === "error") throw new Error(result.error);
-  // Optimistic local merge; the config-changed event delivers the
-  // authoritative snapshot right after and replaces it idempotently.
-  if (state.snapshot) {
-    applyConfigSnapshot({ ...state.snapshot.config, ...values } as AppConfig);
-  }
+  // The single native publisher confirms writes. A delayed command reply must
+  // not merge older values over a snapshot already received from that publisher.
 }
 
 export function resetConfigStoreForTests(): void {
+  eventVersion++;
   initPromise = null;
   state = { snapshot: undefined, isLoading: true, error: null };
 }

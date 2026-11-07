@@ -2,6 +2,7 @@
 
 pub mod events;
 pub mod jobs;
+pub mod processing_settings;
 pub mod search;
 pub mod settings;
 pub mod startup;

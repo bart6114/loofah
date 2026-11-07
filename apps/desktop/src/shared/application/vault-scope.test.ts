@@ -59,6 +59,23 @@ function watchCacheCleanup(scope: VaultScope) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates only the active vault processing settings on a settings event", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const settings = active.processingSettingsOptions().queryKey;
+    const policy = active.processingPolicyOptions().queryKey;
+    const note = active.noteOptions("note").queryKey;
+    const other = ["vault", "other", "processing_settings"];
+    for (const key of [settings, policy, note, other])
+      active.queryClient.setQueryData(key, { retained: true });
+    emit({ kind: "change", change: { kind: "processing_settings_changed" } });
+    expect(active.queryClient.getQueryState(settings)?.isInvalidated).toBe(
+      true,
+    );
+    for (const key of [policy, note, other])
+      expect(active.queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    active.dispose();
+  });
   it("invalidates only the changed private job and job lists while preserving other vaults", async () => {
     const { active, emit } = fixture("scope");
     await active.start();
