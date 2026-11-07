@@ -4,6 +4,8 @@ Tauri desktop note-taking app (`apps/desktop/`), CLI (`apps/cli/`) and experimen
 Uses pnpm workspaces.
 Files in the user's vault directory are the only source of truth — there is no canonical-content database. The vault format and read types live in `crates/vault-read/`; the shared write path and in-memory index live in `crates/vault-write/`. `crates/loofah-core/` contains extracted application operations, and `crates/loofah-protocol/` supplies generated transport contracts. Desktop session-store commands remain thin IPC wrappers; other desktop feature paths still require migration. Portable file/media helpers also live in `crates/fs-sync-core/`. App settings are a `config.json` in the vault, not rows. Zustand is used for UI state, and ProseMirror powers the editor. Sessions are the core entity — all notes are backed by sessions, stored under `sessions/<id>/`.
 
+Durable capture staging lives in `crates/capture-store/`; `loofah-client::capture_spool` preserves its previous import path. Capture wire types and hashing rules live in `loofah-protocol`. These internal components do not yet expose remote recording.
+
 The default desktop remains standalone, offline and login-free. Explicit remote profiles authenticate to a company/self-hosted service. Remote failures must never fall back to a local vault. See `apps/server/README.md` for the implemented experimental surface and `docs/plans/frontend-backend-separation.md` for remaining migration and validation gates.
 
 ## Supported platform

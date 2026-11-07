@@ -1658,6 +1658,10 @@ msgstr ""
 msgid "Refreshing..."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Regenerate"
+msgstr ""
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Reload access"
 msgstr ""
@@ -1864,6 +1868,10 @@ msgstr ""
 
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Saved original copy."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Saves pending edits before using the saved notes and transcript."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -2578,10 +2586,6 @@ msgstr ""
 
 #: src/onboarding/permissions.tsx
 msgid "Use your microphone to capture your voice"
-msgstr ""
-
-#: src/shared/application/vault-processing.tsx
-msgid "Uses the saved notes and transcript. Unsaved edits are kept separate."
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx

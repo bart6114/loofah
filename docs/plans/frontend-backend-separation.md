@@ -3102,3 +3102,102 @@ new warnings. Logs: `capture-contracts-*` under the T7 build directory. The new
 protocol dependency reuses the already-locked SHA-256 crate version; no package
 versions are upgraded. Native stop/drain and service ingestion remain separate
 gates.
+
+### Provider drain and existing-output generation integration
+
+The native provider drain gate is now integrated. A replayable resource receipt
+confirms acquisition has stopped and compares produced frames with delivered
+frames. Normal stop drains ring buffers, partial resampler tails and queued
+frames before sealing. A gap, spontaneous EOF, unsupported drain or mismatched
+count retains an interrupted prefix. Physical capture admission waits for the
+key/actor-bound resource acknowledgement; storage finalizers remain separately
+bounded. Local serialized session parameters and disk output stay unchanged.
+The worker passed 112 tests; all six integrated native capture fixtures and the
+native app check pass. Hardware recording, managed shutdown, timestamps,
+authenticated upload and server transcription remain separate acceptance gates.
+
+Existing template-output generation now uses the same job operation, retained
+results, owned worker and body/task/tag transaction as summaries. Public template
+submission requires both `summary_body_jobs` and `template_output_jobs`; older
+servers are refused before credential access or mutation dispatch. Missing or
+legacy template targets fail before model calls. Raw frontmatter/comments,
+title, template identity, order and unrelated metadata survive regeneration.
+The operation uses the existing summary source/prompt; it does not recreate a
+template library or create a missing output. Generated template recovery adds a
+schema-3 intent kind while preserving earlier record shapes. Keep operation
+state in backups and drain/recover before downgrading to an older executable.
+
+The opt-in workspace exposes **Regenerate** in an existing output editor. Shared
+generation flushes the initiating session/target editor owners and checks scoped
+device recovery before capturing the target revision and saving a submission
+receipt. Dirty/conflicted/uncertain state, timeout, edits during preparation or
+scope/access loss skips submission while preserving draft/save ownership.
+Explicit resume retains the exact original UUID, target and revision; recovery
+inventory never submits automatically. This protects initiating-device drafts,
+not another device's unsent edits. The existing main local AI flow remains active
+and login-free.
+
+Integrated validation passed all 2,030 frontend tests across 247 files,
+typechecking, strict locale compilation, SDK capability admission and three HTTP
+tests covering permissions, metadata, missing/legacy targets and real SDK lost
+replies at 50/150/500 ms RTT. A newer canonical output survives historical replay
+without another model call. Logs: `template-transport-*`,
+`template-generation-integrated-*` and `capture-provider-native-*` under the T7
+build directory. These checks do not complete remote main-window migration,
+generated titles or full native/platform acceptance.
+
+Review additionally found two summary-only assumptions in the native device
+submission journal: request validation and active-receipt uniqueness. Both now
+use the actual document target, keeping summary and different template receipts
+independent without changing their original UUID/revision. Duplicate active
+receipts for one target and invalid portable output IDs are refused with bytes
+retained. Native receipt commands exercise both targets without a login or vault
+session. Older releases cannot resolve template receipts; retain them for the
+current version rather than resetting recovery during rollback.
+
+### Managed capture, title storage and neutral persistence checkpoint
+
+The internal device host now retains start, stop, preparation and drain ownership
+across dropped callers, missing acknowledgements and shutdown deadlines. Native
+resource release, supervisor completion and durable audio finalization are
+independent proofs; an early UI interruption is insufficient. Host entries,
+history and shutdown waiters are bounded. Terminal tickets cannot regress after
+late start replies. A test-only mutex isolates the shared device admission budget
+while preserving concurrency within each test. All 20 integrated capture cases
+pass under default parallel scheduling, and the normal desktop library check
+passes. The existing futures-util dependency is now available to production code.
+The unwired internal APIs produce 29 unsuppressed library warnings. App-managed
+initialization, public commands, quit hooks and remote recording remain open.
+First-audio timing currently records a producer wall-clock observation in memory,
+not an ADC timestamp or durable upload metadata.
+
+Checked generated-title storage and owned core wrappers are also integrated.
+Opaque baselines bind the exact store/context, guard every mandatory output and
+fresh title metadata before application, preserve raw frontmatter and task bytes,
+and independently skip changed/unreadable raw-note stamps. Recovery uses schema
+4 with a 32 MiB serialized admission/read cap. Official larger schemas 1–3 retain
+their prior behavior; strict original-byte decoding rejects duplicate known keys
+without rewriting files. Root's three core and 19 storage cases pass, including
+actual crash subprocesses. Worker recovery/document filters and checks/Clippy
+passed. Automatic titles, job-stage policy and public transport are not enabled;
+drain schema-4 intents with the current reader before downgrade.
+
+Capture persistence now lives in `crates/capture-store`; the SDK reexports its
+old `capture_spool` module. All four moved files are byte-identical. HTTPS and
+literal-loopback endpoint rules are shared as a pure protocol function, retaining
+existing errors and URL semantics. The library has no SDK, reqwest, OIDC, Tauri or
+device dependencies. Store/SDK/protocol validation passed 121 tests, checks,
+Clippy and protocol drift; Root verified source hashes, native/shared/server/CLI
+compilation and the headless dependency graph. Backend and native Windows CI now
+include the new crate's tests. Device schema 1 and all existing hash domains remain
+unchanged. Storage-only durable first-audio observation/schema 2 is a subsequent,
+separate worker package and is not implemented in this checkpoint.
+
+Independent review also closed a stale-window generation race. Generate now
+uses atomic create-only receipt admission; unresolved requests require explicit
+Resume even when a second window has an old empty receipt list. The original UUID,
+target and revision remain intact. Fourteen Rust receipt tests and native IPC
+pass; the frontend worker passed 2,059 tests, and Root's combined 100-case
+submission/editor/processing regression and typecheck passed. These local checks
+must be followed by fresh hosted CI on the resulting head; they do not replace
+real Windows speech-model, recording, production UX or full-service acceptance.

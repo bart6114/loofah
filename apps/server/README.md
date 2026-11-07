@@ -6,11 +6,11 @@ The existing Whisper implementation now exposes a cancellable Rust batch kernel 
 
 Capture identity, format, chunk, seal and receipt types now live in the shared protocol with the version-1 fingerprint and checksum-chain functions. The device spool reexports its existing Rust names and retains its existing serialized files. This prepares shared ingestion contracts; no capture upload endpoint is advertised yet.
 
-The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated summary-body job APIs. The opt-in notes workspace has summary controls and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Owner-managed vault keys, full title/template policy, streaming previews and server transcription remain unfinished. The existing local AI flow remains active.
+The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated document-body job APIs. The opt-in notes workspace has summary controls, existing template-output regeneration and durable device submission recovery. Shared processing settings/model selection are available in the opt-in workspace. Owner-managed vault keys, generated titles, streaming previews and server transcription remain unfinished. The existing local AI flow remains active.
 
-The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, title/template policy and the main desktop AI workflow migration remain unfinished. Native IPC jobs use the same worker through the existing local vault context.
+The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, generated titles and the main desktop AI workflow migration remain unfinished. Native IPC jobs use the same worker through the existing local vault context.
 
-Summary jobs apply generated tag suggestions with the current vault auto-apply policy through the same revision-checked operation as the summary body and stable task reconciliation. Recovery intents guard only the owned tag projection and merge registry additions against fresh canonical files, preserving unrelated metadata and unknown registry fields. Template-output tag policy is still pending. Keep per-vault operation storage in backups: generated-summary intents now use schema 3, while earlier summary/template and note intents retain schemas 1/2. Recover or drain new intents with the current version before downgrading, or restore a complete pre-upgrade vault and operation-state backup. The canonical vault format is unchanged.
+Summary and existing template-output jobs apply generated tag suggestions with the current vault auto-apply policy through the same revision-checked operation as the body and stable task reconciliation. Recovery intents guard only the owned tag projection and merge registry additions against fresh canonical files, preserving unrelated metadata and unknown registry fields. Template regeneration preserves raw frontmatter, comments, title, template identity and order; missing outputs and legacy summaries cannot be regenerated through the template operation. Keep per-vault operation storage in backups: generated-summary and generated-template intents use schema 3, while earlier document and note intents retain schemas 1/2. Older executables cannot recover the new template intent kind. Recover or drain new intents with the current version before downgrading, or restore a complete pre-upgrade vault and operation-state backup. The canonical vault format is unchanged.
 
 `loofah_core::jobs::providers::HttpModel` supplies the shared HTTP model transport for Responses (OpenAI/Azure OpenAI), Chat Completions (OpenRouter, Ollama, Azure AI and compatible providers), Anthropic Messages and Google streaming generation. Its host-only configuration receives an endpoint, opaque model ID and optional secret; job requests cannot choose these. Images are sent inline. Keys stay in headers, redirects are disabled, and errors retain fixed failure codes rather than provider bodies or URLs. Streams require a provider completion signal and reject refusals, unexpected tool calls and malformed output. Byte/event/output budgets, connection/read/total deadlines and cancellation bound the owned HTTP work. Only explicit 429 rejection is automatically retried, up to the request's four-retry budget; ambiguous disconnects never repeat a generation automatically. Responses requests set `store: false` to disable response storage for later retrieval. The native local host reuses existing Keychain/Credential Manager entries and the ChatGPT subscription runtime through injected adapters. Vault-owner secret updates and live-provider validation remain required.
 
@@ -321,14 +321,25 @@ saves. `processing_settings_changed` invalidates only the selected vault's
 settings; reconnect/resync reloads authoritative state. Confirmed save replies
 cannot repopulate private caches after access loss.
 
-## Summary body jobs
+## Summary and existing-output jobs
 
 In the opt-in notes workspace, open a note's **Documents** tab and choose
 **Summarize saved notes**. A configured, selected vault model is required;
 operator allowlists alone do not select a model. The controls show private job
 status, allow cancellation, and let you copy confirmed generated text after a
-conflict or interruption. Full title/tag/template workflows and streaming previews
-remain pending. The main local AI interface is still active.
+conflict or interruption. In an existing template output's editor, **Regenerate**
+uses the same saved-note/transcript summary generator and preserves the output's
+metadata. It does not recreate the retired template library or create a missing
+template output. Generated titles and streaming previews remain pending. The main
+local AI interface is still active.
+
+Generation first flushes the initiating session and target editors through their
+existing save queues, then checks scoped device recovery before capturing the
+target revision. Dirty, conflicted, uncertain or unreadable recovery state skips
+generation and retains drafts. A preparation timeout leaves owned saves running.
+Edits, access loss or scope replacement during preparation prevent dispatch.
+This protects initiating-device drafts; another device's unsent edits remain
+unknown to the service and are not merged automatically.
 
 Before sending, the desktop saves the request UUID and declaration in its native
 `job-submissions` recovery directory, scoped to the server/member/vault (or local
@@ -337,8 +348,10 @@ provider key or note body. Loading **Device summary requests** never submits wor
 **Resume request** explicitly reuses the original UUID and input; it may start the
 original request if it never reached the service. Acknowledged requests refresh
 with a status read. Lost replies and failed device acknowledgement writes cannot
-cause an automatic generation replay. Multiple desktop windows share a file lock
-and reuse an active receipt for the same target.
+cause an automatic generation replay. Multiple desktop windows share a file lock. **Generate** atomically creates a
+receipt only when no active receipt exists for that session and target. A stale
+second window cannot resume an ambiguous request through Generate; use explicit
+**Resume request** with the saved UUID instead.
 
 **Forget device request** requires confirmation and removes only the device
 receipt. It does not cancel a job or remove its server result; a new request may
@@ -347,9 +360,18 @@ bounded device store. Cancelling a known job uses the service operation, includi
 when its submitter has since become a reader. Access loss clears private result
 caches and closes their views. None of this queues ordinary remote note edits.
 
-Servers with processing configured advertise `summary_body_jobs`. Without it,
-job operations return unavailable and the Rust SDK rejects the unsupported
-capability before prompting for credentials or dispatching a mutation.
+Device receipts distinguish the session and document target: a summary and two
+different existing outputs retain independent request IDs across restarts. A
+duplicate active receipt for the same target is refused and retained for review.
+Earlier releases accept only summary receipts; resolve template receipts with
+the current version before rolling back. Recovery never resets an unreadable
+receipt file or invents a new UUID.
+
+Servers with processing configured advertise `summary_body_jobs` and
+`template_output_jobs`. Summary operations require the former; submitting a
+template-output job requires both. The Rust SDK rejects an unsupported capability
+before prompting for credentials or dispatching a mutation. Native local jobs
+use the same operations without a Loofah login.
 
 | Operation                      | Endpoint                                        |
 | ------------------------------ | ----------------------------------------------- |
@@ -370,11 +392,13 @@ client-generated UUID in `X-Request-Id`. Submission accepts only:
 }
 ```
 
-The current operation generates and applies a summary body with task
-reconciliation. It preserves the existing revision/conflict behavior. Template
-generation requests are rejected until their source/template workflow is ready;
-title/tag application and streaming previews are not enabled by this capability.
-Provider endpoints, keys and job owners are not request fields.
+For an existing template output, use
+`"target": { "kind": "template_output", "document_id": "existing-output-id" }`
+and its current snapshot revision. Both targets apply bodies, reconciled tasks
+and the configured tag policy with the same revision/conflict guarantees. Missing
+or legacy template targets fail before a provider call. Generated titles and
+streaming previews are not enabled by these capabilities. Provider endpoints,
+keys and job owners are not request fields.
 
 Keep the original UUID and declaration when retrying a lost submission reply.
 Receipt replay returns the same job even after its result was applied; it does
@@ -411,6 +435,14 @@ normal scoped resync. Progress is queryable independently of events. Optional
 response fields can be added within API major 1; request fields remain strict,
 and new operations require capability negotiation. Job bookkeeping has its own
 storage schema version, separate from API and canonical vault formats.
+
+Internal generated-title storage additionally supports schema-4 recovery. Its
+opaque baseline binds the owning vault context and guards the title plus all
+mandatory output revisions before writing. Template frontmatter and task files
+are retained; raw-note stamping may independently skip a changed or unreadable
+note. Public processing jobs do not yet request generated titles. Drain any
+schema-4 intents with the current version before downgrading; older readers must
+not attempt their recovery.
 
 ## Storage, backups and upgrades
 

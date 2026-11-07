@@ -2,72 +2,131 @@
 
 ## Active resumption checkpoint
 
-The user resumed **all work** on 7 November 2026. The implementation goal is
-active; this handoff does not pause it. Continue in
-`/Volumes/T7/src/loofah-backend-separation`, branch
-`refactor/frontend-backend-separation`. Keep default local use offline and
-login-free, preserve macOS/Windows, and keep all local artifacts physically on T7.
+The user resumed **all work**. The implementation goal is active; this handoff
+is not a pause. Continue in `/Volumes/T7/src/loofah-backend-separation`, branch
+`refactor/frontend-backend-separation`. Default local use remains standalone,
+offline and login-free. Preserve macOS and Windows; all local artifacts must
+resolve physically to T7. The original checkout's tracked files remain untouched.
 
-The integration branch now includes generated summary/tag recovery, durable
-device capture storage and its internal native sink, canonical-read lease
-ownership, native scoped recents/pins, bounded note pickers, immutable tab stores
-and production tab/bootstrap consumers, and the shared cancellable Whisper CPU
-kernel plus a new Linux CPU CI job. Notable recent checkpoints are `ffb9b2113`
-(production scoped tabs), `e5a369bdf` (native fixture origin correction) and
-`14124168e` (extracted locale source references).
+Last fully hosted-validated head: `a8e873130e628310f3853f6a46def3476df0e741`.
+Current validated source checkpoint: `9e26192ddd43f59cf3718213a0fd13cda3abd2b5`.
+Read git remote/HEAD and live checks for publication status; later documentation
+and locale commits do not change this source checkpoint.
+Draft PR: <https://github.com/bart6114/loofah/pull/123>. General, CLI, backend,
+macOS desktop, security and both native Windows architectures passed on that
+head. Windows speech-model acceptance was skipped. Linux CPU inference passed
+30 default, three real kernel and two real batch/live cases with the pinned
+model verified and actual `GGML_NATIVE:BOOL=OFF`. This proves the portable kernel,
+not an authenticated server transcription endpoint. Evidence: backend run
+`42416568822`, CPU job `128535832097`, Windows run `42416568804`.
 
-Verified after resume: 786 shared tests, 1,929 integrated frontend tests before
-production tab wiring, 1,943 frontend tests on the exact tab worker checkpoint,
-six integrated native capture fixtures, desktop typechecking, native Rust check
-and strict locale compilation. The native bridge has expected unsuppressed
-dead-code warnings because public host/UI wiring is unfinished. CI on previously
-pushed `4942778ce` passed, including both Windows architectures. Fresh CI must
-validate subsequent checkpoints; the Linux CPU job has not run on them yet.
+The integration branch additionally contains:
 
-Three authorized workers remain active in isolated worktrees:
+- Atomic empty-session cleanup across storage/core, IPC, HTTP, SDK and client
+  (`4ad455d95`). Canonical inspection and trash move share one continuous guard;
+  durable historical receipts cannot delete restored sessions. Native IPC,
+  permissions and real lost-reply tests at 50/150/500 ms passed.
+- Captured editor flush/recovery guards and atomic close dispatch, with at most
+  eight deduplicated optional cleanup candidates (`890b26155`, `27dd1182f`,
+  `ae3303c32`). Unknown capture state refuses cleanup. Remote main-host exposure
+  still waits for trusted capture/spool inventory.
+- Shared capture wire types/hash rules (`30adcf94c`). Device storage v1 and old
+  Rust import paths remain compatible. Golden vectors and all 18 spool tests pass.
+- Generated template body/task/tag storage and owned core worker (`4fe1ed691`,
+  `0771f1d8f`). Raw metadata survives; missing and legacy template targets are
+  refused before model calls. Recovery schema 3 adds a distinct generated-template
+  kind; older binaries require draining/recovery before downgrade.
+- Native provider stop/drain and resource admission barriers (`3960359ec`,
+  `f10ad7ca4`). The capture worker passed 112 tests; integrated native capture
+  fixtures now pass all six with an explicit fake provider drain receipt. Native
+  app check passed. This is still an internal API, not available remote capture.
+- Frontend generation/flush package (`57f6769d2`, worker `13e40d59f`) and public
+  template capability/admission/receipt checkpoint (`5b597f94e`). Integrated
+  suites passed 2,030 tests; typecheck/strict locales passed. Three template HTTP
+  cases, eight existing processing API cases, 12 device receipt tests and native
+  login-free receipt commands for both targets passed. Shared/client/CLI/native
+  checks and library Clippy passed. One subprocess helper is ignored directly and
+  exercised by its parent. Do not expose template controls on older servers.
+- Shared immutable frontend host (`0479590ff`) and per-tab-host timeline selection
+  (`4a2c78585`). Their workers passed full suites of 2,038 and 2,051 tests; Root
+  combined provider/workspace/client 81 and selection 63 focused tests passed,
+  along with typechecking. Callback changes preserve scope/selection; old client
+  or selection handlers cannot affect a replacement host.
 
-- Frontend: `/Volumes/T7/src/loofah-separation-ui-next`,
-  `refactor/backend-scoped-pickers`. Checkpoint
-  `e69476aae26712dc68e120b8d5c5a498e6b5a9b2` is integrated. Next: captured raw and
-  enhanced-editor draft/queue guards before atomic close cleanup, with retirement,
-  reopen and recovery protection. No remote main/profile exposure yet.
+The later integration checkpoint also contains:
+
+- Atomic create-only generation admission (`1e4db1b1d`, `90a89876b`). Unknown
+  receipts require explicit Resume, including after a stale cross-window list.
+  Fourteen Rust receipt cases, native IPC for both targets, 100 combined frontend
+  cases and typechecking passed. The frontend worker passed 2,059 tests. Duplicate
+  known JSON fields are rejected without resetting receipts.
+- Managed native capture (`0b2f61f3c`, `26f1ba11b`, `88d509ed5`, `2e2b58ed1`).
+  First-audio wall-clock observation, stop/resource and supervisor proofs are
+  distinct from UI events and durable finalization. Owned starts/drains survive
+  caller drop and deadlines; retained states/history/waiters are bounded. Terminal
+  tickets cannot regress. Twenty integrated native fixtures pass under default
+  parallel test scheduling. The production library check passes after promoting
+  the existing futures-util dependency from dev-only. Unwired internal APIs now
+  produce 29 unsuppressed native library warnings. Public commands, app quit hooks,
+  durable timing and uploads remain unfinished.
+- Generated-title storage/core (`e4f318ae3`, `54c574723`). Root's three core and
+  19 storage cases passed, including actual abrupt-exit recovery. Schema 4 has a
+  32 MiB serialized cap; older large official schemas retain their behavior.
+  Strict original-byte decoding rejects duplicates. No automatic/public title
+  stage is enabled; drain schema-4 intents before downgrade.
+- Neutral capture storage (`9e26192dd`, worker `b9f844f0a`). Four moved files are
+  byte-identical; old client imports still work. The new library has no SDK,
+  reqwest, OIDC, Tauri or device dependencies. Its 121 store/SDK/protocol cases,
+  Clippy, checks and protocol drift passed. Root native/shared/server/CLI checks
+  and the headless graph check passed after integration. Device schema 1 and hash
+  domains remain unchanged. Backend/Windows CI include the new crate's tests.
+
+Three authorized workers remain in isolated worktrees:
+
+- Frontend: `/Volumes/T7/src/loofah-separation-tags`,
+  `refactor/backend-tag-storage`, based on the exact source checkpoint above.
+  Implementing storage-only bounded registered/in-use tag suggestions and checked
+  accept/dismiss operations after reviewing the real UI semantics. No public
+  contracts, adapters or UI migration yet. Preserve the prior clean UI branch
+  and stashes; its incoming native blobs are not a merge/rebase instruction.
 - Backend: `/Volumes/T7/src/loofah-separation-processing`,
-  `refactor/backend-summary-tags`. Atomic canonical empty-session cleanup passed
-  focused storage/core tests. Dotted-ID trash recovery and bounded directory
-  inspection are being finished before commit. A separate existing media test
-  needs its readiness wait changed from Arc count to the actual `reads_started`
-  counter; production media behavior must stay unchanged.
-- Capture: `/Volumes/T7/src/loofah-separation-capture`,
-  `refactor/backend-capture-spool`. The two sink commits are integrated. Next:
-  sticky per-capture integrity evidence for recovery/generation changes, ring
-  overflow and joiner gaps, preserving local output/reconnect behavior. A separate
-  graceful provider stop/drain seam is mandatory before a complete source seal:
-  the current admitted-prefix drain does not prove native provider queues/tails
-  were fully captured. Do not describe remote recording as available.
+  `refactor/backend-summary-tags`. Building the portable title helper and optional
+  model sampling parity, with the supplied model retained through cancellation.
+  No public policy, worker stage or journal change. Exact JavaScript trim parity
+  is the last narrow refinement after healthy checks; Root must validate its tiny
+  native ChatGPT fixture/guard centrally after integration.
+- Capture: `/Volumes/T7/src/loofah-separation-capture-timing`,
+  `refactor/backend-capture-timing`, based on exact source checkpoint above.
+  Storage-only schema-2 first-admitted audio observation is in progress. Do not
+  claim it is integrated. No identity/hash changes, native manager wiring or
+  endpoints are authorized in that slice. Clean prior trees are preserved at
+  `/Volumes/T7/src/loofah-separation-capture` (`c4d1f11f3`) and
+  `/Volumes/T7/src/loofah-separation-capture-store` (`b9f844f0a`).
 
-Root has uncommitted cleanup IPC/HTTP/SDK/frontend adapters and permission,
-replay/cancellation and real TCP latency fixtures awaiting the backend checkpoint.
-The client capability is `session_cleanup`; HTTP uses POST
-`/api/v1/vaults/{vault}/session-cleanups` with a UUID request ID and
-`DeleteEmptySessionRequest { session_id }`. Historical `Deleted` replies must
-never drive another deletion or session-wide media closure after a restore.
-The UI must flush/check captured drafts and skip unknown pending capture state.
-Do not expose automatic remote cleanup or the main remote shell before those
-guards exist.
+Avoid merging the workers' divergent cherry-picked histories. A full merge on
+an old capture branch produced 12 conflicts and was safely aborted to its clean
+checkpoint. New dependencies use a fresh T7 worktree from an exact Root commit.
+The frontend's one incoming conflict was resolved only by copying the exact four
+Root contract blobs, then restoring/hash-verifying its two saved source files.
+No source was lost. Its named stash `cc0165379ce1f1d6d20f56ff1ebb0fe4995f74eb`
+and T7 recovery manifests remain preserved.
 
-Root's named stash `root-cleanup-transport-before-scoped-tabs` and
-`/Volumes/T7/loofah-backend-build/session-cleanup-transport-wip.json` preserve the
-first eight-file transport draft before tab integration. All eight restored
-hashes matched. Newer working changes supersede that backup; do not apply it over
-new work. Original standby archives below remain intact. Logs live under
-`/Volumes/T7/loofah-backend-build/` and `agents/{ui,processing,capture}/logs/`.
+Root's current named template backup stash is
+`757c1aa385a2398bd8643eede0f43b8e87dca9f5`
+(`root-template-transport-before-provider-drain-join`); its seven restored hashes
+matched `/Volumes/T7/loofah-backend-build/template-transport-before-drain-join.json`.
+Newer changes supersede it; never reapply over the current working tree. Cleanup
+WIP stashes are historical because those adapters are already committed.
+Historical standby archives below remain intact.
 
-Keep Rust sources fixed during dependent checks. Use the native workdir
-`apps/desktop/src-tauri` for the warmed native Cargo target; launching a desktop
-check from the workspace root uses a different graph. Let healthy tests/builds
-finish even when new macOS binaries take minutes to launch. Batch pushes after
-healthy previous-head Windows CI finishes. Draft PR #123 stays unmerged and
-unreleased until the full plan and all acceptance gates pass.
+Keep relevant Rust sources frozen during dependent checks. Native Cargo commands
+run from `apps/desktop/src-tauri` for the warm target; all targets/cache/temp/log
+paths must remain physically on T7. Let healthy tests/builds finish, including
+slow macOS binary startup. Batch pushes only after the previous healthy Windows
+run completes. Do not merge or release until the full plan and acceptance gates
+pass. Main remote-only startup, authenticated capture/processing, title job policy,
+remaining content/CLI paths, backup/upgrade validation and real platform/device
+acceptance remain substantial unfinished work.
 
 ## Historical standby snapshot
 

@@ -1658,6 +1658,10 @@ msgstr "Refresh the app if notes are missing or changes made outside Loofah are 
 msgid "Refreshing..."
 msgstr "Refreshing..."
 
+#: src/shared/application/vault-processing.tsx
+msgid "Regenerate"
+msgstr "Regenerate"
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Reload access"
 msgstr "Reload access"
@@ -1865,6 +1869,10 @@ msgstr "Saved notes or transcript could not be read."
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Saved original copy."
 msgstr "Saved original copy."
+
+#: src/shared/application/vault-processing.tsx
+msgid "Saves pending edits before using the saved notes and transcript."
+msgstr "Saves pending edits before using the saved notes and transcript."
 
 #: src/shared/application/vault-processing.tsx
 msgid "Saving summary"
@@ -2579,10 +2587,6 @@ msgstr "Use this folder for your vault?"
 #: src/onboarding/permissions.tsx
 msgid "Use your microphone to capture your voice"
 msgstr "Use your microphone to capture your voice"
-
-#: src/shared/application/vault-processing.tsx
-msgid "Uses the saved notes and transcript. Unsaved edits are kept separate."
-msgstr "Uses the saved notes and transcript. Unsaved edits are kept separate."
 
 #: src/settings/ai/llm/select.tsx
 msgid "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
