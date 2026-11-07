@@ -2981,3 +2981,39 @@ claims. This foundation does not yet advertise an endpoint/capability. The share
 operation must recheck recovered canonical content under the deletion guard and
 use durable receipts so retries never delete a restored/recreated session. The
 client close handler must flush/check scoped unsent drafts before requesting it.
+
+### Capture sink and CPU inference integration checkpoint
+
+The native device-capture bridge and bounded listener sink are integrated as
+internal Rust APIs. They capture to a scoped device spool without resolving a
+vault path or publishing a canonical session. Frame/message admission bounds
+memory, append receipts release credits only after durable confirmation, and
+retryable storage contention retains the same chunk. Stop drains admitted audio;
+interruption retains an unsealed recoverable prefix. The existing local disk
+destination and serialized session parameters remain unchanged. The worker's
+74 listener-core tests pass; the six integrated desktop fixtures and full native
+check are pending at this checkpoint. Device disconnect/recovery behavior is
+under additional review.
+
+This is not an available remote recording flow. Public commands, observer/UI
+wiring, actual capture timestamps, shutdown ownership, server ingestion,
+authenticated live transcription and publication remain open. A real two-hour
+device recording, interruption/restart tests, production macOS responsiveness
+and both native Windows architectures remain acceptance gates.
+
+The shared Whisper batch kernel now owns model/audio/admission resources through
+actual completion after cancellation. Existing JSON, bounded SSE and internal
+callers use it; full event queues retain required segments and terminal ordering.
+Thirty default tests, three real CPU kernel cases and two existing real batch/live
+CPU cases passed on macOS. New Linux CPU CI pins and verifies the model, disables
+native CPU specialization, checks the resulting CMake cache and rejects desktop
+capture dependencies. Actual Linux execution remains pending the next pushed
+checkpoint; a passing macOS CPU test does not establish Linux or Windows parity.
+
+The immutable scoped tab foundation is also integrated. Device reads capture
+their mutation age when scheduled, so queued stale reads cannot overwrite a
+newer user action. Initial pin changes merge with the saved native baseline,
+including pins not yet displayed. Canonical remote lookups release the device
+write lane before waiting for the network. Production tab consumers and startup
+services are still being moved under a keyed immutable provider; no mutable
+global transport fallback is introduced.
