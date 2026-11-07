@@ -15,6 +15,7 @@ mod agent;
 mod attachment_upload;
 mod attachments;
 mod content;
+pub mod generated_title;
 mod media;
 pub mod media_leases;
 mod metadata;
