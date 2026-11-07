@@ -9,5 +9,6 @@ hypr-transcript = { workspace = true }
 hypr-vault-read = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 specta = { workspace = true, features = ["derive"] }
 specta-typescript = { workspace = true }

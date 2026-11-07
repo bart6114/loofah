@@ -290,17 +290,7 @@ fn validate_session(session: &str) -> Result<()> {
 }
 
 fn validate_format(format: &CaptureFormat) -> Result<()> {
-    if format.sample_rate != 16_000
-        || format.channels.is_empty()
-        || format.channels.len() > 2
-        || format.channels.len() == 2
-            && format.channels != [CaptureChannel::Microphone, CaptureChannel::SystemAudio]
-    {
-        return Err(invalid(
-            "Capture requires 16 kHz PCM f32 little-endian with an explicit mono or microphone/system channel map",
-        ));
-    }
-    Ok(())
+    hypr_loofah_protocol::validate_capture_format(format).map_err(invalid)
 }
 
 fn validate_uuid(value: &str) -> Result<()> {

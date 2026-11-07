@@ -3083,3 +3083,22 @@ batch/live cases, with the pinned model checksum verified and actual
 `5eecbab013cf4fa2b5bfd9db526c41fba7892ff3847cce337cac3fc36fc98885`.
 This validates the portable kernel, not a server transcription endpoint. Newer
 unpublished cleanup/integrity changes still need fresh hosted platform checks.
+
+### Shared capture wire contracts
+
+Capture scope/identity/target, encoding/channel format, chunk descriptors, seals,
+prefix receipts and publication receipts now live in `loofah-protocol`.
+Fingerprint, chain-seed, chunk-digest and format rules are shared there as well.
+The client spool reexports the existing Rust names, with its device-specific
+snapshot/quotas and all persistence behavior retained. The source/file format,
+version-1 hash domains and field order are unchanged; no server upload endpoint
+or new capture capability is advertised by this extraction.
+
+All 18 existing capture-spool tests and three protocol compatibility tests pass;
+two existing subprocess/stress helpers remain ignored directly. Fixed checksum
+vectors pin the old wire representation. Generated TypeScript readback and
+desktop typechecking pass. Protocol/client/server library Clippy passes without
+new warnings. Logs: `capture-contracts-*` under the T7 build directory. The new
+protocol dependency reuses the already-locked SHA-256 crate version; no package
+versions are upgraded. Native stop/drain and service ingestion remain separate
+gates.

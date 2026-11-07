@@ -4,6 +4,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut types = specta::TypeCollection::default();
     types
         .register::<Capabilities>()
+        .register::<CaptureScope>()
+        .register::<CaptureTarget>()
+        .register::<CaptureIdentity>()
+        .register::<CaptureChannel>()
+        .register::<CaptureEncoding>()
+        .register::<CaptureFormat>()
+        .register::<CaptureChunkDescriptor>()
+        .register::<CaptureSeal>()
+        .register::<CapturePrefixReceipt>()
+        .register::<CapturePublication>()
         .register::<ProcessingPolicy>()
         .register::<ProcessingSettingsSnapshot>()
         .register::<SaveProcessingSettingsRequest>()

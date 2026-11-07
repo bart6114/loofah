@@ -24,6 +24,31 @@ export type AudioPeaks = { durationSec: number; channels: number[][] }
 
 export type Capabilities = { api_major: number; application_version: string; features: string[] }
 
+export type CaptureChannel = "microphone" | "system_audio" | "mixed"
+
+export type CaptureChunkDescriptor = { capture_fingerprint: string; sequence: number; first_frame: number; pcm_offset: number; frames: number; bytes: number; sha256: string; previous_digest: string; digest: string }
+
+export type CaptureEncoding = "pcm_f32_le"
+
+export type CaptureFormat = { encoding: CaptureEncoding; sample_rate: number; channels: CaptureChannel[] }
+
+export type CaptureIdentity = { scope: CaptureScope; capture_id: string; request_id: string; target: CaptureTarget }
+
+export type CapturePrefixReceipt = { capture_fingerprint: string; chunk_count: number; frames: number; pcm_bytes: number; chain_digest: string }
+
+/**
+ * An authenticated verifier must compare the finalized service receipt with an
+ * independent canonical artifact read before supplying this observation.
+ * Recording it never authorizes deletion of the device's audio.
+ */
+export type CapturePublication = { source: CaptureSeal; session_id: string; canonical_audio_sha256: string; canonical_audio_bytes: number }
+
+export type CaptureScope = { server: string; member_id: string; vault_id: string }
+
+export type CaptureSeal = { capture_fingerprint: string; chunk_count: number; frames: number; pcm_bytes: number; chain_digest: string; source_sha256: string }
+
+export type CaptureTarget = { kind: "existing_session"; session_id: string; expected_audio_sha256: string | null } | { kind: "pending_session"; create_request_id: string }
+
 export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "processing_settings_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
 
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change }

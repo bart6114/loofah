@@ -6,6 +6,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use hypr_loofah_protocol::{
+    capture_chain_seed as seed, capture_chunk_digest as digest, capture_fingerprint as fingerprint,
+};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -172,31 +175,6 @@ fn pending_path(dir: &Path, sequence: u64) -> PathBuf {
     dir.join("chunks").join(format!("{sequence:020}.pending"))
 }
 
-fn fingerprint(id: &CaptureIdentity, format: &CaptureFormat) -> String {
-    hash(
-        serde_json::to_vec(&("loofah-capture-v1", id, format))
-            .expect("capture identity serializes"),
-    )
-}
-fn seed(fingerprint: &str) -> String {
-    hash(format!("loofah-capture-chain-v1:{fingerprint}"))
-}
-fn digest(descriptor: &CaptureChunkDescriptor) -> String {
-    hash(
-        serde_json::to_vec(&(
-            "loofah-capture-chunk-v1",
-            &descriptor.capture_fingerprint,
-            descriptor.sequence,
-            descriptor.first_frame,
-            descriptor.pcm_offset,
-            descriptor.frames,
-            descriptor.bytes,
-            &descriptor.sha256,
-            &descriptor.previous_digest,
-        ))
-        .expect("capture descriptor serializes"),
-    )
-}
 fn source_digest(source: &Sha256) -> String {
     source
         .clone()

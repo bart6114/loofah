@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+mod capture;
+pub use capture::*;
 mod jobs;
 pub use jobs::*;
 mod processing_settings;
