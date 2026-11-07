@@ -71,6 +71,50 @@ impl VaultContext {
             .await
     }
 
+    pub async fn save_generated_summary(
+        &self,
+        session_id: &str,
+        input: hypr_loofah_protocol::SaveDocumentRequest,
+        suggestions: Option<Vec<hypr_vault_write::ScoredTagSuggestion>>,
+    ) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
+        self.validate_document(session_id, &hypr_loofah_protocol::DocumentTarget::Summary)?;
+        if input.expected_revision.is_empty() || input.expected_revision.len() > 128 {
+            return Err(error(
+                ErrorCode::Validation,
+                "Expected summary revision is required",
+            ));
+        }
+        if input.markdown.len() > self.store.content_limits().note_write_bytes {
+            return Err(error(
+                ErrorCode::ResourceLimit,
+                "Generated summary is too large",
+            ));
+        }
+        let root = self.document_operation_root().ok_or_else(|| {
+            error(
+                ErrorCode::Unavailable,
+                "Operation storage is not configured",
+            )
+        })?;
+        let policy = self.settings.read_current().await.map_err(|_| {
+            error(
+                ErrorCode::Unavailable,
+                "Processing settings could not be read",
+            )
+        })?;
+        self.store
+            .save_generated_summary_with_suggestions_if_revision(
+                &root,
+                session_id,
+                &input.markdown,
+                &input.expected_revision,
+                suggestions,
+                policy.auto_apply_high_confidence_tags,
+            )
+            .await
+            .map_err(|cause| storage_error(cause, true))
+    }
+
     async fn save_document_body(
         &self,
         session_id: &str,

@@ -693,3 +693,226 @@ async fn invalid_generated_metadata_fails_before_persistence_without_poisoning_t
     }
     worker.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn shared_summary_jobs_apply_tags_using_current_metadata_and_the_current_opt_out_setting() {
+    for auto_apply in [true, false] {
+        let mut f = Fixture::new("# Decisions\n- [ ] Send agenda", false).await;
+        let suggestions = vec![
+            hypr_vault_write::ScoredTagSuggestion {
+                name: "Already-Attached".into(),
+                confidence: 1.0,
+            },
+            hypr_vault_write::ScoredTagSuggestion {
+                name: "Dismissed".into(),
+                confidence: 1.0,
+            },
+            hypr_vault_write::ScoredTagSuggestion {
+                name: "New-Project".into(),
+                confidence: 0.99,
+            },
+        ];
+        Arc::get_mut(&mut f.generator)
+            .unwrap()
+            .output
+            .as_mut()
+            .unwrap()
+            .suggested_tags = Some(suggestions.clone());
+        let job = f.submit().await;
+        let worker = f.worker().await;
+        until(|| f.generator.calls.load(Ordering::SeqCst) == 1).await;
+        let mut meta = f.context.store.read_meta("note").await.unwrap().unwrap();
+        meta.tags = vec!["already-attached".into()];
+        meta.tag_suggestions = Some(hypr_vault_write::TagSuggestionState {
+            items: vec![],
+            dismissed: vec!["dismissed".into()],
+        });
+        meta.title = "Manual title while the model was running".into();
+        meta.extra
+            .insert("future".into(), serde_json::json!({"keep":true}));
+        f.context.store.write_meta(&meta).await.unwrap();
+        f.context
+            .settings
+            .set_values(std::collections::HashMap::from([(
+                "auto_apply_high_confidence_tags".into(),
+                serde_json::json!(auto_apply),
+            )]))
+            .await
+            .unwrap();
+        f.generator.release.add_permits(1);
+        assert_eq!(
+            f.terminal(&job.id).await.state,
+            ProcessingJobState::Succeeded
+        );
+        let actual = f.context.store.read_meta("note").await.unwrap().unwrap();
+        assert_eq!(actual.title, meta.title);
+        assert_eq!(actual.extra["future"], serde_json::json!({"keep":true}));
+        assert_eq!(actual.tags.contains(&"new-project".into()), auto_apply);
+        let tag_state = actual.tag_suggestions.unwrap();
+        assert_eq!(tag_state.dismissed, vec!["dismissed"]);
+        assert_eq!(
+            tag_state.items,
+            if auto_apply {
+                vec![]
+            } else {
+                vec!["new-project"]
+            }
+        );
+        assert_eq!(
+            f.context.store.session_tasks("note").await.unwrap().len(),
+            1
+        );
+        assert_eq!(
+            f.journal
+                .result(job.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .suggested_tags,
+            Some(suggestions)
+        );
+        worker.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn cancelled_or_conflicted_jobs_retain_tag_suggestions_without_applying_them() {
+    for cancelled in [false, true] {
+        let mut f = Fixture::new("# Retained draft", false).await;
+        let suggestion = hypr_vault_write::ScoredTagSuggestion {
+            name: "review-only".into(),
+            confidence: 1.0,
+        };
+        Arc::get_mut(&mut f.generator)
+            .unwrap()
+            .output
+            .as_mut()
+            .unwrap()
+            .suggested_tags = Some(vec![suggestion.clone()]);
+        let job = f.submit().await;
+        let worker = f.worker().await;
+        until(|| f.generator.calls.load(Ordering::SeqCst) == 1).await;
+        if cancelled {
+            f.journal.cancel(job.id.clone()).await.unwrap();
+        } else {
+            f.context
+                .save_document(
+                    "note",
+                    &DocumentTarget::Summary,
+                    SaveDocumentRequest {
+                        markdown: "# Newer user summary".into(),
+                        expected_revision: job_request_revision(&f, &job.id).await,
+                    },
+                )
+                .await
+                .unwrap();
+            f.generator.release.add_permits(1);
+        }
+        let terminal = f.terminal(&job.id).await;
+        assert_eq!(
+            terminal.state,
+            if cancelled {
+                ProcessingJobState::Cancelled
+            } else {
+                ProcessingJobState::Conflict
+            }
+        );
+        assert!(
+            f.context
+                .store
+                .read_meta("note")
+                .await
+                .unwrap()
+                .unwrap()
+                .tags
+                .is_empty()
+        );
+        assert!(f.context.store.list_tags().await.unwrap().is_empty());
+        assert_eq!(
+            f.journal
+                .result(job.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .suggested_tags,
+            Some(vec![suggestion])
+        );
+        worker.shutdown().await.unwrap();
+    }
+}
+
+async fn job_request_revision(f: &Fixture, id: &str) -> String {
+    f.journal
+        .work(id.into())
+        .await
+        .unwrap()
+        .request
+        .expected_revision
+}
+
+#[tokio::test]
+async fn an_active_recording_refuses_summary_tag_application_and_retains_generated_output() {
+    let mut f = Fixture::new("# Keep for review", false).await;
+    Arc::get_mut(&mut f.generator)
+        .unwrap()
+        .output
+        .as_mut()
+        .unwrap()
+        .suggested_tags = Some(vec![hypr_vault_write::ScoredTagSuggestion {
+        name: "do-not-apply".into(),
+        confidence: 1.0,
+    }]);
+    let job = f.submit().await;
+    f.context.store.note_recording_active("note");
+    let worker = f.worker().await;
+    f.generator.release.add_permits(1);
+    assert_eq!(
+        f.terminal(&job.id).await.state,
+        ProcessingJobState::Interrupted
+    );
+    assert_eq!(f.summary().await, "");
+    assert!(
+        f.context
+            .store
+            .read_meta("note")
+            .await
+            .unwrap()
+            .unwrap()
+            .tags
+            .is_empty()
+    );
+    assert!(f.journal.result(job.id).await.unwrap().is_some());
+    f.context
+        .store
+        .release_recording_prepare("note")
+        .await
+        .unwrap();
+    worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn damaged_tag_registry_does_not_apply_a_summary_or_discard_the_generated_result() {
+    let mut f = Fixture::new("# Keep generated result", false).await;
+    Arc::get_mut(&mut f.generator)
+        .unwrap()
+        .output
+        .as_mut()
+        .unwrap()
+        .suggested_tags = Some(vec![hypr_vault_write::ScoredTagSuggestion {
+        name: "new-project".into(),
+        confidence: 1.0,
+    }]);
+    let registry = f.context.store.vault_base().join("tags.json");
+    std::fs::write(&registry, "{broken").unwrap();
+    let job = f.submit().await;
+    let worker = f.worker().await;
+    f.generator.release.add_permits(1);
+    assert_eq!(
+        f.terminal(&job.id).await.state,
+        ProcessingJobState::Interrupted
+    );
+    assert_eq!(f.summary().await, "");
+    assert_eq!(std::fs::read_to_string(registry).unwrap(), "{broken");
+    assert!(f.journal.result(job.id).await.unwrap().is_some());
+    worker.shutdown().await.unwrap();
+}

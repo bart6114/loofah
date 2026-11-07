@@ -257,16 +257,22 @@ async fn execute(
     if !journal.begin_apply(id.into()).await? {
         return Ok(JobCompletion::Cancelled);
     }
-    let applied = context
-        .save_generated_document_body(
-            &work.request.session_id,
-            &work.request.target,
-            hypr_loofah_protocol::SaveDocumentRequest {
-                markdown: output.markdown,
-                expected_revision: work.request.expected_revision,
-            },
-        )
-        .await;
+    let input = hypr_loofah_protocol::SaveDocumentRequest {
+        markdown: output.markdown,
+        expected_revision: work.request.expected_revision,
+    };
+    let applied = match &work.request.target {
+        DocumentTarget::Summary => {
+            context
+                .save_generated_summary(&work.request.session_id, input, output.suggested_tags)
+                .await
+        }
+        target => {
+            context
+                .save_generated_document_body(&work.request.session_id, target, input)
+                .await
+        }
+    };
     drop(grant);
     Ok(completion_from_apply(applied))
 }
