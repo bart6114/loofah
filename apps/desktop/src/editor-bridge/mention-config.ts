@@ -1,18 +1,30 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { MentionConfig } from "@hypr/editor/widgets";
 
 import { useSearchEngine } from "~/search/contexts/engine";
-import { useTimelineSessionsTable } from "~/sidebar/timeline/queries";
 
 export function useMentionConfig(): MentionConfig {
-  const sessions = useTimelineSessionsTable();
-  const { search } = useSearchEngine();
+  const { search, scope } = useSearchEngine();
+  const current = useRef(scope);
+  current.current = scope;
+  useEffect(() => {
+    current.current = scope;
+    return () => {
+      if (current.current === scope) current.current = null;
+    };
+  }, [scope]);
 
   return useMemo(
     () => ({
       trigger: "@",
       handleSearch: async (query: string) => {
+        if (
+          !scope ||
+          current.current !== scope ||
+          scope.getSnapshot().state !== "connected"
+        )
+          return [];
         const results: {
           id: string;
           type: string;
@@ -30,17 +42,33 @@ export function useMentionConfig(): MentionConfig {
             });
           }
         } else {
-          Object.entries(sessions ?? {}).forEach(([rowId, row]) => {
-            const title = row.title as string | undefined;
-            if (title) {
-              results.push({ id: rowId, type: "session", label: title });
-            }
-          });
+          try {
+            const sessions = await scope.queryClient.fetchQuery(
+              scope.sessionSummariesOptions({
+                kind: "list",
+                limit: 5,
+                order: "oldest_first",
+                titled_only: true,
+              }),
+            );
+            for (const session of sessions)
+              results.push({
+                id: session.id,
+                type: "session",
+                label: session.title,
+              });
+          } catch {
+            return [];
+          }
         }
-
+        if (
+          current.current !== scope ||
+          scope.getSnapshot().state !== "connected"
+        )
+          return [];
         return results.slice(0, 5);
       },
     }),
-    [sessions, search],
+    [scope, search],
   );
 }
