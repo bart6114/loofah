@@ -66,6 +66,7 @@ impl JobWorker {
         let stop = CancellationToken::new();
         let stopping = stop.clone();
         let task = tokio::spawn(async move {
+            let _finished = stopping.clone().drop_guard();
             let _permit = permit;
             run(context, journal, generator, authorizer, stopping).await
         });
@@ -77,6 +78,14 @@ impl JobWorker {
     pub async fn shutdown(mut self) -> Result<(), ApplicationError> {
         self.stop.cancel();
         self.task.take().unwrap().await.map_err(|_| storage())?
+    }
+
+    pub(crate) fn lifetime(&self) -> CancellationToken {
+        self.stop.clone()
+    }
+
+    pub(crate) fn request_shutdown(&self) {
+        self.stop.cancel();
     }
 }
 
@@ -150,6 +159,7 @@ async fn execute(
         Ok(snapshot) if snapshot.revision != work.request.expected_revision => {
             return Ok(JobCompletion::Conflict);
         }
+        Err(_) if stop.is_cancelled() => return Ok(JobCompletion::Interrupted),
         Err(_) => {
             return Ok(JobCompletion::Failed(
                 ProcessingJobFailure::SourceUnavailable,
@@ -260,6 +270,7 @@ fn completion_from_apply(
         {
             JobCompletion::Interrupted
         }
+        Err(failure) if failure.code == ErrorCode::Unavailable => JobCompletion::Interrupted,
         Err(failure) if failure.code == ErrorCode::NotFound => {
             JobCompletion::Failed(ProcessingJobFailure::SourceUnavailable)
         }

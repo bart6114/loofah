@@ -13,6 +13,7 @@ use crate::{
     startup::{self, StartupPhase, StartupState},
 };
 
+mod processing;
 mod watch;
 
 pub struct VaultRuntime {
@@ -20,6 +21,7 @@ pub struct VaultRuntime {
     stop: CancellationToken,
     workers: Vec<tokio::task::JoinHandle<()>>,
     watcher: Option<watch::FileWatcher>,
+    processing: Option<crate::jobs::JobWorker>,
 }
 
 impl VaultRuntime {
@@ -160,13 +162,12 @@ impl VaultRuntime {
             stop,
             workers: vec![events_worker, search_worker, watch_worker],
             watcher,
+            processing: None,
         })
     }
 
     pub async fn shutdown(mut self) -> Result<(), StoreError> {
-        self.context.store.set_startup_pending(true);
-        self.context.startup.set_phase(StartupPhase::Stopping);
-        self.stop.cancel();
+        self.begin_stopping();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         let watcher = self
             .watcher
@@ -176,6 +177,12 @@ impl VaultRuntime {
             .await
             .map_err(|_| StoreError::Io("vault flush exceeded shutdown deadline".into()))?;
         flush?;
+        if let Some(worker) = self.processing.take() {
+            tokio::time::timeout_at(deadline, worker.shutdown())
+                .await
+                .map_err(|_| StoreError::Io("processing worker exceeded shutdown deadline".into()))?
+                .map_err(|_| StoreError::Io("processing worker did not stop cleanly".into()))?;
+        }
         for worker in &mut self.workers {
             tokio::time::timeout_at(deadline, worker)
                 .await
@@ -193,11 +200,22 @@ impl VaultRuntime {
         self.context.startup.set_phase(StartupPhase::Stopped);
         Ok(())
     }
+
+    fn begin_stopping(&self) {
+        self.context.store.set_startup_pending(true);
+        if !matches!(self.context.startup.snapshot().phase, StartupPhase::Stopped) {
+            self.context.startup.set_phase(StartupPhase::Stopping);
+        }
+        self.stop.cancel();
+        if let Some(worker) = &self.processing {
+            worker.request_shutdown();
+        }
+    }
 }
 
 impl Drop for VaultRuntime {
     fn drop(&mut self) {
-        self.stop.cancel();
+        self.begin_stopping();
         for worker in &self.workers {
             worker.abort();
         }

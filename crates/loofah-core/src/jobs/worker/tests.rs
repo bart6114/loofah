@@ -605,6 +605,10 @@ async fn unconfirmed_canonical_writes_are_recorded_for_review_without_exposing_r
             JobCompletion::Interrupted
         ));
     }
+    assert!(matches!(
+        completion_from_apply(Err(rejected(ErrorCode::Unavailable, "Vault is stopping"))),
+        JobCompletion::Interrupted
+    ));
     let mut failure = storage();
     failure.message = "sensitive provider error or server path".into();
     failure.mutation_outcome = Some(MutationOutcome::Unknown);

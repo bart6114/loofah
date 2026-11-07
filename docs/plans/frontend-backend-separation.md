@@ -2267,7 +2267,39 @@ template metadata, note content and session titles remain unchanged.
 
 This increment implements the worker and generated-body persistence contract.
 Production generator/provider implementations, common prompt preparation,
-streaming previews, title/tag policy, worker attachment to host startup/shutdown,
+streaming previews, title/tag policy, host provider/authorization configuration,
 job HTTP/IPC/client adapters and user controls remain required. Existing local AI
 workflows remain active, and no server processing capability is advertised yet.
 Validation passes 147 shared-core tests (including 15 worker regressions), three protocol tests, all 361 vault-write tests (one existing ignored fixture), headless/core Rust checking, strict changed-crate production Clippy and generated-contract export/check. The worker tests exercise real canonical files with a controlled generator; they do not establish live-provider or public HTTP/IPC processing support. A focused regression confirms unconfirmed writes become interrupted for review and raw errors never enter durable job status.
+
+### Vault-owned processing lifecycle
+
+`VaultRuntime::enable_processing` now explicitly installs one injected generator
+and authorization policy per vault, with the journal under that vault's configured
+operation-storage root. Processing stays unavailable until configured; the default
+local application gains no login or provider requirement. A worker exit disables
+processing access without disabling ordinary note operations. Reopening recovers
+interrupted work without repeating model calls or completed jobs.
+
+Shutdown stops admission and signals cancellation, flushes buffered transcripts
+before waiting for model work, and uses the existing five-second overall deadline.
+If processing exceeds that deadline, shutdown reports failure while the actual
+worker retains the vault context, journal and exclusive ownership lease until it
+drains. Dropping a runtime also marks retained contexts unavailable and signals
+processing; it never aborts the worker to release an active vault prematurely.
+Late valid output is retained for recovery and is not applied after shutdown.
+
+Five real-runtime regressions cover opt-in configuration, duplicate configuration,
+completed-job/result replay after restart, graceful cancellation, transcript flush
+before an uncooperative worker times out, actual lease retention, abrupt runtime
+drop and worker panic/restart. These use controlled Rust generators and an injected
+change source; they do not establish provider, native capture or platform parity.
+Server/desktop host configuration, public job adapters, provider and prompt parity,
+streaming presentation and the remaining full-plan gates are still open.
+
+Validation passes 152 shared-core tests (one ignored subprocess fixture), all 51
+server tests, the headless executable/SIGTERM integration test, core/server Rust
+checking, strict changed-crate production Clippy and formatting. Build, test and
+cache artifacts remain physically on T7. Native Windows validation of this
+increment remains required; the previous pushed checkpoint's x64/ARM64 workflow
+is still running and is not superseded by another push.

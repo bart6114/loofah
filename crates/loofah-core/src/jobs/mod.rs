@@ -24,6 +24,11 @@ mod worker;
 pub use result::GeneratedDocument;
 pub use worker::{JobAuthorizer, JobFuture, JobGenerator, JobWork, JobWorker};
 
+pub(crate) struct ProcessingService {
+    pub(crate) journal: JobJournal,
+    pub(crate) lifetime: tokio_util::sync::CancellationToken,
+}
+
 #[derive(Clone)]
 pub struct JobJournal(Arc<Journal>);
 
