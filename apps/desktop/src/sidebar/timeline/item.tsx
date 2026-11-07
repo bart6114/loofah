@@ -22,7 +22,10 @@ import { writeSessionContextDragData } from "~/shared/session-drag";
 import { InteractiveButton } from "~/shared/ui/interactive-button";
 import { useSessionTitle } from "~/store/zustand/live-title";
 import { useTabs } from "~/store/zustand/tabs";
-import { useTimelineSelection } from "~/store/zustand/timeline-selection";
+import {
+  useTimelineSelection,
+  useTimelineSelectionStore,
+} from "~/store/zustand/timeline-selection";
 import { useListener } from "~/stt/contexts";
 
 const EMPTY_TIMELINE_ITEM_KEYS: string[] = [];
@@ -289,6 +292,7 @@ const SessionItem = memo(
   }) => {
     const { t } = useLingui();
     const openCurrent = useTabs((state) => state.openCurrent);
+    const selection = useTimelineSelectionStore();
     const deleteSession = useDeleteSession();
 
     const sessionId = item.id;
@@ -317,17 +321,17 @@ const SessionItem = memo(
     const itemKey = `session-${item.id}`;
 
     const handleClick = useCallback(() => {
-      useTimelineSelection.getState().setAnchor(itemKey);
+      selection.getState().setAnchor(itemKey);
       openCurrent({ id: sessionId, type: "sessions" });
-    }, [sessionId, openCurrent, itemKey]);
+    }, [sessionId, openCurrent, itemKey, selection]);
 
     const handleCmdClick = useCallback(() => {
-      useTimelineSelection.getState().toggleSelect(itemKey);
-    }, [itemKey]);
+      selection.getState().toggleSelect(itemKey);
+    }, [itemKey, selection]);
 
     const handleShiftClick = useCallback(() => {
-      useTimelineSelection.getState().selectRange(getFlatItemKeys(), itemKey);
-    }, [getFlatItemKeys, itemKey]);
+      selection.getState().selectRange(getFlatItemKeys(), itemKey);
+    }, [getFlatItemKeys, itemKey, selection]);
 
     const handleOpenStandaloneWindow = useCallback(() => {
       void openStandaloneNoteWindow(sessionId);

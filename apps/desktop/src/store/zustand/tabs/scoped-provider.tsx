@@ -6,6 +6,10 @@ import { ScopedTabsController } from "./scoped-controller";
 import type { ScopedTabsStore, TabsState } from "./store";
 
 import type { VaultScope } from "~/shared/application/vault-scope";
+import {
+  createTimelineSelectionStore,
+  TimelineSelectionContext,
+} from "~/store/zustand/timeline-selection";
 
 const ScopedTabsContext = createContext<ScopedTabsController | null>(null);
 const TabsStoreContext = createContext<ScopedTabsStore | null>(null);
@@ -17,9 +21,21 @@ export function TabsStoreProvider({
   store: ScopedTabsStore;
   children?: React.ReactNode;
 }) {
+  const [current, setCurrent] = useState<{
+    owner: ScopedTabsStore;
+    selection: ReturnType<typeof createTimelineSelectionStore>;
+  } | null>(null);
+  useEffect(() => {
+    const selection = createTimelineSelectionStore();
+    setCurrent({ owner: store, selection });
+    return () => selection.dispose();
+  }, [store]);
+  if (current?.owner !== store) return null;
   return (
     <TabsStoreContext.Provider value={store}>
-      {children}
+      <TimelineSelectionContext.Provider value={current.selection}>
+        {children}
+      </TimelineSelectionContext.Provider>
     </TabsStoreContext.Provider>
   );
 }

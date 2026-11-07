@@ -1,15 +1,28 @@
 import { onlineManager } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {
+  createTimelineSelectionStore,
+  useTimelineSelection,
+  useTimelineSelectionStore,
+} from "../timeline-selection";
+import {
   ScopedTabsProvider,
+  TabsStoreProvider,
   useScopedTabs,
   useScopedTabsStore,
 } from "./scoped-provider";
 import { deviceFixture, scopedFixture } from "./scoped-test-utils";
-import type { ScopedTabsStore } from "./store";
+import { createTabsStore, type ScopedTabsStore } from "./store";
 
 import { useSessionSummaries } from "~/session/summary-queries";
 import type {
@@ -174,6 +187,139 @@ it("requires an explicit provider instead of falling back to a global store", ()
   }
   expect(() => render(<Probe />)).toThrow(
     "Tabs require an immutable vault host",
+  );
+  error.mockRestore();
+});
+
+function SelectionProbe({
+  label,
+  capture,
+}: {
+  label: string;
+  capture: (store: ReturnType<typeof createTimelineSelectionStore>) => void;
+}) {
+  const selection = useTimelineSelectionStore();
+  capture(selection);
+  const ids = useTimelineSelection((state) => state.selectedIds);
+  return (
+    <button onClick={() => selection.getState().toggleSelect("session-same")}>
+      {label}:{ids.join(",")}
+    </button>
+  );
+}
+
+it("isolates simultaneous UI hosts and replaces selection by exact tab-store identity", () => {
+  const first = createTabsStore("same-scope", () => true),
+    other = createTabsStore("same-scope", () => true),
+    replacement = createTabsStore("same-scope", () => true);
+  let firstSelection!: ReturnType<typeof createTimelineSelectionStore>,
+    otherSelection!: ReturnType<typeof createTimelineSelectionStore>;
+  const tree = (owner: ScopedTabsStore) => (
+    <>
+      <TabsStoreProvider store={owner}>
+        <SelectionProbe
+          label="first"
+          capture={(store) => {
+            firstSelection = store;
+          }}
+        />
+      </TabsStoreProvider>
+      <TabsStoreProvider store={other}>
+        <SelectionProbe
+          label="other"
+          capture={(store) => {
+            otherSelection = store;
+          }}
+        />
+      </TabsStoreProvider>
+    </>
+  );
+  const mounted = render(tree(first));
+  fireEvent.click(screen.getByRole("button", { name: "first:" }));
+  expect(
+    screen.getByRole("button", { name: "first:session-same" }),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "other:" })).toBeTruthy();
+  const retired = firstSelection;
+  const oldHandler = () => retired.getState().toggleSelect("session-same");
+  fireEvent.click(screen.getByRole("button", { name: "other:" }));
+  const otherStore = otherSelection;
+  const history = replacement.getState().history;
+  mounted.rerender(tree(replacement));
+  expect(screen.getByRole("button", { name: "first:" })).toBeTruthy();
+  act(oldHandler);
+  expect(firstSelection).not.toBe(retired);
+  expect(retired.getState().selectedIds).toEqual([]);
+  expect(firstSelection.getState().selectedIds).toEqual([]);
+  expect(otherSelection).toBe(otherStore);
+  expect(otherSelection.getState().selectedIds).toEqual(["session-same"]);
+  expect(replacement.getState().history).toBe(history);
+  expect(replacement.getState().tabs).toEqual([]);
+});
+
+it("starts a fresh working selection lifetime under StrictMode for a standalone tab host", () => {
+  const tabs = createTabsStore("local:standalone", () => true);
+  let selection!: ReturnType<typeof createTimelineSelectionStore>;
+  const mounted = render(
+    <StrictMode>
+      <TabsStoreProvider store={tabs}>
+        <SelectionProbe
+          label="standalone"
+          capture={(store) => {
+            selection = store;
+          }}
+        />
+      </TabsStoreProvider>
+    </StrictMode>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "standalone:" }));
+  expect(selection.getState().selectedIds).toEqual(["session-same"]);
+  const late = selection.getState().selectAll;
+  mounted.unmount();
+  act(() => late(["session-same"]));
+  expect(selection.getState()).toMatchObject({
+    selectedIds: [],
+    anchorId: null,
+  });
+});
+
+it("retires selection with same-string replacement scopes while standalone pin ownership stays disabled", async () => {
+  const first = scopedFixture("local:same"),
+    second = scopedFixture("local:same");
+  const { device } = deviceFixture();
+  let current!: ReturnType<typeof createTimelineSelectionStore>;
+  const tree = (scope: VaultScope) => (
+    <ScopedTabsProvider scope={scope} deviceState={device} managePins={false}>
+      <SelectionProbe
+        label="scoped"
+        capture={(store) => {
+          current = store;
+        }}
+      />
+    </ScopedTabsProvider>
+  );
+  const mounted = render(tree(first.scope));
+  fireEvent.click(await screen.findByRole("button", { name: "scoped:" }));
+  const old = current,
+    lateRange = old.getState().selectRange;
+  mounted.rerender(tree(second.scope));
+  await screen.findByRole("button", { name: "scoped:" });
+  act(() => lateRange(["session-same"], "session-same"));
+  expect(current).not.toBe(old);
+  expect(old.getState().selectedIds).toEqual([]);
+  expect(current.getState().selectedIds).toEqual([]);
+  expect(device.pinnedTabs).not.toHaveBeenCalled();
+  expect(device.setPinnedTabs).not.toHaveBeenCalled();
+});
+
+it("requires an explicit selection host instead of routing through a global store", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  function Probe() {
+    useTimelineSelection((state) => state.selectedIds);
+    return null;
+  }
+  expect(() => render(<Probe />)).toThrow(
+    "Timeline selection requires an immutable tab host",
   );
   error.mockRestore();
 });
