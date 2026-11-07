@@ -13,7 +13,7 @@ import { commands } from "~/types/tauri.gen";
 
 export type PinnedTab = TabInput & { pinned: true };
 
-const serializePinnedTabs = (tabs: Tab[]): string => {
+export const serializePinnedTabs = (tabs: Tab[]): string => {
   const pinnedTabs = tabs
     .filter((t) => t.pinned)
     .map((tab): PinnedTab => {
@@ -30,7 +30,7 @@ const serializePinnedTabs = (tabs: Tab[]): string => {
   return JSON.stringify(pinnedTabs);
 };
 
-const deserializePinnedTabs = (data: string): PinnedTab[] => {
+export const deserializePinnedTabs = (data: string): PinnedTab[] => {
   try {
     const parsed = JSON.parse(data) as unknown[];
     if (!Array.isArray(parsed)) {
@@ -102,7 +102,7 @@ type PinnedPersistenceMiddlewareImpl = <
   f: StateCreator<T, [], []>,
 ) => StateCreator<T, [], []>;
 
-const getPinnedTabIds = (tabs: Tab[]): string[] => {
+export const getPinnedTabIds = (tabs: Tab[]): string[] => {
   return tabs
     .filter((t) => t.pinned)
     .map(uniqueIdfromTab)

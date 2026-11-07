@@ -1,38 +1,14 @@
 import { create } from "zustand";
 
-import { type BasicActions, type BasicState, createBasicSlice } from "./basic";
-import {
-  createLifecycleSlice,
-  type LifecycleActions,
-  lifecycleMiddleware,
-  type LifecycleState,
-} from "./lifecycle";
-import {
-  createNavigationSlice,
-  type NavigationActions,
-  navigationMiddleware,
-  type NavigationState,
-} from "./navigation";
 import {
   pinnedPersistenceMiddleware,
   restorePinnedTabsToStore,
 } from "./pinned-persistence";
 import {
-  createRecentlyOpenedSlice,
-  type RecentlyOpenedActions,
   recentlyOpenedMiddleware,
-  type RecentlyOpenedState,
   restoreRecentlyOpenedToStore,
 } from "./recently-opened";
-import {
-  createRestoreSlice,
-  type RestoreActions,
-  restoreMiddleware,
-  type RestoreState,
-} from "./restore";
-import { createStateUpdaterSlice, type StateBasicActions } from "./state";
-
-import { wrapSliceWithLogging } from "~/store/zustand/shared";
+import { tabsState, type TabsState } from "./store";
 
 export type {
   DailySummaryState,
@@ -51,53 +27,13 @@ export {
 } from "./schema";
 export { restorePinnedTabsToStore, restoreRecentlyOpenedToStore };
 
-type State = BasicState &
-  NavigationState &
-  LifecycleState &
-  RestoreState &
-  RecentlyOpenedState;
-type Actions = BasicActions &
-  StateBasicActions &
-  NavigationActions &
-  LifecycleActions &
-  RestoreActions &
-  RecentlyOpenedActions;
-type Store = State & Actions;
-
 type TabsStoreSingleton = ReturnType<typeof createTabsStore>;
 
 const TABS_STORE_KEY = "__hypr_tabs_store__" as const;
 
 const createTabsStore = () =>
-  create<Store>()(
-    recentlyOpenedMiddleware(
-      pinnedPersistenceMiddleware(
-        restoreMiddleware(
-          lifecycleMiddleware(
-            navigationMiddleware((set, get) => ({
-              ...wrapSliceWithLogging("basic", createBasicSlice(set, get)),
-              ...wrapSliceWithLogging(
-                "state",
-                createStateUpdaterSlice(set, get),
-              ),
-              ...wrapSliceWithLogging(
-                "navigation",
-                createNavigationSlice(set, get),
-              ),
-              ...wrapSliceWithLogging(
-                "lifecycle",
-                createLifecycleSlice(set, get),
-              ),
-              ...wrapSliceWithLogging("restore", createRestoreSlice(set, get)),
-              ...wrapSliceWithLogging(
-                "recentlyOpened",
-                createRecentlyOpenedSlice(set, get),
-              ),
-            })),
-          ),
-        ),
-      ),
-    ),
+  create<TabsState>()(
+    recentlyOpenedMiddleware(pinnedPersistenceMiddleware(tabsState)),
   );
 
 const getTabsStore = (): TabsStoreSingleton => {
