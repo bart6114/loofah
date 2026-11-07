@@ -51,6 +51,7 @@ export function createSessionTabCloseHandler({
 }: SessionTabCloseHandlerOptions) {
   const client = scope.client;
   const lifetime = new AbortController();
+  const pending = new Set<string>();
   const available = () =>
     !lifetime.signal.aborted &&
     scope.client === client &&
@@ -68,6 +69,7 @@ export function createSessionTabCloseHandler({
     )
       return;
     const sessionId = tab.id;
+    if (pending.has(sessionId) || pending.size >= 8) return;
     const isOpen = () =>
       store
         .getState()
@@ -82,12 +84,21 @@ export function createSessionTabCloseHandler({
       }
     };
     if (isOpen() || !idle()) return;
+    pending.add(sessionId);
     let invalidated = false;
     let reopened = false;
     const request = new AbortController();
-    const guard = captureSessionCleanupGuard(scope, sessionId, {
-      isOpen: () => reopened || isOpen(),
-    });
+    let guard: ReturnType<typeof captureSessionCleanupGuard>;
+    let requestId: string;
+    try {
+      requestId = crypto.randomUUID();
+      guard = captureSessionCleanupGuard(scope, sessionId, {
+        isOpen: () => reopened || isOpen(),
+      });
+    } catch {
+      pending.delete(sessionId);
+      return;
+    }
     const stops: (() => void)[] = [];
     const stop = () => {
       for (const release of stops.splice(0)) release();
@@ -133,13 +144,14 @@ export function createSessionTabCloseHandler({
       );
     } catch {
       invalidate();
+      pending.delete(sessionId);
       return;
     }
     if (!current()) {
       invalidate();
+      pending.delete(sessionId);
       return;
     }
-    const requestId = crypto.randomUUID();
     void (async () => {
       if (!(await guard.prepare()) || !current() || !guard.canDelete()) return;
       await scope.run(() =>
@@ -158,6 +170,7 @@ export function createSessionTabCloseHandler({
         guard.dispose();
         stop();
         invalidated = true;
+        pending.delete(sessionId);
       });
   };
   return Object.assign(handle, { dispose: () => lifetime.abort() });

@@ -217,6 +217,121 @@ it("closes immediately and flushes captured writes before one atomic scoped requ
   expect(context.captureWatches.size).toBe(0);
 });
 
+it("bounds burst closes to eight candidates without queueing excess cleanup", async () => {
+  const context = fixture();
+  const response = deferred<DeleteEmptySessionOutcome>({ kind: "not_empty" });
+  context.client.deleteEmptySession.mockReturnValue(response.promise);
+  context.store.getState().registerOnClose(null);
+  context.close();
+  const tabs = Array.from({ length: 16 }, (_, index) =>
+    createSessionTab({ id: `burst-${index}` }),
+  );
+  for (const tab of tabs) context.store.getState().openNew(tab);
+  context.store.getState().registerOnClose(context.handler);
+  for (const tab of tabs) context.store.getState().close(tab);
+  expect(context.store.getState().tabs).toEqual([]);
+  expect(context.captureWatches.size).toBe(8);
+  expect(context.scopeWatches.size).toBe(16);
+  await waitFor(() =>
+    expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(8),
+  );
+  expect(native.inventory).toHaveBeenCalledTimes(8);
+  response.resolve({ kind: "not_empty" });
+  await waitFor(() => expect(context.scopeWatches.size).toBe(0));
+  expect(context.captureWatches.size).toBe(0);
+  expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(8);
+  expect(native.inventory).toHaveBeenCalledTimes(8);
+  context.handler(tabs[8]);
+  await waitFor(() =>
+    expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(9),
+  );
+});
+
+it("deduplicates a session while its captured draft flush is pending", async () => {
+  const context = fixture();
+  const flush = deferred<void>(undefined);
+  const flusher = vi.fn(() => flush.promise);
+  context.flusher(flusher);
+  context.close();
+  for (let index = 0; index < 16; index++) context.handler(context.tab);
+  expect(context.captureWatches.size).toBe(1);
+  expect(context.scopeWatches.size).toBe(2);
+  await waitFor(() => expect(flusher).toHaveBeenCalledOnce());
+  expect(native.inventory).not.toHaveBeenCalled();
+  expect(context.client.deleteEmptySession).not.toHaveBeenCalled();
+  flush.resolve();
+  await waitFor(() => expect(context.resync).toHaveBeenCalledOnce());
+  expect(context.client.deleteEmptySession).toHaveBeenCalledOnce();
+  expect(native.inventory).toHaveBeenCalledOnce();
+});
+
+it("retains aborted request admission until its promise settles and releases only that slot", async () => {
+  const context = fixture();
+  const responses = Array.from({ length: 9 }, () =>
+    deferred<DeleteEmptySessionOutcome>({ kind: "not_empty" }),
+  );
+  for (const response of responses)
+    context.client.deleteEmptySession.mockReturnValueOnce(response.promise);
+  context.store.getState().registerOnClose(null);
+  context.close();
+  const tabs = Array.from({ length: 10 }, (_, index) =>
+    createSessionTab({ id: `held-${index}` }),
+  );
+  for (const tab of tabs.slice(0, 8)) context.handler(tab);
+  await waitFor(() =>
+    expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(8),
+  );
+  context.capture("unknown");
+  context.capture("idle");
+  expect(context.captureWatches.size).toBe(0);
+  expect(context.scopeWatches.size).toBe(0);
+  for (const [, options] of context.client.deleteEmptySession.mock.calls)
+    expect(options!.signal!.aborted).toBe(true);
+  context.handler(tabs[8]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(native.inventory).toHaveBeenCalledTimes(8);
+  expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(8);
+  responses[0].resolve({ kind: "not_empty" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  context.handler(tabs[8]);
+  context.handler(tabs[9]);
+  await waitFor(() =>
+    expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(9),
+  );
+  expect(native.inventory).toHaveBeenCalledTimes(9);
+  for (const response of responses) response.resolve({ kind: "not_empty" });
+  await waitFor(() => expect(context.scopeWatches.size).toBe(0));
+  expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(9);
+  expect(context.resync).toHaveBeenCalledOnce();
+});
+
+it("deduplicates a reopened and reclosed session until its aborted request settles", async () => {
+  const context = fixture();
+  const response = deferred<DeleteEmptySessionOutcome>({ kind: "deleted" });
+  context.client.deleteEmptySession.mockReturnValueOnce(response.promise);
+  context.close();
+  await waitFor(() =>
+    expect(context.client.deleteEmptySession).toHaveBeenCalledOnce(),
+  );
+  context.store.getState().openNew(context.tab);
+  context.close();
+  context.handler(context.tab);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(context.client.deleteEmptySession).toHaveBeenCalledOnce();
+  expect(native.inventory).toHaveBeenCalledOnce();
+  expect(
+    context.client.deleteEmptySession.mock.calls[0][1]!.signal!.aborted,
+  ).toBe(true);
+  response.resolve({ kind: "deleted" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(context.resync).not.toHaveBeenCalled();
+  context.store.getState().openNew(context.tab);
+  context.close();
+  await waitFor(() => expect(context.resync).toHaveBeenCalledOnce());
+  expect(context.client.deleteEmptySession).toHaveBeenCalledTimes(2);
+  expect(native.inventory).toHaveBeenCalledTimes(2);
+});
+
 it.each<DeleteEmptySessionOutcome>([
   { kind: "deleted" },
   { kind: "not_empty" },
