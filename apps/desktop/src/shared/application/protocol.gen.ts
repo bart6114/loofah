@@ -34,6 +34,10 @@ export type CreateSessionRequest = { title: string; markdown: string }
 
 export type CreateVaultRequest = { name: string }
 
+export type DeleteEmptySessionOutcome = { kind: "deleted" } | { kind: "not_empty" } | { kind: "not_found" }
+
+export type DeleteEmptySessionRequest = { session_id: string }
+
 export type DeleteRecordingRequest = { expected_sha256: string }
 
 export type Document = { id: string; kind: string; template_id: string; title: string; markdown: string; sort_order: number; updated_at: string }

@@ -2973,3 +2973,11 @@ baseline native warnings and none in the new module. Evidence is in
 `device-vault-state-*` logs. The immutable scoped tabs/controller foundation is
 separately validated by its worker; production consumer wiring and atomic
 empty-session cleanup/draft-flush coordination remain to be integrated.
+
+The cleanup contract is staged as `DeleteEmptySessionRequest { session_id }` and
+tagged `Deleted`/`NotEmpty`/`NotFound` outcomes, using the existing UUID mutation
+envelope. Request fields cannot supply emptiness, force, revision or filesystem
+claims. This foundation does not yet advertise an endpoint/capability. The shared
+operation must recheck recovered canonical content under the deletion guard and
+use durable receipts so retries never delete a restored/recreated session. The
+client close handler must flush/check scoped unsent drafts before requesting it.

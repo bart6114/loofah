@@ -46,6 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<SessionPage>()
         .register::<SessionSummary>()
         .register::<SessionSummaryQuery>()
+        .register::<DeleteEmptySessionRequest>()
+        .register::<DeleteEmptySessionOutcome>()
         .register::<EnhancedDoc>()
         .register::<DocumentTarget>()
         .register::<DocumentSnapshot>()
