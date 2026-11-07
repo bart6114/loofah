@@ -3,6 +3,7 @@ import {
   deserializePinnedTabs,
   getPinnedTabIds,
   serializePinnedTabs,
+  type PinnedTab,
 } from "./pinned-persistence";
 import { getDefaultState, isSameTab, uniqueIdfromTab } from "./schema";
 import { createTabsStore } from "./store";
@@ -32,8 +33,11 @@ export class ScopedTabsController {
   private stopDevice: (() => void) | null = null;
   private pinAbort: AbortController | null = null;
   private readVersion = 0;
-  private pinsToSave: string | null = null;
+  private pinsToSave: { value: string; version: number } | null = null;
   private savingPins = false;
+  private pinnedBaseline: PinnedTab[] | null = null;
+  private readonly pendingPinChanges = new Map<string, PinnedTab | null>();
+  private confirmedPinnedVersion = 0;
 
   constructor(
     readonly scope: VaultScope,
@@ -70,16 +74,19 @@ export class ScopedTabsController {
         ) {
           ++this.pinnedVersion;
           this.pinAbort?.abort();
-          this.pinsToSave = serializePinnedTabs(next.tabs);
-          if (!this.savingPins) {
-            this.savingPins = true;
-            void this.enqueue(async () => {
-              const value = this.pinsToSave;
-              this.pinsToSave = null;
-              this.savingPins = false;
-              if (value !== null)
-                await this.deviceState.setPinnedTabs(this.store.scope, value);
-            }).catch(this.onError);
+          const beforeSet = new Set(before);
+          const afterSet = new Set(after);
+          for (const key of before)
+            if (!afterSet.has(key)) this.pendingPinChanges.set(key, null);
+          for (const pin of deserializePinnedTabs(
+            serializePinnedTabs(next.tabs),
+          )) {
+            const key = uniqueIdfromTab(getDefaultState(pin));
+            if (!beforeSet.has(key)) this.pendingPinChanges.set(key, pin);
+          }
+          if (this.pinnedBaseline) {
+            this.pinnedBaseline = this.mergePendingPins(this.pinnedBaseline);
+            this.savePins();
           }
         }
       }
@@ -90,6 +97,45 @@ export class ScopedTabsController {
     return (
       !this.disposed && !terminalStates.has(this.scope.getSnapshot().state)
     );
+  }
+
+  private mergePendingPins(baseline: PinnedTab[]) {
+    const pins = new Map(
+      baseline.map((pin) => [uniqueIdfromTab(getDefaultState(pin)), pin]),
+    );
+    for (const [key, pin] of this.pendingPinChanges) {
+      if (pin) pins.set(key, pin);
+      else pins.delete(key);
+    }
+    this.pendingPinChanges.clear();
+    return [...pins.values()];
+  }
+
+  private savePins() {
+    if (!this.pinnedBaseline) return;
+    this.pinsToSave = {
+      value: JSON.stringify(this.pinnedBaseline),
+      version: this.pinnedVersion,
+    };
+    if (this.savingPins) return;
+    this.savingPins = true;
+    void this.enqueue(async () => {
+      const saved = this.pinsToSave;
+      this.pinsToSave = null;
+      this.savingPins = false;
+      if (!saved) return;
+      if (
+        new TextEncoder().encode(saved.value).length > MAX_PINNED_BYTES ||
+        JSON.parse(saved.value).length > MAX_PINNED_TABS
+      )
+        throw new Error("Pinned tab state exceeds device storage limits");
+      await this.deviceState.setPinnedTabs(this.store.scope, saved.value);
+      if (this.active())
+        this.confirmedPinnedVersion = Math.max(
+          this.confirmedPinnedVersion,
+          saved.version,
+        );
+    }).catch(this.onError);
   }
 
   private enqueue<T>(operation: () => Promise<T>) {
@@ -154,13 +200,12 @@ export class ScopedTabsController {
   refresh() {
     if (this.refreshing) return this.refreshing;
     const readVersion = ++this.readVersion;
+    // Preserve the read's age while it waits behind native writes.
+    const recentVersion = this.recentVersion;
+    const pinnedVersion = this.pinnedVersion;
     this.pinAbort?.abort();
-    const abort = new AbortController();
-    this.pinAbort = abort;
     const read = this.enqueue(async () => {
       this.refreshing = null;
-      const recentVersion = this.recentVersion;
-      const pinnedVersion = this.pinnedVersion;
       const [recent, serialized] = await Promise.all([
         this.deviceState.recentSessions(this.store.scope),
         this.managePins
@@ -174,7 +219,31 @@ export class ScopedTabsController {
             recentlyOpenedSessionIds: [...new Set(recent)].slice(0, 10),
           }),
         );
-      return { serialized, pinnedVersion };
+      if (!this.managePins) return null;
+      const pins =
+        serialized &&
+        new TextEncoder().encode(serialized).length <= MAX_PINNED_BYTES
+          ? deserializePinnedTabs(serialized)
+              .filter(
+                (tab) =>
+                  tab.type !== "sessions" ||
+                  (typeof tab.id === "string" && tab.id.length > 0),
+              )
+              .slice(0, MAX_PINNED_TABS)
+          : [];
+      if (!this.pinnedBaseline) {
+        // A whole-list write must retain pins not yet shown by this host.
+        this.pinnedBaseline = this.mergePendingPins(pins);
+        if (this.pinnedVersion > 0) this.savePins();
+        return { pins: this.pinnedBaseline, pinnedVersion: this.pinnedVersion };
+      }
+      if (
+        pinnedVersion !== this.pinnedVersion ||
+        this.confirmedPinnedVersion !== this.pinnedVersion
+      )
+        return null;
+      this.pinnedBaseline = pins;
+      return { pins, pinnedVersion };
     });
     // Remote metadata must not hold the device persistence queue during a disconnect.
     const pending = read.then(async (snapshot) => {
@@ -184,17 +253,9 @@ export class ScopedTabsController {
         readVersion === this.readVersion &&
         snapshot.pinnedVersion === this.pinnedVersion;
       if (!current()) return;
-      const pins =
-        snapshot.serialized &&
-        new TextEncoder().encode(snapshot.serialized).length <= MAX_PINNED_BYTES
-          ? deserializePinnedTabs(snapshot.serialized)
-              .filter(
-                (tab) =>
-                  tab.type !== "sessions" ||
-                  (typeof tab.id === "string" && tab.id.length > 0),
-              )
-              .slice(0, MAX_PINNED_TABS)
-          : [];
+      const { pins } = snapshot;
+      const abort = new AbortController();
+      this.pinAbort = abort;
       const ids = [
         ...new Set(
           pins.flatMap((tab) => (tab.type === "sessions" ? [tab.id] : [])),
@@ -269,6 +330,8 @@ export class ScopedTabsController {
     this.stopStore = null;
     this.stopDevice = null;
     this.pinsToSave = null;
+    this.pinnedBaseline = null;
+    this.pendingPinChanges.clear();
     this.starting = null;
     this.refreshing = null;
     this.tail = Promise.resolve();

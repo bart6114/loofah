@@ -357,3 +357,105 @@ it("rechecks canonical pins after reconnecting without choosing a local vault", 
   ).toBe(true);
   expect(device.subscribe).toHaveBeenCalledOnce();
 });
+
+it.each(["local:queued-recents", "remote:queued-recents"])(
+  "does not admit a read queued before a newer recent mutation in %s",
+  async (id) => {
+    const { controller, store, device, emit, recents } = fixture(id);
+    await controller.start();
+    const first = deferred<string[]>(),
+      second = deferred<string[]>();
+    device.rememberSession
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    store.getState().openCurrent({ type: "sessions", id: "first" });
+    await waitFor(() => expect(device.rememberSession).toHaveBeenCalledOnce());
+    recents.set(id, ["first"]);
+    emit(id);
+    store.getState().openCurrent({ type: "sessions", id: "second" });
+    const observed: string[][] = [];
+    const stop = store.subscribe((next, previous) => {
+      if (next.recentlyOpenedSessionIds !== previous.recentlyOpenedSessionIds)
+        observed.push(next.recentlyOpenedSessionIds);
+    });
+    first.resolve(["first"]);
+    await waitFor(() =>
+      expect(device.rememberSession).toHaveBeenCalledTimes(2),
+    );
+    expect(store.getState().recentlyOpenedSessionIds).toEqual([
+      "second",
+      "first",
+    ]);
+    expect(observed.every((ids) => ids[0] === "second")).toBe(true);
+    second.resolve(["second", "first"]);
+    stop();
+  },
+);
+
+it.each(["local:queued-pins", "remote:queued-pins"])(
+  "does not resurrect pins from an event read queued before a newer unpin in %s",
+  async (id) => {
+    const { controller, store, device, emit, pins } = fixture(id);
+    await controller.start();
+    const first = deferred<void>(),
+      second = deferred<void>();
+    device.setPinnedTabs
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    store.getState().openCurrent({ type: "settings", state: { tab: "app" } });
+    store.getState().pin(store.getState().currentTab!);
+    await waitFor(() => expect(device.setPinnedTabs).toHaveBeenCalledOnce());
+    pins.set(id, device.setPinnedTabs.mock.calls[0][1]);
+    emit(id);
+    store.getState().unpin(store.getState().currentTab!);
+    const observed: boolean[] = [];
+    const stop = store.subscribe((next) => {
+      observed.push(next.tabs.some((tab) => tab.pinned));
+    });
+    first.resolve();
+    await waitFor(() => expect(device.setPinnedTabs).toHaveBeenCalledTimes(2));
+    expect(store.getState().tabs[0].pinned).toBe(false);
+    expect(observed).not.toContain(true);
+    expect(JSON.parse(device.setPinnedTabs.mock.calls[1][1])).toEqual([]);
+    pins.set(id, "[]");
+    second.resolve();
+    stop();
+  },
+);
+
+it.each(["local:bootstrap-pins", "remote:bootstrap-pins"])(
+  "merges early pin additions/removals with the unread device baseline in %s",
+  async (id) => {
+    const { controller, store, device } = fixture(id);
+    const baseline = deferred<string | null>();
+    device.pinnedTabs.mockReturnValueOnce(baseline.promise);
+    const starting = controller.start();
+    await waitFor(() => expect(device.pinnedTabs).toHaveBeenCalledOnce());
+    store.getState().openCurrent({ type: "settings", state: { tab: "app" } });
+    store.getState().pin(store.getState().currentTab!);
+    store.getState().unpin(store.getState().currentTab!);
+    store.getState().openNew({ type: "sessions", id: "new-pin" });
+    store.getState().pin(store.getState().currentTab!);
+    expect(device.setPinnedTabs).not.toHaveBeenCalled();
+    baseline.resolve(
+      JSON.stringify([
+        { type: "settings", state: { tab: "app" }, pinned: true },
+        { type: "sessions", id: "old-pin", pinned: true },
+      ]),
+    );
+    await starting;
+    await waitFor(() => expect(device.setPinnedTabs).toHaveBeenCalledOnce());
+    expect(JSON.parse(device.setPinnedTabs.mock.calls[0][1])).toMatchObject([
+      { id: "old-pin" },
+      { id: "new-pin" },
+    ]);
+    expect(
+      store
+        .getState()
+        .tabs.filter((tab) => tab.pinned)
+        .map((tab) => ("id" in tab ? tab.id : tab.type))
+        .sort(),
+    ).toEqual(["new-pin", "old-pin"]);
+    expect(store.getState().currentTab).toMatchObject({ id: "new-pin" });
+  },
+);
