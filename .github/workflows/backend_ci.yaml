@@ -32,6 +32,75 @@ jobs:
             exit 1
           fi
 
+  linux-cpu-stt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "2"
+      RUST_TEST_THREADS: "1"
+      LOOFAH_WHISPER_CPU: "1"
+      GGML_NATIVE: "OFF"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake clang autoconf automake libtool pkg-config
+      - uses: ./.github/actions/cli_native_setup
+        with:
+          target: x86_64-unknown-linux-gnu
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+          shared-key: linux-cpu-stt
+      - run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/loofah-cpu-stt"
+          stt_model_path="$RUNNER_TEMP/loofah-cpu-stt/ggml-base-q8_0.bin"
+          curl --proto '=https' --tlsv1.2 --location --fail --retry 5 \
+            https://hyprnote.s3.us-east-1.amazonaws.com/v0/ggerganov/whisper.cpp/main/ggml-base-q8_0.bin \
+            --output "$stt_model_path"
+          printf '%s  %s\n' \
+            c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9 \
+            "$stt_model_path" | tee "$RUNNER_TEMP/loofah-cpu-stt/model.sha256" | sha256sum --check --strict
+          printf 'LOOFAH_WHISPER_MODEL=%s\n' "$stt_model_path" >> "$GITHUB_ENV"
+      - run: |
+          set -euo pipefail
+          cargo tree --locked -p transcribe-whisper-local --edges normal --prefix none > "$RUNNER_TEMP/loofah-cpu-stt/dependencies.txt"
+          if grep -E '^(tauri[ -]|tauri-|wry |cpal |audio |audio-actual |audio-device |device-monitor |listener-core |transcription-core |host )' "$RUNNER_TEMP/loofah-cpu-stt/dependencies.txt"; then
+            echo 'Headless CPU inference acquired a desktop or device-capture dependency' >&2
+            exit 1
+          fi
+      - run: |
+          set -euo pipefail
+          cargo test --locked --release -p transcribe-whisper-local --lib -- --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/default.log"
+          stt_native_cache_found=false
+          for stt_native_cache in target/release/build/whisper-rs-sys-*/out/build/CMakeCache.txt; do
+            test -f "$stt_native_cache" || continue
+            stt_native_cache_found=true
+            printf '%s\n' "$stt_native_cache" >> "$RUNNER_TEMP/loofah-cpu-stt/native-config.txt"
+            grep -E '^GGML_NATIVE:' "$stt_native_cache" | tee -a "$RUNNER_TEMP/loofah-cpu-stt/native-config.txt"
+            grep -Eq '^GGML_NATIVE:[^=]+=OFF$' "$stt_native_cache"
+          done
+          test "$stt_native_cache_found" = true
+      - run: |
+          set -euo pipefail
+          cargo test --locked --release -p transcribe-whisper-local --lib service::recorded::tests -- --ignored --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/kernel-cpu.log"
+      - run: |
+          set -euo pipefail
+          cargo test --locked --release -p transcribe-whisper-local --test inference -- --ignored --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/loofah-cpu-stt/http-live-cpu.log"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cpu-stt
+          path: |
+            ${{ runner.temp }}/loofah-cpu-stt/*.log
+            ${{ runner.temp }}/loofah-cpu-stt/*.txt
+            ${{ runner.temp }}/loofah-cpu-stt/*.sha256
+          if-no-files-found: ignore
+          retention-days: 7
+
   container:
     runs-on: ubuntu-24.04
     steps:
