@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./app-link": "./src/app-link/index.ts",
+    "./attachment-presentation": "./src/node-views/attachment-presentation.ts",
     "./markdown": "./src/markdown.ts",
     "./node-views": "./src/node-views/index.ts",
     "./note": "./src/note/index.tsx",

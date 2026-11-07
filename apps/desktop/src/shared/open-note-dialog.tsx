@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
 import { FileTextIcon, SearchIcon, XIcon } from "lucide-react";
 import {
@@ -18,6 +18,7 @@ import { useSearchEngine } from "~/search/contexts/engine";
 import type { SearchSnippet } from "~/search/contexts/engine";
 import { snippetSegments } from "~/search/snippet";
 import { useSessionSummaries } from "~/session/queries";
+import type { VaultScope } from "~/shared/application/vault-scope";
 import { useMainContentCenterOffset } from "~/shared/main/content-offset";
 import { useTabs } from "~/store/zustand/tabs";
 
@@ -117,34 +118,62 @@ function SnippetLine({ snippet }: { snippet: SearchSnippet }) {
   );
 }
 
-export function OpenNoteDialog({
+export function OpenNoteDialog(props: OpenNoteDialogProps) {
+  const { scope } = useSearchEngine();
+  if (
+    !scope ||
+    !["connected", "reconnecting"].includes(scope.getSnapshot().state)
+  )
+    return null;
+  return (
+    <ScopedOpenNoteDialog key={scope.client.scope} scope={scope} {...props} />
+  );
+}
+
+function ScopedOpenNoteDialog({
+  scope,
   open,
   onOpenChange,
   mainContentCenterOffset = 0,
-}: OpenNoteDialogProps) {
+}: OpenNoteDialogProps & { scope: VaultScope }) {
   const { t } = useLingui();
   const [query, setQuery] = useState("");
   const openCurrent = useTabs((state) => state.openCurrent);
   const recentlyOpenedSessionIds = useTabs(
     (state) => state.recentlyOpenedSessionIds,
   );
-  const { search } = useSearchEngine();
+  const { search, ready } = useSearchEngine();
 
   const sessions = useSessionSummaries(open);
 
   const trimmedQuery = query.trim();
 
-  const { data: contentHits } = useQuery({
-    queryKey: ["open-note-dialog-search", trimmedQuery, search],
-    queryFn: () =>
-      search(trimmedQuery, null, {
-        limit: SEARCH_LIMIT,
-        snippets: true,
-        snippetMaxChars: SNIPPET_MAX_CHARS,
-      }),
-    enabled: open && trimmedQuery.length > 0,
-    placeholderData: keepPreviousData,
-  });
+  const { data: contentHits } = useQuery(
+    {
+      queryKey: [
+        "vault",
+        scope.client.scope,
+        "search",
+        "open-note-dialog",
+        trimmedQuery,
+      ],
+      queryFn: ({ signal }) =>
+        search(
+          trimmedQuery,
+          null,
+          {
+            limit: SEARCH_LIMIT,
+            snippets: true,
+            snippetMaxChars: SNIPPET_MAX_CHARS,
+          },
+          signal,
+        ),
+      enabled: open && ready && trimmedQuery.length > 0,
+      placeholderData: (previous, query) =>
+        query?.queryKey[1] === scope.client.scope ? previous : undefined,
+    },
+    scope.queryClient,
+  );
 
   const sessionsMap = useMemo(() => {
     return new Map<string, NoteResult>(

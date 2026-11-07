@@ -79,7 +79,21 @@ impl SessionStore {
         session_id: &str,
         source_path: &str,
     ) -> Result<String, StoreError> {
+        let store = self.clone();
+        let id = session_id.to_owned();
+        let source = source_path.to_owned();
+        tokio::spawn(async move { store.store_audio_owned(&id, &source).await })
+            .await
+            .map_err(|e| StoreError::Io(format!("audio store worker failed: {e}")))?
+    }
+
+    async fn store_audio_owned(
+        &self,
+        session_id: &str,
+        source_path: &str,
+    ) -> Result<String, StoreError> {
         validate_session_id(session_id)?;
+        let _audio = self.lock_session_audio(session_id).await?;
         let guard = self.lock_writes().await;
         let resolved_dir_abs = self
             .vault_base
@@ -106,7 +120,7 @@ impl SessionStore {
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
         if result.is_ok() {
-            self.notify_artifacts_changed(session_id);
+            self.notify_recording_changed(session_id);
         }
         result
     }
@@ -155,7 +169,18 @@ impl SessionStore {
     /// Permanently deletes one legacy recording at the user's request.
     /// Unlike `delete_session`, this is not undo-able. Missing file is a no-op.
     pub async fn delete_audio(&self, session_id: &str, filename: &str) -> Result<(), StoreError> {
+        let store = self.clone();
+        let id = session_id.to_owned();
+        let filename = filename.to_owned();
+        tokio::spawn(async move { store.delete_audio_owned(&id, &filename).await })
+            .await
+            .map_err(|e| StoreError::Io(format!("audio deletion worker failed: {e}")))?
+    }
+
+    async fn delete_audio_owned(&self, session_id: &str, filename: &str) -> Result<(), StoreError> {
         validate_session_id(session_id)?;
+        let _audio = self.lock_session_audio(session_id).await?;
+        let _guard = self.lock_writes().await;
         let session_dir = self.session_dir(session_id).await?;
         let vault_base = self.vault_base.clone();
         let filename = filename.to_string();
@@ -186,7 +211,7 @@ impl SessionStore {
         .await
         .map_err(|e| StoreError::Io(format!("task join error: {}", e)))?;
         if result.is_ok() {
-            self.notify_artifacts_changed(session_id);
+            self.notify_recording_changed(session_id);
         }
         result
     }

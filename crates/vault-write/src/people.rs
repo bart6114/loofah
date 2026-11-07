@@ -5,17 +5,12 @@ use super::{SessionStore, StoreError, paths};
 /// One person, file-canonical in the vault-root `people.json`. The id doubles as the
 /// value speaker hints store, so it is generated human-readable (`bob_peters`) — a
 /// transcript keeps degrading gracefully if `people.json` disappears.
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct PersonItem {
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-}
+pub use hypr_vault_read::PersonItem;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct PeopleFile {
+pub(super) struct PeopleFile {
     #[serde(default)]
-    people: Vec<PersonItem>,
+    pub(super) people: Vec<PersonItem>,
 }
 
 fn person_id_slug(name: &str) -> String {

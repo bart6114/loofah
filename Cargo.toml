@@ -12,6 +12,7 @@ resolver = "2"
 members = [
   "apps/cli",
   "apps/desktop/src-tauri",
+  "apps/server",
   "crates/*",
   "plugins/*",
 ]
@@ -59,6 +60,9 @@ hypr-listener-core = { path = "crates/listener-core", package = "listener-core" 
 hypr-listener2-core = { path = "crates/listener2-core", package = "listener2-core" }
 hypr-local-model = { path = "crates/local-model", package = "local-model" }
 hypr-local-stt-core = { path = "crates/local-stt-core", package = "local-stt-core" }
+hypr-loofah-client = { path = "crates/loofah-client", package = "loofah-client" }
+hypr-loofah-core = { path = "crates/loofah-core", package = "loofah-core" }
+hypr-loofah-protocol = { path = "crates/loofah-protocol", package = "loofah-protocol" }
 hypr-model-downloader = { path = "crates/model-downloader", package = "model-downloader" }
 hypr-model-manager = { path = "crates/model-manager", package = "model-manager" }
 hypr-mp3 = { path = "crates/mp3", package = "mp3" }
@@ -173,8 +177,10 @@ http = "1"
 indoc = "2"
 isolang = "2.4"
 lazy_static = "1.5.0"
+mime_guess = "2.0.5"
 open = "5"
 regex = "1.12"
+same-file = "1.0.6"
 schemars = "1"
 serde = "1"
 serde_bytes = "0.11.15"

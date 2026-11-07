@@ -44,6 +44,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/pnpm_install
       - run: pnpm -F ui build
+      - run: pnpm -F @hypr/editor typecheck
+      - run: pnpm -F @hypr/editor test
       - run: pnpm -F desktop typecheck
       - run: pnpm -F desktop test
       - run: pnpm -F desktop i18n:check

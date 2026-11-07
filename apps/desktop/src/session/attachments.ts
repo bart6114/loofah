@@ -1,5 +1,3 @@
-import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
-
 import { enqueueSessionAudioOperation } from "./audio-operations";
 
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
@@ -22,6 +20,7 @@ export async function catalogLocalSessionAudio(
 export async function deleteSessionAudio(
   inputSessionId: string,
   canDelete: () => boolean,
+  remove: () => Promise<void>,
 ): Promise<boolean> {
   const sessionId = requireText(inputSessionId, "session ID", 512);
   return enqueueSessionAudioOperation(sessionId, () =>
@@ -29,27 +28,10 @@ export async function deleteSessionAudio(
       if (!canDelete()) {
         return false;
       }
-      await deleteSessionAudioFile(sessionId);
+      await remove();
       return true;
     }),
   );
-}
-
-async function deleteSessionAudioFile(sessionId: string): Promise<void> {
-  const flatResult = await fsSyncCommands.audioDelete(sessionId);
-  if (flatResult.status === "error") {
-    throw new Error(flatResult.error);
-  }
-  const listResult = await commands.sessionListAudio(sessionId);
-  if (listResult.status === "error") {
-    throw new Error(listResult.error);
-  }
-  for (const filename of listResult.data) {
-    const deleteResult = await commands.sessionDeleteAudio(sessionId, filename);
-    if (deleteResult.status === "error") {
-      throw new Error(deleteResult.error);
-    }
-  }
 }
 
 function requireText(

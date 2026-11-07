@@ -11,7 +11,7 @@ By default, run only the groups relevant to the changed files from the repositor
 bash .agents/skills/run-tests/scripts/run.sh fmt frontend
 ```
 
-Available groups are `fmt`, `lint`, `frontend`, `rust`, `cli`, and `workflows`; pass one or more. Choose them from the scope of the change rather than running every group automatically. Always include `fmt` after edits, then add the affected area. For cross-cutting Cargo or workspace changes, include every affected Rust group.
+Available groups are `fmt`, `lint`, `frontend`, `rust`, `cli`, and `workflows`; pass one or more. The `frontend` group includes shared editor typechecking/tests as well as the desktop frontend and locale checks. Choose them from the scope of the change rather than running every group automatically. Always include `fmt` after edits, then add the affected area. For cross-cutting Cargo or workspace changes, include every affected Rust group.
 
 Commit, push, and open the pull request after the relevant local checks pass. The full GitHub Actions result is the merge gate; do not duplicate it locally merely because a branch is ready to push or a pull request is being opened.
 

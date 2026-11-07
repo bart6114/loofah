@@ -69,7 +69,7 @@ fn is_legacy_meeting_command(argv: &[OsString]) -> bool {
             iter.next();
             continue;
         }
-        if arg == OsStr::new("--vault-path") {
+        if arg == OsStr::new("--vault-path") || arg == OsStr::new("--profile") {
             iter.next();
             continue;
         }
@@ -77,7 +77,10 @@ fn is_legacy_meeting_command(argv: &[OsString]) -> bool {
             continue;
         }
         if let Some(arg) = arg.to_str() {
-            if arg.starts_with("--base=") || arg.starts_with("--vault-path=") {
+            if arg.starts_with("--base=")
+                || arg.starts_with("--vault-path=")
+                || arg.starts_with("--profile=")
+            {
                 continue;
             }
             if arg.starts_with('-') {
@@ -113,6 +116,26 @@ mod tests {
             "--base=/tmp/vault",
             "meetings",
             "list",
+        ])));
+        assert!(is_legacy_meeting_command(&argv(&[
+            "loof",
+            "--profile",
+            "company",
+            "meetings",
+            "list"
+        ])));
+        assert!(is_legacy_meeting_command(&argv(&[
+            "loof",
+            "--profile=company",
+            "meetings",
+            "list"
+        ])));
+        assert!(!is_legacy_meeting_command(&argv(&[
+            "loof",
+            "--profile",
+            "meetings",
+            "sessions",
+            "list"
         ])));
         assert!(!is_legacy_meeting_command(&argv(&[
             "loof", "sessions", "list",

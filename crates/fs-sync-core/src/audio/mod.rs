@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -6,7 +5,8 @@ use std::time::UNIX_EPOCH;
 use crate::error::AudioImportError;
 use crate::runtime::{AudioImportEvent, AudioImportRuntime};
 use chrono::{DateTime, Utc};
-use sha2::{Digest, Sha256};
+
+pub use hypr_vault_read::media::{AudioPeaks, FileMetadata};
 
 const AUDIO_FORMATS: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
 const AUDIO_ARTIFACTS: [&str; 9] = [
@@ -39,26 +39,6 @@ pub struct AudioSourceMetadata {
     pub duration_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioFileMetadata {
-    pub filename: String,
-    pub content_type: String,
-    pub size_bytes: u64,
-    pub sha256: String,
-}
-
-/// Per-channel waveform peaks precomputed for the audio player. Rendering from these skips
-/// pulling the whole recording into the webview and decoding it there (seconds for an
-/// hour-long file) -- WaveSurfer accepts pre-decoded peaks plus a duration and renders
-/// immediately, while playback itself still streams through the media element.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioPeaks {
-    pub duration_sec: f64,
-    pub channels: Vec<Vec<f32>>,
-}
-
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PeaksCacheFile {
@@ -89,7 +69,7 @@ pub fn path(session_dir: &Path) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>> {
+pub fn metadata(session_dir: &Path) -> std::io::Result<Option<FileMetadata>> {
     let Some(path) = path(session_dir) else {
         return Ok(None);
     };
@@ -97,43 +77,26 @@ pub fn metadata(session_dir: &Path) -> std::io::Result<Option<AudioFileMetadata>
         return Ok(None);
     };
 
-    let content_type = match filename {
-        "audio.mp3" => "audio/mpeg",
-        "audio.wav" => "audio/wav",
-        "audio.ogg" => "audio/ogg",
-        _ => return Ok(None),
-    };
+    metadata_from_reader(filename, std::fs::File::open(&path)?)
+}
 
-    let mut file = std::fs::File::open(&path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut size_bytes = 0_u64;
-
-    loop {
-        let bytes_read = file.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-        size_bytes = size_bytes
-            .checked_add(bytes_read as u64)
-            .ok_or_else(|| std::io::Error::other("audio_file_too_large"))?;
+pub fn content_type(filename: &str) -> Option<&'static str> {
+    match filename {
+        "audio.mp3" => Some("audio/mpeg"),
+        "audio.wav" => Some("audio/wav"),
+        "audio.ogg" => Some("audio/ogg"),
+        _ => None,
     }
+}
 
-    let sha256 = hasher
-        .finalize()
-        .iter()
-        .fold(String::with_capacity(64), |mut output, byte| {
-            write!(&mut output, "{byte:02x}").unwrap();
-            output
-        });
-
-    Ok(Some(AudioFileMetadata {
-        filename: filename.to_string(),
-        content_type: content_type.to_string(),
-        size_bytes,
-        sha256,
-    }))
+pub fn metadata_from_reader(
+    filename: &str,
+    reader: impl Read,
+) -> std::io::Result<Option<FileMetadata>> {
+    let Some(content_type) = content_type(filename) else {
+        return Ok(None);
+    };
+    crate::media::metadata_from_reader(filename, content_type, reader).map(Some)
 }
 
 /// Returns waveform peaks for the session's recording, computing and caching them on first
@@ -183,6 +146,29 @@ pub fn peaks(session_dir: &Path) -> std::io::Result<Option<AudioPeaks>> {
     Ok(Some(peaks))
 }
 
+/// Computes the existing waveform from a pinned input without publishing a path-based cache.
+/// The caller owns generation validation and admission for potentially long decoding work.
+pub fn peaks_from_reader<R>(reader: R, byte_len: u64) -> Option<AudioPeaks>
+where
+    R: Read + std::io::Seek + Send + Sync + 'static,
+{
+    compute_peaks(hypr_audio_utils::source_from_reader(reader, byte_len).ok()?)
+}
+
+pub fn peaks_from_reader_with_control<R, E>(
+    reader: R,
+    byte_len: u64,
+    control: impl FnMut(u64, u32, u16) -> Result<(), E>,
+) -> Result<Option<AudioPeaks>, E>
+where
+    R: Read + std::io::Seek + Send + Sync + 'static,
+{
+    match hypr_audio_utils::source_from_reader(reader, byte_len) {
+        Ok(source) => compute_peaks_with_control(source, control),
+        Err(_) => Ok(None),
+    }
+}
+
 fn read_peaks_cache(
     cache_path: &Path,
     source_size_bytes: u64,
@@ -200,8 +186,16 @@ fn read_peaks_cache(
 }
 
 fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
+    compute_peaks_with_control(source, |_, _, _| Ok::<_, std::convert::Infallible>(())).unwrap()
+}
+
+fn compute_peaks_with_control<S: hypr_audio_utils::Source, E>(
+    source: S,
+    mut control: impl FnMut(u64, u32, u16) -> Result<(), E>,
+) -> Result<Option<AudioPeaks>, E> {
     let sample_rate = u32::from(source.sample_rate()) as usize;
     let channel_count = usize::from(u16::from(source.channels()));
+    control(0, sample_rate as u32, channel_count as u16)?;
     let window_frames = (sample_rate / PEAK_WINDOWS_PER_SECOND).max(1);
 
     let mut windows: Vec<Vec<f32>> = vec![Vec::new(); channel_count];
@@ -211,6 +205,9 @@ fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
     let mut total_frames = 0u64;
 
     for sample in source {
+        if total_frames.is_multiple_of(4096) && channel_index == 0 {
+            control(total_frames, sample_rate as u32, channel_count as u16)?;
+        }
         let peak = &mut current[channel_index];
         *peak = peak.max(sample.abs());
 
@@ -236,16 +233,16 @@ fn compute_peaks<S: hypr_audio_utils::Source>(source: S) -> Option<AudioPeaks> {
     }
 
     if total_frames == 0 {
-        return None;
+        return Ok(None);
     }
-
-    Some(AudioPeaks {
+    control(total_frames, sample_rate as u32, channel_count as u16)?;
+    Ok(Some(AudioPeaks {
         duration_sec: total_frames as f64 / sample_rate as f64,
         channels: windows
             .iter()
             .map(|channel| downsample_max(channel, MAX_PEAK_BUCKETS))
             .collect(),
-    })
+    }))
 }
 
 fn downsample_max(windows: &[f32], buckets: usize) -> Vec<f32> {
@@ -432,7 +429,7 @@ mod tests {
 
         assert_eq!(
             metadata,
-            AudioFileMetadata {
+            FileMetadata {
                 filename: "audio.mp3".to_string(),
                 content_type: "audio/mpeg".to_string(),
                 size_bytes: 3,
@@ -550,6 +547,59 @@ mod tests {
         std::fs::write(&audio_path, &audio_bytes).unwrap();
         let recomputed = peaks(session_dir).unwrap().unwrap();
         assert_eq!(recomputed.duration_sec, computed.duration_sec);
+    }
+
+    #[test]
+    fn pinned_waveform_readers_preserve_the_existing_wav_mp3_and_ogg_results() {
+        for path in [
+            hypr_data::english_1::AUDIO_PATH,
+            hypr_data::english_1::AUDIO_MP3_PATH,
+            hypr_data::english_1::AUDIO_OGG_PATH,
+            hypr_data::english_10::AUDIO_MP3_PATH,
+        ] {
+            let expected =
+                compute_peaks(hypr_audio_utils::source_from_path(path).unwrap()).unwrap();
+            let bytes = std::fs::read(path).unwrap();
+            let len = bytes.len() as u64;
+            let actual = peaks_from_reader(std::io::Cursor::new(bytes), len).unwrap();
+            assert_eq!(actual, expected, "{path}");
+            let checked = peaks_from_reader_with_control(
+                std::fs::File::open(path).unwrap(),
+                len,
+                |_, _, _| Ok::<_, std::convert::Infallible>(()),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(checked, expected, "{path}");
+        }
+        assert!(
+            peaks_from_reader(std::io::Cursor::new(b"Not an audio recording".to_vec()), 22)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn controlled_waveform_decoding_stops_at_an_admitted_progress_boundary() {
+        let path = hypr_data::english_1::AUDIO_PATH;
+        let file = std::fs::File::open(path).unwrap();
+        let len = file.metadata().unwrap().len();
+        let mut calls = Vec::new();
+        let result = peaks_from_reader_with_control(file, len, |frames, rate, channels| {
+            calls.push((frames, rate, channels));
+            if frames >= 4096 {
+                Err("cancelled")
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Err("cancelled"));
+        assert_eq!(calls.first().unwrap().0, 0);
+        assert_eq!(calls.last().unwrap().0, 4096);
+        assert!(
+            calls
+                .iter()
+                .all(|(_, rate, channels)| *rate > 0 && *channels > 0)
+        );
     }
 
     macro_rules! test_import_audio {

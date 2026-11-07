@@ -1,5 +1,6 @@
+import { getApplicationClient } from "~/shared/application/client";
 import { useIndexQuery } from "~/shared/index-query";
-import { commands, type Result } from "~/types/tauri.gen";
+import { type Result } from "~/types/tauri.gen";
 
 export type Tag = {
   id: string;
@@ -16,7 +17,7 @@ function unwrap<T>(result: Result<T, string>): T {
 }
 
 export async function listTags(): Promise<Tag[]> {
-  const items = unwrap(await commands.tagsList());
+  const items = unwrap(await getApplicationClient().store.tagsList());
   return items.map((item) => ({ id: item.id, name: item.name ?? item.id }));
 }
 
@@ -31,7 +32,7 @@ export function useTags(): Tag[] {
 }
 
 export async function ensureTag(name: string): Promise<Tag> {
-  const item = unwrap(await commands.tagsEnsure(name));
+  const item = unwrap(await getApplicationClient().store.tagsEnsure(name));
   return { id: item.id, name: item.name ?? item.id };
 }
 
@@ -43,7 +44,7 @@ export function useInUseTags(): string[] {
     entity: "session_headers",
     queryKey: ["in-use-tags"],
     queryFn: async () => {
-      const result = await commands.sessionListHeaders();
+      const result = await getApplicationClient().store.sessionListHeaders();
       if (result.status === "error") {
         throw new Error(result.error);
       }

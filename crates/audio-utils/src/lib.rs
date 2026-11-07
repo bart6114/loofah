@@ -195,6 +195,20 @@ pub fn source_from_path(
     Ok(decoder)
 }
 
+pub fn source_from_reader<R>(
+    reader: R,
+    byte_len: u64,
+) -> Result<rodio::Decoder<std::io::BufReader<R>>, crate::Error>
+where
+    R: std::io::Read + std::io::Seek + Send + Sync + 'static,
+{
+    Ok(rodio::Decoder::builder()
+        .with_data(std::io::BufReader::new(reader))
+        .with_byte_len(byte_len)
+        .with_seekable(true)
+        .build()?)
+}
+
 fn metadata_from_source<S>(source: &S) -> Result<AudioMetadata, crate::Error>
 where
     S: Source,

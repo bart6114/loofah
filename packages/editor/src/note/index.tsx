@@ -39,6 +39,9 @@ import { cn } from "@hypr/utils";
 import { EditorErrorBoundary } from "../editor-error-boundary";
 import {
   type AttachmentResolver,
+  type AttachmentPresentation,
+  AttachmentPresentationContext,
+  useAttachmentPresentation,
   AttachmentEditingContext,
   AttachmentResolverContext,
   FileAttachmentView,
@@ -48,6 +51,11 @@ import {
   TaskItemView,
   withNodeViewErrorBoundary,
 } from "../node-views";
+import {
+  MentionNavigationContext,
+  useMentionNavigation,
+  type MentionNavigation,
+} from "../node-views/mention-navigation";
 import {
   autolinkPlugin,
   type FileHandlerConfig,
@@ -140,6 +148,8 @@ export {
   setCommentAnchors,
 } from "../plugins/comment-anchors";
 export { useLinkedItemOpenBehavior };
+export type { MentionNavigation };
+export { useMentionNavigation };
 
 export interface JSONContent {
   type?: string;
@@ -203,7 +213,9 @@ export interface NoteEditorProps {
   initialDraft?: JSONContent | (() => JSONContent | undefined);
   confirmedDraft?: () => JSONContent;
   resolveAttachment?: AttachmentResolver;
+  attachmentPresentation?: AttachmentPresentation;
   mentionConfig?: MentionConfig;
+  onMentionNavigate?: MentionNavigation;
   placeholderComponent?: PlaceholderFunction;
   fileHandlerConfig?: FileHandlerConfig;
   onNavigateToTitle?: (pixelWidth?: number) => void;
@@ -606,7 +618,9 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
       initialDraft,
       confirmedDraft,
       resolveAttachment,
+      attachmentPresentation,
       mentionConfig,
+      onMentionNavigate,
       placeholderComponent,
       fileHandlerConfig,
       onNavigateToTitle,
@@ -630,6 +644,8 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
     const commentAnchorsEventRef = useRef(onCommentAnchorsEvent);
     commentAnchorsEventRef.current = onCommentAnchorsEvent;
 
+    const inheritedAttachmentPresentation = useAttachmentPresentation();
+    const inheritedMentionNavigation = useMentionNavigation();
     const taskStorage = useTaskStorageOptional();
     const reconciledInitialContent = useMemo(() => {
       if (!initialContent) {
@@ -1029,44 +1045,54 @@ const NoteEditorContent = forwardRef<NoteEditorRef, NoteEditorProps>(
     return (
       <TaskSourceProvider source={taskSource ?? null}>
         <AttachmentEditingContext.Provider value={!readOnly}>
-          <AttachmentResolverContext.Provider value={resolveAttachment ?? null}>
-            <LinkedItemOpenBehaviorContext.Provider
-              value={linkedItemOpenBehavior}
+          <AttachmentPresentationContext.Provider
+            value={attachmentPresentation ?? inheritedAttachmentPresentation}
+          >
+            <AttachmentResolverContext.Provider
+              value={resolveAttachment ?? null}
             >
-              <ProseMirror
-                state={editorState}
-                dispatchTransaction={dispatchTransaction}
-                nodeViewComponents={nodeViews}
-                editable={() => !readOnly}
-                attributes={{
-                  spellCheck: "false",
-                  autoComplete: "off",
-                  autoCorrect: "off",
-                  autoCapitalize: "off",
-                  role: readOnly ? "document" : "textbox",
-                  "aria-readonly": readOnly ? "true" : "false",
-                  class: cn([
-                    "prosemirror-editor",
-                    enforceTitleHeading && "note-title-editor",
-                    className,
-                  ]),
-                }}
+              <MentionNavigationContext.Provider
+                value={onMentionNavigate ?? inheritedMentionNavigation}
               >
-                <ProseMirrorDoc />
-                <ViewCapture
-                  viewRef={viewRef}
-                  onViewReady={onViewReady}
-                  onViewDisposed={handleViewDisposed}
-                />
-                <EditorCommandsBridge commandsRef={commandsRef} />
-                {showFormatToolbar && !readOnly && <FormatToolbar />}
-                {showSlashCommand && !readOnly && <SlashCommandMenu />}
-                {mentionConfig && !readOnly && (
-                  <MentionSuggestion config={mentionConfig} />
-                )}
-              </ProseMirror>
-            </LinkedItemOpenBehaviorContext.Provider>
-          </AttachmentResolverContext.Provider>
+                <LinkedItemOpenBehaviorContext.Provider
+                  value={linkedItemOpenBehavior}
+                >
+                  <ProseMirror
+                    state={editorState}
+                    dispatchTransaction={dispatchTransaction}
+                    nodeViewComponents={nodeViews}
+                    editable={() => !readOnly}
+                    attributes={{
+                      spellCheck: "false",
+                      autoComplete: "off",
+                      autoCorrect: "off",
+                      autoCapitalize: "off",
+                      role: readOnly ? "document" : "textbox",
+                      "aria-readonly": readOnly ? "true" : "false",
+                      class: cn([
+                        "prosemirror-editor",
+                        enforceTitleHeading && "note-title-editor",
+                        className,
+                      ]),
+                    }}
+                  >
+                    <ProseMirrorDoc />
+                    <ViewCapture
+                      viewRef={viewRef}
+                      onViewReady={onViewReady}
+                      onViewDisposed={handleViewDisposed}
+                    />
+                    <EditorCommandsBridge commandsRef={commandsRef} />
+                    {showFormatToolbar && !readOnly && <FormatToolbar />}
+                    {showSlashCommand && !readOnly && <SlashCommandMenu />}
+                    {mentionConfig && !readOnly && (
+                      <MentionSuggestion config={mentionConfig} />
+                    )}
+                  </ProseMirror>
+                </LinkedItemOpenBehaviorContext.Provider>
+              </MentionNavigationContext.Provider>
+            </AttachmentResolverContext.Provider>
+          </AttachmentPresentationContext.Provider>
         </AttachmentEditingContext.Provider>
       </TaskSourceProvider>
     );

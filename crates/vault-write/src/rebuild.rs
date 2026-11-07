@@ -836,7 +836,7 @@ mod tests {
             .expect("receiver taken once per drain");
         let mut changes = Vec::new();
         while let Ok(change) = rx.try_recv() {
-            changes.push(change);
+            changes.push((change.entity, change.ids));
         }
         *store.index_changes_rx.lock().unwrap() = Some(rx);
         changes

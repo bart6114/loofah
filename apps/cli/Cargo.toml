@@ -10,16 +10,22 @@ path = "src/main.rs"
 [build-dependencies]
 serde_json = { workspace = true }
 
+[features]
+dev-fixtures = ["hypr-loofah-client/dev-fixtures"]
+
 [dependencies]
 hypr-agent-access = { workspace = true }
 hypr-export-core = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-listener2-core = { workspace = true }
+hypr-loofah-client = { workspace = true, features = ["os-credentials"] }
+hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-transcribe-soniqo = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
 
+open = { workspace = true }
 owhisper-interface = { workspace = true }
 
 chrono = { workspace = true }
@@ -31,6 +37,7 @@ serde_json = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread"] }
+tokio-util = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 

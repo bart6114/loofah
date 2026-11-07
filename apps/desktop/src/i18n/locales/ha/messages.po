@@ -13,14 +13,13 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachmentToDelete.attachmentId
 #: src/session/components/note-input/attachments.tsx
 msgid "“{0}” moved to Trash"
 msgstr ""
 
-#. placeholder {0}: attachmentToDelete.attachmentId
-#: src/session/components/note-input/attachments.tsx
-msgid "“{0}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working."
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "“{attachmentId}” will be moved to the vault Trash. Links to this file in notes or summaries may stop working."
 msgstr ""
 
 #: src/settings/general/notification.tsx
@@ -95,6 +94,10 @@ msgstr ""
 msgid "A duplicate; the original stays where it is."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "A processing capacity or size limit was reached."
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "About Loofah"
 msgstr ""
@@ -103,8 +106,21 @@ msgstr ""
 msgid "Accept suggested tag {name}"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Access changed before the summary finished."
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Access to this vault changed. Close this panel and reload your vaults."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Actions"
+msgstr ""
+
+#. placeholder {0}: file.filename
+#: src/shared/application/vault-attachments-pane.tsx
+msgid "Actions for {0}"
 msgstr ""
 
 #: src/settings/general/language-settings.tsx
@@ -112,6 +128,7 @@ msgid "Add a meeting language to help transcription choose the right words."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Add attachments"
 msgstr ""
 
@@ -123,9 +140,17 @@ msgstr ""
 msgid "Add language"
 msgstr "Ƙara harshe"
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Add member"
+msgstr ""
+
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Ƙara yaren magana"
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Add summary"
+msgstr ""
 
 #: src/settings/ai/shared/index.tsx
 #: src/sidebar/settings.tsx
@@ -174,16 +199,32 @@ msgstr "App"
 msgid "Appearance"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Apply high-confidence tag suggestions"
+msgstr ""
+
 #: src/task/resource-view.tsx
 msgid "Assignees:"
+msgstr ""
+
+#: src/shared/application/remove-attachment-dialog.tsx
+#: src/shared/application/vault-attachment-provider.tsx
+#: src/shared/application/vault-attachments-pane.tsx
+msgid "Attachment access is unavailable. Reconnect or sign in again."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Attachment added"
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Attachment not found."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/header.tsx
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Attachments"
 msgstr ""
 
@@ -199,6 +240,7 @@ msgstr ""
 msgid "Automatically attach tags when the summary model's confidence is above 85%. Other tags stay as suggestions. Turn this off to accept or dismiss every suggestion manually. Applies to future summaries."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
 #: src/sidebar/custom-sidebar-header.tsx
 msgid "Back"
 msgstr ""
@@ -227,16 +269,32 @@ msgstr ""
 msgid "Can transcribe while the meeting is happening."
 msgstr ""
 
-#: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 #: src/settings/ai/llm/chatgpt.tsx
 #: src/settings/ai/llm/summary-prompt.tsx
 #: src/settings/general/storage/change-location.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Cancel"
 msgstr ""
 
 #: src/session/components/session-date.tsx
 msgid "Cancel date edit"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Cancel sign-in"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Cancel summary"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Cancelled"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Cancelling"
 msgstr ""
 
 #: src/onboarding/folder-location.tsx
@@ -268,6 +326,10 @@ msgstr ""
 msgid "Check this connection's sign-in, API key, or local AI app, then try again."
 msgstr ""
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Checking attachment…"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Checking connection…"
 msgstr ""
@@ -288,6 +350,10 @@ msgstr ""
 msgid "Choose a file format and what to include."
 msgstr ""
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Choose a member"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 #: src/settings/ai/stt/select.tsx
 msgid "Choose a model"
@@ -299,6 +365,10 @@ msgstr ""
 
 #: src/settings/general/theme.tsx
 msgid "Choose a style for your workspace. Default follows your appearance setting."
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Choose a vault"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
@@ -328,16 +398,23 @@ msgid "Choose the languages you expect to hear. Summary language is set separate
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Choosing…"
 msgstr ""
 
 #: src/main/audio-import-dialog.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Clear"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Clear unsupported template"
 msgstr ""
 
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/search/bar.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 #: src/shared/open-note-dialog.tsx
 msgid "Close"
 msgstr ""
@@ -370,8 +447,20 @@ msgstr ""
 msgid "comments"
 msgstr ""
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Company member"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Company sign-in"
+msgstr ""
+
 #: src/onboarding/folder-location.tsx
 msgid "Confirm"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Connect"
 msgstr ""
 
 #: src/onboarding/index.tsx
@@ -384,6 +473,19 @@ msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
 msgid "Connect an AI provider"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Connect to your server to edit notes and play recordings. Your standalone setup stays available."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Connected"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/server-preview.tsx
+msgid "Connecting…"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -406,12 +508,24 @@ msgstr ""
 msgid "Copied"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Copy all recovery data"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Copy all recovery data to keep task changes."
+msgstr ""
+
 #: src/main/about-debug.tsx
 msgid "Copy debug information"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Copy failed"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Copy generated text"
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -422,8 +536,36 @@ msgstr ""
 msgid "Copy my vault here"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Copy saved text"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Copy this text to recover a result that could not be applied. Editing the current summary still checks for newer changes."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Copy unsaved text"
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 msgid "Copying…"
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not complete file action. Check your connection and try again."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not load attachment. Retry when connected."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Could not load preview. Retry or save the original copy."
 msgstr ""
 
 #: src/session/components/session-tags.tsx
@@ -435,6 +577,7 @@ msgid "Couldn’t add {failed} attachments"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Couldn’t add 1 attachment"
 msgstr ""
 
@@ -442,7 +585,16 @@ msgstr ""
 msgid "Couldn’t calculate vault storage."
 msgstr ""
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Couldn’t check the attachment."
+msgstr ""
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Couldn’t check the attachment. Close this dialog and review it again."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Couldn’t choose attachments"
 msgstr ""
 
@@ -451,6 +603,7 @@ msgid "Couldn’t copy debug information. Try again."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Couldn’t load attachments."
 msgstr ""
 
@@ -479,10 +632,6 @@ msgstr ""
 msgid "Couldn't prepare export."
 msgstr ""
 
-#: src/session/components/note-input/attachments.tsx
-msgid "Couldn’t remove attachment"
-msgstr ""
-
 #: src/settings/general/theme.tsx
 msgid "Couldn't save your appearance. Please try again."
 msgstr ""
@@ -491,12 +640,24 @@ msgstr ""
 msgid "Couldn’t update storage. Showing the previous measurement."
 msgstr ""
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Create shared vault"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Create vault"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
 msgid "Current connection"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Custom summary template"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -535,8 +696,37 @@ msgstr ""
 msgid "Delete Selected ({sessionCount})"
 msgstr ""
 
+#: src/shared/application/vault-sharing.tsx
+msgid "Delete this shared vault"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Delete vault"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Deleting removes everyone's access. Server files are retained for operator recovery."
+msgstr ""
+
 #: src/settings/general/theme.tsx
 msgid "Design theme"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
+msgid "Device recovery copy:"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Device recovery drafts"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Device summary requests"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Device vault"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -552,7 +742,12 @@ msgid "Discard your unsaved instructions?"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
+#: src/shared/application/server-preview.tsx
 msgid "Disconnect"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Disconnected. Unsaved text is kept on this device."
 msgstr ""
 
 #: src/session/components/session-tags.tsx
@@ -612,6 +807,10 @@ msgstr ""
 msgid "Each file becomes its own note and is transcribed and summarized one at a time."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Edit"
+msgstr ""
+
 #: src/session/components/session-date.tsx
 msgid "Edit date"
 msgstr ""
@@ -619,6 +818,10 @@ msgstr ""
 #: src/session/components/note-input/enhanced/empty-summary.tsx
 #: src/session/components/note-input/header.tsx
 msgid "Edit summary prompt"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Editor"
 msgstr ""
 
 #. placeholder {0}: permissionName.toLowerCase()
@@ -691,8 +894,28 @@ msgstr ""
 msgid "Finish signing in in your browser…"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Forget device request"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Forget this device request?"
+msgstr ""
+
 #: src/sidebar/settings.tsx
 msgid "General"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Generated summary text"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Generated text"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Generating summary"
 msgstr ""
 
 #: src/session/components/note-input/enhanced/streaming.tsx
@@ -819,6 +1042,10 @@ msgstr ""
 msgid "Keep Loofah available from the notification area."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Keep request"
+msgstr ""
+
 #: src/settings/general/main-language.tsx
 msgid "Language for summaries and generated titles"
 msgstr ""
@@ -848,20 +1075,59 @@ msgstr ""
 msgid "LM Studio or Ollama"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Load current settings"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-attachments-pane.tsx
+msgid "Load more"
+msgstr ""
+
 #: src/shared/startup-boundary.tsx
 msgid "Loading"
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Loading attachment…"
+msgstr ""
+
+#: src/shared/application/vault-attachments-pane.tsx
+msgid "Loading attachments…"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
 msgid "Loading connection…"
 msgstr ""
 
+#: src/session/components/note-input/raw.tsx
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
+msgid "Loading content…"
+msgstr ""
+
 #: src/main/about-debug.tsx
 msgid "Loading debug information…"
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "Loading draft…"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Loading drafts…"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Loading members…"
+msgstr ""
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Loading models..."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Loading preview…"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -877,6 +1143,9 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
+#: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-processing-settings.tsx
+#: src/shared/application/vault-processing.tsx
 #: src/shared/deferred-view.tsx
 msgid "Loading…"
 msgstr ""
@@ -910,6 +1179,7 @@ msgid "macOS cannot access your login Keychain. Repairing briefly locks it and a
 msgstr ""
 
 #: src/main/about-storage.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Markdown"
 msgstr ""
 
@@ -979,7 +1249,7 @@ msgstr ""
 msgid "Move my vault here"
 msgstr ""
 
-#: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Move to Trash"
 msgstr ""
 
@@ -989,6 +1259,10 @@ msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
 msgid "Name"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "New note"
 msgstr ""
 
 #: src/main/empty.tsx
@@ -1004,11 +1278,20 @@ msgid "No apps found."
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "No attachments yet"
 msgstr ""
 
 #: src/changelog/index.tsx
 msgid "No changelog available for this version."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "No confirmed generated text is available for this request."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "No content yet."
 msgstr ""
 
 #: src/task/resource-view.tsx
@@ -1032,6 +1315,10 @@ msgstr ""
 msgid "No matching languages found"
 msgstr "Ba a sami yarukan da suka dace ba"
 
+#: src/shared/application/notes-workspace.tsx
+msgid "No matching notes"
+msgstr ""
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "No models available."
 msgstr ""
@@ -1049,6 +1336,18 @@ msgstr ""
 msgid "No results found."
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "No saved recovery drafts."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "No saved summary requests."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "No summary model"
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
 msgstr ""
@@ -1059,7 +1358,12 @@ msgstr ""
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Note"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Note views"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1086,6 +1390,14 @@ msgstr ""
 msgid "Now"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Older summary requests"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Only existing company members can join. Readers can view; editors can change content; owners also manage access."
+msgstr ""
+
 #: src/task/resource-view.tsx
 msgid "Open"
 msgstr ""
@@ -1100,6 +1412,14 @@ msgstr ""
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
 msgid "Open {0} settings"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Open downloaded copy"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Open file"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx
@@ -1123,6 +1443,10 @@ msgstr ""
 msgid "Open on GitHub"
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Opened file."
+msgstr ""
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Opening your browser…"
 msgstr ""
@@ -1135,12 +1459,24 @@ msgstr ""
 msgid "Other files"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Output"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Outputs"
+msgstr ""
+
 #: src/settings/general/timezone.tsx
 msgid "Override the timezone used for the sidebar timeline"
 msgstr ""
 
 #: src/main/about-dialog.tsx
 msgid "Overview"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Owner"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -1170,6 +1506,14 @@ msgstr ""
 msgid "Preparing export..."
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Preparing file…"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Preparing summary"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr ""
@@ -1178,11 +1522,32 @@ msgstr ""
 msgid "Preview the settings and diagnostics to include in a bug report. API keys, tokens, notes, and transcripts are excluded."
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Preview unavailable. You can open or save the original file."
+msgstr ""
+
 #: src/session/components/note-input/search/bar.tsx
 msgid "Previous match"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Processing may already have started. Resume uses the original request."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Processing settings"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Processing stopped before completion."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Provider endpoint"
+msgstr ""
+
 #: src/main/audio-import-dialog.tsx
+#: src/shared/application/vault-processing.tsx
 msgid "Queued"
 msgstr ""
 
@@ -1192,6 +1557,10 @@ msgstr ""
 
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "Re-transcribing resets speaker names"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Reader"
 msgstr ""
 
 #: src/settings/ai/stt/diarization-status.tsx
@@ -1208,6 +1577,10 @@ msgstr ""
 
 #: src/shared/open-note-dialog.tsx
 msgid "Recent"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Reconnect to save settings. Your changes stay in this form."
 msgstr ""
 
 #: src/session/components/outer-header/index.tsx
@@ -1227,8 +1600,36 @@ msgstr ""
 msgid "Recording and transcription still work. Set up summaries when you want to turn your notes or transcript into a summary."
 msgstr ""
 
+#: src/audio-player/provider.tsx
+msgid "Recording deletion was not confirmed. Reload it before trying again."
+msgstr ""
+
+#: src/audio-player/provider.tsx
+msgid "Recording playback is unavailable."
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "Recordings"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovered Markdown"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovered title"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovery copies for this vault from closed windows and deleted notes or outputs. Copy text to recover it; this view does not save to the vault."
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Recovery copies saved on this device, including signed-out connections and vaults you can no longer access. Copy text to recover it; this view does not save to any vault."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Refine your search to see more results."
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1239,12 +1640,28 @@ msgstr ""
 msgid "Refresh notes from disk"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Refresh requests"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Refresh status"
+msgstr ""
+
 #: src/settings/general/storage/rebuild-index.tsx
 msgid "Refresh the app if notes are missing or changes made outside Loofah are not showing."
 msgstr ""
 
 #: src/settings/general/storage/rebuild-index.tsx
 msgid "Refreshing..."
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Reload access"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Reload drafts"
 msgstr ""
 
 #: src/settings/general/notification.tsx
@@ -1255,23 +1672,31 @@ msgstr ""
 msgid "Reminder preferences"
 msgstr ""
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "Removal could not be confirmed. Check the attachment and vault Trash before trying again."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-sharing.tsx
 msgid "Remove"
 msgstr ""
 
 #. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attempt.candidate.name
 #. placeholder {0}: getBaseLanguageDisplayName(code, i18n.locale)
-#. placeholder {0}: upload.candidate.name
 #: src/session/components/note-input/attachments.tsx
 #: src/settings/general/spoken-languages.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Remove {0}"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 msgid "Remove attachment"
 msgstr ""
 
-#: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Remove attachment?"
 msgstr ""
 
@@ -1279,8 +1704,12 @@ msgstr ""
 msgid "Remove tag {tag}"
 msgstr ""
 
-#: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
 msgid "Removing…"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Rename vault"
 msgstr ""
 
 #: src/settings/ai/shared/index.tsx
@@ -1302,6 +1731,10 @@ msgstr ""
 #. placeholder {0}: title.toLowerCase()
 #: src/settings/general/permissions.tsx
 msgid "Request {0} permission"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Requests saved for this account and vault, including notes that are no longer open. Loading this list does not start processing."
 msgstr ""
 
 #: src/settings/general/permissions.tsx
@@ -1336,19 +1769,48 @@ msgstr ""
 msgid "Resume listening"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Resume request"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Resuming…"
+msgstr ""
+
+#: src/audio-player/provider.tsx
 #: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
+#: src/session/components/note-input/raw.tsx
 #: src/session/components/note-input/transcript/loading.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/settings/ai/stt/diarization-status.tsx
+#: src/shared/application/vault-attachment-provider.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-processing-settings.tsx
 msgid "Retry"
 msgstr ""
 
+#. placeholder {0}: attempt.candidate.name
 #. placeholder {0}: upload.candidate.name
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/vault-attachment-uploads.tsx
 msgid "Retry {0}"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-sharing.tsx
+msgid "Retry creation"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Role"
+msgstr ""
+
+#. placeholder {0}: entry.member.name
+#: src/shared/application/vault-sharing.tsx
+msgid "Role for {0}"
 msgstr ""
 
 #: src/settings/ai/shared/index.tsx
@@ -1357,14 +1819,35 @@ msgid "Runs after the recording finishes, not during the meeting."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
 msgid "Save"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Save confirmation was not received"
 msgstr ""
 
 #: src/session/components/session-date.tsx
 msgid "Save date"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
+msgid "Save my version"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Save original copy"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Save settings"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
 msgid "Saved"
 msgstr ""
 
@@ -1372,8 +1855,28 @@ msgstr ""
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Saved notes or transcript could not be read."
+msgstr ""
+
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Saved original copy."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Saving summary"
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saving..."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Saving…"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Search"
 msgstr ""
 
 #: src/settings/general/notification.tsx
@@ -1388,6 +1891,10 @@ msgstr ""
 msgid "Search language..."
 msgstr "Yaren bincike..."
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Search notes"
+msgstr ""
+
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Search or create new"
 msgstr ""
@@ -1401,9 +1908,17 @@ msgstr ""
 msgid "Search..."
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Searching…"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 #: src/settings/ai/shared/model-combobox.tsx
 msgid "Select a model"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Select a note or create one."
 msgstr ""
 
 #: src/settings/ai/stt/timing.tsx
@@ -1429,6 +1944,14 @@ msgstr ""
 #: src/settings/ai/llm/select.tsx
 #: src/settings/ai/shared/index.tsx
 msgid "Selected"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Server address"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Server notes preview"
 msgstr ""
 
 #: src/session/components/note-input/header.tsx
@@ -1461,6 +1984,10 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Settings saved."
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "Share"
 msgstr ""
@@ -1475,6 +2002,14 @@ msgstr ""
 
 #: src/settings/general/app-settings.tsx
 msgid "Show app in taskbar"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Show downloaded copy"
+msgstr ""
+
+#: src/shared/application/attachments.ts
+msgid "Show file"
 msgstr ""
 
 #: src/settings/general/app-settings.tsx
@@ -1518,8 +2053,16 @@ msgstr ""
 msgid "Show tray icon"
 msgstr ""
 
+#: src/shared/application/vault-attachment-provider.tsx
+msgid "Showing file."
+msgstr ""
+
 #: src/settings/ai/llm/configure.tsx
 msgid "Sign in · Beta"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Sign in through your company to open its vaults."
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
@@ -1528,6 +2071,10 @@ msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Sign in with ChatGPT to generate summaries. Uses your account's Codex allowance; no API key required."
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Sign out"
 msgstr ""
 
 #: src/main/about-dialog.tsx
@@ -1582,6 +2129,10 @@ msgstr ""
 #: src/settings/ai/stt/diarization-status.tsx
 #: src/settings/ai/stt/select.tsx
 msgid "Starting"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Starting summary…"
 msgstr ""
 
 #: src/settings/ai/stt/select.tsx
@@ -1639,12 +2190,37 @@ msgstr ""
 msgid "Summaries not enabled"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Summarize saved notes"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Summary"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary changed"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Summary draft"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary failed"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary generation"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary interrupted"
 msgstr ""
 
 #: src/session/components/note-input/index.tsx
@@ -1656,7 +2232,12 @@ msgid "Summary is read-only while recording. Add text and images in Note."
 msgstr ""
 
 #: src/settings/general/main-language.tsx
+#: src/shared/application/vault-processing-settings.tsx
 msgid "Summary language"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Summary model"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1665,6 +2246,14 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary prompt cannot be empty."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Summary provider"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary saved"
 msgstr ""
 
 #: src/onboarding/setup-status.tsx
@@ -1716,6 +2305,14 @@ msgstr ""
 msgid "Tags"
 msgstr ""
 
+#: src/shared/application/notes-workspace.tsx
+msgid "Tasks"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Template output draft"
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Text for summaries is sent to this provider."
 msgstr ""
@@ -1732,8 +2329,61 @@ msgstr ""
 msgid "The app will restart after onboarding to apply your storage changes"
 msgstr ""
 
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "The attachment changed. Close this dialog and review it again."
+msgstr ""
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "The attachment was not removed. Close this dialog and review it again."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The preview is shortened. Copy to recover the complete text."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The provider returned an unusable summary."
+msgstr ""
+
 #: src/settings/ai/llm/configure.tsx
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The selected summary provider is unavailable."
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "The server may have created this vault. Retry the same request to recover its result."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The summary changed during generation. View the generated text to recover it."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The summary could not be saved safely."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The summary provider failed."
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "These settings apply to this vault. Provider credentials are managed separately."
+msgstr ""
+
+#: src/shared/application/remove-attachment-dialog.tsx
+msgid "This attachment is no longer available."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "This connection is no longer authorized."
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
+msgid "This content changed elsewhere. Review the saved version before choosing."
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -1748,6 +2398,14 @@ msgstr ""
 msgid "This model transcribes after recording."
 msgstr ""
 
+#: src/shared/application/device-recovery.tsx
+msgid "This recovery copy has already been cleared."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "This removes the saved request from this device. It does not stop processing. A new summary request may run again."
+msgstr ""
+
 #. placeholder {0}: pending.speakerCount
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "This transcript has {0} assigned speakers. Re-transcribing replaces the transcript and removes those speaker assignments."
@@ -1759,6 +2417,10 @@ msgstr ""
 
 #: src/settings/general/timezone.tsx
 msgid "Timezone"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "Title"
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1776,6 +2438,7 @@ msgstr ""
 
 #: src/session/components/note-input/header.tsx
 #: src/session/components/outer-header/overflow/export-modal.tsx
+#: src/shared/application/notes-workspace.tsx
 msgid "Transcript"
 msgstr ""
 
@@ -1821,8 +2484,14 @@ msgid "Troubleshooting"
 msgstr ""
 
 #: src/session/components/note-input/attachments.tsx
+#: src/shared/application/remove-attachment-dialog.tsx
+#: src/shared/application/vault-attachments-pane.tsx
 #: src/shared/startup-boundary.tsx
 msgid "Try again"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Try server notes"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -1837,6 +2506,10 @@ msgstr ""
 msgid "Unable to open this view. Please try another view."
 msgstr ""
 
+#: src/shared/application/server-preview.tsx
+msgid "Unavailable vault"
+msgstr ""
+
 #: src/session/components/session-date.tsx
 msgid "Unknown date"
 msgstr ""
@@ -1846,14 +2519,21 @@ msgid "Unlock your login Keychain in the macOS prompt. Loofah will retry saving 
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
 msgid "Unsaved changes"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/title-input.tsx
+#: src/shared/application/notes-workspace.tsx
 #: src/shared/open-note-dialog.tsx
 #: src/sidebar/timeline/item.tsx
 msgid "Untitled"
+msgstr ""
+
+#: src/shared/application/device-recovery.tsx
+msgid "Untitled note draft"
 msgstr ""
 
 #: src/settings/ai/llm/chatgpt.tsx
@@ -1870,6 +2550,11 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload transcript"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-note-editor.tsx
+msgid "Use saved version"
 msgstr ""
 
 #: src/onboarding/permissions.tsx
@@ -1892,12 +2577,32 @@ msgstr ""
 msgid "Use your microphone to capture your voice"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Uses the saved notes and transcript. Unsaved edits are kept separate."
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Uses your AI app's configured server. Choose an on-device model in that app to keep summaries local."
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Variables"
+msgstr ""
+
+#: src/shared/application/server-preview.tsx
+msgid "Vault"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Vault members"
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Vault name"
+msgstr ""
+
+#: src/shared/application/vault-processing-settings.tsx
+msgid "Vault settings changed. Your draft has been kept. Loading current settings discards this draft."
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1911,6 +2616,10 @@ msgstr ""
 #. placeholder {0}: info.data.appVersion
 #: src/main/about-dialog.tsx
 msgid "Version {0}"
+msgstr ""
+
+#: src/shared/application/notes-workspace.tsx
+msgid "View"
 msgstr ""
 
 #: src/main/about-storage.tsx
@@ -1953,6 +2662,10 @@ msgstr ""
 msgid "You can keep using Loofah while it downloads."
 msgstr ""
 
+#: src/shared/application/vault-processing-settings.tsx
+msgid "You have read-only access to this vault."
+msgstr ""
+
 #: src/shared/startup-boundary.tsx
 msgid "Your cloud provider may still be downloading files"
 msgstr ""
@@ -1967,6 +2680,10 @@ msgstr ""
 
 #: src/settings/general/storage/index.tsx
 msgid "Your notes, recordings, and attachments are saved as files in this folder."
+msgstr ""
+
+#: src/shared/application/vault-sharing.tsx
+msgid "Your personal vault stays private. Share this new vault with existing company members."
 msgstr ""
 
 #: src/main/about-dialog.tsx

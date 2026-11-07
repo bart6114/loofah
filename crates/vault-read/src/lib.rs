@@ -1,10 +1,11 @@
 //! Read-only access to the on-disk vault layout: shared file-format types plus
-//! scanning/parsing helpers. The desktop store (`apps/desktop/src-tauri/src/session_store`)
-//! owns every write path and reuses the types and pure parse/render functions from here;
-//! `crates/agent-access` (loof CLI/MCP) reads vaults exclusively through this crate.
+//! scanning/parsing helpers. `crates/vault-write` owns the shared store and index;
+//! `crates/loofah-core` contains extracted application operations for IPC and HTTPS.
+//! `crates/agent-access` reuses these readers for CLI/MCP projections.
 
 pub mod enhanced;
 pub mod layout;
+pub mod media;
 pub mod meta;
 pub mod paths;
 pub mod people;
@@ -22,13 +23,13 @@ pub use layout::{
     has_session_boundary,
 };
 pub use meta::{SessionMeta, TagSuggestionState};
-pub use people::{Person, read_people};
+pub use people::{Person, PersonItem, read_people};
 pub use reserved::{
     SESSION_OWNED_DIRS, SESSION_OWNED_FILES, SESSION_PEAKS_FILE, SESSION_TRANSIENT_FILES,
     is_session_owned_name,
 };
 pub use strip::strip_leading_frontmatter;
-pub use tags::normalize_tag_name;
+pub use tags::{TagItem, normalize_tag_name};
 pub use tasks::{TaskItem, TasksFile};
 
 pub use hypr_fs_format::{

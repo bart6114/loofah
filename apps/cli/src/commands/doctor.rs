@@ -132,6 +132,7 @@ mod tests {
 
     fn args(path: PathBuf) -> Args {
         Args {
+            profile: None,
             base: None,
             vault_path: Some(path),
             json: true,

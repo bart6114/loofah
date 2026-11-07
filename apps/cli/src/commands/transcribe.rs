@@ -20,7 +20,7 @@ const DEFAULT_USER_ID: &str = "00000000-0000-0000-0000-000000000000";
 const AUDIO_FILE_NAMES: [&str; 3] = ["audio.mp3", "audio.wav", "audio.ogg"];
 
 pub async fn run(vault: &Path, id: &str, json: bool) -> Result<()> {
-    let store = SessionStore::new(vault.to_path_buf());
+    let store = crate::vault::local_store(vault);
     let outcome = transcribe_session(vault, &store, id).await?;
 
     let rendered = if json {

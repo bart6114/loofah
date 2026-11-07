@@ -9,6 +9,7 @@ import { NotificationProvider } from "~/contexts/notifications";
 import { ShellProvider } from "~/contexts/shell";
 import { useStoreBackedTaskStorage } from "~/editor-bridge/task-storage";
 import { SearchEngineProvider } from "~/search/contexts/engine";
+import { LocalVaultProvider } from "~/shared/application/vault-provider";
 import { OpenNoteDialogProvider } from "~/shared/open-note-dialog";
 
 export function ClassicMainLayout({
@@ -28,19 +29,21 @@ export function ClassicMainLayout({
   }
 
   return (
-    <SearchEngineProvider>
-      <TaskStorageProvider storage={taskStorage}>
-        <OpenNoteDialogProvider>
-          <ShellProvider>
-            <AITaskProvider store={aiTaskStore}>
-              <NotificationProvider>
-                {includeServices ? <ClassicMainServices /> : null}
-                {children}
-              </NotificationProvider>
-            </AITaskProvider>
-          </ShellProvider>
-        </OpenNoteDialogProvider>
-      </TaskStorageProvider>
-    </SearchEngineProvider>
+    <LocalVaultProvider>
+      <SearchEngineProvider>
+        <TaskStorageProvider storage={taskStorage}>
+          <OpenNoteDialogProvider>
+            <ShellProvider>
+              <AITaskProvider store={aiTaskStore}>
+                <NotificationProvider>
+                  {includeServices ? <ClassicMainServices /> : null}
+                  {children}
+                </NotificationProvider>
+              </AITaskProvider>
+            </ShellProvider>
+          </OpenNoteDialogProvider>
+        </TaskStorageProvider>
+      </SearchEngineProvider>
+    </LocalVaultProvider>
   );
 }

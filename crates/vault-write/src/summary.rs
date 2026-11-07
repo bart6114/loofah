@@ -112,6 +112,40 @@ impl SessionStore {
         suggested_tags: Option<Vec<ScoredTagSuggestion>>,
         auto_apply_high_confidence_tags: bool,
     ) -> Result<(), StoreError> {
+        self.update_summary_checked_impl(
+            session_id,
+            markdown,
+            expected,
+            reconcile_tasks,
+            title,
+            suggested_tags,
+            auto_apply_high_confidence_tags,
+            None,
+            super::document_revision::DocumentWriteMode::Generated,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub(super) async fn update_summary_checked_impl(
+        &self,
+        session_id: &str,
+        markdown: &str,
+        expected: Option<&str>,
+        reconcile_tasks: bool,
+        title: Option<&str>,
+        suggested_tags: Option<Vec<ScoredTagSuggestion>>,
+        auto_apply_high_confidence_tags: bool,
+        expected_revision: Option<(&str, &std::path::Path)>,
+        mode: super::document_revision::DocumentWriteMode,
+    ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
+        if expected_revision.is_some()
+            && (title.is_some() || suggested_tags.is_some() || !reconcile_tasks)
+        {
+            return Err(StoreError::Serialize(
+                "checked body replacement cannot update session metadata".into(),
+            ));
+        }
         let task_content = if reconcile_tasks {
             let markdown = markdown.to_owned();
             Some(
@@ -124,6 +158,20 @@ impl SessionStore {
             None
         };
         let guard = self.lock_writes().await;
+        let target = hypr_loofah_protocol::DocumentTarget::Summary;
+        if let Some((expected, operation_root)) = expected_revision {
+            self.recover_document_write_locked(&guard, operation_root, session_id)
+                .await?;
+            let current = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+            if current.revision != expected {
+                return Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Conflict(
+                    current,
+                )));
+            }
+        }
         let dir = self.writable_summary_dir(&guard, session_id).await?;
         let mut meta = self.read_meta(session_id).await?.ok_or_else(|| {
             StoreError::Io(format!("session {session_id} has no _meta.json to update"))
@@ -141,8 +189,16 @@ impl SessionStore {
             hypr_vault_read::summary::locate_in(&vault, &read_dir, &id)
         })
         .await
-        .map_err(join_error)??
-        .ok_or_else(|| StoreError::Conflict("summary was deleted".into()))?;
+        .map_err(join_error)??;
+        let summary = match summary {
+            Some(summary) => summary,
+            None if expected_revision.is_some() => hypr_vault_read::summary::LocatedSummary {
+                markdown: String::new(),
+                relative_path: paths::summary_path_in(&dir),
+                legacy_id: None,
+            },
+            None => return Err(StoreError::Conflict("summary was deleted".into())),
+        };
         if expected.is_some_and(|expected| expected != summary.markdown)
             && !(suggested_tags.is_none() && reconcile_tasks && markdown == summary.markdown)
         {
@@ -162,8 +218,26 @@ impl SessionStore {
             .unwrap_or_default();
         let tasks = if let Some(content) = task_content {
             Some(
-                self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
-                    .await?,
+                if expected_revision.is_some()
+                    && matches!(mode, super::document_revision::DocumentWriteMode::Edited)
+                {
+                    self.prepare_edited_tasks(
+                        session_id,
+                        "session_summary",
+                        session_id,
+                        &summary.markdown,
+                        &content,
+                    )
+                    .await?
+                } else {
+                    self.prepare_generated_tasks(
+                        session_id,
+                        "session_summary",
+                        session_id,
+                        &content,
+                    )
+                    .await?
+                },
             )
         } else {
             None
@@ -181,6 +255,23 @@ impl SessionStore {
         for name in &auto_applied {
             self.ensure_tag_locked(&guard, name).await?;
         }
+        let pending = if let Some((_, operation_root)) = expected_revision {
+            Some(
+                self.begin_document_write_locked(
+                    &guard,
+                    operation_root,
+                    session_id,
+                    &target,
+                    &bytes,
+                    tasks.as_deref().ok_or_else(|| {
+                        StoreError::Io("checked document save requires tasks".into())
+                    })?,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         self.write_file_locked(&guard, summary.relative_path, bytes)
             .await?;
         let task_result = if let Some(tasks) = tasks {
@@ -208,7 +299,21 @@ impl SessionStore {
         } else {
             self.index_set_summary(session_id, Some(markdown.to_owned()));
         }
-        task_result
+        task_result?;
+        if let Some(pending) = pending {
+            pending.finish().await?;
+        }
+        if expected_revision.is_some() {
+            let snapshot = self
+                .document_snapshot_locked(&guard, session_id, &target)
+                .await?
+                .ok_or_else(|| StoreError::Io("session disappeared after save".into()))?;
+            Ok(Some(hypr_loofah_protocol::DocumentSaveOutcome::Saved(
+                snapshot,
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn delete_summary(&self, session_id: &str) -> Result<(), StoreError> {
@@ -246,7 +351,7 @@ impl SessionStore {
         Ok(dir)
     }
 
-    fn index_set_summary(&self, id: &str, markdown: Option<String>) {
+    pub(super) fn index_set_summary(&self, id: &str, markdown: Option<String>) {
         let changed = {
             let mut index = self.index.write().unwrap();
             if let Some(docs) = index.docs.get_mut(id) {

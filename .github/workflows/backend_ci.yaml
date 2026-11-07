@@ -1,0 +1,43 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  headless:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust_install
+        with:
+          platform: linux-x86_64
+      - run: cargo test --locked --features loofah-client/dev-fixtures -p loofah-server -p loofah-client -p loofah-core -p loofah-protocol -p vault-read -p vault-write -p search-cache
+      - run: cargo run --locked -p loofah-server -- --version
+      - run: cargo run --locked -p loofah-protocol --bin export-types -- --check
+      - run: |
+          cargo tree --locked -p loofah-core -p loofah-server --edges normal --prefix none > backend-dependencies.txt
+          if grep -E '^(tauri[ -]|tauri-|wry |cpal |audio-actual |device-monitor )' backend-dependencies.txt; then
+            echo 'Headless application core acquired a desktop or device-capture dependency' >&2
+            exit 1
+          fi
+
+  container:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: docker build --platform linux/amd64 --file apps/server/Dockerfile --tag loofah-server:test .
+      - run: docker run --rm --platform linux/amd64 loofah-server:test --version
+      - run: docker run --rm --env LOOFAH_DOMAIN=loofah.company.example --volume "$PWD/apps/server/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile

@@ -1,26 +1,42 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-
 use super::{SessionStore, StoreError, WriteGuard, paths, validate_doc_id, validate_session_id};
 
 // The `tasks.json` schema is shared with the read-only vault consumers (loof CLI/MCP);
 // the types live in `hypr-vault-read` so both sides parse the same shape.
 pub use hypr_vault_read::{TaskItem, TasksFile};
 
-/// What the frontend sends on a write: source coordinates come from the command arguments,
-/// timestamps and `assignee` are managed store-side (preserved from the existing entry when
-/// the task already exists).
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct TaskInput {
-    pub id: String,
-    pub source_order: i32,
-    pub status: String,
-    pub text: String,
-    pub body: serde_json::Value,
-    #[serde(default)]
-    pub due_at: String,
+pub use hypr_loofah_protocol::TaskInput;
+
+pub(super) fn validate_task_file_size(tasks: &[TaskItem], limit: usize) -> Result<(), StoreError> {
+    if limit == usize::MAX {
+        return Ok(());
+    }
+    use serde::ser::{SerializeMap, Serializer};
+    let mut serializer = serde_json::Serializer::pretty(TaskFileBudget(limit));
+    let result = (|| {
+        let mut object = serializer.serialize_map(Some(1))?;
+        object.serialize_entry("tasks", tasks)?;
+        object.end()
+    })();
+    result.map_err(|_: serde_json::Error| {
+        StoreError::ResourceLimit("Session tasks exceed their size limit".into())
+    })
+}
+
+struct TaskFileBudget(usize);
+impl std::io::Write for TaskFileBudget {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.0 {
+            return Err(std::io::Error::other("task file size limit"));
+        }
+        self.0 -= bytes.len();
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Which `tasks.json` a source's tasks live in. Both production source types are
@@ -92,13 +108,133 @@ fn collect_task_nodes<'a>(node: &'a serde_json::Value, tasks: &mut Vec<&'a serde
     }
 }
 
+pub(super) fn sort_tasks(tasks: &mut [TaskItem]) {
+    tasks.sort_by(|a, b| {
+        (&a.source_type, &a.source_id, a.source_order, &a.id).cmp(&(
+            &b.source_type,
+            &b.source_id,
+            b.source_order,
+            &b.id,
+        ))
+    });
+}
+
+pub(super) fn replaced_source_tasks(
+    existing: &[TaskItem],
+    source_type: &str,
+    source_id: &str,
+    inputs: Vec<TaskInput>,
+) -> Vec<TaskItem> {
+    let prior_by_id: HashMap<&str, &TaskItem> =
+        existing.iter().map(|t| (t.id.as_str(), t)).collect();
+    let input_ids: std::collections::HashSet<&str> = inputs.iter().map(|t| t.id.as_str()).collect();
+
+    let now = now_iso();
+    let mut next: Vec<TaskItem> = existing
+        .iter()
+        .filter(|t| {
+            !(input_ids.contains(t.id.as_str())
+                || (t.source_type == source_type && t.source_id == source_id))
+        })
+        .cloned()
+        .collect();
+    for input in inputs {
+        let prior = prior_by_id.get(input.id.as_str());
+        let mut item = TaskItem {
+            id: input.id,
+            source_type: source_type.to_string(),
+            source_id: source_id.to_string(),
+            source_order: input.source_order,
+            status: input.status,
+            text: input.text,
+            body: input.body,
+            due_at: input.due_at,
+            assignee: prior.map(|p| p.assignee.clone()).unwrap_or_default(),
+            created_at: prior
+                .map(|p| p.created_at.clone())
+                .unwrap_or_else(|| now.clone()),
+            updated_at: now.clone(),
+        };
+        if let Some(prior) = prior
+            && same_content(prior, &item)
+        {
+            item.updated_at = prior.updated_at.clone();
+        }
+        next.push(item);
+    }
+
+    next
+}
+
 impl SessionStore {
+    pub async fn read_recovered_session_tasks(
+        &self,
+        operation_root: Option<&std::path::Path>,
+        session_id: &str,
+    ) -> Result<Option<Vec<TaskItem>>, StoreError> {
+        self.recovered_read(
+            operation_root,
+            session_id,
+            |store, snapshot, id| async move {
+                let _snapshot = snapshot;
+                if store.read_meta(&id).await?.is_none() {
+                    return Ok(None);
+                }
+                store.session_tasks(&id).await.map(Some)
+            },
+        )
+        .await
+    }
+
+    pub async fn session_tasks(&self, session_id: &str) -> Result<Vec<TaskItem>, StoreError> {
+        validate_session_id(session_id)?;
+        let dir = self.session_dir(session_id).await?;
+        let vault = self.vault_base.clone();
+        let mut tasks = tokio::task::spawn_blocking(move || {
+            hypr_vault_read::tasks::read_session_tasks_in(&vault, &dir).map_err(StoreError::from)
+        })
+        .await
+        .map_err(|cause| StoreError::Io(cause.to_string()))??;
+        sort_tasks(&mut tasks);
+        Ok(tasks)
+    }
+
     pub(super) async fn prepare_generated_tasks(
         &self,
         session_id: &str,
         source_type: &str,
         source_id: &str,
         content: &serde_json::Value,
+    ) -> Result<Vec<TaskItem>, StoreError> {
+        self.prepare_content_tasks(session_id, source_type, source_id, content, None)
+            .await
+    }
+
+    pub(super) async fn prepare_edited_tasks(
+        &self,
+        session_id: &str,
+        source_type: &str,
+        source_id: &str,
+        previous_markdown: &str,
+        content: &serde_json::Value,
+    ) -> Result<Vec<TaskItem>, StoreError> {
+        let markdown = previous_markdown.to_owned();
+        let previous =
+            tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                .await
+                .map_err(|error| StoreError::Io(error.to_string()))?
+                .map_err(StoreError::Serialize)?;
+        self.prepare_content_tasks(session_id, source_type, source_id, content, Some(&previous))
+            .await
+    }
+
+    async fn prepare_content_tasks(
+        &self,
+        session_id: &str,
+        source_type: &str,
+        source_id: &str,
+        content: &serde_json::Value,
+        previous_content: Option<&serde_json::Value>,
     ) -> Result<Vec<TaskItem>, StoreError> {
         let mut existing = self
             .read_tasks_at(&TaskScope::Session(session_id.to_string()))
@@ -119,6 +255,10 @@ impl SessionStore {
             .collect();
         let mut nodes = Vec::new();
         collect_task_nodes(content, &mut nodes);
+        let mut prior_nodes = Vec::new();
+        if let Some(previous_content) = previous_content {
+            collect_task_nodes(previous_content, &mut prior_nodes);
+        }
         let now = now_iso();
         for (order, node) in nodes.into_iter().enumerate() {
             let body = node
@@ -137,6 +277,20 @@ impl SessionStore {
                 .iter()
                 .position(|task| normalize_task_text(&task.text) == text)
                 .map(|index| previous.remove(index));
+            let previous_checked = prior_nodes
+                .iter()
+                .position(|previous| {
+                    previous
+                        .get("content")
+                        .and_then(|body| body.as_array())
+                        .and_then(|nodes| nodes.iter().find(|node| node["type"] == "paragraph"))
+                        .map(task_node_text)
+                        .unwrap_or_default()
+                        == text
+                })
+                .map(|index| prior_nodes.remove(index)["attrs"]["checked"] == true);
+            let checked = node["attrs"]["checked"] == true;
+            let changed_checkbox = previous_checked.is_some_and(|previous| previous != checked);
             let mut task = TaskItem {
                 id: prior
                     .as_ref()
@@ -147,15 +301,9 @@ impl SessionStore {
                 source_order: order as i32,
                 status: prior
                     .as_ref()
+                    .filter(|_| !changed_checkbox)
                     .map(|task| task.status.clone())
-                    .unwrap_or_else(|| {
-                        if node["attrs"]["checked"] == true {
-                            "done"
-                        } else {
-                            "todo"
-                        }
-                        .into()
-                    }),
+                    .unwrap_or_else(|| if checked { "done" } else { "todo" }.into()),
                 text,
                 body,
                 due_at: prior
@@ -179,10 +327,7 @@ impl SessionStore {
             }
             next.push(task);
         }
-        serde_json::to_vec(&TasksFile {
-            tasks: next.clone(),
-        })
-        .map_err(|error| StoreError::Serialize(error.to_string()))?;
+        validate_task_file_size(&next, self.content_limits.tasks_file_bytes)?;
         Ok(next)
     }
 
@@ -241,44 +386,7 @@ impl SessionStore {
                 .await?;
         }
         let existing = self.read_tasks_at(&scope).await?;
-        let prior_by_id: HashMap<&str, &TaskItem> =
-            existing.iter().map(|t| (t.id.as_str(), t)).collect();
-        let input_ids: std::collections::HashSet<&str> =
-            inputs.iter().map(|t| t.id.as_str()).collect();
-
-        let now = now_iso();
-        let mut next: Vec<TaskItem> = existing
-            .iter()
-            .filter(|t| {
-                !(t.source_type == source_type && t.source_id == source_id)
-                    && !input_ids.contains(t.id.as_str())
-            })
-            .cloned()
-            .collect();
-        for input in inputs {
-            let prior = prior_by_id.get(input.id.as_str());
-            let mut item = TaskItem {
-                id: input.id,
-                source_type: source_type.to_string(),
-                source_id: source_id.to_string(),
-                source_order: input.source_order,
-                status: input.status,
-                text: input.text,
-                body: input.body,
-                due_at: input.due_at,
-                assignee: prior.map(|p| p.assignee.clone()).unwrap_or_default(),
-                created_at: prior
-                    .map(|p| p.created_at.clone())
-                    .unwrap_or_else(|| now.clone()),
-                updated_at: now.clone(),
-            };
-            if let Some(prior) = prior {
-                if same_content(prior, &item) {
-                    item.updated_at = prior.updated_at.clone();
-                }
-            }
-            next.push(item);
-        }
+        let next = replaced_source_tasks(&existing, source_type, source_id, inputs);
 
         if next == existing {
             return Ok(());
@@ -481,7 +589,7 @@ impl SessionStore {
         }
     }
 
-    async fn normalize_summary_tasks(
+    pub(super) async fn normalize_summary_tasks(
         &self,
         id: &str,
         tasks: &mut [TaskItem],

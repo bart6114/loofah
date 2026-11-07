@@ -107,6 +107,7 @@ vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({
     _: translate,
     t: translate,
+    i18n,
   }),
 }));
 

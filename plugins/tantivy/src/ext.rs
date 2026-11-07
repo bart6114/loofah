@@ -11,12 +11,11 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
         let app = self.manager.app_handle();
         let global = app.settings().global_base()?.into_std_path_buf();
         let vault = app.settings().vault_base()?.into_std_path_buf();
-        let cache = hypr_search_cache::Cache::new(&global, &vault)?;
-        let worker = cache.clone();
-        tokio::task::spawn_blocking(move || worker.initialize(&mut |_| {}))
-            .await
-            .map_err(|error| crate::Error::Worker(error.to_string()))??;
-        *self.manager.state::<IndexState>().cache.write().await = Some(cache);
+        self.manager
+            .state::<IndexState>()
+            .service
+            .initialize(&global, &vault)
+            .await?;
         Ok(())
     }
 
@@ -31,48 +30,32 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Tantivy<'a, R, M> {
 
     pub async fn search(&self, request: SearchRequest) -> Result<SearchResult, crate::Error> {
         Self::validate_collection(&request.collection)?;
-        let cache = self
-            .manager
+        self.manager
             .state::<IndexState>()
-            .cache
-            .read()
+            .service
+            .search(request)
             .await
-            .clone()
-            .ok_or(crate::Error::IndexNotInitialized)?;
-        tokio::task::spawn_blocking(move || cache.search(request))
-            .await
-            .map_err(|error| crate::Error::Worker(error.to_string()))?
             .map_err(Into::into)
     }
 
     pub async fn reconcile(&self) -> Result<(), crate::Error> {
-        let cache = self
-            .manager
+        self.manager
             .state::<IndexState>()
-            .cache
-            .read()
+            .service
+            .reconcile(None)
             .await
-            .clone()
-            .ok_or(crate::Error::IndexNotInitialized)?;
-        tokio::task::spawn_blocking(move || cache.reconcile(&mut |_| {}))
-            .await
-            .map_err(|error| crate::Error::Worker(error.to_string()))??;
-        Ok(())
+            .map(|_| ())
+            .map_err(Into::into)
     }
 
     pub async fn reconcile_sessions(&self, ids: Vec<String>) -> Result<(), crate::Error> {
-        let cache = self
-            .manager
+        self.manager
             .state::<IndexState>()
-            .cache
-            .read()
+            .service
+            .reconcile(Some(ids))
             .await
-            .clone()
-            .ok_or(crate::Error::IndexNotInitialized)?;
-        tokio::task::spawn_blocking(move || cache.reconcile_sessions(&ids))
-            .await
-            .map_err(|error| crate::Error::Worker(error.to_string()))??;
-        Ok(())
+            .map(|_| ())
+            .map_err(Into::into)
     }
 
     pub async fn reindex(&self, collection: Option<String>) -> Result<(), crate::Error> {

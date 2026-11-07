@@ -2,6 +2,7 @@ use tauri::Manager;
 
 mod commands;
 mod config;
+mod config_events;
 mod error;
 mod ext;
 mod state;
@@ -43,12 +44,21 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             specta_builder.mount_events(app);
 
             let startup_vault_base = app.settings().resolve_startup_vault_base().unwrap();
-            let config_state = config::ConfigState::load_or_default(&startup_vault_base);
+            let config_state =
+                std::sync::Arc::new(config::ConfigState::load_or_default(&startup_vault_base));
+            let config_events = config_events::start(app, config_state.clone());
             let snapshot = state::StartupSnapshot::new(startup_vault_base);
             assert!(app.manage(snapshot));
             assert!(app.manage(config_state));
+            assert!(app.manage(config_events));
             Ok(())
         })
+        .on_event(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                config_events::stop(app);
+            }
+        })
+        .on_drop(|app| config_events::stop(&app))
         .build()
 }
 

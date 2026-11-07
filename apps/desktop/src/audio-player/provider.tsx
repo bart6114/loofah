@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trans } from "@lingui/react/macro";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   createContext,
   type ReactNode,
@@ -12,10 +13,7 @@ import {
 } from "react";
 import WaveSurfer from "wavesurfer.js";
 
-import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
-
-import { deleteSessionAudio } from "~/session/attachments";
-import { listenerStore } from "~/store/zustand/listener/instance";
+import type { VaultScope } from "~/shared/application/vault-scope";
 
 const TIME_UPDATE_STEP_SECONDS = 0.1;
 
@@ -81,6 +79,11 @@ interface AudioPlayerContextValue {
   setPlaybackRate: (rate: number) => void;
   deleteRecording: () => Promise<void>;
   isDeletingRecording: boolean;
+  canDeleteRecording: boolean;
+  audioReady: boolean;
+  error: Error | null;
+  deletionFailed: boolean;
+  retry: () => void;
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
@@ -98,56 +101,66 @@ export function useAudioTime(): TimeSnapshot {
   return useSyncExternalStore(timeStore.subscribe, timeStore.getSnapshot);
 }
 
-// Precomputed on the Rust side and cached beside the recording. Rendering from these peaks
-// lets WaveSurfer skip fetching + WebAudio-decoding the whole file in the webview (seconds
-// for an hour-long recording); playback still streams through the media element.
-function useAudioPeaks(sessionId: string, enabled: boolean) {
-  const peaksQuery = useQuery({
-    enabled,
-    queryKey: ["audio", sessionId, "peaks"],
-    queryFn: () => fsSyncCommands.audioPeaks(sessionId),
-    select: (result) => (result.status === "error" ? null : result.data),
-    retry: false,
-  });
-
-  return {
-    peaks: peaksQuery.data ?? null,
-    peaksResolved: peaksQuery.isFetched || !enabled,
-  };
-}
-
-function useAudioExistence(sessionId: string) {
-  const audioExists = useQuery({
-    queryKey: ["audio", sessionId, "exist"],
-    queryFn: () => fsSyncCommands.audioExist(sessionId),
-    select: (result) => {
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data;
-    },
-  });
-
-  return {
-    audioExists: audioExists.data ?? false,
-    audioExistsResolved: audioExists.isSuccess,
-  };
-}
-
-export function useAudioExists(sessionId: string): boolean {
-  return useAudioExistence(sessionId).audioExists;
+export function AudioPlayerStatus() {
+  const { error, retry, deletionFailed } = useAudioPlayer();
+  if (!error) return null;
+  return (
+    <div
+      role="alert"
+      className="text-destructive flex items-center gap-2 text-xs"
+    >
+      <span>
+        {deletionFailed ? (
+          <Trans>
+            Recording deletion was not confirmed. Reload it before trying again.
+          </Trans>
+        ) : (
+          <Trans>Recording playback is unavailable.</Trans>
+        )}
+      </span>
+      <button type="button" className="underline" onClick={retry}>
+        <Trans>Retry</Trans>
+      </button>
+    </div>
+  );
 }
 
 export function AudioPlayerProvider({
   sessionId,
-  url,
+  scope,
+  enabled = true,
+  onDeleteRecording,
   children,
 }: {
   sessionId: string;
-  url: string;
+  scope: VaultScope | null;
+  enabled?: boolean;
+  onDeleteRecording?: (remove: () => Promise<void>) => Promise<void>;
   children: ReactNode;
 }) {
-  const queryClient = useQueryClient();
+  const recordingQuery = useQuery(
+    {
+      queryKey: ["vault", "unbound", "audio_resource", sessionId],
+      queryFn: async () => null,
+      ...scope?.recordingOptions(sessionId),
+      enabled: !!scope && enabled,
+    },
+    scope?.queryClient,
+  );
+  const recording = recordingQuery.data ?? null;
+  const peaksQuery = useQuery(
+    {
+      queryKey: ["vault", "unbound", "audio_peaks", sessionId],
+      queryFn: async () => null,
+      ...scope?.recordingPeaksOptions(sessionId, recording),
+      enabled: !!scope && enabled && !!recording,
+    },
+    scope?.queryClient,
+  );
+  const peaks = peaksQuery.data ?? null;
+  const peaksResolved = peaksQuery.isFetched;
+  const url = enabled ? (recording?.url ?? "") : "";
+  const [playbackError, setPlaybackError] = useState<Error | null>(null);
   const isPro = true;
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [wavesurfer, setWavesurfer] = useState<WaveSurfer | null>(null);
@@ -155,15 +168,25 @@ export function AudioPlayerProvider({
   const [playbackRate, setPlaybackRateState] = useState(1);
   const timeStoreRef = useRef(new TimeStore());
   const stopRequestedRef = useRef(false);
-  const { audioExists: audioExistsValue, audioExistsResolved } =
-    useAudioExistence(sessionId);
-  const { peaks, peaksResolved } = useAudioPeaks(sessionId, Boolean(url));
+  const currentPlayerRef = useRef<WaveSurfer | null>(null);
+  const checkpointRef = useRef<{
+    key: string;
+    time: number;
+    playing: boolean;
+  } | null>(null);
+  const playbackKey = recording
+    ? JSON.stringify([scope?.client.scope, sessionId, recording.resumeKey])
+    : null;
 
   const registerContainer = useCallback((el: HTMLDivElement | null) => {
     setContainer((prev) => (prev === el ? prev : el));
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      checkpointRef.current = null;
+      timeStoreRef.current.reset();
+    }
     // Waiting for peaksResolved avoids a race where WaveSurfer starts the expensive
     // fetch+decode fallback that precomputed peaks exist to skip.
     if (!container || !url || !peaksResolved) {
@@ -172,9 +195,18 @@ export function AudioPlayerProvider({
 
     const store = timeStoreRef.current;
     store.reset();
+    const checkpoint =
+      checkpointRef.current?.key === playbackKey ? checkpointRef.current : null;
+    checkpointRef.current = checkpoint;
+    if (checkpoint) store.setCurrent(checkpoint.time);
     stopRequestedRef.current = false;
+    let ready = false;
+    let active = true;
 
-    const audio = new Audio(url);
+    setPlaybackError(null);
+    const audio = new Audio();
+    audio.preload = "metadata";
+    audio.src = url;
     let lastReportedTime = 0;
 
     const ws = WaveSurfer.create({
@@ -195,7 +227,9 @@ export function AudioPlayerProvider({
         { waveColor: "#d6b8b8", progressColor: "#a77474", overlay: true },
         { waveColor: "#b7c6d8", progressColor: "#748fae", overlay: true },
       ],
-      ...(peaks ? { peaks: peaks.channels, duration: peaks.durationSec } : {}),
+      // An unavailable waveform must never trigger a whole-recording WebAudio fetch.
+      peaks: peaks?.channels ?? [[0, 0]],
+      ...(peaks ? { duration: peaks.durationSec } : {}),
     });
 
     if (peaks) {
@@ -218,6 +252,14 @@ export function AudioPlayerProvider({
       if (dur && isFinite(dur)) {
         store.setTotal(dur);
       }
+      if (!ready && checkpoint) {
+        ws.setTime(Math.min(checkpoint.time, dur || checkpoint.time));
+        if (checkpoint.playing)
+          void ws.play().catch((error) => {
+            if (active) setPlaybackError(error);
+          });
+      }
+      ready = true;
     };
 
     const handlePlay = () => {
@@ -264,6 +306,9 @@ export function AudioPlayerProvider({
       setState("stopped");
     };
 
+    ws.on("error", (error) => {
+      if (active) setPlaybackError(error);
+    });
     ws.on("decode", handleDecode);
     ws.on("play", handlePlay);
     ws.on("pause", handlePause);
@@ -274,8 +319,17 @@ export function AudioPlayerProvider({
     ws.on("destroy", handleDestroy);
 
     setWavesurfer(ws);
+    currentPlayerRef.current = ws;
 
     return () => {
+      active = false;
+      if (currentPlayerRef.current === ws) currentPlayerRef.current = null;
+      if (ready && playbackKey)
+        checkpointRef.current = {
+          key: playbackKey,
+          time: ws.getCurrentTime(),
+          playing: ws.isPlaying(),
+        };
       stopRequestedRef.current = false;
       ws.destroy();
       setWavesurfer(null);
@@ -283,11 +337,13 @@ export function AudioPlayerProvider({
       audio.src = "";
       audio.load();
     };
-  }, [container, url, peaks, peaksResolved]);
+  }, [container, url, peaks, peaksResolved, playbackKey, enabled]);
 
   const start = useCallback(() => {
     if (wavesurfer) {
-      void wavesurfer.play();
+      void wavesurfer.play().catch((error) => {
+        if (currentPlayerRef.current === wavesurfer) setPlaybackError(error);
+      });
     }
   }, [wavesurfer]);
 
@@ -299,7 +355,9 @@ export function AudioPlayerProvider({
 
   const resume = useCallback(() => {
     if (wavesurfer) {
-      void wavesurfer.play();
+      void wavesurfer.play().catch((error) => {
+        if (currentPlayerRef.current === wavesurfer) setPlaybackError(error);
+      });
     }
   }, [wavesurfer]);
 
@@ -350,23 +408,52 @@ export function AudioPlayerProvider({
     }
   }, [isPro, playbackRate, wavesurfer]);
 
+  const hasDeleteCapability =
+    !!scope?.client.canEdit &&
+    scope.client.features.includes("recording_delete");
   const deleteRecordingMutation = useMutation({
+    networkMode: "always",
+    retry: false,
     mutationFn: async () => {
-      const deleted = await deleteSessionAudio(sessionId, () =>
-        isSessionAudioIdle(sessionId),
-      );
-      if (!deleted) {
-        throw new Error("audio_session_busy");
-      }
+      if (!scope || !recording || !hasDeleteCapability)
+        throw new Error("Recording deletion is unavailable");
+      const remove = async () => {
+        const expected_sha256 = await recording.deletionRevision();
+        if (expected_sha256 === null) return;
+        await scope.run(() =>
+          scope.client.deleteRecording(sessionId, { expected_sha256 }),
+        );
+      };
+      if (onDeleteRecording) await onDeleteRecording(remove);
+      else await remove();
     },
     onSuccess: () => {
       stop();
+      setPlaybackError(null);
       timeStoreRef.current.reset();
-      void queryClient.invalidateQueries({
-        queryKey: ["audio", sessionId],
-      });
+      for (const kind of ["audio_resource", "audio_peaks", "audio_metadata"]) {
+        void scope?.queryClient.invalidateQueries({
+          queryKey: ["vault", scope.client.scope, kind, sessionId],
+        });
+      }
     },
   });
+  const canDeleteRecording =
+    hasDeleteCapability &&
+    enabled &&
+    !!recording &&
+    !recordingQuery.isFetching &&
+    !recordingQuery.isError &&
+    !deleteRecordingMutation.isError;
+  const { refetch: refetchRecording } = recordingQuery;
+  const { reset: resetDeletion } = deleteRecordingMutation;
+  const retry = useCallback(() => {
+    resetDeletion();
+    setPlaybackError(null);
+    void refetchRecording();
+  }, [refetchRecording, resetDeletion]);
+  const error =
+    deleteRecordingMutation.error ?? recordingQuery.error ?? playbackError;
 
   const value = useMemo<AudioPlayerContextValue>(
     () => ({
@@ -379,8 +466,13 @@ export function AudioPlayerProvider({
       resume,
       stop,
       seek,
-      audioExists: audioExistsValue,
-      audioExistsResolved,
+      audioExists: !!recording,
+      audioExistsResolved: recordingQuery.isSuccess,
+      audioReady: !!url,
+      canDeleteRecording,
+      error,
+      deletionFailed: !!deleteRecordingMutation.error,
+      retry,
       playbackRate,
       setPlaybackRate,
       deleteRecording: deleteRecordingMutation.mutateAsync,
@@ -395,8 +487,13 @@ export function AudioPlayerProvider({
       resume,
       stop,
       seek,
-      audioExistsValue,
-      audioExistsResolved,
+      recording,
+      recordingQuery.isSuccess,
+      url,
+      canDeleteRecording,
+      deleteRecordingMutation.error,
+      error,
+      retry,
       playbackRate,
       setPlaybackRate,
       deleteRecordingMutation.mutateAsync,
@@ -408,13 +505,5 @@ export function AudioPlayerProvider({
     <AudioPlayerContext.Provider value={value}>
       {children}
     </AudioPlayerContext.Provider>
-  );
-}
-
-function isSessionAudioIdle(sessionId: string) {
-  const state = listenerStore.getState();
-  return (
-    state.getSessionMode(sessionId) === "inactive" &&
-    !(state.live.sessionId === sessionId && state.live.loading)
   );
 }

@@ -1,11 +1,11 @@
 ---
 title: "MCP for agents"
-description: "Connect an MCP client to the local knowledge vault over stdio."
+description: "Connect an MCP client to your selected Loofah vault over stdio."
 ---
 
 For agents with shell access, we recommend the [CLI](/agents/cli) for both reading and writing. Start with the [skill installation prompt](/agents/skills#install-with-a-prompt) to make your agent aware of it and remember to use it. MCP is an optional read-only connection for clients without shell access, or when you prefer MCP.
 
-The MCP server is part of the `loof` executable. It communicates through standard input and output. It does not open a network port or send vault data to a hosted service. It is read-only: to create sessions, edit notes, attach source artifacts, or import and transcribe audio, use the [CLI](/reference/cli).
+The MCP server is part of the `loof` executable. It communicates through standard input and output. The default local mode does not open a network port or contact a server. An explicitly selected server profile reads its vault over authenticated HTTPS. It is read-only: to create sessions, edit notes, attach source artifacts, or import and transcribe audio, use the [CLI](/reference/cli).
 
 The MCP tool names retain `meeting` for compatibility, but they can also return standalone knowledge sessions that have no recording or transcript.
 
@@ -36,6 +36,20 @@ For a custom vault path:
   }
 }
 ```
+
+## Use a server vault
+
+Local use needs no login. For a server, first sign in on the same computer:
+
+```bash
+loof profiles login company --server https://notes.example.com
+```
+
+Then use `"args": ["--profile", "company", "mcp"]` in the client configuration.
+The existing tools and resources stay read-only. Tool calls never open a browser,
+and authentication or network errors never select the local vault instead.
+Restart the MCP client after changing the profile's account or vault. See
+[server profiles](/reference/cli/#server-profiles) for vault selection and logout.
 
 ## Recommended order
 

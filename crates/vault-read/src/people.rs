@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 use crate::paths;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-pub struct Person {
+pub struct PersonItem {
     pub id: String,
     #[serde(default)]
     pub name: String,
 }
+
+pub type Person = PersonItem;
 
 #[derive(Debug, Default, Deserialize)]
 struct PeopleFile {

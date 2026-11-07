@@ -58,6 +58,8 @@ pub fn show_devtool<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
 #[tauri::command]
 #[specta::specta]
 pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    app.state::<crate::processing::ProcessingState>()
+        .request_shutdown();
     // Last-chance flush before the process actually exits: any transcript words still sitting
     // in the debounce buffer must land on disk now, or a quit right after a burst of speech
     // could lose up to ~1s of audio's worth of words. Best-effort -- a failure here must not
@@ -66,6 +68,17 @@ pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         && let Err(err) = store.flush_all().await
     {
         tracing::error!(error = %err, "session_store flush_all failed while completing app exit");
+    }
+
+    match tokio::time::timeout(
+        crate::EXIT_FLUSH_TIMEOUT,
+        app.state::<crate::processing::ProcessingState>().shutdown(),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::error!(%error, "local processing shutdown failed"),
+        Err(_) => tracing::warn!("local processing exceeded app exit deadline"),
     }
 
     crate::mark_exit_flush_complete();

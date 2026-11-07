@@ -7,17 +7,12 @@ use super::{SessionStore, StoreError, WriteGuard, paths};
 /// identically are by definition the same tag, so no collision suffixing is needed.
 /// Sessions keep storing raw tag strings in `_meta.json` and degrade gracefully if
 /// `tags.json` disappears.
-#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-pub struct TagItem {
-    pub id: String,
-    #[serde(default)]
-    pub name: String,
-}
+pub use hypr_vault_read::TagItem;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct TagsFile {
+pub(super) struct TagsFile {
     #[serde(default)]
-    tags: Vec<TagItem>,
+    pub(super) tags: Vec<TagItem>,
 }
 
 /// Trim, strip a leading `#`, lowercase. `None` when nothing is left — the strict
@@ -113,6 +108,14 @@ impl SessionStore {
             .await?
             .ok_or_else(|| StoreError::Io(format!("session {session_id} has no _meta.json")))?;
         let registry = self.list_tags().await?;
+        Ok(self.tag_context_from_meta(&meta, registry))
+    }
+
+    pub(super) fn tag_context_from_meta(
+        &self,
+        meta: &super::SessionMeta,
+        registry: Vec<TagItem>,
+    ) -> TagContext {
         let mut names: Vec<_> = registry.into_iter().map(|tag| tag.name).collect();
         {
             let index = self.index.read().unwrap();
@@ -124,18 +127,19 @@ impl SessionStore {
             );
         }
         names.extend(meta.tags.iter().cloned());
-        Ok(TagContext {
+        TagContext {
             available: normalized_tags(names)
                 .into_iter()
                 .filter(|name| is_suggestible_tag(name))
                 .collect(),
-            attached: normalized_tags(meta.tags),
+            attached: normalized_tags(meta.tags.clone()),
             dismissed: normalized_tags(
                 meta.tag_suggestions
-                    .map(|state| state.dismissed)
+                    .as_ref()
+                    .map(|state| state.dismissed.clone())
                     .unwrap_or_default(),
             ),
-        })
+        }
     }
 
     /// A missing `tags.json` is an empty registry, and an unparseable one must never

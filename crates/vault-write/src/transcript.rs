@@ -928,8 +928,23 @@ mod tests {
             .append_transcript("s1", delta_with_words(&["auto"]))
             .await
             .unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        assert!(vault.path().join("sessions/s1/transcript.json").is_file());
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let json = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        break serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("cannot read debounced transcript: {error}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the debounce timer must persist words without an explicit flush");
+        assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 1);
+        assert_eq!(json["transcripts"][0]["words"][0]["text"], "auto");
     }
 
     #[tokio::test]
@@ -1026,25 +1041,36 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // Give the single scheduled flusher time to fire; if appends had each spawned their
-        // own flusher this would still pass, so the real assertion is the word count below --
-        // three separate un-coalesced buffers would have clobbered each other down to 1 word.
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        let json: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(vault.path().join("sessions/s1/transcript.json")).unwrap(),
-        )
-        .unwrap();
+        // File replacement precedes index publication; observing the file alone
+        // does not establish that the background flush has reached both readers.
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let (json, indexed) = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                        if json["transcripts"][0]["words"]
+                            .as_array()
+                            .is_some_and(|words| words.len() == 3)
+                        {
+                            if let Some(indexed) = store.transcript_get("t1").await.unwrap()
+                                && indexed.words.len() == 3
+                            {
+                                break (json, indexed);
+                            }
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("could not read the debounced transcript: {error}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the debounce timer must persist and index all three appends");
         assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 3);
 
-        let texts: Vec<String> = store
-            .transcript_get("t1")
-            .await
-            .unwrap()
-            .unwrap()
-            .words
-            .into_iter()
-            .map(|w| w.text)
-            .collect();
+        let texts: Vec<String> = indexed.words.into_iter().map(|w| w.text).collect();
         assert_eq!(texts, vec!["a", "b", "c"]);
     }
 
@@ -1522,8 +1548,10 @@ mod tests {
             .unwrap();
 
         let mut saw_transcripts_change = false;
-        while let Ok((entity, ids)) = rx.try_recv() {
-            if entity == super::super::IndexEntity::Transcripts && ids.contains(&"s1".to_string()) {
+        while let Ok(change) = rx.try_recv() {
+            if change.entity == super::super::IndexEntity::Transcripts
+                && change.ids.contains(&"s1".to_string())
+            {
                 saw_transcripts_change = true;
             }
         }

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 
-import type { JSONContent } from "@hypr/editor/note";
 import type { TaskStorage } from "@hypr/editor/task-storage";
 import {
   createTaskSourceKey,
@@ -8,6 +7,8 @@ import {
   type TaskRecord,
   type TaskSource,
 } from "@hypr/editor/tasks";
+
+import { taskItemToRecord, taskRecordToInput } from "./task-records";
 
 import { subscribeIndexChanged } from "~/shared/index-query";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
@@ -318,82 +319,10 @@ export function createStoreBackedTaskStorage(
   };
 }
 
-function taskRecordToInput(task: TaskRecord): TaskInput {
-  return {
-    id: task.taskId,
-    source_order: task.sourceOrder,
-    status: task.status,
-    text: task.textPreview,
-    body: task.body as TaskInput["body"],
-    due_at: task.dueDate ?? "",
-  };
-}
-
-function taskItemToRecord(item: TaskItem): TaskRecord | null {
-  const sourceOrder = Number(item.source_order);
-  if (
-    !item.id ||
-    !item.source_id ||
-    !item.source_type ||
-    !Number.isFinite(sourceOrder) ||
-    (item.status !== "todo" &&
-      item.status !== "in_progress" &&
-      item.status !== "done")
-  ) {
-    return null;
-  }
-
-  const body = parseTaskBody(item.body, item.text);
-  return {
-    taskId: item.id,
-    sourceId: item.source_id,
-    sourceType: item.source_type,
-    sourceOrder,
-    status: item.status,
-    textPreview: item.text || getTextPreview(body),
-    body,
-    dueDate: item.due_at || undefined,
-  };
-}
-
 function areSameTaskSets(left: TaskRecord[], right: TaskRecord[]) {
   if (left.length !== right.length) {
     return false;
   }
 
   return left.every((task, index) => isSameTask(task, right[index]!));
-}
-
-function parseTaskBody(body: unknown, legacyText: unknown): JSONContent[] {
-  if (Array.isArray(body)) {
-    return body as JSONContent[];
-  }
-
-  if (typeof legacyText === "string" && legacyText) {
-    return [
-      {
-        type: "paragraph",
-        content: [{ type: "text", text: legacyText }],
-      },
-    ];
-  }
-
-  return [{ type: "paragraph" }];
-}
-
-function getTextPreview(body: JSONContent[]): string {
-  const firstParagraph = body.find((node) => node.type === "paragraph");
-  return getNodeText(firstParagraph).trim();
-}
-
-function getNodeText(node: JSONContent | undefined): string {
-  if (!node) {
-    return "";
-  }
-
-  if (typeof node.text === "string") {
-    return node.text;
-  }
-
-  return (node.content ?? []).map((child) => getNodeText(child)).join(" ");
 }

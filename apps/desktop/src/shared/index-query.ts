@@ -5,9 +5,9 @@ import {
 } from "@tanstack/react-query";
 import { useEffect } from "react";
 
+import { getApplicationClient } from "./application/client";
+import type { IndexEntity } from "./application/protocol.gen";
 import { measureLocalQuery } from "./performance";
-
-import { events, type IndexEntity } from "~/types/tauri.gen";
 
 type IndexSubscription = {
   entities: readonly IndexEntity[];
@@ -58,8 +58,8 @@ function revalidateCachedQueries() {
 
 function ensureIndexChangedListener(): Promise<unknown> {
   if (listenerPromise) return listenerPromise;
-  listenerPromise = events.indexChanged
-    .listen(({ payload }) => {
+  listenerPromise = getApplicationClient()
+    .subscribeIndexChanged((payload) => {
       for (const client of queryCaches.keys())
         invalidateCachedQueries(client, payload.entity, payload.ids);
       const seenDedupeKeys = new Set<string>();
@@ -189,7 +189,7 @@ export function useIndexQuery<TData>({
     // The default "online" mode pauses (re)fetches whenever the webview
     // reports itself offline, leaving the mounted view stuck with stale data
     // until a remount -- there is no network to wait for here.
-    networkMode: "always",
+    networkMode: getApplicationClient().networkMode,
   });
 
   useEffect(() => {

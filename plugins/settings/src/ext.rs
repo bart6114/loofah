@@ -72,30 +72,24 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Settings<'a, R, M> {
     }
 
     pub fn config(&self) -> crate::AppConfig {
-        self.manager.state::<crate::ConfigState>().snapshot()
+        self.manager
+            .state::<std::sync::Arc<crate::ConfigState>>()
+            .snapshot()
     }
 
     pub async fn set_config_values(
         &self,
         values: std::collections::HashMap<String, serde_json::Value>,
     ) -> crate::Result<()> {
-        use tauri::Emitter;
-
-        let state = self.manager.state::<crate::ConfigState>();
-        let next = state.set_values(values).await?;
-
-        // Broadcast the FULL new config to every webview, including the one
-        // that issued the write: the FE store replaces its snapshot
-        // idempotently, so the writer's own echo is harmless and keeps all
-        // windows converged on the same state.
-        self.manager
-            .app_handle()
-            .emit(crate::CONFIG_CHANGED_EVENT, &next)?;
+        let state = self.manager.state::<std::sync::Arc<crate::ConfigState>>();
+        state.set_values(values).await?;
         Ok(())
     }
 
     pub fn reset_config(&self) -> crate::Result<()> {
-        self.manager.state::<crate::ConfigState>().reset()?;
+        self.manager
+            .state::<std::sync::Arc<crate::ConfigState>>()
+            .reset()?;
         Ok(())
     }
 }

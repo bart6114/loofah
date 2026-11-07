@@ -1,0 +1,14 @@
+{
+  "storage_root": "/var/lib/loofah",
+  "cache_root": "/var/cache/loofah",
+  "listen": "127.0.0.1:8027",
+  "public_url": "https://loofah.company.example",
+  "oidc": {
+    "issuer": "https://sso.company.example/realms/company",
+    "audience": "loofah-api",
+    "client_id": "loofah-desktop",
+    "required_scope": "loofah:access",
+    "login_scopes": ["openid", "profile", "offline_access", "loofah:access"],
+    "access_token_types": ["at+jwt"]
+  }
+}

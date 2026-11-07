@@ -16,6 +16,7 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
 
 [dependencies]
+hypr-loofah-core = { workspace = true }
 hypr-storage = { workspace = true, features = ["specta"] }
 
 tauri = { workspace = true, features = ["test"] }

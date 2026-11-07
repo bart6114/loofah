@@ -1,6 +1,6 @@
+import { getApplicationClient } from "~/shared/application/client";
 import { DEFAULT_USER_ID } from "~/shared/utils";
 import type { SpeakerHintWithId, WordWithId } from "~/stt/types";
-import { commands } from "~/types/tauri.gen";
 
 export type SessionContentSnapshot = {
   sessionId: string;
@@ -43,18 +43,20 @@ export async function loadSessionContentSnapshot(
 ): Promise<SessionContentSnapshot | null> {
   if (!sessionId) return null;
 
-  const sessionRead = await commands.sessionGet(sessionId);
+  const sessionRead = await getApplicationClient().store.sessionGet(sessionId);
   if (sessionRead.status === "error") {
     throw new Error(sessionRead.error);
   }
   const session = sessionRead.data;
   if (!session) return null;
 
-  const docsRead = await commands.sessionEnhancedDocs(sessionId);
+  const docsRead =
+    await getApplicationClient().store.sessionEnhancedDocs(sessionId);
   if (docsRead.status === "error") {
     throw new Error(docsRead.error);
   }
-  const transcriptsRead = await commands.sessionTranscripts(sessionId);
+  const transcriptsRead =
+    await getApplicationClient().store.sessionTranscripts(sessionId);
   if (transcriptsRead.status === "error") {
     throw new Error(transcriptsRead.error);
   }
@@ -106,7 +108,7 @@ export async function loadSessionContentSnapshot(
 }
 
 export async function loadActiveSessionIds(): Promise<string[]> {
-  const result = await commands.sessionIds();
+  const result = await getApplicationClient().store.sessionIds();
   if (result.status === "error") {
     throw new Error(result.error);
   }

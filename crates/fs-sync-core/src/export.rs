@@ -95,9 +95,8 @@ pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
         Err(error) => return Err(error.into()),
     }
 
-    let target = trash_destination(vault_base, path)?;
     loop {
-        let candidate = unique_path(target.clone());
+        let candidate = prepare_trash_destination(vault_base, path)?;
         match hypr_storage::fs::rename_no_replace(path, &candidate) {
             Ok(()) => return Ok(Some(candidate)),
             // Another process may claim the candidate after unique_path checked it.
@@ -105,6 +104,10 @@ pub fn move_to_trash(vault_base: &Path, path: &Path) -> crate::Result<Option<Pat
             Err(error) => return Err(error.into()),
         }
     }
+}
+
+pub fn prepare_trash_destination(vault_base: &Path, path: &Path) -> crate::Result<PathBuf> {
+    trash_destination(vault_base, path).map(unique_path)
 }
 
 /// An overwrite backs up the old bytes without creating a gap at the live path.
@@ -172,7 +175,10 @@ fn trash_destination(vault_base: &Path, path: &Path) -> crate::Result<PathBuf> {
     {
         parent.push(component);
         match std::fs::create_dir(&parent) {
-            Ok(()) => {}
+            Ok(()) => {
+                #[cfg(unix)]
+                std::fs::File::open(parent.parent().unwrap())?.sync_all()?;
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 if !std::fs::symlink_metadata(&parent)?.file_type().is_dir() {
                     return Err(std::io::Error::new(

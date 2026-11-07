@@ -1,227 +1,162 @@
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { RawEditor as SessionRawEditor } from "./raw";
+import type { NoteEditorRef } from "@hypr/editor/note";
 
-const hoisted = vi.hoisted(() => ({
-  rawMd: JSON.stringify({ type: "doc", content: [] }),
-  sessionTitle: "Weekly sync",
-  saveSessionNote: vi.fn<(...args: unknown[]) => Promise<void>>(() =>
-    Promise.resolve(),
-  ),
-  noteEditorProps: [] as Record<string, unknown>[],
-  json2mdStrict: vi.fn(() => "markdown"),
-  sonnerToastError: vi.fn(),
+const state = vi.hoisted(() => ({
+  host: null as any,
+  props: [] as any[],
+  ready: true,
+  view: {},
+  focus: vi.fn(),
+  insert: vi.fn(),
+  flush: vi.fn(),
+  toast: vi.fn(),
+  retry: vi.fn(),
+  navigate: vi.fn(),
+  attachment: vi.fn(),
 }));
-
-vi.mock("@hypr/editor/markdown", () => ({
-  parseJsonContent: (value: string) => JSON.parse(value),
-  json2mdStrict: hoisted.json2mdStrict,
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => state.host,
 }));
-
+vi.mock("~/shared/application/vault-note-editor", async () => {
+  const { useImperativeHandle, useEffect } = await import("react");
+  return {
+    VaultNoteEditor: (props: any) => {
+      state.props.push(props);
+      const ready = state.ready;
+      useImperativeHandle(
+        props.editorRef,
+        () => ({
+          get view() {
+            return state.ready ? state.view : null;
+          },
+          commands: { focus: state.focus, insertAtStartAndFocus: state.insert },
+          flushPendingChanges: state.flush,
+        }),
+        [],
+      );
+      const onReady = props.editorOptions.onViewReady;
+      useEffect(() => {
+        if (ready) onReady(state.view);
+      }, [ready, onReady]);
+      return <div>Shared vault note editor</div>;
+    },
+  };
+});
 vi.mock("@hypr/editor/note", () => ({
-  areEquivalentEditorContents: (left: unknown, right: unknown) =>
-    JSON.stringify(left) === JSON.stringify(right),
-  normalizePortableAttachmentUrls: (value: unknown) => value,
-  NoteEditor: (props: Record<string, unknown>) => {
-    hoisted.noteEditorProps.push(props);
-
-    return <div>Note editor</div>;
-  },
+  useMentionNavigation: () => state.navigate,
 }));
-
 vi.mock("@hypr/ui/components/ui/toast", () => ({
-  sonnerToast: { error: hoisted.sonnerToastError },
+  sonnerToast: { error: state.toast },
 }));
-
-vi.mock("@hypr/plugin-opener2", () => ({
-  commands: { openUrl: vi.fn() },
-}));
-
-vi.mock("~/editor-bridge/app-link-view", () => ({
-  AppLinkView: () => null,
-}));
-
 vi.mock("~/editor-bridge/mention-config", () => ({
   useMentionConfig: () => ({ users: [] }),
 }));
-
-vi.mock("~/editor-bridge/open-editor-link", () => ({
-  openEditorLink: vi.fn(),
+vi.mock("~/session/hooks/useAttachmentResolver", () => ({
+  useAttachmentResolver: () => state.attachment,
 }));
-
-vi.mock("~/editor-bridge/session-mention-drop", () => ({
-  sessionMentionDropConfig: { read: () => null },
-}));
-
+vi.mock("~/editor-bridge/app-link-view", () => ({ AppLinkView: () => null }));
 vi.mock("~/editor-bridge/session-view", () => ({
   SessionNodeView: () => null,
 }));
-
-vi.mock("~/session/components/shared", () => ({
-  hasStoredNoteContent: (value: unknown) => Boolean(value),
+vi.mock("~/editor-bridge/open-editor-link", () => ({
+  openEditorLink: vi.fn(),
+}));
+vi.mock("~/editor-bridge/session-mention-drop", () => ({
+  sessionMentionDropConfig: { read: () => null },
+}));
+vi.mock("~/shared/application/device-recovery", () => ({
+  DeviceRecovery: () => <div>Device recovery</div>,
 }));
 
-vi.mock("~/session/queries", () => ({
-  useRefreshSessionNote: () => () => Promise.resolve(),
-  saveSessionNote: (...args: unknown[]) => hoisted.saveSessionNote(...args),
-}));
+import { RawEditor } from "./raw";
 
-vi.mock("~/session/hooks/useAttachmentResolver", () => ({
-  useAttachmentResolver: () => () => null,
-}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  state.props.length = 0;
+  state.ready = true;
+  state.host = {
+    scope: {
+      client: { scope: "local:fixture" },
+      queryClient: new QueryClient(),
+    },
+    error: null,
+    retry: state.retry,
+  };
+});
+afterEach(cleanup);
+const props = { sessionId: "session", rawMd: "", sessionTitle: "Title" };
 
-function RawEditor({
-  sessionId,
-  className,
-}: {
-  sessionId: string;
-  className?: string;
-}) {
-  return (
-    <SessionRawEditor
-      sessionId={sessionId}
-      rawMd={hoisted.rawMd}
-      sessionTitle={hoisted.sessionTitle}
-      className={className}
-    />
-  );
-}
-
-function readInitialDraft() {
-  return (
-    hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]
-      ?.initialDraft as (() => unknown) | undefined
-  )?.();
-}
-
-describe("RawEditor", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  beforeEach(() => {
-    hoisted.noteEditorProps = [];
-    hoisted.rawMd = JSON.stringify({ type: "doc", content: [] });
-    hoisted.sessionTitle = "Weekly sync";
-    hoisted.saveSessionNote.mockReset().mockResolvedValue(undefined);
-    hoisted.json2mdStrict.mockReset().mockReturnValue("markdown");
-    hoisted.sonnerToastError.mockReset();
-  });
-
-  it("uses the shared session note editor styling", () => {
-    render(<RawEditor sessionId="session-1" className="custom-editor-class" />);
-
-    const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
-
-    expect(props?.className).toContain("session-note-editor");
-    expect(props?.className).toContain("custom-editor-class");
-    expect(props?.placeholderComponent).toEqual(expect.any(Function));
-    expect(props?.initialContent).toMatchObject({
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Weekly sync" }],
-        },
-      ],
+describe("main raw note adapter", () => {
+  it("supplies existing device/editor capabilities to the shared editor without enabling independent task writes", () => {
+    const fileHandler = { onPaste: vi.fn() };
+    render(
+      <RawEditor
+        {...props}
+        className="custom"
+        fileHandlerConfig={fileHandler}
+      />,
+    );
+    const value = state.props[state.props.length - 1];
+    expect(value.scope).toBe(state.host.scope);
+    expect(value.showSaveControls).toBe(false);
+    expect(value.editorOptions).toMatchObject({
+      className: "session-note-editor custom",
+      fileHandlerConfig: fileHandler,
+      resolveAttachment: state.attachment,
+      onMentionNavigate: state.navigate,
+      syncContentWhenFocused: false,
     });
+    expect(value.editorOptions.taskSource).toBeUndefined();
   });
-
-  it("shows a persistent toast when saving the note fails", async () => {
-    hoisted.saveSessionNote.mockRejectedValue(new Error("disk full"));
-
-    render(<RawEditor sessionId="session-1" />);
-
-    const props = hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1];
-    const handleChange = props?.handleChange as (
-      input: unknown,
-    ) => Promise<void>;
+  it("shows a persistent failure toast when the shared save fails", () => {
+    render(<RawEditor {...props} />);
+    state.props[state.props.length - 1].onSaveError(new Error("disk full"));
+    expect(state.toast).toHaveBeenCalledWith(
+      "Note is NOT being saved: disk full",
+      expect.objectContaining({ id: "note-save-failed:local:fixture:session" }),
+    );
+  });
+  it("retains an early focus request until the coherent editor has mounted", async () => {
+    state.ready = false;
+    const ref = createRef<NoteEditorRef>();
+    const mounted = render(<RawEditor {...props} ref={ref} />);
+    act(() => ref.current!.commands.focus());
+    expect(state.focus).not.toHaveBeenCalled();
+    state.ready = true;
+    mounted.rerender(<RawEditor {...props} ref={ref} />);
+    await waitFor(() => expect(state.focus).toHaveBeenCalledOnce());
+    act(() => ref.current!.flushPendingChanges());
+    expect(state.flush).toHaveBeenCalledOnce();
+  });
+  it("does not deliver another note's deferred commands after a session switch", async () => {
+    state.ready = false;
+    const ref = createRef<NoteEditorRef>();
+    const mounted = render(<RawEditor {...props} ref={ref} />);
+    act(() => ref.current!.commands.focus());
+    state.ready = true;
+    mounted.rerender(<RawEditor {...props} sessionId="other" ref={ref} />);
     await act(async () => {
-      await expect(handleChange({ type: "doc", content: [] })).rejects.toThrow(
-        "disk full",
-      );
+      await Promise.resolve();
     });
-
-    await waitFor(() =>
-      expect(hoisted.saveSessionNote).toHaveBeenCalledWith(
-        "session-1",
-        "markdown",
-        "",
-      ),
-    );
-    await waitFor(() =>
-      expect(hoisted.sonnerToastError).toHaveBeenCalledWith(
-        expect.stringContaining("Note is NOT being saved"),
-        expect.objectContaining({ id: "note-save-failed:session-1" }),
-      ),
-    );
+    expect(state.focus).not.toHaveBeenCalled();
+    expect(state.props[state.props.length - 1].sessionId).toBe("other");
   });
-
-  it("reopens the submitted draft while its save and persisted query are still pending", async () => {
-    let finish!: () => void;
-    hoisted.saveSessionNote.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const input = {
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Edited title" }],
-        },
-      ],
+  it("shows a retryable bootstrap error without opening a different vault", () => {
+    state.host = {
+      scope: null,
+      error: new Error("Vault startup failed"),
+      retry: state.retry,
     };
-    const mounted = render(<RawEditor sessionId="pending-session" />);
-    const handleChange = hoisted.noteEditorProps[
-      hoisted.noteEditorProps.length - 1
-    ]?.handleChange as (input: unknown) => Promise<void>;
-    let save!: Promise<void>;
-    act(() => {
-      save = handleChange(input);
-    });
-    mounted.unmount();
-    const reopened = render(<RawEditor sessionId="pending-session" />);
-    expect(readInitialDraft()).toEqual(input);
-    expect(
-      hoisted.noteEditorProps[hoisted.noteEditorProps.length - 1]
-        ?.initialContent,
-    ).not.toEqual(input);
-    await act(async () => {
-      finish();
-      await save;
-    });
-    expect(readInitialDraft()).toEqual(input);
-    hoisted.rawMd = JSON.stringify(input);
-    hoisted.sessionTitle = "Edited title";
-    reopened.rerender(<RawEditor sessionId="pending-session" />);
-    expect(readInitialDraft()).toBeUndefined();
-  });
-
-  it("keeps an unserializable draft without writing an empty note", async () => {
-    hoisted.json2mdStrict.mockImplementation(() => {
-      throw new Error("Unsupported node");
-    });
-    const input = { type: "doc", content: [{ type: "unsupported" }] };
-    const mounted = render(<RawEditor sessionId="serialization-failure" />);
-    const handleChange = hoisted.noteEditorProps[
-      hoisted.noteEditorProps.length - 1
-    ]?.handleChange as (content: unknown) => Promise<void>;
-    await act(async () => {
-      await expect(handleChange(input)).rejects.toThrow("Unsupported node");
-    });
-    expect(hoisted.saveSessionNote).not.toHaveBeenCalled();
-    expect(hoisted.sonnerToastError).toHaveBeenCalledWith(
-      expect.stringContaining("Note is NOT being saved"),
-      { id: "note-save-failed:serialization-failure" },
+    render(<RawEditor {...props} />);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Vault startup failed",
     );
-    mounted.unmount();
-    render(<RawEditor sessionId="serialization-failure" />);
-    expect(readInitialDraft()).toEqual(input);
+    expect(state.props).toHaveLength(0);
+    screen.getByRole("button", { name: "Retry" }).click();
+    expect(state.retry).toHaveBeenCalledOnce();
   });
 });

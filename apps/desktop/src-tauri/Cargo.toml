@@ -19,6 +19,8 @@ tauri-build = { workspace = true, features = [] }
 serde_json = { workspace = true }
 
 [dependencies]
+async-stream = { workspace = true }
+base64 = { workspace = true }
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }
 
 camino = { workspace = true }
@@ -61,11 +63,17 @@ tauri-plugin-updater = { workspace = true }
 tauri-plugin-updater2 = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-windows = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
+hypr-loofah-client = { workspace = true, features = ["os-credentials"] }
+hypr-loofah-core = { workspace = true }
+hypr-loofah-protocol = { workspace = true }
+hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
 hypr-supervisor = { workspace = true }
 hypr-tauri-utils = { workspace = true }
@@ -78,23 +86,23 @@ pico-args = { workspace = true }
 ractor = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 specta = { workspace = true }
 specta-typescript = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 tauri-specta = { workspace = true, features = ["derive", "typescript"] }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "fs"] }
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-local-stt = { workspace = true, features = ["vulkan"] }
-sha2 = { workspace = true }
 winreg = "0.55"
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 default = []
-dev = ["dep:hypr-audio-mock"]
+dev = ["dep:hypr-audio-mock", "hypr-loofah-client/dev-fixtures"]
 devtools = ["tauri/devtools", "dep:hypr-audio-mock"]
 # The staging DMG flavor: everything `devtools` gives except `tauri/devtools`
 # itself. Flipping that tauri feature refingerprints the whole tauri/wry stack,
@@ -111,6 +119,8 @@ tauri-plugin-automation = { version = "0.1", optional = true }
 hypr-intercept = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
+futures-util = { workspace = true }
 sha2 = { workspace = true }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
