@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{IndexEntity, ScoredTagSuggestion, SessionStore, StoreError, WriteGuard, paths};
 
+mod generated;
+
 #[derive(Serialize, Deserialize)]
 struct PendingMigration {
     legacy_id: String,

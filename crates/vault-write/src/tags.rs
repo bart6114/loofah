@@ -102,6 +102,125 @@ pub(crate) fn apply_suggested_tags(
 }
 
 impl SessionStore {
+    pub(super) async fn validate_generated_tag_registration(
+        &self,
+        names: &[String],
+    ) -> Result<(), StoreError> {
+        self.generated_tag_registration(names).await.map(|_| ())
+    }
+
+    pub(super) async fn register_generated_tags_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        names: &[String],
+    ) -> Result<(), StoreError> {
+        let Some((bytes, added)) = self.generated_tag_registration(names).await? else {
+            return Ok(());
+        };
+        self.write_file_locked(guard, paths::tags_path(), bytes)
+            .await?;
+        for tag in &added {
+            self.index_upsert_tag(tag);
+        }
+        self.notify_index_changed(
+            super::IndexEntity::Tags,
+            added.into_iter().map(|tag| tag.id).collect(),
+        );
+        Ok(())
+    }
+
+    async fn generated_tag_registration(
+        &self,
+        names: &[String],
+    ) -> Result<Option<(Vec<u8>, Vec<TagItem>)>, StoreError> {
+        if names.is_empty() {
+            return Ok(None);
+        }
+        let path = self.vault_base.join(paths::tags_path());
+        let names = names.to_vec();
+        let limit = self.content_limits.metadata_bytes;
+        tokio::task::spawn_blocking(move || {
+            use std::io::Read;
+            let mut value = match std::fs::symlink_metadata(&path) {
+                Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+                    return Err(StoreError::Io("tag registry is not a regular file".into()));
+                }
+                Ok(meta) if meta.len() > limit as u64 => {
+                    return Err(StoreError::ResourceLimit(
+                        "Tag registry exceeds its size limit".into(),
+                    ));
+                }
+                Ok(_) => {
+                    let mut bytes = Vec::new();
+                    std::fs::File::open(&path)
+                        .map_err(|error| StoreError::Io(error.to_string()))?
+                        .take(limit.saturating_add(1) as u64)
+                        .read_to_end(&mut bytes)
+                        .map_err(|error| StoreError::Io(error.to_string()))?;
+                    if bytes.len() > limit {
+                        return Err(StoreError::ResourceLimit(
+                            "Tag registry exceeds its size limit".into(),
+                        ));
+                    }
+                    serde_json::from_slice::<serde_json::Value>(&bytes)
+                        .map_err(|_| StoreError::Serialize("Cannot parse tag registry".into()))?
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    serde_json::json!({"tags":[]})
+                }
+                Err(error) => return Err(StoreError::Io(error.to_string())),
+            };
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| StoreError::Serialize("Tag registry must be an object".into()))?;
+            let tags = object
+                .entry("tags")
+                .or_insert_with(|| serde_json::json!([]))
+                .as_array_mut()
+                .ok_or_else(|| {
+                    StoreError::Serialize("Tag registry entries must be an array".into())
+                })?;
+            let mut ids = std::collections::HashSet::new();
+            for raw in tags.iter() {
+                let tag: TagItem = serde_json::from_value(raw.clone())
+                    .map_err(|_| StoreError::Serialize("Cannot parse tag registry entry".into()))?;
+                ids.insert(tag.id);
+            }
+            let mut added = Vec::new();
+            for name in names {
+                let normalized = normalize_tag_name(&name)
+                    .filter(|normalized| normalized == &name && is_suggestible_tag(normalized))
+                    .ok_or_else(|| {
+                        StoreError::Serialize("Invalid generated tag registration".into())
+                    })?;
+                if ids.insert(normalized.clone()) {
+                    let tag = TagItem {
+                        id: normalized.clone(),
+                        name: normalized,
+                    };
+                    tags.push(
+                        serde_json::to_value(&tag)
+                            .map_err(|error| StoreError::Serialize(error.to_string()))?,
+                    );
+                    added.push(tag);
+                }
+            }
+            if added.is_empty() {
+                return Ok(None);
+            }
+            let bytes = serde_json::to_vec_pretty(&value)
+                .map_err(|error| StoreError::Serialize(error.to_string()))?;
+            if bytes.len() > limit {
+                return Err(StoreError::ResourceLimit(
+                    "Tag registry exceeds its size limit".into(),
+                ));
+            }
+            Ok(Some((bytes, added)))
+        })
+        .await
+        .map_err(|error| StoreError::Io(error.to_string()))?
+    }
+
     pub async fn session_tag_context(&self, session_id: &str) -> Result<TagContext, StoreError> {
         let meta = self
             .read_meta(session_id)

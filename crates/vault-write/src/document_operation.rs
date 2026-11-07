@@ -21,6 +21,11 @@ struct Intent {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum RecoveryTarget {
     Summary,
+    GeneratedSummary {
+        before_metadata: GeneratedTagMetadata,
+        after_metadata: GeneratedTagMetadata,
+        register_tags: Vec<String>,
+    },
     TemplateOutput {
         document_id: String,
     },
@@ -28,6 +33,37 @@ enum RecoveryTarget {
         title: String,
         body_revision: String,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct GeneratedTagMetadata {
+    pub tags: Vec<String>,
+    pub suggestions: Option<crate::TagSuggestionState>,
+}
+
+pub(super) struct GeneratedSummaryWrite<'a> {
+    pub before_revision: &'a str,
+    pub before_tasks_hash: &'a str,
+    pub after_bytes: &'a [u8],
+    pub tasks: &'a [TaskItem],
+    pub before_metadata: GeneratedTagMetadata,
+    pub after_metadata: GeneratedTagMetadata,
+    pub register_tags: Vec<String>,
+}
+
+impl GeneratedTagMetadata {
+    pub(super) fn read(meta: &crate::SessionMeta) -> Self {
+        Self {
+            tags: meta.tags.clone(),
+            suggestions: meta.tag_suggestions.clone(),
+        }
+    }
+
+    pub(super) fn apply(&self, meta: &mut crate::SessionMeta) {
+        meta.tags = self.tags.clone();
+        meta.tag_suggestions = self.suggestions.clone();
+    }
 }
 
 impl From<&DocumentTarget> for RecoveryTarget {
@@ -127,10 +163,10 @@ impl SessionStore {
             return Ok(());
         };
         crate::validate_session_id(&intent.session_id)?;
-        let schema_version = if matches!(intent.target, RecoveryTarget::Note { .. }) {
-            2
-        } else {
-            1
+        let schema_version = match &intent.target {
+            RecoveryTarget::Note { .. } => 2,
+            RecoveryTarget::GeneratedSummary { .. } => 3,
+            _ => 1,
         };
         if intent.schema_version != schema_version
             || path.file_name()
@@ -141,6 +177,23 @@ impl SessionStore {
             ));
         }
         let target = match &intent.target {
+            RecoveryTarget::GeneratedSummary {
+                before_metadata,
+                after_metadata,
+                register_tags,
+            } => {
+                return self
+                    .recover_generated_summary_locked(
+                        guard,
+                        path,
+                        &intent,
+                        before_metadata,
+                        after_metadata,
+                        register_tags,
+                    )
+                    .await
+                    .map_err(StoreError::after_commit);
+            }
             RecoveryTarget::Note {
                 title,
                 body_revision,
@@ -210,6 +263,176 @@ impl SessionStore {
                 .await?;
         }
         Ok(())
+    }
+
+    async fn recover_generated_summary_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        path: &Path,
+        intent: &Intent,
+        before: &GeneratedTagMetadata,
+        after: &GeneratedTagMetadata,
+        register_tags: &[String],
+    ) -> Result<(), StoreError> {
+        if self.is_recording(&intent.session_id) {
+            return Err(StoreError::Conflict(
+                "recording is active; generated summary recovery requires review".into(),
+            ));
+        }
+        let pending = PendingDocument(path.to_owned());
+        let Some(current) = self
+            .document_snapshot_locked(guard, &intent.session_id, &DocumentTarget::Summary)
+            .await?
+        else {
+            return pending.finish().await;
+        };
+        let before_tasks =
+            self.document_tasks_hash(&intent.session_id).await? == intent.before_tasks_hash;
+        let metadata = self
+            .metadata_snapshot_locked(guard, &intent.session_id)
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("session was deleted during generated summary recovery".into())
+            })?;
+        let projection = GeneratedTagMetadata::read(&metadata.meta);
+        if current.revision != intent.after_revision {
+            return if current.revision == intent.before_revision
+                && before_tasks
+                && projection == *before
+            {
+                pending.finish().await
+            } else {
+                Err(StoreError::Conflict(
+                    "summary changed during an interrupted generation; recovery requires review"
+                        .into(),
+                ))
+            };
+        }
+        let mut planned_tasks = intent.tasks.clone();
+        crate::tasks::sort_tasks(&mut planned_tasks);
+        let tasks = self.session_tasks(&intent.session_id).await?;
+        if tasks != planned_tasks && !before_tasks {
+            return Err(StoreError::Conflict(
+                "tasks changed during an interrupted generation; recovery requires review".into(),
+            ));
+        }
+        if projection != *before && projection != *after {
+            return Err(StoreError::Conflict(
+                "tags changed during an interrupted generation; recovery requires review".into(),
+            ));
+        }
+        let mut next_meta = metadata.meta;
+        after.apply(&mut next_meta);
+        crate::metadata_revision::validate_metadata_size(
+            &next_meta,
+            self.content_limits.metadata_bytes,
+        )?;
+        self.validate_generated_tag_registration(register_tags)
+            .await?;
+        self.finish_intent_tasks_locked(guard, intent, before_tasks)
+            .await?;
+        next_meta = self
+            .finish_generated_tag_metadata_locked(guard, &intent.session_id, before, after)
+            .await?;
+        self.register_generated_tags_locked(guard, register_tags)
+            .await?;
+        if let Some(document) = current.document {
+            self.index_set_summary_and_meta(&next_meta, document.markdown);
+        }
+        self.sync_generated_summary_parents(&intent.session_id)
+            .await?;
+        pending.finish().await
+    }
+
+    pub(super) async fn sync_generated_summary_parents(&self, id: &str) -> Result<(), StoreError> {
+        let directory = self.session_dir(id).await?;
+        let summary = self.vault_base.join(paths::summary_path_in(&directory));
+        let registry = self.vault_base.join(paths::tags_path());
+        tokio::task::spawn_blocking(move || {
+            crate::operation_io::sync_parent(&summary)?;
+            crate::operation_io::sync_parent(&registry)
+        })
+        .await
+        .map_err(join_error)?
+    }
+
+    pub(super) async fn finish_generated_tag_metadata_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        before: &GeneratedTagMetadata,
+        after: &GeneratedTagMetadata,
+    ) -> Result<crate::SessionMeta, StoreError> {
+        let mut meta = self
+            .metadata_snapshot_locked(guard, id)
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict(
+                    "session was deleted during generated summary application".into(),
+                )
+            })?
+            .meta;
+        let current = GeneratedTagMetadata::read(&meta);
+        // Only tag-owned fields are guarded; unrelated metadata can change while recovery is pending.
+        if current != *before && current != *after {
+            return Err(StoreError::Conflict(
+                "tags changed during generated summary application; recovery requires review"
+                    .into(),
+            ));
+        }
+        if current != *after {
+            after.apply(&mut meta);
+            crate::metadata_revision::validate_metadata_size(
+                &meta,
+                self.content_limits.metadata_bytes,
+            )?;
+            self.write_meta_locked(guard, &meta).await?;
+        } else {
+            self.index_upsert_meta(&meta);
+        }
+        Ok(meta)
+    }
+
+    pub(super) async fn begin_generated_summary_write_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        root: &Path,
+        session_id: &str,
+        write: GeneratedSummaryWrite<'_>,
+    ) -> Result<PendingDocument, StoreError> {
+        let target = DocumentTarget::Summary;
+        let current = self
+            .document_snapshot_locked(guard, session_id, &target)
+            .await?
+            .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
+        let before_tasks_hash = self.document_tasks_hash(session_id).await?;
+        if current.revision != write.before_revision || before_tasks_hash != write.before_tasks_hash
+        {
+            return Err(StoreError::Conflict(
+                "summary or tasks changed during generated summary preparation".into(),
+            ));
+        }
+        self.write_document_intent(
+            root,
+            Intent {
+                schema_version: 3,
+                session_id: session_id.into(),
+                target: RecoveryTarget::GeneratedSummary {
+                    before_metadata: write.before_metadata,
+                    after_metadata: write.after_metadata,
+                    register_tags: write.register_tags,
+                },
+                before_revision: current.revision,
+                after_revision: super::document_revision::revision(
+                    session_id,
+                    &target,
+                    Some(write.after_bytes),
+                )?,
+                before_tasks_hash,
+                tasks: write.tasks.to_vec(),
+            },
+        )
+        .await
     }
 
     async fn recover_note_write_locked(
@@ -409,7 +632,7 @@ impl SessionStore {
         Ok(PendingDocument(path))
     }
 
-    async fn document_tasks_hash(&self, session_id: &str) -> Result<String, StoreError> {
+    pub(super) async fn document_tasks_hash(&self, session_id: &str) -> Result<String, StoreError> {
         let dir = self.session_dir(session_id).await?;
         let path = self.vault_base.join(paths::session_tasks_path_in(&dir));
         tokio::task::spawn_blocking(move || {
