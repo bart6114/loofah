@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod jobs;
+pub use jobs::*;
+
 pub use hypr_agent_access::{
     GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, Meeting as AgentMeeting,
     MeetingExport as AgentExport, MeetingPage as AgentPage, MeetingTranscript as AgentTranscript,

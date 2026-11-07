@@ -123,6 +123,14 @@ export type Pagination = { offset: number; limit: number; returned: number; tota
 
 export type PersonItem = { id: string; name?: string }
 
+export type ProcessingJobFailure = "provider_unavailable" | "provider_failed" | "invalid_output" | "storage" | "interrupted"
+
+export type ProcessingJobSnapshot = { id: string; session_id: string; target: DocumentTarget; state: ProcessingJobState; phase: ProcessingPhase | null; failure: ProcessingJobFailure | null; created_at: string; updated_at: string }
+
+export type ProcessingJobState = "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "interrupted" | "conflict"
+
+export type ProcessingPhase = "preparing" | "generating" | "applying"
+
 export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
 export type RecordingWaveform = { recording_sha256: string; peaks: AudioPeaks }
@@ -188,6 +196,8 @@ export type SetMembershipRequest = { role: VaultRole; expected_revision: string 
 export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessions_found: number } | { kind: "indexing"; completed: number; total: number } | { kind: "archivingLegacyTemplates" } | { kind: "ready" } | { kind: "stopping" } | { kind: "stopped" } | { kind: "failed"; message: string }
 
 export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase; migrationIssues: string[] }
+
+export type SummaryJobRequest = { session_id: string; target: DocumentTarget; expected_revision: string }
 
 export type TagItem = { id: string; name?: string }
 

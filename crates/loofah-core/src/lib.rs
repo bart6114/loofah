@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod events;
+pub mod jobs;
 pub mod search;
 pub mod settings;
 pub mod startup;

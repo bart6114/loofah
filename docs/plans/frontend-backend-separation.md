@@ -308,7 +308,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Frontend AI workflows, durable jobs, remote providers, server model management, and Linux inference parity remain to implement.
+- [ ] **Phase 5: processing.** Typed processing-job contracts and the shared durable job journal are implemented and tested, including restart recovery, cooperative cancellation and replay-safe submission. Worker scheduling, adapters, provider execution/result application, migration of frontend AI workflows, remote provider configuration, server model management and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
@@ -2209,3 +2209,32 @@ build. No Rust source changed in this increment; the native fixture uses the
 previously built device/source and shared IPC adapters. Native Windows CI for
 that pushed source checkpoint is still running; macOS fixture success is not a
 Windows runtime pass.
+
+### Processing job journal foundation
+
+`loofah-protocol` now defines summary-job inputs and processing status, phase and
+failure DTOs. `loofah-core::jobs::JobJournal` supplies shared persistent
+bookkeeping outside canonical vault content. It uses one exclusive journal owner,
+bounded records/admission, per-member request identities, durable state changes
+and `job_changed` invalidations. Submission retries resolve the same request;
+changed input is refused. Cancellation remains a cooperative request for active
+work and cannot undo an already completed commit. Queued cancellation is final.
+
+On restart, queued jobs remain queued; active and cancelling jobs become explicitly
+interrupted. Provider calls are not automatically repeated. The journal stores no
+provider credentials, raw provider errors or canonical note bodies. Malformed or
+future storage is preserved and refused; unknown filenames are ignored. Failed
+or uncertain storage must stop further journal operations until recovery, so
+cached state cannot overwrite a possibly persisted transition.
+
+This is an internal foundation. No processing capability, HTTP/IPC job endpoint,
+provider execution, worker scheduling or automatic result application is enabled
+by this increment. Those remain required for phase 5; current local AI workflows
+remain active until their shared Rust replacement is complete. Validation passes 132 shared-core tests (the ignored child fixture is executed by its parent crash test), three protocol tests, headless/core Rust checking and strict production Clippy for the changed crates. Generated contract export/check passes. Tests verify actual process termination, concurrent submission, cancellation, late completion, capacity, foreign-vault rejection, malformed/future records, private permissions, source-waiter cancellation and failure after a persisted write.
+
+The pushed upload checkpoint's Windows x64 suite exposed an existing
+`debounce_flushes_without_explicit_flush` test using a fixed 1.5-second sleep.
+That test now waits up to ten seconds for actual persistence and checks the exact
+word and word count. It still never calls an explicit flush, and production
+transcript timing is unchanged. All 46 transcript regressions pass locally;
+Windows x64/ARM64 CI remains required for the updated checkpoint.
