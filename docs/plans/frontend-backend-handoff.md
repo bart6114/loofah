@@ -1,4 +1,75 @@
-# Paused frontend/backend separation
+# Frontend/backend separation continuation
+
+## Active resumption checkpoint
+
+The user resumed **all work** on 7 November 2026. The implementation goal is
+active; this handoff does not pause it. Continue in
+`/Volumes/T7/src/loofah-backend-separation`, branch
+`refactor/frontend-backend-separation`. Keep default local use offline and
+login-free, preserve macOS/Windows, and keep all local artifacts physically on T7.
+
+The integration branch now includes generated summary/tag recovery, durable
+device capture storage and its internal native sink, canonical-read lease
+ownership, native scoped recents/pins, bounded note pickers, immutable tab stores
+and production tab/bootstrap consumers, and the shared cancellable Whisper CPU
+kernel plus a new Linux CPU CI job. Notable recent checkpoints are `ffb9b2113`
+(production scoped tabs), `e5a369bdf` (native fixture origin correction) and
+`14124168e` (extracted locale source references).
+
+Verified after resume: 786 shared tests, 1,929 integrated frontend tests before
+production tab wiring, 1,943 frontend tests on the exact tab worker checkpoint,
+six integrated native capture fixtures, desktop typechecking, native Rust check
+and strict locale compilation. The native bridge has expected unsuppressed
+dead-code warnings because public host/UI wiring is unfinished. CI on previously
+pushed `4942778ce` passed, including both Windows architectures. Fresh CI must
+validate subsequent checkpoints; the Linux CPU job has not run on them yet.
+
+Three authorized workers remain active in isolated worktrees:
+
+- Frontend: `/Volumes/T7/src/loofah-separation-ui-next`,
+  `refactor/backend-scoped-pickers`. Checkpoint
+  `e69476aae26712dc68e120b8d5c5a498e6b5a9b2` is integrated. Next: captured raw and
+  enhanced-editor draft/queue guards before atomic close cleanup, with retirement,
+  reopen and recovery protection. No remote main/profile exposure yet.
+- Backend: `/Volumes/T7/src/loofah-separation-processing`,
+  `refactor/backend-summary-tags`. Atomic canonical empty-session cleanup passed
+  focused storage/core tests. Dotted-ID trash recovery and bounded directory
+  inspection are being finished before commit. A separate existing media test
+  needs its readiness wait changed from Arc count to the actual `reads_started`
+  counter; production media behavior must stay unchanged.
+- Capture: `/Volumes/T7/src/loofah-separation-capture`,
+  `refactor/backend-capture-spool`. The two sink commits are integrated. Next:
+  sticky per-capture integrity evidence for recovery/generation changes, ring
+  overflow and joiner gaps, preserving local output/reconnect behavior. A separate
+  graceful provider stop/drain seam is mandatory before a complete source seal:
+  the current admitted-prefix drain does not prove native provider queues/tails
+  were fully captured. Do not describe remote recording as available.
+
+Root has uncommitted cleanup IPC/HTTP/SDK/frontend adapters and permission,
+replay/cancellation and real TCP latency fixtures awaiting the backend checkpoint.
+The client capability is `session_cleanup`; HTTP uses POST
+`/api/v1/vaults/{vault}/session-cleanups` with a UUID request ID and
+`DeleteEmptySessionRequest { session_id }`. Historical `Deleted` replies must
+never drive another deletion or session-wide media closure after a restore.
+The UI must flush/check captured drafts and skip unknown pending capture state.
+Do not expose automatic remote cleanup or the main remote shell before those
+guards exist.
+
+Root's named stash `root-cleanup-transport-before-scoped-tabs` and
+`/Volumes/T7/loofah-backend-build/session-cleanup-transport-wip.json` preserve the
+first eight-file transport draft before tab integration. All eight restored
+hashes matched. Newer working changes supersede that backup; do not apply it over
+new work. Original standby archives below remain intact. Logs live under
+`/Volumes/T7/loofah-backend-build/` and `agents/{ui,processing,capture}/logs/`.
+
+Keep Rust sources fixed during dependent checks. Use the native workdir
+`apps/desktop/src-tauri` for the warmed native Cargo target; launching a desktop
+check from the workspace root uses a different graph. Let healthy tests/builds
+finish even when new macOS binaries take minutes to launch. Batch pushes after
+healthy previous-head Windows CI finishes. Draft PR #123 stays unmerged and
+unreleased until the full plan and all acceptance gates pass.
+
+## Historical standby snapshot
 
 The user explicitly resumed all work on 7 November 2026. The pause instructions
 below describe the historical standby checkpoint; they no longer pause the active
