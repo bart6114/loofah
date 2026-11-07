@@ -121,6 +121,7 @@ impl SessionStore {
             suggested_tags,
             auto_apply_high_confidence_tags,
             None,
+            super::document_revision::DocumentWriteMode::Generated,
         )
         .await
         .map(|_| ())
@@ -136,6 +137,7 @@ impl SessionStore {
         suggested_tags: Option<Vec<ScoredTagSuggestion>>,
         auto_apply_high_confidence_tags: bool,
         expected_revision: Option<(&str, &std::path::Path)>,
+        mode: super::document_revision::DocumentWriteMode,
     ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
         if expected_revision.is_some()
             && (title.is_some() || suggested_tags.is_some() || !reconcile_tasks)
@@ -215,19 +217,28 @@ impl SessionStore {
             })
             .unwrap_or_default();
         let tasks = if let Some(content) = task_content {
-            Some(if expected_revision.is_some() {
-                self.prepare_edited_tasks(
-                    session_id,
-                    "session_summary",
-                    session_id,
-                    &summary.markdown,
-                    &content,
-                )
-                .await?
-            } else {
-                self.prepare_generated_tasks(session_id, "session_summary", session_id, &content)
+            Some(
+                if expected_revision.is_some()
+                    && matches!(mode, super::document_revision::DocumentWriteMode::Edited)
+                {
+                    self.prepare_edited_tasks(
+                        session_id,
+                        "session_summary",
+                        session_id,
+                        &summary.markdown,
+                        &content,
+                    )
                     .await?
-            })
+                } else {
+                    self.prepare_generated_tasks(
+                        session_id,
+                        "session_summary",
+                        session_id,
+                        &content,
+                    )
+                    .await?
+                },
+            )
         } else {
             None
         };

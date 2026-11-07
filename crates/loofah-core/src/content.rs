@@ -57,6 +57,27 @@ impl VaultContext {
         target: &hypr_loofah_protocol::DocumentTarget,
         input: hypr_loofah_protocol::SaveDocumentRequest,
     ) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
+        self.save_document_body(session_id, target, input, false)
+            .await
+    }
+
+    pub async fn save_generated_document_body(
+        &self,
+        session_id: &str,
+        target: &hypr_loofah_protocol::DocumentTarget,
+        input: hypr_loofah_protocol::SaveDocumentRequest,
+    ) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
+        self.save_document_body(session_id, target, input, true)
+            .await
+    }
+
+    async fn save_document_body(
+        &self,
+        session_id: &str,
+        target: &hypr_loofah_protocol::DocumentTarget,
+        input: hypr_loofah_protocol::SaveDocumentRequest,
+        generated: bool,
+    ) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
         self.validate_document(session_id, target)?;
         if input.expected_revision.is_empty() || input.expected_revision.len() > 128 {
             return Err(error(
@@ -84,16 +105,29 @@ impl VaultContext {
                 "Operation storage is not configured",
             )
         })?;
-        self.store
-            .save_document_if_revision(
-                &operations.root.join("document-saves"),
-                session_id,
-                target,
-                &input.markdown,
-                &input.expected_revision,
-            )
-            .await
-            .map_err(|cause| storage_error(cause, true))
+        let root = operations.root.join("document-saves");
+        let result = if generated {
+            self.store
+                .save_generated_document_if_revision(
+                    &root,
+                    session_id,
+                    target,
+                    &input.markdown,
+                    &input.expected_revision,
+                )
+                .await
+        } else {
+            self.store
+                .save_document_if_revision(
+                    &root,
+                    session_id,
+                    target,
+                    &input.markdown,
+                    &input.expected_revision,
+                )
+                .await
+        };
+        result.map_err(|cause| storage_error(cause, true))
     }
 
     fn validate_document(

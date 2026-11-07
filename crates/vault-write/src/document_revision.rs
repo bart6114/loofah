@@ -2,6 +2,12 @@ use hypr_loofah_protocol::{DocumentSaveOutcome, DocumentSnapshot, DocumentTarget
 
 use crate::{EnhancedDocPatch, SessionStore, StoreError, WriteGuard, paths};
 
+#[derive(Clone, Copy)]
+pub(super) enum DocumentWriteMode {
+    Edited,
+    Generated,
+}
+
 impl SessionStore {
     pub async fn read_recovered_document_snapshot(
         &self,
@@ -59,6 +65,45 @@ impl SessionStore {
         markdown: &str,
         expected_revision: &str,
     ) -> Result<DocumentSaveOutcome, StoreError> {
+        self.save_document_mode(
+            operation_root,
+            session_id,
+            target,
+            markdown,
+            expected_revision,
+            DocumentWriteMode::Edited,
+        )
+        .await
+    }
+
+    pub async fn save_generated_document_if_revision(
+        &self,
+        operation_root: &std::path::Path,
+        session_id: &str,
+        target: &DocumentTarget,
+        markdown: &str,
+        expected_revision: &str,
+    ) -> Result<DocumentSaveOutcome, StoreError> {
+        self.save_document_mode(
+            operation_root,
+            session_id,
+            target,
+            markdown,
+            expected_revision,
+            DocumentWriteMode::Generated,
+        )
+        .await
+    }
+
+    async fn save_document_mode(
+        &self,
+        operation_root: &std::path::Path,
+        session_id: &str,
+        target: &DocumentTarget,
+        markdown: &str,
+        expected_revision: &str,
+        mode: DocumentWriteMode,
+    ) -> Result<DocumentSaveOutcome, StoreError> {
         let result = match target {
             DocumentTarget::Summary => {
                 self.update_summary_checked_impl(
@@ -70,6 +115,7 @@ impl SessionStore {
                     None,
                     false,
                     Some((expected_revision, operation_root)),
+                    mode,
                 )
                 .await?
             }
@@ -85,6 +131,7 @@ impl SessionStore {
                     None,
                     false,
                     Some((expected_revision, operation_root)),
+                    mode,
                 )
                 .await?
             }

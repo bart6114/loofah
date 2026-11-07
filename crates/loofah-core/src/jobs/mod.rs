@@ -19,6 +19,11 @@ const MAX_RECORD_BYTES: u64 = 16 * 1024;
 const MAX_JOBS: usize = 10_000;
 const MAX_PENDING: usize = 32;
 
+mod result;
+mod worker;
+pub use result::GeneratedDocument;
+pub use worker::{JobAuthorizer, JobFuture, JobGenerator, JobWork, JobWorker};
+
 #[derive(Clone)]
 pub struct JobJournal(Arc<Journal>);
 
@@ -26,6 +31,7 @@ struct Journal {
     state: Mutex<State>,
     events: EventHub,
     _lease: File,
+    worker: Arc<tokio::sync::Semaphore>,
 }
 struct State {
     root: PathBuf,
@@ -116,23 +122,12 @@ impl JobJournal {
                 }
                 state.records.insert(key.into(), record);
             }
-            // Provider calls are not replay-safe. Recovery exposes interrupted work for explicit review.
-            for record in state.records.values_mut() {
-                if matches!(
-                    record.snapshot.state,
-                    ProcessingJobState::Running | ProcessingJobState::Cancelling
-                ) {
-                    record.snapshot.state = ProcessingJobState::Interrupted;
-                    record.snapshot.phase = None;
-                    record.snapshot.failure = Some(ProcessingJobFailure::Interrupted);
-                    record.snapshot.updated_at = now();
-                    persist(&state.root, record)?;
-                }
-            }
+            state.interrupt_active(&events)?;
             Ok(Self(Arc::new(Journal {
                 state: Mutex::new(state),
                 events,
                 _lease: lease,
+                worker: Arc::new(tokio::sync::Semaphore::new(1)),
             })))
         })
         .await
@@ -362,6 +357,27 @@ impl JobJournal {
 }
 
 impl State {
+    fn interrupt_active(&mut self, events: &EventHub) -> Result<(), ApplicationError> {
+        let active: Vec<_> = self
+            .records
+            .values()
+            .filter(|record| {
+                matches!(
+                    record.snapshot.state,
+                    ProcessingJobState::Running | ProcessingJobState::Cancelling
+                )
+            })
+            .cloned()
+            .collect();
+        for mut record in active {
+            record.snapshot.state = ProcessingJobState::Interrupted;
+            record.snapshot.phase = None;
+            record.snapshot.failure = Some(ProcessingJobFailure::Interrupted);
+            self.update(record, events)?;
+        }
+        Ok(())
+    }
+
     fn persist(&mut self, record: &Record) -> Result<(), ApplicationError> {
         let result = persist(&self.root, record);
         #[cfg(test)]

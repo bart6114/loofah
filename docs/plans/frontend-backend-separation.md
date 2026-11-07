@@ -308,7 +308,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed processing-job contracts and the shared durable job journal are implemented and tested, including restart recovery, cooperative cancellation and replay-safe submission. Worker scheduling, adapters, provider execution/result application, migration of frontend AI workflows, remote provider configuration, server model management and Linux inference parity remain to implement.
+- [ ] **Phase 5: processing.** Typed processing-job contracts and the shared durable job journal are implemented and tested, including restart recovery, cooperative cancellation and replay-safe submission. A shared worker now schedules queued document-body jobs, retains generated output and applies bodies with revision checks. Host lifecycle wiring, adapters, production providers, full summary/title/tag policy, migration of frontend AI workflows, remote provider configuration, server model management and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
@@ -2238,3 +2238,36 @@ That test now waits up to ten seconds for actual persistence and checks the exac
 word and word count. It still never calls an explicit flush, and production
 transcript timing is unchanged. All 46 transcript regressions pass locally;
 Windows x64/ARM64 CI remains required for the updated checkpoint.
+
+### Shared document-generation worker
+
+`loofah-core::jobs::JobWorker` composes the durable journal with an injected
+Rust document generator, a host authorization policy and the real shared vault
+write path. One worker owns each journal. It finds queued work independently of
+frontend subscriptions, refuses stale targets before generation, checks current
+access during generation and obtains an owned authorization grant for the short
+canonical commit. Revocation does not hold a grant for the duration of model
+work. Cancellation and shutdown signal the generator and retain worker ownership
+until actual generation finishes. A cancellation after apply begins cannot undo
+a completed write.
+
+Generated bodies are retained in private, bounded `results/<job-id>.json` records
+under the journal runtime directory before canonical application. Results bind to
+the original vault/job/request, cannot be replaced by a different output and stay
+available after conflicts, cancellation, revocation or restart. Body application
+uses opaque target revisions and existing compound document/task recovery.
+A write with an unconfirmed outcome becomes interrupted for review instead of
+reporting a definitely unapplied failure. Worker restart marks orphaned execution
+interrupted and does not repeat generation automatically.
+
+`save_generated_document_body` and the shared store's explicit generated-write
+mode preserve task identities/completion while guarded body replacements reconcile
+user checkbox edits normally. Summary and template bodies share this path;
+template metadata, note content and session titles remain unchanged.
+
+This increment implements the worker and generated-body persistence contract.
+Production generator/provider implementations, common prompt preparation,
+streaming previews, title/tag policy, worker attachment to host startup/shutdown,
+job HTTP/IPC/client adapters and user controls remain required. Existing local AI
+workflows remain active, and no server processing capability is advertised yet.
+Validation passes 147 shared-core tests (including 15 worker regressions), three protocol tests, all 361 vault-write tests (one existing ignored fixture), headless/core Rust checking, strict changed-crate production Clippy and generated-contract export/check. The worker tests exercise real canonical files with a controlled generator; they do not establish live-provider or public HTTP/IPC processing support. A focused regression confirms unconfirmed writes become interrupted for review and raw errors never enter durable job status.

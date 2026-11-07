@@ -143,6 +143,7 @@ impl SessionStore {
             session_title,
             auto_apply_high_confidence_tags,
             None,
+            super::document_revision::DocumentWriteMode::Generated,
         )
         .await
         .map(|_| ())
@@ -156,6 +157,7 @@ impl SessionStore {
         session_title: Option<&str>,
         auto_apply_high_confidence_tags: bool,
         expected_revision: Option<(&str, &std::path::Path)>,
+        mode: super::document_revision::DocumentWriteMode,
     ) -> Result<Option<hypr_loofah_protocol::DocumentSaveOutcome>, StoreError> {
         if expected_revision.is_some()
             && (session_title.is_some()
@@ -236,7 +238,9 @@ impl SessionStore {
             }
         }
 
-        let previous_markdown = expected_revision.map(|_| doc.markdown.clone());
+        let previous_markdown = expected_revision
+            .filter(|_| matches!(mode, super::document_revision::DocumentWriteMode::Edited))
+            .map(|_| doc.markdown.clone());
         let EnhancedDocPatch {
             suggested_tags,
             reconcile_tasks: _,
