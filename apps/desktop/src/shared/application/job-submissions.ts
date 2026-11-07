@@ -26,7 +26,7 @@ export class NativeJobSubmissions {
 
   async prepare(input: SummaryJobRequest): Promise<JobSubmissionReceipt> {
     const value = applicationResult(
-      await commands.deviceJobSubmissionPrepare(this.scope, input),
+      await commands.deviceJobSubmissionPrepare(this.scope, input, true),
     );
     this.checkScope(value);
     return value;
@@ -102,6 +102,26 @@ export class JobSubmissions {
       // explicitly; loading device recovery never dispatches a generation.
       const receipts = await this.store.list(sessionId);
       guard.assertReady();
+      if (
+        receipts.some(
+          (receipt) =>
+            !receipt.job &&
+            receipt.input.session_id === sessionId &&
+            receipt.input.target.kind === target.kind &&
+            (target.kind === "summary" ||
+              (receipt.input.target.kind === "template_output" &&
+                receipt.input.target.document_id === target.document_id)),
+        )
+      )
+        throw new ApplicationRequestError({
+          code: "conflict",
+          message:
+            "Recover the previous summary request before starting another",
+          retryable: false,
+          request_id: null,
+          current_revision: null,
+          mutation_outcome: "not_committed",
+        });
       for (const receipt of receipts) {
         if (receipt.job && activeJob(receipt.job))
           await this.resume(receipt.request_id, options);

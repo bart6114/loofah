@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("~/types/tauri.gen", () => ({ commands: {} }));
+const native = vi.hoisted(() => ({ prepare: vi.fn() }));
+vi.mock("~/types/tauri.gen", () => ({
+  commands: { deviceJobSubmissionPrepare: native.prepare },
+}));
 
 import { NativeDraftStore } from "./draft-store";
 import { ApplicationRequestError } from "./errors";
-import { JobSubmissions } from "./job-submissions";
+import {
+  activeJob,
+  JobSubmissions,
+  NativeJobSubmissions,
+} from "./job-submissions";
 import { noteDrafts } from "./note-draft";
 import type {
   DocumentSnapshot,
@@ -18,7 +25,10 @@ import type { VaultScope } from "./vault-scope";
 import type { JobSubmissionReceipt } from "~/types/tauri.gen";
 
 const inventory = vi.spyOn(NativeDraftStore.prototype, "inventory");
-beforeEach(() => inventory.mockResolvedValue([]));
+beforeEach(() => {
+  inventory.mockResolvedValue([]);
+  native.prepare.mockReset();
+});
 
 function fixture(scopeId = "scope") {
   let state = "connected";
@@ -49,6 +59,24 @@ function fixture(scopeId = "scope") {
       ),
     ),
     prepare: vi.fn(async (input: SummaryJobRequest) => {
+      if (
+        disk.some(
+          (receipt) =>
+            receipt.input.session_id === input.session_id &&
+            JSON.stringify(receipt.input.target) ===
+              JSON.stringify(input.target) &&
+            (!receipt.job || activeJob(receipt.job)),
+        )
+      )
+        throw new ApplicationRequestError({
+          code: "conflict",
+          message:
+            "Recover the previous summary request before starting another",
+          retryable: false,
+          request_id: null,
+          current_revision: null,
+          mutation_outcome: null,
+        });
       order.push("persist");
       const value: JobSubmissionReceipt = {
         scope: scopeId,
@@ -119,6 +147,147 @@ function fixture(scopeId = "scope") {
 }
 
 describe("durable device summary submissions", () => {
+  it("requires atomic create-only admission through the native command", async () => {
+    const { store, disk } = fixture();
+    const input: SummaryJobRequest = {
+      session_id: "note",
+      target: { kind: "summary" },
+      expected_revision: "baseline",
+    };
+    native.prepare.mockImplementation(async (_scope, value) => ({
+      status: "ok",
+      data: await store.prepare(value),
+    }));
+    const receipt = await new NativeJobSubmissions("scope").prepare(input);
+    expect(native.prepare).toHaveBeenCalledWith("scope", input, true);
+    expect(receipt.request_id).toBe(disk[0].request_id);
+  });
+
+  const targets: DocumentTarget[] = [
+    { kind: "summary" },
+    { kind: "template_output", document_id: "output" },
+  ];
+  const canonical = (target: DocumentTarget): DocumentSnapshot => ({
+    document:
+      target.kind === "summary"
+        ? null
+        : {
+            id: target.document_id,
+            session_id: "note",
+            kind: "template_output",
+            title: "Existing output",
+            template_id: "template",
+            sort_order: 7,
+            markdown: "Saved output",
+          },
+    revision: "baseline",
+  });
+
+  it.each(targets)(
+    "requires explicit Resume for an unresolved matching $kind receipt before reading its baseline",
+    async (target) => {
+      const { controller, store, client, disk } = fixture();
+      client.features.push("template_output_jobs");
+      client.readDocument.mockResolvedValue(canonical(target));
+      const original = structuredClone(
+        await store.prepare({
+          session_id: "note",
+          target,
+          expected_revision: "original-revision",
+        }),
+      );
+      store.prepare.mockClear();
+      await expect(
+        controller.generateDocument("note", target),
+      ).rejects.toMatchObject({
+        detail: { code: "conflict", mutation_outcome: "not_committed" },
+      });
+      expect(client.readDocument).not.toHaveBeenCalled();
+      expect(store.prepare).not.toHaveBeenCalled();
+      expect(client.submitSummaryJob).not.toHaveBeenCalled();
+      expect(disk).toEqual([original]);
+      await controller.resume(original.request_id);
+      expect(client.submitSummaryJob).toHaveBeenCalledWith(original.input, {
+        requestId: original.request_id,
+      });
+      expect(client.readDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(targets)(
+    "refuses a stale-window $kind race after its empty list instead of replaying another window's request",
+    async (target) => {
+      const { controller, store, client, disk } = fixture();
+      client.features.push("template_output_jobs");
+      let original!: JobSubmissionReceipt;
+      store.list.mockResolvedValueOnce([]);
+      client.readDocument.mockImplementationOnce(async () => {
+        original = structuredClone(
+          await store.prepare({
+            session_id: "note",
+            target,
+            expected_revision: "baseline",
+          }),
+        );
+        return canonical(target);
+      });
+      await expect(
+        controller.generateDocument("note", target),
+      ).rejects.toMatchObject({
+        detail: { code: "conflict", mutation_outcome: null },
+      });
+      expect(store.prepare).toHaveBeenCalledTimes(2);
+      expect(client.submitSummaryJob).not.toHaveBeenCalled();
+      expect(store.observe).not.toHaveBeenCalled();
+      expect(disk).toEqual([original]);
+      await controller.store.list();
+      expect(client.submitSummaryJob).not.toHaveBeenCalled();
+      await controller.resume(original.request_id);
+      expect(client.submitSummaryJob).toHaveBeenCalledOnce();
+      expect(client.submitSummaryJob).toHaveBeenCalledWith(original.input, {
+        requestId: original.request_id,
+      });
+      expect(client.readDocument).toHaveBeenCalledOnce();
+      expect(disk).toHaveLength(1);
+      expect(disk[0].request_id).toBe(original.request_id);
+    },
+  );
+
+  it.each(targets)(
+    "allows an unrelated unresolved target while generating $kind",
+    async (target) => {
+      const { controller, store, client, disk } = fixture();
+      client.features.push("template_output_jobs");
+      client.readDocument.mockResolvedValue(canonical(target));
+      const original = structuredClone(
+        await store.prepare({
+          session_id: "note",
+          target:
+            target.kind === "summary"
+              ? { kind: "template_output", document_id: "output" }
+              : { kind: "summary" },
+          expected_revision: "other-revision",
+        }),
+      );
+      const created = await controller.generateDocument("note", target);
+      expect(client.submitSummaryJob).toHaveBeenCalledOnce();
+      expect(client.submitSummaryJob.mock.calls[0][0].target).toEqual(target);
+      expect(disk[0]).toEqual(original);
+      expect(created.request_id).not.toBe(original.request_id);
+    },
+  );
+
+  it("still refreshes acknowledged active status before creating a new request after completion", async () => {
+    const { controller, client, job, disk } = fixture();
+    const original = await controller.generateSummary("note");
+    client.processingJob.mockResolvedValue({ ...job, state: "succeeded" });
+    const next = await controller.generateSummary("note");
+    expect(client.processingJob).toHaveBeenCalledOnce();
+    expect(client.submitSummaryJob).toHaveBeenCalledTimes(2);
+    expect(disk[0].job?.state).toBe("succeeded");
+    expect(next.request_id).not.toBe(original.request_id);
+  });
+
   it("does not dispatch until the original UUID and baseline have been saved", async () => {
     const { controller, store, client, order } = fixture();
     let persist!: () => void;
