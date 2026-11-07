@@ -4,6 +4,7 @@ mod attachments;
 mod audio_metadata;
 mod metadata;
 mod note_editor;
+mod processing;
 mod recording;
 mod recording_delete;
 mod tasks;
@@ -329,6 +330,10 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_processing(None).await
+    }
+
+    async fn with_processing(processing: Option<crate::processing::ProcessingConfig>) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let issuer = format!("http://{}", listener.local_addr().unwrap());
         let metadata = json!({"issuer":issuer,"jwks_uri":format!("{issuer}/keys"),"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"code_challenge_methods_supported":["S256"]});
@@ -355,6 +360,7 @@ impl Fixture {
         });
         let root = tempfile::tempdir().unwrap();
         let config = Config {
+            processing,
             storage_root: root.path().join("storage"),
             cache_root: root.path().join("cache"),
             public_url: "https://loofah.company.example".parse().unwrap(),

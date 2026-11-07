@@ -224,16 +224,41 @@ impl Catalog {
     }
 
     pub async fn access(&self, identity: &Identity, id: &str, edit: bool) -> Result<VaultAccess> {
-        let gate = self.gate(identity, id).await?;
+        let member_id = self.me(identity).await?.member.id;
+        self.access_member(&member_id, id, edit).await
+    }
+
+    pub(crate) async fn access_member(
+        &self,
+        member_id: &str,
+        id: &str,
+        edit: bool,
+    ) -> Result<VaultAccess> {
+        let gate = {
+            let state = self.state.lock().await;
+            check_health(&state)?;
+            if !state.stored.members.contains_key(member_id) {
+                return Err(not_provisioned());
+            }
+            state
+                .stored
+                .vaults
+                .get(id)
+                .and_then(|vault| info(vault, member_id))
+                .ok_or_else(not_found)?;
+            state.gates[id].clone()
+        };
         let guard = gate.read_owned().await;
         let state = self.state.lock().await;
         check_health(&state)?;
-        let member = find_member(&state.stored, identity).ok_or_else(not_provisioned)?;
+        if !state.stored.members.contains_key(member_id) {
+            return Err(not_provisioned());
+        }
         let info = state
             .stored
             .vaults
             .get(id)
-            .and_then(|vault| info(vault, &member.info.id))
+            .and_then(|vault| info(vault, member_id))
             .ok_or_else(not_found)?;
         if edit && !info.role.can_edit() {
             return Err(ApiError::new(
@@ -244,7 +269,7 @@ impl Catalog {
         Ok(VaultAccess {
             _catalog_lease: self._lease.clone(),
             info,
-            member_id: member.info.id.clone(),
+            member_id: member_id.into(),
             _guard: guard,
         })
     }

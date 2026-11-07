@@ -2,11 +2,11 @@
 
 The server is experimental. It currently exposes authenticated vault, note, existing-content, search, attachment-upload and change-stream APIs. The full server connection experience, server AI processing, recording ingestion and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
 
-The shared Rust core now contains an internal durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` explicitly attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. The server does not yet configure that factory, provider credentials or public job endpoints. Server summaries/transcription remain unavailable until that processing integration is complete. The existing local AI flow remains active.
+The shared Rust core now contains an internal durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` explicitly attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator processing configuration now wires that factory to allowed providers, host environment credentials and current catalog membership. Public job/settings endpoints and the desktop job UI are not yet exposed, so server summaries/transcription remain unavailable through the public API. The existing local AI flow remains active.
 
-The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. The server does not yet wire that source to configured providers, authenticated recording ingestion, title/tag application or public job endpoints. Processing remains unavailable through the public server API.
+The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, title/tag application, public jobs and UI migration remain unfinished.
 
-`loofah_core::jobs::providers::HttpModel` supplies the shared HTTP model transport for Responses (OpenAI/Azure OpenAI), Chat Completions (OpenRouter, Ollama, Azure AI and compatible providers), Anthropic Messages and Google streaming generation. Its host-only configuration receives an endpoint, opaque model ID and optional secret; job requests cannot choose these. Images are sent inline. Keys stay in headers, redirects are disabled, and errors retain fixed failure codes rather than provider bodies or URLs. Streams require a provider completion signal and reject refusals, unexpected tool calls and malformed output. Byte/event/output budgets, connection/read/total deadlines and cancellation bound the owned HTTP work. Only explicit 429 rejection is automatically retried, up to the request's four-retry budget; ambiguous disconnects never repeat a generation automatically. Responses requests set `store: false` to disable response storage for later retrieval. These adapters are library functionality; host secret resolution, ChatGPT subscription integration, live-provider validation and public job wiring remain required.
+`loofah_core::jobs::providers::HttpModel` supplies the shared HTTP model transport for Responses (OpenAI/Azure OpenAI), Chat Completions (OpenRouter, Ollama, Azure AI and compatible providers), Anthropic Messages and Google streaming generation. Its host-only configuration receives an endpoint, opaque model ID and optional secret; job requests cannot choose these. Images are sent inline. Keys stay in headers, redirects are disabled, and errors retain fixed failure codes rather than provider bodies or URLs. Streams require a provider completion signal and reject refusals, unexpected tool calls and malformed output. Byte/event/output budgets, connection/read/total deadlines and cancellation bound the owned HTTP work. Only explicit 429 rejection is automatically retried, up to the request's four-retry budget; ambiguous disconnects never repeat a generation automatically. Responses requests set `store: false` to disable response storage for later retrieval. Vault-owner secret updates, local Keychain/ChatGPT adapter integration, live-provider validation and public job wiring remain required.
 
 For development, set `VITE_REMOTE_PREVIEW=true` when starting the desktop frontend. **Settings → Storage → Try server notes** opens the opt-in notes preview. Connect to an HTTPS server, sign in through the company browser flow, and select a personal or shared vault. The preview supports note creation, search, revision conflicts and device draft recovery. Servers advertising `note_editor_read` and `note_editor_write` use the existing rich editor for notes, with title and explicit task state saved together. Tables, formatting, task identities, statuses and dates survive these saves. Older servers retain Markdown source editing. An existing source-editor recovery stays on its original editing path until resolved; it is never silently converted into task intent. Existing summaries, template outputs, transcripts and tasks can be viewed as text. With the `document_edit` capability, **Outputs → Edit** edits summary/template bodies, and **Add summary** opens a missing summary. These body saves reconcile tasks in Rust; template titles and metadata stay unchanged. The separate transcript/task lists remain read-only; task checkboxes inside a rich note are editable by vault editors. It keeps tokens in native Rust and the OS credential store. Editing pauses during a disconnect; saved recovery drafts stay on the device. Readers cannot edit.
 
@@ -43,6 +43,61 @@ Linux x64 is the initial deployment platform. [Dockerfile](Dockerfile) builds th
 For a native Linux installation, create a dedicated `loofah` system user, install the executable at `/usr/local/bin/loofah-server`, and install [deploy/loofah-server.service](deploy/loofah-server.service). The unit creates private state/cache directories and handles SIGTERM shutdown. Install [deploy/Caddyfile](deploy/Caddyfile) in an existing Caddy service with `LOOFAH_DOMAIN` set to the public hostname. It forwards SSE without buffering and supports WebSocket upgrades for the later audio ingestion endpoint.
 
 The container runs as UID/GID `10001`. Mount persistent volumes at `/var/lib/loofah` and `/var/cache/loofah`, and mount the configuration read-only at `/etc/loofah/server.json`. The supplied configuration binds loopback; when Caddy runs on the host, Linux host networking preserves that private listener. Do not expose the backend port publicly.
+
+## Optional processing host configuration
+
+Processing remains experimental and has no public job endpoint yet. The internal
+worker can be configured with a `processing` property in `server.json`:
+
+```json
+{
+  "processing": {
+    "providers": [
+      {
+        "id": "openai",
+        "models": ["your-existing-model-id"],
+        "api_key_env": "LOOFAH_OPENAI_API_KEY"
+      }
+    ],
+    "concurrent_jobs": 2,
+    "waiting_jobs": 32,
+    "allow_custom_templates": false
+  }
+}
+```
+
+Replace the model placeholder with the ID already configured for your provider.
+Each vault's existing `current_llm_provider`/`current_llm_model` settings must select
+an allowed pair; there is no implicit model replacement. Settings/model selection
+UI and owner-managed secret updates remain to implement. Operator configuration
+alone does not let a desktop client submit a summary job.
+
+Set the referenced key in the service environment, outside canonical vault
+content. The supplied systemd unit reads optional `/etc/loofah/server.env`; keep
+that file private to the operator. Containers can receive the same environment
+variables through their runtime. Missing, empty or invalid configured credentials
+fail startup without printing their values. Restart the service to rotate these
+operator credentials.
+
+Known provider IDs match the desktop: `openai`, `anthropic`,
+`google_generative_ai`, `openrouter`, `mistral`, `ollama`, `lmstudio`,
+`azure_openai`, `azure_ai`, `cloudflare_workers_ai` and `custom`. Azure,
+Cloudflare and custom endpoints require an explicit `base_url`. Other providers
+use their existing defaults. `models` is an exact allowlist; a vault cannot select
+another provider endpoint. A nonempty vault `base_url` must match operator policy.
+`localhost` and literal loopback model URLs refer to the server. Other plain HTTP
+model endpoints require explicit `allow_insecure_http: true`; the external Loofah
+API still requires HTTPS. `include_images: false` disables image context for a
+provider; it defaults to true. ChatGPT subscription inference remains local.
+
+Limits apply across all opened vaults: 1–16 running jobs, up to 1,024 waiting
+jobs, with defaults of two and 32. Each vault's durable queue remains independently
+bounded. Waiting admission is cancellable, and owned work retains its capacity
+through actual model/source drain. Membership and edit rights are checked before,
+during and immediately before canonical application. Browser logout/token expiry
+does not stop an admitted server job; membership removal/downgrade does. Arbitrary
+custom summary templates are disabled by default. Enabling them explicitly trusts
+the vault's custom template code; the check uses the exact snapshot rendered.
 
 ## API boundary
 

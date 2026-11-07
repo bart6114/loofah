@@ -31,6 +31,7 @@ pub struct VaultSummarySource {
     identity: SummaryIdentity,
     include_images: bool,
     limits: SourceReadLimits,
+    allow_custom_templates: bool,
 }
 
 impl VaultSummarySource {
@@ -44,11 +45,17 @@ impl VaultSummarySource {
             identity,
             include_images,
             limits: SourceReadLimits::default(),
+            allow_custom_templates: true,
         }
     }
 
     pub fn with_limits(mut self, limits: SourceReadLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    pub fn with_custom_templates(mut self, allow: bool) -> Self {
+        self.allow_custom_templates = allow;
         self
     }
 }
@@ -61,6 +68,7 @@ impl SummarySource for VaultSummarySource {
     ) -> JobFuture<'_, Result<SummaryPrompt, ProcessingJobFailure>> {
         let context = self.context.upgrade();
         let (identity, include_images, limits) = (self.identity, self.include_images, self.limits);
+        let allow_custom_templates = self.allow_custom_templates;
         Box::pin(async move {
             let context = context.ok_or(ProcessingJobFailure::SourceUnavailable)?;
             let self_id = match identity {
@@ -100,6 +108,9 @@ impl SummarySource for VaultSummarySource {
                     return Err(ProcessingJobFailure::Interrupted);
                 }
                 let config = context.settings.snapshot();
+                if !allow_custom_templates && !config.auto_summary_prompt.trim().is_empty() {
+                    return Err(ProcessingJobFailure::AccessDenied);
+                }
                 let legacy_owner =
                     matches!(identity, SummaryIdentity::LocalOwner).then_some(LOCAL_OWNER);
                 let (system, user, references) = tokio::task::spawn_blocking(move || {

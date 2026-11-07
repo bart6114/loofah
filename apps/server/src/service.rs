@@ -34,6 +34,7 @@ pub struct Service {
     pub attachment_streams: Arc<Semaphore>,
     pub attachment_uploads: Arc<Semaphore>,
     pub streams: Arc<Semaphore>,
+    processing: Option<Arc<crate::processing::ProcessingHost>>,
     runtimes: Mutex<BTreeMap<String, Arc<OnceCell<VaultRuntime>>>>,
     catalog_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
@@ -52,6 +53,11 @@ impl Service {
         config.cache_root = cache;
         let catalog = Catalog::open(&config.storage_root).await?;
         let auth = Authenticator::discover(&config).await?;
+        let processing = config
+            .processing
+            .as_ref()
+            .map(crate::processing::ProcessingHost::load)
+            .transpose()?;
         let service = Arc::new(Self {
             #[cfg(test)]
             injected_changes: std::sync::atomic::AtomicBool::new(false),
@@ -70,6 +76,7 @@ impl Service {
             attachment_streams: Arc::new(Semaphore::new(2)),
             attachment_uploads: Arc::new(Semaphore::new(2)),
             streams: Arc::new(Semaphore::new(128)),
+            processing,
             runtimes: Mutex::new(BTreeMap::new()),
             catalog_worker: Mutex::new(None),
         });
@@ -139,6 +146,7 @@ impl Service {
         let id = id.to_owned();
         let cache = self.config.cache_root.clone();
         let catalog = self.catalog.clone();
+        let processing = self.processing.clone();
         #[cfg(test)]
         let pause = self.startup_pause.lock().unwrap().take();
         #[cfg(test)]
@@ -147,7 +155,7 @@ impl Service {
             .load(std::sync::atomic::Ordering::Acquire);
         // Initialization owns its lifetime; a timed-out read cannot cancel migration or release its lease.
         tokio::spawn(async move {
-            let _catalog = catalog;
+            let _catalog = catalog.clone();
             let context = cell
                 .get_or_try_init(|| async {
                     #[cfg(test)]
@@ -161,8 +169,8 @@ impl Service {
                     }
                     reject_symlinks(&root).await?;
                     #[cfg(test)]
-                    if injected_changes {
-                        return VaultRuntime::open_with_changes(
+                    let opened = if injected_changes {
+                        VaultRuntime::open_with_changes(
                             id,
                             &root,
                             &cache,
@@ -170,17 +178,19 @@ impl Service {
                             tokio::sync::mpsc::unbounded_channel().1,
                         )
                         .await
-                        .map_err(|cause| {
-                            tracing::error!(%cause, "vault startup failed");
-                            ApiError::new(ErrorCode::Unavailable, "Vault could not be opened")
-                        });
+                    } else {
+                        VaultRuntime::open(id, &root, &cache, &runtime).await
+                    };
+                    #[cfg(not(test))]
+                    let opened = VaultRuntime::open(id, &root, &cache, &runtime).await;
+                    let mut opened = opened.map_err(|cause| {
+                        tracing::error!(%cause, "vault startup failed");
+                        ApiError::new(ErrorCode::Unavailable, "Vault could not be opened")
+                    })?;
+                    if let Some(processing) = processing {
+                        processing.attach(&mut opened, catalog.clone()).await?;
                     }
-                    VaultRuntime::open(id, &root, &cache, &runtime)
-                        .await
-                        .map_err(|cause| {
-                            tracing::error!(%cause, "vault startup failed");
-                            ApiError::new(ErrorCode::Unavailable, "Vault could not be opened")
-                        })
+                    Ok::<_, ApiError>(opened)
                 })
                 .await?;
             Ok(context.context.clone())

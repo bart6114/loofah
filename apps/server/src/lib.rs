@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod config;
 pub mod error;
 mod media;
+pub mod processing;
 pub mod routes;
 pub mod service;
 mod uploads;

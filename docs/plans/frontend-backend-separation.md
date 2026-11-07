@@ -308,7 +308,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed processing-job contracts and the shared durable job journal are implemented and tested, including restart recovery, cooperative cancellation and replay-safe submission. A shared worker now schedules queued document-body jobs, retains generated output and applies bodies with revision checks. Host lifecycle wiring, adapters, production providers, full summary/title/tag policy, migration of frontend AI workflows, remote provider configuration, server model management and Linux inference parity remain to implement.
+- [ ] **Phase 5: processing.** Typed processing-job contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server operator configuration wires model allowlists, host environment credentials and current member authorization into that worker, with service-wide admission and a custom-template trust policy. Public job adapters/previews, local Keychain/ChatGPT integration, full summary/title/tag policy, frontend AI migration, owner-managed provider settings/secrets, server model management and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
@@ -2476,3 +2476,80 @@ successfully, including native Windows x64/ARM64 checks, tests, installer builds
 and install/uninstall tests. Its optional real speech-model lane was skipped.
 Current-head native validation remains required for the subsequent source and
 provider increments. All build, validation and temporary artifacts remain on T7.
+
+### Configured processing hosts and bounded cross-vault admission
+
+`jobs::configured::ConfiguredSummaryGenerator` now resolves the current vault's
+`current_llm_provider`, `current_llm_model` and matching `llm:<provider>` entry at
+dispatch. The selected model is frozen for the whole job, including heading
+validation retry; subsequent jobs observe changed settings. Secrets embedded in
+unknown settings fields are not used. Host model resolution is injected through
+`SummaryModels`, keeping device Keychain and server policy outside business logic.
+`providers::connections` supplies the existing HTTP provider defaults and a local
+resolver over an injected credential reader. Anonymous Ollama does not read a key;
+LM Studio remains usable without one. Existing local model URLs remain explicit
+user configuration. The actual native Keychain/ChatGPT adapters and local job/UI
+wiring are still required; the current frontend AI flow remains active.
+
+One shared `ProcessingAdmission` instance bounds preparation, model resolution and
+generation across vaults. Its FIFO running semaphore has a bounded waiting pool;
+overflow fails explicitly rather than admitting unlimited source/image work.
+Queued admission is cancellable. The owned operation retains its permits and
+vault context after caller drop until actual source/model work drains. Runtime
+shutdown continues to use the existing bounded wait and ownership guarantees.
+This covers summary processing; live/batch speech priorities and broader
+production fairness/performance validation remain open.
+
+The server's optional `processing` configuration now constructs that generator
+and attaches one worker when each vault runtime opens. Operator provider/model
+allowlists select the endpoint and may reference an environment variable for the
+key. Secrets are loaded at startup, validated, held only by the host and omitted
+from configuration serialization. Exact model IDs are preserved. Missing/invalid
+configured secrets fail startup without their values in errors. Anonymous local
+providers require no credential. The systemd unit reads an optional private
+`/etc/loofah/server.env`; a restart rotates these operator credentials.
+
+Vault settings select an allowed provider/model pair. A nonempty vault endpoint
+must match operator policy; it cannot redirect server traffic. HTTPS and loopback
+HTTP are allowed; other HTTP model hosts require explicit operator permission.
+Image context can be disabled per provider. Defaults are two running and 32
+waiting jobs across all opened vaults, configurable within 1–16 running and
+0–1,024 waiting. Per-vault durable journal limits remain in force. This operator
+configuration is an initial host boundary; vault-owner write-only secret updates
+and settings/model selection UI remain required.
+
+`Catalog::access_member` reuses current vault roles and holds the same short
+revocation/commit grant for durable jobs. Jobs use their authenticated member UUID,
+not a retained OAuth token. Token expiry or browser logout does not terminate
+admitted work, while membership removal/downgrade stops generation and prevents
+application. Ordinary request authorization now delegates to that same role and
+vault-isolation check after resolving the authenticated identity.
+
+Server custom summary templates are disabled by default and require explicit
+operator trust. The check runs against the exact settings snapshot rendered by
+`VaultSummarySource`, including when settings change while credentials/models are
+resolving. Local-owner preparation retains existing custom-template behavior.
+
+Public job APIs, preview subscriptions, retained-result recovery UI, title/tag
+application, native provider migration and the full recording/deployment/platform
+gates remain unfinished. No public server processing capability is advertised by
+this internal host integration. No Loofah account or server is introduced into
+default local startup.
+
+Validation passes all 208 core tests (one ignored subprocess fixture), 58 server
+tests and the executable startup/SIGTERM integration test in one full run. New
+coverage includes frozen per-job selection across validation retries, bounded
+waiting/cancellation, caller-abort capacity retention, anonymous local providers,
+credential failure propagation, operator allowlists/endpoint restrictions,
+cross-vault member denial, revocation during real HTTP generation and shared
+capacity across two live vault runtimes with explicit retry after drain. The
+template-policy regression changes settings during model resolution and verifies
+that untrusted template code is never rendered or dispatched.
+
+Core/server/CLI checking, strict core/server production Clippy, generated-contract
+checking and the headless dependency boundary pass. The service-level tests use
+controlled HTTP model fixtures; no real provider credentials or billable calls
+were used. Native Keychain/ChatGPT behavior, production model/image/performance
+parity and current-head native platform CI remain required. Evidence is in
+`configured-processing-*`, `configured-service-focused.log` and
+`configured-core-focused.log` under `/Volumes/T7/loofah-backend-build/logs/`.

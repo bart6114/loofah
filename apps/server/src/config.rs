@@ -13,6 +13,8 @@ pub struct Config {
     pub oidc: OidcConfig,
     #[serde(default)]
     pub allow_insecure_loopback: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processing: Option<crate::processing::ProcessingConfig>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -37,6 +39,9 @@ fn default_token_types() -> Vec<String> {
 
 impl Config {
     pub fn validate(&self) -> std::result::Result<(), String> {
+        if let Some(processing) = &self.processing {
+            processing.validate()?;
+        }
         validate_url(&self.public_url, self.allow_insecure_loopback)?;
         let issuer = Url::parse(&self.oidc.issuer).map_err(|_| "Invalid OIDC issuer")?;
         validate_url(&issuer, self.allow_insecure_loopback)?;

@@ -10,6 +10,7 @@ use super::{
     generation::{ModelRequest, ModelStream, TextModel},
 };
 
+pub mod connections;
 mod request;
 mod sse;
 mod wire;
@@ -43,6 +44,10 @@ pub struct HttpModel {
 }
 
 impl HttpModel {
+    pub fn validate_config(config: &HttpModelConfig) -> Result<(), ProcessingJobFailure> {
+        request::destination(config).map(|_| ())
+    }
+
     pub fn new(config: HttpModelConfig) -> Result<Self, ProcessingJobFailure> {
         Self::with_timeouts(config, Duration::from_secs(90), Duration::from_secs(900))
     }
