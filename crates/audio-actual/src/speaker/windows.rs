@@ -33,6 +33,13 @@ impl SpeakerInput {
     }
 
     pub fn stream(self) -> Result<SpeakerStream> {
+        self.stream_with_integrity(None)
+    }
+
+    pub(crate) fn stream_with_integrity(
+        self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> Result<SpeakerStream> {
         let rb = HeapRb::<f32>::new(BUFFER_SIZE);
         let (producer, consumer) = rb.split();
 
@@ -57,7 +64,7 @@ impl SpeakerInput {
                     producer,
                     waker.clone(),
                     wake_pending.clone(),
-                    alive.clone(),
+                    (alive.clone(), integrity.clone()),
                     running,
                     current_sample_rate,
                     dropped_samples,
@@ -65,6 +72,9 @@ impl SpeakerInput {
                 );
 
                 if let Err(err) = result {
+                    if let Some(integrity) = &integrity {
+                        integrity.mark_discontinuity(false, true);
+                    }
                     error!("Audio capture loop failed: {}", err);
                 }
 
@@ -124,12 +134,13 @@ fn capture_audio_loop(
     mut producer: HeapProd<f32>,
     waker: Arc<AtomicWaker>,
     wake_pending: Arc<AtomicBool>,
-    alive: Arc<AtomicBool>,
+    health: (Arc<AtomicBool>, Option<Arc<hypr_audio::CaptureIntegrity>>),
     running: Arc<AtomicBool>,
     current_sample_rate: Arc<AtomicU32>,
     dropped_samples: Arc<AtomicUsize>,
     init_tx: std::sync::mpsc::Sender<Result<()>>,
 ) -> Result<()> {
+    let (alive, integrity) = health;
     let setup_result = (|| -> Result<_> {
         initialize_mta()
             .ok()
@@ -238,6 +249,7 @@ fn capture_audio_loop(
             &mut scratch,
             &mut producer,
         )?;
+        stats.record_integrity(integrity.as_deref(), false, true);
         if stats.dropped > 0 {
             dropped_samples.fetch_add(stats.dropped, Ordering::Relaxed);
         }

@@ -164,6 +164,13 @@ impl MicInput {
 
 impl MicInput {
     pub fn stream(&self) -> MicStream {
+        self.stream_with_integrity(None)
+    }
+
+    pub(crate) fn stream_with_integrity(
+        &self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> MicStream {
         let config = self.config.clone();
         let device = self.device.clone();
         let (drop_tx, drop_rx) = std::sync::mpsc::channel();
@@ -189,12 +196,14 @@ impl MicInput {
                 waker: Arc<AtomicWaker>,
                 wake_pending: Arc<AtomicBool>,
                 dropped_samples: Arc<AtomicUsize>,
-                alive: Arc<AtomicBool>,
+                health: (Arc<AtomicBool>, Option<Arc<hypr_audio::CaptureIntegrity>>),
             ) -> Result<cpal::Stream, cpal::BuildStreamError> {
+                let (alive, integrity) = health;
                 let channels = config.channels() as usize;
                 let mut scratch = vec![0.0f32; crate::rt_ring::DEFAULT_SCRATCH_LEN];
                 let waker_for_err = waker.clone();
                 let alive_for_err = alive.clone();
+                let integrity_for_err = integrity.clone();
                 device.build_input_stream::<S, _, _>(
                     &config.config(),
                     move |data: &[S], _input_callback_info: &_| {
@@ -205,6 +214,7 @@ impl MicInput {
                             &mut producer,
                         );
 
+                        stats.record_integrity(integrity.as_deref(), true, false);
                         if stats.dropped > 0 {
                             dropped_samples.fetch_add(stats.dropped, Ordering::Relaxed);
                         }
@@ -215,6 +225,9 @@ impl MicInput {
                         }
                     },
                     move |err| {
+                        if let Some(integrity) = &integrity_for_err {
+                            integrity.mark_discontinuity(true, false);
+                        }
                         tracing::error!(error = %err, "mic_stream_error");
                         alive_for_err.store(false, Ordering::Release);
                         waker_for_err.wake();
@@ -232,7 +245,7 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        alive_for_thread.clone(),
+                        (alive_for_thread.clone(), integrity.clone()),
                     ),
                     cpal::SampleFormat::I16 => build_stream::<i16>(
                         &device,
@@ -241,7 +254,7 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        alive_for_thread.clone(),
+                        (alive_for_thread.clone(), integrity.clone()),
                     ),
                     cpal::SampleFormat::I32 => build_stream::<i32>(
                         &device,
@@ -250,7 +263,7 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        alive_for_thread.clone(),
+                        (alive_for_thread.clone(), integrity.clone()),
                     ),
                     cpal::SampleFormat::F32 => build_stream::<f32>(
                         &device,
@@ -259,7 +272,7 @@ impl MicInput {
                         waker_for_thread.clone(),
                         wake_pending_for_thread.clone(),
                         dropped_for_thread.clone(),
-                        alive_for_thread.clone(),
+                        (alive_for_thread.clone(), integrity.clone()),
                     ),
                     sample_format => {
                         tracing::error!(sample_format = ?sample_format, "unsupported");
@@ -270,12 +283,18 @@ impl MicInput {
                 let stream = match stream {
                     Ok(stream) => stream,
                     Err(err) => {
+                        if let Some(integrity) = &integrity {
+                            integrity.mark_discontinuity(true, false);
+                        }
                         tracing::error!("Error starting stream: {}", err);
                         return None;
                     }
                 };
 
                 if let Err(err) = stream.play() {
+                    if let Some(integrity) = &integrity {
+                        integrity.mark_discontinuity(true, false);
+                    }
                     tracing::error!("Error playing stream: {}", err);
                     return None;
                 }

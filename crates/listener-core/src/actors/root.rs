@@ -387,7 +387,8 @@ mod tests {
         DeviceAppendReceipt, DeviceFinishReceipt, DeviceRecordingEnd, DeviceSinkError,
     };
     use crate::{SessionDataEvent, SessionErrorEvent, SessionProgressEvent};
-    use hypr_audio::{CaptureConfig, CaptureFrame, CaptureStream};
+    use futures_util::Stream;
+    use hypr_audio::{CaptureConfig, CaptureFrame, CaptureIntegrity, CaptureStream};
     use std::{
         collections::VecDeque,
         sync::{
@@ -400,6 +401,7 @@ mod tests {
     #[derive(Default)]
     struct Runtime {
         events: Mutex<Vec<SessionLifecycleEvent>>,
+        ready: std::sync::atomic::AtomicUsize,
     }
     impl hypr_storage::StorageRuntime for Runtime {
         fn global_base(&self) -> Result<std::path::PathBuf, hypr_storage::Error> {
@@ -413,30 +415,72 @@ mod tests {
         fn emit_lifecycle(&self, event: SessionLifecycleEvent) {
             self.events.lock().unwrap().push(event);
         }
-        fn emit_progress(&self, _event: SessionProgressEvent) {}
+        fn emit_progress(&self, event: SessionProgressEvent) {
+            if matches!(event, SessionProgressEvent::AudioReady { .. }) {
+                self.ready.fetch_add(1, Ordering::SeqCst);
+            }
+        }
         fn emit_error(&self, _event: SessionErrorEvent) {}
         fn emit_data(&self, _event: SessionDataEvent) {}
     }
     type Frames = tokio::sync::mpsc::Receiver<Result<CaptureFrame, hypr_audio::Error>>;
+    type AudioSource = (Frames, Arc<CaptureIntegrity>, bool);
     #[derive(Default)]
-    struct Audio(Mutex<VecDeque<Frames>>, std::sync::atomic::AtomicUsize);
+    struct Audio(Mutex<VecDeque<AudioSource>>, std::sync::atomic::AtomicUsize);
+    struct MarkOnDrop {
+        stream: CaptureStream,
+        integrity: Arc<CaptureIntegrity>,
+        mark: bool,
+    }
+    impl Stream for MarkOnDrop {
+        type Item = Result<CaptureFrame, hypr_audio::Error>;
+        fn poll_next(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            std::pin::Pin::new(&mut self.get_mut().stream).poll_next(cx)
+        }
+    }
+    impl Drop for MarkOnDrop {
+        fn drop(&mut self) {
+            if self.mark {
+                self.integrity.mark_discontinuity(true, false);
+            }
+        }
+    }
     impl Audio {
         fn source(&self) -> tokio::sync::mpsc::Sender<Result<CaptureFrame, hypr_audio::Error>> {
+            self.source_with_integrity(Arc::new(CaptureIntegrity::default()), false)
+        }
+        fn source_with_integrity(
+            &self,
+            integrity: Arc<CaptureIntegrity>,
+            mark_on_drop: bool,
+        ) -> tokio::sync::mpsc::Sender<Result<CaptureFrame, hypr_audio::Error>> {
             let (tx, rx) = tokio::sync::mpsc::channel(32);
-            self.0.lock().unwrap().push_back(rx);
+            self.0
+                .lock()
+                .unwrap()
+                .push_back((rx, integrity, mark_on_drop));
             tx
         }
         fn stream(&self) -> CaptureStream {
             self.1.fetch_add(1, Ordering::SeqCst);
-            let rx = self
+            let (rx, integrity, mark) = self
                 .0
                 .lock()
                 .unwrap()
                 .pop_front()
                 .expect("unexpected extra/restarted audio source");
-            CaptureStream::new(futures_util::stream::unfold(rx, |mut rx| async {
+            let stream = CaptureStream::new(futures_util::stream::unfold(rx, |mut rx| async {
                 rx.recv().await.map(|item| (item, rx))
-            }))
+            }));
+            CaptureStream::new(MarkOnDrop {
+                stream,
+                integrity: integrity.clone(),
+                mark,
+            })
+            .with_integrity(integrity)
         }
     }
     impl AudioProvider for Audio {
@@ -786,6 +830,223 @@ mod tests {
             event,
             SessionLifecycleEvent::Inactive { error: Some(_), .. }
         )));
+        root.stop(None);
+        handle.await.unwrap();
+    }
+    async fn ready(runtime: &Runtime) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while runtime.ready.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn all_recovery_masks_interrupt_device_prefix_without_reopening_source() {
+        for (id, microphone, speaker) in [
+            ('b', true, false),
+            ('c', false, true),
+            ('d', true, true),
+            ('e', false, false),
+        ] {
+            let audio = Arc::new(Audio::default());
+            let frames = audio.source();
+            let runtime = Arc::new(Runtime::default());
+            let sink = Sink::new(false);
+            let (root, handle) = Actor::spawn(
+                None,
+                RootActor,
+                RootArgs {
+                    runtime: Arc::new(Runtime::default()),
+                    audio: audio.clone(),
+                },
+            )
+            .await
+            .unwrap();
+            ractor::call!(
+                root,
+                RootMsg::StartDeviceCapture,
+                args(id, sink.clone(), runtime.clone())
+            )
+            .unwrap()
+            .unwrap();
+            frames
+                .send(Ok(CaptureFrame {
+                    raw_mic: Arc::from(vec![0.125; 777]),
+                    raw_speaker: Arc::from(vec![-0.5; 777]),
+                    aec_mic: None,
+                }))
+                .await
+                .unwrap();
+            frames
+                .send(Err(hypr_audio::Error::CaptureRecovering {
+                    microphone,
+                    speaker,
+                }))
+                .await
+                .unwrap();
+            // The provider may immediately report recovery and later audio. Neither may erase the first discontinuity.
+            let _ = frames
+                .send(Err(hypr_audio::Error::CaptureRecovering {
+                    microphone: false,
+                    speaker: false,
+                }))
+                .await;
+            let _ = frames.send(Ok(frame())).await;
+            ended(&runtime).await;
+            assert_eq!(audio.1.load(Ordering::SeqCst), 1);
+            assert_eq!(sink.totals.lock().unwrap().frames, 777);
+            assert_eq!(
+                *sink.end.lock().unwrap(),
+                Some(DeviceRecordingEnd::Interrupted)
+            );
+            assert!(runtime.events.lock().unwrap().iter().any(|event| matches!(
+                event,
+                SessionLifecycleEvent::Inactive { error: Some(_), .. }
+            )));
+            root.stop(None);
+            handle.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn spontaneous_eof_drains_prefix_as_interrupted_and_never_restarts() {
+        for (id, with_prefix) in [('a', true), ('0', false)] {
+            let audio = Arc::new(Audio::default());
+            let frames = audio.source();
+            let runtime = Arc::new(Runtime::default());
+            let sink = Sink::new(false);
+            let (root, handle) = Actor::spawn(
+                None,
+                RootActor,
+                RootArgs {
+                    runtime: Arc::new(Runtime::default()),
+                    audio: audio.clone(),
+                },
+            )
+            .await
+            .unwrap();
+            ractor::call!(
+                root,
+                RootMsg::StartDeviceCapture,
+                args(id, sink.clone(), runtime.clone())
+            )
+            .unwrap()
+            .unwrap();
+            if with_prefix {
+                frames.send(Ok(frame())).await.unwrap();
+            }
+            drop(frames);
+            ended(&runtime).await;
+            assert_eq!(audio.1.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                sink.totals.lock().unwrap().frames,
+                if with_prefix { 16_000 } else { 0 }
+            );
+            assert_eq!(
+                *sink.end.lock().unwrap(),
+                Some(DeviceRecordingEnd::Interrupted)
+            );
+            root.stop(None);
+            handle.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn premarked_provider_never_admits_input_or_claims_complete() {
+        let audio = Arc::new(Audio::default());
+        let integrity = Arc::new(CaptureIntegrity::default());
+        integrity.mark_discontinuity(false, true);
+        let frames = audio.source_with_integrity(integrity, false);
+        let runtime = Arc::new(Runtime::default());
+        let sink = Sink::new(false);
+        let (root, handle) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                runtime: Arc::new(Runtime::default()),
+                audio,
+            },
+        )
+        .await
+        .unwrap();
+        let started = ractor::call!(
+            root,
+            RootMsg::StartDeviceCapture,
+            args('8', sink.clone(), runtime.clone())
+        )
+        .unwrap();
+        if started.is_ok() {
+            ended(&runtime).await;
+        }
+        assert_eq!(sink.totals.lock().unwrap().frames, 0);
+        assert_ne!(
+            *sink.end.lock().unwrap(),
+            Some(DeviceRecordingEnd::Complete)
+        );
+        assert_eq!(runtime.ready.load(Ordering::SeqCst), 0);
+        drop(frames);
+        root.stop(None);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn evidence_during_producer_stop_interrupts_tail_and_does_not_leak_to_next_capture() {
+        let audio = Arc::new(Audio::default());
+        let integrity = Arc::new(CaptureIntegrity::default());
+        let first = audio.source_with_integrity(integrity.clone(), true);
+        let second = audio.source();
+        let runtime = Arc::new(Runtime::default());
+        let sink = Sink::new(false);
+        let (root, handle) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                runtime: Arc::new(Runtime::default()),
+                audio: audio.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        let first_args = args('9', sink.clone(), runtime.clone());
+        let key = first_args.key.clone();
+        ractor::call!(root, RootMsg::StartDeviceCapture, first_args)
+            .unwrap()
+            .unwrap();
+        first
+            .send(Ok(CaptureFrame {
+                raw_mic: Arc::from(vec![0.125; 777]),
+                raw_speaker: Arc::from(vec![-0.5; 777]),
+                aec_mic: None,
+            }))
+            .await
+            .unwrap();
+        ready(&runtime).await;
+        assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        ended(&runtime).await;
+        assert!(integrity.discontinuous());
+        assert_eq!(sink.totals.lock().unwrap().frames, 777);
+        assert_eq!(
+            *sink.end.lock().unwrap(),
+            Some(DeviceRecordingEnd::Interrupted)
+        );
+        let clean_runtime = Arc::new(Runtime::default());
+        let clean_sink = Sink::new(false);
+        let next = args('f', clean_sink.clone(), clean_runtime.clone());
+        let key = next.key.clone();
+        ractor::call!(root, RootMsg::StartDeviceCapture, next)
+            .unwrap()
+            .unwrap();
+        assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        ended(&clean_runtime).await;
+        assert_eq!(
+            *clean_sink.end.lock().unwrap(),
+            Some(DeviceRecordingEnd::Complete)
+        );
+        assert_eq!(audio.1.load(Ordering::SeqCst), 2);
+        drop((first, second));
         root.stop(None);
         handle.await.unwrap();
     }

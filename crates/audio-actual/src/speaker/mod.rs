@@ -77,6 +77,36 @@ impl SpeakerInput {
         })
     }
 
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
+    pub(crate) fn stream_with_integrity(
+        self,
+        integrity: Option<std::sync::Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> Result<SpeakerStream> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(self.inner.stream_with_integrity(integrity)?)
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let inner = self.inner.stream_with_integrity(integrity)?;
+            let initial_rate = inner.sample_rate();
+            Ok(SpeakerStream {
+                inner,
+                buffer: Vec::new(),
+                buffer_idx: 0,
+                buffer_rate: initial_rate,
+            })
+        }
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), test))]
+    pub(crate) fn stream_with_integrity(
+        self,
+        _integrity: Option<std::sync::Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> Result<SpeakerStream> {
+        self.stream()
+    }
+
     #[cfg(test)]
     pub fn stream(self) -> Result<SpeakerStream> {
         let initial_rate = self.inner.sample_rate();

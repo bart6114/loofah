@@ -9,6 +9,21 @@ pub(crate) struct PushStats {
     pub(crate) dropped: usize,
 }
 
+impl PushStats {
+    pub(crate) fn record_integrity(
+        &self,
+        integrity: Option<&hypr_audio::CaptureIntegrity>,
+        microphone: bool,
+        speaker: bool,
+    ) {
+        if self.dropped > 0
+            && let Some(integrity) = integrity
+        {
+            integrity.mark_discontinuity(microphone, speaker);
+        }
+    }
+}
+
 pub(crate) fn push_interleaved_downmix_to_mono_ringbuf<S, P>(
     data: &[S],
     channels: usize,
@@ -385,5 +400,26 @@ mod windows_downmix_tests {
         assert_eq!(stats.pushed, 1);
         assert_eq!(stats.dropped, 1);
         assert!((consumer.try_pop().unwrap() - 1.0 / 6.0).abs() < 0.001);
+    }
+    #[test]
+    fn ring_overflow_marks_capture_integrity_without_changing_retained_pcm() {
+        use ringbuf::traits::{Consumer, Split};
+        let ring = ringbuf::HeapRb::<f32>::new(2);
+        let (mut producer, mut consumer) = ring.split();
+        let integrity = hypr_audio::CaptureIntegrity::default();
+        let stats = push_f32_to_ringbuf(&[0.25, -0.5, 0.75, 1.0], &mut producer);
+        stats.record_integrity(Some(&integrity), true, false);
+        assert_eq!((stats.pushed, stats.dropped), (2, 2));
+        assert_eq!(consumer.try_pop(), Some(0.25));
+        assert_eq!(consumer.try_pop(), Some(-0.5));
+        assert_eq!(integrity.channels(), (true, false));
+        PushStats {
+            pushed: 1,
+            dropped: 0,
+        }
+        .record_integrity(Some(&integrity), false, true);
+        assert_eq!(integrity.channels(), (true, false));
+        stats.record_integrity(Some(&integrity), false, true);
+        assert_eq!(integrity.channels(), (true, true));
     }
 }

@@ -1,6 +1,7 @@
-use std::sync::atomic::{AtomicU8, AtomicUsize};
+use std::sync::Arc;
 #[cfg(any(target_os = "windows", test))]
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU8, AtomicUsize};
 #[cfg(any(target_os = "windows", test))]
 use std::time::Duration;
 
@@ -16,6 +17,16 @@ use super::stream::ChunkStream;
 pub(crate) struct CaptureHealth {
     pub(super) recovering: AtomicU8,
     pub(super) generation: AtomicUsize,
+    pub(super) integrity: Arc<hypr_audio::CaptureIntegrity>,
+}
+
+impl CaptureHealth {
+    pub(super) fn new(integrity: Arc<hypr_audio::CaptureIntegrity>) -> Self {
+        Self {
+            integrity,
+            ..Self::default()
+        }
+    }
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -46,6 +57,7 @@ pub(super) fn recovering_chunks(
                 changed = refresh.changed(), if watch_open => {
                     if changed.is_err() { watch_open = false; continue; }
                     stream = None;
+                    health.integrity.mark_discontinuity(side & 1 != 0, side & 2 != 0);
                     health.recovering.fetch_or(side, Ordering::SeqCst);
                     health.generation.fetch_add(1, Ordering::SeqCst);
                 }
@@ -54,7 +66,8 @@ pub(super) fn recovering_chunks(
                         Some(Ok(data)) => if tx.send(Ok(data)).await.is_err() { break; },
                         _ => {
                             stream = None;
-                            health.recovering.fetch_or(side, Ordering::SeqCst);
+                            health.integrity.mark_discontinuity(side & 1 != 0, side & 2 != 0);
+                    health.recovering.fetch_or(side, Ordering::SeqCst);
                             health.generation.fetch_add(1, Ordering::SeqCst);
                             tracing::warn!(side, "audio_source_disconnected_retrying");
                         }
@@ -183,5 +196,6 @@ mod tests {
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
         assert_eq!(health.recovering.load(Ordering::SeqCst), 0);
         assert!(health.generation.load(Ordering::SeqCst) >= 2);
+        assert_eq!(health.integrity.channels(), (true, false));
     }
 }

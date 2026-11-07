@@ -1,5 +1,8 @@
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
+};
 use std::task::{Context, Poll};
 
 use futures_util::Stream;
@@ -66,19 +69,52 @@ impl CaptureFrame {
     }
 }
 
-pub struct CaptureStream(Pin<Box<dyn Stream<Item = Result<CaptureFrame, Error>> + Send>>);
+/// Per-stream evidence of known input discontinuity. Recovery cannot clear earlier loss.
+/// Clear evidence alone does not prove that native buffers were completely drained.
+#[derive(Debug, Default)]
+pub struct CaptureIntegrity {
+    lost_channels: AtomicU8,
+}
+
+impl CaptureIntegrity {
+    pub fn mark_discontinuity(&self, microphone: bool, speaker: bool) {
+        let bits = u8::from(microphone) | (u8::from(speaker) << 1);
+        self.lost_channels.fetch_or(bits, Ordering::Release);
+    }
+    pub fn discontinuous(&self) -> bool {
+        self.lost_channels.load(Ordering::Acquire) != 0
+    }
+    pub fn channels(&self) -> (bool, bool) {
+        let bits = self.lost_channels.load(Ordering::Acquire);
+        (bits & 1 != 0, bits & 2 != 0)
+    }
+}
+
+pub struct CaptureStream {
+    stream: Pin<Box<dyn Stream<Item = Result<CaptureFrame, Error>> + Send>>,
+    integrity: Arc<CaptureIntegrity>,
+}
 
 impl CaptureStream {
     pub fn new(stream: impl Stream<Item = Result<CaptureFrame, Error>> + Send + 'static) -> Self {
-        Self(Box::pin(stream))
+        Self {
+            stream: Box::pin(stream),
+            integrity: Arc::new(CaptureIntegrity::default()),
+        }
+    }
+    pub fn with_integrity(mut self, integrity: Arc<CaptureIntegrity>) -> Self {
+        self.integrity = integrity;
+        self
+    }
+    pub fn integrity(&self) -> Arc<CaptureIntegrity> {
+        self.integrity.clone()
     }
 }
 
 impl Stream for CaptureStream {
     type Item = Result<CaptureFrame, Error>;
-
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.0.as_mut().poll_next(cx)
+        self.stream.as_mut().poll_next(cx)
     }
 }
 
@@ -125,5 +161,20 @@ mod tests {
         let (aec_mic, aec_speaker) = frame.aec_dual();
         assert_eq!(&*aec_mic, &[0.9, 1.0]);
         assert_eq!(&*aec_speaker, &[0.3, 0.4]);
+    }
+    #[test]
+    fn capture_integrity_is_sticky_and_distinct_for_each_new_stream() {
+        let first = CaptureStream::new(futures_util::stream::empty());
+        let evidence = first.integrity();
+        evidence.mark_discontinuity(true, false);
+        evidence.mark_discontinuity(false, false);
+        assert!(first.integrity().discontinuous());
+        assert_eq!(evidence.channels(), (true, false));
+        evidence.mark_discontinuity(false, true);
+        assert_eq!(evidence.channels(), (true, true));
+        let second = CaptureStream::new(futures_util::stream::empty());
+        assert!(!second.integrity().discontinuous());
+        let wrapped = second.with_integrity(evidence.clone());
+        assert!(Arc::ptr_eq(&wrapped.integrity(), &evidence));
     }
 }

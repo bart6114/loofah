@@ -59,9 +59,10 @@ pub(crate) fn setup_mic_stream(
     sample_rate: u32,
     chunk_size: usize,
     mic_device: Option<String>,
+    integrity: Arc<hypr_audio::CaptureIntegrity>,
 ) -> Result<ChunkStream, Error> {
     let mic = MicInput::new(mic_device).map_err(|_| Error::MicOpenFailed)?;
-    mic.stream()
+    mic.stream_with_integrity(Some(integrity))
         .resampled_chunks(sample_rate, chunk_size)
         .map(|stream| Box::pin(stream) as ChunkStream)
         .map_err(|_| Error::MicStreamSetupFailed)
@@ -70,12 +71,19 @@ pub(crate) fn setup_mic_stream(
 pub(crate) fn setup_speaker_stream(
     sample_rate: u32,
     chunk_size: usize,
+    integrity: Arc<hypr_audio::CaptureIntegrity>,
 ) -> Result<ChunkStream, Error> {
     ensure_system_audio_permission()?;
 
     let speaker = SpeakerInput::new().map_err(crate::speaker::setup_error)?;
-    speaker
-        .stream()
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let speaker_stream = speaker.stream_with_integrity(Some(integrity));
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let speaker_stream = {
+        let _ = integrity;
+        speaker.stream()
+    };
+    speaker_stream
         .map_err(crate::speaker::setup_error)?
         .resampled_chunks(sample_rate, chunk_size)
         .map(|stream| Box::pin(stream) as ChunkStream)
@@ -104,6 +112,9 @@ pub(crate) fn open_dual(
     enable_aec: bool,
     health: Option<Arc<CaptureHealth>>,
 ) -> CaptureStream {
+    let health = health.unwrap_or_else(|| Arc::new(CaptureHealth::default()));
+    let integrity = health.integrity.clone();
+    let health = Some(health);
     let cancel_token = CancellationToken::new();
     let (tx, rx) = tokio::sync::mpsc::channel(32);
     let task = tokio::spawn(run_dual_loop(
@@ -121,6 +132,7 @@ pub(crate) fn open_dual(
         cancel_token,
         task,
     })
+    .with_integrity(integrity)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +146,9 @@ pub(crate) fn open_single(
     side: CaptureSide,
     health: Option<Arc<CaptureHealth>>,
 ) -> CaptureStream {
+    let health = health.unwrap_or_else(|| Arc::new(CaptureHealth::default()));
+    let integrity = health.integrity.clone();
+    let health = Some(health);
     let cancel_token = CancellationToken::new();
     let (tx, rx) = tokio::sync::mpsc::channel(32);
     let task = tokio::spawn(run_single_loop(
@@ -149,6 +164,7 @@ pub(crate) fn open_single(
         cancel_token,
         task,
     })
+    .with_integrity(integrity)
 }
 
 enum StreamResult {
@@ -166,7 +182,7 @@ async fn run_dual_loop(
     mut speaker_stream: ChunkStream,
     health: Option<Arc<CaptureHealth>>,
 ) {
-    let mut joiner = Joiner::new();
+    let mut joiner = Joiner::with_integrity(health.as_ref().map(|health| health.integrity.clone()));
     let mut aec = if enable_aec { build_aec() } else { None };
     let mut linear_echo_gain = None;
     let mut last_health = (0, 0);
@@ -544,6 +560,13 @@ async fn report_health(
             .await;
     }
     let reset = previous.1 != current.1;
+    if reset {
+        // A whole reconnect can happen between polls, leaving the current recovery mask clear.
+        health.integrity.mark_discontinuity(
+            current.0 & 1 != 0 || current.0 == 0,
+            current.0 & 2 != 0 || current.0 == 0,
+        );
+    }
     *previous = current;
     reset
 }
@@ -781,5 +804,20 @@ mod tests {
         assert_eq!(alignment, AecAlignment::DelayMic(320));
         assert_eq!(alignment.mic_delay_samples(), 320);
         assert_eq!(alignment.speaker_delay_samples(), 0);
+    }
+    #[tokio::test]
+    async fn complete_recovery_between_polls_still_latches_integrity_without_local_warning_changes()
+    {
+        use std::sync::atomic::Ordering;
+        let health = Arc::new(CaptureHealth::default());
+        health.generation.store(2, Ordering::SeqCst);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+        let mut previous = (0, 0);
+        assert!(report_health(&tx, &Some(health.clone()), &mut previous).await);
+        assert_eq!(previous, (0, 2));
+        assert_eq!(health.integrity.channels(), (true, true));
+        assert!(rx.try_recv().is_err());
+        assert!(!report_health(&tx, &Some(health.clone()), &mut previous).await);
+        assert!(health.integrity.discontinuous());
     }
 }

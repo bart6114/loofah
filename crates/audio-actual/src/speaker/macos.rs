@@ -43,6 +43,7 @@ struct Ctx {
     waker: Arc<AtomicWaker>,
     wake_pending: Arc<AtomicBool>,
     dropped_samples: Arc<AtomicUsize>,
+    integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
     conversion_buffer: Vec<f32>,
 }
 
@@ -142,6 +143,13 @@ impl SpeakerInput {
     }
 
     pub fn stream(self) -> Result<SpeakerStream, Error> {
+        self.stream_with_integrity(None)
+    }
+
+    pub(crate) fn stream_with_integrity(
+        self,
+        integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+    ) -> Result<SpeakerStream, Error> {
         let asbd = self
             .tap
             .asbd()
@@ -167,6 +175,7 @@ impl SpeakerInput {
             waker: waker.clone(),
             wake_pending: wake_pending.clone(),
             dropped_samples: dropped_samples.clone(),
+            integrity,
             conversion_buffer: vec![0.0f32; crate::rt_ring::DEFAULT_SCRATCH_LEN],
         });
 
@@ -225,6 +234,7 @@ where
         convert,
     );
 
+    stats.record_integrity(ctx.integrity.as_deref(), false, true);
     if stats.dropped > 0 {
         ctx.dropped_samples
             .fetch_add(stats.dropped, Ordering::Relaxed);
@@ -239,6 +249,7 @@ where
 fn process_audio_data_rt_safe(ctx: &mut Ctx, data: &[f32]) {
     let stats = crate::rt_ring::push_f32_to_ringbuf(data, &mut ctx.producer);
 
+    stats.record_integrity(ctx.integrity.as_deref(), false, true);
     if stats.dropped > 0 {
         ctx.dropped_samples
             .fetch_add(stats.dropped, Ordering::Relaxed);

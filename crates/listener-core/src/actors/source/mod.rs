@@ -68,6 +68,19 @@ pub struct SourceArgs {
     )>,
 }
 
+pub(super) type ProviderIntegrity = Arc<std::sync::OnceLock<Arc<hypr_audio::CaptureIntegrity>>>;
+
+pub(super) fn provider_integrity_failure(provider: Option<&ProviderIntegrity>) -> Option<String> {
+    let integrity = provider?.get()?;
+    if !integrity.discontinuous() {
+        return None;
+    }
+    let (microphone, speaker) = integrity.channels();
+    Some(format!(
+        "Capture input lost continuity (microphone={microphone}, system audio={speaker})"
+    ))
+}
+
 pub struct SourceState {
     pub(super) runtime: Arc<dyn ListenerRuntime>,
     pub(super) audio: Arc<dyn AudioProvider>,
@@ -79,6 +92,7 @@ pub struct SourceState {
     pub(super) current_mode: ChannelMode,
     pub(super) capture_mode: Option<ChannelMode>,
     pub(super) device_ingress: Option<DeviceIngress>,
+    pub(super) provider_integrity: Option<ProviderIntegrity>,
     device_root: Option<(
         crate::actors::DeviceCaptureKey,
         ActorRef<crate::actors::RootMsg>,
@@ -189,6 +203,10 @@ impl Actor for SourceActor {
             tracing::info!(mic_device = ?mic_device);
 
             let pipeline = Pipeline::new(args.runtime.clone(), args.session_id.clone());
+            let provider_integrity = args
+                .device_ingress
+                .as_ref()
+                .map(|_| Arc::new(std::sync::OnceLock::new()));
 
             let mut st = SourceState {
                 runtime: args.runtime,
@@ -203,6 +221,7 @@ impl Actor for SourceActor {
                 current_mode: ChannelMode::MicAndSpeaker,
                 capture_mode: args.capture_mode,
                 device_ingress: args.device_ingress,
+                provider_integrity,
                 device_root: args.device_root,
                 drain_started: false,
                 interrupted: None,
@@ -289,6 +308,9 @@ impl Actor for SourceActor {
                 }
             }
             SourceMsg::DeviceDrainReady => {
+                if let Some(reason) = provider_integrity_failure(st.provider_integrity.as_ref()) {
+                    st.interrupted.get_or_insert(reason);
+                }
                 let end = if st.interrupted.is_some() {
                     DeviceRecordingEnd::Interrupted
                 } else {
@@ -334,6 +356,10 @@ impl Actor for SourceActor {
                 microphone,
                 speaker,
             } => {
+                if st.device_ingress.is_some() {
+                    begin_device_drain(&myself, st, Some(format!("Capture source recovery interrupted input (microphone={microphone}, system audio={speaker})")), None).await;
+                    return Ok(());
+                }
                 let error = match (microphone, speaker) {
                     (true, true) => {
                         "Microphone and system audio disconnected. Reconnecting; the recording contains silence until they return."
@@ -405,6 +431,9 @@ async fn begin_device_drain(
     {
         st.interrupted
             .get_or_insert(format!("Audio producer failed: {error}"));
+    }
+    if let Some(reason) = provider_integrity_failure(st.provider_integrity.as_ref()) {
+        st.interrupted.get_or_insert(reason);
     }
     // The joined producer cannot enqueue later frames. This mailbox barrier follows all admitted frames.
     if let Some(reply) = reply {
