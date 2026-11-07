@@ -3,17 +3,12 @@ import { useCallback } from "react";
 
 import type { FileUploadCandidate } from "@hypr/editor/note";
 
-import type { PreparedAttachmentUpload } from "./device-attachment-source";
-import { ApplicationRequestError } from "./errors";
-import type { FileMetadata } from "./protocol.gen";
+import {
+  type AttachmentUploadAttempt as Upload,
+  attachmentUploadStopped as stopped,
+  uploadAttachmentAttempt,
+} from "./attachment-upload-attempt";
 import type { VaultScope } from "./vault-scope";
-
-type Upload = {
-  clientId: string;
-  candidate: FileUploadCandidate;
-  prepared?: PreparedAttachmentUpload;
-  removed?: boolean;
-};
 
 function mutationKey(scope: VaultScope, sessionId: string) {
   return ["vault", scope.client.scope, "attachment_upload", sessionId] as const;
@@ -33,24 +28,8 @@ export function useVaultFileUpload(scope: VaultScope, sessionId: string) {
       networkMode: "always",
       retry: false,
       gcTime: Infinity,
-      mutationFn: async (attempt: Upload): Promise<FileMetadata> => {
-        if (attempt.removed) throw stopped();
-        if (!attempt.prepared)
-          attempt.prepared = await scope.prepareAttachmentSource(
-            attempt.candidate,
-          );
-        if (attempt.removed) {
-          void attempt.prepared.close().catch(() => {});
-          throw stopped();
-        }
-        const metadata = await scope.uploadAttachmentSource(
-          sessionId,
-          attempt.prepared,
-          attempt.clientId,
-        );
-        void attempt.prepared.close().catch(() => {});
-        return metadata;
-      },
+      mutationFn: (attempt: Upload) =>
+        uploadAttachmentAttempt(scope, sessionId, attempt),
       onSuccess: () => {
         void scope.queryClient.invalidateQueries({
           queryKey: ["vault", scope.client.scope, "attachment_list", sessionId],
@@ -147,16 +126,4 @@ export function useVaultFileUploadStates(scope: VaultScope, sessionId: string) {
     [scope, sessionId],
   );
   return { states: [...latest.values()], remove };
-}
-
-function stopped() {
-  return new ApplicationRequestError({
-    code: "cancelled",
-    message:
-      "Attachment upload is unavailable or was removed; reconnect before trying again",
-    request_id: null,
-    retryable: false,
-    current_revision: null,
-    mutation_outcome: "not_committed",
-  });
 }

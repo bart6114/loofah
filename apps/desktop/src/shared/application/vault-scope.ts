@@ -32,6 +32,7 @@ export class VaultScope {
   private unsubscribe?: () => void;
   private disposed = false;
   private readonly uploadSources = new Set<PreparedAttachmentUpload>();
+  private readonly uploadCaches = new Set<QueryClient>();
   private readonly resources = new Map<
     string,
     PlaybackRecording | AttachmentResource
@@ -236,6 +237,16 @@ export class VaultScope {
     for (const source of this.uploadSources)
       void source.close().catch(() => {});
     this.uploadSources.clear();
+    for (const client of this.uploadCaches)
+      for (const mutation of client.getMutationCache().findAll({
+        mutationKey: ["vault", this.client.scope, "attachment_upload"],
+      }))
+        client.getMutationCache().remove(mutation);
+    this.uploadCaches.clear();
+  }
+
+  retainUploadCache(client: QueryClient) {
+    this.uploadCaches.add(client);
   }
 
   async saveAndConfirm<T>(

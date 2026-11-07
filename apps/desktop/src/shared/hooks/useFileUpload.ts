@@ -6,16 +6,19 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback } from "react";
 
-import {
-  type AttachmentInfo,
-  commands as fsSyncCommands,
-} from "@hypr/plugin-fs-sync";
+import type { FileUploadCandidate } from "@hypr/editor/note";
+import type { AttachmentInfo } from "@hypr/plugin-fs-sync";
 
 import { sessionAttachmentPathsQueryKey } from "~/session/hooks/useAttachmentResolver";
+import {
+  type AttachmentUploadAttempt,
+  attachmentUploadStopped,
+  uploadAttachmentAttempt,
+} from "~/shared/application/attachment-upload-attempt";
+import { useVaultHost } from "~/shared/application/vault-provider";
+import type { VaultScope } from "~/shared/application/vault-scope";
 
-export type FileUploadCandidate =
-  | { kind: "path"; path: string; name: string }
-  | { kind: "file"; file: File; name: string };
+export type { FileUploadCandidate } from "@hypr/editor/note";
 
 export type FileUploadResult = {
   url: string;
@@ -32,50 +35,69 @@ export type FileUploadState = {
   submittedAt: number;
 };
 
-type FileUploadVariables = {
-  clientId: string;
-  candidate: FileUploadCandidate;
+type FileUploadVariables = AttachmentUploadAttempt & {
+  scope: VaultScope;
+  sessionId: string;
 };
 
-function attachmentUploadMutationKey(sessionId: string) {
-  return ["attachment-upload", sessionId] as const;
+function attachmentUploadMutationKey(
+  scope: VaultScope | null,
+  sessionId: string,
+) {
+  return [
+    "vault",
+    scope?.client.scope ?? null,
+    "attachment_upload",
+    sessionId,
+  ] as const;
 }
 
 export function useFileUpload(sessionId: string) {
   const queryClient = useQueryClient();
-  const { mutateAsync } = useMutation({
-    mutationKey: attachmentUploadMutationKey(sessionId),
-    scope: { id: `attachment-upload:${sessionId}` },
-    mutationFn: async ({ candidate }: FileUploadVariables) => {
-      if (candidate.kind === "path") {
-        const result = await fsSyncCommands.attachmentImportPath(
-          sessionId,
-          candidate.path,
-        );
-        if (result.status === "error") throw new Error(result.error);
-        return toUploadResult(result.data);
-      }
-
-      const arrayBuffer = await candidate.file.arrayBuffer();
-      const data = Array.from(new Uint8Array(arrayBuffer));
-      const result = await fsSyncCommands.attachmentSave(
-        sessionId,
-        data,
-        candidate.name,
-      );
-      if (result.status === "error") throw new Error(result.error);
-
-      const attachment: AttachmentInfo = {
-        ...result.data,
-        extension: extensionOf(result.data.attachmentId),
-        size: candidate.file.size,
-        modifiedAt: new Date().toISOString(),
-      };
-      return toUploadResult(attachment);
+  const { scope } = useVaultHost();
+  const mutation = useMutation({
+    mutationKey: attachmentUploadMutationKey(scope, sessionId),
+    scope: {
+      id: JSON.stringify(["attachment_upload", scope?.client.scope, sessionId]),
     },
-    onSuccess: ({ attachment }) => {
+    networkMode: "always",
+    retry: false,
+    gcTime: Infinity,
+    mutationFn: async (attempt: FileUploadVariables) => {
+      const { scope: owner, sessionId: target } = attempt;
+      const metadata = await uploadAttachmentAttempt(owner, target, attempt);
+      const resource = await owner.run(() =>
+        owner.client.openAttachment(target, metadata.filename),
+      );
+      try {
+        if (!resource?.path || owner.getSnapshot().state !== "connected")
+          throw new Error(
+            "The uploaded attachment is unavailable on this device",
+          );
+        const attachment: AttachmentInfo = {
+          attachmentId: metadata.filename,
+          path: resource.path,
+          extension: extensionOf(metadata.filename),
+          size: metadata.sizeBytes,
+          modifiedAt: new Date().toISOString(),
+        };
+        return toUploadResult(attachment);
+      } finally {
+        await resource?.close().catch(() => {});
+      }
+    },
+    onSuccess: ({ attachment }, attempt) => {
+      void attempt.scope.queryClient.invalidateQueries({
+        queryKey: [
+          "vault",
+          attempt.scope.client.scope,
+          "attachment_list",
+          attempt.sessionId,
+        ],
+      });
+      if (attempt.scope.getSnapshot().state !== "connected") return;
       queryClient.setQueryData<AttachmentInfo[]>(
-        sessionAttachmentPathsQueryKey(sessionId),
+        sessionAttachmentPathsQueryKey(attempt.sessionId),
         (current = []) => [
           ...current.filter(
             (item) => item.attachmentId !== attachment.attachmentId,
@@ -84,7 +106,7 @@ export function useFileUpload(sessionId: string) {
         ],
       );
       void queryClient.invalidateQueries({
-        queryKey: sessionAttachmentPathsQueryKey(sessionId),
+        queryKey: sessionAttachmentPathsQueryKey(attempt.sessionId),
       });
     },
   });
@@ -94,26 +116,51 @@ export function useFileUpload(sessionId: string) {
       candidate: FileUploadCandidate,
       clientId: string = crypto.randomUUID(),
     ) => {
+      if (!scope || scope.getSnapshot().state !== "connected")
+        return Promise.reject(attachmentUploadStopped());
+      scope.retainUploadCache(queryClient);
       const mutationCache = queryClient.getMutationCache();
+      let attempt: FileUploadVariables | undefined;
       for (const previous of mutationCache.findAll({
-        mutationKey: attachmentUploadMutationKey(sessionId),
+        mutationKey: attachmentUploadMutationKey(scope, sessionId),
+        exact: true,
       })) {
         const variables = previous.state.variables as
           | FileUploadVariables
           | undefined;
-        if (variables?.clientId === clientId) mutationCache.remove(previous);
+        if (variables?.clientId === clientId) {
+          attempt = variables;
+          if (previous.state.status !== "pending")
+            mutationCache.remove(previous);
+        }
       }
-      return mutateAsync({ candidate, clientId });
+      return mutation
+        .mutateAsync(attempt ?? { candidate, clientId, scope, sessionId })
+        .then((result) => {
+          for (const completed of mutationCache.findAll({
+            mutationKey: attachmentUploadMutationKey(scope, sessionId),
+            exact: true,
+          }))
+            if (
+              (completed.state.variables as FileUploadVariables | undefined)
+                ?.clientId === clientId &&
+              completed.state.status === "success"
+            )
+              mutationCache.remove(completed);
+          mutation.reset();
+          return result;
+        });
     },
-    [mutateAsync, queryClient, sessionId],
+    [mutation.mutateAsync, mutation.reset, queryClient, scope, sessionId],
   );
 }
 
 export function useFileUploadStates(sessionId: string) {
   const queryClient = useQueryClient();
+  const { scope } = useVaultHost();
   const pending = useMutationState<FileUploadState>({
     filters: {
-      mutationKey: attachmentUploadMutationKey(sessionId),
+      mutationKey: attachmentUploadMutationKey(scope, sessionId),
       status: "pending",
     },
     select: (mutation) => ({
@@ -126,7 +173,7 @@ export function useFileUploadStates(sessionId: string) {
   });
   const errors = useMutationState<FileUploadState>({
     filters: {
-      mutationKey: attachmentUploadMutationKey(sessionId),
+      mutationKey: attachmentUploadMutationKey(scope, sessionId),
       status: "error",
     },
     select: (mutation) => ({
@@ -150,15 +197,19 @@ export function useFileUploadStates(sessionId: string) {
     (clientId: string) => {
       const mutationCache = queryClient.getMutationCache();
       for (const mutation of mutationCache.findAll({
-        mutationKey: attachmentUploadMutationKey(sessionId),
+        mutationKey: attachmentUploadMutationKey(scope, sessionId),
       })) {
         const variables = mutation.state.variables as
           | FileUploadVariables
           | undefined;
-        if (variables?.clientId === clientId) mutationCache.remove(mutation);
+        if (variables?.clientId === clientId) {
+          variables.removed = true;
+          void variables.prepared?.close().catch(() => {});
+          mutationCache.remove(mutation);
+        }
       }
     },
-    [queryClient, sessionId],
+    [queryClient, scope, sessionId],
   );
 
   return { states: [...latest.values()], remove };

@@ -2,7 +2,7 @@
 
 Status: implementation in progress. The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
 
-Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes. Attachments support authenticated reading, preview/copy actions, listing and checked removal. Checked binary upload publication, native SDK streaming, device path/browser-file sources and shared attachment upload controls are implemented. The opt-in shared editor accepts clipboard files and native drops through these adapters; the default local editor retains its existing file/audio import host. Crash/restart upload recovery remains open. The main desktop remote shell/profile migration, imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
+Current usable surface: both the default local note editor and the opt-in server notes workspace mount the existing rich editor against shared checked note/task operations. Remote editing supports guarded saves and device recovery through disconnects. The common audio player supports local files and authenticated remote ranges/waveforms; checked recording deletion is implemented through the same shared operation in both modes. Attachments support authenticated reading, preview/copy actions, listing and checked removal. Checked binary upload publication, native SDK streaming, device path/browser-file sources and shared attachment upload controls are implemented. The opt-in shared editor accepts clipboard files and native drops through these adapters; the default local editor now routes attachment uploads through the same checked operation while retaining its existing file presentation and audio-import host. Crash/restart upload recovery remains open. The main desktop remote shell/profile migration, imports/exports, reliable remote capture, server processing/jobs, CLI owner routing/writes and full release validation remain open. Default local use stays offline and login-free.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
@@ -2167,3 +2167,45 @@ Native picker/drop gestures, production performance and the full main shell are
 separate gates. The earlier pushed attachment backend checkpoint has passed
 native Windows x64/ARM64 checking, tests and installer smoke checks.
 These checkpoints do not complete phase 4 or the full plan.
+
+### Default local attachment uploads through the shared operation
+
+The default local editor and attachment panel now route `useFileUpload` through
+`VaultScope` and the same `uploadAttachmentAttempt` helper as the opt-in workspace.
+The previous direct `attachmentImportPath`/`attachmentSave` path and whole-browser-
+file JSON buffering are removed from this hook. Device paths stay native, and
+browser files use bounded source staging. The existing synchronous local resolver,
+asset URLs, attachment-cache update, native picker/drop surface and audio-file
+interception remain in place. This host adapter still expects a local attachment
+path for its existing presentation; remaining local read/presentation flows and
+the complete remote main shell require migration.
+
+Attempts bind their original scope, session, UUID, declaration and source. A retry
+cannot silently substitute another candidate or vault. Local mutation execution
+uses `networkMode: "always"`, with automatic retries disabled. Failed attempts
+remain available for explicit retry; success removes completed mutation state.
+The scope also tracks the legacy host's upload mutation cache and removes only
+its own upload entries when access/scope ends, including after the original UI
+unmounts. Unrelated host mutations remain intact. The capture/processing code was
+not changed.
+
+Focused regressions cover bounded browser-source delegation, native paths above
+4 GB, local use while browser networking is offline, sequential submission,
+retained lost-response identity/source, refusal before host readiness and cleanup
+after unmount. Existing attachment-panel and audio-drop routing tests pass.
+A native debug WKWebView mounts the actual default upload hook, cached resolver
+and attachment panel: pasted image bytes and a 6 MiB browser file publish exactly,
+the image renders and saves a canonical attachment reference, and a real macOS
+file-picker selection adds the expected file. No server or login is used. All
+18 preexisting local fixture files and new unknown/hidden canaries stay unchanged;
+normal completion leaves no device staging files. Evidence is saved in
+`/Volumes/T7/loofah-backend-build/native-qa/local-upload/evidence.json`.
+This validates the mounted local components, not full capture/processing parity,
+production performance or native Windows runtime acceptance of this increment.
+
+The local-upload increment passes desktop typechecking and lint (zero errors),
+1,835 frontend tests across 231 files, locale checking and the production frontend
+build. No Rust source changed in this increment; the native fixture uses the
+previously built device/source and shared IPC adapters. Native Windows CI for
+that pushed source checkpoint is still running; macOS fixture success is not a
+Windows runtime pass.
