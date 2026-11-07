@@ -31,6 +31,7 @@ pub mod people;
 pub mod processing_source;
 pub mod rebuild;
 pub mod recording_delete;
+mod session_cleanup;
 mod session_path;
 mod session_summaries;
 pub mod stats;
@@ -54,6 +55,7 @@ pub use index::{
 };
 pub use people::PersonItem;
 pub use rebuild::RebuildReport;
+pub use session_cleanup::{SessionCleanupError, SessionCleanupKey};
 pub use stats::{VaultStats, VaultYearStats};
 pub use storage_stats::{VaultStorageCategory, VaultStorageStats};
 pub use tags::{ScoredTagSuggestion, TagContext, TagItem};
