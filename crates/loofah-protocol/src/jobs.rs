@@ -42,6 +42,7 @@ pub enum ProcessingPhase {
 pub enum ProcessingJobFailure {
     AccessDenied,
     SourceUnavailable,
+    ResourceLimit,
     ProviderUnavailable,
     ProviderFailed,
     InvalidOutput,

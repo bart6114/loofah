@@ -123,7 +123,7 @@ export type Pagination = { offset: number; limit: number; returned: number; tota
 
 export type PersonItem = { id: string; name?: string }
 
-export type ProcessingJobFailure = "access_denied" | "source_unavailable" | "provider_unavailable" | "provider_failed" | "invalid_output" | "storage" | "interrupted"
+export type ProcessingJobFailure = "access_denied" | "source_unavailable" | "resource_limit" | "provider_unavailable" | "provider_failed" | "invalid_output" | "storage" | "interrupted"
 
 export type ProcessingJobSnapshot = { id: string; session_id: string; target: DocumentTarget; state: ProcessingJobState; phase: ProcessingPhase | null; failure: ProcessingJobFailure | null; created_at: string; updated_at: string }
 

@@ -94,6 +94,7 @@ impl Fixture {
                 cancelled: AtomicBool::new(false),
                 output: Ok(GeneratedDocument {
                     markdown: output.into(),
+                    suggested_tags: None,
                 }),
             }),
             authorizer: Arc::new(Authorizer {
@@ -540,6 +541,7 @@ async fn retained_output_is_immutable_and_invalid_records_are_preserved_for_reco
     f.journal.claim(job.id.clone()).await.unwrap();
     let output = GeneratedDocument {
         markdown: "# First result".into(),
+        suggested_tags: None,
     };
     f.journal
         .retain_result(job.id.clone(), output.clone())
@@ -554,7 +556,8 @@ async fn retained_output_is_immutable_and_invalid_records_are_preserved_for_reco
             .retain_result(
                 job.id.clone(),
                 GeneratedDocument {
-                    markdown: "# Different result".into()
+                    markdown: "# Different result".into(),
+                    suggested_tags: None,
                 }
             )
             .await
@@ -582,7 +585,8 @@ async fn retained_output_is_immutable_and_invalid_records_are_preserved_for_reco
             .retain_result(
                 job.id,
                 GeneratedDocument {
-                    markdown: "# First result".into()
+                    markdown: "# First result".into(),
+                    suggested_tags: None,
                 }
             )
             .await
@@ -623,4 +627,27 @@ async fn unconfirmed_canonical_writes_are_recorded_for_review_without_exposing_r
             .unwrap()
             .contains("sensitive")
     );
+}
+
+#[tokio::test]
+async fn invalid_generated_metadata_fails_before_persistence_without_poisoning_the_worker() {
+    let mut f = Fixture::new("# Preserve the old body", false).await;
+    Arc::get_mut(&mut f.generator).unwrap().output = Ok(GeneratedDocument {
+        markdown: "# Preserve the old body".into(),
+        suggested_tags: Some(vec![hypr_vault_write::ScoredTagSuggestion {
+            name: "topic".into(),
+            confidence: f64::NAN,
+        }]),
+    });
+    let worker = f.worker().await;
+    for _ in 0..2 {
+        let job = f.submit().await;
+        f.generator.release.add_permits(1);
+        let snapshot = f.terminal(&job.id).await;
+        assert_eq!(snapshot.state, ProcessingJobState::Failed);
+        assert_eq!(snapshot.failure, Some(ProcessingJobFailure::InvalidOutput));
+        assert!(f.journal.result(job.id).await.unwrap().is_none());
+        assert_eq!(f.summary().await, "");
+    }
+    worker.shutdown().await.unwrap();
 }

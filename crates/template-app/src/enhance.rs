@@ -9,6 +9,25 @@ common_derives! {
 }
 
 pub fn render_enhance_system(input: &EnhanceSystem) -> Result<String, Error> {
+    render_system(input, None)
+}
+
+pub fn render_enhance_system_bounded(
+    input: &EnhanceSystem,
+    max_bytes: usize,
+) -> Result<String, Error> {
+    if input.prompt_override.len() > 64 * 1024
+        || input
+            .language
+            .as_ref()
+            .is_some_and(|language| language.len() > 256)
+    {
+        return Err(Error::ResourceLimit);
+    }
+    render_system(input, Some(max_bytes))
+}
+
+fn render_system(input: &EnhanceSystem, max_bytes: Option<usize>) -> Result<String, Error> {
     let default_source = include_str!("../assets/enhance.system.md.jinja");
     let source = if input.prompt_override.trim().is_empty() {
         default_source
@@ -18,6 +37,9 @@ pub fn render_enhance_system(input: &EnhanceSystem) -> Result<String, Error> {
 
     let mut env = Environment::new();
     env.set_undefined_behavior(UndefinedBehavior::Strict);
+    if max_bytes.is_some() {
+        env.set_fuel(Some(100_000));
+    }
     let template = env.template_from_str(source)?;
 
     let mut unknown_variables = template
@@ -34,14 +56,56 @@ pub fn render_enhance_system(input: &EnhanceSystem) -> Result<String, Error> {
         }));
     }
 
-    let summary_prompt = template.render(context! {
+    let context = context! {
         current_date => hypr_askama_utils::current_date_value(),
         language => hypr_askama_utils::language_name(input.language.as_deref()),
-    })?;
-    Ok(format!(
-        "{summary_prompt}\n\n{}",
-        include_str!("../assets/enhance.output-contract.md")
-    ))
+    };
+    let contract = include_str!("../assets/enhance.output-contract.md");
+    let summary_prompt = if let Some(limit) = max_bytes {
+        if limit < contract.len() + 2 {
+            return Err(Error::ResourceLimit);
+        }
+        let mut output = BoundedOutput {
+            bytes: Vec::new(),
+            limit: limit.saturating_sub(contract.len() + 2),
+        };
+        template
+            .render_captured_to(context, &mut output)
+            .map_err(|cause| {
+                if matches!(
+                    cause.kind(),
+                    minijinja::ErrorKind::OutOfFuel | minijinja::ErrorKind::WriteFailure
+                ) {
+                    Error::ResourceLimit
+                } else {
+                    Error::JinjaError(cause)
+                }
+            })?;
+        String::from_utf8(output.bytes)
+            .map_err(|_| Error::ParseError("Invalid prompt encoding".into()))?
+    } else {
+        template.render(context)?
+    };
+    Ok(format!("{summary_prompt}\n\n{contract}"))
+}
+
+struct BoundedOutput {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+
+impl std::io::Write for BoundedOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.bytes.len().saturating_add(bytes.len()) > self.limit {
+            return Err(std::io::Error::other("Summary prompt output is too large"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 common_derives! {
@@ -72,6 +136,49 @@ mod tests {
     use super::*;
     use crate::Segment;
     use hypr_askama_utils::tpl_snapshot;
+
+    #[test]
+    fn bounded_render_matches_existing_prompts_and_limits_input_output_and_execution() {
+        for prompt in ["", "Decisions in {{ language }} on {{ current_date }}"] {
+            let input = EnhanceSystem {
+                language: Some("nl".into()),
+                prompt_override: prompt.into(),
+            };
+            assert_eq!(
+                render_enhance_system_bounded(&input, 256 * 1024).unwrap(),
+                render_enhance_system(&input).unwrap()
+            );
+        }
+        let input = EnhanceSystem {
+            language: None,
+            prompt_override: "x".repeat(64 * 1024 + 1),
+        };
+        assert!(matches!(
+            render_enhance_system_bounded(&input, 256 * 1024),
+            Err(Error::ResourceLimit)
+        ));
+        let input = EnhanceSystem {
+            language: None,
+            prompt_override: "x".repeat(1000),
+        };
+        let limit = include_str!("../assets/enhance.output-contract.md").len() + 100;
+        assert!(matches!(
+            render_enhance_system_bounded(&input, limit),
+            Err(Error::ResourceLimit)
+        ));
+        let input = EnhanceSystem {
+            language: None,
+            prompt_override: format!(
+                "{}x{}",
+                "{% for item in [1,2,3,4,5,6,7,8,9,10] %}".repeat(8),
+                "{% endfor %}".repeat(8)
+            ),
+        };
+        assert!(matches!(
+            render_enhance_system_bounded(&input, 256 * 1024),
+            Err(Error::ResourceLimit)
+        ));
+    }
 
     #[test]
     fn note_only_prompt_omits_transcript() {

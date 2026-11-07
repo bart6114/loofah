@@ -5,11 +5,13 @@ edition = "2024"
 
 [dependencies]
 chrono = { workspace = true }
+futures-util = { workspace = true }
 hypr-agent-access = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
+hypr-template-app = { workspace = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
 mime_guess = { workspace = true }

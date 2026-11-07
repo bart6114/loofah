@@ -47,6 +47,7 @@ impl JobGenerator for Generator {
             }
             Ok(GeneratedDocument {
                 markdown: "# Runtime result".into(),
+                suggested_tags: None,
             })
         })
     }

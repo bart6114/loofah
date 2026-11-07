@@ -19,6 +19,7 @@ const MAX_RECORD_BYTES: u64 = 16 * 1024;
 const MAX_JOBS: usize = 10_000;
 const MAX_PENDING: usize = 32;
 
+pub mod generation;
 mod result;
 mod worker;
 pub use result::GeneratedDocument;

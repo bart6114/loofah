@@ -2301,5 +2301,48 @@ Validation passes 152 shared-core tests (one ignored subprocess fixture), all 51
 server tests, the headless executable/SIGTERM integration test, core/server Rust
 checking, strict changed-crate production Clippy and formatting. Build, test and
 cache artifacts remain physically on T7. Native Windows validation of this
-increment remains required; the previous pushed checkpoint's x64/ARM64 workflow
-is still running and is not superseded by another push.
+increment remains required. The preceding pushed journal checkpoint (`c2415b8f`)
+subsequently passed native Windows CI on both x64 and ARM64; its separate
+speech-model lane was skipped.
+
+### Shared summary-generation workflow
+
+`loofah-core::jobs::generation::SummaryGenerator` now implements the job-generator
+contract over injected source/model adapters. It reuses `template-app` for system
+and user prompts, including custom styles, language, transcript identity markers,
+tag context, image context and the existing concision instruction. The workflow
+preserves the current early-validation policy: at most two generation attempts,
+feedback on the second attempt, custom-style bypass and the final-attempt fallback.
+Model adapters receive the current 8,192-output-token/four-retry policy.
+
+Stream handling removes the existing `think`/`thinking` reasoning blocks, separates
+the tag footer across arbitrary Unicode/chunk boundaries, normalizes bullet markers
+and bounds the generated body and discarded metadata.
+Missing, malformed, oversized or token-truncated tag metadata never appears in the
+summary. Provider errors, missing completion, duplicate completion and text after
+completion cannot publish partial success. Cancellation and early retry drain the
+actual stream before releasing resources or beginning another model request.
+Confirmed late output after cancellation is retained as a private recovery draft;
+the cancelled job never applies it to the canonical document.
+
+Generated results now retain optional validated tag suggestions. Earlier body-only
+results remain readable. The existing worker still applies checked bodies and task
+reconciliation; canonical tag/title application remains required. The new bounded
+system-template entry point limits source/output size and VM instructions while
+sharing the renderer and variable validation with current desktop templates.
+
+Production canonical source selection, identity and image preparation/compression,
+provider transports/credentials, preview events, host configuration, public job
+adapters and local workflow migration remain open. Template rendering uses trusted
+host configuration; output/instruction budgets do not make arbitrary templates a
+general sandbox. This increment enables no public processing capability and adds
+no login to default local use.
+
+Validation passes 166 shared-core tests (one ignored subprocess fixture), all 40
+template tests, three protocol tests, 51 server tests and the headless executable
+shutdown test. The 39 existing frontend summary tests also pass. Rust checking,
+strict changed-crate production Clippy, generated-contract export/check, desktop
+typechecking, lint and the Tauri/device-free dependency check pass. The new tests
+use controlled model streams, real canonical writes and runtime restart; they do
+not establish production provider, source-preparation, title/tag persistence or
+native model parity. Native Windows validation of the new commits remains required.

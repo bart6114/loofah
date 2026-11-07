@@ -207,8 +207,7 @@ async fn execute(
             cancel.cancel();
             // Keep the worker permit and owned I/O alive until the generator has actually stopped.
             if let Ok(output) = generation.await
-                && !output.markdown.trim().is_empty()
-                && output.markdown.len() <= 4 * 1024 * 1024
+                && result::validate_output(&output).is_ok()
             {
                 journal.retain_result(id.into(), output).await?;
             }
@@ -225,7 +224,7 @@ async fn execute(
             });
         }
     };
-    if output.markdown.trim().is_empty() || output.markdown.len() > 4 * 1024 * 1024 {
+    if result::validate_output(&output).is_err() {
         return Ok(JobCompletion::Failed(ProcessingJobFailure::InvalidOutput));
     }
     journal.retain_result(id.into(), output.clone()).await?;

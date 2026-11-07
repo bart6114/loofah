@@ -3,10 +3,12 @@ use super::*;
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_RESULT_BYTES: u64 = (MAX_OUTPUT_BYTES * 6) as u64 + MAX_RECORD_BYTES;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeneratedDocument {
     pub markdown: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_tags: Option<Vec<hypr_vault_write::ScoredTagSuggestion>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -162,11 +164,25 @@ fn read_result(state: &State, job: &Record) -> Result<Option<GeneratedDocument>,
     Ok(Some(record.output))
 }
 
-fn validate_output(output: &GeneratedDocument) -> Result<(), ApplicationError> {
+pub(super) fn validate_output(output: &GeneratedDocument) -> Result<(), ApplicationError> {
     if output.markdown.trim().is_empty() || output.markdown.len() > MAX_OUTPUT_BYTES {
         return Err(rejected(
             ErrorCode::Validation,
             "Generated document is empty or too large",
+        ));
+    }
+    if output.suggested_tags.as_ref().is_some_and(|tags| {
+        tags.len() > 3
+            || tags.iter().any(|tag| {
+                tag.name.trim().is_empty()
+                    || tag.name.encode_utf16().count() > 120
+                    || !tag.confidence.is_finite()
+                    || !(0.0..=1.0).contains(&tag.confidence)
+            })
+    }) {
+        return Err(rejected(
+            ErrorCode::Validation,
+            "Invalid generated tag suggestions",
         ));
     }
     Ok(())
