@@ -195,6 +195,20 @@ impl hypr_audio_interface::AsyncSource for SpeakerStream {
     fn sample_rate(&self) -> u32 {
         self.buffer_rate
     }
+    fn request_stop(&mut self) -> bool {
+        #[cfg(all(target_os = "windows", not(test)))]
+        {
+            self.inner.request_stop_capture()
+        }
+        #[cfg(test)]
+        {
+            true
+        }
+        #[cfg(all(not(target_os = "windows"), not(test)))]
+        {
+            false
+        }
+    }
 }
 
 #[cfg(test)]

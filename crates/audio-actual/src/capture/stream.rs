@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{panic::AssertUnwindSafe, panic::catch_unwind};
 
-use futures_util::{Stream, StreamExt};
+use futures_util::{FutureExt, Stream, StreamExt};
 use hypr_aec::AEC;
 use hypr_audio_sync::{SyncProbe, SyncProbeConfig, SyncProbeEvent, SyncProbeState};
 use hypr_resampler::ResampleExtDynamicNew;
@@ -12,7 +12,10 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
-use hypr_audio::{CaptureFrame, CaptureStream, Error};
+use hypr_audio::{
+    CaptureDrainControl, CaptureDrainError, CaptureDrainFuture, CaptureDrainReceipt, CaptureFrame,
+    CaptureStream, Error,
+};
 
 use crate::mic::MicInput;
 use crate::speaker::SpeakerInput;
@@ -20,8 +23,105 @@ use crate::speaker::SpeakerInput;
 use super::joiner::Joiner;
 use super::recovery::CaptureHealth;
 
-pub(crate) type ChunkStream =
-    Pin<Box<dyn Stream<Item = Result<Vec<f32>, hypr_resampler::Error>> + Send>>;
+pub(crate) trait ChunkSource:
+    Stream<Item = Result<Vec<f32>, hypr_resampler::Error>> + Send
+{
+    fn request_stop(self: Pin<&mut Self>) -> bool;
+}
+pub(crate) type ChunkStream = Pin<Box<dyn ChunkSource>>;
+
+struct ResampledChunks<S: hypr_audio_interface::AsyncSource>(
+    hypr_resampler::ResamplerDynamicNew<S>,
+);
+impl<S: hypr_audio_interface::AsyncSource + Send + Unpin> Stream for ResampledChunks<S> {
+    type Item = Result<Vec<f32>, hypr_resampler::Error>;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.get_mut().0).poll_next(cx)
+    }
+}
+impl<S: hypr_audio_interface::AsyncSource + Send + Unpin> ChunkSource for ResampledChunks<S> {
+    fn request_stop(self: Pin<&mut Self>) -> bool {
+        self.get_mut().0.request_stop_source()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn boxed_chunks<S>(stream: S) -> ChunkStream
+where
+    S: Stream<Item = Result<Vec<f32>, hypr_resampler::Error>> + Send + Unpin + 'static,
+{
+    struct Plain<S>(S);
+    impl<S: Stream + Send + Unpin> Stream for Plain<S> {
+        type Item = S::Item;
+        fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            Pin::new(&mut self.get_mut().0).poll_next(cx)
+        }
+    }
+    impl<S: Stream<Item = Result<Vec<f32>, hypr_resampler::Error>> + Send + Unpin> ChunkSource
+        for Plain<S>
+    {
+        fn request_stop(self: Pin<&mut Self>) -> bool {
+            false
+        }
+    }
+    Box::pin(Plain(stream))
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct QueuedProbe {
+    pub(crate) stopped: std::sync::atomic::AtomicBool,
+    pub(crate) chunks: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(test)]
+pub(crate) fn queued_chunks(
+    capacity: usize,
+) -> (
+    tokio::sync::mpsc::Sender<Result<Vec<f32>, hypr_resampler::Error>>,
+    ChunkStream,
+    Arc<QueuedProbe>,
+) {
+    struct Queued {
+        rx: tokio::sync::mpsc::Receiver<Result<Vec<f32>, hypr_resampler::Error>>,
+        stopped: Arc<QueuedProbe>,
+    }
+    impl Stream for Queued {
+        type Item = Result<Vec<f32>, hypr_resampler::Error>;
+        fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            let state = self.get_mut();
+            let item = state.rx.poll_recv(cx);
+            if matches!(item, Poll::Ready(Some(_))) {
+                state
+                    .stopped
+                    .chunks
+                    .fetch_add(1, std::sync::atomic::Ordering::Release);
+            }
+            item
+        }
+    }
+    impl ChunkSource for Queued {
+        fn request_stop(self: Pin<&mut Self>) -> bool {
+            let state = self.get_mut();
+            state.rx.close();
+            state
+                .stopped
+                .stopped
+                .store(true, std::sync::atomic::Ordering::Release);
+            true
+        }
+    }
+    let (tx, rx) = tokio::sync::mpsc::channel(capacity);
+    let stopped = Arc::new(QueuedProbe::default());
+    (
+        tx,
+        Box::pin(Queued {
+            rx,
+            stopped: stopped.clone(),
+        }),
+        stopped,
+    )
+}
 
 const AUDIO_SYNC_PROBE_ENV: &str = "AUDIO_SYNC_PROBE";
 const AEC_MAX_REFERENCE_LAG_MS: u32 = 100;
@@ -33,6 +133,88 @@ const AEC_LINEAR_GAIN_SMOOTHING: f32 = 0.12;
 const AEC_DOUBLE_TALK_RESIDUAL_RATIO: f32 = 0.08;
 const AEC_ROBUST_GAIN_SEGMENTS: usize = 8;
 const AEC_ROBUST_GAIN_MIN_SEGMENTS: usize = 3;
+
+struct NativeControl {
+    stop: CancellationToken,
+    receipt: tokio::sync::watch::Receiver<Option<Result<CaptureDrainReceipt, CaptureDrainError>>>,
+}
+impl CaptureDrainControl for NativeControl {
+    fn request_stop(&self) -> Result<(), CaptureDrainError> {
+        if !self.stop.is_cancelled() && self.receipt.borrow().is_some() {
+            return Err(CaptureDrainError::NotDrained);
+        }
+        self.stop.cancel();
+        Ok(())
+    }
+    fn completion(&self) -> CaptureDrainFuture<'_> {
+        let mut receipt = self.receipt.clone();
+        Box::pin(async move {
+            loop {
+                if let Some(result) = receipt.borrow().clone() {
+                    return result;
+                }
+                receipt.changed().await.map_err(|_| {
+                    CaptureDrainError::Failed(
+                        "Native capture task ended without resource acknowledgement".into(),
+                    )
+                })?;
+            }
+        })
+    }
+}
+
+fn spawn_native(
+    future: impl std::future::Future<Output = Result<CaptureDrainReceipt, CaptureDrainError>>
+    + Send
+    + 'static,
+    done: tokio::sync::watch::Sender<Option<Result<CaptureDrainReceipt, CaptureDrainError>>>,
+    health: Arc<CaptureHealth>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let result = AssertUnwindSafe(future)
+            .catch_unwind()
+            .await
+            .unwrap_or_else(|_| {
+                Err(CaptureDrainError::Failed(
+                    "Native capture task panicked".into(),
+                ))
+            });
+        let result = if health
+            .cleanup_failed
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            Err(CaptureDrainError::Failed(
+                "An input could not confirm stopping".into(),
+            ))
+        } else {
+            result
+        };
+        let _ = done.send(Some(result));
+    })
+}
+
+fn stop_inputs(
+    mic: &mut Option<ChunkStream>,
+    speaker: &mut Option<ChunkStream>,
+) -> Result<(), CaptureDrainError> {
+    let mic = mic
+        .as_mut()
+        .is_none_or(|stream| stream.as_mut().request_stop());
+    let speaker = speaker
+        .as_mut()
+        .is_none_or(|stream| stream.as_mut().request_stop());
+    if mic && speaker {
+        Ok(())
+    } else {
+        Err(CaptureDrainError::Unsupported)
+    }
+}
+
+async fn discard_stopped_input(stream: Option<ChunkStream>) {
+    if let Some(mut stream) = stream {
+        while let Some(Ok(_)) = stream.next().await {}
+    }
+}
 
 struct CaptureStreamInner {
     inner: ReceiverStream<Result<CaptureFrame, Error>>,
@@ -64,7 +246,7 @@ pub(crate) fn setup_mic_stream(
     let mic = MicInput::new(mic_device).map_err(|_| Error::MicOpenFailed)?;
     mic.stream_with_integrity(Some(integrity))
         .resampled_chunks(sample_rate, chunk_size)
-        .map(|stream| Box::pin(stream) as ChunkStream)
+        .map(|stream| Box::pin(ResampledChunks(stream)) as ChunkStream)
         .map_err(|_| Error::MicStreamSetupFailed)
 }
 
@@ -86,7 +268,7 @@ pub(crate) fn setup_speaker_stream(
     speaker_stream
         .map_err(crate::speaker::setup_error)?
         .resampled_chunks(sample_rate, chunk_size)
-        .map(|stream| Box::pin(stream) as ChunkStream)
+        .map(|stream| Box::pin(ResampledChunks(stream)) as ChunkStream)
         .map_err(|err| Error::SpeakerStreamSetupFailed(format!("resample: {err}")))
 }
 
@@ -114,25 +296,34 @@ pub(crate) fn open_dual(
 ) -> CaptureStream {
     let health = health.unwrap_or_else(|| Arc::new(CaptureHealth::default()));
     let integrity = health.integrity.clone();
-    let health = Some(health);
     let cancel_token = CancellationToken::new();
+    let stop = CancellationToken::new();
+    let (done, receipt) = tokio::sync::watch::channel(None);
+    let control = Arc::new(NativeControl {
+        stop: stop.clone(),
+        receipt,
+    });
     let (tx, rx) = tokio::sync::mpsc::channel(32);
-    let task = tokio::spawn(run_dual_loop(
-        tx,
-        cancel_token.clone(),
-        sample_rate,
-        enable_aec,
-        mic_stream,
-        speaker_stream,
+    let task = spawn_native(
+        run_dual_loop(
+            tx,
+            (cancel_token.clone(), stop),
+            sample_rate,
+            enable_aec,
+            mic_stream,
+            speaker_stream,
+            health.clone(),
+        ),
+        done,
         health,
-    ));
-
+    );
     CaptureStream::new(CaptureStreamInner {
         inner: ReceiverStream::new(rx),
         cancel_token,
         task,
     })
     .with_integrity(integrity)
+    .with_drain_control(control)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,41 +339,54 @@ pub(crate) fn open_single(
 ) -> CaptureStream {
     let health = health.unwrap_or_else(|| Arc::new(CaptureHealth::default()));
     let integrity = health.integrity.clone();
-    let health = Some(health);
     let cancel_token = CancellationToken::new();
+    let stop = CancellationToken::new();
+    let (done, receipt) = tokio::sync::watch::channel(None);
+    let control = Arc::new(NativeControl {
+        stop: stop.clone(),
+        receipt,
+    });
     let (tx, rx) = tokio::sync::mpsc::channel(32);
-    let task = tokio::spawn(run_single_loop(
-        tx,
-        cancel_token.clone(),
-        chunk_stream,
-        side,
+    let task = spawn_native(
+        run_single_loop(
+            tx,
+            (cancel_token.clone(), stop),
+            chunk_stream,
+            side,
+            health.clone(),
+        ),
+        done,
         health,
-    ));
-
+    );
     CaptureStream::new(CaptureStreamInner {
         inner: ReceiverStream::new(rx),
         cancel_token,
         task,
     })
     .with_integrity(integrity)
+    .with_drain_control(control)
 }
 
 enum StreamResult {
     Continue,
-    Stop,
     Failed(Error),
 }
 
 async fn run_dual_loop(
     tx: tokio::sync::mpsc::Sender<Result<CaptureFrame, Error>>,
-    cancel_token: CancellationToken,
+    controls: (CancellationToken, CancellationToken),
     sample_rate: u32,
     enable_aec: bool,
-    mut mic_stream: ChunkStream,
-    mut speaker_stream: ChunkStream,
-    health: Option<Arc<CaptureHealth>>,
-) {
-    let mut joiner = Joiner::with_integrity(health.as_ref().map(|health| health.integrity.clone()));
+    mic_stream: ChunkStream,
+    speaker_stream: ChunkStream,
+    health: Arc<CaptureHealth>,
+) -> Result<CaptureDrainReceipt, CaptureDrainError> {
+    let (cancel, stop) = controls;
+    let mut mic = Some(mic_stream);
+    let mut speaker = Some(speaker_stream);
+    let mut stopping = false;
+    let mut frames = 0u64;
+    let mut joiner = Joiner::with_integrity(Some(health.integrity.clone()));
     let mut aec = if enable_aec { build_aec() } else { None };
     let mut linear_echo_gain = None;
     let mut last_health = (0, 0);
@@ -191,26 +395,55 @@ async fn run_dual_loop(
     } else {
         None
     };
-
     loop {
+        let mut mic_ended = false;
+        let mut speaker_ended = false;
         let result = tokio::select! {
-            _ = cancel_token.cancelled() => StreamResult::Stop,
-            item = mic_stream.next() => {
-                handle_stream_item(item, CaptureSide::Mic, &mut joiner)
+            _ = cancel.cancelled() => return Err(CaptureDrainError::Failed("Native capture was aborted".into())),
+            _ = stop.cancelled(), if !stopping => { stopping = true; stop_inputs(&mut mic, &mut speaker)?; StreamResult::Continue }
+            item = async { mic.as_mut().expect("active microphone").next().await }, if mic.is_some() => {
+                mic_ended = item.is_none();
+                if item.is_none() && stopping { mic = None; StreamResult::Continue }
+                else { handle_stream_item(item, CaptureSide::Mic, &mut joiner) }
             }
-            item = speaker_stream.next() => {
-                handle_stream_item(item, CaptureSide::Speaker, &mut joiner)
+            item = async { speaker.as_mut().expect("active system audio").next().await }, if speaker.is_some() => {
+                speaker_ended = item.is_none();
+                if item.is_none() && stopping { speaker = None; StreamResult::Continue }
+                else { handle_stream_item(item, CaptureSide::Speaker, &mut joiner) }
             }
         };
-
         match result {
+            StreamResult::Failed(error) => {
+                health.integrity.mark_discontinuity(true, true);
+                let stopped = stop_inputs(&mut mic, &mut speaker);
+                let _ = tx.send(Err(error)).await;
+                stopped?;
+                if mic_ended {
+                    drop(mic.take());
+                }
+                if speaker_ended {
+                    drop(speaker.take());
+                }
+                // A recovering source owns another task; dropping its receiver cannot prove
+                // that task has stopped and joined the underlying native input.
+                futures_util::future::join(
+                    discard_stopped_input(mic.take()),
+                    discard_stopped_input(speaker.take()),
+                )
+                .await;
+                return Ok(CaptureDrainReceipt { frames });
+            }
             StreamResult::Continue => {
-                if report_health(&tx, &health, &mut last_health).await {
+                if report_health(&tx, &Some(health.clone()), &mut last_health).await {
                     aec = if enable_aec { build_aec() } else { None };
                     linear_echo_gain = None;
                     aec_reference = aec.as_ref().map(|_| AecReferenceAligner::new(sample_rate));
                 }
-                while let Some((raw_mic, raw_speaker)) = joiner.pop_pair() {
+                while let Some((raw_mic, raw_speaker)) = if stopping {
+                    joiner.drain_when_closed(mic.is_none(), speaker.is_none())
+                } else {
+                    joiner.pop_pair()
+                } {
                     let raw_mic = Arc::<[f32]>::from(raw_mic);
                     let raw_speaker = Arc::<[f32]>::from(raw_speaker);
                     let aligned = aec_reference
@@ -233,23 +466,26 @@ async fn run_dual_loop(
                         &aligned.mic,
                         &aligned.speaker,
                     );
-                    if tx
-                        .send(Ok(CaptureFrame {
-                            raw_mic,
-                            raw_speaker,
-                            aec_mic,
-                        }))
-                        .await
-                        .is_err()
-                    {
-                        return;
-                    }
+
+                    let frame_count = raw_mic.len().max(raw_speaker.len()) as u64;
+                    let frame = CaptureFrame {
+                        raw_mic,
+                        raw_speaker,
+                        aec_mic,
+                    };
+                    let permit = if stopping { tx.reserve().await } else {
+                        tokio::select! {
+                            _ = cancel.cancelled() => return Err(CaptureDrainError::Failed("Native capture was aborted".into())),
+                            _ = stop.cancelled() => { stopping = true; stop_inputs(&mut mic, &mut speaker)?; tx.reserve().await }
+                            permit = tx.reserve() => permit,
+                        }
+                    }.map_err(|_| CaptureDrainError::Failed("Capture output closed before draining".into()))?;
+                    permit.send(Ok(frame));
+                    frames += frame_count;
                 }
-            }
-            StreamResult::Stop => return,
-            StreamResult::Failed(err) => {
-                let _ = tx.send(Err(err)).await;
-                return;
+                if mic.is_none() && speaker.is_none() {
+                    return Ok(CaptureDrainReceipt { frames });
+                }
             }
         }
     }
@@ -485,54 +721,73 @@ impl SampleDelayLine {
 
 async fn run_single_loop(
     tx: tokio::sync::mpsc::Sender<Result<CaptureFrame, Error>>,
-    cancel_token: CancellationToken,
-    mut chunk_stream: ChunkStream,
+    controls: (CancellationToken, CancellationToken),
+    mut chunks: ChunkStream,
     side: CaptureSide,
-    health: Option<Arc<CaptureHealth>>,
-) {
+    health: Arc<CaptureHealth>,
+) -> Result<CaptureDrainReceipt, CaptureDrainError> {
+    let (cancel, stop) = controls;
+    let mut stopping = false;
+    let mut frames = 0u64;
     let mut last_health = (0, 0);
     loop {
-        tokio::select! {
-            _ = cancel_token.cancelled() => return,
-            item = chunk_stream.next() => {
-                match item {
-                    Some(Ok(data)) => {
-                        report_health(&tx, &health, &mut last_health).await;
-                        let data = Arc::<[f32]>::from(data);
-                        let silence = Arc::<[f32]>::from(vec![0.0f32; data.len()]);
-                        let frame = match side {
-                            CaptureSide::Mic => CaptureFrame {
-                                raw_mic: data,
-                                raw_speaker: silence,
-                                aec_mic: None,
-                            },
-                            CaptureSide::Speaker => CaptureFrame {
-                                raw_mic: silence,
-                                raw_speaker: data,
-                                aec_mic: None,
-                            },
-                        };
-                        if tx.send(Ok(frame)).await.is_err() {
-                            return;
-                        }
+        let item = tokio::select! {
+            _ = cancel.cancelled() => return Err(CaptureDrainError::Failed("Native capture was aborted".into())),
+            _ = stop.cancelled(), if !stopping => { stopping = true; if !chunks.as_mut().request_stop() { return Err(CaptureDrainError::Unsupported); } continue; }
+            item = chunks.next() => item,
+        };
+        match item {
+            Some(Ok(data)) => {
+                report_health(&tx, &Some(health.clone()), &mut last_health).await;
+                let count = data.len() as u64;
+                let data = Arc::<[f32]>::from(data);
+                let silence = Arc::<[f32]>::from(vec![0.0; data.len()]);
+                let frame = match side {
+                    CaptureSide::Mic => CaptureFrame {
+                        raw_mic: data,
+                        raw_speaker: silence,
+                        aec_mic: None,
+                    },
+                    CaptureSide::Speaker => CaptureFrame {
+                        raw_mic: silence,
+                        raw_speaker: data,
+                        aec_mic: None,
+                    },
+                };
+                let permit = if stopping { tx.reserve().await } else {
+                    tokio::select! {
+                        _ = cancel.cancelled() => return Err(CaptureDrainError::Failed("Native capture was aborted".into())),
+                        _ = stop.cancelled() => { stopping = true; if !chunks.as_mut().request_stop() { return Err(CaptureDrainError::Unsupported); } tx.reserve().await }
+                        permit = tx.reserve() => permit,
                     }
-                    Some(Err(_)) => {
-                        let err = match side {
-                            CaptureSide::Mic => Error::MicResampleFailed,
-                            CaptureSide::Speaker => Error::SpeakerResampleFailed,
-                        };
-                        let _ = tx.send(Err(err)).await;
-                        return;
-                    }
-                    None => {
-                        let err = match side {
-                            CaptureSide::Mic => Error::MicStreamEnded,
-                            CaptureSide::Speaker => Error::SpeakerStreamEnded,
-                        };
-                        let _ = tx.send(Err(err)).await;
-                        return;
-                    }
+                }.map_err(|_| CaptureDrainError::Failed("Capture output closed before draining".into()))?;
+                permit.send(Ok(frame));
+                frames += count;
+            }
+            None if stopping => {
+                drop(chunks);
+                return Ok(CaptureDrainReceipt { frames });
+            }
+            error => {
+                let ended = error.is_none();
+                health
+                    .integrity
+                    .mark_discontinuity(side == CaptureSide::Mic, side == CaptureSide::Speaker);
+                let stopped = chunks.as_mut().request_stop();
+                let error = match (side, error.is_none()) {
+                    (CaptureSide::Mic, true) => Error::MicStreamEnded,
+                    (CaptureSide::Speaker, true) => Error::SpeakerStreamEnded,
+                    (CaptureSide::Mic, false) => Error::MicResampleFailed,
+                    (CaptureSide::Speaker, false) => Error::SpeakerResampleFailed,
+                };
+                let _ = tx.send(Err(error)).await;
+                if !stopped {
+                    return Err(CaptureDrainError::Unsupported);
                 }
+                if !ended {
+                    discard_stopped_input(Some(chunks)).await;
+                }
+                return Ok(CaptureDrainReceipt { frames });
             }
         }
     }
@@ -819,5 +1074,221 @@ mod tests {
         assert!(rx.try_recv().is_err());
         assert!(!report_health(&tx, &Some(health.clone()), &mut previous).await);
         assert!(health.integrity.discontinuous());
+    }
+    #[tokio::test]
+    async fn graceful_single_stop_preserves_full_output_queue_current_frame_and_short_tail() {
+        let (input, chunks, stopped) = queued_chunks(64);
+        let mut expected = Vec::new();
+        for chunk in 0..40 {
+            let data = vec![chunk as f32 / 40.0; if chunk == 39 { 17 } else { 160 }];
+            expected.extend_from_slice(&data);
+            input.send(Ok(data)).await.unwrap();
+        }
+        let mut stream = open_single(chunks, CaptureSide::Speaker, None);
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while stopped.chunks.load(std::sync::atomic::Ordering::Acquire) < 33 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        stream.request_stop().unwrap();
+        let mut actual = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while let Some(frame) = stream.next().await {
+                actual.extend_from_slice(&frame.unwrap().raw_speaker);
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(actual, expected);
+        assert!(stopped.stopped.load(std::sync::atomic::Ordering::Acquire));
+        assert_eq!(
+            stream.drain_receipt().await.unwrap().frames as usize,
+            expected.len()
+        );
+        assert_eq!(
+            stream
+                .drain_control()
+                .unwrap()
+                .completion()
+                .await
+                .unwrap()
+                .frames as usize,
+            expected.len()
+        );
+        assert!(!stream.integrity().discontinuous());
+    }
+    #[tokio::test]
+    async fn graceful_dual_stop_drains_unpaired_tails_without_erasing_real_samples() {
+        let (mic, mic_chunks, mic_stopped) = queued_chunks(8);
+        let (speaker, speaker_chunks, speaker_stopped) = queued_chunks(8);
+        mic.send(Ok(vec![0.25; 1_920])).await.unwrap();
+        mic.send(Ok(vec![-0.5; 777])).await.unwrap();
+        speaker.send(Ok(vec![0.75; 1_920])).await.unwrap();
+        let mut stream = open_dual(16_000, mic_chunks, speaker_chunks, false, None);
+        stream.request_stop().unwrap();
+        let mut actual_mic = Vec::new();
+        let mut actual_speaker = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while let Some(frame) = stream.next().await {
+                let frame = frame.unwrap();
+                actual_mic.extend_from_slice(&frame.raw_mic);
+                actual_speaker.extend_from_slice(&frame.raw_speaker);
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(actual_mic, [vec![0.25; 1_920], vec![-0.5; 777]].concat());
+        assert_eq!(actual_speaker, [vec![0.75; 1_920], vec![0.0; 777]].concat());
+        assert!(
+            mic_stopped
+                .stopped
+                .load(std::sync::atomic::Ordering::Acquire)
+        );
+        assert!(
+            speaker_stopped
+                .stopped
+                .load(std::sync::atomic::Ordering::Acquire)
+        );
+        assert_eq!(stream.drain_receipt().await.unwrap().frames, 2_697);
+        assert!(!stream.integrity().discontinuous());
+    }
+
+    #[tokio::test]
+    async fn interrupted_dual_input_waits_for_nested_recovery_resource_cleanup() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct DelayedClose {
+            close: tokio::sync::oneshot::Receiver<()>,
+            stopped: Arc<AtomicBool>,
+            dropped: Arc<AtomicBool>,
+        }
+        impl Stream for DelayedClose {
+            type Item = Result<Vec<f32>, hypr_resampler::Error>;
+            fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                let state = self.get_mut();
+                if !state.stopped.load(Ordering::Acquire) {
+                    return Poll::Pending;
+                }
+                std::future::Future::poll(Pin::new(&mut state.close), cx).map(|_| None)
+            }
+        }
+        impl ChunkSource for DelayedClose {
+            fn request_stop(self: Pin<&mut Self>) -> bool {
+                self.stopped.store(true, Ordering::Release);
+                true
+            }
+        }
+        impl Drop for DelayedClose {
+            fn drop(&mut self) {
+                self.dropped.store(true, Ordering::Release);
+            }
+        }
+        let (release, close) = tokio::sync::oneshot::channel();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let dropped = Arc::new(AtomicBool::new(false));
+        let health = Arc::new(CaptureHealth::default());
+        let (_changes, refresh) = tokio::sync::watch::channel(0);
+        let speaker = super::super::recovery::recovering_chunks(
+            Box::pin(DelayedClose {
+                close,
+                stopped: stopped.clone(),
+                dropped: dropped.clone(),
+            }),
+            Arc::new(|| panic!("interrupted stop must not reopen input")),
+            refresh,
+            health.clone(),
+            2,
+            16_000,
+            160,
+        );
+        let (mic, mic_chunks, _) = queued_chunks(1);
+        drop(mic);
+        let mut stream = open_dual(16_000, mic_chunks, speaker, false, Some(health));
+        let control = stream.drain_control().unwrap();
+        assert!(stream.next().await.unwrap().is_err());
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while !stopped.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!dropped.load(Ordering::Acquire));
+        assert!(control.completion().now_or_never().is_none());
+        release.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while stream.next().await.is_some() {}
+        })
+        .await
+        .unwrap();
+        assert!(dropped.load(Ordering::Acquire));
+        assert_eq!(control.completion().await.unwrap().frames, 0);
+        assert_eq!(
+            stream.drain_receipt().await,
+            Err(CaptureDrainError::NotDrained)
+        );
+        assert!(stream.integrity().discontinuous());
+    }
+
+    #[tokio::test]
+    async fn interrupted_resampler_error_stops_without_repolling_ready_errors_forever() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        struct Failed {
+            polls: usize,
+            stopped: bool,
+            dropped_after_stop: Arc<AtomicBool>,
+        }
+        impl Stream for Failed {
+            type Item = Result<Vec<f32>, hypr_resampler::Error>;
+            fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                let state = self.get_mut();
+                state.polls += 1;
+                assert!(
+                    state.polls <= 2,
+                    "failed resampler must not be polled in a ready-error loop"
+                );
+                Poll::Ready(Some(Err(hypr_resampler::Async::<f32>::new_poly(
+                    0.0,
+                    2.0,
+                    hypr_resampler::PolynomialDegree::Cubic,
+                    160,
+                    1,
+                    hypr_resampler::FixedAsync::Input,
+                )
+                .err()
+                .expect("fixture uses an invalid resampling ratio")
+                .into())))
+            }
+        }
+        impl ChunkSource for Failed {
+            fn request_stop(self: Pin<&mut Self>) -> bool {
+                self.get_mut().stopped = true;
+                true
+            }
+        }
+        impl Drop for Failed {
+            fn drop(&mut self) {
+                self.dropped_after_stop
+                    .store(self.stopped, Ordering::Release);
+            }
+        }
+        let dropped = Arc::new(AtomicBool::new(false));
+        let mut stream = open_single(
+            Box::pin(Failed {
+                polls: 0,
+                stopped: false,
+                dropped_after_stop: dropped.clone(),
+            }),
+            CaptureSide::Mic,
+            None,
+        );
+        let control = stream.drain_control().unwrap();
+        assert!(stream.next().await.unwrap().is_err());
+        assert!(stream.next().await.is_none());
+        assert_eq!(control.completion().await.unwrap().frames, 0);
+        assert!(dropped.load(Ordering::Acquire));
+        assert!(stream.integrity().discontinuous());
     }
 }

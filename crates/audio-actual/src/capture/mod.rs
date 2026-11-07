@@ -9,7 +9,7 @@ use stream::{CaptureSide, setup_mic_stream, setup_speaker_stream};
 pub(crate) fn open_capture(config: CaptureConfig) -> Result<CaptureStream, Error> {
     let integrity = Arc::new(CaptureIntegrity::default());
     let health = Arc::new(recovery::CaptureHealth::new(integrity.clone()));
-    let mic_stream = setup_mic_stream(
+    let mut mic_stream = setup_mic_stream(
         config.sample_rate,
         config.chunk_size,
         config.mic_device.clone(),
@@ -17,7 +17,15 @@ pub(crate) fn open_capture(config: CaptureConfig) -> Result<CaptureStream, Error
     )?;
     std::thread::sleep(std::time::Duration::from_millis(50));
     let speaker_stream =
-        setup_speaker_stream(config.sample_rate, config.chunk_size, integrity.clone())?;
+        match setup_speaker_stream(config.sample_rate, config.chunk_size, integrity.clone()) {
+            Ok(stream) => stream,
+            Err(error) => {
+                // An open failure must not leave the microphone running after returning Err.
+                let _ = mic_stream.as_mut().request_stop();
+                drop(mic_stream);
+                return Err(error);
+            }
+        };
 
     #[cfg(target_os = "windows")]
     let (mic_stream, speaker_stream) = {

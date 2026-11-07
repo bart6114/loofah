@@ -4,6 +4,10 @@ pub trait AsyncSource {
     fn as_stream(&mut self) -> impl Stream<Item = f32> + '_;
 
     fn sample_rate(&self) -> u32;
+
+    fn request_stop(&mut self) -> bool {
+        false
+    }
 }
 
 #[cfg(feature = "rodio")]

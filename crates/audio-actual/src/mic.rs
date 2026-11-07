@@ -188,7 +188,8 @@ impl MicInput {
         let alive_for_thread = alive.clone();
         let dropped_for_thread = dropped_samples.clone();
 
-        std::thread::spawn(move || {
+        let owner_integrity = integrity.clone();
+        let capture_thread = std::thread::spawn(move || {
             fn build_stream<S: ToSample<f32> + SizedSample>(
                 device: &cpal::Device,
                 config: &cpal::SupportedStreamConfig,
@@ -315,13 +316,16 @@ impl MicInput {
             let _ = drop_rx.recv();
 
             // Then drop the stream
+            drop(stream);
             alive_for_thread.store(false, Ordering::Release);
             waker_for_thread.wake();
-            drop(stream);
         });
 
         MicStream {
             drop_tx,
+            stop_requested: false,
+            integrity: owner_integrity,
+            capture_thread: Some(capture_thread),
             config: self.config.clone(),
             reader: RingbufAsyncReader::new(
                 consumer,
@@ -337,6 +341,9 @@ impl MicInput {
 
 pub struct MicStream {
     drop_tx: std::sync::mpsc::Sender<()>,
+    stop_requested: bool,
+    integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
+    capture_thread: Option<std::thread::JoinHandle<()>>,
     config: cpal::SupportedStreamConfig,
     reader: RingbufAsyncReader<HeapCons<f32>>,
 }
@@ -344,6 +351,15 @@ pub struct MicStream {
 impl Drop for MicStream {
     fn drop(&mut self) {
         let _ = self.drop_tx.send(());
+        if self.stop_requested
+            && let Some(thread) = self.capture_thread.take()
+            && let Err(error) = thread.join()
+        {
+            if let Some(integrity) = &self.integrity {
+                integrity.mark_discontinuity(true, false);
+            }
+            tracing::error!(?error, "microphone_stop_thread_failed");
+        }
     }
 }
 
@@ -366,6 +382,13 @@ impl AsyncSource for MicStream {
 
     fn sample_rate(&self) -> u32 {
         self.config.sample_rate()
+    }
+    fn request_stop(&mut self) -> bool {
+        if !self.stop_requested {
+            self.stop_requested = true;
+            let _ = self.drop_tx.send(());
+        }
+        true
     }
 }
 

@@ -90,9 +90,45 @@ impl CaptureIntegrity {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptureDrainReceipt {
+    pub frames: u64,
+}
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+pub enum CaptureDrainError {
+    #[error("This provider cannot confirm a graceful capture drain")]
+    Unsupported,
+    #[error("Capture input has not reached requested end of stream")]
+    NotDrained,
+    #[error("Capture drain frames disagree: produced={produced}, delivered={delivered}")]
+    FrameMismatch { produced: u64, delivered: u64 },
+    #[error("Capture resources did not stop: {0}")]
+    Failed(String),
+}
+
+pub type CaptureDrainFuture<'a> = Pin<
+    Box<
+        dyn std::future::Future<Output = Result<CaptureDrainReceipt, CaptureDrainError>>
+            + Send
+            + 'a,
+    >,
+>;
+
+/// Completion is replayable and confirms that acquisition/resources stopped, not that input was gap-free.
+pub trait CaptureDrainControl: Send + Sync {
+    fn request_stop(&self) -> Result<(), CaptureDrainError>;
+    fn completion(&self) -> CaptureDrainFuture<'_>;
+}
+
 pub struct CaptureStream {
     stream: Pin<Box<dyn Stream<Item = Result<CaptureFrame, Error>> + Send>>,
     integrity: Arc<CaptureIntegrity>,
+    drain: Option<Arc<dyn CaptureDrainControl>>,
+    stop_requested: bool,
+    expected_eof: bool,
+    ended: bool,
+    delivered_frames: u64,
 }
 
 impl CaptureStream {
@@ -100,6 +136,11 @@ impl CaptureStream {
         Self {
             stream: Box::pin(stream),
             integrity: Arc::new(CaptureIntegrity::default()),
+            drain: None,
+            stop_requested: false,
+            expected_eof: false,
+            ended: false,
+            delivered_frames: 0,
         }
     }
     pub fn with_integrity(mut self, integrity: Arc<CaptureIntegrity>) -> Self {
@@ -109,15 +150,67 @@ impl CaptureStream {
     pub fn integrity(&self) -> Arc<CaptureIntegrity> {
         self.integrity.clone()
     }
+    pub fn with_drain_control(mut self, drain: Arc<dyn CaptureDrainControl>) -> Self {
+        self.drain = Some(drain);
+        self
+    }
+    pub fn drain_control(&self) -> Option<Arc<dyn CaptureDrainControl>> {
+        self.drain.clone()
+    }
+    pub fn request_stop(&mut self) -> Result<(), CaptureDrainError> {
+        if !self.stop_requested {
+            self.drain
+                .as_ref()
+                .ok_or(CaptureDrainError::Unsupported)?
+                .request_stop()?;
+            self.stop_requested = true;
+        }
+        Ok(())
+    }
+    pub fn drain_receipt(&self) -> CaptureDrainFuture<'static> {
+        let eligible = self.stop_requested && self.ended && self.expected_eof;
+        let drain = self.drain.clone();
+        let delivered = self.delivered_frames;
+        Box::pin(async move {
+            if !eligible {
+                return Err(CaptureDrainError::NotDrained);
+            }
+            let receipt = drain
+                .ok_or(CaptureDrainError::Unsupported)?
+                .completion()
+                .await?;
+            if receipt.frames != delivered {
+                return Err(CaptureDrainError::FrameMismatch {
+                    produced: receipt.frames,
+                    delivered,
+                });
+            }
+            Ok(receipt)
+        })
+    }
 }
 
 impl Stream for CaptureStream {
     type Item = Result<CaptureFrame, Error>;
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.stream.as_mut().poll_next(cx)
+        let item = self.stream.as_mut().poll_next(cx);
+        match &item {
+            Poll::Ready(Some(Ok(frame))) => {
+                self.delivered_frames = self
+                    .delivered_frames
+                    .saturating_add(frame.raw_mic.len().max(frame.raw_speaker.len()) as u64)
+            }
+            Poll::Ready(None) if !self.ended => {
+                self.ended = true;
+                self.expected_eof = self.stop_requested;
+            }
+            _ => {}
+        }
+        item
     }
 }
 
+/// Open failures release partially opened acquisition resources before returning Err.
 pub trait AudioProvider: Send + Sync {
     fn open_capture(&self, config: CaptureConfig) -> Result<CaptureStream, Error>;
     fn open_speaker_capture(
@@ -176,5 +269,76 @@ mod tests {
         assert!(!second.integrity().discontinuous());
         let wrapped = second.with_integrity(evidence.clone());
         assert!(Arc::ptr_eq(&wrapped.integrity(), &evidence));
+    }
+    fn ready<T>(future: impl std::future::Future<Output = T>) -> T {
+        let mut future = Box::pin(future);
+        let waker = futures_util::task::noop_waker();
+        let mut context = Context::from_waker(&waker);
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(result) => result,
+            Poll::Pending => panic!("fixture should be ready"),
+        }
+    }
+    struct Drain(u64);
+    impl CaptureDrainControl for Drain {
+        fn request_stop(&self) -> Result<(), CaptureDrainError> {
+            Ok(())
+        }
+        fn completion(&self) -> CaptureDrainFuture<'_> {
+            Box::pin(std::future::ready(Ok(CaptureDrainReceipt {
+                frames: self.0,
+            })))
+        }
+    }
+    fn samples() -> CaptureStream {
+        CaptureStream::new(futures_util::stream::iter([Ok(CaptureFrame {
+            raw_mic: Arc::from([0.25, -0.0, -0.5]),
+            raw_speaker: Arc::from([]),
+            aec_mic: None,
+        })]))
+    }
+    #[test]
+    fn complete_drain_requires_control_requested_eof_and_matching_frame_totals() {
+        use futures_util::StreamExt;
+        let mut unsupported = samples();
+        assert_eq!(
+            unsupported.request_stop(),
+            Err(CaptureDrainError::Unsupported)
+        );
+        let mut stream = samples().with_drain_control(Arc::new(Drain(3)));
+        stream.request_stop().unwrap();
+        stream.request_stop().unwrap();
+        assert_eq!(
+            ready(stream.drain_receipt()),
+            Err(CaptureDrainError::NotDrained)
+        );
+        assert_eq!(ready(stream.next()).unwrap().unwrap().raw_mic.len(), 3);
+        assert!(ready(stream.next()).is_none());
+        assert_eq!(ready(stream.drain_receipt()).unwrap().frames, 3);
+        let mut mismatch = samples().with_drain_control(Arc::new(Drain(4)));
+        mismatch.request_stop().unwrap();
+        ready(mismatch.next());
+        ready(mismatch.next());
+        assert_eq!(
+            ready(mismatch.drain_receipt()),
+            Err(CaptureDrainError::FrameMismatch {
+                produced: 4,
+                delivered: 3
+            })
+        );
+        let mut unsolicited = samples().with_drain_control(Arc::new(Drain(3)));
+        ready(unsolicited.next());
+        ready(unsolicited.next());
+        unsolicited.request_stop().unwrap();
+        assert_eq!(
+            ready(unsolicited.drain_receipt()),
+            Err(CaptureDrainError::NotDrained)
+        );
+        assert_eq!(
+            ready(unsolicited.drain_control().unwrap().completion())
+                .unwrap()
+                .frames,
+            3
+        );
     }
 }

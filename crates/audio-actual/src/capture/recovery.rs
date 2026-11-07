@@ -1,7 +1,7 @@
 use std::sync::Arc;
 #[cfg(any(target_os = "windows", test))]
 use std::sync::atomic::Ordering;
-use std::sync::atomic::{AtomicU8, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize};
 #[cfg(any(target_os = "windows", test))]
 use std::time::Duration;
 
@@ -18,6 +18,7 @@ pub(crate) struct CaptureHealth {
     pub(super) recovering: AtomicU8,
     pub(super) generation: AtomicUsize,
     pub(super) integrity: Arc<hypr_audio::CaptureIntegrity>,
+    pub(super) cleanup_failed: AtomicBool,
 }
 
 impl CaptureHealth {
@@ -40,6 +41,8 @@ pub(super) fn recovering_chunks(
     chunk_size: usize,
 ) -> ChunkStream {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
+    let stop = tokio_util::sync::CancellationToken::new();
+    let request_stop = stop.clone();
     tokio::spawn(async move {
         let mut stream = Some(initial);
         let mut opening = None;
@@ -51,12 +54,23 @@ pub(super) fn recovering_chunks(
         ));
         silence.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut watch_open = true;
+        let mut stopping = false;
         loop {
             tokio::select! {
                 _ = tx.closed() => break,
+                _ = stop.cancelled(), if !stopping => {
+                    stopping = true;
+                    watch_open = false;
+                    if let Some(active) = &mut stream {
+                        if !active.as_mut().request_stop() { health.cleanup_failed.store(true, Ordering::SeqCst); stream = None; }
+                    }
+                    if stream.is_none() && opening.is_none() { break; }
+                }
                 changed = refresh.changed(), if watch_open => {
                     if changed.is_err() { watch_open = false; continue; }
-                    stream = None;
+                    if let Some(mut active) = stream.take() {
+                        if !active.as_mut().request_stop() { health.cleanup_failed.store(true, Ordering::SeqCst); }
+                    }
                     health.integrity.mark_discontinuity(side & 1 != 0, side & 2 != 0);
                     health.recovering.fetch_or(side, Ordering::SeqCst);
                     health.generation.fetch_add(1, Ordering::SeqCst);
@@ -64,8 +78,18 @@ pub(super) fn recovering_chunks(
                 item = async { stream.as_mut().expect("active capture stream").next().await }, if stream.is_some() => {
                     match item {
                         Some(Ok(data)) => if tx.send(Ok(data)).await.is_err() { break; },
+                        None if stopping => { stream = None; if opening.is_none() { break; } }
                         _ => {
-                            stream = None;
+                            if stopping {
+                                health.integrity.mark_discontinuity(side & 1 != 0, side & 2 != 0);
+                                if let Some(active) = &mut stream { if !active.as_mut().request_stop() { health.cleanup_failed.store(true, Ordering::SeqCst); } }
+                                stream = None;
+                                if opening.is_none() { break; }
+                                continue;
+                            }
+                            if let Some(mut active) = stream.take() {
+                                if !active.as_mut().request_stop() { health.cleanup_failed.store(true, Ordering::SeqCst); }
+                            }
                             health.integrity.mark_discontinuity(side & 1 != 0, side & 2 != 0);
                     health.recovering.fetch_or(side, Ordering::SeqCst);
                             health.generation.fetch_add(1, Ordering::SeqCst);
@@ -73,32 +97,60 @@ pub(super) fn recovering_chunks(
                         }
                     }
                 }
-                _ = silence.tick(), if stream.is_none() => {
+                _ = silence.tick(), if stream.is_none() && !stopping => {
                     if tx.send(Ok(vec![0.0; chunk_size])).await.is_err() { break; }
                 }
-                _ = retry.tick(), if stream.is_none() && opening.is_none() => {
+                _ = retry.tick(), if stream.is_none() && opening.is_none() && !stopping => {
                     let factory = factory.clone();
                     opening_revision = *refresh.borrow();
                     opening = Some(tokio::task::spawn_blocking(move || factory()));
                 }
                 result = async { opening.as_mut().expect("pending source open").await }, if opening.is_some() => {
                     opening = None;
-                    if opening_revision != *refresh.borrow() { continue; }
+                    if !stopping && opening_revision != *refresh.borrow() {
+                        if let Ok(Ok(mut stale)) = result {
+                            if !stale.as_mut().request_stop() { health.cleanup_failed.store(true, Ordering::SeqCst); }
+                        }
+                        continue;
+                    }
                     match result {
-                        Ok(Ok(reopened)) => {
+                        Ok(Ok(mut reopened)) => {
+                            if stopping && !reopened.as_mut().request_stop() { health.cleanup_failed.store(true, Ordering::SeqCst); break; }
                             stream = Some(reopened);
                             health.recovering.fetch_and(!side, Ordering::SeqCst);
                             health.generation.fetch_add(1, Ordering::SeqCst);
                             tracing::info!(side, "audio_source_recovered");
                         }
-                        Ok(Err(error)) => tracing::debug!(side, %error, "audio_source_recovery_pending"),
-                        Err(error) => tracing::warn!(side, %error, "audio_source_recovery_task_failed"),
+                        Ok(Err(error)) => { tracing::debug!(side, %error, "audio_source_recovery_pending"); if stopping { break; } }
+                        Err(error) => { tracing::warn!(side, %error, "audio_source_recovery_task_failed"); if stopping { break; } }
                     }
                 }
             }
         }
     });
-    Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx))
+    struct Recovering {
+        rx: tokio_stream::wrappers::ReceiverStream<Result<Vec<f32>, hypr_resampler::Error>>,
+        stop: tokio_util::sync::CancellationToken,
+    }
+    impl futures_util::Stream for Recovering {
+        type Item = Result<Vec<f32>, hypr_resampler::Error>;
+        fn poll_next(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            std::pin::Pin::new(&mut self.get_mut().rx).poll_next(cx)
+        }
+    }
+    impl super::stream::ChunkSource for Recovering {
+        fn request_stop(self: std::pin::Pin<&mut Self>) -> bool {
+            self.stop.cancel();
+            true
+        }
+    }
+    Box::pin(Recovering {
+        rx: tokio_stream::wrappers::ReceiverStream::new(rx),
+        stop: request_stop,
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -150,7 +202,9 @@ mod tests {
         let health = Arc::new(CaptureHealth::default());
         let (_tx, rx) = watch::channel(0);
         let mut healthy = recovering_chunks(
-            Box::pin(futures_util::stream::repeat_with(|| Ok(vec![0.5; 160]))),
+            super::super::stream::boxed_chunks(futures_util::stream::repeat_with(|| {
+                Ok(vec![0.5; 160])
+            })),
             Arc::new(|| panic!("The healthy source must not be reopened")),
             rx.clone(),
             health.clone(),
@@ -158,16 +212,17 @@ mod tests {
             16000,
             160,
         );
-        let initial: ChunkStream = Box::pin(futures_util::stream::empty());
+        let initial: ChunkStream =
+            super::super::stream::boxed_chunks(futures_util::stream::empty());
         let mut stream = recovering_chunks(
             initial,
             Arc::new(move || {
                 if observed.fetch_add(1, Ordering::SeqCst) == 0 {
                     Err(hypr_audio::Error::MicOpenFailed)
                 } else {
-                    Ok(Box::pin(futures_util::stream::repeat_with(|| {
-                        Ok(vec![0.25; 160])
-                    })))
+                    Ok(super::super::stream::boxed_chunks(
+                        futures_util::stream::repeat_with(|| Ok(vec![0.25; 160])),
+                    ))
                 }
             }),
             rx,
@@ -197,5 +252,34 @@ mod tests {
         assert_eq!(health.recovering.load(Ordering::SeqCst), 0);
         assert!(health.generation.load(Ordering::SeqCst) >= 2);
         assert_eq!(health.integrity.channels(), (true, false));
+    }
+    #[tokio::test]
+    async fn requested_stop_drains_active_source_without_reopening_it() {
+        let (input, initial, stopped) = super::super::stream::queued_chunks(8);
+        input.send(Ok(vec![0.25, -0.0, -0.5])).await.unwrap();
+        let health = Arc::new(CaptureHealth::default());
+        let (_changes, refresh) = watch::channel(0);
+        let mut stream = recovering_chunks(
+            initial,
+            Arc::new(|| panic!("stop must not reopen a source")),
+            refresh,
+            health.clone(),
+            1,
+            16_000,
+            160,
+        );
+        assert!(stream.as_mut().request_stop());
+        let mut actual = Vec::new();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while let Some(chunk) = stream.next().await {
+                actual.extend(chunk.unwrap());
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(actual, [0.25, -0.0, -0.5]);
+        assert!(stopped.stopped.load(Ordering::Acquire));
+        assert!(!health.integrity.discontinuous());
+        assert!(!health.cleanup_failed.load(Ordering::Acquire));
     }
 }

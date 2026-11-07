@@ -23,7 +23,8 @@ pub struct SpeakerInput {
 #[pin_project(PinnedDrop)]
 pub struct SpeakerStream {
     reader: RingbufAsyncReader<HeapCons<f32>>,
-    _device: ca::hardware::StartedDevice<ca::AggregateDevice>,
+    _device: Option<ca::hardware::StartedDevice<ca::AggregateDevice>>,
+    alive: Arc<AtomicBool>,
     _ctx: Box<Ctx>,
     _tap: ca::TapGuard,
     current_sample_rate: u32,
@@ -180,6 +181,7 @@ impl SpeakerInput {
         });
 
         let device = self.start_device(&mut ctx)?;
+        let alive = Arc::new(AtomicBool::new(true));
 
         Ok(SpeakerStream {
             reader: RingbufAsyncReader::new(
@@ -188,8 +190,10 @@ impl SpeakerInput {
                 wake_pending,
                 vec![0.0f32; CHUNK_SIZE],
             )
-            .with_dropped_samples(dropped_samples, "samples_dropped"),
-            _device: device,
+            .with_dropped_samples(dropped_samples, "samples_dropped")
+            .with_alive(alive.clone()),
+            _device: Some(device),
+            alive,
             _ctx: ctx,
             _tap: self.tap,
             current_sample_rate,
@@ -302,6 +306,23 @@ impl AsyncSource for SpeakerStream {
 
     fn sample_rate(&self) -> u32 {
         self.sample_rate()
+    }
+    fn request_stop(&mut self) -> bool {
+        if let Some(device) = self._device.take() {
+            match device.stop() {
+                Ok(device) => drop(device),
+                Err(error) => {
+                    if let Some(integrity) = &self._ctx.integrity {
+                        integrity.mark_discontinuity(false, true);
+                    }
+                    tracing::error!(?error, "system_audio_stop_failed");
+                    return false;
+                }
+            }
+        }
+        self.alive.store(false, Ordering::Release);
+        self._ctx.waker.wake();
+        true
     }
 }
 

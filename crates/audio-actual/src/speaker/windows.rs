@@ -51,6 +51,7 @@ impl SpeakerInput {
         let dropped_samples = Arc::new(AtomicUsize::new(0));
         let (init_tx, init_rx) = std::sync::mpsc::channel();
 
+        let owner_integrity = integrity.clone();
         let capture_thread = {
             let waker = waker.clone();
             let wake_pending = wake_pending.clone();
@@ -104,6 +105,7 @@ impl SpeakerInput {
             current_sample_rate,
             running,
             capture_thread: Some(capture_thread),
+            integrity: owner_integrity,
         })
     }
 }
@@ -114,9 +116,14 @@ pub struct SpeakerStream {
     current_sample_rate: Arc<AtomicU32>,
     running: Arc<AtomicBool>,
     capture_thread: Option<thread::JoinHandle<()>>,
+    integrity: Option<Arc<hypr_audio::CaptureIntegrity>>,
 }
 
 impl SpeakerStream {
+    pub(super) fn request_stop_capture(&mut self) -> bool {
+        self.running.store(false, Ordering::Release);
+        true
+    }
     pub fn sample_rate(&self) -> u32 {
         self.current_sample_rate.load(Ordering::Acquire)
     }
@@ -326,6 +333,9 @@ impl PinnedDrop for SpeakerStream {
         if let Some(thread) = this.capture_thread.take()
             && let Err(err) = thread.join()
         {
+            if let Some(integrity) = this.integrity.as_ref() {
+                integrity.mark_discontinuity(false, true);
+            }
             error!("Failed to join capture thread: {:?}", err);
         }
     }

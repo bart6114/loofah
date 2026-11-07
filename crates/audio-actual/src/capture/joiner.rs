@@ -52,6 +52,38 @@ impl Joiner {
         }
     }
 
+    pub(crate) fn drain_when_closed(
+        &mut self,
+        microphone_closed: bool,
+        speaker_closed: bool,
+    ) -> Option<AudioPair> {
+        if (!self.mic.is_empty() && !self.speaker.is_empty())
+            || (microphone_closed && !self.speaker.is_empty())
+            || (speaker_closed && !self.mic.is_empty())
+        {
+            self.drain_tail()
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn drain_tail(&mut self) -> Option<AudioPair> {
+        let mic = self.mic.pop_front();
+        let speaker = self.speaker.pop_front();
+        match (mic, speaker) {
+            (Some(mic), Some(speaker)) => Some((mic, speaker)),
+            (Some(mic), None) => {
+                let silence = vec![0.0; mic.len()];
+                Some((mic, silence))
+            }
+            (None, Some(speaker)) => {
+                let silence = vec![0.0; speaker.len()];
+                Some((silence, speaker))
+            }
+            (None, None) => None,
+        }
+    }
+
     pub(crate) fn pop_pair(&mut self) -> Option<AudioPair> {
         if self.mic.front().is_some() && self.speaker.front().is_some() {
             return Some((self.mic.pop_front()?, self.speaker.pop_front()?));
