@@ -11,6 +11,7 @@ os-credentials = ["dep:keyring"]
 axum = { workspace = true }
 base64 = { workspace = true }
 futures-util = { workspace = true }
+hypr-capture-store = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }

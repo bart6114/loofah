@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod endpoint;
+pub use endpoint::validate_endpoint;
+
 mod capture;
 pub use capture::*;
 mod jobs;

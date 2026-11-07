@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod auth;
-pub mod capture_spool;
+pub use hypr_capture_store::capture_spool;
 mod drafts;
 mod events;
 mod media;
@@ -200,20 +200,7 @@ impl RemoteClient {
 }
 
 pub(crate) fn validate_endpoint(url: &Url, allow_insecure_loopback: bool) -> Result<()> {
-    let loopback = url.host_str().is_some_and(|host| {
-        host.trim_matches(['[', ']'])
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback())
-    });
-    if !(url.scheme() == "https" || (allow_insecure_loopback && url.scheme() == "http" && loopback))
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(invalid("Server and identity endpoints must use HTTPS"));
-    }
-    Ok(())
+    hypr_loofah_protocol::validate_endpoint(url, allow_insecure_loopback).map_err(invalid)
 }
 
 async fn public_json<T: DeserializeOwned>(http: &reqwest::Client, url: Url) -> Result<T> {
@@ -294,3 +281,37 @@ struct RefreshCredential {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod capture_compatibility_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn original_module_path_preserves_neutral_store_types_and_endpoint_errors() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap().join("capture");
+        let spool: Arc<hypr_capture_store::CaptureSpool> =
+            capture_spool::CaptureSpool::open(root, capture_spool::CaptureSpoolLimits::default())
+                .await
+                .unwrap();
+        let sdk_error =
+            validate_endpoint(&Url::parse("http://localhost/").unwrap(), true).unwrap_err();
+        let spool_error = spool
+            .inventory(capture_spool::CaptureScope {
+                server: "http://localhost/".into(),
+                member_id: "member".into(),
+                vault_id: "vault".into(),
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(sdk_error, spool_error);
+        assert_eq!(sdk_error.mutation_outcome, None);
+        assert!(
+            validate_endpoint(
+                &Url::parse("https://capture.example/path?query=1").unwrap(),
+                false
+            )
+            .is_ok()
+        );
+    }
+}

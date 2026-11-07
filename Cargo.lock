@@ -2028,6 +2028,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "capture-store"
+version = "0.1.0"
+dependencies = [
+ "loofah-protocol",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "storage",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7651,6 +7667,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "capture-store",
  "futures-util",
  "keyring",
  "loofah-protocol",
@@ -7718,6 +7735,7 @@ dependencies = [
  "specta",
  "specta-typescript",
  "transcript",
+ "url",
  "vault-read",
 ]
 
