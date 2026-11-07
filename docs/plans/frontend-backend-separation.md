@@ -3038,3 +3038,48 @@ Also, cancellation currently drops native provider queues and partial tails;
 source/recorder admitted-prefix drain alone cannot justify a complete seal. A
 graceful provider acquisition-stop/drain boundary is a separate mandatory gate,
 alongside app shutdown ownership and actual recording acceptance.
+
+### Atomic cleanup adapters and latest validation
+
+Shared storage/core cleanup is integrated with durable schema-1 receipts,
+bounded canonical inspection and owned context/authorization/lease lifetimes.
+The operation checks and moves under one guard; completed decisions are
+historical, and pending recovery never moves a current source. Dotted-ID Trash
+collisions follow the existing stem/extension convention. Unknown files remain
+unread and whole-directory Trash preserves bytes. The backend worker passed
+232 core and 403 storage tests, plus focused crash/replay/cancellation cases.
+An existing cancellation fixture now waits for the real blocking read to start;
+production media behavior is unchanged. Normal library Clippy passes with the
+existing 23 shared-write warnings. All-target Clippy requires the documented
+existing non-octal-permissions lint allowance in two unrelated flat-layout tests.
+
+Thin IPC and POST `/api/v1/vaults/{vault}/session-cleanups` adapters, Rust SDK and
+the required `VaultClient.deleteEmptySession` method share the operation and
+`session_cleanup` feature. Requests cannot assert emptiness, force a deletion or
+select filesystem paths. Readers are refused, membership is rechecked through
+actual completion, and sent cancellation remains uncertain. Native bindings are
+generated. The local IPC restore/replay test and three HTTP tests pass, including
+real SDK lost replies at 50/150/500 ms RTT with a restored note left intact.
+Two SDK admission/cancellation tests, protocol validation, all six integrated
+native capture fixtures, desktop typechecking and all 1,971 frontend tests pass.
+Initial adapter fixtures incorrectly used creation to restore a tombstoned ID;
+the passing fixtures use the actual restore path followed by editing.
+
+The captured editor guard is also integrated: raw and enhanced editors flush
+through their existing queues, pending enhanced content is scoped, and dirty,
+conflicted, uncertain or retained recovery copies prevent cleanup. Timeouts skip
+cleanup while durable saves retain ownership. Replacing a VaultScope with a new
+QueryClient but the same scope string remounts consumers. Final automatic-close
+dispatch is still being wired; future remote hosts must supply known scoped
+capture/spool state before permitting it. This does not solve simultaneous
+unsent editing on different devices or complete recording/STT admission.
+
+On pushed checkpoint `a8e873130`, hosted headless and container checks passed.
+Linux CPU inference passed 30 default tests, three real kernel tests and two real
+batch/live cases, with the pinned model checksum verified and actual
+`GGML_NATIVE:BOOL=OFF`. Evidence: backend run `42416568822`, CPU job
+`128535832097`; local decoded log
+`/Volumes/T7/loofah-backend-build/ci-a8e873130-linux-cpu-stt.log`, SHA-256
+`5eecbab013cf4fa2b5bfd9db526c41fba7892ff3847cce337cac3fc36fc98885`.
+This validates the portable kernel, not a server transcription endpoint. Newer
+unpublished cleanup/integrity changes still need fresh hosted platform checks.

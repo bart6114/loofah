@@ -251,6 +251,36 @@ native resources only when a row's actions are expanded; pagination performs no
 media transfers. Attachment notifications and reconnects refresh all loaded
 pages. The panel also mounts the shared upload and checked-removal controls described above.
 
+## Empty-session cleanup
+
+The optional `session_cleanup` capability exposes POST
+`/api/v1/vaults/{vault}/session-cleanups`. Editors/owners send
+`{ "session_id": "…" }` and an `x-request-id` UUID. IPC and the Rust/desktop
+clients use the same application operation. Local IPC requires no login.
+
+The operation checks recovered canonical files under the continuous deletion
+guard and moves an empty session directory into the existing vault Trash. It
+retains the existing emptiness rules and preserves every byte in that move.
+Recording/import/upload reservations and live transcript buffers refuse cleanup;
+oversized, corrupt or ambiguous content fails closed. Directory inspection is
+bounded to 4,096 entries per relevant directory.
+
+Results are `deleted`, `not_empty` or `not_found`, tagged by `kind`. They describe
+the original request's decision. Repeating a UUID returns its historical result,
+including after a restore; a `deleted` reply does not prove current absence and
+must not trigger another deletion or current-session media closure. Reusing a
+UUID with different input is a conflict. Interrupted operations only confirm the
+recorded Trash generation when the source is absent; they never resume a move
+against a current session. Ambiguous outcomes remain uncertain.
+
+Keep `runtime/{vault}/creates/session-cleanups/` in consistent backups. These
+schema-1 receipts have no automatic expiry. Local undo remains process-local;
+this endpoint does not add remote restore. Callers must flush and check captured
+editor drafts, reject reopened/retired candidates, and skip unknown pending
+recording/upload state. Canonical emptiness cannot see another device's unsent
+text. Main-tab automatic cleanup wiring and complete capture/STT reservation
+integration are separate migration gates.
+
 ## Processing settings
 
 A configured processing host advertises `processing_settings` alongside summary

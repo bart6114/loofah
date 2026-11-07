@@ -107,6 +107,18 @@ pub fn application_sessions<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_delete_empty_session<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request_id: String,
+    input: hypr_loofah_protocol::DeleteEmptySessionRequest,
+) -> Result<hypr_loofah_protocol::DeleteEmptySessionOutcome, ApplicationError> {
+    context(&app)?
+        .delete_empty_session("desktop".into(), request_id, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_session_summaries<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     input: hypr_loofah_protocol::SessionSummaryQuery,
@@ -513,6 +525,62 @@ mod tests {
     use super::*;
     use hypr_loofah_core::{search::SearchService, settings::ConfigState, startup::StartupState};
     use hypr_loofah_protocol::{SessionSummaryOrder, SessionSummaryQuery};
+
+    #[tokio::test]
+    async fn local_cleanup_is_login_free_and_replay_preserves_a_restored_session() {
+        let vault = tempfile::tempdir().unwrap();
+        let operations = tempfile::tempdir().unwrap();
+        let store = Arc::new(hypr_vault_write::SessionStore::new(vault.path().into()));
+        let meta = serde_json::from_value(serde_json::json!({
+            "id":"note", "title":"", "created_at":"2026-11-07T10:00:00Z", "tags":[]
+        }))
+        .unwrap();
+        store.create_note_session(&meta, "").await.unwrap();
+        let context = Arc::new(
+            VaultContext::new(
+                "local:test".into(),
+                store.clone(),
+                StartupState::new(Some(vault.path())),
+                Arc::new(ConfigState::load_or_default(vault.path())),
+                Arc::new(SearchService::default()),
+            )
+            .with_operation_storage(operations.path().join("creates")),
+        );
+        let app = tauri::test::mock_builder()
+            .manage(context)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let input = hypr_loofah_protocol::DeleteEmptySessionRequest {
+            session_id: "note".into(),
+        };
+        let outcome = application_delete_empty_session(
+            app.handle().clone(),
+            request_id.clone(),
+            input.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            outcome,
+            hypr_loofah_protocol::DeleteEmptySessionOutcome::Deleted
+        );
+        assert!(store.restore_session("note").await.unwrap());
+        store
+            .write_note("note", "Restored local text")
+            .await
+            .unwrap();
+        assert_eq!(
+            application_delete_empty_session(app.handle().clone(), request_id, input)
+                .await
+                .unwrap(),
+            hypr_loofah_protocol::DeleteEmptySessionOutcome::Deleted
+        );
+        assert_eq!(
+            std::fs::read_to_string(vault.path().join("sessions/note/notes.md")).unwrap(),
+            "Restored local text"
+        );
+    }
 
     #[tokio::test]
     async fn local_summary_queries_use_shared_headers_without_login() {

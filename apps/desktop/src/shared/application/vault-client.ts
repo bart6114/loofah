@@ -41,6 +41,8 @@ import type {
   RenderedTranscriptSegment,
   Change,
   CreateSessionRequest,
+  DeleteEmptySessionRequest,
+  DeleteEmptySessionOutcome,
   DocumentTarget,
   DocumentSnapshot,
   DocumentSaveOutcome,
@@ -271,6 +273,10 @@ export type VaultClient = {
     input: CreateSessionRequest,
     options?: RequestOptions,
   ) => Promise<SessionDocument>;
+  deleteEmptySession: (
+    input: DeleteEmptySessionRequest,
+    options?: RequestOptions,
+  ) => Promise<DeleteEmptySessionOutcome>;
   readNote: (
     sessionId: string,
     options?: RequestOptions,
@@ -340,6 +346,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "recording_delete",
       "notes",
       "session_summaries",
+      "session_cleanup",
       "note_editor_read",
       "note_editor_write",
       "audio_metadata_read",
@@ -508,6 +515,14 @@ export async function connectLocalVault(): Promise<VaultClient> {
       const requestId = options?.requestId ?? crypto.randomUUID();
       return ipc(
         () => commands.applicationCreateSession(requestId, input),
+        { ...options, requestId },
+        true,
+      );
+    },
+    deleteEmptySession: (input, options) => {
+      const requestId = options?.requestId ?? crypto.randomUUID();
+      return ipc(
+        () => commands.applicationDeleteEmptySession(requestId, input),
         { ...options, requestId },
         true,
       );
@@ -846,6 +861,12 @@ export function connectRemoteVault(
       connection.request(
         { kind: "create_session", vault_id: vaultId, input },
         "session",
+        options,
+      ),
+    deleteEmptySession: (input, options) =>
+      connection.request(
+        { kind: "delete_empty_session", vault_id: vaultId, input },
+        "session_cleanup",
         options,
       ),
     readNote: (sessionId, options) =>

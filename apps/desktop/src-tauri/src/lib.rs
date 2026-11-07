@@ -630,6 +630,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             device_vault_state::device_pinned_tabs::<tauri::Wry>,
             device_vault_state::device_set_pinned_tabs::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
+            application::application_delete_empty_session::<tauri::Wry>,
             application::application_session_summaries::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
             application::application_agent_list::<tauri::Wry>,

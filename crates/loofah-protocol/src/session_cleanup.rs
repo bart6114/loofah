@@ -7,7 +7,7 @@ pub struct DeleteEmptySessionRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DeleteEmptySessionOutcome {
     Deleted,
     NotEmpty,
@@ -54,6 +54,16 @@ mod tests {
                 serde_json::from_value::<DeleteEmptySessionOutcome>(value).unwrap(),
                 outcome
             );
+        }
+        assert_eq!(
+            serde_json::from_value::<DeleteEmptySessionOutcome>(json!({
+                "kind":"deleted", "future_metadata":true
+            }))
+            .unwrap(),
+            DeleteEmptySessionOutcome::Deleted
+        );
+        for response in [json!({"kind":"unknown"}), json!({"deleted":true})] {
+            assert!(serde_json::from_value::<DeleteEmptySessionOutcome>(response).is_err());
         }
     }
 }

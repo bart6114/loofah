@@ -366,6 +366,23 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationDeleteEmptySession(
+    requestId: string,
+    input: DeleteEmptySessionRequest,
+  ): Promise<Result<DeleteEmptySessionOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_empty_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessionSummaries(
     input: SessionSummaryQuery,
   ): Promise<Result<SessionSummary[], ApplicationError>> {
@@ -2172,6 +2189,11 @@ export type CreatedAtFilter = {
   lt: number | null;
   eq: number | null;
 };
+export type DeleteEmptySessionOutcome =
+  | { kind: "deleted" }
+  | { kind: "not_empty" }
+  | { kind: "not_found" };
+export type DeleteEmptySessionRequest = { session_id: string };
 export type DeleteRecordingRequest = { expected_sha256: string };
 export type DeviceAttachmentSource =
   | { kind: "path"; path: string }
@@ -2526,6 +2548,11 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | {
+      kind: "delete_empty_session";
+      vault_id: string;
+      input: DeleteEmptySessionRequest;
+    }
   | { kind: "session_summaries"; vault_id: string; input: SessionSummaryQuery }
   | { kind: "processing_policy"; vault_id: string }
   | { kind: "processing_settings"; vault_id: string }
@@ -2655,6 +2682,7 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "session_cleanup"; value: DeleteEmptySessionOutcome }
   | { kind: "session_summaries"; value: SessionSummary[] }
   | { kind: "processing_policy"; value: ProcessingPolicy }
   | { kind: "processing_settings"; value: ProcessingSettingsSnapshot }

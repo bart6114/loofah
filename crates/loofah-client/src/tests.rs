@@ -808,6 +808,83 @@ async fn recording_metadata_requires_a_capability_before_credential_access() {
 }
 
 #[tokio::test]
+async fn cleanup_requires_an_advertised_capability_before_credentials_or_mutation() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client().await;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let error = client
+        .execute(
+            RemoteOperation::DeleteEmptySession {
+                vault_id: "test".into(),
+                input: DeleteEmptySessionRequest {
+                    session_id: "note".into(),
+                },
+            },
+            &request_id,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(error.request_id.as_deref(), Some(request_id.as_str()));
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn cleanup_validation_and_predispatch_cancellation_are_definitely_not_committed() {
+    let fixture = Fixture::new().await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("session_cleanup".into());
+    for session_id in ["../escape", "CON", "note/other"] {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let error = client
+            .execute(
+                RemoteOperation::DeleteEmptySession {
+                    vault_id: "test".into(),
+                    input: DeleteEmptySessionRequest {
+                        session_id: session_id.into(),
+                    },
+                },
+                &request_id,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(error.request_id.as_deref(), Some(request_id.as_str()));
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    }
+    let input = RemoteOperation::DeleteEmptySession {
+        vault_id: "test".into(),
+        input: DeleteEmptySessionRequest {
+            session_id: "note".into(),
+        },
+    };
+    let error = client
+        .execute(input.clone(), "invalid", CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Validation);
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let error = client
+        .execute(input, &uuid::Uuid::new_v4().to_string(), cancel)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Cancelled);
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn recording_deletion_requires_a_capability_before_credentials_or_mutation_admission() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

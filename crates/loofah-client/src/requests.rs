@@ -11,6 +11,10 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    DeleteEmptySession {
+        vault_id: String,
+        input: DeleteEmptySessionRequest,
+    },
     SessionSummaries {
         vault_id: String,
         input: SessionSummaryQuery,
@@ -221,6 +225,7 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    SessionCleanup(DeleteEmptySessionOutcome),
     SessionSummaries(Vec<SessionSummary>),
     ProcessingPolicy(ProcessingPolicy),
     ProcessingSettings(ProcessingSettingsSnapshot),
@@ -275,12 +280,21 @@ impl RemoteClient {
         cancel: CancellationToken,
     ) -> Result<RemoteReply> {
         if uuid::Uuid::parse_str(request_id).is_err() {
-            return Err(invalid("A UUID request ID is required"));
+            let mut error = invalid("A UUID request ID is required");
+            if matches!(operation, RemoteOperation::DeleteEmptySession { .. }) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            return Err(error);
         }
         if self.stop.is_cancelled() || cancel.is_cancelled() {
-            return Err(cancelled());
+            let mut error = cancelled();
+            if matches!(operation, RemoteOperation::DeleteEmptySession { .. }) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            return Err(error);
         }
         let required_feature = match &operation {
+            RemoteOperation::DeleteEmptySession { .. } => Some("session_cleanup"),
             RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
             RemoteOperation::ProcessingPolicy { .. }
             | RemoteOperation::ProcessingSettings { .. }
@@ -309,6 +323,7 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
                 RemoteOperation::ProcessingPolicy { .. }
                 | RemoteOperation::ProcessingSettings { .. }
@@ -337,6 +352,7 @@ impl RemoteClient {
             if matches!(
                 operation,
                 RemoteOperation::SaveNoteEditor { .. }
+                    | RemoteOperation::DeleteEmptySession { .. }
                     | RemoteOperation::SaveProcessingSettings { .. }
                     | RemoteOperation::SubmitSummaryJob { .. }
                     | RemoteOperation::CancelProcessingJob { .. }
@@ -378,11 +394,23 @@ impl RemoteClient {
             return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
+        if let RemoteOperation::DeleteEmptySession { input, .. } = &operation {
+            validate_delete_empty_session_request(input).map_err(|message| {
+                let mut error = invalid(message);
+                error.request_id = Some(request_id.to_owned());
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+                error
+            })?;
+        }
         if let RemoteOperation::SessionSummaries { input, .. } = &operation {
             validate_session_summary_query(input).map_err(invalid)?;
         }
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::DeleteEmptySession { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "session-cleanups"])
+            }
             RemoteOperation::SessionSummaries { vault_id, input } => {
                 body = Some(value(input)?);
                 (
@@ -872,6 +900,9 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                RemoteOperation::DeleteEmptySession { .. } => {
+                    RemoteReply::SessionCleanup(json_body(response, 1024).await?)
+                }
                 RemoteOperation::SessionSummaries { input, .. } => {
                     let summaries: Vec<SessionSummary> =
                         json_body(response, SESSION_SUMMARY_RESPONSE_LIMIT).await?;

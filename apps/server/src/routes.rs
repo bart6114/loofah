@@ -22,6 +22,7 @@ use crate::{
 
 mod jobs;
 mod processing_settings;
+mod session_cleanup;
 mod session_summaries;
 
 pub fn router(service: Arc<Service>) -> Router {
@@ -29,6 +30,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(crate::media::router())
         .merge(jobs::router())
         .merge(processing_settings::router())
+        .merge(session_cleanup::router())
         .merge(session_summaries::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
@@ -166,6 +168,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         features: vec![
             "notes".into(),
             "session_summaries".into(),
+            "session_cleanup".into(),
             "note_editor_read".into(),
             "note_editor_write".into(),
             "audio_metadata_read".into(),

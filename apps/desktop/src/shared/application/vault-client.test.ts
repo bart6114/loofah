@@ -25,6 +25,7 @@ const native = vi.hoisted(() => ({
     applicationSaveMetadata: vi.fn(),
     applicationSaveNote: vi.fn(),
     applicationCreateSession: vi.fn(),
+    applicationDeleteEmptySession: vi.fn(),
     applicationSessions: vi.fn(),
     applicationSessionSummaries: vi.fn(),
     applicationSession: vi.fn(),
@@ -157,6 +158,72 @@ it("uses matching bounded session-summary queries across both transports", async
     { kind: "session_summaries", vault_id: "first", input },
     "session_summaries",
     options,
+  );
+});
+
+it("uses one typed cleanup request through IPC and HTTPS without a local login", async () => {
+  const input = { session_id: "same" };
+  const outcome = { kind: "not_empty" as const };
+  const options = { requestId: crypto.randomUUID() };
+  native.commands.applicationDeleteEmptySession.mockResolvedValue({
+    status: "ok",
+    data: outcome,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toContain("session_cleanup");
+  expect(await local.deleteEmptySession(input, options)).toEqual(outcome);
+  expect(native.commands.applicationDeleteEmptySession).toHaveBeenCalledWith(
+    options.requestId,
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(outcome);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["session_cleanup"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  expect(await remote.deleteEmptySession(input, options)).toEqual(outcome);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "delete_empty_session", vault_id: "first", input },
+    "session_cleanup",
+    options,
+  );
+});
+
+it("keeps cleanup cancellation before dispatch separate from an uncertain sent mutation", async () => {
+  const local = await connectLocalVault();
+  const before = new AbortController();
+  before.abort();
+  await expect(
+    local.deleteEmptySession({ session_id: "same" }, { signal: before.signal }),
+  ).rejects.toThrow();
+  expect(native.commands.applicationDeleteEmptySession).not.toHaveBeenCalled();
+  const sent = new AbortController();
+  native.commands.applicationDeleteEmptySession.mockImplementation(async () => {
+    sent.abort();
+    return { status: "ok", data: { kind: "deleted" } };
+  });
+  const requestId = crypto.randomUUID();
+  await expect(
+    local.deleteEmptySession(
+      { session_id: "same" },
+      { signal: sent.signal, requestId },
+    ),
+  ).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      request_id: requestId,
+      mutation_outcome: "unknown",
+    },
+  });
+  expect(native.commands.applicationDeleteEmptySession).toHaveBeenCalledTimes(
+    1,
   );
 });
 
