@@ -1423,6 +1423,36 @@ async fn timing_absence_keeps_the_original_v1_manifest_bytes_and_never_guesses_a
             .unwrap()
             .contains_key("first_admitted_audio_observed_at_ms")
     );
+    let legacy = writer.snapshot().await.unwrap();
+    let chunk = dir(&root, &id).join("chunks/00000000000000000000.chunk");
+    let original_chunk = std::fs::read(&chunk).unwrap();
+    let original_descriptor = writer.read_chunk(0).await.unwrap().descriptor;
+    let timed = writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    let mut unchanged = timed.clone();
+    unchanged.first_admitted_audio_observed_at_ms = None;
+    assert_eq!(unchanged, legacy);
+    assert_eq!(std::fs::read(&chunk).unwrap(), original_chunk);
+    assert_eq!(
+        writer.read_chunk(0).await.unwrap().descriptor,
+        original_descriptor
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&manifest).unwrap()).unwrap()["schema_version"],
+        2
+    );
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), timed);
+    assert_eq!(
+        writer.read_chunk(0).await.unwrap().descriptor,
+        original_descriptor
+    );
+    assert_eq!(std::fs::read(chunk).unwrap(), original_chunk);
 }
 
 #[tokio::test]
