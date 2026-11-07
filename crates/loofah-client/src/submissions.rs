@@ -67,13 +67,30 @@ impl JobSubmissions {
         scope: String,
         input: SummaryJobRequest,
     ) -> Result<JobSubmissionReceipt> {
+        self.prepare_with_policy(scope, input, false).await
+    }
+
+    pub async fn prepare_new(
+        self: &Arc<Self>,
+        scope: String,
+        input: SummaryJobRequest,
+    ) -> Result<JobSubmissionReceipt> {
+        self.prepare_with_policy(scope, input, true).await
+    }
+
+    async fn prepare_with_policy(
+        self: &Arc<Self>,
+        scope: String,
+        input: SummaryJobRequest,
+        create_only: bool,
+    ) -> Result<JobSubmissionReceipt> {
         validate_input(&input)?;
         self.run(scope.clone(), move |stored| {
             if let Some(existing) = stored.receipts.iter().find(|receipt| {
                 receipt.input.session_id == input.session_id && receipt.input.target == input.target
                     && receipt.job.as_ref().is_none_or(|job| !job.state.is_terminal())
             }) {
-                return if existing.input == input { Ok((existing.clone(), existing.job.is_none())) }
+                return if !create_only && existing.input == input { Ok((existing.clone(), existing.job.is_none())) }
                 else { Err(failure(ErrorCode::Conflict, "Recover the previous summary request before starting another")) };
             }
             if stored.receipts.len() >= MAX_RECEIPTS {
@@ -350,7 +367,7 @@ fn read(path: &Path, scope: &str) -> Result<Stored> {
             "These saved job requests require another Loofah version. Their file was kept.",
         ));
     }
-    let stored: Stored = serde_json::from_value(value).map_err(|_| damaged())?;
+    let stored: Stored = serde_json::from_slice(&bytes).map_err(|_| damaged())?;
     if stored.receipts.len() > MAX_RECEIPTS {
         return Err(damaged());
     }

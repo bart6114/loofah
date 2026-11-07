@@ -244,6 +244,93 @@ async fn template_receipts_reopen_with_exact_target_revision_and_uuid_without_cr
 }
 
 #[tokio::test]
+async fn create_only_preparation_is_atomic_across_windows_and_keeps_the_original_unknown_request() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("requests");
+    let first = JobSubmissions::new(root.clone()).unwrap();
+    let second = JobSubmissions::new(root.clone()).unwrap();
+    for target in [
+        DocumentTarget::Summary,
+        DocumentTarget::TemplateOutput {
+            document_id: "output".into(),
+        },
+    ] {
+        let mut request = input();
+        request.target = target;
+        let (one, two) = tokio::join!(
+            first.prepare_new("scope".into(), request.clone()),
+            second.prepare_new("scope".into(), request.clone())
+        );
+        let receipt = match (one, two) {
+            (Ok(receipt), Err(error)) | (Err(error), Ok(receipt)) => {
+                assert_eq!(error.code, ErrorCode::Conflict);
+                receipt
+            }
+            other => panic!("Expected one newly admitted receipt: {other:?}"),
+        };
+        let bytes = std::fs::read(path(&root, "scope")).unwrap();
+        assert_eq!(
+            first
+                .prepare_new("scope".into(), request.clone())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Conflict
+        );
+        assert_eq!(std::fs::read(path(&root, "scope")).unwrap(), bytes);
+        assert_eq!(
+            second.prepare("scope".into(), request).await.unwrap(),
+            receipt
+        );
+        let completed = snapshot(&receipt, ProcessingJobState::Succeeded);
+        second
+            .observe("scope".into(), receipt.request_id.clone(), completed)
+            .await
+            .unwrap();
+        let next = first
+            .prepare_new("scope".into(), receipt.input)
+            .await
+            .unwrap();
+        assert_ne!(next.request_id, receipt.request_id);
+    }
+}
+
+#[tokio::test]
+async fn create_only_preparation_does_not_replace_a_receipt_after_an_uncertain_device_write() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("requests");
+    let store = JobSubmissions::new(root.clone()).unwrap();
+    store
+        .fail_after_write
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(store.prepare_new("scope".into(), input()).await.is_err());
+    let bytes = std::fs::read(path(&root, "scope")).unwrap();
+    assert_eq!(
+        store
+            .prepare_new("scope".into(), input())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(std::fs::read(path(&root, "scope")).unwrap(), bytes);
+    let original = store
+        .list("scope".into(), None)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    assert!(original.job.is_none());
+    assert_eq!(
+        store
+            .load("scope".into(), original.request_id.clone())
+            .await
+            .unwrap(),
+        Some(original)
+    );
+}
+
+#[tokio::test]
 async fn duplicate_active_template_targets_are_retained_for_recovery_without_resetting_receipts() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("requests");
@@ -446,12 +533,22 @@ async fn corrupt_foreign_and_future_manifests_are_retained_without_resetting_req
     store.prepare("scope".into(), input()).await.unwrap();
     let file = path(&root, "scope");
     let original = std::fs::read(&file).unwrap();
+    let duplicate_revision = String::from_utf8(original.clone())
+        .unwrap()
+        .replace(
+            "\"expected_revision\":\"baseline\"",
+            "\"expected_revision\":\"baseline\",\"expected_revision\":\"baseline\"",
+        )
+        .into_bytes();
+    assert_ne!(duplicate_revision, original);
     let mut foreign: serde_json::Value = serde_json::from_slice(&original).unwrap();
     foreign["receipts"][0]["scope"] = "foreign".into();
     for content in [
         b"not json".to_vec(),
         serde_json::to_vec(&foreign).unwrap(),
         br#"{"schema_version":999,"receipts":[]}"#.to_vec(),
+        br#"{"schema_version":1,"schema_version":1,"receipts":[]}"#.to_vec(),
+        duplicate_revision,
     ] {
         std::fs::write(&file, &content).unwrap();
         assert!(store.prepare("scope".into(), input()).await.is_err());

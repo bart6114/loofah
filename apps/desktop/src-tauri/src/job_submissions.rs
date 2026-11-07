@@ -35,8 +35,14 @@ pub async fn device_job_submission_prepare<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     scope: String,
     input: SummaryJobRequest,
+    create_only: Option<bool>,
 ) -> Result<JobSubmissionReceipt, ApplicationError> {
-    store(&app).await?.prepare(scope, input).await
+    let store = store(&app).await?;
+    if create_only.unwrap_or(false) {
+        store.prepare_new(scope, input).await
+    } else {
+        store.prepare(scope, input).await
+    }
 }
 
 #[tauri::command]
@@ -114,9 +120,32 @@ mod tests {
             target,
             expected_revision: "baseline".into(),
         };
-        let receipt = device_job_submission_prepare(app.handle().clone(), scope.clone(), input)
+        let receipt = device_job_submission_prepare(
+            app.handle().clone(),
+            scope.clone(),
+            input.clone(),
+            Some(true),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            device_job_submission_prepare(
+                app.handle().clone(),
+                scope.clone(),
+                input.clone(),
+                Some(true)
+            )
             .await
-            .unwrap();
+            .unwrap_err()
+            .code,
+            ErrorCode::Conflict
+        );
+        assert_eq!(
+            device_job_submission_prepare(app.handle().clone(), scope.clone(), input, None)
+                .await
+                .unwrap(),
+            receipt
+        );
         assert_eq!(
             device_job_submission_get(
                 app.handle().clone(),

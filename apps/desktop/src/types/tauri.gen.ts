@@ -214,6 +214,7 @@ export const commands = {
   async deviceJobSubmissionPrepare(
     scope: string,
     input: SummaryJobRequest,
+    createOnly: boolean | null,
   ): Promise<Result<JobSubmissionReceipt, ApplicationError>> {
     try {
       return {
@@ -221,6 +222,7 @@ export const commands = {
         data: await TAURI_INVOKE("device_job_submission_prepare", {
           scope,
           input,
+          createOnly,
         }),
       };
     } catch (e) {
