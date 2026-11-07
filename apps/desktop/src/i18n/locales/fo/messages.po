@@ -94,12 +94,20 @@ msgstr ""
 msgid "A duplicate; the original stays where it is."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "A processing capacity or size limit was reached."
+msgstr ""
+
 #: src/main/about-dialog.tsx
 msgid "About Loofah"
 msgstr ""
 
 #: src/session/components/session-tags.tsx
 msgid "Accept suggested tag {name}"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Access changed before the summary finished."
 msgstr ""
 
 #: src/shared/application/vault-sharing.tsx
@@ -271,6 +279,18 @@ msgstr ""
 
 #: src/shared/application/server-preview.tsx
 msgid "Cancel sign-in"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Cancel summary"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Cancelled"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Cancelling"
 msgstr ""
 
 #: src/onboarding/folder-location.tsx
@@ -496,6 +516,10 @@ msgstr ""
 msgid "Copy failed"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Copy generated text"
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Copy my vault"
 msgstr ""
@@ -506,6 +530,10 @@ msgstr ""
 
 #: src/shared/application/device-recovery.tsx
 msgid "Copy saved text"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Copy this text to recover a result that could not be applied. Editing the current summary still checks for newer changes."
 msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
@@ -681,6 +709,10 @@ msgstr ""
 msgid "Device recovery drafts"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Device summary requests"
+msgstr ""
+
 #: src/shared/application/device-recovery.tsx
 msgid "Device vault"
 msgstr ""
@@ -850,8 +882,28 @@ msgstr ""
 msgid "Finish signing in in your browser…"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Forget device request"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Forget this device request?"
+msgstr ""
+
 #: src/sidebar/settings.tsx
 msgid "General"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Generated summary text"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Generated text"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Generating summary"
 msgstr ""
 
 #: src/session/components/note-input/enhanced/streaming.tsx
@@ -978,6 +1030,10 @@ msgstr ""
 msgid "Keep Loofah available from the notification area."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Keep request"
+msgstr ""
+
 #: src/settings/general/main-language.tsx
 msgid "Language for summaries and generated titles"
 msgstr ""
@@ -1072,6 +1128,7 @@ msgid "Loading..."
 msgstr ""
 
 #: src/shared/application/vault-attachment-uploads.tsx
+#: src/shared/application/vault-processing.tsx
 #: src/shared/deferred-view.tsx
 msgid "Loading…"
 msgstr ""
@@ -1212,6 +1269,10 @@ msgstr ""
 msgid "No changelog available for this version."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "No confirmed generated text is available for this request."
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 msgid "No content yet."
 msgstr ""
@@ -1262,6 +1323,10 @@ msgstr ""
 msgid "No saved recovery drafts."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "No saved summary requests."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
 msgstr ""
@@ -1302,6 +1367,10 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Now"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Older summary requests"
 msgstr ""
 
 #: src/shared/application/vault-sharing.tsx
@@ -1420,6 +1489,10 @@ msgstr ""
 msgid "Preparing file…"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Preparing summary"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing transcript..."
 msgstr ""
@@ -1436,7 +1509,16 @@ msgstr ""
 msgid "Previous match"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Processing may already have started. Resume uses the original request."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Processing stopped before completion."
+msgstr ""
+
 #: src/main/audio-import-dialog.tsx
+#: src/shared/application/vault-processing.tsx
 msgid "Queued"
 msgstr ""
 
@@ -1525,6 +1607,14 @@ msgstr ""
 msgid "Refresh notes from disk"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Refresh requests"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Refresh status"
+msgstr ""
+
 #: src/settings/general/storage/rebuild-index.tsx
 msgid "Refresh the app if notes are missing or changes made outside Loofah are not showing."
 msgstr ""
@@ -1610,6 +1700,10 @@ msgstr ""
 msgid "Request {0} permission"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Requests saved for this account and vault, including notes that are no longer open. Loading this list does not start processing."
+msgstr ""
+
 #: src/settings/general/permissions.tsx
 msgid "Required to capture other participants' voices in meetings"
 msgstr ""
@@ -1640,6 +1734,14 @@ msgstr ""
 
 #: src/session/components/outer-header/index.tsx
 msgid "Resume listening"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Resume request"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Resuming…"
 msgstr ""
 
 #: src/audio-player/provider.tsx
@@ -1715,8 +1817,16 @@ msgstr ""
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Saved notes or transcript could not be read."
+msgstr ""
+
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Saved original copy."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Saving summary"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1975,6 +2085,10 @@ msgstr ""
 msgid "Starting"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Starting summary…"
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "Starting transcription…"
 msgstr ""
@@ -2030,17 +2144,37 @@ msgstr ""
 msgid "Summaries not enabled"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Summarize saved notes"
+msgstr ""
+
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/shared/application/notes-workspace.tsx
 msgid "Summary"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary changed"
 msgstr ""
 
 #: src/shared/application/device-recovery.tsx
 msgid "Summary draft"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Summary failed"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary generation"
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary instructions"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary interrupted"
 msgstr ""
 
 #: src/session/components/note-input/index.tsx
@@ -2061,6 +2195,10 @@ msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Summary prompt cannot be empty."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Summary saved"
 msgstr ""
 
 #: src/onboarding/setup-status.tsx
@@ -2144,12 +2282,36 @@ msgstr ""
 msgid "The attachment was not removed. Close this dialog and review it again."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "The preview is shortened. Copy to recover the complete text."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The provider returned an unusable summary."
+msgstr ""
+
 #: src/settings/ai/llm/configure.tsx
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "The selected summary provider is unavailable."
+msgstr ""
+
 #: src/shared/application/vault-sharing.tsx
 msgid "The server may have created this vault. Retry the same request to recover its result."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The summary changed during generation. View the generated text to recover it."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The summary could not be saved safely."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The summary provider failed."
 msgstr ""
 
 #: src/shared/application/remove-attachment-dialog.tsx
@@ -2179,6 +2341,10 @@ msgstr ""
 
 #: src/shared/application/device-recovery.tsx
 msgid "This recovery copy has already been cleared."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "This removes the saved request from this device. It does not stop processing. A new summary request may run again."
 msgstr ""
 
 #. placeholder {0}: pending.speakerCount
@@ -2350,6 +2516,10 @@ msgstr ""
 
 #: src/onboarding/permissions.tsx
 msgid "Use your microphone to capture your voice"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Uses the saved notes and transcript. Unsaved edits are kept separate."
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx

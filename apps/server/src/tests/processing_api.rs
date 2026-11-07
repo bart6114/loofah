@@ -1,6 +1,6 @@
 use super::processing::{Provider, prepare, terminal};
 use super::*;
-use hypr_loofah_client::{RemoteClient, RemoteOperation, RemoteReply};
+use hypr_loofah_client::{JobSubmissions, RemoteClient, RemoteOperation, RemoteReply};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -522,10 +522,21 @@ async fn native_sdk_replays_a_lost_submission_reply_at_realistic_latency_without
         let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
         prepare(&context).await;
         let request = input(&context).await;
-        let request_id = uuid::Uuid::new_v4().to_string();
+        let device_root = tempfile::tempdir().unwrap();
+        let device_path = device_root.path().join("submissions");
+        let scope = serde_json::to_string(&(
+            "remote",
+            client.address(),
+            &me.member.id,
+            &me.personal_vault_id,
+        ))
+        .unwrap();
+        let device = JobSubmissions::new(device_path.clone()).unwrap();
+        let receipt = device.prepare(scope.clone(), request).await.unwrap();
+        let request_id = receipt.request_id.clone();
         let operation = RemoteOperation::SubmitSummaryJob {
             vault_id: me.personal_vault_id.clone(),
-            input: request,
+            input: receipt.input,
         };
         let cancel = CancellationToken::new();
         let pending = {
@@ -559,11 +570,47 @@ async fn native_sdk_replays_a_lost_submission_reply_at_realistic_latency_without
             terminal(&context, &job.id).await.state,
             ProcessingJobState::Succeeded
         );
+        drop(device);
+        let device = JobSubmissions::new(device_path.clone()).unwrap();
+        let saved = device
+            .list(scope.clone(), None)
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+        let saved = device
+            .load(scope.clone(), saved.request_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.request_id, request_id);
+        assert!(saved.job.is_none());
+        let operation = RemoteOperation::SubmitSummaryJob {
+            vault_id: me.personal_vault_id.clone(),
+            input: saved.input,
+        };
         let reply = client
-            .execute(operation, &request_id, CancellationToken::new())
+            .execute(operation, &saved.request_id, CancellationToken::new())
             .await
             .unwrap();
         assert!(matches!(reply,RemoteReply::ProcessingJob(ref snapshot) if snapshot.id==job.id));
+        let RemoteReply::ProcessingJob(snapshot) = reply else {
+            unreachable!()
+        };
+        device
+            .observe(scope.clone(), request_id.clone(), snapshot)
+            .await
+            .unwrap();
+        drop(device);
+        let device = JobSubmissions::new(device_path).unwrap();
+        assert_eq!(
+            device.list(scope, None).await.unwrap()[0]
+                .job
+                .as_ref()
+                .unwrap()
+                .state,
+            ProcessingJobState::Succeeded
+        );
         let reply = client
             .execute(
                 RemoteOperation::ProcessingJobs {

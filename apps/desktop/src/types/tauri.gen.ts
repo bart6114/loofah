@@ -170,6 +170,93 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async deviceJobSubmissionPrepare(
+    scope: string,
+    input: SummaryJobRequest,
+  ): Promise<Result<JobSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_prepare", {
+          scope,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionGet(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<JobSubmissionReceipt | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_get", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissions(
+    scope: string,
+    sessionId: string | null,
+  ): Promise<Result<JobSubmissionReceipt[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submissions", {
+          scope,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionObserve(
+    scope: string,
+    requestId: string,
+    snapshot: ProcessingJobSnapshot,
+  ): Promise<Result<JobSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_observe", {
+          scope,
+          requestId,
+          snapshot,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceJobSubmissionForget(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_job_submission_forget", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessions(
     limit: number,
     after: string | null,
@@ -2102,6 +2189,13 @@ export type IndexEntity =
    * Audio or embedded attachment bytes changed independently of indexed text.
    */
   | "artifacts";
+export type JobSubmissionReceipt = {
+  scope: string;
+  request_id: string;
+  input: SummaryJobRequest;
+  created_at_ms: number;
+  job: ProcessingJobSnapshot | null;
+};
 export type JsonValue =
   | null
   | boolean

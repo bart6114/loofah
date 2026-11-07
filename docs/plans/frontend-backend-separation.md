@@ -308,7 +308,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Full summary/title/tag/template policy, durable device submission recovery, previews and frontend AI migration, owner-managed provider settings/secrets, server model management and Linux inference parity remain to implement.
+- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Full summary/title/tag/template policy, previews and the main frontend AI migration, owner-managed provider settings/secrets, server model management and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
@@ -2683,3 +2683,71 @@ Evidence is in the `native-local-*` logs under
 `/Volumes/T7/loofah-backend-build/logs/`. Real OS credential access, live ChatGPT/API
 providers and production macOS/Windows behavior remain validation gates.
 The full plan and all earlier release gates remain active.
+
+### Durable device submissions and opt-in summary controls
+
+The opt-in notes workspace now exposes summary generation, private job history,
+cancellation and confirmed-result recovery in its Documents tab through the same
+`VaultClient` in both modes. Default local use remains login-free. The main local
+AI flow remains active until title/tag/template policy, processing settings and
+streaming previews reach parity; this increment does not complete phase 5.
+
+`loofah-client::JobSubmissions` persists a UUID, immutable summary request and
+optional acknowledged snapshot before dispatch. It uses bounded private JSON
+manifests outside the vault, one hashed directory per account/vault scope, atomic
+replacement, Unix directory synchronization and an OS file lock across windows
+and processes. It keeps up to 128 receipts per scope and bounds reads to 2 MiB.
+Unreadable, mismatched, oversized and future-version files fail closed and remain
+available for recovery. Active requests reuse their original UUID/declaration;
+a changed declaration is refused while the previous request is unresolved.
+Terminal status is absorbing, so delayed responses and clock changes cannot
+revive completed jobs. Unknown session files are never involved in this storage.
+
+The desktop's lazy `JobSubmissionState` exposes thin prepare/get/list/observe/forget
+commands. The pre-dispatch get re-publishes unresolved metadata durably, so a
+previous failure between rename and directory sync cannot bypass the persistence
+barrier; fault injection covers this retry path. `job-submissions.ts` owns the frontend persistence barrier and explicit
+recovery flow. Loading metadata never submits. An unknown request resumes only
+on user action with its saved UUID/input; a known job refreshes with GET. A disk
+failure before dispatch prevents a request, while failed acknowledgement storage
+after server acceptance leaves the original receipt available for replay. Forget
+requires confirmation and does not cancel processing. This is device request
+recovery, not general offline vault editing or synchronization.
+
+The shared controls show immediate pending feedback, disable duplicate clicks,
+allow readers to cancel their earlier jobs, and revalidate private status/history
+through scoped events. A bounded 15-second refresh is active only while work is
+reported active, covering delayed status reads. Confirmed text has a bounded
+preview and an exact full-text copy action; no result silently replaces newer
+content. Access loss clears caches and closes result views. Requests from other notes
+in the current account/vault can be reviewed to release finished receipt slots.
+
+Validation passes all 82 client tests (one ignored subprocess fixture), including
+killing a child process after prepare and recovering the same UUID. The native
+IPC receipt round trip passes without a login or vault session. The real SDK lost-
+reply test now closes and reopens the device store at 50/150/500 ms RTT, recovers
+its UUID/input from disk, and confirms exactly one provider call and a persisted
+terminal acknowledgement. Native binding export/checking, host/client/CLI checks
+and strict client production Clippy pass. Eight controller tests cover dispatch
+ordering, lost replies, disk/acknowledgement and durability-confirmation failures,
+and abort/account boundaries.
+The new UI tests cover recovery, cancellation, result copying, access loss and
+stale response ordering. The final full frontend suite passes 1,854 tests; locale/format results are
+recorded in the checkpoint logs; no live credentials or paid provider calls were used.
+
+A controlled Chrome renderer fixture additionally checks reload without dispatch,
+explicit replay, offline controls, forget confirmation, exact result copying,
+unchanged editor text, access-loss dismissal and a 420px layout without horizontal
+overflow. Screenshots and source hashes are under
+`/Volumes/T7/loofah-backend-build/submission-ui-qa/`; command evidence is in
+`submission-*` logs. This is renderer acceptance with a controlled bridge, not
+native WKWebView, production-performance, real SSO or live-provider acceptance.
+All original recording, provider, import/export, ownership, deployment and native
+platform gates remain active.
+
+Windows CI for preceding checkpoint `7e44fa9f7` completed successfully on both
+native x64 and ARM64, including Rust checks/tests, preview installers and
+install/uninstall smoke tests. This confirms the earlier ARM64 persistence-test
+fix on its native runner. Real speech-model tests were skipped. The newer local
+provider/client and device-recovery commits require their own hosted CI; none of
+these results waive the broader recording, production UX or deployment gates.

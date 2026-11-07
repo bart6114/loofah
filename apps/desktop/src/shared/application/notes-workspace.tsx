@@ -28,6 +28,7 @@ import { useDraftPersistence } from "./use-draft-persistence";
 import { VaultAttachmentsPane } from "./vault-attachments-pane";
 import type { VaultClient } from "./vault-client";
 import { VaultNoteEditor } from "./vault-note-editor";
+import { VaultProcessing } from "./vault-processing";
 import { VaultScope } from "./vault-scope";
 
 import { RecordingPlayer } from "~/audio-player/recording";
@@ -386,11 +387,14 @@ function SessionPane({
           />
         )
       ) : view === "documents" ? (
-        <DocumentsPane
-          scope={scope}
-          sessionId={sessionId}
-          onActiveDraft={onActiveDraft}
-        />
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <VaultProcessing scope={scope} sessionId={sessionId} />
+          <DocumentsPane
+            scope={scope}
+            sessionId={sessionId}
+            onActiveDraft={onActiveDraft}
+          />
+        </div>
       ) : view === "attachments" ? (
         <VaultAttachmentsPane
           key={sessionId}

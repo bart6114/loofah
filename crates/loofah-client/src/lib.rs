@@ -9,6 +9,7 @@ mod os_credentials;
 mod profiles;
 mod requests;
 mod sse;
+mod submissions;
 mod uploads;
 
 pub use auth::LoginAttempt;
@@ -20,6 +21,7 @@ pub use events::{ConnectionState, RemoteEvent, Subscription};
 pub use os_credentials::OsCredentials;
 pub use profiles::{ConnectionProfile, ConnectionProfiles, ProfileLease};
 pub use requests::{RemoteOperation, RemoteReply};
+pub use submissions::{JobSubmissionReceipt, JobSubmissions};
 pub use uploads::AttachmentUpload;
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};

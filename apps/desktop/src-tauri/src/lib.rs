@@ -8,6 +8,7 @@ mod draft_cache;
 mod embedded_cli;
 mod ext;
 mod identifier_migration;
+mod job_submissions;
 mod legacy_db;
 mod legacy_llm;
 mod processing;
@@ -214,6 +215,7 @@ pub async fn main() {
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
         .manage(processing::ProcessingState::default())
+        .manage(job_submissions::JobSubmissionState::default())
         .manage(remote::RemoteState::default())
         .manage(attachment_upload::DeviceUploadIo::default())
         .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
@@ -612,6 +614,11 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_processing_job::<tauri::Wry>,
             application::application_processing_job_result::<tauri::Wry>,
             application::application_cancel_processing_job::<tauri::Wry>,
+            job_submissions::device_job_submission_prepare::<tauri::Wry>,
+            job_submissions::device_job_submission_get::<tauri::Wry>,
+            job_submissions::device_job_submissions::<tauri::Wry>,
+            job_submissions::device_job_submission_observe::<tauri::Wry>,
+            job_submissions::device_job_submission_forget::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
             application::application_agent_list::<tauri::Wry>,
