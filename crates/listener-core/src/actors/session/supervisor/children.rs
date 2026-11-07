@@ -63,7 +63,12 @@ pub(super) async fn spawn_source(
 ) -> Result<ActorRef<SourceMsg>, ractor::SpawnErr> {
     let recorder = recorder_cell.map(Into::into);
     let (source_ref, _) = Actor::spawn_linked(
-        Some(SourceActor::name()),
+        Some(match &ctx.recording {
+            crate::actors::RecordingDestination::Device { key, .. } => {
+                format!("source:{}", key.as_str())
+            }
+            _ => SourceActor::name(),
+        }),
         SourceActor,
         SourceArgs {
             mic_device: None,
@@ -73,6 +78,17 @@ pub(super) async fn spawn_source(
             session_id: ctx.params.session_id.clone(),
             listener_routing,
             recorder,
+            device_ingress: ctx.device_ingress.clone(),
+            device_root: match (&ctx.recording, &ctx.device_root) {
+                (crate::actors::RecordingDestination::Device { key, .. }, Some(root)) => {
+                    Some((key.clone(), root.clone(), supervisor_cell.get_id()))
+                }
+                _ => None,
+            },
+            capture_mode: match &ctx.recording {
+                crate::actors::RecordingDestination::Device { mode, .. } => Some(*mode),
+                _ => None,
+            },
         },
         supervisor_cell,
     )
@@ -85,11 +101,15 @@ pub(super) async fn spawn_recorder(
     ctx: &SessionContext,
 ) -> Result<ActorCell, ractor::SpawnErr> {
     let (recorder_ref, _): (ActorRef<RecMsg>, _) = Actor::spawn_linked(
-        Some(RecorderActor::name()),
+        Some(match &ctx.recording {
+            crate::actors::RecordingDestination::Device { key, .. } => {
+                format!("recorder:{}", key.as_str())
+            }
+            _ => RecorderActor::name(),
+        }),
         RecorderActor::new(),
         RecArgs {
-            vault_dir: ctx.vault_dir.clone(),
-            session_id: ctx.params.session_id.clone(),
+            destination: ctx.recording.clone(),
         },
         supervisor_cell,
     )
@@ -241,6 +261,30 @@ pub(super) async fn sync_source_recorder(state: &SessionState) {
         if let Err(error) = source_ref.cast(SourceMsg::SetRecorder(recorder)) {
             tracing::warn!(?error, "failed_to_update_source_recorder");
         }
+    }
+}
+
+pub(super) async fn drain_device(
+    state: &mut SessionState,
+) -> Result<(), crate::actors::DeviceSinkError> {
+    let source = state.source_cell.as_ref().ok_or_else(|| {
+        crate::actors::DeviceSinkError("Device audio source disappeared before draining".into())
+    })?;
+    let actor: ActorRef<SourceMsg> = source.clone().into();
+    ractor::call!(actor, SourceMsg::DrainDevice).map_err(|_| {
+        crate::actors::DeviceSinkError("Device audio source did not confirm draining".into())
+    })??;
+    Ok(())
+}
+
+pub(super) async fn finish_interrupted_recorder(state: &SessionState) {
+    if let Some(cell) = &state.recorder_cell {
+        let recorder: ActorRef<RecMsg> = cell.clone().into();
+        let _ = ractor::call!(
+            recorder,
+            RecMsg::DeviceFinish,
+            crate::actors::DeviceRecordingEnd::Interrupted
+        );
     }
 }
 

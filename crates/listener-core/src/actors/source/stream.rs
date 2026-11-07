@@ -12,7 +12,9 @@ pub(super) async fn start_source_loop(
     myself: &ActorRef<SourceMsg>,
     st: &mut SourceState,
 ) -> Result<(), ActorProcessingErr> {
-    let new_mode = ChannelMode::determine(st.onboarding);
+    let new_mode = st
+        .capture_mode
+        .unwrap_or_else(|| ChannelMode::determine(st.onboarding));
 
     let mode_changed = st.current_mode != new_mode;
     st.current_mode = new_mode;
@@ -23,7 +25,7 @@ pub(super) async fn start_source_loop(
 
     let result = start_streams(myself, st).await;
 
-    if result.is_ok() {
+    if result.is_ok() && st.device_ingress.is_none() {
         st.runtime.emit_progress(SessionProgressEvent::AudioReady {
             session_id: st.session_id.clone(),
             device: st.mic_device.clone(),
@@ -41,6 +43,7 @@ async fn start_streams(
     let myself2 = myself.clone();
     let mic_device = st.mic_device.clone();
     let audio = st.audio.clone();
+    let device_ingress = st.device_ingress.clone();
 
     let stream_cancel_token = CancellationToken::new();
     st.stream_cancel_token = Some(stream_cancel_token.clone());
@@ -51,6 +54,7 @@ async fn start_streams(
             cancel_token: stream_cancel_token,
             mic_device,
             audio,
+            device_ingress,
         };
 
         run_stream_loop(ctx, mode).await;
@@ -65,6 +69,7 @@ struct StreamContext {
     cancel_token: CancellationToken,
     mic_device: Option<String>,
     audio: std::sync::Arc<dyn AudioProvider>,
+    device_ingress: Option<crate::actors::DeviceIngress>,
 }
 
 impl StreamContext {
@@ -129,7 +134,35 @@ fn handle_capture_item(
 ) -> StreamResult {
     match item {
         Some(Ok(frame)) => {
-            if ctx.actor.cast(SourceMsg::Frame(frame)).is_err() {
+            let message = if let Some(ingress) = &ctx.device_ingress {
+                let frames = frame
+                    .raw_mic
+                    .len()
+                    .max(frame.raw_speaker.len())
+                    .max(frame.aec_mic.as_ref().map_or(0, |samples| samples.len()));
+                if frame
+                    .raw_mic
+                    .iter()
+                    .chain(frame.raw_speaker.iter())
+                    .chain(frame.aec_mic.iter().flat_map(|samples| samples.iter()))
+                    .any(|sample| !sample.is_finite())
+                {
+                    let _ = ctx.actor.cast(SourceMsg::DeviceHalt(
+                        "Audio input contained nonfinite PCM".into(),
+                    ));
+                    return StreamResult::Stop;
+                }
+                match ingress.admit(frames) {
+                    Ok(credit) => SourceMsg::DeviceFrame(frame, credit),
+                    Err(error) => {
+                        let _ = ctx.actor.cast(SourceMsg::DeviceHalt(error.to_string()));
+                        return StreamResult::Stop;
+                    }
+                }
+            } else {
+                SourceMsg::Frame(frame)
+            };
+            if ctx.actor.cast(message).is_err() {
                 if !ctx.is_cancelled() {
                     tracing::debug!("failed_to_cast_capture_frame");
                 }
@@ -152,6 +185,13 @@ fn handle_capture_item(
             ctx.report_failure(error.to_string());
             StreamResult::Stop
         }
-        None => StreamResult::Stop,
+        None => {
+            if ctx.device_ingress.is_some() && !ctx.is_cancelled() {
+                let _ = ctx.actor.cast(SourceMsg::DeviceHalt(
+                    "Audio input ended unexpectedly".into(),
+                ));
+            }
+            StreamResult::Stop
+        }
     }
 }

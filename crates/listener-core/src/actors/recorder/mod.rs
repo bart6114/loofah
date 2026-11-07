@@ -1,18 +1,47 @@
+mod device;
 mod disk;
+pub use device::*;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ractor::{Actor, ActorName, ActorProcessingErr, ActorRef};
+use ractor::{Actor, ActorName, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 pub enum RecMsg {
     AudioSingle(Arc<[f32]>),
     AudioDual(Arc<[f32]>, Arc<[f32]>),
+    DeviceAudio {
+        mic: Arc<[f32]>,
+        speaker: Arc<[f32]>,
+        credit: DeviceFrameCredit,
+    },
+    DeviceFinish(
+        DeviceRecordingEnd,
+        RpcReplyPort<Result<DeviceFinishReceipt, DeviceSinkError>>,
+    ),
+}
+
+#[derive(Clone)]
+pub enum RecordingDestination {
+    LocalDisk {
+        vault_dir: PathBuf,
+        session_id: String,
+    },
+    Device {
+        key: DeviceCaptureKey,
+        sink: Arc<dyn DeviceRecordingSink>,
+        mode: super::ChannelMode,
+    },
+}
+
+impl RecordingDestination {
+    pub fn is_device(&self) -> bool {
+        matches!(self, Self::Device { .. })
+    }
 }
 
 pub struct RecArgs {
-    pub vault_dir: PathBuf,
-    pub session_id: String,
+    pub destination: RecordingDestination,
 }
 
 pub struct RecState {
@@ -21,6 +50,7 @@ pub struct RecState {
 
 enum RecorderSink {
     Disk(disk::DiskSink),
+    Device(device::DeviceSink),
 }
 
 pub struct RecorderActor;
@@ -52,12 +82,20 @@ impl Actor for RecorderActor {
         _myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let session_dir = find_session_dir(&args.vault_dir, &args.session_id)?;
-        std::fs::create_dir_all(&session_dir)?;
-
-        Ok(RecState {
-            sink: RecorderSink::Disk(disk::create_disk_sink(&session_dir)?),
-        })
+        let sink = match args.destination {
+            RecordingDestination::LocalDisk {
+                vault_dir,
+                session_id,
+            } => {
+                let session_dir = find_session_dir(&vault_dir, &session_id)?;
+                std::fs::create_dir_all(&session_dir)?;
+                RecorderSink::Disk(disk::create_disk_sink(&session_dir)?)
+            }
+            RecordingDestination::Device { sink, mode, .. } => {
+                RecorderSink::Device(device::DeviceSink::new(sink, mode))
+            }
+        };
+        Ok(RecState { sink })
     }
 
     async fn handle(
@@ -73,6 +111,27 @@ impl Actor for RecorderActor {
             (RecorderSink::Disk(sink), RecMsg::AudioDual(mic, spk)) => {
                 disk::write_dual(sink, &mic, &spk)?;
             }
+            (
+                RecorderSink::Device(sink),
+                RecMsg::DeviceAudio {
+                    mic,
+                    speaker,
+                    credit,
+                },
+            ) => {
+                sink.write(&mic, &speaker, credit).await?;
+            }
+            (RecorderSink::Device(sink), RecMsg::DeviceFinish(end, reply)) => {
+                let result = sink.finish(end).await;
+                let failure = result.as_ref().err().cloned();
+                let _ = reply.send(result);
+                if let Some(error) = failure {
+                    return Err(error.into());
+                }
+            }
+            _ => {
+                return Err(DeviceSinkError("Recorder destination/message mismatch".into()).into());
+            }
         }
 
         Ok(())
@@ -86,6 +145,9 @@ impl Actor for RecorderActor {
         match &mut st.sink {
             RecorderSink::Disk(sink) => {
                 disk::finalize_disk_sink(sink)?;
+            }
+            RecorderSink::Device(_) => {
+                // Only the explicit drain barrier may finish a device recording.
             }
         }
 

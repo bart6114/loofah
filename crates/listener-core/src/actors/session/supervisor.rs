@@ -136,13 +136,24 @@ impl Actor for SessionActor {
         match message {
             SessionMsg::Shutdown => {
                 state.shutting_down = true;
+                let failure = if state.ctx.recording.is_device() {
+                    children::drain_device(state)
+                        .await
+                        .err()
+                        .map(|error| error.to_string())
+                } else {
+                    None
+                };
                 children::shutdown_children(state, "session_stop").await;
-                myself.stop(None);
+                myself.stop(failure);
             }
             SessionMsg::RetryListener => {
                 retry_listener(myself, state).await;
             }
             SessionMsg::UpdateConfig(update) => {
+                if state.ctx.recording.is_device() {
+                    return Ok(());
+                }
                 update_config(myself, state, update).await;
             }
         }
@@ -163,6 +174,42 @@ impl Actor for SessionActor {
 
         if state.shutting_down {
             return Ok(());
+        }
+
+        if state.ctx.recording.is_device() {
+            let terminal = match &message {
+                SupervisionEvent::ActorTerminated(cell, _, reason)
+                    if children::identify_child(state, cell).is_some() =>
+                {
+                    Some(
+                        reason
+                            .clone()
+                            .unwrap_or_else(|| "Device capture child stopped".into()),
+                    )
+                }
+                SupervisionEvent::ActorFailed(cell, error)
+                    if children::identify_child(state, cell).is_some() =>
+                {
+                    Some(format!("Device capture child failed: {error:?}"))
+                }
+                _ => None,
+            };
+            if let Some(reason) = terminal {
+                // Restarting after a recorder/source gap would falsely present discontinuous audio as complete.
+                state.shutting_down = true;
+                if let Some(source) = &state.source_cell {
+                    let actor: ActorRef<crate::actors::SourceMsg> = source.clone().into();
+                    let _ = actor.cast(crate::actors::SourceMsg::DeviceHalt(reason.clone()));
+                    if children::drain_device(state).await.is_err() {
+                        children::finish_interrupted_recorder(state).await;
+                    }
+                } else {
+                    children::finish_interrupted_recorder(state).await;
+                }
+                children::shutdown_children(state, "device_interrupted").await;
+                myself.stop(Some(reason));
+                return Ok(());
+            }
         }
 
         match message {
@@ -657,7 +704,12 @@ mod tests {
                 participant_human_ids: vec![],
                 self_human_id: None,
             },
-            vault_dir: std::env::temp_dir(),
+            recording: crate::actors::RecordingDestination::LocalDisk {
+                vault_dir: std::env::temp_dir(),
+                session_id: "session".into(),
+            },
+            device_ingress: None,
+            device_root: None,
             started_at_instant: Instant::now(),
             started_at_system: SystemTime::now(),
         }

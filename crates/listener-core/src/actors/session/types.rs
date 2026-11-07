@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime};
 
@@ -78,7 +77,9 @@ pub struct SessionContext {
     pub audio: Arc<dyn AudioProvider>,
     pub requested_transcription_mode: TranscriptionMode,
     pub params: SessionParams,
-    pub vault_dir: PathBuf,
+    pub recording: crate::actors::RecordingDestination,
+    pub device_ingress: Option<crate::actors::DeviceIngress>,
+    pub device_root: Option<ractor::ActorRef<crate::actors::RootMsg>>,
     pub started_at_instant: Instant,
     pub started_at_system: SystemTime,
 }
