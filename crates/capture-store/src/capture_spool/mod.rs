@@ -16,6 +16,8 @@ mod store;
 mod types;
 pub use types::*;
 
+const MAX_JS_SAFE_MS: u64 = 9_007_199_254_740_991;
+
 pub struct CaptureSpool {
     root: PathBuf,
     limits: CaptureSpoolLimits,
@@ -136,6 +138,18 @@ impl CaptureWriter {
         let id = self.identity.clone();
         self.spool
             .run(move |spool, state| store::snapshot(spool, state, &id))
+            .await
+    }
+
+    pub async fn record_first_audio_observation(&self, ms: u64) -> Result<CaptureSnapshot> {
+        if ms > MAX_JS_SAFE_MS {
+            return Err(invalid(
+                "Capture observation must be a JavaScript-safe UTC millisecond integer",
+            ));
+        }
+        let id = self.identity.clone();
+        self.spool
+            .run(move |spool, state| store::record_first_audio_observation(spool, state, &id, ms))
             .await
     }
 
@@ -376,6 +390,8 @@ enum Fault {
     AfterChunkDirectorySync = 4,
     AfterManifestRename = 5,
     AfterManifestDirectorySync = 6,
+    BeforeManifestWrite = 7,
+    ShortManifestWrite = 8,
 }
 
 #[cfg(test)]

@@ -239,6 +239,28 @@ fn persist(
     let path = dir.join("manifest.json");
     check_file(&path, true)?;
     let existed = path.exists();
+    #[cfg(test)]
+    if let Some(spool) = spool {
+        hit(spool, Fault::BeforeManifestWrite)?;
+        if spool.fault.load(std::sync::atomic::Ordering::SeqCst) == Fault::ShortManifestWrite as u8
+        {
+            let mut options = File::options();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut partial = options
+                .open(dir.join(".capture-observation-incomplete.tmp"))
+                .map_err(io_error)?;
+            partial
+                .write_all(&bytes[..bytes.len() / 2])
+                .map_err(io_error)?;
+            partial.sync_all().map_err(io_error)?;
+            hit(spool, Fault::ShortManifestWrite)?;
+        }
+    }
     hypr_storage::fs::atomic_write(&path, std::str::from_utf8(&bytes).expect("JSON is UTF-8"))
         .map_err(io_error)?;
     state.bytes = state
@@ -294,6 +316,7 @@ fn with_entry<T>(
         )
     })?;
     let before = entry.manifest.snapshot.clone();
+    let before_version = entry.manifest.schema_version;
     let result = if entry.manifest.snapshot.identity != *id {
         Err(conflict("Capture identity cannot be rebound"))
     } else {
@@ -304,6 +327,7 @@ fn with_entry<T>(
         .is_err_and(|error| error.mutation_outcome == Some(MutationOutcome::NotCommitted))
     {
         entry.manifest.snapshot = before;
+        entry.manifest.schema_version = before_version;
     }
     state.entries.insert(key, entry);
     result
@@ -365,6 +389,7 @@ pub(super) fn begin(
                 acknowledged: None,
                 seal: None,
                 publication: None,
+                first_admitted_audio_observed_at_ms: None,
             },
         },
         serialized: vec![],
@@ -437,6 +462,29 @@ pub(super) fn snapshot(
     id: &CaptureIdentity,
 ) -> Result<CaptureSnapshot> {
     with_entry(spool, state, id, |_, entry| {
+        Ok(entry.manifest.snapshot.clone())
+    })
+}
+
+pub(super) fn record_first_audio_observation(
+    spool: &CaptureSpool,
+    state: &mut State,
+    id: &CaptureIdentity,
+    ms: u64,
+) -> Result<CaptureSnapshot> {
+    with_entry(spool, state, id, |state, entry| {
+        if let Some(existing) = entry.manifest.snapshot.first_admitted_audio_observed_at_ms {
+            if existing != ms {
+                return Err(conflict(
+                    "Capture observation cannot be changed after recording",
+                ));
+            }
+            confirm(&spool.root, entry)?;
+        } else {
+            entry.manifest.snapshot.first_admitted_audio_observed_at_ms = Some(ms);
+            entry.manifest.schema_version = 2;
+            persist(&spool.root, &spool.limits, state, entry, Some(spool))?;
+        }
         Ok(entry.manifest.snapshot.clone())
     })
 }
@@ -966,8 +1014,13 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
         let snapshot = &manifest.snapshot;
         validate_identity(&snapshot.identity).map_err(|_| damaged())?;
         validate_format(&snapshot.format).map_err(|_| damaged())?;
-        if manifest.schema_version != 1
-            || snapshot.created_at_ms > 9_007_199_254_740_991
+        if !matches!(
+            (
+                manifest.schema_version,
+                snapshot.first_admitted_audio_observed_at_ms
+            ),
+            (1, None) | (2, Some(0..=MAX_JS_SAFE_MS))
+        ) || snapshot.created_at_ms > MAX_JS_SAFE_MS
             || scope_key(&snapshot.identity.scope) != candidate.scope
             || snapshot.identity.capture_id != candidate.capture
             || snapshot.capture_fingerprint != fingerprint(&snapshot.identity, &snapshot.format)

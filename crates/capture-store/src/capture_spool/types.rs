@@ -25,6 +25,16 @@ pub struct CaptureSnapshot {
     pub acknowledged: Option<CapturePrefixReceipt>,
     pub seal: Option<CaptureSeal>,
     pub publication: Option<CapturePublication>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "observation"
+    )]
+    pub first_admitted_audio_observed_at_ms: Option<u64>,
+}
+
+fn observation<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
+    u64::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone)]

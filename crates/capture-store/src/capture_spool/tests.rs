@@ -1370,3 +1370,635 @@ async fn two_hour_dual_channel_synthetic_spool_is_bounded_and_reopens_without_mi
         started.elapsed()
     );
 }
+
+const OBSERVATION_MS: u64 = 1_723_456_789_012;
+
+#[tokio::test]
+async fn timing_absence_keeps_the_original_v1_manifest_bytes_and_never_guesses_a_time() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    let expected = format!(
+        r#"{{"schema_version":1,"snapshot":{{"identity":{},"format":{},"capture_fingerprint":"{}","created_at_ms":{},"session_id":"note","chunk_count":0,"frames":0,"pcm_bytes":0,"chain_digest":"{}","acknowledged":null,"seal":null,"publication":null}}}}"#,
+        serde_json::to_string(&id).unwrap(), serde_json::to_string(&CaptureFormat::stereo()).unwrap(),
+        snapshot.capture_fingerprint, snapshot.created_at_ms, snapshot.chain_digest,
+    ).into_bytes();
+    let manifest = dir(&root, &id).join("manifest.json");
+    assert_eq!(std::fs::read(&manifest).unwrap(), expected);
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id.clone()).await.unwrap();
+    assert_eq!(std::fs::read(&manifest).unwrap(), expected);
+    assert_eq!(
+        writer
+            .snapshot()
+            .await
+            .unwrap()
+            .first_admitted_audio_observed_at_ms,
+        None
+    );
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    writer.seal().await.unwrap();
+    writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let bytes = std::fs::read(&manifest).unwrap();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert!(
+        !value["snapshot"]
+            .as_object()
+            .unwrap()
+            .contains_key("first_admitted_audio_observed_at_ms")
+    );
+}
+
+#[tokio::test]
+async fn timing_v2_survives_reopen_append_binding_ack_seal_and_publication_without_hash_changes() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let mut id = identity();
+    id.target = CaptureTarget::PendingSession {
+        create_request_id: uuid::Uuid::from_u128(3).to_string(),
+    };
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let before = writer.snapshot().await.unwrap();
+    let snapshot = writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.capture_fingerprint, before.capture_fingerprint);
+    assert_eq!(snapshot.chain_digest, before.chain_digest);
+    assert_eq!(snapshot.created_at_ms, before.created_at_ms);
+    let first = writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer.bind_session("remote-note".into()).await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(id.clone()).await.unwrap();
+    assert_eq!(
+        writer
+            .snapshot()
+            .await
+            .unwrap()
+            .first_admitted_audio_observed_at_ms,
+        Some(OBSERVATION_MS)
+    );
+    assert_eq!(writer.append_chunk(0, 8, pcm(8)).await.unwrap(), first);
+    writer.append_chunk(1, 4, pcm(4)).await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let sealed = writer.seal().await.unwrap();
+    assert_eq!(sealed.source_sha256, hash([pcm(8), pcm(4)].concat()));
+    writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let manifest = dir(&root, &id).join("manifest.json");
+    let bytes = std::fs::read(&manifest).unwrap();
+    assert_eq!(
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap()
+            .seal,
+        Some(sealed)
+    );
+    assert_eq!(std::fs::read(&manifest).unwrap(), bytes);
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let snapshot = spool.resume(id).await.unwrap().snapshot().await.unwrap();
+    assert_eq!(
+        snapshot.first_admitted_audio_observed_at_ms,
+        Some(OBSERVATION_MS)
+    );
+    assert!(snapshot.publication.is_some());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes).unwrap()["schema_version"],
+        2
+    );
+}
+
+#[tokio::test]
+async fn timing_is_write_once_js_safe_and_bound_to_the_exact_existing_identity() {
+    for ms in [0, MAX_JS_SAFE_MS] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        assert_eq!(
+            writer
+                .record_first_audio_observation(ms)
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(ms)
+        );
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        let bytes = std::fs::read(&manifest).unwrap();
+        assert_eq!(
+            writer
+                .record_first_audio_observation(ms)
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(ms)
+        );
+        let error = writer
+            .record_first_audio_observation(ms ^ 1)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Conflict);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(
+            writer
+                .record_first_audio_observation(MAX_JS_SAFE_MS + 1)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+        let mut foreign = identity();
+        foreign.request_id = uuid::Uuid::from_u128(9).to_string();
+        let foreign = CaptureWriter {
+            spool: spool.clone(),
+            identity: foreign,
+        };
+        assert_eq!(
+            foreign
+                .record_first_audio_observation(ms)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Conflict
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), bytes);
+        drop(foreign);
+        drop(writer);
+        drop(spool);
+        assert_eq!(
+            open(&root)
+                .await
+                .resume(identity())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(ms)
+        );
+    }
+}
+
+#[tokio::test]
+async fn timing_invalid_versions_values_duplicates_and_truncation_are_retained_without_repair() {
+    for mode in [
+        "v1-with-time",
+        "v1-null",
+        "v2-missing",
+        "v2-null",
+        "future",
+        "zero-version",
+        "negative",
+        "fraction",
+        "string",
+        "unsafe",
+        "duplicate-time",
+        "duplicate-version",
+        "truncated",
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        drop(writer);
+        drop(spool);
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        match mode {
+            "v1-with-time" => value["schema_version"] = json!(1),
+            "v1-null" => {
+                value["schema_version"] = json!(1);
+                value["snapshot"]["first_admitted_audio_observed_at_ms"] = Value::Null;
+            }
+            "v2-missing" => {
+                value["snapshot"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("first_admitted_audio_observed_at_ms");
+            }
+            "v2-null" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = Value::Null,
+            "future" => value["schema_version"] = json!(3),
+            "zero-version" => value["schema_version"] = json!(0),
+            "negative" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(-1),
+            "fraction" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(1.5),
+            "string" => value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!("123"),
+            "unsafe" => {
+                value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(MAX_JS_SAFE_MS + 1)
+            }
+            _ => {}
+        }
+        let mut bytes = serde_json::to_vec(&value).unwrap();
+        if mode == "duplicate-time" {
+            bytes = String::from_utf8(bytes).unwrap().replace("\"first_admitted_audio_observed_at_ms\":", "\"first_admitted_audio_observed_at_ms\":1,\"first_admitted_audio_observed_at_ms\":").into_bytes();
+        }
+        if mode == "duplicate-version" {
+            bytes = String::from_utf8(bytes)
+                .unwrap()
+                .replace(
+                    "\"schema_version\":",
+                    "\"schema_version\":2,\"schema_version\":",
+                )
+                .into_bytes();
+        }
+        if mode == "truncated" {
+            bytes.truncate(bytes.len() / 2);
+        }
+        std::fs::write(&manifest, &bytes).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal,
+            "{mode}"
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), bytes, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn timing_owned_manifest_tampering_is_detected_before_any_observation_rewrite() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    let manifest = dir(&root, &identity()).join("manifest.json");
+    let mut value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    value["snapshot"]["first_admitted_audio_observed_at_ms"] = json!(OBSERVATION_MS + 1);
+    let bytes = serde_json::to_vec(&value).unwrap();
+    std::fs::write(&manifest, &bytes).unwrap();
+    assert_eq!(
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Internal
+    );
+    assert_eq!(std::fs::read(&manifest).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn timing_fault_boundaries_reconcile_v1_or_exact_v2_without_losing_audio_or_rewriting_time() {
+    for point in [
+        Fault::BeforeManifestWrite,
+        Fault::ShortManifestWrite,
+        Fault::AfterManifestRename,
+        Fault::AfterManifestDirectorySync,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        let original = std::fs::read(&manifest).unwrap();
+        spool.fault.store(point as u8, Ordering::SeqCst);
+        assert_eq!(
+            writer
+                .record_first_audio_observation(OBSERVATION_MS)
+                .await
+                .unwrap_err()
+                .mutation_outcome,
+            Some(MutationOutcome::Unknown)
+        );
+        let before_commit = matches!(
+            point,
+            Fault::BeforeManifestWrite | Fault::ShortManifestWrite
+        );
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            if before_commit {
+                None
+            } else {
+                Some(OBSERVATION_MS)
+            }
+        );
+        if before_commit {
+            assert_eq!(std::fs::read(&manifest).unwrap(), original);
+        }
+        let partial = dir(&root, &identity()).join(".capture-observation-incomplete.tmp");
+        let retained = partial.exists().then(|| std::fs::read(&partial).unwrap());
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+        assert_eq!(writer.seal().await.unwrap().source_sha256, hash(pcm(8)));
+        if let Some(retained) = retained {
+            assert_eq!(std::fs::read(partial).unwrap(), retained);
+        }
+        drop(writer);
+        drop(spool);
+        assert_eq!(
+            open(&root)
+                .await
+                .resume(identity())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            Some(OBSERVATION_MS)
+        );
+    }
+}
+
+#[tokio::test]
+async fn canceled_observation_callers_retain_io_and_lease_until_the_owned_timestamp_commit_finishes()
+ {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::BeforeManifestWrite as u8,
+        entered,
+        release: release.clone(),
+    });
+    let owned = writer.clone();
+    let task =
+        tokio::spawn(async move { owned.record_first_audio_observation(OBSERVATION_MS).await });
+    waiting.await.unwrap();
+    task.abort();
+    let _ = task.await;
+    drop(writer);
+    drop(spool);
+    assert_eq!(
+        CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match CaptureSpool::open(root.clone(), CaptureSpoolLimits::default()).await {
+                Ok(spool) => break spool,
+                Err(error) if error.code == ErrorCode::Unavailable => {
+                    tokio::time::sleep(Duration::from_millis(10)).await
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        reopened
+            .resume(identity())
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .first_admitted_audio_observed_at_ms,
+        Some(OBSERVATION_MS)
+    );
+}
+
+#[tokio::test]
+async fn observation_quota_rejection_restores_schema_and_allows_a_smaller_ordinary_v1_write() {
+    for directory_limit in [false, true] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let mut id = identity();
+        id.target = CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::from_u128(3).to_string(),
+        };
+        let writer = spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        let manifest = dir(&root, &id).join("manifest.json");
+        let original = std::fs::read(&manifest).unwrap();
+        drop(writer);
+        drop(spool);
+        let limits = if directory_limit {
+            CaptureSpoolLimits {
+                max_directory_entries: 5,
+                ..CaptureSpoolLimits::default()
+            }
+        } else {
+            CaptureSpoolLimits {
+                max_bytes: original.len() as u64 * 2,
+                ..CaptureSpoolLimits::default()
+            }
+        };
+        let spool = CaptureSpool::open(root.clone(), limits).await.unwrap();
+        let writer = spool.resume(id.clone()).await.unwrap();
+        let error = writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ResourceLimit);
+        assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            None
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), original);
+        if !directory_limit {
+            writer.bind_session("x".into()).await.unwrap();
+            let value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+            assert_eq!(value["schema_version"], 1);
+        }
+        drop(writer);
+        drop(spool);
+        let spool = open(&root).await;
+        let writer = spool.resume(id).await.unwrap();
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            None
+        );
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "subprocess timestamp crash fixture"]
+fn capture_timing_crash_child() {
+    let root = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_CRASH_ROOT").unwrap());
+    let point: u8 = std::env::var("LOOFAH_CAPTURE_CRASH_POINT")
+        .unwrap()
+        .parse()
+        .unwrap();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let spool = open(&root).await;
+            let writer = spool
+                .begin(identity(), CaptureFormat::stereo())
+                .await
+                .unwrap();
+            spool.fault.store(point, Ordering::SeqCst);
+            writer
+                .record_first_audio_observation(OBSERVATION_MS)
+                .await
+                .unwrap();
+            std::fs::write(
+                std::env::var_os("LOOFAH_CAPTURE_CRASH_MARKER").unwrap(),
+                b"accepted",
+            )
+            .unwrap();
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+}
+
+#[tokio::test]
+async fn killed_observation_processes_recover_only_committed_v2_or_unchanged_v1() {
+    for point in [
+        Fault::BeforeManifestWrite as u8,
+        Fault::ShortManifestWrite as u8,
+        Fault::AfterManifestRename as u8,
+        Fault::AfterManifestDirectorySync as u8,
+        0,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin(identity(), CaptureFormat::stereo())
+            .await
+            .unwrap();
+        writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+        drop(writer);
+        drop(spool);
+        let marker = temp.path().join("paused");
+        let mut child = Child(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "capture_spool::tests::capture_timing_crash_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("LOOFAH_CAPTURE_CRASH_ROOT", &root)
+                .env("LOOFAH_CAPTURE_CRASH_POINT", point.to_string())
+                .env("LOOFAH_CAPTURE_CRASH_MARKER", &marker)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !marker.exists() {
+                assert!(child.0.try_wait().unwrap().is_none());
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        child.0.kill().unwrap();
+        child.0.wait().unwrap();
+        let spool = open(&root).await;
+        let writer = spool.resume(identity()).await.unwrap();
+        let expected = if point == Fault::BeforeManifestWrite as u8
+            || point == Fault::ShortManifestWrite as u8
+        {
+            None
+        } else {
+            Some(OBSERVATION_MS)
+        };
+        assert_eq!(
+            writer
+                .snapshot()
+                .await
+                .unwrap()
+                .first_admitted_audio_observed_at_ms,
+            expected
+        );
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+        writer
+            .record_first_audio_observation(OBSERVATION_MS)
+            .await
+            .unwrap();
+        assert_eq!(writer.seal().await.unwrap().source_sha256, hash(pcm(8)));
+    }
+}
