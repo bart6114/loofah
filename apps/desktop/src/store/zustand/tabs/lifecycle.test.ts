@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { type Tab, useTabs } from ".";
+import type { Tab } from "./schema";
+import { tabsTestStore as useTabs } from "./test-utils";
 import { createSessionTab, resetTabsStore, seedTabsStore } from "./test-utils";
 
 describe("Tab Lifecycle", () => {

@@ -25,7 +25,12 @@ export function scopedFixture(id: string) {
         : [],
   );
   const scope = {
-    client: { scope: id, sessionSummaries: summaries },
+    client: {
+      scope: id,
+      features: ["session_summaries", "search"],
+      canEdit: true,
+      sessionSummaries: summaries,
+    },
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => {
       listeners.add(listener);

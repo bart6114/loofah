@@ -82,7 +82,7 @@ vi.mock("~/store/zustand/tabs", () => {
   const useTabs = (selector: (state: ReturnType<typeof getState>) => unknown) =>
     selector(getState());
   useTabs.getState = getState;
-  return { useTabs };
+  return { useTabs, useTabsStore: () => ({ getState }) };
 });
 
 vi.mock("~/store/zustand/undo-delete", () => {

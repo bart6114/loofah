@@ -81,6 +81,13 @@ vi.mock("~/store/zustand/live-title", () => ({
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
+  useTabsStore: () => ({
+    getState: () => ({
+      tabs: [],
+      openCurrent: mocks.openCurrent,
+      invalidateResource: mocks.invalidateResource,
+    }),
+  }),
   useTabs: (
     selector: (state: {
       invalidateResource: typeof mocks.invalidateResource;

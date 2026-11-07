@@ -17,7 +17,7 @@ vi.mock("~/services/enhancer", () => ({
 }));
 
 vi.mock("~/store/zustand/tabs", () => ({
-  useTabs: { getState: mocks.tabsGetState },
+  useTabsStore: () => ({ getState: mocks.tabsGetState }),
 }));
 
 import { useAutoEnhance } from "./useAutoEnhance";

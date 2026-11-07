@@ -89,6 +89,7 @@ vi.mock("~/store/zustand/tabs", () => {
       }
     },
     useTabs,
+    useTabsStore: () => ({ getState: getTabsState }),
   };
 });
 

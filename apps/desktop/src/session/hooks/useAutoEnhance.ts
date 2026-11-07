@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { getEnhancerService } from "~/services/enhancer";
-import { type Tab, useTabs } from "~/store/zustand/tabs";
+import { type Tab, useTabsStore } from "~/store/zustand/tabs";
 
 export function useAutoEnhance(tab: Extract<Tab, { type: "sessions" }>) {
   const sessionId = tab.id;
+  const tabsStore = useTabsStore();
   const [skipReason, setSkipReason] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export function useAutoEnhance(tab: Extract<Tab, { type: "sessions" }>) {
         }
       }
       if (event.type === "auto-enhance-started") {
-        const tabsState = useTabs.getState();
+        const tabsState = tabsStore.getState();
         const sessionTab = tabsState.tabs.find(
           (t): t is Extract<Tab, { type: "sessions" }> =>
             t.type === "sessions" && t.id === sessionId,
@@ -40,7 +41,7 @@ export function useAutoEnhance(tab: Extract<Tab, { type: "sessions" }>) {
         setSkipReason("No AI model configured");
       }
     });
-  }, [sessionId]);
+  }, [sessionId, tabsStore]);
 
   useEffect(() => {
     if (skipReason) {

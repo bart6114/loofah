@@ -3,7 +3,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useNewNote, useNewNoteAndListen } from "~/shared/useNewNote";
-import { uniqueIdfromTab, useTabs } from "~/store/zustand/tabs";
+import { uniqueIdfromTab, useTabs, useTabsStore } from "~/store/zustand/tabs";
 
 export function useMainShortcuts() {
   const runEscapeShortcut = useMainEscapeShortcutAction();
@@ -86,9 +86,10 @@ export function useMainShortcuts() {
 }
 
 export function useMainEscapeShortcutAction() {
+  const store = useTabsStore();
   return useCallback(() => {
     const { tabs, currentTab, openCurrent, select, goBack, canGoBack } =
-      useTabs.getState();
+      store.getState();
 
     if (currentTab?.type === "onboarding" || currentTab?.type === "empty") {
       return;
@@ -121,7 +122,7 @@ export function useMainEscapeShortcutAction() {
     }
 
     openCurrent({ type: "empty" });
-  }, []);
+  }, [store]);
 }
 
 function shouldSkipEscapeShortcut(

@@ -7,6 +7,7 @@ import { useUpdaterEvents } from "./updater-events";
 
 import { createSession } from "~/session/queries";
 import { setSettingValue } from "~/settings/queries";
+import { createAsyncListenerScope } from "~/shared/async-listener-scope";
 import { useConfigValue, useConfigValues } from "~/shared/config";
 import { useLatestRef } from "~/shared/hooks/useLatestRef";
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
@@ -28,7 +29,9 @@ const LIVE_CAPTURE_CONFIG_DEBOUNCE_MS = 750;
 
 async function createNotificationSession(
   triggerAppIds: string[] | null,
+  isActive: () => boolean,
 ): Promise<{ sessionId: string; autoStart: boolean } | null> {
+  if (!isActive()) return null;
   const initialLive = listenerStore.getState().live;
   if (initialLive.loading || initialLive.status !== "inactive") {
     return initialLive.sessionId
@@ -37,6 +40,7 @@ async function createNotificationSession(
   }
 
   const sessionId = await createSession();
+  if (!isActive()) return null;
   const currentLive = listenerStore.getState().live;
   if (currentLive.loading || currentLive.status !== "inactive") {
     return currentLive.sessionId
@@ -228,12 +232,13 @@ function useNotificationEvents() {
 
     void notificationEvents.notificationEvent
       .listen(({ payload }) => {
+        if (cancelled) return;
         if (
           payload.type === "notification_confirm" ||
           payload.type === "notification_accept" ||
           payload.type === "notification_timeout"
         ) {
-          if (handleAutoStopEndedNotification(payload.type, payload.key)) {
+          if (parseAutoStopEndedNotificationKey(payload.key)) {
             return;
           }
 
@@ -266,9 +271,12 @@ function useNotificationEvents() {
             return;
           }
 
-          void createNotificationSession(payload.source.app_ids ?? null)
+          void createNotificationSession(
+            payload.source.app_ids ?? null,
+            () => !cancelled,
+          )
             .then((session) => {
-              if (!session) return;
+              if (!session || cancelled) return;
               const { sessionId, autoStart } = session;
               openNewRef.current({
                 type: "sessions",
@@ -285,7 +293,10 @@ function useNotificationEvents() {
         } else if (payload.type === "notification_option_selected") {
           const sessionPromise =
             payload.source?.type === "mic_detected"
-              ? createNotificationSession(payload.source.app_ids ?? null)
+              ? createNotificationSession(
+                  payload.source.app_ids ?? null,
+                  () => !cancelled,
+                )
               : createSession().then((sessionId) => ({
                   sessionId,
                   autoStart: true,
@@ -293,7 +304,7 @@ function useNotificationEvents() {
 
           void sessionPromise
             .then((session) => {
-              if (!session) return;
+              if (!session || cancelled) return;
               openNewRef.current({
                 type: "sessions",
                 id: session.sessionId,
@@ -352,17 +363,41 @@ function useNotificationEvents() {
 }
 
 export function EventListeners() {
+  useUpdaterEvents();
+  useNotificationEvents();
+  return null;
+}
+
+export function DeviceEventListeners() {
   return (
     <>
-      <EventListenersInner />
+      <DeviceNotificationEvents />
       <LiveCaptureConfigSync />
     </>
   );
 }
 
-function EventListenersInner() {
-  useUpdaterEvents();
-  useNotificationEvents();
-
+function DeviceNotificationEvents() {
+  useMountEffect(() => {
+    if (getCurrentWebviewWindowLabel() !== "main") return;
+    const scope = createAsyncListenerScope();
+    void scope
+      .add(() =>
+        notificationEvents.notificationEvent.listen(
+          scope.guard(({ payload }) => {
+            if (
+              payload.type === "notification_confirm" ||
+              payload.type === "notification_accept" ||
+              payload.type === "notification_timeout"
+            )
+              handleAutoStopEndedNotification(payload.type, payload.key);
+          }),
+        ),
+      )
+      .catch((error) =>
+        console.error("[notification] device listener setup failed", error),
+      );
+    return scope.dispose;
+  });
   return null;
 }

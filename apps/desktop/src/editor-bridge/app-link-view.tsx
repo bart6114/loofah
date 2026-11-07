@@ -18,6 +18,7 @@ import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { commands as todoCommands } from "@hypr/plugin-todo";
 import { cn } from "@hypr/utils";
 
+import { useTabsStore } from "~/store/zustand/tabs";
 import { collectSiblingResources, openTaskTab } from "~/task/open-task-tab";
 
 function SlackIcon({ className }: { className?: string }) {
@@ -269,6 +270,7 @@ function Checkbox({ checked }: { checked: boolean }) {
 
 export const AppLinkView = forwardRef<HTMLSpanElement, NodeViewComponentProps>(
   function AppLinkView({ nodeProps, ...htmlAttrs }, ref) {
+    const tabsStore = useTabsStore();
     const attrs = nodeProps.node.attrs as AppLinkAttrs;
     const { header, subline } = getAppLinkDisplayParts(attrs);
     const href = attrs.url;
@@ -291,7 +293,7 @@ export const AppLinkView = forwardRef<HTMLSpanElement, NodeViewComponentProps>(
         const pos = getSafeNodePos(nodeProps.getPos);
         if (pos !== null) {
           const resources = collectSiblingResources(view.state.doc, pos);
-          openTaskTab(resources);
+          openTaskTab(tabsStore, resources);
           return;
         }
       }

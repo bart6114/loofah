@@ -24,9 +24,8 @@ import { AppI18nProvider } from "./i18n/provider";
 import { FloatingMeetingWindowHost } from "./meeting-float/host";
 import { routeTree } from "./routeTree.gen";
 import { ArtifactInvalidationSync } from "./services/artifact-invalidation";
-import { EventListeners } from "./services/event-listeners";
+import { DeviceEventListeners } from "./services/event-listeners";
 import { RegenerateTranscriptConfirmDialog } from "./session/components/note-input/transcript/regenerate-confirm";
-import { useRemoteSessionDeletionUndoListener } from "./session/hooks/useDeleteSession";
 import { initializeApplicationSettings } from "./settings/queries";
 import { initializeAppExitFlush } from "./shared/app-exit";
 import { useConfigValue } from "./shared/config";
@@ -79,7 +78,6 @@ function AppRoot() {
     getDesignTheme(useConfigValue("design_theme")),
     normalizeThemePreference(useConfigValue("theme")),
   );
-  useRemoteSessionDeletionUndoListener(isMainWindow);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -89,7 +87,7 @@ function AppRoot() {
             <App />
             <ArtifactInvalidationSync />
             {isMainWindow ? <FloatingMeetingWindowHost /> : null}
-            {isMainWindow ? <EventListeners /> : null}
+            {isMainWindow ? <DeviceEventListeners /> : null}
           </StartupBoundary>
           <Toaster position="bottom-right" theme={theme} />
         </AppI18nProvider>

@@ -1,15 +1,34 @@
 import { useRouteContext } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useMemo } from "react";
 
 import { useLanguageModel } from "~/ai/hooks";
+import { DevtoolsFloatingPanelHost } from "~/devtools-panel/host";
 import { takePendingWelcomeSession } from "~/onboarding/welcome-note";
 import { initEnhancerService } from "~/services/enhancer";
-import { useDesktopTabLifecycle } from "~/shared/desktop-tab-lifecycle";
-import { useTabs } from "~/store/zustand/tabs";
+import { EventListeners } from "~/services/event-listeners";
+import { useRemoteSessionDeletionUndoListener } from "~/session/hooks/useDeleteSession";
+import { useVaultHost } from "~/shared/application/vault-provider";
+import {
+  createSessionTabCloseHandler,
+  useDesktopTabLifecycle,
+} from "~/shared/desktop-tab-lifecycle";
+import { UndoDeleteToast } from "~/sidebar/toast/undo-delete-toast";
+import { useTabs, useTabsStore } from "~/store/zustand/tabs";
 import { MainListenerControlBridge } from "~/stt/window-control";
 
 export function useClassicMainLifecycle() {
+  const store = useTabsStore();
+  const { scope } = useVaultHost();
   const openNew = useTabs((state) => state.openNew);
+  const close = useMemo(
+    () =>
+      createSessionTabCloseHandler({
+        isActive: () => scope?.getSnapshot().state === "connected",
+        invalidateSessionResource: (id) =>
+          store.getState().invalidateResource("sessions", id),
+      }),
+    [scope, store],
+  );
 
   const openDefaultEmptyTab = useCallback(() => {
     openNew({ type: "empty" });
@@ -26,6 +45,7 @@ export function useClassicMainLifecycle() {
     onEmpty: openDefaultEmptyTab,
     onInitialized: openPendingWelcomeTab,
     onZeroTabs: openDefaultEmptyTab,
+    onClose: close,
   });
 }
 
@@ -34,8 +54,17 @@ export function ClassicMainServices() {
     <>
       <MainListenerControlBridge />
       <EnhancerInit />
+      <SessionDeletionUndoListener />
+      <EventListeners />
+      <UndoDeleteToast />
+      <DevtoolsFloatingPanelHost />
     </>
   );
+}
+
+function SessionDeletionUndoListener() {
+  useRemoteSessionDeletionUndoListener(true);
+  return null;
 }
 
 function EnhancerInit() {

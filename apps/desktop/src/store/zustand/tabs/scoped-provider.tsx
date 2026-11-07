@@ -3,11 +3,26 @@ import { useStore } from "zustand";
 
 import type { TabsDeviceState } from "./device-state";
 import { ScopedTabsController } from "./scoped-controller";
-import type { TabsState } from "./store";
+import type { ScopedTabsStore, TabsState } from "./store";
 
 import type { VaultScope } from "~/shared/application/vault-scope";
 
 const ScopedTabsContext = createContext<ScopedTabsController | null>(null);
+const TabsStoreContext = createContext<ScopedTabsStore | null>(null);
+
+export function TabsStoreProvider({
+  store,
+  children,
+}: {
+  store: ScopedTabsStore;
+  children?: React.ReactNode;
+}) {
+  return (
+    <TabsStoreContext.Provider value={store}>
+      {children}
+    </TabsStoreContext.Provider>
+  );
+}
 
 export function ScopedTabsProvider({
   scope,
@@ -39,7 +54,9 @@ export function ScopedTabsProvider({
     return null;
   return (
     <ScopedTabsContext.Provider value={current.controller}>
-      {children}
+      <TabsStoreProvider store={current.controller.store}>
+        {children}
+      </TabsStoreProvider>
     </ScopedTabsContext.Provider>
   );
 }
@@ -51,7 +68,9 @@ export function useScopedTabsController() {
 }
 
 export function useScopedTabsStore() {
-  return useScopedTabsController().store;
+  const store = useContext(TabsStoreContext);
+  if (!store) throw new Error("Tabs require an immutable vault host");
+  return store;
 }
 
 export function useScopedTabs(): TabsState;

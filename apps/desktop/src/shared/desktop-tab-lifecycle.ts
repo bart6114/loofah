@@ -1,25 +1,16 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { isSessionEmpty, softDeleteSession } from "~/session/queries";
 import { listenerStore } from "~/store/zustand/listener/instance";
-import {
-  restorePinnedTabsToStore,
-  restoreRecentlyOpenedToStore,
-  type Tab,
-  useTabs,
-} from "~/store/zustand/tabs";
+import { type Tab, useTabs, useTabsStore } from "~/store/zustand/tabs";
+import { useScopedTabsController } from "~/store/zustand/tabs/scoped-provider";
 
 type InitializeDesktopTabsOptions = {
   getTabs: () => Tab[];
-  setRecentlyOpenedSessionIds: (ids: string[]) => void;
-  restorePinnedTabs: () => Promise<void>;
-  restoreRecentlyOpenedSessionIds: (
-    set: (ids: string[]) => void,
-  ) => Promise<void>;
+  restore: () => Promise<void>;
+  isActive: () => boolean;
   onInitialized?: (() => void) | null;
   onZeroTabs?: (() => void) | null;
-  isTauriEnv?: boolean;
 };
 
 type SessionTabCloseHandlerOptions = {
@@ -27,27 +18,20 @@ type SessionTabCloseHandlerOptions = {
   getSessionMode?: (sessionId: string) => string | null | undefined;
   isSessionEmptyFn?: typeof isSessionEmpty;
   deleteSessionFn?: typeof softDeleteSession;
+  isActive?: () => boolean;
 };
 
 export async function initializeDesktopTabs({
   getTabs,
-  setRecentlyOpenedSessionIds,
-  restorePinnedTabs,
-  restoreRecentlyOpenedSessionIds,
+  restore,
+  isActive,
   onInitialized,
   onZeroTabs,
-  isTauriEnv = isTauri(),
 }: InitializeDesktopTabsOptions) {
-  if (!isTauriEnv) {
-    onZeroTabs?.();
-    return;
-  }
-
-  await restorePinnedTabs();
-  await restoreRecentlyOpenedSessionIds(setRecentlyOpenedSessionIds);
+  await restore();
+  if (!isActive()) return;
   onInitialized?.();
-
-  if (getTabs().length > 0) {
+  if (!isActive() || getTabs().length > 0) {
     return;
   }
 
@@ -60,9 +44,10 @@ export function createSessionTabCloseHandler({
     listenerStore.getState().getSessionMode(sessionId),
   isSessionEmptyFn = isSessionEmpty,
   deleteSessionFn = softDeleteSession,
+  isActive = () => true,
 }: SessionTabCloseHandlerOptions) {
   return (tab: Tab) => {
-    if (tab.type !== "sessions") {
+    if (!isActive() || tab.type !== "sessions") {
       return;
     }
 
@@ -77,10 +62,10 @@ export function createSessionTabCloseHandler({
     }
 
     void (async () => {
-      if (!(await isSessionEmptyFn(sessionId))) return;
+      if (!(await isSessionEmptyFn(sessionId)) || !isActive()) return;
 
       const deleted = await deleteSessionFn(sessionId);
-      if (deleted) invalidateSessionResource(sessionId);
+      if (deleted && isActive()) invalidateSessionResource(sessionId);
     })().catch((error) => {
       console.error("session close cleanup", error);
     });
@@ -91,50 +76,61 @@ export function useDesktopTabLifecycle({
   onEmpty,
   onInitialized,
   onZeroTabs,
+  onClose,
 }: {
   onEmpty?: (() => void) | null;
   onInitialized?: (() => void) | null;
   onZeroTabs?: (() => void) | null;
+  onClose: (tab: Tab) => void;
 }) {
-  const { registerOnEmpty, registerCanClose, registerOnClose, openNew, pin } =
-    useTabs();
+  const { registerOnEmpty, registerCanClose, registerOnClose } = useTabs();
+  const store = useTabsStore();
+  const controller = useScopedTabsController();
+  const connection = useSyncExternalStore(
+    controller.scope.subscribe,
+    controller.scope.getSnapshot,
+  );
   const hasOpenedInitialTab = useRef(false);
 
   useEffect(() => {
-    if (hasOpenedInitialTab.current) {
+    if (hasOpenedInitialTab.current || connection.state !== "connected") {
       return;
     }
 
-    hasOpenedInitialTab.current = true;
-
+    let active = true;
+    const isActive = () =>
+      active && controller.scope.getSnapshot().state === "connected";
+    const complete = (callback?: (() => void) | null) => {
+      hasOpenedInitialTab.current = true;
+      callback?.();
+    };
     void initializeDesktopTabs({
-      getTabs: () => useTabs.getState().tabs,
-      setRecentlyOpenedSessionIds: (ids) => {
-        useTabs.setState({ recentlyOpenedSessionIds: ids });
-      },
-      restorePinnedTabs: () =>
-        restorePinnedTabsToStore(openNew, pin, () => useTabs.getState().tabs),
-      restoreRecentlyOpenedSessionIds: restoreRecentlyOpenedToStore,
-      onInitialized,
-      onZeroTabs,
+      getTabs: () => store.getState().tabs,
+      restore: () => controller.start(),
+      isActive,
+      onInitialized: () => complete(onInitialized),
+      onZeroTabs: () => complete(onZeroTabs),
+    }).catch((error) => {
+      console.error("tab restoration", error);
+      if (isActive()) complete(onZeroTabs);
     });
-  }, [onInitialized, openNew, pin, onZeroTabs]);
+    return () => {
+      active = false;
+    };
+  }, [onInitialized, onZeroTabs, store, controller, connection.state]);
 
   useEffect(() => {
     registerOnEmpty(onEmpty ?? null);
+    return () => registerOnEmpty(null);
   }, [onEmpty, registerOnEmpty]);
 
   useEffect(() => {
     registerCanClose(() => true);
+    return () => registerCanClose(null);
   }, [registerCanClose]);
 
   useEffect(() => {
-    registerOnClose(
-      createSessionTabCloseHandler({
-        invalidateSessionResource: (sessionId) => {
-          useTabs.getState().invalidateResource("sessions", sessionId);
-        },
-      }),
-    );
-  }, [registerOnClose]);
+    registerOnClose(onClose);
+    return () => registerOnClose(null);
+  }, [registerOnClose, onClose]);
 }

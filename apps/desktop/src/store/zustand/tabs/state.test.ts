@@ -2,7 +2,8 @@ import "./test-matchers";
 
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { type Tab, useTabs } from ".";
+import type { Tab } from "./schema";
+import { tabsTestStore as useTabs } from "./test-utils";
 import {
   createSessionTab,
   createSettingsTab,

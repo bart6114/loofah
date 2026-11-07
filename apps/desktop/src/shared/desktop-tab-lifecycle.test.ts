@@ -17,81 +17,68 @@ const flushAsyncCleanup = () =>
 
 describe("desktop tab lifecycle", () => {
   describe("initializeDesktopTabs", () => {
-    it("restores pinned tabs and recent notes without opening a startup tab", async () => {
+    it("waits for captured scoped restoration before startup callbacks", async () => {
       const tabs = [createSessionTab({ id: "restored-session" })];
-      const openNew = vi.fn();
-      const setRecentlyOpenedSessionIds = vi.fn();
-      const restorePinnedTabs = vi.fn().mockResolvedValue(undefined);
-      const restoreRecentlyOpenedSessionIds = vi
-        .fn()
-        .mockImplementation(async (set: (ids: string[]) => void) => {
-          set(["restored-session"]);
-        });
-
-      await initializeDesktopTabs({
-        getTabs: () => tabs,
-        setRecentlyOpenedSessionIds,
-        restorePinnedTabs,
-        restoreRecentlyOpenedSessionIds,
-        onZeroTabs: null,
-        isTauriEnv: true,
-      });
-
-      expect(restorePinnedTabs).toHaveBeenCalledTimes(1);
-      expect(setRecentlyOpenedSessionIds).toHaveBeenCalledWith([
-        "restored-session",
-      ]);
-      expect(openNew).not.toHaveBeenCalled();
-    });
-
-    it("stays on home when startup has no restored tabs", async () => {
-      const openNew = vi.fn();
-
-      await initializeDesktopTabs({
-        getTabs: () => [],
-        setRecentlyOpenedSessionIds: vi.fn(),
-        restorePinnedTabs: vi.fn().mockResolvedValue(undefined),
-        restoreRecentlyOpenedSessionIds: vi.fn().mockResolvedValue(undefined),
-        onZeroTabs: null,
-        isTauriEnv: true,
-      });
-
-      expect(openNew).not.toHaveBeenCalled();
-    });
-
-    it("calls onZeroTabs when startup has no restored tabs", async () => {
-      const openNew = vi.fn();
-      const onZeroTabs = vi.fn();
-
-      await initializeDesktopTabs({
-        getTabs: () => [],
-        setRecentlyOpenedSessionIds: vi.fn(),
-        restorePinnedTabs: vi.fn().mockResolvedValue(undefined),
-        restoreRecentlyOpenedSessionIds: vi.fn().mockResolvedValue(undefined),
-        onZeroTabs,
-        isTauriEnv: true,
-      });
-
-      expect(openNew).not.toHaveBeenCalled();
-      expect(onZeroTabs).toHaveBeenCalledTimes(1);
-    });
-
-    it("runs startup work even when pinned tabs were restored", async () => {
-      const tabs = [createSessionTab({ id: "restored-session" })];
+      const restore = vi.fn().mockResolvedValue(undefined);
       const onInitialized = vi.fn();
       const onZeroTabs = vi.fn();
-
       await initializeDesktopTabs({
         getTabs: () => tabs,
-        setRecentlyOpenedSessionIds: vi.fn(),
-        restorePinnedTabs: vi.fn().mockResolvedValue(undefined),
-        restoreRecentlyOpenedSessionIds: vi.fn().mockResolvedValue(undefined),
+        restore,
+        isActive: () => true,
         onInitialized,
         onZeroTabs,
-        isTauriEnv: true,
       });
+      expect(restore).toHaveBeenCalledOnce();
+      expect(onInitialized).toHaveBeenCalledOnce();
+      expect(onZeroTabs).not.toHaveBeenCalled();
+    });
 
-      expect(onInitialized).toHaveBeenCalledTimes(1);
+    it("opens the default tab after restoration finds no tabs", async () => {
+      const onZeroTabs = vi.fn();
+      await initializeDesktopTabs({
+        getTabs: () => [],
+        restore: async () => {},
+        isActive: () => true,
+        onZeroTabs,
+      });
+      expect(onZeroTabs).toHaveBeenCalledOnce();
+    });
+
+    it("does not apply delayed startup callbacks after host teardown", async () => {
+      let finish!: () => void;
+      let active = true;
+      const onInitialized = vi.fn(),
+        onZeroTabs = vi.fn();
+      const startup = initializeDesktopTabs({
+        getTabs: () => [],
+        restore: () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+        isActive: () => active,
+        onInitialized,
+        onZeroTabs,
+      });
+      active = false;
+      finish();
+      await startup;
+      expect(onInitialized).not.toHaveBeenCalled();
+      expect(onZeroTabs).not.toHaveBeenCalled();
+    });
+
+    it("checks the captured host again if initialization retires it", async () => {
+      let active = true;
+      const onZeroTabs = vi.fn();
+      await initializeDesktopTabs({
+        getTabs: () => [],
+        restore: async () => {},
+        isActive: () => active,
+        onInitialized: () => {
+          active = false;
+        },
+        onZeroTabs,
+      });
       expect(onZeroTabs).not.toHaveBeenCalled();
     });
   });

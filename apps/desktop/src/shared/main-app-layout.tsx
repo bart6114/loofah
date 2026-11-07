@@ -3,13 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 
-import { useNavigationEvents } from "./hooks/useNavigationEvents";
-
-import { DevtoolsFloatingPanelHost } from "~/devtools-panel/host";
-import { UndoDeleteToast } from "~/sidebar/toast/undo-delete-toast";
-
 export default function MainAppLayout() {
-  useNavigationEvents();
   useFullscreenAttribute();
 
   return <MainAppContent />;
@@ -19,8 +13,6 @@ function MainAppContent() {
   return (
     <>
       <Outlet />
-      <UndoDeleteToast />
-      <DevtoolsFloatingPanelHost />
     </>
   );
 }

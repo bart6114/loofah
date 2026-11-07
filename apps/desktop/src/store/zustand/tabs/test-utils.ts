@@ -1,5 +1,9 @@
-import { type Tab, useTabs } from ".";
+import { createElement, type ReactNode } from "react";
+
 import { computeHistoryFlags } from "./navigation";
+import type { Tab } from "./schema";
+import { TabsStoreProvider } from "./scoped-provider";
+import { createTabsStore } from "./store";
 
 import { id } from "~/shared/utils";
 
@@ -42,7 +46,12 @@ export const createSettingsTab = (
   },
 });
 
-type TabsStore = ReturnType<typeof useTabs.getState>;
+export const tabsTestStore = createTabsStore("local:tabs-test", () => true);
+export function TabsTestProvider({ children }: { children: ReactNode }) {
+  return createElement(TabsStoreProvider, { store: tabsTestStore }, children);
+}
+
+type TabsStore = ReturnType<typeof tabsTestStore.getState>;
 type TabsStateSlice = Pick<
   TabsStore,
   | "currentTab"
@@ -69,10 +78,11 @@ const createDefaultTabsState = (): TabsStateSlice => ({
 export const seedTabsStore = (
   overrides: Partial<TabsStateSlice> = {},
 ): void => {
+  tabsTestStore.clear();
   const state = { ...createDefaultTabsState(), ...overrides };
-  useTabs.setState(() => state);
+  tabsTestStore.setState(() => state);
   const flags = computeHistoryFlags(state.history, state.currentTab);
-  useTabs.setState(() => flags);
+  tabsTestStore.setState(() => flags);
 };
 
 export const resetTabsStore = (): void => {

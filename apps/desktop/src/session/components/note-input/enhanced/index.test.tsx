@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+
+import { TabsTestProvider } from "~/store/zustand/tabs/test-utils";
 function render(ui: ReactNode) {
   const client = new QueryClient();
   return renderUI(ui, {
     wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <QueryClientProvider client={client}>
+        <TabsTestProvider>{children}</TabsTestProvider>
+      </QueryClientProvider>
     ),
   });
 }

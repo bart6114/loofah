@@ -8,7 +8,7 @@ import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { trackPendingSoftDelete } from "~/session/pending-soft-deletes";
 import { softDeleteSession } from "~/session/queries";
 import { listenerStore } from "~/store/zustand/listener/instance";
-import { useTabs } from "~/store/zustand/tabs";
+import { useTabs, useTabsStore } from "~/store/zustand/tabs";
 import {
   type DeletedSessionData,
   useUndoDelete,
@@ -50,6 +50,7 @@ function isSessionDeletedForUndoPayload(
 }
 
 export function useDeleteSession() {
+  const tabsStore = useTabsStore();
   const invalidateResource = useTabs((state) => state.invalidateResource);
   const addDeletion = useUndoDelete((state) => state.addDeletion);
   const clearDeletion = useUndoDelete((state) => state.clearDeletion);
@@ -84,7 +85,7 @@ export function useDeleteSession() {
       // Optimistic path: hide the row, drop tab history, and show the undo
       // toast before the soft-delete commits; rolled back below on failure.
       const tombstone = new Date().toISOString();
-      const hadOpenTab = useTabs
+      const hadOpenTab = tabsStore
         .getState()
         .tabs.some((tab) => tab.type === "sessions" && tab.id === sessionId);
       invalidateResource("sessions", sessionId);
@@ -136,7 +137,7 @@ export function useDeleteSession() {
           if (!didDelete) {
             if (isMainWindow) clearOptimisticDeletion();
             if (hadOpenTab) {
-              useTabs
+              tabsStore
                 .getState()
                 .openCurrent({ type: "sessions", id: sessionId });
             }
@@ -151,7 +152,7 @@ export function useDeleteSession() {
         }
       })();
     },
-    [invalidateResource, addDeletion, clearDeletion],
+    [invalidateResource, addDeletion, clearDeletion, tabsStore],
   );
 }
 

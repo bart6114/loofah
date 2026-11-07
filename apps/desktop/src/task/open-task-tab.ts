@@ -3,7 +3,11 @@ import type { Node } from "prosemirror-model";
 import type { AppLinkAttrs } from "@hypr/editor/app-link";
 
 import { id } from "~/shared/utils";
-import { type Tab, type TaskResource, useTabs } from "~/store/zustand/tabs";
+import {
+  type Tab,
+  type TaskResource,
+  type ScopedTabsStore,
+} from "~/store/zustand/tabs";
 
 export function collectSiblingResources(
   doc: Node,
@@ -51,8 +55,8 @@ export function collectSiblingResources(
   return resources;
 }
 
-export function openTaskTab(resources: TaskResource[]) {
-  const state = useTabs.getState();
+export function openTaskTab(store: ScopedTabsStore, resources: TaskResource[]) {
+  const state = store.getState();
   const { tabs } = state;
 
   const newTab: Tab = {
@@ -84,7 +88,7 @@ export function openTaskTab(resources: TaskResource[]) {
   }
 
   const deactivated = tabs.map((tab) => ({ ...tab, active: false }));
-  useTabs.setState({
+  store.setState({
     tabs: [...deactivated, newTab],
     currentTab: newTab,
   });

@@ -1,0 +1,225 @@
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+import type { VaultScope } from "~/shared/application/vault-scope";
+import {
+  useTabs,
+  useTabsStore,
+  type ScopedTabsStore,
+} from "~/store/zustand/tabs";
+import { ScopedTabsProvider } from "~/store/zustand/tabs/scoped-provider";
+import {
+  deferred,
+  deviceFixture,
+  scopedFixture,
+} from "~/store/zustand/tabs/scoped-test-utils";
+
+const mocks = vi.hoisted(() => ({
+  scope: null as VaultScope | null,
+  welcome: vi.fn(),
+  bridge: vi.fn(),
+}));
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({ scope: mocks.scope }),
+}));
+vi.mock("~/onboarding/welcome-note", () => ({
+  takePendingWelcomeSession: mocks.welcome,
+}));
+vi.mock("~/services/enhancer", () => ({ initEnhancerService: vi.fn() }));
+vi.mock("~/ai/hooks", () => ({ useLanguageModel: () => null }));
+vi.mock("~/stt/window-control", () => ({
+  MainListenerControlBridge: () => null,
+}));
+vi.mock("@tanstack/react-router", () => ({
+  useRouteContext: () => ({ aiTaskStore: null }),
+}));
+vi.mock("~/services/event-listeners", async () => {
+  const { useTabsStore } = await import("~/store/zustand/tabs");
+  return {
+    EventListeners: () => {
+      mocks.bridge("notifications", useTabsStore().scope);
+      return null;
+    },
+  };
+});
+vi.mock("~/sidebar/toast/undo-delete-toast", async () => {
+  const { useTabsStore } = await import("~/store/zustand/tabs");
+  return {
+    UndoDeleteToast: () => {
+      mocks.bridge("undo-toast", useTabsStore().scope);
+      return null;
+    },
+  };
+});
+vi.mock("~/devtools-panel/host", async () => {
+  const { useTabsStore } = await import("~/store/zustand/tabs");
+  return {
+    DevtoolsFloatingPanelHost: () => {
+      mocks.bridge("devtools", useTabsStore().scope);
+      return null;
+    },
+  };
+});
+vi.mock("~/session/hooks/useDeleteSession", async () => {
+  const { useTabsStore } = await import("~/store/zustand/tabs");
+  return {
+    useRemoteSessionDeletionUndoListener: () => {
+      mocks.bridge("undo-events", useTabsStore().scope);
+    },
+  };
+});
+
+import { ClassicMainServices, useClassicMainLifecycle } from "./lifecycle";
+
+let captured: ScopedTabsStore;
+function Probe() {
+  useClassicMainLifecycle();
+  captured = useTabsStore();
+  const current = useTabs((state) => state.currentTab);
+  return (
+    <output>
+      {current ? ("id" in current ? current.id : current.type) : "pending"}
+    </output>
+  );
+}
+
+beforeEach(() => {
+  mocks.welcome.mockReset().mockReturnValue(null);
+  mocks.bridge.mockClear();
+});
+afterEach(cleanup);
+
+it("binds every tab-dependent bootstrap bridge to the captured main store", async () => {
+  const { scope } = scopedFixture("local:services");
+  const { device } = deviceFixture();
+  mocks.scope = scope;
+  render(
+    <ScopedTabsProvider scope={scope} deviceState={device} managePins>
+      <ClassicMainServices />
+    </ScopedTabsProvider>,
+  );
+  await waitFor(() => {
+    for (const bridge of [
+      "notifications",
+      "undo-toast",
+      "devtools",
+      "undo-events",
+    ])
+      expect(mocks.bridge).toHaveBeenCalledWith(bridge, "local:services");
+  });
+});
+
+it("waits for canonical pinned restoration before opening any default tab", async () => {
+  const { scope, summaries } = scopedFixture("local:pins");
+  const { device, pins } = deviceFixture();
+  mocks.scope = scope;
+  pins.set(
+    scope.client.scope,
+    JSON.stringify([{ type: "sessions", id: "pinned", pinned: true }]),
+  );
+  const lookup =
+    deferred<{ id: string; title: string; created_at: string }[]>();
+  summaries.mockReturnValueOnce(lookup.promise);
+  render(
+    <ScopedTabsProvider scope={scope} deviceState={device} managePins>
+      <Probe />
+    </ScopedTabsProvider>,
+  );
+  await waitFor(() => expect(summaries).toHaveBeenCalledOnce());
+  expect(screen.getByRole("status").textContent).toBe("pending");
+  await act(async () =>
+    lookup.resolve([
+      { id: "pinned", title: "Pinned", created_at: "2026-01-01" },
+    ]),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("pinned"),
+  );
+  expect(captured.getState().tabs).toMatchObject([
+    { id: "pinned", pinned: true },
+  ]);
+});
+
+it("consumes the local welcome handoff once after restoration under StrictMode", async () => {
+  const { scope } = scopedFixture("local:welcome");
+  const { device, pins } = deviceFixture();
+  mocks.scope = scope;
+  mocks.welcome.mockReturnValueOnce("welcome");
+  pins.set(
+    scope.client.scope,
+    JSON.stringify([{ type: "sessions", id: "pinned", pinned: true }]),
+  );
+  render(
+    <StrictMode>
+      <ScopedTabsProvider scope={scope} deviceState={device} managePins>
+        <Probe />
+      </ScopedTabsProvider>
+    </StrictMode>,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("welcome"),
+  );
+  expect(mocks.welcome).toHaveBeenCalledOnce();
+  expect(captured.getState().tabs).toMatchObject([
+    { id: "pinned", pinned: true },
+    { id: "welcome" },
+  ]);
+});
+
+it("keeps startup callbacks pending until the captured local connection is ready", async () => {
+  const fixture = scopedFixture("local:connecting");
+  const { device } = deviceFixture();
+  fixture.state("connecting");
+  mocks.scope = fixture.scope;
+  render(
+    <ScopedTabsProvider scope={fixture.scope} deviceState={device} managePins>
+      <Probe />
+    </ScopedTabsProvider>,
+  );
+  await waitFor(() => expect(device.recentSessions).toHaveBeenCalledOnce());
+  expect(screen.getByRole("status").textContent).toBe("pending");
+  expect(mocks.welcome).not.toHaveBeenCalled();
+  act(() => fixture.state("connected"));
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("empty"),
+  );
+});
+
+it("does not apply delayed startup or welcome callbacks from a retired scope", async () => {
+  const first = scopedFixture("local:first"),
+    second = scopedFixture("local:second");
+  const { device, pins } = deviceFixture();
+  mocks.scope = first.scope;
+  pins.set(
+    first.scope.client.scope,
+    JSON.stringify([{ type: "sessions", id: "private-first", pinned: true }]),
+  );
+  const lookup =
+    deferred<{ id: string; title: string; created_at: string }[]>();
+  first.summaries.mockReturnValueOnce(lookup.promise);
+  const { rerender } = render(
+    <ScopedTabsProvider scope={first.scope} deviceState={device} managePins>
+      <Probe />
+    </ScopedTabsProvider>,
+  );
+  await waitFor(() => expect(first.summaries).toHaveBeenCalledOnce());
+  const old = captured;
+  mocks.scope = second.scope;
+  rerender(
+    <ScopedTabsProvider scope={second.scope} deviceState={device} managePins>
+      <Probe />
+    </ScopedTabsProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("empty"),
+  );
+  await act(async () =>
+    lookup.resolve([
+      { id: "private-first", title: "Private", created_at: "2026-01-01" },
+    ]),
+  );
+  expect(old.getState().tabs).toEqual([]);
+  expect(screen.getByRole("status").textContent).toBe("empty");
+  expect(mocks.welcome).toHaveBeenCalledOnce();
+});

@@ -1,8 +1,7 @@
 import { expect } from "vitest";
 
-import type { Tab, useTabs } from ".";
-
-type TabsState = ReturnType<typeof useTabs.getState>;
+import type { Tab } from "./schema";
+import type { TabsState } from "./store";
 
 interface CustomMatchers<R = unknown> {
   toHaveNavigationState: (expected: {
