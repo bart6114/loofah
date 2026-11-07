@@ -339,7 +339,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(processingAvailable
-        ? ["summary_body_jobs", "processing_settings"]
+        ? ["summary_body_jobs", "template_output_jobs", "processing_settings"]
         : []),
       "attachment_upload",
       "audio_playback",

@@ -259,7 +259,14 @@ fn scope_key(scope: &str) -> String {
 }
 
 fn validate_input(input: &SummaryJobRequest) -> Result<()> {
-    if input.target != DocumentTarget::Summary
+    let valid_target = match &input.target {
+        DocumentTarget::Summary => true,
+        DocumentTarget::TemplateOutput { document_id } => {
+            document_id.len() <= 512
+                && hypr_loofah_protocol::validate_session_id(document_id).is_ok()
+        }
+    };
+    if !valid_target
         || input.session_id.is_empty()
         || input.session_id.len() > 512
         || input.expected_revision.is_empty()
@@ -365,7 +372,13 @@ fn read(path: &Path, scope: &str) -> Result<Stored> {
             .job
             .as_ref()
             .is_none_or(|job| !job.state.is_terminal())
-            && !active.insert(&receipt.input.session_id)
+            && !active.insert((
+                &receipt.input.session_id,
+                match &receipt.input.target {
+                    DocumentTarget::Summary => None,
+                    DocumentTarget::TemplateOutput { document_id } => Some(document_id),
+                },
+            ))
         {
             return Err(damaged());
         }

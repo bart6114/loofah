@@ -121,10 +121,10 @@ async fn public_jobs_replay_after_application_and_return_bound_private_recovery_
     assert_eq!(result.job_id, job.id);
     assert_eq!(result.session_id, "note");
     assert_eq!(result.markdown, "# Release\n- Ship Friday.");
-    let unsupported = SummaryJobRequest {
+    let invalid_target = SummaryJobRequest {
         session_id: "note".into(),
         target: DocumentTarget::TemplateOutput {
-            document_id: "output".into(),
+            document_id: "../output".into(),
         },
         expected_revision: "revision".into(),
     };
@@ -134,7 +134,7 @@ async fn public_jobs_replay_after_application_and_return_bound_private_recovery_
                 "alice",
                 "POST",
                 &path,
-                Some(serde_json::to_value(unsupported).unwrap()),
+                Some(serde_json::to_value(invalid_target).unwrap()),
                 Some(&uuid::Uuid::new_v4().to_string())
             )
             .await
@@ -461,7 +461,7 @@ async fn job_event_replay_is_member_scoped_over_the_authenticated_tcp_channel() 
     provider.close().await;
 }
 
-async fn native_client(
+pub(super) async fn native_client(
     fixture: &Fixture,
     rtt: u64,
     reply_gate: CancellationToken,

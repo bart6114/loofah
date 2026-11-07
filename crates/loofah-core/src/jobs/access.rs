@@ -158,12 +158,6 @@ impl VaultContext {
         request_id: String,
         input: SummaryJobRequest,
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
-        if input.target != DocumentTarget::Summary {
-            return Err(rejected(
-                ErrorCode::Validation,
-                "Template generation is not available through summary jobs",
-            ));
-        }
         self.processing_jobs()?
             .submit(namespace, request_id, input)
             .await

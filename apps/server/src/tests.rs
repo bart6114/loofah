@@ -12,6 +12,7 @@ mod recording_delete;
 mod session_cleanup;
 mod session_summaries;
 mod tasks;
+mod template_jobs;
 mod waveform;
 
 use std::sync::Arc;

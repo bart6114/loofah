@@ -170,6 +170,144 @@ async fn unacknowledged_inputs_survive_restart_and_repeated_preparation_reuses_t
 }
 
 #[tokio::test]
+async fn template_receipts_reopen_with_exact_target_revision_and_uuid_without_cross_target_acknowledgement()
+ {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("requests");
+    let store = JobSubmissions::new(root.clone()).unwrap();
+    let summary = store.prepare("scope".into(), input()).await.unwrap();
+    let mut request = input();
+    request.target = DocumentTarget::TemplateOutput {
+        document_id: "existing-output".into(),
+    };
+    let template = store
+        .prepare("scope".into(), request.clone())
+        .await
+        .unwrap();
+    let mut other = request.clone();
+    other.target = DocumentTarget::TemplateOutput {
+        document_id: "other-output".into(),
+    };
+    let other = store.prepare("scope".into(), other).await.unwrap();
+    assert_ne!(summary.request_id, template.request_id);
+    assert_ne!(other.request_id, template.request_id);
+    drop(store);
+
+    let reopened = JobSubmissions::new(root.clone()).unwrap();
+    for original in [&summary, &template, &other] {
+        assert_eq!(
+            reopened
+                .load("scope".into(), original.request_id.clone())
+                .await
+                .unwrap()
+                .as_ref(),
+            Some(original)
+        );
+    }
+    assert_eq!(
+        reopened
+            .prepare("scope".into(), request.clone())
+            .await
+            .unwrap(),
+        template
+    );
+    let bytes = std::fs::read(path(&root, "scope")).unwrap();
+    let mut mismatched = snapshot(&template, ProcessingJobState::Running);
+    mismatched.target = DocumentTarget::Summary;
+    assert_eq!(
+        reopened
+            .observe("scope".into(), template.request_id.clone(), mismatched)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    request.expected_revision = "different-revision".into();
+    assert_eq!(
+        reopened
+            .prepare("scope".into(), request)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(std::fs::read(path(&root, "scope")).unwrap(), bytes);
+    let running = snapshot(&template, ProcessingJobState::Running);
+    assert_eq!(
+        reopened
+            .observe("scope".into(), template.request_id.clone(), running.clone())
+            .await
+            .unwrap()
+            .job,
+        Some(running)
+    );
+}
+
+#[tokio::test]
+async fn duplicate_active_template_targets_are_retained_for_recovery_without_resetting_receipts() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("requests");
+    let store = JobSubmissions::new(root.clone()).unwrap();
+    let mut request = input();
+    request.target = DocumentTarget::TemplateOutput {
+        document_id: "existing-output".into(),
+    };
+    let first = store.prepare("scope".into(), request).await.unwrap();
+    let mut duplicate = first.clone();
+    duplicate.request_id = uuid::Uuid::new_v4().to_string();
+    let bytes = serde_json::to_vec(&Stored {
+        schema_version: 1,
+        receipts: vec![first.clone(), duplicate],
+    })
+    .unwrap();
+    let file = path(&root, "scope");
+    std::fs::write(&file, &bytes).unwrap();
+    assert_eq!(
+        store.list("scope".into(), None).await.unwrap_err().code,
+        ErrorCode::Internal
+    );
+    assert_eq!(
+        store
+            .prepare("scope".into(), first.input)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Internal
+    );
+    assert_eq!(std::fs::read(file).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn invalid_template_targets_cannot_change_existing_device_receipts() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("requests");
+    let store = JobSubmissions::new(root.clone()).unwrap();
+    store.prepare("scope".into(), input()).await.unwrap();
+    let bytes = std::fs::read(path(&root, "scope")).unwrap();
+    for document_id in [
+        "".into(),
+        "../escape".into(),
+        "CON".into(),
+        "a/b".into(),
+        "a\\b".into(),
+        "a\0b".into(),
+        "x".repeat(513),
+    ] {
+        let mut request = input();
+        request.target = DocumentTarget::TemplateOutput { document_id };
+        assert_eq!(
+            store
+                .prepare("scope".into(), request)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+        assert_eq!(std::fs::read(path(&root, "scope")).unwrap(), bytes);
+    }
+}
+
+#[tokio::test]
 async fn independent_store_instances_serialize_windows_and_processes_with_one_active_receipt() {
     let temp = tempfile::tempdir().unwrap();
     let first = JobSubmissions::new(temp.path().join("requests")).unwrap();

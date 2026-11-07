@@ -89,6 +89,17 @@ mod tests {
 
     #[tokio::test]
     async fn native_commands_round_trip_device_receipts_without_login_or_a_vault_session() {
+        for target in [
+            hypr_loofah_protocol::DocumentTarget::Summary,
+            hypr_loofah_protocol::DocumentTarget::TemplateOutput {
+                document_id: "existing-output".into(),
+            },
+        ] {
+            round_trip(target).await;
+        }
+    }
+
+    async fn round_trip(target: hypr_loofah_protocol::DocumentTarget) {
         let root = tempfile::tempdir().unwrap();
         let store = JobSubmissions::new(root.path().join("requests")).unwrap();
         let state = JobSubmissionState::default();
@@ -100,7 +111,7 @@ mod tests {
         let scope = "local:fixture".to_owned();
         let input = SummaryJobRequest {
             session_id: "note".into(),
-            target: hypr_loofah_protocol::DocumentTarget::Summary,
+            target,
             expected_revision: "baseline".into(),
         };
         let receipt = device_job_submission_prepare(app.handle().clone(), scope.clone(), input)

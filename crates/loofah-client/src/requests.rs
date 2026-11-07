@@ -363,6 +363,29 @@ impl RemoteClient {
             }
             return Err(error);
         }
+        if matches!(
+            &operation,
+            RemoteOperation::SubmitSummaryJob {
+                input: SummaryJobRequest {
+                    target: DocumentTarget::TemplateOutput { .. },
+                    ..
+                },
+                ..
+            }
+        ) && !self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "template_output_jobs")
+        {
+            let mut error = failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support template output generation. Upgrade the server, then reconnect.",
+            );
+            error.request_id = Some(request_id.to_owned());
+            error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            return Err(error);
+        }
         if let RemoteOperation::AttachmentInfo { attachment_id, .. }
         | RemoteOperation::AttachmentMetadata { attachment_id, .. }
         | RemoteOperation::RemoveAttachment { attachment_id, .. } = &operation
