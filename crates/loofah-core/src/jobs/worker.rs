@@ -93,7 +93,7 @@ impl JobWorker {
         self.finished.clone()
     }
 
-    pub(crate) fn request_shutdown(&self) {
+    pub fn request_shutdown(&self) {
         self.stop.cancel();
     }
 }

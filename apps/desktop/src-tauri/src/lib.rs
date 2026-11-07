@@ -10,6 +10,7 @@ mod ext;
 mod identifier_migration;
 mod legacy_db;
 mod legacy_llm;
+mod processing;
 mod recording_meta;
 mod remote;
 mod search_index;
@@ -212,6 +213,7 @@ pub async fn main() {
         })
         .manage(audio)
         .manage(chatgpt::ChatgptState::default())
+        .manage(processing::ProcessingState::default())
         .manage(remote::RemoteState::default())
         .manage(attachment_upload::DeviceUploadIo::default())
         .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
@@ -384,7 +386,7 @@ pub async fn main() {
                             .join("backend")
                             .join(&vault_key)
                             .join("creates");
-                        app_handle.manage(std::sync::Arc::new(
+                        let context = std::sync::Arc::new(
                             hypr_loofah_core::VaultContext::new(
                                 format!("local:{vault_key}"),
                                 store.clone(),
@@ -399,7 +401,9 @@ pub async fn main() {
                                     .clone(),
                             )
                             .with_operation_storage(operation_root),
-                        ));
+                        );
+                        application::forward_changes(&app_handle, &context);
+                        app_handle.manage(context);
 
                         search_index::spawn(app_handle.clone(), store.clone());
                         session_store::spawn_dispatcher(app_handle.clone());
@@ -483,6 +487,8 @@ pub async fn main() {
             }
 
             if should_force_quit() {
+                app.state::<processing::ProcessingState>()
+                    .request_shutdown();
                 // Force-quit (macOS Cmd+Q intercept) is real user intent to exit now, but
                 // the debounce buffer may still hold the only copy of recent words -- the
                 // original transcript-loss incident. Bounded best-effort flush, then let
@@ -494,6 +500,8 @@ pub async fn main() {
 
             api.prevent_exit();
             if app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err() {
+                app.state::<processing::ProcessingState>()
+                    .request_shutdown();
                 // The frontend never received the event, so complete_app_exit (and its
                 // flush_all) will never run -- flush here rather than exit with a dirty
                 // transcript buffer.
@@ -503,6 +511,8 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<processing::ProcessingState>()
+                .request_shutdown();
             app.state::<chatgpt::ChatgptState>().shutdown();
             app.state::<remote::RemoteState>().shutdown();
             app.state::<attachment_upload::DeviceUploadIo>().shutdown();
@@ -596,6 +606,12 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             draft_cache::draft_cache_put::<tauri::Wry>,
             draft_cache::draft_cache_remove::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
+            application::application_processing_available::<tauri::Wry>,
+            application::application_submit_summary_job::<tauri::Wry>,
+            application::application_processing_jobs::<tauri::Wry>,
+            application::application_processing_job::<tauri::Wry>,
+            application::application_processing_job_result::<tauri::Wry>,
+            application::application_cancel_processing_job::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
             application::application_agent_list::<tauri::Wry>,

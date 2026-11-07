@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   commands: {
     applicationScope: vi.fn(),
+    applicationProcessingAvailable: vi.fn(),
+    applicationSubmitSummaryJob: vi.fn(),
+    applicationProcessingJobs: vi.fn(),
+    applicationProcessingJob: vi.fn(),
+    applicationProcessingJobResult: vi.fn(),
+    applicationCancelProcessingJob: vi.fn(),
     applicationAgentList: vi.fn(),
     applicationAgentSearch: vi.fn(),
     applicationAgentMeeting: vi.fn(),
@@ -83,6 +89,7 @@ const vault = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  native.commands.applicationProcessingAvailable.mockResolvedValue(true);
   native.commands.applicationScope.mockResolvedValue({
     status: "ok",
     data: "local:canonical-vault",
@@ -104,6 +111,148 @@ beforeEach(() => {
     native.commands.applicationTags,
   ])
     command.mockResolvedValue({ status: "ok", data: [] });
+});
+
+it("advertises local summary jobs only when the native worker is available", async () => {
+  expect((await connectLocalVault()).features).toContain("summary_body_jobs");
+  native.commands.applicationProcessingAvailable.mockResolvedValue(false);
+  const local = await connectLocalVault();
+  expect(local.features).not.toContain("summary_body_jobs");
+  expect(local.canEdit).toBe(true);
+  expect(local.networkMode).toBe("always");
+});
+
+it("preserves summary receipt UUIDs and identical job operations across both transports", async () => {
+  const input = {
+    session_id: "note",
+    target: { kind: "summary" as const },
+    expected_revision: "baseline",
+  };
+  const list = {
+    session_id: "note",
+    active_only: false,
+    limit: 50,
+    after: null,
+  };
+  const job = {
+    id: crypto.randomUUID(),
+    session_id: "note",
+    target: input.target,
+    state: "succeeded",
+    phase: null,
+    failure: null,
+    created_at: "time",
+    updated_at: "time",
+  };
+  const page = { items: [job], next_cursor: null };
+  const result = {
+    vault_id: "first",
+    job_id: job.id,
+    session_id: "note",
+    target: input.target,
+    markdown: "Recovered result",
+    suggested_tags: null,
+  };
+  for (const command of [
+    native.commands.applicationSubmitSummaryJob,
+    native.commands.applicationProcessingJob,
+    native.commands.applicationCancelProcessingJob,
+  ])
+    command.mockResolvedValue({ status: "ok", data: job });
+  native.commands.applicationProcessingJobs.mockResolvedValue({
+    status: "ok",
+    data: page,
+  });
+  native.commands.applicationProcessingJobResult.mockResolvedValue({
+    status: "ok",
+    data: result,
+  });
+  const options = { requestId: crypto.randomUUID() };
+  const local = await connectLocalVault();
+  expect(await local.submitSummaryJob(input, options)).toEqual(job);
+  expect(await local.processingJobs(list)).toEqual(page);
+  expect(await local.processingJob(job.id)).toEqual(job);
+  expect(await local.processingJobResult(job.id)).toEqual(result);
+  expect(await local.cancelProcessingJob(job.id, options)).toEqual(job);
+  expect(native.commands.applicationSubmitSummaryJob).toHaveBeenCalledWith(
+    options.requestId,
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(job);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.test/",
+        capabilities: { features: ["summary_body_jobs"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  await remote.submitSummaryJob(input, options);
+  await remote.processingJobs(list);
+  await remote.processingJob(job.id);
+  await remote.processingJobResult(job.id);
+  await remote.cancelProcessingJob(job.id, options);
+  expect(request.mock.calls).toEqual([
+    [
+      { kind: "submit_summary_job", vault_id: "first", input },
+      "processing_job",
+      options,
+    ],
+    [
+      { kind: "processing_jobs", vault_id: "first", input: list },
+      "processing_jobs",
+      undefined,
+    ],
+    [
+      { kind: "processing_job", vault_id: "first", job_id: job.id },
+      "processing_job",
+      undefined,
+    ],
+    [
+      { kind: "processing_job_result", vault_id: "first", job_id: job.id },
+      "processing_job_result",
+      undefined,
+    ],
+    [
+      { kind: "cancel_processing_job", vault_id: "first", job_id: job.id },
+      "processing_job",
+      options,
+    ],
+  ]);
+});
+
+it("treats an aborted local submission as uncertain and reuses its UUID for explicit replay", async () => {
+  const controller = new AbortController();
+  const options = { requestId: crypto.randomUUID(), signal: controller.signal };
+  const input = {
+    session_id: "note",
+    target: { kind: "summary" as const },
+    expected_revision: "baseline",
+  };
+  native.commands.applicationSubmitSummaryJob
+    .mockImplementationOnce(async () => {
+      controller.abort();
+      return { status: "ok", data: { id: "persisted" } };
+    })
+    .mockResolvedValue({ status: "ok", data: { id: "persisted" } });
+  const local = await connectLocalVault();
+  await expect(local.submitSummaryJob(input, options)).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      request_id: options.requestId,
+      mutation_outcome: "unknown",
+    },
+  });
+  expect(
+    await local.submitSummaryJob(input, { requestId: options.requestId }),
+  ).toEqual({ id: "persisted" });
+  expect(native.commands.applicationSubmitSummaryJob.mock.calls).toEqual([
+    [options.requestId, input],
+    [options.requestId, input],
+  ]);
 });
 
 it("uses device preparation and the same stable upload declaration through either vault adapter", async () => {

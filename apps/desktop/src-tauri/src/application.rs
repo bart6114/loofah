@@ -256,13 +256,92 @@ pub struct ApplicationChanged {
 }
 
 pub fn publish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, change: hypr_loofah_protocol::Change) {
-    use tauri_specta::Event;
     if let Some(context) = app.try_state::<Arc<VaultContext>>() {
-        let event = context.events.publish(change);
-        if let Err(error) = (ApplicationChanged { event }).emit(app) {
-            tracing::warn!(%error, "failed to emit application change");
-        }
+        context.events.publish(change);
     }
+}
+
+pub fn forward_changes<R: tauri::Runtime>(app: &tauri::AppHandle<R>, context: &Arc<VaultContext>) {
+    use tauri_specta::Event;
+    let mut changes = context
+        .events
+        .subscribe_for(crate::processing::PRINCIPAL, None);
+    let stopping = app.state::<crate::processing::ProcessingState>().stopping();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let event = tokio::select! {
+                biased;
+                _ = stopping.cancelled() => break,
+                event = changes.recv() => match event { Some(event) => event, None => break },
+            };
+            if let Err(error) = (ApplicationChanged { event }).emit(&app) {
+                tracing::warn!(%error, "failed to emit application change");
+            }
+        }
+    });
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn application_processing_available<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
+    context(&app).is_ok_and(|context| context.processing_jobs().is_ok())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_submit_summary_job<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    request_id: String,
+    input: hypr_loofah_protocol::SummaryJobRequest,
+) -> Result<hypr_loofah_protocol::ProcessingJobSnapshot, ApplicationError> {
+    context(&app)?
+        .submit_summary_job(crate::processing::PRINCIPAL.into(), request_id, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_processing_jobs<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::ListProcessingJobsInput,
+) -> Result<hypr_loofah_protocol::ProcessingJobPage, ApplicationError> {
+    context(&app)?
+        .list_processing_jobs(crate::processing::PRINCIPAL.into(), input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_processing_job<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    job_id: String,
+) -> Result<hypr_loofah_protocol::ProcessingJobSnapshot, ApplicationError> {
+    context(&app)?
+        .processing_job(crate::processing::PRINCIPAL.into(), job_id)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_processing_job_result<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    job_id: String,
+) -> Result<Option<hypr_loofah_protocol::ProcessingJobResult>, ApplicationError> {
+    context(&app)?
+        .processing_job_result(crate::processing::PRINCIPAL.into(), job_id)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_cancel_processing_job<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    job_id: String,
+) -> Result<hypr_loofah_protocol::ProcessingJobSnapshot, ApplicationError> {
+    context(&app)?
+        .cancel_processing_job(crate::processing::PRINCIPAL.into(), job_id)
+        .await
 }
 
 #[tauri::command]

@@ -19,6 +19,8 @@ tauri-build = { workspace = true, features = [] }
 serde_json = { workspace = true }
 
 [dependencies]
+async-stream = { workspace = true }
+base64 = { workspace = true }
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }
 
 camino = { workspace = true }

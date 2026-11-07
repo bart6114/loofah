@@ -62,6 +62,11 @@ import type {
   ReplaceTasksRequest,
   TranscriptWithData,
   VaultInfo,
+  SummaryJobRequest,
+  ListProcessingJobsInput,
+  ProcessingJobSnapshot,
+  ProcessingJobPage,
+  ProcessingJobResult,
 } from "./protocol.gen";
 import type { NativeRemoteConnection } from "./remote";
 
@@ -88,6 +93,26 @@ export type VaultClient = {
   readonly canEdit: boolean;
   readonly attachmentPresentation: AttachmentPresentation;
   readonly features: readonly string[];
+  submitSummaryJob: (
+    input: SummaryJobRequest,
+    options: RequestOptions & { requestId: string },
+  ) => Promise<ProcessingJobSnapshot>;
+  processingJobs: (
+    input: ListProcessingJobsInput,
+    options?: RequestOptions,
+  ) => Promise<ProcessingJobPage>;
+  processingJob: (
+    jobId: string,
+    options?: RequestOptions,
+  ) => Promise<ProcessingJobSnapshot>;
+  processingJobResult: (
+    jobId: string,
+    options?: RequestOptions,
+  ) => Promise<ProcessingJobResult | null>;
+  cancelProcessingJob: (
+    jobId: string,
+    options?: RequestOptions,
+  ) => Promise<ProcessingJobSnapshot>;
   prepareAttachmentSource: typeof prepareDeviceAttachmentSource;
   uploadAttachmentSource: (
     sessionId: string,
@@ -278,7 +303,10 @@ async function ipc<T>(
 }
 
 export async function connectLocalVault(): Promise<VaultClient> {
-  const scope = applicationResult(await commands.applicationScope());
+  const [scope, processingAvailable] = await Promise.all([
+    commands.applicationScope().then(applicationResult),
+    commands.applicationProcessingAvailable(),
+  ]);
   return {
     scope,
     networkMode: "always",
@@ -286,6 +314,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
     attachmentPresentation: legacyAttachmentPresentation,
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
+      ...(processingAvailable ? ["summary_body_jobs"] : []),
       "attachment_upload",
       "audio_playback",
       "recording_delete",
@@ -305,6 +334,20 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "tasks_edit",
       "agent_read",
     ],
+    submitSummaryJob: (input, options) =>
+      ipc(
+        () => commands.applicationSubmitSummaryJob(options.requestId, input),
+        options,
+        true,
+      ),
+    processingJobs: (input, options) =>
+      ipc(() => commands.applicationProcessingJobs(input), options),
+    processingJob: (jobId, options) =>
+      ipc(() => commands.applicationProcessingJob(jobId), options),
+    processingJobResult: (jobId, options) =>
+      ipc(() => commands.applicationProcessingJobResult(jobId), options),
+    cancelProcessingJob: (jobId, options) =>
+      ipc(() => commands.applicationCancelProcessingJob(jobId), options, true),
     openRecording: openLocalRecording,
     prepareAttachmentUpload: prepareDeviceAttachmentUpload,
     prepareAttachmentSource: prepareDeviceAttachmentSource,
@@ -493,6 +536,36 @@ export function connectRemoteVault(
         options,
       ),
     features: connection.info.capabilities.features,
+    submitSummaryJob: (input, options) =>
+      connection.request(
+        { kind: "submit_summary_job", vault_id: vaultId, input },
+        "processing_job",
+        options,
+      ),
+    processingJobs: (input, options) =>
+      connection.request(
+        { kind: "processing_jobs", vault_id: vaultId, input },
+        "processing_jobs",
+        options,
+      ),
+    processingJob: (jobId, options) =>
+      connection.request(
+        { kind: "processing_job", vault_id: vaultId, job_id: jobId },
+        "processing_job",
+        options,
+      ),
+    processingJobResult: (jobId, options) =>
+      connection.request(
+        { kind: "processing_job_result", vault_id: vaultId, job_id: jobId },
+        "processing_job_result",
+        options,
+      ),
+    cancelProcessingJob: (jobId, options) =>
+      connection.request(
+        { kind: "cancel_processing_job", vault_id: vaultId, job_id: jobId },
+        "processing_job",
+        options,
+      ),
     prepareAttachmentUpload: prepareDeviceAttachmentUpload,
     prepareAttachmentSource: prepareDeviceAttachmentSource,
     uploadAttachmentSource: (sessionId, prepared, options) =>

@@ -94,6 +94,82 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationProcessingAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_processing_available");
+  },
+  async applicationSubmitSummaryJob(
+    requestId: string,
+    input: SummaryJobRequest,
+  ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_submit_summary_job", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJobs(
+    input: ListProcessingJobsInput,
+  ): Promise<Result<ProcessingJobPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_jobs", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJob(
+    jobId: string,
+  ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_job", { jobId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationProcessingJobResult(
+    jobId: string,
+  ): Promise<Result<ProcessingJobResult | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_job_result", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCancelProcessingJob(
+    jobId: string,
+  ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_cancel_processing_job", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessions(
     limit: number,
     after: string | null,

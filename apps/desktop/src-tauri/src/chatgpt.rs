@@ -21,6 +21,8 @@ use tokio::{
     sync::{Mutex as AsyncMutex, broadcast, oneshot, watch},
 };
 
+pub mod model;
+
 #[derive(Clone, Debug, Serialize, specta::Type)]
 pub struct ChatgptError {
     pub code: String,
@@ -278,6 +280,7 @@ pub struct ChatgptState {
     login_lock: AsyncMutex<()>,
     login_cancel: Mutex<Option<watch::Sender<bool>>>,
     jobs: Mutex<HashMap<String, watch::Sender<bool>>>,
+    shared_cancel: Mutex<tokio_util::sync::CancellationToken>,
 }
 
 impl ChatgptState {
@@ -319,6 +322,9 @@ impl ChatgptState {
         for cancel in self.jobs.lock().unwrap().values() {
             let _ = cancel.send(true);
         }
+        let mut shared = self.shared_cancel.lock().unwrap();
+        shared.cancel();
+        *shared = tokio_util::sync::CancellationToken::new();
     }
 
     pub fn shutdown(&self) {
@@ -848,6 +854,27 @@ async fn run_generation(
     events: &Channel<ChatgptEvent>,
     cancel: &mut watch::Receiver<bool>,
 ) -> Result<(), ChatgptError> {
+    run_generation_with(
+        client,
+        request,
+        |event| {
+            std::future::ready(
+                events
+                    .send(event)
+                    .map_err(|_| failure("cancelled", "Generation cancelled.")),
+            )
+        },
+        cancel,
+    )
+    .await
+}
+
+async fn run_generation_with<F: std::future::Future<Output = Result<(), ChatgptError>>>(
+    client: &Client,
+    request: &ChatgptGeneration,
+    mut send: impl FnMut(ChatgptEvent) -> F,
+    cancel: &mut watch::Receiver<bool>,
+) -> Result<(), ChatgptError> {
     let mut notifications = client.notifications.subscribe();
     let instructions = format!(
         "{}\n\nReturn only the requested final text. Do not use tools or include progress commentary.{}",
@@ -903,7 +930,7 @@ async fn run_generation(
                             if params["itemId"].as_str().is_some_and(|id| ignored_items.contains(id)) { continue; }
                             let delta = params["delta"].as_str().ok_or_else(runtime_error)?.to_string();
                             has_text |= !delta.trim().is_empty();
-                            events.send(ChatgptEvent::Text { delta }).map_err(|_| failure("cancelled", "Generation cancelled."))?;
+                            send(ChatgptEvent::Text { delta }).await?;
                         }
                         Some("thread/tokenUsage/updated") => {
                             input_tokens = params["tokenUsage"]["total"]["inputTokens"].as_u64().and_then(|n| n.try_into().ok());
@@ -912,7 +939,7 @@ async fn run_generation(
                         Some("turn/completed") => {
                             if params["turn"]["status"] != "completed" { return Err(provider_error(&params["turn"]["error"])); }
                             if !has_text { return Err(failure("generation", "ChatGPT returned an empty response. Try again.")); }
-                            events.send(ChatgptEvent::Complete { input_tokens, output_tokens }).map_err(|_| runtime_error())?;
+                            send(ChatgptEvent::Complete { input_tokens, output_tokens }).await?;
                             return Ok(());
                         }
                         Some("error") if params["willRetry"] != true => return Err(provider_error(&params["error"])),
@@ -1106,7 +1133,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn fixture(script: &str) -> Arc<Client> {
+    pub(super) fn fixture(script: &str) -> Arc<Client> {
         let child = Command::new("/bin/sh")
             .arg("-c")
             .arg(script)

@@ -12,39 +12,48 @@ impl VaultRuntime {
         generator: Arc<dyn JobGenerator>,
         authorizer: Arc<dyn JobAuthorizer>,
     ) -> Result<(), ApplicationError> {
-        self.context
-            .store
-            .ensure_ready()
-            .map_err(|_| unavailable())?;
-        if self.processing.is_some() || self.context.processing.get().is_some() {
+        if self.processing.is_some() {
             return Err(error(
                 ErrorCode::Conflict,
                 "Processing is already configured for this vault",
             ));
         }
-        let operations = self.context.operations.as_ref().ok_or_else(unavailable)?;
-        let journal =
-            JobJournal::open(operations.root.join("jobs"), self.context.events.clone()).await?;
-        let worker =
-            JobWorker::start(self.context.clone(), journal.clone(), generator, authorizer).await?;
+        self.processing = Some(self.context.start_processing(generator, authorizer).await?);
+        Ok(())
+    }
+}
+
+impl VaultContext {
+    /// Hosts with existing startup/watch ownership retain the returned worker until shutdown.
+    pub async fn start_processing(
+        self: &Arc<Self>,
+        generator: Arc<dyn JobGenerator>,
+        authorizer: Arc<dyn JobAuthorizer>,
+    ) -> Result<JobWorker, ApplicationError> {
+        self.store.ensure_ready().map_err(|_| unavailable())?;
+        if self.processing.get().is_some() {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Processing is already configured for this vault",
+            ));
+        }
+        let operations = self.operations.as_ref().ok_or_else(unavailable)?;
+        let journal = JobJournal::open(operations.root.join("jobs"), self.events.clone()).await?;
+        let worker = JobWorker::start(self.clone(), journal.clone(), generator, authorizer).await?;
         let service = ProcessingService {
             journal,
             lifetime: worker.lifetime(),
             finished: worker.finished(),
         };
-        if self.context.processing.set(service).is_err() {
+        if self.processing.set(service).is_err() {
             worker.shutdown().await?;
             return Err(error(
                 ErrorCode::Conflict,
                 "Processing is already configured for this vault",
             ));
         }
-        self.processing = Some(worker);
-        Ok(())
+        Ok(worker)
     }
-}
-
-impl VaultContext {
     pub fn processing_jobs(&self) -> Result<&JobJournal, ApplicationError> {
         self.store.ensure_ready().map_err(|_| unavailable())?;
         self.processing

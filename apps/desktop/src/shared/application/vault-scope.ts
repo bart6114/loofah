@@ -17,6 +17,7 @@ import type {
   NoteSnapshot,
   NoteEditorSnapshot,
   DocumentTarget,
+  ListProcessingJobsInput,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
@@ -495,6 +496,27 @@ export class VaultScope {
       queryFn: ({ signal }) => this.run(() => this.client.tags({ signal })),
     });
   }
+  processingJobsOptions(input: ListProcessingJobsInput) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "processing_jobs", input],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.processingJobs(input, { signal })),
+    });
+  }
+  processingJobOptions(jobId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "processing_job", jobId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.processingJob(jobId, { signal })),
+    });
+  }
+  processingJobResultOptions(jobId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "processing_job_result", jobId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.processingJobResult(jobId, { signal })),
+    });
+  }
   pageOptions(limit: number, after: string | null = null) {
     const client = this.client;
     return queryOptions({
@@ -636,7 +658,22 @@ export class VaultScope {
     for (const listener of this.changeListeners) listener(change);
     if (change.kind === "resync_required" || change.kind === "unknown")
       this.resync();
-    else if (change.kind === "search_ready") {
+    else if (change.kind === "job_changed") {
+      void this.queryClient.invalidateQueries({
+        predicate: (query) => {
+          const [prefix, scope, kind, jobId] = query.queryKey;
+          return (
+            prefix === "vault" &&
+            scope === this.client.scope &&
+            (kind === "processing_jobs" ||
+              (["processing_job", "processing_job_result"].includes(
+                String(kind),
+              ) &&
+                jobId === change.job_id))
+          );
+        },
+      });
+    } else if (change.kind === "search_ready") {
       void this.queryClient.invalidateQueries({
         queryKey: ["vault", this.client.scope, "search"],
       });

@@ -3420,9 +3420,11 @@ dependencies = [
 name = "desktop"
 version = "0.0.0"
 dependencies = [
+ "async-stream",
  "audio-actual",
  "audio-mock",
  "axum",
+ "base64 0.22.1",
  "camino",
  "chrono",
  "dirs 6.0.0",

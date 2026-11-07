@@ -59,6 +59,41 @@ function watchCacheCleanup(scope: VaultScope) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates only the changed private job and job lists while preserving other vaults", async () => {
+    const { active, emit } = fixture("scope");
+    await active.start();
+    const listInput = {
+      limit: 50,
+      after: null,
+      session_id: "note",
+      active_only: false,
+    };
+    const changed = active.processingJobOptions("changed").queryKey;
+    const result = active.processingJobResultOptions("changed").queryKey;
+    const other = active.processingJobOptions("other").queryKey;
+    const list = active.processingJobsOptions(listInput).queryKey;
+    const noteKey = active.noteOptions("note").queryKey;
+    const foreign = ["vault", "another-scope", "processing_job", "changed"];
+    for (const key of [changed, result, other, list, noteKey, foreign])
+      active.queryClient.setQueryData(key, { retained: true });
+    emit({
+      kind: "change",
+      change: { kind: "job_changed", job_id: "changed" },
+    });
+    for (const key of [changed, result, list])
+      expect(active.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    for (const key of [other, noteKey, foreign])
+      expect(active.queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    emit({ kind: "connection", state: "reconnecting", error: null });
+    emit({ kind: "connection", state: "connected", error: null });
+    expect(active.queryClient.getQueryState(other)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(foreign)?.isInvalidated).toBe(
+      false,
+    );
+    emit({ kind: "connection", state: "access_denied", error: null });
+    expect(active.queryClient.getQueryData(result)).toBeUndefined();
+    active.dispose();
+  });
   it("shares attachment handles across duplicate references and closes them on replacement and last-observer removal", async () => {
     const { active, backend, emit } = fixture("scope");
     await active.start();

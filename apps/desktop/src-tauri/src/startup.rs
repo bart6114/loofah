@@ -51,6 +51,14 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
         crate::vault_watch::spawn(app.clone());
         crate::recording_meta::spawn(app.clone());
         store.set_startup_pending(false);
+        if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>()
+            && let Err(error) = app
+                .state::<crate::processing::ProcessingState>()
+                .start(app.clone(), &context)
+                .await
+        {
+            tracing::error!(%error, "local processing startup failed; vault notes remain available");
+        }
         state.set_phase(StartupPhase::Ready);
         tokio::task::spawn_blocking(move || {
             if let Err(error) = app.notify().start() {
