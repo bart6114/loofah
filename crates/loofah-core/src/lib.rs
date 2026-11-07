@@ -20,5 +20,6 @@ pub mod media_leases;
 mod metadata;
 mod note_editor;
 mod operations;
+mod session_cleanup;
 mod session_summaries;
 mod tasks;
