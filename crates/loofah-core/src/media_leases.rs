@@ -1048,7 +1048,7 @@ mod tests {
         let request =
             tokio::spawn(async move { caller.read_chunk_with_guard(0, 4, host_admission).await });
         tokio::time::timeout(Duration::from_secs(2), async {
-            while Arc::strong_count(&reader.entry) < 4 {
+            while recording.reads_started.load(Ordering::Acquire) == 0 {
                 tokio::task::yield_now().await;
             }
         })
