@@ -12,14 +12,21 @@ struct State {
     epoch: String,
     sequence: u64,
     capacity: usize,
-    replay: VecDeque<ChangeEvent>,
-    sender: broadcast::Sender<ChangeEvent>,
+    replay: VecDeque<Envelope>,
+    sender: broadcast::Sender<Envelope>,
+}
+
+#[derive(Clone)]
+struct Envelope {
+    event: ChangeEvent,
+    audience: Option<String>,
 }
 
 pub struct Subscription {
     hub: EventHub,
     replay: VecDeque<ChangeEvent>,
-    receiver: broadcast::Receiver<ChangeEvent>,
+    receiver: broadcast::Receiver<Envelope>,
+    audience: Option<String>,
 }
 
 impl EventHub {
@@ -40,6 +47,14 @@ impl EventHub {
     }
 
     pub fn publish(&self, change: Change) -> ChangeEvent {
+        self.publish_inner(change, None)
+    }
+
+    pub fn publish_for(&self, audience: &str, change: Change) -> ChangeEvent {
+        self.publish_inner(change, Some(audience.to_owned()))
+    }
+
+    fn publish_inner(&self, change: Change, audience: Option<String>) -> ChangeEvent {
         let change = match change {
             Change::IndexChanged {
                 entity,
@@ -73,12 +88,24 @@ impl EventHub {
         if state.replay.len() == state.capacity {
             state.replay.pop_front();
         }
-        state.replay.push_back(event.clone());
-        let _ = state.sender.send(event.clone());
+        let envelope = Envelope {
+            event: event.clone(),
+            audience,
+        };
+        state.replay.push_back(envelope.clone());
+        let _ = state.sender.send(envelope);
         event
     }
 
     pub fn subscribe(&self, cursor: Option<&str>) -> Subscription {
+        self.subscribe_inner(cursor, None)
+    }
+
+    pub fn subscribe_for(&self, audience: &str, cursor: Option<&str>) -> Subscription {
+        self.subscribe_inner(cursor, Some(audience.to_owned()))
+    }
+
+    fn subscribe_inner(&self, cursor: Option<&str>, audience: Option<String>) -> Subscription {
         let state = self.0.lock().unwrap();
         let sequence = cursor.and_then(|cursor| {
             let (epoch, sequence) = cursor.rsplit_once(':')?;
@@ -90,6 +117,7 @@ impl EventHub {
             sequence <= state.sequence
                 && state.replay.front().is_none_or(|first| {
                     first
+                        .event
                         .cursor
                         .rsplit_once(':')
                         .unwrap()
@@ -105,6 +133,7 @@ impl EventHub {
                 .iter()
                 .filter(|event| {
                     event
+                        .event
                         .cursor
                         .rsplit_once(':')
                         .unwrap()
@@ -113,7 +142,15 @@ impl EventHub {
                         .unwrap()
                         > sequence.unwrap()
                 })
-                .cloned()
+                .filter(|envelope| {
+                    audience.as_ref().is_none_or(|viewer| {
+                        envelope
+                            .audience
+                            .as_ref()
+                            .is_none_or(|owner| owner == viewer)
+                    })
+                })
+                .map(|envelope| envelope.event.clone())
                 .collect()
         } else {
             VecDeque::from([state.event(Change::ResyncRequired)])
@@ -123,6 +160,7 @@ impl EventHub {
             hub: self.clone(),
             replay,
             receiver: state.sender.subscribe(),
+            audience,
         }
     }
 }
@@ -142,14 +180,26 @@ impl Subscription {
         if let Some(event) = self.replay.pop_front() {
             return Some(event);
         }
-        match self.receiver.recv().await {
-            Ok(event) => Some(event),
-            Err(broadcast::error::RecvError::Lagged(_)) => {
-                let state = self.hub.0.lock().unwrap();
-                self.receiver = state.sender.subscribe();
-                Some(state.event(Change::ResyncRequired))
+        loop {
+            match self.receiver.recv().await {
+                Ok(envelope)
+                    if self.audience.as_ref().is_none_or(|viewer| {
+                        envelope
+                            .audience
+                            .as_ref()
+                            .is_none_or(|owner| owner == viewer)
+                    }) =>
+                {
+                    return Some(envelope.event);
+                }
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    let state = self.hub.0.lock().unwrap();
+                    self.receiver = state.sender.subscribe();
+                    return Some(state.event(Change::ResyncRequired));
+                }
+                Err(broadcast::error::RecvError::Closed) => return None,
             }
-            Err(broadcast::error::RecvError::Closed) => None,
         }
     }
 }
@@ -157,6 +207,80 @@ impl Subscription {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn member_subscriptions_filter_private_jobs_from_both_replay_and_live_delivery() {
+        let hub = EventHub::new("vault".into(), 8);
+        let cursor = hub.publish(Change::SearchReady).cursor;
+        hub.publish_for(
+            "alice",
+            Change::JobChanged {
+                job_id: "alice-job".into(),
+            },
+        );
+        hub.publish_for(
+            "bob",
+            Change::JobChanged {
+                job_id: "bob-job".into(),
+            },
+        );
+        hub.publish(Change::CatalogChanged);
+        let mut alice = hub.subscribe_for("alice", Some(&cursor));
+        let mut bob = hub.subscribe_for("bob", Some(&cursor));
+        assert_eq!(
+            alice.recv().await.unwrap().change,
+            Change::JobChanged {
+                job_id: "alice-job".into()
+            }
+        );
+        assert_eq!(
+            bob.recv().await.unwrap().change,
+            Change::JobChanged {
+                job_id: "bob-job".into()
+            }
+        );
+        assert_eq!(alice.recv().await.unwrap().change, Change::CatalogChanged);
+        assert_eq!(bob.recv().await.unwrap().change, Change::CatalogChanged);
+        hub.publish_for(
+            "bob",
+            Change::JobChanged {
+                job_id: "private-live".into(),
+            },
+        );
+        hub.publish(Change::SearchReady);
+        assert_eq!(alice.recv().await.unwrap().change, Change::SearchReady);
+        let private = bob.recv().await.unwrap();
+        assert_eq!(
+            private.change,
+            Change::JobChanged {
+                job_id: "private-live".into()
+            }
+        );
+        assert!(
+            !serde_json::to_string(&private)
+                .unwrap()
+                .contains("audience")
+        );
+        assert_eq!(bob.recv().await.unwrap().change, Change::SearchReady);
+    }
+
+    #[tokio::test]
+    async fn private_event_overflow_requires_resync_without_revealing_foreign_job_ids() {
+        let hub = EventHub::new("vault".into(), 2);
+        let cursor = hub.publish(Change::SearchReady).cursor;
+        let mut alice = hub.subscribe_for("alice", Some(&cursor));
+        for _ in 0..8 {
+            hub.publish_for(
+                "bob",
+                Change::JobChanged {
+                    job_id: "private".into(),
+                },
+            );
+        }
+        assert_eq!(alice.recv().await.unwrap().change, Change::ResyncRequired);
+        let mut replay = hub.subscribe_for("alice", Some(&cursor));
+        assert_eq!(replay.recv().await.unwrap().change, Change::ResyncRequired);
+    }
 
     #[tokio::test]
     async fn detail_budget_falls_back_to_scoped_invalidation_and_replays_small_details() {

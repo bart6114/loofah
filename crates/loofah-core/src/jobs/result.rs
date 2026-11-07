@@ -122,7 +122,10 @@ impl JobJournal {
     }
 }
 
-fn read_result(state: &State, job: &Record) -> Result<Option<GeneratedDocument>, ApplicationError> {
+pub(super) fn read_result(
+    state: &State,
+    job: &Record,
+) -> Result<Option<GeneratedDocument>, ApplicationError> {
     let root = state.root.join("results");
     match root.symlink_metadata() {
         Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(None),

@@ -2040,6 +2040,12 @@ export type ListMeetingsInput = {
   tags: string[] | null;
   untagged: boolean | null;
 };
+export type ListProcessingJobsInput = {
+  limit: number | null;
+  after: string | null;
+  session_id: string | null;
+  active_only: boolean;
+};
 export type Me = { member: MemberInfo; personal_vault_id: string };
 export type Meeting = {
   id: string;
@@ -2129,6 +2135,48 @@ export type Pagination = {
   next_offset: number | null;
 };
 export type PersonItem = { id: string; name?: string };
+export type ProcessingJobFailure =
+  | "access_denied"
+  | "source_unavailable"
+  | "resource_limit"
+  | "provider_unavailable"
+  | "provider_failed"
+  | "invalid_output"
+  | "storage"
+  | "interrupted";
+export type ProcessingJobPage = {
+  items: ProcessingJobSnapshot[];
+  next_cursor: string | null;
+};
+export type ProcessingJobResult = {
+  vault_id: string;
+  job_id: string;
+  session_id: string;
+  target: DocumentTarget;
+  markdown: string;
+  suggested_tags?: ProcessingTagSuggestion[] | null;
+};
+export type ProcessingJobSnapshot = {
+  id: string;
+  session_id: string;
+  target: DocumentTarget;
+  state: ProcessingJobState;
+  phase: ProcessingPhase | null;
+  failure: ProcessingJobFailure | null;
+  created_at: string;
+  updated_at: string;
+};
+export type ProcessingJobState =
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "failed"
+  | "interrupted"
+  | "conflict";
+export type ProcessingPhase = "preparing" | "generating" | "applying";
+export type ProcessingTagSuggestion = { name: string; confidence: number };
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
  * from files* this pass, not the resulting index size. `errors` never aborts the scan --
@@ -2171,6 +2219,15 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "submit_summary_job"; vault_id: string; input: SummaryJobRequest }
+  | {
+      kind: "processing_jobs";
+      vault_id: string;
+      input: ListProcessingJobsInput;
+    }
+  | { kind: "processing_job"; vault_id: string; job_id: string }
+  | { kind: "processing_job_result"; vault_id: string; job_id: string }
+  | { kind: "cancel_processing_job"; vault_id: string; job_id: string }
   | { kind: "provision" }
   | { kind: "me" }
   | { kind: "vaults" }
@@ -2283,6 +2340,9 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "processing_job"; value: ProcessingJobSnapshot }
+  | { kind: "processing_jobs"; value: ProcessingJobPage }
+  | { kind: "processing_job_result"; value: ProcessingJobResult | null }
   | { kind: "me"; value: Me }
   | { kind: "vaults"; value: VaultInfo[] }
   | { kind: "directory"; value: MemberInfo[] }
@@ -2518,6 +2578,11 @@ export type StartupStatus = {
   isCloudStorage: boolean;
   phase: StartupPhase;
   migrationIssues: string[];
+};
+export type SummaryJobRequest = {
+  session_id: string;
+  target: DocumentTarget;
+  expected_revision: string;
 };
 export type TagContext = {
   available: string[];

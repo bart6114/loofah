@@ -308,7 +308,7 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed processing-job contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server operator configuration wires model allowlists, host environment credentials and current member authorization into that worker, with service-wide admission and a custom-template trust policy. Public job adapters/previews, local Keychain/ChatGPT integration, full summary/title/tag policy, frontend AI migration, owner-managed provider settings/secrets, server model management and Linux inference parity remain to implement.
+- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT integration, full summary/title/tag/template policy, previews and frontend AI migration, owner-managed provider settings/secrets, server model management and Linux inference parity remain to implement.
 - [ ] **Phase 6: resilient remote capture.** Native durable capture spool, authenticated ingestion, live transcription, resumable uploads, repair and finalization remain to implement.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
@@ -2553,3 +2553,79 @@ were used. Native Keychain/ChatGPT behavior, production model/image/performance
 parity and current-head native platform CI remain required. Evidence is in
 `configured-processing-*`, `configured-service-focused.log` and
 `configured-core-focused.log` under `/Volumes/T7/loofah-backend-build/logs/`.
+
+### Member-private summary-body job APIs and SDK operations
+
+Shared `VaultContext` operations now submit, list, inspect and cancel jobs and read
+retained results. Ownership checks and pagination live in `jobs::access`; HTTP
+handlers supply the authenticated catalog member and reuse those operations.
+Cancellation uses the same state transition as internal workers. The new public
+submission operation accepts summary-body targets; template generation is rejected
+until its own source/template workflow is implemented. It does not enable title
+or canonical tag application. The full processing phase remains unfinished.
+
+When operator processing is configured, the service advertises `summary_body_jobs`
+and exposes authenticated `/vaults/{vault}/jobs` submission/listing, job status,
+`/result` and `/cancel` endpoints. Submission needs an editor/owner grant and a
+client UUID. A receipt replay with the original declaration returns the same job
+after canonical application; it does not revalidate the old target revision as a
+new submission or call the provider again. Changed input with that UUID conflicts.
+Explicit cancellation cannot reverse an already committed result.
+
+Job status, list pages, cancellation and generated drafts are private to the
+submitting member, even when another shared-vault member is an editor or owner.
+Unknown/foreign job IDs return the same not-found response. Readers cannot submit
+but may read/cancel their own earlier jobs while they retain vault access.
+Pagination filters ownership, session and activity before applying its 1–200
+limit, and orders by creation time with job-ID tie-breaking. Foreign-owner/vault
+cursors do not expose records. Result DTOs carry vault/job/session/target bindings,
+Markdown and optional validated tag suggestions; internal result-file format and
+canonical vault files remain unchanged.
+
+`EventHub` now carries private audience metadata alongside its bounded event
+history. Member subscriptions filter both replay and live job invalidations in
+memory, without journal reads per event or an audience field on the wire. Ordinary
+canonical document/index changes remain visible to authorized vault members.
+Filtered events consume global replay history; lag/overflow still produces a
+scoped resync. Trusted local/internal subscriptions retain their prior behavior.
+The native SSE decoder accepts opaque cursor gaps caused by this filtering.
+
+Status/result queries remain available after worker exit. A distinct actual-exit
+token lets reads durably mark orphaned active jobs interrupted, while the existing
+admission-stop token prevents new submissions. Graceful shutdown cannot reconcile
+a still-draining worker prematurely or prevent its confirmed late result from
+being retained. Worker failure continues to preserve ordinary note access; restart
+does not silently replay interrupted provider calls.
+
+The shared native SDK adds typed job operations/replies and capability checks
+before credentials or dispatch. It validates job/result bindings and list bounds,
+including duplicate IDs and filter/cursor consistency. Request transport
+cancellation reports an unknown submission outcome without cancelling the server
+job. Reusing the same UUID resolves that outcome. Generated protocol and desktop
+Tauri bindings include these contracts. Optional response fields are additive in
+API major 1; request fields remain strict. Bookkeeping schema versions remain
+independent from API and canonical vault-format compatibility.
+
+Validation passes 214 core tests (one ignored subprocess fixture), 73 native-client
+tests, four protocol tests, all 65 server tests and the headless executable/SIGTERM
+test. Service tests cover post-application replay, scoped status/results/cancel,
+reader denial, rejected template/input injection and private event replay over a
+real authenticated TCP stream. A native SDK test at 50/150/500 ms simulated RTT
+holds the first submission reply after persistence, disconnects that request and
+successfully recovers by replay with exactly one provider call. These are controlled
+HTTP/provider fixtures, not production TLS/model/UI acceptance.
+
+Core/server/client/CLI checking, strict production Clippy for the changed
+application/client crates, exact protocol export checking, native desktop binding
+export, desktop typechecking and CI's desktop lint command pass. No live provider
+credentials or billable calls were used. Evidence is in the `public-jobs-*` logs
+under `/Volumes/T7/loofah-backend-build/logs/`.
+
+Hosted Windows x64 passed for preceding checkpoint `4f9a31210`; ARM64 failed the
+existing coalesced-transcript debounce test when it read before the timer's file
+write completed. Test-only fix `9420a9e39` now polls for all three persisted words
+within ten seconds, without forcing a flush or changing production debounce.
+All 366 vault-write tests and checking pass locally; fresh native Windows results
+remain required. Desktop job controls, native IPC/provider wiring, durable device
+submission recovery, full summary/title/tag/template policy, processing settings,
+recording/import/CLI/main-shell migration and all prior release gates remain open.

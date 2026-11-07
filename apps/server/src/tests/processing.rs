@@ -4,10 +4,10 @@ use std::{collections::HashMap, sync::Mutex, time::Duration};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
-struct Provider {
+pub(super) struct Provider {
     base_url: String,
-    requests: Arc<Mutex<Vec<Value>>>,
-    finish: Arc<Semaphore>,
+    pub(super) requests: Arc<Mutex<Vec<Value>>>,
+    pub(super) finish: Arc<Semaphore>,
     stop: CancellationToken,
     task: Option<tokio::task::JoinHandle<()>>,
 }
@@ -23,7 +23,7 @@ struct ProviderState {
     stop: CancellationToken,
 }
 impl Provider {
-    async fn new(finish: usize) -> Self {
+    pub(super) async fn new(finish: usize) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
         let state = ProviderState {
@@ -49,10 +49,10 @@ impl Provider {
             task: Some(task),
         }
     }
-    fn config(&self) -> crate::processing::ProcessingConfig {
+    pub(super) fn config(&self) -> crate::processing::ProcessingConfig {
         serde_json::from_value(json!({"providers":[{"id":"ollama","base_url":self.base_url,"models":["configured"],"include_images":false}],"concurrent_jobs":1,"waiting_jobs":2})).unwrap()
     }
-    async fn close(mut self) {
+    pub(super) async fn close(mut self) {
         self.stop.cancel();
         tokio::time::timeout(Duration::from_secs(5), self.task.take().unwrap())
             .await
@@ -74,7 +74,7 @@ async fn model(State(state): State<ProviderState>, Json(body): Json<Value>) -> R
         None
     }))).unwrap()
 }
-async fn prepare(context: &hypr_loofah_core::VaultContext) {
+pub(super) async fn prepare(context: &hypr_loofah_core::VaultContext) {
     context
         .settings
         .set_values(HashMap::from([
@@ -114,7 +114,10 @@ async fn submit(context: &hypr_loofah_core::VaultContext, member: &str) -> Proce
         .await
         .unwrap()
 }
-async fn terminal(context: &hypr_loofah_core::VaultContext, id: &str) -> ProcessingJobSnapshot {
+pub(super) async fn terminal(
+    context: &hypr_loofah_core::VaultContext,
+    id: &str,
+) -> ProcessingJobSnapshot {
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let snapshot = context

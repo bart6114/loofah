@@ -34,6 +34,7 @@ pub trait JobAuthorizer: Send + Sync + 'static {
 /// Owned by the vault runtime; dropping this handle requests worker shutdown.
 pub struct JobWorker {
     stop: CancellationToken,
+    finished: CancellationToken,
     task: Option<tokio::task::JoinHandle<Result<(), ApplicationError>>>,
 }
 impl Drop for JobWorker {
@@ -65,13 +66,17 @@ impl JobWorker {
             .await?;
         let stop = CancellationToken::new();
         let stopping = stop.clone();
+        let finished = CancellationToken::new();
+        let finished_guard = finished.clone().drop_guard();
         let task = tokio::spawn(async move {
+            let _finished_guard = finished_guard;
             let _finished = stopping.clone().drop_guard();
             let _permit = permit;
             run(context, journal, generator, authorizer, stopping).await
         });
         Ok(Self {
             stop,
+            finished,
             task: Some(task),
         })
     }
@@ -82,6 +87,10 @@ impl JobWorker {
 
     pub(crate) fn lifetime(&self) -> CancellationToken {
         self.stop.clone()
+    }
+
+    pub(crate) fn finished(&self) -> CancellationToken {
+        self.finished.clone()
     }
 
     pub(crate) fn request_shutdown(&self) {

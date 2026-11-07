@@ -19,6 +19,7 @@ const MAX_RECORD_BYTES: u64 = 16 * 1024;
 const MAX_JOBS: usize = 10_000;
 const MAX_PENDING: usize = 32;
 
+mod access;
 pub mod configured;
 pub mod generation;
 pub mod providers;
@@ -31,6 +32,7 @@ pub use worker::{JobAuthorizer, JobFuture, JobGenerator, JobWork, JobWorker};
 pub(crate) struct ProcessingService {
     pub(crate) journal: JobJournal,
     pub(crate) lifetime: tokio_util::sync::CancellationToken,
+    pub(crate) finished: tokio_util::sync::CancellationToken,
 }
 
 #[derive(Clone)]
@@ -195,10 +197,14 @@ impl JobJournal {
             state.persist(&record)?;
             state.ids.insert(record.snapshot.id.clone(), key.clone());
             let snapshot = record.snapshot.clone();
+            let audience = record.namespace.clone();
             state.records.insert(key, record);
-            events.publish(Change::JobChanged {
-                job_id: snapshot.id.clone(),
-            });
+            events.publish_for(
+                &audience,
+                Change::JobChanged {
+                    job_id: snapshot.id.clone(),
+                },
+            );
             Ok(snapshot)
         })
         .await
@@ -289,13 +295,8 @@ impl JobJournal {
     pub async fn cancel(&self, id: String) -> Result<ProcessingJobSnapshot, ApplicationError> {
         let id = parse_uuid(&id)?;
         self.run(move |state, events| {
-            let mut record = state.record(&id)?.clone();
-            record.snapshot.state = match record.snapshot.state {
-                ProcessingJobState::Queued => ProcessingJobState::Cancelled,
-                ProcessingJobState::Running => ProcessingJobState::Cancelling,
-                _ => return Ok(record.snapshot),
-            };
-            state.update(record, events)
+            let record = state.record(&id)?.clone();
+            state.cancel_record(record, events)
         })
         .await
     }
@@ -366,6 +367,18 @@ impl JobJournal {
 }
 
 impl State {
+    fn cancel_record(
+        &mut self,
+        mut record: Record,
+        events: &EventHub,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        record.snapshot.state = match record.snapshot.state {
+            ProcessingJobState::Queued => ProcessingJobState::Cancelled,
+            ProcessingJobState::Running => ProcessingJobState::Cancelling,
+            _ => return Ok(record.snapshot),
+        };
+        self.update(record, events)
+    }
     fn interrupt_active(&mut self, events: &EventHub) -> Result<(), ApplicationError> {
         let active: Vec<_> = self
             .records
@@ -416,11 +429,15 @@ impl State {
         record.snapshot.updated_at = now();
         self.persist(&record)?;
         let snapshot = record.snapshot.clone();
+        let audience = record.namespace.clone();
         self.records
             .insert(key(&record.namespace, &record.request_id), record);
-        events.publish(Change::JobChanged {
-            job_id: snapshot.id.clone(),
-        });
+        events.publish_for(
+            &audience,
+            Change::JobChanged {
+                job_id: snapshot.id.clone(),
+            },
+        );
         Ok(snapshot)
     }
 }

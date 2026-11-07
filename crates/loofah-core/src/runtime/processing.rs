@@ -30,6 +30,7 @@ impl VaultRuntime {
         let service = ProcessingService {
             journal,
             lifetime: worker.lifetime(),
+            finished: worker.finished(),
         };
         if self.context.processing.set(service).is_err() {
             worker.shutdown().await?;

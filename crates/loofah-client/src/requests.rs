@@ -11,6 +11,26 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    SubmitSummaryJob {
+        vault_id: String,
+        input: SummaryJobRequest,
+    },
+    ProcessingJobs {
+        vault_id: String,
+        input: ListProcessingJobsInput,
+    },
+    ProcessingJob {
+        vault_id: String,
+        job_id: String,
+    },
+    ProcessingJobResult {
+        vault_id: String,
+        job_id: String,
+    },
+    CancelProcessingJob {
+        vault_id: String,
+        job_id: String,
+    },
     Provision,
     Me,
     Vaults,
@@ -187,6 +207,9 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    ProcessingJob(ProcessingJobSnapshot),
+    ProcessingJobs(ProcessingJobPage),
+    ProcessingJobResult(Option<ProcessingJobResult>),
     Me(Me),
     Vaults(Vec<VaultInfo>),
     Directory(Vec<MemberInfo>),
@@ -240,6 +263,11 @@ impl RemoteClient {
             return Err(cancelled());
         }
         let required_feature = match &operation {
+            RemoteOperation::SubmitSummaryJob { .. }
+            | RemoteOperation::ProcessingJobs { .. }
+            | RemoteOperation::ProcessingJob { .. }
+            | RemoteOperation::ProcessingJobResult { .. }
+            | RemoteOperation::CancelProcessingJob { .. } => Some("summary_body_jobs"),
             RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
@@ -259,6 +287,11 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::SubmitSummaryJob { .. }
+                | RemoteOperation::ProcessingJobs { .. }
+                | RemoteOperation::ProcessingJob { .. }
+                | RemoteOperation::ProcessingJobResult { .. }
+                | RemoteOperation::CancelProcessingJob { .. } => "summary processing",
                 RemoteOperation::AudioMetadata { .. } => "recording metadata",
                 RemoteOperation::AttachmentInfo { .. } => "attachment information",
                 RemoteOperation::AttachmentMetadata { .. } => "attachment metadata",
@@ -278,6 +311,8 @@ impl RemoteClient {
             if matches!(
                 operation,
                 RemoteOperation::SaveNoteEditor { .. }
+                    | RemoteOperation::SubmitSummaryJob { .. }
+                    | RemoteOperation::CancelProcessingJob { .. }
                     | RemoteOperation::DeleteRecording { .. }
                     | RemoteOperation::RemoveAttachment { .. }
             ) {
@@ -318,6 +353,37 @@ impl RemoteClient {
         let mut query: Vec<(&str, String)> = Vec::new();
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::SubmitSummaryJob { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "jobs"])
+            }
+            RemoteOperation::ProcessingJobs { vault_id, input } => {
+                if input.limit.is_some_and(|limit| !(1..=200).contains(&limit)) {
+                    return Err(invalid("Invalid processing job page size"));
+                }
+                if let Some(limit) = input.limit {
+                    query.push(("limit", limit.to_string()));
+                }
+                if let Some(after) = &input.after {
+                    query.push(("after", after.clone()));
+                }
+                if let Some(session) = &input.session_id {
+                    query.push(("session_id", session.clone()));
+                }
+                query.push(("active_only", input.active_only.to_string()));
+                (Method::GET, vec!["vaults", vault_id, "jobs"])
+            }
+            RemoteOperation::ProcessingJob { vault_id, job_id } => {
+                (Method::GET, vec!["vaults", vault_id, "jobs", job_id])
+            }
+            RemoteOperation::ProcessingJobResult { vault_id, job_id } => (
+                Method::GET,
+                vec!["vaults", vault_id, "jobs", job_id, "result"],
+            ),
+            RemoteOperation::CancelProcessingJob { vault_id, job_id } => (
+                Method::POST,
+                vec!["vaults", vault_id, "jobs", job_id, "cancel"],
+            ),
             RemoteOperation::AttachmentUploadStatus { upload } => {
                 validate_upload_attachment_request(&upload.input).map_err(|message| {
                     let mut cause = invalid(message);
@@ -753,6 +819,39 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                RemoteOperation::SubmitSummaryJob { input, .. } => {
+                    let job: ProcessingJobSnapshot = json_body(response, 131_072).await?;
+                    if job.session_id != input.session_id
+                        || job.target != input.target
+                        || uuid::Uuid::parse_str(&job.id).is_err()
+                    {
+                        return Err(unavailable());
+                    }
+                    RemoteReply::ProcessingJob(job)
+                }
+                RemoteOperation::ProcessingJob { job_id, .. }
+                | RemoteOperation::CancelProcessingJob { job_id, .. } => {
+                    let job: ProcessingJobSnapshot = json_body(response, 131_072).await?;
+                    if job.id != job_id {
+                        return Err(unavailable());
+                    }
+                    RemoteReply::ProcessingJob(job)
+                }
+                RemoteOperation::ProcessingJobs { input, .. } => {
+                    let page: ProcessingJobPage = json_body(response, 1024 * 1024).await?;
+                    validate_processing_page(&page, &input)?;
+                    RemoteReply::ProcessingJobs(page)
+                }
+                RemoteOperation::ProcessingJobResult { vault_id, job_id } => {
+                    let result: Option<ProcessingJobResult> =
+                        json_body(response, 32 * 1024 * 1024).await?;
+                    if result.as_ref().is_some_and(|result| {
+                        result.vault_id != vault_id || result.job_id != job_id
+                    }) {
+                        return Err(unavailable());
+                    }
+                    RemoteReply::ProcessingJobResult(result)
+                }
                 RemoteOperation::Provision | RemoteOperation::Me => {
                     RemoteReply::Me(json_body(response, 131_072).await?)
                 }
@@ -928,6 +1027,32 @@ fn value(input: &impl Serialize) -> Result<Value> {
     serde_json::to_value(input).map_err(|_| invalid("Cannot encode request"))
 }
 
+fn validate_processing_page(
+    page: &ProcessingJobPage,
+    input: &ListProcessingJobsInput,
+) -> Result<()> {
+    let limit = input.limit.unwrap_or(50) as usize;
+    let mut ids = std::collections::HashSet::new();
+    if page.items.len() > limit
+        || page.items.iter().any(|job| {
+            uuid::Uuid::parse_str(&job.id).is_err()
+                || !ids.insert(&job.id)
+                || input.after.as_ref() == Some(&job.id)
+                || input
+                    .session_id
+                    .as_ref()
+                    .is_some_and(|session| session != &job.session_id)
+                || input.active_only && job.state.is_terminal()
+        })
+        || page.next_cursor.as_ref().is_some_and(|cursor| {
+            page.items.len() != limit || page.items.last().is_none_or(|job| &job.id != cursor)
+        })
+    {
+        return Err(unavailable());
+    }
+    Ok(())
+}
+
 fn validate_attachment_page(
     page: &AttachmentPage,
     limit: usize,
@@ -959,6 +1084,62 @@ fn validate_attachment_page(
 #[cfg(test)]
 mod attachment_page_tests {
     use super::*;
+
+    #[test]
+    fn job_pages_reject_duplicate_ids_wrong_sessions_activity_and_cursor_repetition() {
+        let job = ProcessingJobSnapshot {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: "note".into(),
+            target: DocumentTarget::Summary,
+            state: ProcessingJobState::Queued,
+            phase: None,
+            failure: None,
+            created_at: "time".into(),
+            updated_at: "time".into(),
+        };
+        let input = ListProcessingJobsInput {
+            limit: Some(1),
+            session_id: Some("note".into()),
+            active_only: true,
+            ..Default::default()
+        };
+        let mut page = ProcessingJobPage {
+            items: vec![job.clone()],
+            next_cursor: Some(job.id.clone()),
+        };
+        assert!(validate_processing_page(&page, &input).is_ok());
+        page.next_cursor = Some(uuid::Uuid::new_v4().to_string());
+        assert!(validate_processing_page(&page, &input).is_err());
+        page.next_cursor = None;
+        page.items[0].session_id = "other".into();
+        assert!(validate_processing_page(&page, &input).is_err());
+        page.items[0] = job.clone();
+        page.items[0].state = ProcessingJobState::Succeeded;
+        assert!(validate_processing_page(&page, &input).is_err());
+        page.items[0] = job.clone();
+        page.items.push(job.clone());
+        assert!(
+            validate_processing_page(
+                &page,
+                &ListProcessingJobsInput {
+                    limit: Some(2),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+        page.items.truncate(1);
+        assert!(
+            validate_processing_page(
+                &page,
+                &ListProcessingJobsInput {
+                    after: Some(job.id),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn page_validation_rejects_paths_duplicates_bad_order_nonadvancing_cursors_and_malformed_metadata()

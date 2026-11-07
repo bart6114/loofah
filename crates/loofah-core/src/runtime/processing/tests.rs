@@ -212,6 +212,7 @@ async fn graceful_shutdown_drains_processing_and_retains_late_output_without_app
         .await
         .unwrap();
     let journal = runtime.context.processing_jobs().unwrap().clone();
+    let finished = runtime.context.processing.get().unwrap().finished.clone();
     let job = journal
         .submit("device".into(), uuid::Uuid::new_v4().to_string(), request)
         .await
@@ -220,8 +221,10 @@ async fn graceful_shutdown_drains_processing_and_retains_late_output_without_app
     let shutting_down = tokio::spawn(runtime.shutdown());
     until(|| generator.cancelled.load(Ordering::SeqCst)).await;
     assert!(!shutting_down.is_finished());
+    assert!(!finished.is_cancelled());
     generator.release.add_permits(1);
     shutting_down.await.unwrap().unwrap();
+    assert!(finished.is_cancelled());
     assert_eq!(
         terminal(&journal, &job.id).await.state,
         ProcessingJobState::Interrupted
@@ -376,6 +379,30 @@ async fn crashed_worker_disables_processing_but_preserves_notes_and_recovers_int
     assert_eq!(
         journal.get(job.id.clone()).await.unwrap().unwrap().state,
         ProcessingJobState::Running
+    );
+    assert_eq!(
+        runtime
+            .context
+            .processing_job("device".into(), job.id.clone())
+            .await
+            .unwrap()
+            .state,
+        ProcessingJobState::Interrupted
+    );
+    assert!(
+        runtime
+            .context
+            .list_processing_jobs("device".into(), Default::default())
+            .await
+            .is_ok()
+    );
+    assert!(
+        runtime
+            .context
+            .processing_job_result("device".into(), job.id.clone())
+            .await
+            .unwrap()
+            .is_none()
     );
     let error = runtime.shutdown().await.unwrap_err();
     assert!(

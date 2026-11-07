@@ -20,9 +20,12 @@ use crate::{
     service::Service,
 };
 
+mod jobs;
+
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
         .merge(crate::media::router())
+        .merge(jobs::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
         .route("/vaults", get(vaults).post(create_vault))
@@ -152,8 +155,8 @@ async fn health(State(service): State<Arc<Service>>) -> StatusCode {
     }
 }
 
-async fn capabilities() -> Json<Capabilities> {
-    Json(Capabilities {
+async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities> {
+    let mut capabilities = Capabilities {
         api_major: API_MAJOR,
         application_version: env!("LOOFAH_VERSION").into(),
         features: vec![
@@ -181,7 +184,11 @@ async fn capabilities() -> Json<Capabilities> {
             "vault_membership".into(),
             "change_stream".into(),
         ],
-    })
+    };
+    if service.config.processing.is_some() {
+        capabilities.features.push("summary_body_jobs".into());
+    }
+    Json(capabilities)
 }
 async fn auth_config(State(service): State<Arc<Service>>) -> Json<RemoteAuthConfig> {
     Json(service.auth.public_config())
@@ -1049,7 +1056,7 @@ async fn events(
     if cursor.is_some_and(|cursor| cursor.len() > 128) {
         return Err(ApiError::new(ErrorCode::Validation, "Invalid event cursor"));
     }
-    let mut subscription = context.events.subscribe(cursor);
+    let mut subscription = context.events.subscribe_for(&access.member_id, cursor);
     drop(access);
     let permit = service
         .streams

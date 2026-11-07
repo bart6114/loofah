@@ -2,11 +2,11 @@
 
 The server is experimental. It currently exposes authenticated vault, note, existing-content, search, attachment-upload and change-stream APIs. The full server connection experience, server AI processing, recording ingestion and resilient remote recording are still being implemented. The desktop's default local mode continues to work without an account or server.
 
-The shared Rust core now contains an internal durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` explicitly attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator processing configuration now wires that factory to allowed providers, host environment credentials and current catalog membership. Public job/settings endpoints and the desktop job UI are not yet exposed, so server summaries/transcription remain unavailable through the public API. The existing local AI flow remains active.
+The shared Rust core contains a durable job journal and document-body worker, with cooperative cancellation, authorization grants, retained generated drafts and revision-checked application. `VaultRuntime::enable_processing` attaches a configured generator and authorizer to a vault runtime; shutdown flushes transcripts before waiting for processing within the existing deadline. Timed-out processing retains the vault lock until its actual work stops. Optional operator configuration wires allowed providers, host environment credentials and current catalog membership into authenticated summary-body job APIs. Settings endpoints, desktop job controls, full title/tag application and server transcription remain unfinished. The existing local AI flow remains active.
 
-The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, title/tag application, public jobs and UI migration remain unfinished.
+The shared summary generator reuses the existing Rust templates and handles early-validation retry, reasoning-block filtering, streamed tag-footer extraction and bullet normalization through injected source/model adapters. It requires an explicit model completion before applying output and drains cancelled attempts before releasing their resources. Confirmed late output after cancellation is retained privately without canonical application. Valid tag suggestions are retained with generated results for recovery. `VaultSummarySource` prepares canonical notes, transcripts, tag context and referenced managed images without a desktop session; it preserves local-owner behavior and distinguishes authenticated job members from recording owners. `ConfiguredSummaryGenerator` resolves the current vault's model once per job and preserves it across validation retries. Shared admission bounds running and waiting work across vaults, including work still draining after caller cancellation. Authenticated recording ingestion, title/tag application, native IPC jobs and UI migration remain unfinished.
 
-`loofah_core::jobs::providers::HttpModel` supplies the shared HTTP model transport for Responses (OpenAI/Azure OpenAI), Chat Completions (OpenRouter, Ollama, Azure AI and compatible providers), Anthropic Messages and Google streaming generation. Its host-only configuration receives an endpoint, opaque model ID and optional secret; job requests cannot choose these. Images are sent inline. Keys stay in headers, redirects are disabled, and errors retain fixed failure codes rather than provider bodies or URLs. Streams require a provider completion signal and reject refusals, unexpected tool calls and malformed output. Byte/event/output budgets, connection/read/total deadlines and cancellation bound the owned HTTP work. Only explicit 429 rejection is automatically retried, up to the request's four-retry budget; ambiguous disconnects never repeat a generation automatically. Responses requests set `store: false` to disable response storage for later retrieval. Vault-owner secret updates, local Keychain/ChatGPT adapter integration, live-provider validation and public job wiring remain required.
+`loofah_core::jobs::providers::HttpModel` supplies the shared HTTP model transport for Responses (OpenAI/Azure OpenAI), Chat Completions (OpenRouter, Ollama, Azure AI and compatible providers), Anthropic Messages and Google streaming generation. Its host-only configuration receives an endpoint, opaque model ID and optional secret; job requests cannot choose these. Images are sent inline. Keys stay in headers, redirects are disabled, and errors retain fixed failure codes rather than provider bodies or URLs. Streams require a provider completion signal and reject refusals, unexpected tool calls and malformed output. Byte/event/output budgets, connection/read/total deadlines and cancellation bound the owned HTTP work. Only explicit 429 rejection is automatically retried, up to the request's four-retry budget; ambiguous disconnects never repeat a generation automatically. Responses requests set `store: false` to disable response storage for later retrieval. Vault-owner secret updates, local Keychain/ChatGPT adapters, native IPC/job controls and live-provider validation remain required.
 
 For development, set `VITE_REMOTE_PREVIEW=true` when starting the desktop frontend. **Settings → Storage → Try server notes** opens the opt-in notes preview. Connect to an HTTPS server, sign in through the company browser flow, and select a personal or shared vault. The preview supports note creation, search, revision conflicts and device draft recovery. Servers advertising `note_editor_read` and `note_editor_write` use the existing rich editor for notes, with title and explicit task state saved together. Tables, formatting, task identities, statuses and dates survive these saves. Older servers retain Markdown source editing. An existing source-editor recovery stays on its original editing path until resolved; it is never silently converted into task intent. Existing summaries, template outputs, transcripts and tasks can be viewed as text. With the `document_edit` capability, **Outputs → Edit** edits summary/template bodies, and **Add summary** opens a missing summary. These body saves reconcile tasks in Rust; template titles and metadata stay unchanged. The separate transcript/task lists remain read-only; task checkboxes inside a rich note are editable by vault editors. It keeps tokens in native Rust and the OS credential store. Editing pauses during a disconnect; saved recovery drafts stay on the device. Readers cannot edit.
 
@@ -46,8 +46,8 @@ The container runs as UID/GID `10001`. Mount persistent volumes at `/var/lib/loo
 
 ## Optional processing host configuration
 
-Processing remains experimental and has no public job endpoint yet. The internal
-worker can be configured with a `processing` property in `server.json`:
+Processing remains experimental. Configure the worker and summary-body job APIs
+with a `processing` property in `server.json`:
 
 ```json
 {
@@ -69,8 +69,8 @@ worker can be configured with a `processing` property in `server.json`:
 Replace the model placeholder with the ID already configured for your provider.
 Each vault's existing `current_llm_provider`/`current_llm_model` settings must select
 an allowed pair; there is no implicit model replacement. Settings/model selection
-UI and owner-managed secret updates remain to implement. Operator configuration
-alone does not let a desktop client submit a summary job.
+UI and owner-managed secret updates remain to implement. Use the authenticated API
+or shared Rust SDK; desktop job controls remain to implement.
 
 Set the referenced key in the service environment, outside canonical vault
 content. The supplied systemd unit reads optional `/etc/loofah/server.env`; keep
@@ -241,6 +241,73 @@ name/MIME validity, ordering and advancing cursors. The shared desktop panel ope
 native resources only when a row's actions are expanded; pagination performs no
 media transfers. Attachment notifications and reconnects refresh all loaded
 pages. The panel also mounts the shared upload and checked-removal controls described above.
+
+## Summary body jobs
+
+Servers with processing configured advertise `summary_body_jobs`. Without it,
+job operations return unavailable and the Rust SDK rejects the unsupported
+capability before prompting for credentials or dispatching a mutation.
+
+| Operation                      | Endpoint                                        |
+| ------------------------------ | ----------------------------------------------- |
+| Submit                         | `POST /api/v1/vaults/{vault}/jobs`              |
+| List the current member's jobs | `GET /api/v1/vaults/{vault}/jobs`               |
+| Inspect status                 | `GET /api/v1/vaults/{vault}/jobs/{job}`         |
+| Read a retained result         | `GET /api/v1/vaults/{vault}/jobs/{job}/result`  |
+| Request cancellation           | `POST /api/v1/vaults/{vault}/jobs/{job}/cancel` |
+
+Use the normal API-major and bearer headers. Submit and cancel also require a
+client-generated UUID in `X-Request-Id`. Submission accepts only:
+
+```json
+{
+  "session_id": "session-id",
+  "target": { "kind": "summary" },
+  "expected_revision": "revision-from-the-summary-snapshot"
+}
+```
+
+The current operation generates and applies a summary body with task
+reconciliation. It preserves the existing revision/conflict behavior. Template
+generation requests are rejected until their source/template workflow is ready;
+title/tag application and streaming previews are not enabled by this capability.
+Provider endpoints, keys and job owners are not request fields.
+
+Keep the original UUID and declaration when retrying a lost submission reply.
+Receipt replay returns the same job even after its result was applied; it does
+not start another provider call. A different declaration with that UUID returns
+conflict. A stale document at execution produces a conflict job, and later edits
+to that target body cannot be overwritten by an older generation. Job work continues when its
+submission connection, subscription or frontend closes. Explicit cancellation is
+cooperative; it cannot undo a committed body. Cancelling an already completed job
+returns its existing terminal state.
+
+List supports `session_id`, `active_only`, `limit` (1–200, default 50) and `after`.
+Pages sort newest first with job ID tie-breaking. `next_cursor` is the last
+returned job ID when another page exists. Cursors are scoped to the current
+member and vault. Status, listing, cancellation and retained results are private
+to the submitting member, including in shared vaults; another editor or owner
+cannot obtain a member's private draft by knowing its job ID. Readers cannot
+submit new work but may inspect or cancel their own earlier jobs while they retain
+vault access. Removed members lose access immediately.
+
+The result endpoint returns null when no validated result is available. Otherwise
+it returns the vault/job/session/target binding, Markdown and optional tag
+suggestions. Results can survive cancellation or a conflict without being applied.
+The SDK checks response bindings and page bounds before returning data. Durable
+status/result reads remain available after a worker exits; orphaned active jobs
+are marked interrupted for review. New submission stays disabled until recovery.
+An admission stop is distinct from actual worker exit, so active shutdown drain
+cannot prematurely interrupt a result that is still being retained.
+
+The existing authenticated change stream delivers `job_changed` invalidations
+only to the submitting member, for both replay and live delivery. Canonical
+document/index changes remain visible to authorized vault members. Filtered
+private events still consume the bounded replay history; overflow requires a
+normal scoped resync. Progress is queryable independently of events. Optional
+response fields can be added within API major 1; request fields remain strict,
+and new operations require capability negotiation. Job bookkeeping has its own
+storage schema version, separate from API and canonical vault formats.
 
 ## Storage, backups and upgrades
 

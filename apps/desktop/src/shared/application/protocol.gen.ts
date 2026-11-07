@@ -87,6 +87,8 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | Partial
 
 export type ListMeetingsInput = { query: string | null; limit: number | null; offset: number | null; tags: string[] | null; untagged: boolean | null }
 
+export type ListProcessingJobsInput = { limit: number | null; after: string | null; session_id: string | null; active_only: boolean }
+
 export type Me = { member: MemberInfo; personal_vault_id: string }
 
 export type Meeting = { id: string; title: string; kind: string; status: string; created_at: string; updated_at: string; started_at: string; ended_at: string; timezone: string; language: string; tags: string[]; author: string | null; skill: string | null; note: Document | null; summaries: Document[]; action_items: ActionItem[] }
@@ -125,11 +127,17 @@ export type PersonItem = { id: string; name?: string }
 
 export type ProcessingJobFailure = "access_denied" | "source_unavailable" | "resource_limit" | "provider_unavailable" | "provider_failed" | "invalid_output" | "storage" | "interrupted"
 
+export type ProcessingJobPage = { items: ProcessingJobSnapshot[]; next_cursor: string | null }
+
+export type ProcessingJobResult = { vault_id: string; job_id: string; session_id: string; target: DocumentTarget; markdown: string; suggested_tags?: ProcessingTagSuggestion[] | null }
+
 export type ProcessingJobSnapshot = { id: string; session_id: string; target: DocumentTarget; state: ProcessingJobState; phase: ProcessingPhase | null; failure: ProcessingJobFailure | null; created_at: string; updated_at: string }
 
 export type ProcessingJobState = "queued" | "running" | "cancelling" | "cancelled" | "succeeded" | "failed" | "interrupted" | "conflict"
 
 export type ProcessingPhase = "preparing" | "generating" | "applying"
+
+export type ProcessingTagSuggestion = { name: string; confidence: number }
 
 export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
