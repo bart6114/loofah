@@ -312,6 +312,19 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationSessionSummaries(
+    input: SessionSummaryQuery,
+  ): Promise<Result<SessionSummary[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_session_summaries", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationDocuments(
     sessionId: string,
   ): Promise<Result<EnhancedDoc[], ApplicationError>> {
@@ -2456,6 +2469,7 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "session_summaries"; vault_id: string; input: SessionSummaryQuery }
   | { kind: "processing_policy"; vault_id: string }
   | { kind: "processing_settings"; vault_id: string }
   | {
@@ -2584,6 +2598,7 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "session_summaries"; value: SessionSummary[] }
   | { kind: "processing_policy"; value: ProcessingPolicy }
   | { kind: "processing_settings"; value: ProcessingSettingsSnapshot }
   | { kind: "processing_settings_save"; value: ProcessingSettingsSaveOutcome }
@@ -2803,6 +2818,17 @@ export type SessionPage = {
  * preferring the file loses nothing.
  */
 export type SessionRecord = { meta: SessionMeta; note_markdown: string | null };
+export type SessionSummary = { id: string; title: string; created_at: string };
+export type SessionSummaryOrder = "newest_first" | "oldest_first";
+export type SessionSummaryQuery =
+  | {
+      kind: "list";
+      limit: number;
+      order: SessionSummaryOrder;
+      titled_only?: boolean;
+    }
+  | { kind: "title"; query: string; limit: number }
+  | { kind: "ids"; ids: string[] };
 export type SessionTranscriptMetadata = {
   speaker_labels: string[];
   started_at: number | null;

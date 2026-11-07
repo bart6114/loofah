@@ -2871,3 +2871,51 @@ errors. Evidence is in the worker `agents/ui/logs` and
 adapter/component tests do not replace actual HTTPS or native production QA.
 The capture-spool and compound-generation workers remain isolated and unmerged
 until their own validation/review passes.
+
+### Bounded shared session-header queries
+
+The next shared contract adds `SessionSummary { id, title, created_at }` and three
+typed queries: bounded list, title substring and requested IDs. Lists and title
+queries select at most 200 headers across the full index using a bounded heap;
+they do not clone full session metadata or note bodies. Title matching trims the
+query and uses Unicode lowercase substring matching, with the existing full-text
+query ceiling of 4096 UTF-8 bytes. List ordering follows the current backend
+`created_at` string convention with an ID tie-breaker. Empty-title filtering
+happens before selection and limiting.
+
+ID queries accept at most 100 input IDs, deduplicate in requested order and omit
+missing/deleted sessions. They use recovered canonical metadata reads rather than
+trusting stale search/index hits. The projection has a 1 MiB raw-text budget and
+an 8 MiB encoded JSON response budget. Unknown metadata, note bodies, local paths
+and attachments are absent from the reply. Existing vault ownership, safe paths,
+recovery guards and file format stay in Rust.
+
+One `VaultContext::session_summaries` operation serves the login-free desktop IPC
+command and reader-accessible HTTP POST
+`/api/v1/vaults/{vault}/session-summaries/query`. The optional `session_summaries`
+capability gates native SDK requests. The SDK validates response bounds, unique
+safe IDs, requested-ID subset/order, filters and sort order. `VaultClient` exposes
+the operation through both adapters; `VaultScope.sessionSummariesOptions` captures
+the scoped client and cancellation signal, and invalidates matching queries on
+session/header changes, confirmed note edits and reconnect/resync.
+
+This is a shared API checkpoint. The frontend worker's Cmd-K/mention consumers
+and device-specific recent-session persistence still need integration before
+main-shell remote profile selection can be exposed. Full native/HTTPS UX,
+production performance and Windows validation remain release gates.
+
+Validation passes eight focused Rust protocol/storage/SDK/HTTP tests, the
+login-free IPC test, desktop typechecking and formatting. The real TCP SDK fixture
+matches the canonical title/ID projections at 50/150/500 ms RTT while retaining
+lost-submission replay checks. All 1,887 frontend tests pass with two workers.
+The first full frontend run passed 1,886 tests and hit the existing five-second
+AI window-sync timeout once; its unchanged isolated rerun and the bounded full
+rerun pass. Build/load sampling found a slow binary launch in `dyld` before test
+execution, so healthy processes were allowed to finish. Evidence is saved under
+`/Volumes/T7/loofah-backend-build/logs/session-summaries-*`; these debug/fixture
+checks do not replace production recording, network or platform acceptance.
+
+The final shared Rust/CLI and native desktop checks pass. Scoped Clippy passes
+with 23 existing shared-write warnings and no new query-module warnings;
+frontend lint retains 88 baseline warnings and no errors. Native bindings were
+exported and formatted, and generated protocol readback passes.

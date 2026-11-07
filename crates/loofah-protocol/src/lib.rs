@@ -6,6 +6,8 @@ mod jobs;
 pub use jobs::*;
 mod processing_settings;
 pub use processing_settings::*;
+mod session_summaries;
+pub use session_summaries::*;
 
 pub use hypr_agent_access::{
     GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, Meeting as AgentMeeting,
@@ -14,7 +16,7 @@ pub use hypr_agent_access::{
 };
 pub use hypr_transcript::RenderedTranscriptSegment;
 pub use hypr_vault_read::media::{AudioPeaks, FileInfo, FileMetadata};
-pub use hypr_vault_read::paths::validate_attachment_basename;
+pub use hypr_vault_read::paths::{validate_attachment_basename, validate_session_id};
 pub use hypr_vault_read::{EnhancedDoc, PersonItem, TagItem, TaskItem, TranscriptWithData};
 
 pub const API_MAJOR: u32 = 1;

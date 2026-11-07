@@ -55,6 +55,8 @@ import type {
   SaveNoteRequest,
   SessionDocument,
   SessionPage,
+  SessionSummary,
+  SessionSummaryQuery,
   TagItem,
   TaskItem,
   TasksSnapshot,
@@ -252,6 +254,10 @@ export type VaultClient = {
   ) => Promise<TasksSaveOutcome>;
   people: (options?: RequestOptions) => Promise<PersonItem[]>;
   tags: (options?: RequestOptions) => Promise<TagItem[]>;
+  sessionSummaries: (
+    input: SessionSummaryQuery,
+    options?: RequestOptions,
+  ) => Promise<SessionSummary[]>;
   sessions: (
     limit: number,
     after?: string | null,
@@ -333,6 +339,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "audio_playback",
       "recording_delete",
       "notes",
+      "session_summaries",
       "note_editor_read",
       "note_editor_write",
       "audio_metadata_read",
@@ -491,6 +498,8 @@ export async function connectLocalVault(): Promise<VaultClient> {
       ),
     people: (options) => ipc(() => commands.applicationPeople(), options),
     tags: (options) => ipc(() => commands.applicationTags(), options),
+    sessionSummaries: (input, options) =>
+      ipc(() => commands.applicationSessionSummaries(input), options),
     sessions: (limit, after, options) =>
       ipc(() => commands.applicationSessions(limit, after ?? null), options),
     session: (sessionId, options) =>
@@ -815,6 +824,12 @@ export function connectRemoteVault(
       ),
     tags: (options) =>
       connection.request({ kind: "tags", vault_id: vaultId }, "tags", options),
+    sessionSummaries: (input, options) =>
+      connection.request(
+        { kind: "session_summaries", vault_id: vaultId, input },
+        "session_summaries",
+        options,
+      ),
     sessions: (limit, after, options) =>
       connection.request(
         { kind: "sessions", vault_id: vaultId, limit, after: after ?? null },

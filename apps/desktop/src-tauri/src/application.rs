@@ -107,6 +107,15 @@ pub fn application_sessions<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_session_summaries<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::SessionSummaryQuery,
+) -> Result<Vec<hypr_loofah_protocol::SessionSummary>, ApplicationError> {
+    context(&app)?.session_summaries(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_session<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
@@ -497,4 +506,69 @@ pub async fn application_replace_tasks<R: tauri::Runtime>(
     input: hypr_loofah_protocol::ReplaceTasksRequest,
 ) -> Result<hypr_loofah_protocol::TasksSaveOutcome, ApplicationError> {
     context(&app)?.replace_tasks(&session_id, input).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hypr_loofah_core::{search::SearchService, settings::ConfigState, startup::StartupState};
+    use hypr_loofah_protocol::{SessionSummaryOrder, SessionSummaryQuery};
+
+    #[tokio::test]
+    async fn local_summary_queries_use_shared_headers_without_login() {
+        let vault = tempfile::tempdir().unwrap();
+        let store = Arc::new(hypr_vault_write::SessionStore::new(vault.path().into()));
+        let meta=serde_json::from_value(serde_json::json!({"id":"note","title":"Local note","created_at":"2026-11-07T10:00:00Z","tags":[],"future":"PRIVATE META"})).unwrap();
+        store
+            .create_note_session(&meta, "PRIVATE BODY")
+            .await
+            .unwrap();
+        let context = Arc::new(VaultContext::new(
+            "local:test".into(),
+            store.clone(),
+            StartupState::new(Some(vault.path())),
+            Arc::new(ConfigState::load_or_default(vault.path())),
+            Arc::new(SearchService::default()),
+        ));
+        let app = tauri::test::mock_builder()
+            .manage(context)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let query = SessionSummaryQuery::List {
+            limit: 55,
+            order: SessionSummaryOrder::NewestFirst,
+            titled_only: false,
+        };
+        let rows = application_session_summaries(app.handle().clone(), query.clone())
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].title, "Local note");
+        assert_eq!(
+            serde_json::to_value(&rows[0])
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .len(),
+            3
+        );
+        std::fs::remove_file(vault.path().join("sessions/note/_meta.json")).unwrap();
+        let rows = application_session_summaries(
+            app.handle().clone(),
+            SessionSummaryQuery::Ids {
+                ids: vec!["note".into()],
+            },
+        )
+        .await
+        .unwrap();
+        assert!(rows.is_empty());
+        store.set_startup_pending(true);
+        assert_eq!(
+            application_session_summaries(app.handle().clone(), query)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::Unavailable
+        );
+    }
 }

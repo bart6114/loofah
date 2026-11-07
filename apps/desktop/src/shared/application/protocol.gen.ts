@@ -211,6 +211,12 @@ export type SessionMetaPatch = { title?: string | null; started_at?: string | nu
 
 export type SessionPage = { sessions: SessionMeta[]; next_cursor: string | null }
 
+export type SessionSummary = { id: string; title: string; created_at: string }
+
+export type SessionSummaryOrder = "newest_first" | "oldest_first"
+
+export type SessionSummaryQuery = { kind: "list"; limit: number; order: SessionSummaryOrder; titled_only?: boolean } | { kind: "title"; query: string; limit: number } | { kind: "ids"; ids: string[] }
+
 export type SetMembershipRequest = { role: VaultRole; expected_revision: string }
 
 export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessions_found: number } | { kind: "indexing"; completed: number; total: number } | { kind: "archivingLegacyTemplates" } | { kind: "ready" } | { kind: "stopping" } | { kind: "stopped" } | { kind: "failed"; message: string }

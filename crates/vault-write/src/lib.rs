@@ -32,6 +32,7 @@ pub mod processing_source;
 pub mod rebuild;
 pub mod recording_delete;
 mod session_path;
+mod session_summaries;
 pub mod stats;
 pub mod storage_stats;
 pub mod summary;

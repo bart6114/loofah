@@ -623,6 +623,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             job_submissions::device_job_submission_observe::<tauri::Wry>,
             job_submissions::device_job_submission_forget::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
+            application::application_session_summaries::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
             application::application_agent_list::<tauri::Wry>,
             application::application_agent_search::<tauri::Wry>,

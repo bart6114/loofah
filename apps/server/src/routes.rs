@@ -22,12 +22,14 @@ use crate::{
 
 mod jobs;
 mod processing_settings;
+mod session_summaries;
 
 pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
         .merge(crate::media::router())
         .merge(jobs::router())
         .merge(processing_settings::router())
+        .merge(session_summaries::router())
         .route("/me", get(me).post(provision))
         .route("/members", get(directory))
         .route("/vaults", get(vaults).post(create_vault))
@@ -163,6 +165,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         application_version: env!("LOOFAH_VERSION").into(),
         features: vec![
             "notes".into(),
+            "session_summaries".into(),
             "note_editor_read".into(),
             "note_editor_write".into(),
             "audio_metadata_read".into(),

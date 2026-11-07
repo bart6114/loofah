@@ -521,6 +521,34 @@ async fn native_sdk_replays_a_lost_submission_reply_at_realistic_latency_without
         };
         let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
         prepare(&context).await;
+        for input in [
+            SessionSummaryQuery::Title {
+                query: "release".into(),
+                limit: 50,
+            },
+            SessionSummaryQuery::Ids {
+                ids: vec!["missing".into(), "note".into(), "note".into()],
+            },
+        ] {
+            let expected = context.session_summaries(input.clone()).await.unwrap();
+            let RemoteReply::SessionSummaries(rows) = client
+                .execute(
+                    RemoteOperation::SessionSummaries {
+                        vault_id: me.personal_vault_id.clone(),
+                        input,
+                    },
+                    &uuid::Uuid::new_v4().to_string(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("native session summary response");
+            };
+            assert_eq!(rows, expected);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].id, "note");
+        }
         let request = input(&context).await;
         context
             .settings

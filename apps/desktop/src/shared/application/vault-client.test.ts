@@ -26,6 +26,7 @@ const native = vi.hoisted(() => ({
     applicationSaveNote: vi.fn(),
     applicationCreateSession: vi.fn(),
     applicationSessions: vi.fn(),
+    applicationSessionSummaries: vi.fn(),
     applicationSession: vi.fn(),
     applicationSearch: vi.fn(),
     applicationDocuments: vi.fn(),
@@ -123,6 +124,40 @@ it("advertises local summary jobs only when the native worker is available", asy
   expect(local.features).not.toContain("summary_body_jobs");
   expect(local.canEdit).toBe(true);
   expect(local.networkMode).toBe("always");
+});
+
+it("uses matching bounded session-summary queries across both transports", async () => {
+  const input = { kind: "ids" as const, ids: ["same", "missing"] };
+  const rows = [{ id: "same", title: "Title", created_at: "2026-11-07" }];
+  native.commands.applicationSessionSummaries.mockResolvedValue({
+    status: "ok",
+    data: rows,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toContain("session_summaries");
+  expect(await local.sessionSummaries(input)).toEqual(rows);
+  expect(native.commands.applicationSessionSummaries).toHaveBeenCalledWith(
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(rows);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["session_summaries"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  const options = { signal: new AbortController().signal };
+  expect(await remote.sessionSummaries(input, options)).toEqual(rows);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "session_summaries", vault_id: "first", input },
+    "session_summaries",
+    options,
+  );
 });
 
 it("uses matching typed processing settings contracts across both transports", async () => {

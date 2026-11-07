@@ -9,6 +9,7 @@ mod processing_api;
 mod processing_settings;
 mod recording;
 mod recording_delete;
+mod session_summaries;
 mod tasks;
 mod waveform;
 

@@ -11,6 +11,10 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    SessionSummaries {
+        vault_id: String,
+        input: SessionSummaryQuery,
+    },
     ProcessingPolicy {
         vault_id: String,
     },
@@ -217,6 +221,7 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    SessionSummaries(Vec<SessionSummary>),
     ProcessingPolicy(ProcessingPolicy),
     ProcessingSettings(ProcessingSettingsSnapshot),
     ProcessingSettingsSave(ProcessingSettingsSaveOutcome),
@@ -276,6 +281,7 @@ impl RemoteClient {
             return Err(cancelled());
         }
         let required_feature = match &operation {
+            RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
             RemoteOperation::ProcessingPolicy { .. }
             | RemoteOperation::ProcessingSettings { .. }
             | RemoteOperation::SaveProcessingSettings { .. } => Some("processing_settings"),
@@ -303,6 +309,7 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::SessionSummaries { .. } => "session summaries",
                 RemoteOperation::ProcessingPolicy { .. }
                 | RemoteOperation::ProcessingSettings { .. }
                 | RemoteOperation::SaveProcessingSettings { .. } => "processing settings",
@@ -371,8 +378,18 @@ impl RemoteClient {
             return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
+        if let RemoteOperation::SessionSummaries { input, .. } = &operation {
+            validate_session_summary_query(input).map_err(invalid)?;
+        }
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::SessionSummaries { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "session-summaries", "query"],
+                )
+            }
             RemoteOperation::ProcessingPolicy { vault_id } => (
                 Method::GET,
                 vec!["vaults", vault_id, "processing", "policy"],
@@ -785,6 +802,7 @@ impl RemoteClient {
         let mutation = !matches!(
             operation,
             RemoteOperation::Search { .. }
+                | RemoteOperation::SessionSummaries { .. }
                 | RemoteOperation::AgentList { .. }
                 | RemoteOperation::AgentSearch { .. }
         ) && method != Method::GET;
@@ -854,6 +872,12 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                RemoteOperation::SessionSummaries { input, .. } => {
+                    let summaries: Vec<SessionSummary> =
+                        json_body(response, SESSION_SUMMARY_RESPONSE_LIMIT).await?;
+                    validate_summary_reply(&summaries, &input)?;
+                    RemoteReply::SessionSummaries(summaries)
+                }
                 RemoteOperation::ProcessingPolicy { .. } => {
                     RemoteReply::ProcessingPolicy(json_body(response, 4 * 1024 * 1024).await?)
                 }
@@ -1071,6 +1095,83 @@ fn value(input: &impl Serialize) -> Result<Value> {
     serde_json::to_value(input).map_err(|_| invalid("Cannot encode request"))
 }
 
+fn validate_summary_reply(rows: &[SessionSummary], input: &SessionSummaryQuery) -> Result<()> {
+    let invalid = || {
+        failure(
+            ErrorCode::IncompatibleVersion,
+            "Invalid session summary response",
+        )
+    };
+    let limit = match input {
+        SessionSummaryQuery::List { limit, .. } | SessionSummaryQuery::Title { limit, .. } => {
+            *limit as usize
+        }
+        SessionSummaryQuery::Ids { ids } => ids.len(),
+    };
+    if rows.len() > limit {
+        return Err(invalid());
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut budget = SESSION_SUMMARY_TEXT_LIMIT;
+    let mut previous_id_position = None;
+    for row in rows {
+        validate_session_id(&row.id).map_err(|_| invalid())?;
+        if !seen.insert(&row.id) {
+            return Err(invalid());
+        }
+        budget = budget
+            .checked_sub(
+                row.id
+                    .len()
+                    .saturating_add(row.title.len())
+                    .saturating_add(row.created_at.len()),
+            )
+            .ok_or_else(invalid)?;
+        match input {
+            SessionSummaryQuery::Ids { ids } => {
+                let position = ids
+                    .iter()
+                    .position(|id| id == &row.id)
+                    .ok_or_else(invalid)?;
+                if previous_id_position.is_some_and(|previous| position <= previous) {
+                    return Err(invalid());
+                }
+                previous_id_position = Some(position);
+            }
+            SessionSummaryQuery::List {
+                titled_only: true, ..
+            } if row.title.is_empty() => return Err(invalid()),
+            SessionSummaryQuery::Title { query, .. }
+                if !row
+                    .title
+                    .to_lowercase()
+                    .contains(&query.trim().to_lowercase()) =>
+            {
+                return Err(invalid());
+            }
+            _ => {}
+        }
+    }
+    let order = match input {
+        SessionSummaryQuery::List { order, .. } => Some(*order),
+        SessionSummaryQuery::Title { .. } => Some(SessionSummaryOrder::NewestFirst),
+        SessionSummaryQuery::Ids { .. } => None,
+    };
+    if let Some(order) = order {
+        for pair in rows.windows(2) {
+            let comparison = match order {
+                SessionSummaryOrder::NewestFirst => pair[1].created_at.cmp(&pair[0].created_at),
+                SessionSummaryOrder::OldestFirst => pair[0].created_at.cmp(&pair[1].created_at),
+            }
+            .then(pair[0].id.cmp(&pair[1].id));
+            if comparison.is_gt() {
+                return Err(invalid());
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_processing_page(
     page: &ProcessingJobPage,
     input: &ListProcessingJobsInput,
@@ -1128,6 +1229,74 @@ fn validate_attachment_page(
 #[cfg(test)]
 mod attachment_page_tests {
     use super::*;
+
+    #[test]
+    fn session_summary_replies_validate_limits_identity_order_filters_and_text_budget() {
+        let a = SessionSummary {
+            id: "a".into(),
+            title: "Åland plan".into(),
+            created_at: "2026-02-02".into(),
+        };
+        let b = SessionSummary {
+            id: "b".into(),
+            title: "Other".into(),
+            created_at: "2026-02-01".into(),
+        };
+        let newest = SessionSummaryQuery::List {
+            limit: 2,
+            order: SessionSummaryOrder::NewestFirst,
+            titled_only: false,
+        };
+        assert!(validate_summary_reply(&[a.clone(), b.clone()], &newest).is_ok());
+        for rows in [
+            vec![b.clone(), a.clone()],
+            vec![a.clone(), a.clone()],
+            vec![a.clone(), b.clone(), b.clone()],
+        ] {
+            assert!(validate_summary_reply(&rows, &newest).is_err());
+        }
+        let title = SessionSummaryQuery::Title {
+            query: " åLAND ".into(),
+            limit: 1,
+        };
+        assert!(validate_summary_reply(std::slice::from_ref(&a), &title).is_ok());
+        assert!(validate_summary_reply(std::slice::from_ref(&b), &title).is_err());
+        let ids = SessionSummaryQuery::Ids {
+            ids: vec!["b".into(), "a".into(), "b".into()],
+        };
+        assert!(validate_summary_reply(&[b.clone(), a.clone()], &ids).is_ok());
+        assert!(validate_summary_reply(&[a.clone(), b.clone()], &ids).is_err());
+        for row in [
+            SessionSummary {
+                id: "foreign".into(),
+                ..a.clone()
+            },
+            SessionSummary {
+                id: "../escape".into(),
+                ..a.clone()
+            },
+            SessionSummary {
+                title: "x".repeat(SESSION_SUMMARY_TEXT_LIMIT + 1),
+                ..a.clone()
+            },
+        ] {
+            assert!(validate_summary_reply(&[row], &ids).is_err());
+        }
+        assert!(
+            validate_summary_reply(
+                &[SessionSummary {
+                    title: String::new(),
+                    ..a
+                }],
+                &SessionSummaryQuery::List {
+                    limit: 1,
+                    order: SessionSummaryOrder::NewestFirst,
+                    titled_only: true
+                }
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn job_pages_reject_duplicate_ids_wrong_sessions_activity_and_cursor_repetition() {

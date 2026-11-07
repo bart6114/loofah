@@ -23,6 +23,7 @@ function fixture(scope: string) {
     openAttachment: vi.fn(),
     session: vi.fn(),
     sessions: vi.fn(),
+    sessionSummaries: vi.fn().mockResolvedValue([]),
     search: vi.fn(),
     subscribe: vi.fn(async (listener) => {
       event = listener;
@@ -59,6 +60,45 @@ function watchCacheCleanup(scope: VaultScope) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("scopes summary queries and invalidates them on header changes and reconnect", async () => {
+    const { active, backend, emit } = fixture("scope");
+    await active.start();
+    const input = { kind: "title" as const, query: "plan", limit: 50 };
+    const options = active.sessionSummariesOptions(input);
+    expect(await active.queryClient.fetchQuery(options)).toEqual([]);
+    expect(backend.sessionSummaries).toHaveBeenCalledWith(input, {
+      signal: expect.any(AbortSignal),
+    });
+    const foreign = ["vault", "other", "session_summaries", input];
+    active.queryClient.setQueryData(foreign, []);
+    emit({
+      kind: "change",
+      change: {
+        kind: "index_changed",
+        entity: "session_headers",
+        ids: ["note"],
+      },
+    });
+    expect(
+      active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+    ).toBe(true);
+    expect(active.queryClient.getQueryState(foreign)?.isInvalidated).toBe(
+      false,
+    );
+    active.queryClient.setQueryData(options.queryKey, []);
+    emit({ kind: "connection", state: "reconnecting", error: null });
+    expect(active.queryClient.getQueryData(options.queryKey)).toEqual([]);
+    emit({ kind: "connection", state: "connected", error: null });
+    expect(
+      active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+    ).toBe(true);
+    expect(active.queryClient.getQueryState(foreign)?.isInvalidated).toBe(
+      false,
+    );
+    emit({ kind: "connection", state: "access_denied", error: null });
+    expect(active.queryClient.getQueryData(options.queryKey)).toBeUndefined();
+    active.dispose();
+  });
   it("invalidates only the active vault processing settings on a settings event", async () => {
     const { active, emit } = fixture("scope");
     await active.start();

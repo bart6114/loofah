@@ -19,6 +19,7 @@ import type {
   DocumentTarget,
   ListProcessingJobsInput,
   ProcessingSettingsSnapshot,
+  SessionSummaryQuery,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
@@ -511,6 +512,13 @@ export class VaultScope {
         this.run(() => this.client.processingPolicy({ signal })),
     });
   }
+  sessionSummariesOptions(input: SessionSummaryQuery) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "session_summaries", input],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.sessionSummaries(input, { signal })),
+    });
+  }
   processingSettingsOptions() {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "processing_settings"],
@@ -553,9 +561,10 @@ export class VaultScope {
       !(await this.confirmSnapshot(this.noteOptions(sessionId).queryKey, note))
     )
       return;
-    void this.queryClient.invalidateQueries({
-      queryKey: ["vault", this.client.scope, "session_page"],
-    });
+    for (const kind of ["session_page", "session_summaries"])
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, kind],
+      });
     void this.queryClient.invalidateQueries({
       queryKey: ["vault", this.client.scope, "session", sessionId],
     });
@@ -587,9 +596,10 @@ export class VaultScope {
         queryKey: ["vault", this.client.scope, kind, sessionId],
       });
     }
-    void this.queryClient.invalidateQueries({
-      queryKey: ["vault", this.client.scope, "session_page"],
-    });
+    for (const kind of ["session_page", "session_summaries"])
+      void this.queryClient.invalidateQueries({
+        queryKey: ["vault", this.client.scope, kind],
+      });
   }
 
   async confirmDocumentText(
@@ -716,7 +726,7 @@ export class VaultScope {
             kind === change.entity
           )
             return true;
-          if (kind === "session_page")
+          if (kind === "session_page" || kind === "session_summaries")
             return ["sessions", "session_headers"].includes(change.entity);
           if (
             ["audio_metadata", "audio_resource", "audio_peaks"].includes(
