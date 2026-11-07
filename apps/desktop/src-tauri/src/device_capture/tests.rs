@@ -24,7 +24,7 @@ impl DeviceCaptureObserver for Observer {
 fn identity() -> CaptureIdentity {
     CaptureIdentity {
         scope: CaptureScope {
-            server: "https://capture.example".into(),
+            server: "https://capture.example/".into(),
             member_id: "member".into(),
             vault_id: "remote".into(),
         },
