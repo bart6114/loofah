@@ -258,7 +258,7 @@ fn read_template(path: &Path, limit: usize) -> Result<String, StoreError> {
     String::from_utf8(bytes).map_err(|cause| StoreError::Serialize(cause.to_string()))
 }
 
-fn replace_body(
+pub(super) fn replace_body(
     raw: &str,
     document: &crate::EnhancedDoc,
     markdown: &str,

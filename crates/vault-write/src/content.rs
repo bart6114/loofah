@@ -423,7 +423,7 @@ impl SessionStore {
             .await
     }
 
-    async fn write_note_file_locked(
+    pub(super) async fn write_note_file_locked(
         &self,
         guard: &WriteGuard<'_>,
         id: &str,

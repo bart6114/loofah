@@ -17,6 +17,13 @@ struct Intent {
     tasks: Vec<TaskItem>,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
+enum StoredIntent {
+    Document(Intent),
+    Title(crate::generated_title::TitleIntent),
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum RecoveryTarget {
@@ -86,6 +93,9 @@ impl From<&DocumentTarget> for RecoveryTarget {
 pub(super) struct PendingDocument(PathBuf);
 
 impl PendingDocument {
+    pub(super) fn path(&self) -> &Path {
+        &self.0
+    }
     pub(super) async fn finish(self) -> Result<(), StoreError> {
         tokio::task::spawn_blocking(move || remove(&self.0))
             .await
@@ -167,6 +177,24 @@ impl SessionStore {
             .map_err(join_error)??;
         let Some(intent) = intent else {
             return Ok(());
+        };
+        let intent = match intent {
+            StoredIntent::Document(intent) => intent,
+            StoredIntent::Title(intent) => {
+                crate::validate_session_id(&intent.session_id)?;
+                if intent.schema_version != 4
+                    || path.file_name()
+                        != intent_path(path.parent().unwrap(), &intent.session_id).file_name()
+                {
+                    return Err(StoreError::Io(
+                        "invalid title recovery identity or version".into(),
+                    ));
+                }
+                return self
+                    .recover_generated_title_locked(guard, path, intent)
+                    .await
+                    .map_err(StoreError::after_commit);
+            }
         };
         crate::validate_session_id(&intent.session_id)?;
         let schema_version = match &intent.target {
@@ -675,14 +703,53 @@ impl SessionStore {
         root: &Path,
         intent: Intent,
     ) -> Result<PendingDocument, StoreError> {
+        let session_id = intent.session_id.clone();
+        self.write_pending_record(
+            root,
+            &session_id,
+            StoredIntent::Document(intent),
+            self.content_limits.recovery_bytes,
+        )
+        .await
+    }
+
+    pub(super) async fn begin_title_write_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        root: &Path,
+        intent: crate::generated_title::TitleIntent,
+    ) -> Result<PendingDocument, StoreError> {
+        let session_id = intent.session_id.clone();
+        self.write_pending_record(
+            root,
+            &session_id,
+            StoredIntent::Title(intent),
+            self.content_limits
+                .recovery_bytes
+                .min(crate::generated_title::MAX_INTENT),
+        )
+        .await
+    }
+
+    async fn write_pending_record(
+        &self,
+        root: &Path,
+        session_id: &str,
+        intent: StoredIntent,
+        limit: usize,
+    ) -> Result<PendingDocument, StoreError> {
         self.validate_document_root(root)?;
-        let path = intent_path(root, &intent.session_id);
+        let path = intent_path(root, session_id);
         let write_path = path.clone();
-        let limit = self.content_limits.recovery_bytes;
         tokio::task::spawn_blocking(move || {
             let bytes =
                 serde_json::to_string(&intent).map_err(|e| StoreError::Serialize(e.to_string()))?;
             if bytes.len() > limit {
+                if matches!(intent, StoredIntent::Title(_)) {
+                    return Err(StoreError::ResourceLimit(
+                        "Title recovery record exceeds its serialized size limit".into(),
+                    ));
+                }
                 return Err(StoreError::Io(
                     "document recovery record exceeds its size limit".into(),
                 ));
@@ -769,13 +836,29 @@ fn regular_directory(path: &Path) -> Result<bool, StoreError> {
     }
 }
 
-fn read(path: &Path, limit: usize) -> Result<Option<Intent>, StoreError> {
+fn read(path: &Path, limit: usize) -> Result<Option<StoredIntent>, StoreError> {
     regular_directory(path.parent().unwrap())?;
     match std::fs::symlink_metadata(path) {
         Ok(meta) if !meta.is_file() || meta.len() > limit as u64 => {
             return Err(StoreError::Io("invalid document recovery file".into()));
         }
-        Ok(_) => {}
+        Ok(meta) => {
+            if meta.len() > crate::generated_title::MAX_INTENT as u64 {
+                match oversized_schema_version(path)? {
+                    1..=3 => {}
+                    4 => {
+                        return Err(StoreError::ResourceLimit(
+                            "Title recovery record exceeds its size limit".into(),
+                        ));
+                    }
+                    _ => {
+                        return Err(StoreError::Io(
+                            "Unsupported oversized recovery record".into(),
+                        ));
+                    }
+                }
+            }
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(io_error(e)),
     }
@@ -791,9 +874,58 @@ fn read(path: &Path, limit: usize) -> Result<Option<Intent>, StoreError> {
             "document recovery record exceeds its size limit".into(),
         ));
     }
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|e| StoreError::Serialize(e.to_string()))
+    #[derive(Deserialize)]
+    struct Version {
+        schema_version: u32,
+    }
+    let version: Version =
+        serde_json::from_slice(&bytes).map_err(|cause| StoreError::Serialize(cause.to_string()))?;
+    if version.schema_version == 4 {
+        if bytes.len() > crate::generated_title::MAX_INTENT {
+            return Err(StoreError::ResourceLimit(
+                "Title recovery record exceeds its size limit".into(),
+            ));
+        }
+        serde_json::from_slice(&bytes)
+            .map(StoredIntent::Title)
+            .map(Some)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))
+    } else {
+        serde_json::from_slice(&bytes)
+            .map(StoredIntent::Document)
+            .map(Some)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))
+    }
+}
+
+pub(super) async fn finish_title_intent(path: &Path) -> Result<(), StoreError> {
+    PendingDocument(path.to_owned()).finish().await
+}
+
+fn oversized_schema_version(path: &Path) -> Result<u32, StoreError> {
+    use std::io::Read;
+    struct Version<'a>(&'a std::cell::Cell<Option<u32>>);
+    impl<'de> serde::de::Visitor<'de> for Version<'_> {
+        type Value = ();
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an app-written recovery version header")
+        }
+        fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<(), M::Error> {
+            if map.next_key::<String>()?.as_deref() != Some("schema_version") {
+                return Err(serde::de::Error::custom("unrecognized recovery header"));
+            }
+            self.0.set(Some(map.next_value()?));
+            // Stop the serde visitor before it consumes the potentially oversized body.
+            Err(serde::de::Error::custom("version inspection complete"))
+        }
+    }
+    let version = std::cell::Cell::new(None);
+    let file = std::fs::File::open(path).map_err(io_error)?;
+    let mut reader = serde_json::Deserializer::from_reader(file.take(1024));
+    let _ = serde::Deserializer::deserialize_map(&mut reader, Version(&version));
+    version.get().ok_or_else(|| {
+        StoreError::Io("Unrecognized oversized recovery header; file preserved".into())
+    })
 }
 
 fn generated_summary_sync_paths(

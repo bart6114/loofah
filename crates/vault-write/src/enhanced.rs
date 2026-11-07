@@ -11,6 +11,14 @@ pub use hypr_vault_read::{ENHANCED_KINDS, EnhancedDoc};
 
 mod generated;
 
+pub(super) fn replace_body_preserving_frontmatter(
+    raw: &str,
+    document: &EnhancedDoc,
+    markdown: &str,
+) -> Result<String, StoreError> {
+    generated::replace_body(raw, document, markdown)
+}
+
 /// Partial update for an existing enhanced doc: `None` means "leave as-is". The `expected_*`
 /// fields are compare-and-swap guards against the *current file content* -- a mismatch
 /// returns `StoreError::Conflict` and changes nothing, which is the store-level equivalent

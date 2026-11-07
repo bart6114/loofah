@@ -18,6 +18,7 @@ pub mod enhanced;
 mod file_snapshot;
 #[cfg(test)]
 mod flat_layout_tests;
+mod generated_title;
 pub mod index;
 pub mod journal;
 pub mod legacy_templates;
@@ -49,6 +50,9 @@ pub use content::{
 };
 pub use content_limits::ContentLimits;
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
+pub use generated_title::{
+    GeneratedTitleBaseline, GeneratedTitleOutcome, GeneratedTitlePreparation, RawNoteTitleOutcome,
+};
 pub use index::{
     IndexChanged, IndexEntity, SessionListEntry, SessionListHeader, SessionRecord,
     SessionTranscriptMetadata,
