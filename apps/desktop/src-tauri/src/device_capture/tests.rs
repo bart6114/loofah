@@ -46,6 +46,7 @@ async fn spool() -> (tempfile::TempDir, Arc<CaptureSpool>) {
 
 #[tokio::test]
 async fn pending_capture_is_scoped_f32_and_sealed_without_a_canonical_session() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
     let (temp, spool) = spool().await;
     let local = temp.path().join("sessions/same-id");
     std::fs::create_dir_all(&local).unwrap();
@@ -122,6 +123,7 @@ async fn pending_capture_is_scoped_f32_and_sealed_without_a_canonical_session() 
 
 #[tokio::test]
 async fn interruption_flush_receipt_does_not_seal_or_mutate_baseline() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let observer = Arc::new(Observer::default());
     let mut identity = identity();
@@ -176,6 +178,7 @@ async fn interruption_flush_receipt_does_not_seal_or_mutate_baseline() {
 
 #[tokio::test]
 async fn retryable_busy_retains_identical_chunk_until_storage_accepts_it() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let observer = Arc::new(Observer::default());
     let prepared =
@@ -365,6 +368,7 @@ impl DeviceListenerRuntime for NoLocalRuntime {
 
 #[tokio::test]
 async fn real_device_helper_drains_realistic_fake_audio_into_reopenable_exact_spool_bytes() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
     use hypr_loofah_client::capture_spool::CaptureChannel;
     use tauri_plugin_transcription::{DeviceCaptureRoot, DeviceCaptureRootArgs};
     let (temp, spool) = spool().await;
@@ -478,6 +482,7 @@ async fn real_device_helper_drains_realistic_fake_audio_into_reopenable_exact_sp
 
 #[tokio::test]
 async fn empty_abandoned_capture_identity_is_not_restarted_after_a_gap() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let identity = identity();
     spool
@@ -496,6 +501,7 @@ async fn empty_abandoned_capture_identity_is_not_restarted_after_a_gap() {
 
 #[tokio::test]
 async fn concurrent_prepare_claims_one_device_capture_identity() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
     let (_temp, spool) = spool().await;
     let identity = identity();
     let observer = Arc::new(Observer::default());

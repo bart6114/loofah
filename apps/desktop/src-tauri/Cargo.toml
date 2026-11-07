@@ -21,6 +21,7 @@ serde_json = { workspace = true }
 [dependencies]
 async-stream = { workspace = true }
 base64 = { workspace = true }
+futures-util = { workspace = true }
 tauri = { workspace = true, features = ["specta", "macos-private-api", "protocol-asset"] }
 
 camino = { workspace = true }
@@ -120,7 +121,6 @@ hypr-intercept = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
-futures-util = { workspace = true }
 sha2 = { workspace = true }
 # `test` feature only unifies in for test-target builds (resolver v2), not
 # the production binary -- needed for `tauri::test::mock_builder`.
