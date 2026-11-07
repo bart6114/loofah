@@ -267,9 +267,14 @@ async fn execute(
                 .save_generated_summary(&work.request.session_id, input, output.suggested_tags)
                 .await
         }
-        target => {
+        DocumentTarget::TemplateOutput { document_id } => {
             context
-                .save_generated_document_body(&work.request.session_id, target, input)
+                .save_generated_template_output(
+                    &work.request.session_id,
+                    document_id,
+                    input,
+                    output.suggested_tags,
+                )
                 .await
         }
     };

@@ -8,6 +8,74 @@ use crate::{
 };
 
 impl VaultContext {
+    pub async fn save_generated_template_output(
+        self: &std::sync::Arc<Self>,
+        session_id: &str,
+        document_id: &str,
+        input: hypr_loofah_protocol::SaveDocumentRequest,
+        suggestions: Option<Vec<hypr_vault_write::ScoredTagSuggestion>>,
+    ) -> Result<hypr_loofah_protocol::DocumentSaveOutcome, ApplicationError> {
+        let target = hypr_loofah_protocol::DocumentTarget::TemplateOutput {
+            document_id: document_id.into(),
+        };
+        self.validate_document(session_id, &target)?;
+        if input.expected_revision.is_empty() || input.expected_revision.len() > 128 {
+            return Err(error(
+                ErrorCode::Validation,
+                "Expected document revision is required",
+            ));
+        }
+        if input.markdown.len() > self.store.content_limits().note_write_bytes {
+            return Err(error(
+                ErrorCode::ResourceLimit,
+                "Generated template output is too large",
+            ));
+        }
+        let root = self.document_operation_root().ok_or_else(|| {
+            error(
+                ErrorCode::Unavailable,
+                "Operation storage is not configured",
+            )
+        })?;
+        let context = self.clone();
+        let session_id = session_id.to_owned();
+        let document_id = document_id.to_owned();
+        tokio::spawn(async move {
+            let current = context.read_document(&session_id, &target).await?;
+            if current.document.is_none() {
+                return Err(error(ErrorCode::NotFound, "Template output not found"));
+            }
+            let policy = context.settings.read_current().await.map_err(|_| {
+                error(
+                    ErrorCode::Unavailable,
+                    "Processing settings could not be read",
+                )
+            })?;
+            context
+                .store
+                .save_generated_template_with_suggestions_if_revision(
+                    &root,
+                    &session_id,
+                    &document_id,
+                    input,
+                    suggestions,
+                    policy.auto_apply_high_confidence_tags,
+                )
+                .await
+                .map_err(|cause| storage_error(cause, true))
+        })
+        .await
+        .map_err(|cause| {
+            tracing::error!(%cause, "generated template worker stopped");
+            let mut failure = error(
+                ErrorCode::Internal,
+                "Template outcome could not be confirmed",
+            );
+            failure.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::Unknown);
+            failure
+        })?
+    }
+
     pub async fn recover_document_writes(&self) -> Result<(), ApplicationError> {
         if let Some(operations) = &self.operations {
             self.store
@@ -249,6 +317,9 @@ impl VaultContext {
             .map_err(|cause| storage_error(cause, false))
     }
 }
+
+#[cfg(test)]
+mod template_tests;
 
 #[cfg(test)]
 mod tests {

@@ -485,7 +485,24 @@ async fn invalid_output_cannot_touch_canonical_content() {
 
 #[tokio::test]
 async fn template_body_generation_preserves_metadata_and_completed_tasks() {
-    let f = Fixture::new("# Actions\n- [ ] Ship Friday", false).await;
+    let mut f = Fixture::new("# Actions\n- [ ] Ship Friday", false).await;
+    Arc::get_mut(&mut f.generator)
+        .unwrap()
+        .output
+        .as_mut()
+        .unwrap()
+        .suggested_tags = Some(vec![hypr_vault_write::ScoredTagSuggestion {
+        name: "project/new".into(),
+        confidence: 0.99,
+    }]);
+    f.context
+        .settings
+        .set_values(std::collections::HashMap::from([(
+            "auto_apply_high_confidence_tags".into(),
+            serde_json::json!(true),
+        )]))
+        .await
+        .unwrap();
     let target = DocumentTarget::TemplateOutput {
         document_id: "output-one".into(),
     };
@@ -545,7 +562,119 @@ async fn template_body_generation_preserves_metadata_and_completed_tasks() {
     let after = f.context.session_tasks("note").await.unwrap();
     assert_eq!(after[0].id, before[0].id);
     assert_eq!(after[0].status, "done");
+    assert_eq!(
+        f.context
+            .store
+            .read_meta("note")
+            .await
+            .unwrap()
+            .unwrap()
+            .tags,
+        ["project/new"]
+    );
+    assert!(
+        f.journal
+            .result(job.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .suggested_tags
+            .is_some()
+    );
     worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn template_generation_cancel_conflict_and_recording_retain_output_without_applying_tags() {
+    for case in ["cancel", "conflict", "recording"] {
+        let mut f = Fixture::new("# Generated template", false).await;
+        Arc::get_mut(&mut f.generator)
+            .unwrap()
+            .output
+            .as_mut()
+            .unwrap()
+            .suggested_tags = Some(vec![hypr_vault_write::ScoredTagSuggestion {
+            name: "project/new".into(),
+            confidence: 0.99,
+        }]);
+        f.context
+            .store
+            .write_enhanced_doc(&hypr_loofah_protocol::EnhancedDoc {
+                id: "output-one".into(),
+                session_id: "note".into(),
+                kind: "template_output".into(),
+                title: "Output".into(),
+                template_id: "retired".into(),
+                sort_order: 7,
+                markdown: "Original template".into(),
+            })
+            .await
+            .unwrap();
+        let target = DocumentTarget::TemplateOutput {
+            document_id: "output-one".into(),
+        };
+        let job = f
+            .journal
+            .submit(
+                "member-one".into(),
+                uuid::Uuid::new_v4().to_string(),
+                f.request(target.clone()).await,
+            )
+            .await
+            .unwrap();
+        let worker = f.worker().await;
+        until(|| f.generator.calls.load(Ordering::SeqCst) == 1).await;
+        match case {
+            "cancel" => {
+                f.journal.cancel(job.id.clone()).await.unwrap();
+            }
+            "recording" => f.context.store.note_recording_active("note"),
+            _ => {
+                let baseline = f.context.read_document("note", &target).await.unwrap();
+                f.context
+                    .save_document(
+                        "note",
+                        &target,
+                        SaveDocumentRequest {
+                            markdown: "User edited template".into(),
+                            expected_revision: baseline.revision,
+                        },
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
+        f.generator.release.add_permits(1);
+        let state = f.terminal(&job.id).await.state;
+        assert_ne!(state, ProcessingJobState::Succeeded, "{case}");
+        let output = f.journal.result(job.id).await.unwrap().unwrap();
+        assert!(output.suggested_tags.is_some());
+        assert!(
+            f.context
+                .store
+                .read_meta("note")
+                .await
+                .unwrap()
+                .unwrap()
+                .tags
+                .is_empty()
+        );
+        assert_eq!(
+            f.context
+                .read_document("note", &target)
+                .await
+                .unwrap()
+                .document
+                .unwrap()
+                .markdown,
+            if case == "conflict" {
+                "User edited template"
+            } else {
+                "Original template"
+            }
+        );
+        worker.shutdown().await.unwrap();
+    }
 }
 
 #[tokio::test]
