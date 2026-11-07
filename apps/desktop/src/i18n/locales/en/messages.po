@@ -1100,6 +1100,7 @@ msgstr "Loading attachments…"
 msgid "Loading connection…"
 msgstr "Loading connection…"
 
+#: src/main/layout.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
@@ -1147,6 +1148,7 @@ msgstr "Loading..."
 #: src/shared/application/vault-processing-settings.tsx
 #: src/shared/application/vault-processing.tsx
 #: src/shared/deferred-view.tsx
+#: src/shared/open-note-dialog.tsx
 msgid "Loading…"
 msgstr "Loading…"
 
@@ -1780,6 +1782,7 @@ msgstr "Resuming…"
 #: src/audio-player/provider.tsx
 #: src/main/about-storage.tsx
 #: src/main/audio-import-dialog.tsx
+#: src/main/layout.tsx
 #: src/session/components/note-input/attachments.tsx
 #: src/session/components/note-input/enhanced/enhance-error.tsx
 #: src/session/components/note-input/raw.tsx
