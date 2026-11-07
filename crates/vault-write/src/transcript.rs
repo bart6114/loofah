@@ -1041,14 +1041,29 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // Give the single scheduled flusher time to fire; if appends had each spawned their
-        // own flusher this would still pass, so the real assertion is the word count below --
-        // three separate un-coalesced buffers would have clobbered each other down to 1 word.
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        let json: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(vault.path().join("sessions/s1/transcript.json")).unwrap(),
-        )
-        .unwrap();
+        // Busy native runners can service the debounce timer after a fixed sleep.
+        // Observe the persisted coalesced buffer without explicitly flushing it.
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let json = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                        if json["transcripts"][0]["words"]
+                            .as_array()
+                            .is_some_and(|words| words.len() == 3)
+                        {
+                            break json;
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("could not read the debounced transcript: {error}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the debounce timer must persist all three appends");
         assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 3);
 
         let texts: Vec<String> = store
