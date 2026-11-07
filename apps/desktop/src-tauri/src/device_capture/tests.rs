@@ -222,6 +222,44 @@ struct FakeAudio {
     >,
     admitted: Arc<AtomicUsize>,
 }
+
+struct FakeDrain {
+    stop: tokio::sync::watch::Sender<bool>,
+    completed: tokio::sync::watch::Sender<Option<hypr_audio_actual::CaptureDrainReceipt>>,
+}
+
+impl FakeDrain {
+    fn new() -> Self {
+        Self {
+            stop: tokio::sync::watch::channel(false).0,
+            completed: tokio::sync::watch::channel(None).0,
+        }
+    }
+}
+
+impl hypr_audio_actual::CaptureDrainControl for FakeDrain {
+    fn request_stop(&self) -> Result<(), hypr_audio_actual::CaptureDrainError> {
+        self.stop.send_replace(true);
+        Ok(())
+    }
+
+    fn completion(&self) -> hypr_audio_actual::CaptureDrainFuture<'_> {
+        Box::pin(async move {
+            let mut completed = self.completed.subscribe();
+            loop {
+                if let Some(receipt) = *completed.borrow_and_update() {
+                    return Ok(receipt);
+                }
+                completed.changed().await.map_err(|_| {
+                    hypr_audio_actual::CaptureDrainError::Failed(
+                        "Fixture resource receipt closed".into(),
+                    )
+                })?;
+            }
+        })
+    }
+}
+
 impl FakeAudio {
     fn stream(&self) -> hypr_audio_actual::CaptureStream {
         let mut receiver = self
@@ -231,13 +269,32 @@ impl FakeAudio {
             .take()
             .expect("capture source restarted unexpectedly");
         let admitted = self.admitted.clone();
+        let drain = Arc::new(FakeDrain::new());
+        let provider = drain.clone();
         hypr_audio_actual::CaptureStream::new(async_stream::stream! {
-            while let Some(frame) = receiver.recv().await {
-                yield frame;
-                // The producer polls again only after it admitted the preceding yielded packet.
-                admitted.fetch_add(1, Ordering::SeqCst);
+            let mut stop = provider.stop.subscribe();
+            let mut stopping = false;
+            let mut produced = 0;
+            loop {
+                tokio::select! {
+                    _ = async { let _ = stop.wait_for(|requested| *requested).await; }, if !stopping => {
+                        stopping = true;
+                        receiver.close();
+                    }
+                    frame = receiver.recv() => {
+                        let Some(frame) = frame else { break };
+                        if let Ok(frame) = &frame {
+                            produced += frame.raw_mic.len().max(frame.raw_speaker.len()) as u64;
+                        }
+                        yield frame;
+                        // The producer polls again only after admitting the previous packet.
+                        admitted.fetch_add(1, Ordering::SeqCst);
+                    }
+                }
             }
+            provider.completed.send_replace(Some(hypr_audio_actual::CaptureDrainReceipt { frames: produced }));
         })
+        .with_drain_control(drain)
     }
 }
 impl hypr_audio_actual::AudioProvider for FakeAudio {
