@@ -21,6 +21,7 @@ const MAX_PENDING: usize = 32;
 
 pub mod generation;
 mod result;
+pub mod source;
 mod worker;
 pub use result::GeneratedDocument;
 pub use worker::{JobAuthorizer, JobFuture, JobGenerator, JobWork, JobWorker};

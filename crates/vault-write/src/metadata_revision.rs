@@ -105,7 +105,7 @@ impl SessionStore {
                         ));
                     }
                     Ok(meta) if is_file && meta.len() > limit as u64 => {
-                        return Err(StoreError::Serialize(
+                        return Err(StoreError::ResourceLimit(
                             "Session metadata exceeds its size limit".into(),
                         ));
                     }
@@ -123,7 +123,7 @@ impl SessionStore {
                     .map_err(|cause| StoreError::Io(cause.to_string()))?,
             };
             if raw.len() > limit {
-                return Err(StoreError::Serialize(
+                return Err(StoreError::ResourceLimit(
                     "Session metadata exceeds its size limit".into(),
                 ));
             }

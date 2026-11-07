@@ -2346,3 +2346,52 @@ typechecking, lint and the Tauri/device-free dependency check pass. The new test
 use controlled model streams, real canonical writes and runtime restart; they do
 not establish production provider, source-preparation, title/tag persistence or
 native model parity. Native Windows validation of the new commits remains required.
+
+### Canonical summary-source preparation
+
+`vault-write::processing_source` now captures metadata, note text and transcript
+bytes under one recovered write lock. Large transcript/registry decoding happens
+after the lock is released. The read uses the existing note/legacy-wrapper rules,
+transcript ordering and tag policy; user frontmatter, unknown fields and unrelated
+attachments stay intact. Caller cancellation retains the snapshot until actual
+file reads finish. Processing input limits leave local editor limits unchanged.
+
+`loofah-core::jobs::source::VaultSummarySource` flushes buffered words, reads that
+snapshot and current language/style settings, then renders with the shared Rust
+workflow. It holds a weak runtime reference between calls and an owned context
+through actual preparation. Local-owner preparation requires no login. Member jobs
+use the authenticated member ID and each recording's stored capture owner; imports,
+unknown capture and ownerless remote recordings cannot implicitly become the
+requester's microphone. Existing CLI/MCP transcript rendering keeps its prior
+behavior while the source adapter reuses its two-pass hint/segment builder.
+
+Image preparation resolves only referenced files in the current session's managed
+attachment directory; legacy asset/file URLs supply basenames, never arbitrary
+filesystem or network access. Inline data images, deterministic sampling, JPEG
+compression and EXIF orientation work without a webview. Existing limits remain
+10 images, 128 KiB each, 768 KiB total and 8 MiB per source; preparation also bounds
+references, decoded memory and dimensions. Only in-memory model inputs are
+compressed; vault attachments remain unchanged.
+
+Default snapshot budgets are 16 MiB of note text, 8 MiB of metadata, 32 MiB of
+transcript JSON and 8 MiB per registry. Image preparation admits at most 2,000
+references, with a 64 MiB decoded-pixel budget and 16,384-pixel edge limits.
+
+The stock source and controlled model now complete a real headless summary job.
+Production provider/credential adapters, host wiring, global processing admission,
+authenticated capture/import ownership, title/tag application, previews, job APIs
+and local UI migration remain required. The custom-template trust policy and
+production image/model/performance parity remain release gates. No public server
+processing capability is enabled by this source-library increment.
+
+Validation passes 180 shared-core tests, 366 vault-write tests (one ignored fixture
+in each crate), 18 agent-access tests, all 51 server tests and the headless
+executable/shutdown test. Fourteen source regressions include real-file headless
+generation, cross-vault collisions, sampling/budgets, EXIF rotation and weak runtime
+ownership; the existing 35 frontend source/image reference tests also pass. Core,
+server and CLI checking, generated-contract checking and the headless dependency
+boundary pass. Strict core/agent production Clippy passes. Strict vault-write
+Clippy reports 23 pre-existing warnings in unchanged code; ordinary vault-write
+Clippy passes with that same baseline, without suppressions or unrelated fixes.
+Native Windows and production provider/image/performance validation remain required
+for this increment. Build, test and cache artifacts remain physically on T7.

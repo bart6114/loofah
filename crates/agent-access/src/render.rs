@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use hypr_transcript::{
@@ -6,7 +6,7 @@ use hypr_transcript::{
     RenderTranscriptInput, RenderTranscriptRequest, RenderTranscriptWordInput,
     render_transcript_segments,
 };
-use hypr_vault_read::{TranscriptWithData, TranscriptWord};
+use hypr_vault_read::{PersonItem, TranscriptWithData, TranscriptWord};
 use serde_json::Value;
 
 /// Renders a meeting's transcripts the way the desktop transcript view does:
@@ -51,17 +51,53 @@ pub(crate) fn meeting_transcript_segments(
         .map(str::to_string);
 
     render_transcript_segments(RenderTranscriptRequest {
-        transcripts: transcripts.iter().map(render_input).collect(),
+        transcripts: transcripts
+            .iter()
+            .map(|transcript| render_input(transcript, false, None))
+            .collect(),
         participant_human_ids: Vec::new(),
         self_human_id,
         humans,
     })
 }
 
+pub fn render_summary_transcripts(
+    transcripts: &[TranscriptWithData],
+    people: &[PersonItem],
+    self_human_id: Option<&str>,
+    legacy_recording_owner: Option<&str>,
+) -> Vec<hypr_transcript::RenderedTranscriptSegment> {
+    render_transcript_segments(RenderTranscriptRequest {
+        transcripts: transcripts
+            .iter()
+            .map(|transcript| {
+                let owner = Some(transcript.user_id.trim())
+                    .filter(|id| !id.is_empty())
+                    .or(legacy_recording_owner);
+                render_input(transcript, true, owner)
+            })
+            .collect(),
+        participant_human_ids: Vec::new(),
+        self_human_id: self_human_id.map(str::to_owned),
+        humans: people
+            .iter()
+            .filter(|person| !person.name.trim().is_empty())
+            .map(|person| RenderTranscriptHuman {
+                human_id: person.id.clone(),
+                name: person.name.clone(),
+            })
+            .collect(),
+    })
+}
+
 /// Mirrors the desktop's two-pass hint normalization (`render-transcript.ts`):
 /// provider hints stamp per-word speaker indexes first, then label hints bind a
 /// person id to the anchored word's channel (or channel + speaker index).
-fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
+fn render_input(
+    transcript: &TranscriptWithData,
+    summary: bool,
+    capture_owner: Option<&str>,
+) -> RenderTranscriptInput {
     let mut words = Vec::with_capacity(transcript.words.len());
     let mut index_by_word_id = HashMap::new();
     for (index, word) in transcript.words.iter().enumerate() {
@@ -101,6 +137,7 @@ fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
         }
     }
 
+    let structural_synthetic = summary && channel_partition_regresses(&words);
     let mut imported_speakers = HashMap::new();
     for (word, stored) in words.iter_mut().zip(&transcript.words) {
         let source = stored
@@ -108,7 +145,11 @@ fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
             .as_ref()
             .and_then(|m| m.get("capture_source"))
             .and_then(Value::as_str);
-        if word.channel == 2 || !matches!(source, Some("import" | "unknown")) {
+        let unknown = summary && !matches!(source, Some("recording" | "import"));
+        let unidentified_mic = summary && word.channel == 0 && capture_owner.is_none();
+        if word.channel == 2
+            || !(unknown || unidentified_mic || matches!(source, Some("import" | "unknown")))
+        {
             continue;
         }
         let next = imported_speakers.len() as i32;
@@ -120,6 +161,27 @@ fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
     }
 
     let mut assignments = Vec::new();
+    let mic_speakers: HashSet<_> = if summary {
+        words
+            .iter()
+            .filter(|word| word.channel == 0)
+            .filter_map(|word| word.speaker_index)
+            .collect()
+    } else {
+        HashSet::new()
+    };
+    if summary
+        && mic_speakers.len() < 2
+        && let Some(owner) = capture_owner
+        && words.iter().any(|word| word.channel == 0)
+    {
+        assignments.push(IdentityAssignment {
+            human_id: owner.into(),
+            scope: IdentityScope::Channel {
+                channel: ChannelProfile::DirectMic,
+            },
+        });
+    }
     for hint in &transcript.speaker_hints {
         if hint.hint_type != "speaker_label" {
             continue;
@@ -155,8 +217,29 @@ fn render_input(transcript: &TranscriptWithData) -> RenderTranscriptInput {
         started_at: Some(transcript.started_at.round() as i64),
         words,
         assignments,
-        synthetic_timing: synthetic_timing.then_some(true),
+        synthetic_timing: (synthetic_timing || structural_synthetic).then_some(true),
     }
+}
+
+fn channel_partition_regresses(words: &[RenderTranscriptWordInput]) -> bool {
+    let mut channel = None;
+    let mut completed = HashSet::new();
+    let mut max_start = i64::MIN;
+    let mut regressed = false;
+    for word in words {
+        if channel != Some(word.channel) {
+            if let Some(previous) = channel {
+                completed.insert(previous);
+                regressed |= word.start_ms < max_start.saturating_sub(5000);
+            }
+            if completed.contains(&word.channel) {
+                return false;
+            }
+            channel = Some(word.channel);
+        }
+        max_start = max_start.max(word.start_ms);
+    }
+    regressed
 }
 
 pub(crate) fn object_hint_value(value: &Value) -> Option<Value> {
@@ -410,12 +493,16 @@ mod tests {
                     "import".into(),
                 )]));
             }
-            let input = render_input(&transcript(
-                "t1",
-                "self",
-                words,
-                vec![provider_hint("w1", 7), provider_hint("w2", 9)],
-            ));
+            let input = render_input(
+                &transcript(
+                    "t1",
+                    "self",
+                    words,
+                    vec![provider_hint("w1", 7), provider_hint("w2", 9)],
+                ),
+                false,
+                None,
+            );
             assert!(input.words.iter().all(|word| word.channel == 2));
             assert_eq!(
                 input
@@ -440,5 +527,61 @@ mod tests {
         );
 
         assert_eq!(rendered, "[00:00:00] Speaker 1: hello");
+    }
+
+    #[test]
+    fn summary_timing_fallback_recognizes_channel_partitioned_batches_without_changing_agent_exports()
+     {
+        let words = vec![
+            word("a", "One", 9000.0, 0.0),
+            word("b", "two", 10000.0, 0.0),
+            word("c", "Three", 0.0, 1.0),
+            word("d", "four", 1000.0, 1.0),
+        ];
+        let batch = transcript("t", "self", words, vec![]);
+        assert_eq!(
+            render_input(&batch, true, Some("self")).synthetic_timing,
+            Some(true)
+        );
+        assert_eq!(render_input(&batch, false, None).synthetic_timing, None);
+        let words = vec![
+            word("a", "One", 9000.0, 0.0),
+            word("b", "Two", 0.0, 1.0),
+            word("c", "Three", 10000.0, 0.0),
+        ];
+        let live = transcript("live", "self", words, vec![]);
+        assert_eq!(
+            render_input(&live, true, Some("self")).synthetic_timing,
+            None
+        );
+    }
+
+    #[test]
+    fn summary_capture_ownership_does_not_collapse_diarized_microphone_speakers_into_the_current_user()
+     {
+        let mut words = vec![
+            word("a", "One speaker.", 0.0, 0.0),
+            word("b", "Another speaker.", 2000.0, 0.0),
+        ];
+        for word in &mut words {
+            word.metadata = Some(serde_json::Map::from_iter([(
+                "capture_source".into(),
+                "recording".into(),
+            )]));
+        }
+        let transcript = transcript(
+            "t",
+            "alice",
+            words,
+            vec![provider_hint("a", 0), provider_hint("b", 1)],
+        );
+        let segments = render_summary_transcripts(&[transcript], &[], Some("bob"), None);
+        assert_eq!(segments.len(), 2);
+        assert!(
+            segments
+                .iter()
+                .all(|segment| segment.is_current_user != Some(true))
+        );
+        assert_ne!(segments[0].speaker_label, segments[1].speaker_label);
     }
 }

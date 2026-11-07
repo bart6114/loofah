@@ -366,13 +366,7 @@ impl SessionStore {
         // `(started_at, created_at, id)` -- the SQL this replaced ordered by all three, and the
         // tiebreaker is load-bearing: soft-deleted transcripts are written without a
         // `started_at`, so they all collapse to 0 and would otherwise order by random UUID.
-        transcripts.sort_by(|a, b| {
-            a.started_at
-                .partial_cmp(&b.started_at)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.created_at.cmp(&b.created_at))
-                .then_with(|| a.id.cmp(&b.id))
-        });
+        sort_transcripts(&mut transcripts);
         Ok(transcripts)
     }
 
@@ -989,6 +983,16 @@ impl SessionStore {
     pub fn take_index_change_receiver(&self) -> Option<IndexChangeReceiver> {
         self.index_changes_rx.lock().unwrap().take()
     }
+}
+
+pub(super) fn sort_transcripts(transcripts: &mut [TranscriptWithData]) {
+    transcripts.sort_by(|a, b| {
+        a.started_at
+            .partial_cmp(&b.started_at)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.created_at.cmp(&b.created_at))
+            .then_with(|| a.id.cmp(&b.id))
+    });
 }
 
 #[cfg(test)]

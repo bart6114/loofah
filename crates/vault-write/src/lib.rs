@@ -28,6 +28,7 @@ mod note_revision;
 mod operation_io;
 pub mod paths;
 pub mod people;
+pub mod processing_source;
 pub mod rebuild;
 pub mod recording_delete;
 mod session_path;

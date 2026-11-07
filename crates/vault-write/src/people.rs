@@ -8,9 +8,9 @@ use super::{SessionStore, StoreError, paths};
 pub use hypr_vault_read::PersonItem;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct PeopleFile {
+pub(super) struct PeopleFile {
     #[serde(default)]
-    people: Vec<PersonItem>,
+    pub(super) people: Vec<PersonItem>,
 }
 
 fn person_id_slug(name: &str) -> String {

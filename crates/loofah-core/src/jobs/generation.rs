@@ -38,9 +38,7 @@ impl SummaryPrompt {
         images: Vec<SummaryImage>,
     ) -> Result<Self, ProcessingJobFailure> {
         let custom_prompt = !system.prompt_override.trim().is_empty();
-        let mut budget = SourceBudget(0);
-        serde_json::to_writer(&mut budget, &user)
-            .map_err(|_| ProcessingJobFailure::ResourceLimit)?;
+        Self::validate_source(&user)?;
         let system = hypr_template_app::render_enhance_system_bounded(&system, 256 * 1024)
             .map_err(|cause| match cause {
                 hypr_template_app::Error::ResourceLimit => ProcessingJobFailure::ResourceLimit,
@@ -62,6 +60,11 @@ impl SummaryPrompt {
         };
         prepared.validate()?;
         Ok(prepared)
+    }
+
+    pub(super) fn validate_source(user: &EnhanceUser) -> Result<(), ProcessingJobFailure> {
+        let mut budget = SourceBudget(0);
+        serde_json::to_writer(&mut budget, user).map_err(|_| ProcessingJobFailure::ResourceLimit)
     }
 
     fn validate(&self) -> Result<(), ProcessingJobFailure> {

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod render;
+pub use render::render_summary_transcripts;
 mod search;
 
 pub use search::{
