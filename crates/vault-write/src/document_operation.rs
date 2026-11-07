@@ -26,6 +26,12 @@ enum RecoveryTarget {
         after_metadata: GeneratedTagMetadata,
         register_tags: Vec<String>,
     },
+    GeneratedTemplateOutput {
+        document_id: String,
+        before_metadata: GeneratedTagMetadata,
+        after_metadata: GeneratedTagMetadata,
+        register_tags: Vec<String>,
+    },
     TemplateOutput {
         document_id: String,
     },
@@ -165,7 +171,8 @@ impl SessionStore {
         crate::validate_session_id(&intent.session_id)?;
         let schema_version = match &intent.target {
             RecoveryTarget::Note { .. } => 2,
-            RecoveryTarget::GeneratedSummary { .. } => 3,
+            RecoveryTarget::GeneratedSummary { .. }
+            | RecoveryTarget::GeneratedTemplateOutput { .. } => 3,
             _ => 1,
         };
         if intent.schema_version != schema_version
@@ -177,20 +184,10 @@ impl SessionStore {
             ));
         }
         let target = match &intent.target {
-            RecoveryTarget::GeneratedSummary {
-                before_metadata,
-                after_metadata,
-                register_tags,
-            } => {
+            RecoveryTarget::GeneratedSummary { .. }
+            | RecoveryTarget::GeneratedTemplateOutput { .. } => {
                 return self
-                    .recover_generated_summary_locked(
-                        guard,
-                        path,
-                        &intent,
-                        before_metadata,
-                        after_metadata,
-                        register_tags,
-                    )
+                    .recover_generated_document_locked(guard, path, &intent)
                     .await
                     .map_err(StoreError::after_commit);
             }
@@ -265,15 +262,45 @@ impl SessionStore {
         Ok(())
     }
 
-    async fn recover_generated_summary_locked(
+    async fn recover_generated_document_locked(
         &self,
         guard: &WriteGuard<'_>,
         path: &Path,
         intent: &Intent,
-        before: &GeneratedTagMetadata,
-        after: &GeneratedTagMetadata,
-        register_tags: &[String],
     ) -> Result<(), StoreError> {
+        let (target, before, after, register_tags) = match &intent.target {
+            RecoveryTarget::GeneratedSummary {
+                before_metadata,
+                after_metadata,
+                register_tags,
+            } => (
+                DocumentTarget::Summary,
+                before_metadata,
+                after_metadata,
+                register_tags,
+            ),
+            RecoveryTarget::GeneratedTemplateOutput {
+                document_id,
+                before_metadata,
+                after_metadata,
+                register_tags,
+            } => {
+                crate::validate_doc_id(document_id)?;
+                (
+                    DocumentTarget::TemplateOutput {
+                        document_id: document_id.clone(),
+                    },
+                    before_metadata,
+                    after_metadata,
+                    register_tags,
+                )
+            }
+            _ => {
+                return Err(StoreError::Io(
+                    "Invalid generated document recovery target".into(),
+                ));
+            }
+        };
         if self.is_recording(&intent.session_id) {
             return Err(StoreError::Conflict(
                 "recording is active; generated summary recovery requires review".into(),
@@ -281,7 +308,7 @@ impl SessionStore {
         }
         let pending = PendingDocument(path.to_owned());
         let Some(current) = self
-            .document_snapshot_locked(guard, &intent.session_id, &DocumentTarget::Summary)
+            .document_snapshot_locked(guard, &intent.session_id, &target)
             .await?
         else {
             return pending.finish().await;
@@ -337,19 +364,48 @@ impl SessionStore {
         self.register_generated_tags_locked(guard, register_tags)
             .await?;
         if let Some(document) = current.document {
-            self.index_set_summary_and_meta(&next_meta, document.markdown);
+            match &target {
+                DocumentTarget::Summary => {
+                    self.index_set_summary_and_meta(&next_meta, document.markdown)
+                }
+                DocumentTarget::TemplateOutput { .. } => {
+                    self.index_upsert_doc(&document);
+                    self.notify_index_changed(
+                        crate::IndexEntity::Docs,
+                        vec![intent.session_id.clone()],
+                    );
+                }
+            }
         }
-        self.sync_generated_summary_parents(&intent.session_id)
+        self.sync_generated_document_parents(&intent.session_id, &target)
             .await?;
         pending.finish().await
     }
 
     pub(super) async fn sync_generated_summary_parents(&self, id: &str) -> Result<(), StoreError> {
+        self.sync_generated_document_parents(id, &DocumentTarget::Summary)
+            .await
+    }
+
+    pub(super) async fn sync_generated_document_parents(
+        &self,
+        id: &str,
+        target: &DocumentTarget,
+    ) -> Result<(), StoreError> {
         let directory = self.session_dir(id).await?;
         let vault = self.vault_base.clone();
         let id = id.to_owned();
+        let target = target.clone();
         tokio::task::spawn_blocking(move || {
-            for path in generated_summary_sync_paths(&vault, &directory, &id)? {
+            let paths = match target {
+                DocumentTarget::Summary => generated_summary_sync_paths(&vault, &directory, &id)?,
+                DocumentTarget::TemplateOutput { document_id } => [
+                    vault.join(paths::enhanced_doc_path_in(&directory, &document_id)),
+                    vault.join(paths::meta_path_in(&directory)),
+                    vault.join(paths::tags_path()),
+                ],
+            };
+            for path in paths {
                 crate::operation_io::sync_parent(&path)?;
             }
             Ok(())
@@ -402,9 +458,26 @@ impl SessionStore {
         session_id: &str,
         write: GeneratedSummaryWrite<'_>,
     ) -> Result<PendingDocument, StoreError> {
-        let target = DocumentTarget::Summary;
+        self.begin_generated_document_write_locked(
+            guard,
+            root,
+            session_id,
+            &DocumentTarget::Summary,
+            write,
+        )
+        .await
+    }
+
+    pub(super) async fn begin_generated_document_write_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        root: &Path,
+        session_id: &str,
+        target: &DocumentTarget,
+        write: GeneratedSummaryWrite<'_>,
+    ) -> Result<PendingDocument, StoreError> {
         let current = self
-            .document_snapshot_locked(guard, session_id, &target)
+            .document_snapshot_locked(guard, session_id, target)
             .await?
             .ok_or_else(|| StoreError::Conflict("session was deleted".into()))?;
         let before_tasks_hash = self.document_tasks_hash(session_id).await?;
@@ -419,15 +492,25 @@ impl SessionStore {
             Intent {
                 schema_version: 3,
                 session_id: session_id.into(),
-                target: RecoveryTarget::GeneratedSummary {
-                    before_metadata: write.before_metadata,
-                    after_metadata: write.after_metadata,
-                    register_tags: write.register_tags,
+                target: match target {
+                    DocumentTarget::Summary => RecoveryTarget::GeneratedSummary {
+                        before_metadata: write.before_metadata,
+                        after_metadata: write.after_metadata,
+                        register_tags: write.register_tags,
+                    },
+                    DocumentTarget::TemplateOutput { document_id } => {
+                        RecoveryTarget::GeneratedTemplateOutput {
+                            document_id: document_id.clone(),
+                            before_metadata: write.before_metadata,
+                            after_metadata: write.after_metadata,
+                            register_tags: write.register_tags,
+                        }
+                    }
                 },
                 before_revision: current.revision,
                 after_revision: super::document_revision::revision(
                     session_id,
-                    &target,
+                    target,
                     Some(write.after_bytes),
                 )?,
                 before_tasks_hash,
