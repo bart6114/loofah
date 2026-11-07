@@ -1,4 +1,4 @@
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use ractor::{ActorProcessingErr, ActorRef};
 use tokio_util::sync::CancellationToken;
 
@@ -7,6 +7,14 @@ use hypr_audio::{AudioProvider, CaptureConfig, CaptureFrame, CaptureStream};
 use hypr_audio_utils::chunk_size_for_stt;
 
 use super::{ProviderIntegrity, SourceMsg, SourceState, provider_integrity_failure};
+
+#[derive(Default)]
+pub(crate) struct ProducerExit {
+    pub(super) resources_stopped: bool,
+    pub(super) complete_frames: Option<u64>,
+    pub(super) admitted_frames: u64,
+    pub(super) error: Option<String>,
+}
 
 pub(super) async fn start_source_loop(
     myself: &ActorRef<SourceMsg>,
@@ -45,11 +53,21 @@ async fn start_streams(
     let audio = st.audio.clone();
     let device_ingress = st.device_ingress.clone();
     let provider_integrity = st.provider_integrity.clone();
+    let device_root = st.device_root.clone();
+    let stop_interrupted = st.stop_interrupted.clone();
 
     let stream_cancel_token = CancellationToken::new();
     st.stream_cancel_token = Some(stream_cancel_token.clone());
+    if st.device_ingress.is_some() {
+        st.device_lifetime = Some(super::DeviceLifetime {
+            cancel: stream_cancel_token.clone(),
+            interrupted: stop_interrupted.clone(),
+        });
+    }
 
     let handle = tokio::spawn(async move {
+        let notify = myself2.clone();
+        let device = device_ingress.is_some();
         let ctx = StreamContext {
             actor: myself2,
             cancel_token: stream_cancel_token,
@@ -57,9 +75,27 @@ async fn start_streams(
             audio,
             device_ingress,
             provider_integrity,
+            stop_interrupted,
         };
 
-        run_stream_loop(ctx, mode).await;
+        let outcome = std::panic::AssertUnwindSafe(run_stream_loop(ctx, mode))
+            .catch_unwind()
+            .await
+            .unwrap_or_else(|_| ProducerExit {
+                error: Some("Audio producer panicked before confirming resource stop".into()),
+                ..ProducerExit::default()
+            });
+        if device && let Some(error) = &outcome.error {
+            let _ = notify.cast(SourceMsg::DeviceHalt(error.clone()));
+        }
+        if outcome.resources_stopped
+            && let Some((key, root, supervisor)) = device_root
+        {
+            let _ = root.cast(crate::actors::RootMsg::DeviceResourcesStopped(
+                key, supervisor,
+            ));
+        }
+        outcome
     });
 
     st.run_task = Some(handle);
@@ -73,6 +109,7 @@ struct StreamContext {
     audio: std::sync::Arc<dyn AudioProvider>,
     device_ingress: Option<crate::actors::DeviceIngress>,
     provider_integrity: Option<ProviderIntegrity>,
+    stop_interrupted: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl StreamContext {
@@ -90,7 +127,7 @@ enum StreamResult {
     Stop,
 }
 
-async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) {
+async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) -> ProducerExit {
     let sample_rate = crate::actors::SAMPLE_RATE;
     let chunk_size = chunk_size_for_stt(sample_rate);
 
@@ -115,12 +152,19 @@ async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) {
         Ok(stream) => stream,
         Err(error) => {
             ctx.report_failure(error.to_string());
-            return;
+            return ProducerExit {
+                resources_stopped: true,
+                error: Some(error.to_string()),
+                ..ProducerExit::default()
+            };
         }
     };
 
     if let Some(slot) = &ctx.provider_integrity {
         let _ = slot.set(capture_stream.integrity());
+    }
+    if ctx.device_ingress.is_some() {
+        return run_device_stream(ctx, capture_stream).await;
     }
     loop {
         if report_integrity_failure(&ctx) {
@@ -137,6 +181,105 @@ async fn run_stream_loop(ctx: StreamContext, mode: ChannelMode) {
     }
     drop(capture_stream);
     report_integrity_failure(&ctx);
+    ProducerExit::default()
+}
+
+async fn run_device_stream(ctx: StreamContext, mut stream: CaptureStream) -> ProducerExit {
+    let control = stream.drain_control();
+    let mut outcome = ProducerExit::default();
+    let mut stopping = false;
+    let mut discard = false;
+    loop {
+        if !discard
+            && (report_integrity_failure(&ctx)
+                || ctx
+                    .stop_interrupted
+                    .load(std::sync::atomic::Ordering::Acquire))
+        {
+            outcome
+                .error
+                .get_or_insert("Capture input was interrupted".into());
+            discard = true;
+        }
+        if discard && !stopping {
+            stopping = true;
+            if let Err(error) = stream.request_stop() {
+                outcome.error.get_or_insert(error.to_string());
+                break;
+            }
+        }
+        let item = tokio::select! {
+            _ = ctx.cancel_token.cancelled(), if !stopping => {
+                stopping = true;
+                discard = ctx.stop_interrupted.load(std::sync::atomic::Ordering::Acquire);
+                if discard { outcome.error.get_or_insert("Capture input was interrupted".into()); }
+                if let Err(error) = stream.request_stop() { outcome.error.get_or_insert(error.to_string()); break; }
+                continue;
+            }
+            item = stream.next() => item,
+        };
+        if item.is_none() {
+            if !stopping {
+                outcome
+                    .error
+                    .get_or_insert("Audio input ended unexpectedly".into());
+                let _ = ctx.actor.cast(SourceMsg::DeviceHalt(
+                    "Audio input ended unexpectedly".into(),
+                ));
+                let _ = stream.request_stop();
+            }
+            break;
+        }
+        if discard {
+            continue;
+        }
+        let frames = match &item {
+            Some(Ok(frame)) => frame.raw_mic.len().max(frame.raw_speaker.len()) as u64,
+            _ => 0,
+        };
+        if matches!(handle_capture_item(&ctx, item), StreamResult::Stop) {
+            outcome
+                .error
+                .get_or_insert("Capture input was interrupted".into());
+            discard = true;
+        } else {
+            outcome.admitted_frames += frames;
+        }
+    }
+    if let Some(control) = control {
+        match control.completion().await {
+            Ok(_) => outcome.resources_stopped = true,
+            Err(error) => {
+                outcome.error.get_or_insert(error.to_string());
+            }
+        }
+        if outcome.error.is_none() && !discard {
+            match stream.drain_receipt().await {
+                Ok(receipt) if receipt.frames == outcome.admitted_frames => {
+                    outcome.complete_frames = Some(receipt.frames)
+                }
+                Ok(_) => {
+                    outcome.error =
+                        Some("Provider drain disagrees with admitted capture frames".into());
+                }
+                Err(error) => {
+                    outcome.error = Some(error.to_string());
+                }
+            }
+        }
+    } else {
+        outcome
+            .error
+            .get_or_insert("Provider cannot confirm stopping its resources".into());
+    }
+    drop(stream);
+    if let Some(reason) = provider_integrity_failure(ctx.provider_integrity.as_ref()) {
+        outcome.error.get_or_insert(reason);
+    }
+    if let Some(error) = &outcome.error {
+        let _ = ctx.actor.cast(SourceMsg::DeviceHalt(error.clone()));
+    }
+    outcome
 }
 
 fn report_integrity_failure(ctx: &StreamContext) -> bool {
@@ -307,6 +450,7 @@ mod tests {
             audio: std::sync::Arc::new(UnusedAudio),
             device_ingress: Some(crate::actors::DeviceIngress::default()),
             provider_integrity: Some(std::sync::Arc::new(std::sync::OnceLock::new())),
+            stop_interrupted: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
         assert!(matches!(
             handle_capture_item(&ctx, None),

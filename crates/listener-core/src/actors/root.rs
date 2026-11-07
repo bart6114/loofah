@@ -32,7 +32,8 @@ pub enum RootMsg {
         RpcReplyPort<Result<(), StartSessionError>>,
     ),
     StopDeviceCapture(DeviceCaptureKey, RpcReplyPort<bool>),
-    DeviceDraining(DeviceCaptureKey, ractor::ActorId),
+    DeviceResourcesStopped(DeviceCaptureKey, ractor::ActorId),
+    GetCaptureAdmission(RpcReplyPort<bool>),
     UpdateSessionConfig(SessionConfigUpdate, RpcReplyPort<()>),
     StopSession(RpcReplyPort<()>),
     GetState(RpcReplyPort<State>),
@@ -69,6 +70,8 @@ struct TrackedCapture {
     runtime: Arc<dyn ListenerRuntime>,
     recording: RecordingDestination,
     supervisor: ActorCell,
+    resources_stopped: bool,
+    supervisor_done: bool,
 }
 
 pub struct RootState {
@@ -141,17 +144,25 @@ impl Actor for RootActor {
                 }
                 let _ = reply.send(matches);
             }
-            RootMsg::DeviceDraining(key, supervisor) => {
+            RootMsg::DeviceResourcesStopped(key, supervisor) => {
+                let key = CaptureKey::Device(key);
                 if state.active.as_ref().is_some_and(|capture| {
-                    capture.key == CaptureKey::Device(key)
-                        && capture.supervisor.get_id() == supervisor
+                    capture.key == key && capture.supervisor.get_id() == supervisor
                 }) {
-                    let capture = state
-                        .active
-                        .take()
-                        .expect("active device capture was just checked");
+                    let mut capture = state.active.take().expect("active capture was checked");
+                    capture.resources_stopped = true;
                     state.finalizing.insert(capture.key.clone(), capture);
+                } else if let Some(capture) = state.finalizing.get_mut(&key)
+                    && capture.supervisor.get_id() == supervisor
+                {
+                    capture.resources_stopped = true;
+                    if capture.supervisor_done {
+                        state.finalizing.remove(&key);
+                    }
                 }
+            }
+            RootMsg::GetCaptureAdmission(reply) => {
+                let _ = reply.send(device_admission(state));
             }
             RootMsg::UpdateSessionConfig(update, reply) => {
                 if let Some(active) = &state.active
@@ -193,6 +204,23 @@ impl Actor for RootActor {
         }
         Ok(())
     }
+}
+
+fn physical_busy(state: &RootState) -> bool {
+    state.active.is_some()
+        || state
+            .finalizing
+            .values()
+            .any(|capture| capture.recording.is_device() && !capture.resources_stopped)
+}
+fn device_admission(state: &RootState) -> bool {
+    !physical_busy(state)
+        && state
+            .finalizing
+            .values()
+            .filter(|capture| capture.recording.is_device())
+            .count()
+            < 2
 }
 
 fn root_snapshot(state: &RootState) -> Snapshot {
@@ -238,7 +266,7 @@ async fn start_session_impl(
         .as_ref()
         .map(|args| CaptureKey::Device(args.key.clone()))
         .unwrap_or_else(|| CaptureKey::Local(params.session_id.clone()));
-    if state.active.is_some()
+    if physical_busy(state)
         || state.finalizing.contains_key(&key)
         || (device.is_some()
             && state
@@ -299,18 +327,25 @@ async fn start_session_impl(
         StartSessionError::FailedToStartSession
     })?;
     supervisor.link(root_cell);
-    if supervisor.get_status() == ActorStatus::Stopped {
-        if !recording.is_device() {
+    let stopped = supervisor.get_status() == ActorStatus::Stopped;
+    let mut tracked = TrackedCapture {
+        key,
+        runtime: runtime.clone(),
+        resources_stopped: !recording.is_device(),
+        supervisor_done: stopped,
+        recording,
+        supervisor,
+    };
+    if stopped {
+        if tracked.recording.is_device() {
+            state.finalizing.insert(tracked.key.clone(), tracked);
+        } else {
             clear_sentry_session_context();
         }
         return Err(StartSessionError::FailedToStartSession);
     }
-    state.active = Some(TrackedCapture {
-        key,
-        runtime: runtime.clone(),
-        recording,
-        supervisor,
-    });
+    tracked.supervisor_done = false;
+    state.active = Some(tracked);
     runtime.emit_lifecycle(SessionLifecycleEvent::Active {
         session_id: params.session_id,
         requested_transcription_mode,
@@ -352,7 +387,7 @@ fn handle_supervisor_completion(state: &mut RootState, cell: ActorCell, reason: 
             .map(|(key, _)| key.clone());
         key.and_then(|key| state.finalizing.remove(&key))
     };
-    let Some(capture) = capture else {
+    let Some(mut capture) = capture else {
         return;
     };
     match &capture.recording {
@@ -375,8 +410,12 @@ fn handle_supervisor_completion(state: &mut RootState, cell: ActorCell, reason: 
                     session_id: capture.key.actor_id(),
                     audio_path: None,
                     error: reason,
-                })
+                });
         }
+    }
+    if capture.recording.is_device() && !capture.resources_stopped {
+        capture.supervisor_done = true;
+        state.finalizing.insert(capture.key.clone(), capture);
     }
 }
 
@@ -388,7 +427,10 @@ mod tests {
     };
     use crate::{SessionDataEvent, SessionErrorEvent, SessionProgressEvent};
     use futures_util::Stream;
-    use hypr_audio::{CaptureConfig, CaptureFrame, CaptureIntegrity, CaptureStream};
+    use hypr_audio::{
+        CaptureConfig, CaptureDrainControl, CaptureDrainError, CaptureDrainFuture,
+        CaptureDrainReceipt, CaptureFrame, CaptureIntegrity, CaptureStream,
+    };
     use std::{
         collections::VecDeque,
         sync::{
@@ -424,7 +466,14 @@ mod tests {
         fn emit_data(&self, _event: SessionDataEvent) {}
     }
     type Frames = tokio::sync::mpsc::Receiver<Result<CaptureFrame, hypr_audio::Error>>;
-    type AudioSource = (Frames, Arc<CaptureIntegrity>, bool);
+    struct AudioSource {
+        frames: Frames,
+        integrity: Arc<CaptureIntegrity>,
+        mark_on_drop: bool,
+        controlled: bool,
+        close_gate: Option<Arc<tokio::sync::Semaphore>>,
+        extra_frames: u64,
+    }
     #[derive(Default)]
     struct Audio(Mutex<VecDeque<AudioSource>>, std::sync::atomic::AtomicUsize);
     struct MarkOnDrop {
@@ -448,6 +497,33 @@ mod tests {
             }
         }
     }
+    struct TestControl {
+        stop: tokio_util::sync::CancellationToken,
+        receipt: tokio::sync::watch::Receiver<Option<CaptureDrainReceipt>>,
+    }
+    impl CaptureDrainControl for TestControl {
+        fn request_stop(&self) -> Result<(), CaptureDrainError> {
+            if !self.stop.is_cancelled() && self.receipt.borrow().is_some() {
+                return Err(CaptureDrainError::NotDrained);
+            }
+            self.stop.cancel();
+            Ok(())
+        }
+        fn completion(&self) -> CaptureDrainFuture<'_> {
+            let mut receipt = self.receipt.clone();
+            Box::pin(async move {
+                loop {
+                    if let Some(receipt) = *receipt.borrow() {
+                        return Ok(receipt);
+                    }
+                    receipt
+                        .changed()
+                        .await
+                        .map_err(|_| CaptureDrainError::Failed("Fake source disappeared".into()))?;
+                }
+            })
+        }
+    }
     impl Audio {
         fn source(&self) -> tokio::sync::mpsc::Sender<Result<CaptureFrame, hypr_audio::Error>> {
             self.source_with_integrity(Arc::new(CaptureIntegrity::default()), false)
@@ -457,30 +533,95 @@ mod tests {
             integrity: Arc<CaptureIntegrity>,
             mark_on_drop: bool,
         ) -> tokio::sync::mpsc::Sender<Result<CaptureFrame, hypr_audio::Error>> {
-            let (tx, rx) = tokio::sync::mpsc::channel(32);
-            self.0
-                .lock()
-                .unwrap()
-                .push_back((rx, integrity, mark_on_drop));
+            self.source_options(integrity, mark_on_drop, true, None, 0)
+        }
+        fn source_options(
+            &self,
+            integrity: Arc<CaptureIntegrity>,
+            mark_on_drop: bool,
+            controlled: bool,
+            close_gate: Option<Arc<tokio::sync::Semaphore>>,
+            extra_frames: u64,
+        ) -> tokio::sync::mpsc::Sender<Result<CaptureFrame, hypr_audio::Error>> {
+            let (tx, frames) = tokio::sync::mpsc::channel(32);
+            self.0.lock().unwrap().push_back(AudioSource {
+                frames,
+                integrity,
+                mark_on_drop,
+                controlled,
+                close_gate,
+                extra_frames,
+            });
             tx
         }
         fn stream(&self) -> CaptureStream {
             self.1.fetch_add(1, Ordering::SeqCst);
-            let (rx, integrity, mark) = self
+            let AudioSource {
+                frames,
+                integrity,
+                mark_on_drop,
+                controlled,
+                close_gate,
+                extra_frames,
+            } = self
                 .0
                 .lock()
                 .unwrap()
                 .pop_front()
                 .expect("unexpected extra/restarted audio source");
-            let stream = CaptureStream::new(futures_util::stream::unfold(rx, |mut rx| async {
-                rx.recv().await.map(|item| (item, rx))
-            }));
-            CaptureStream::new(MarkOnDrop {
-                stream,
+            let stop = tokio_util::sync::CancellationToken::new();
+            let (done, receipt) = tokio::sync::watch::channel(None);
+            let control = Arc::new(TestControl {
+                stop: stop.clone(),
+                receipt,
+            });
+            let stream = futures_util::stream::unfold(
+                (frames, false, 0u64),
+                move |(mut frames, mut stopping, mut produced)| {
+                    let stop = stop.clone();
+                    let done = done.clone();
+                    let close_gate = close_gate.clone();
+                    async move {
+                        let item = if stopping {
+                            frames.recv().await
+                        } else {
+                            tokio::select! {
+                                _ = stop.cancelled() => { stopping = true; frames.close(); frames.recv().await }
+                                item = frames.recv() => item,
+                            }
+                        };
+                        match item {
+                            Some(item) => {
+                                if let Ok(frame) = &item {
+                                    produced +=
+                                        frame.raw_mic.len().max(frame.raw_speaker.len()) as u64;
+                                }
+                                Some((item, (frames, stopping, produced)))
+                            }
+                            None => {
+                                if let Some(gate) = close_gate {
+                                    gate.acquire().await.unwrap().forget();
+                                }
+                                let _ = done.send(Some(CaptureDrainReceipt {
+                                    frames: produced + extra_frames,
+                                }));
+                                None
+                            }
+                        }
+                    }
+                },
+            );
+            let stream = CaptureStream::new(MarkOnDrop {
+                stream: CaptureStream::new(stream),
                 integrity: integrity.clone(),
-                mark,
+                mark: mark_on_drop,
             })
-            .with_integrity(integrity)
+            .with_integrity(integrity);
+            if controlled {
+                stream.with_drain_control(control)
+            } else {
+                stream
+            }
         }
     }
     impl AudioProvider for Audio {
@@ -597,6 +738,15 @@ mod tests {
             aec_mic: None,
         }
     }
+    async fn admitted(root: &ActorRef<RootMsg>) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
     async fn ended(runtime: &Runtime) {
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
@@ -648,11 +798,15 @@ mod tests {
         assert!(ractor::call!(root, RootMsg::StopDeviceCapture, first_key.clone()).unwrap());
         let second_args = args('2', second_sink.clone(), second_runtime.clone());
         let second_key = second_args.key.clone();
+        admitted(&root).await;
         ractor::call!(root, RootMsg::StartDeviceCapture, second_args)
             .unwrap()
             .unwrap();
-        root.cast(RootMsg::DeviceDraining(second_key.clone(), root.get_id()))
-            .unwrap();
+        root.cast(RootMsg::DeviceResourcesStopped(
+            second_key.clone(),
+            root.get_id(),
+        ))
+        .unwrap();
         assert_eq!(
             ractor::call!(root, RootMsg::GetState).unwrap(),
             State::Active
@@ -770,6 +924,7 @@ mod tests {
         assert!(ractor::call!(root, RootMsg::StopDeviceCapture, first_key).unwrap());
         let second_args = args('5', second_sink.clone(), second_runtime.clone());
         let second_key = second_args.key.clone();
+        admitted(&root).await;
         ractor::call!(root, RootMsg::StartDeviceCapture, second_args)
             .unwrap()
             .unwrap();
@@ -1036,6 +1191,7 @@ mod tests {
         let clean_sink = Sink::new(false);
         let next = args('f', clean_sink.clone(), clean_runtime.clone());
         let key = next.key.clone();
+        admitted(&root).await;
         ractor::call!(root, RootMsg::StartDeviceCapture, next)
             .unwrap()
             .unwrap();
@@ -1047,6 +1203,156 @@ mod tests {
         );
         assert_eq!(audio.1.load(Ordering::SeqCst), 2);
         drop((first, second));
+        root.stop(None);
+        handle.await.unwrap();
+    }
+    fn numbered_args(id: u64, sink: Arc<Sink>, runtime: Arc<Runtime>) -> DeviceCaptureArgs {
+        let mut result = args('0', sink, runtime);
+        result.key = DeviceCaptureKey::new(format!("{id:064x}")).unwrap();
+        result
+    }
+    #[tokio::test]
+    async fn physical_admission_waits_for_provider_acknowledgement_then_releases_storage_finalizer()
+    {
+        let audio = Arc::new(Audio::default());
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let frames = audio.source_options(
+            Arc::new(CaptureIntegrity::default()),
+            false,
+            true,
+            Some(gate.clone()),
+            0,
+        );
+        let _next_frames = audio.source();
+        let runtime = Arc::new(Runtime::default());
+        let sink = Sink::new(true);
+        let (root, handle) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                runtime: Arc::new(Runtime::default()),
+                audio: audio.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        let capture = numbered_args(16, sink.clone(), runtime.clone());
+        let key = capture.key.clone();
+        ractor::call!(root, RootMsg::StartDeviceCapture, capture)
+            .unwrap()
+            .unwrap();
+        frames.send(Ok(frame())).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(3), sink.entered.notified())
+            .await
+            .unwrap();
+        assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        assert!(!ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap());
+        assert!(matches!(
+            ractor::call!(
+                root,
+                RootMsg::StartDeviceCapture,
+                numbered_args(17, Sink::new(false), Arc::new(Runtime::default()))
+            )
+            .unwrap(),
+            Err(StartSessionError::SessionAlreadyRunning)
+        ));
+        assert_eq!(audio.1.load(Ordering::SeqCst), 1);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(25), ended(&runtime))
+                .await
+                .is_err()
+        );
+        gate.add_permits(1);
+        admitted(&root).await;
+        // Acquisition is stopped although fsync/storage completion still owns the original bounded queue.
+        assert!(sink.end.lock().unwrap().is_none());
+        sink.release();
+        ended(&runtime).await;
+        assert_eq!(sink.totals.lock().unwrap().frames, 16_000);
+        assert_eq!(
+            *sink.end.lock().unwrap(),
+            Some(DeviceRecordingEnd::Complete)
+        );
+        root.stop(None);
+        handle.await.unwrap();
+    }
+    #[tokio::test]
+    async fn unsupported_provider_interrupts_and_never_claims_physical_cleanup() {
+        let audio = Arc::new(Audio::default());
+        let frames =
+            audio.source_options(Arc::new(CaptureIntegrity::default()), false, false, None, 0);
+        let runtime = Arc::new(Runtime::default());
+        let sink = Sink::new(false);
+        let (root, handle) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                runtime: Arc::new(Runtime::default()),
+                audio,
+            },
+        )
+        .await
+        .unwrap();
+        let capture = numbered_args(18, sink.clone(), runtime.clone());
+        let key = capture.key.clone();
+        ractor::call!(root, RootMsg::StartDeviceCapture, capture)
+            .unwrap()
+            .unwrap();
+        frames.send(Ok(frame())).await.unwrap();
+        ready(&runtime).await;
+        assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        ended(&runtime).await;
+        assert_eq!(
+            *sink.end.lock().unwrap(),
+            Some(DeviceRecordingEnd::Interrupted)
+        );
+        assert!(!ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap());
+        assert_eq!(
+            ractor::call!(root, RootMsg::GetState).unwrap(),
+            State::Finalizing
+        );
+        root.stop(None);
+        handle.await.unwrap();
+    }
+    #[tokio::test]
+    async fn mismatched_provider_receipt_interrupts_data_but_releases_confirmed_resources() {
+        let audio = Arc::new(Audio::default());
+        let frames =
+            audio.source_options(Arc::new(CaptureIntegrity::default()), false, true, None, 1);
+        let runtime = Arc::new(Runtime::default());
+        let sink = Sink::new(false);
+        let (root, handle) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                runtime: Arc::new(Runtime::default()),
+                audio,
+            },
+        )
+        .await
+        .unwrap();
+        let capture = numbered_args(19, sink.clone(), runtime.clone());
+        let key = capture.key.clone();
+        ractor::call!(root, RootMsg::StartDeviceCapture, capture)
+            .unwrap()
+            .unwrap();
+        frames
+            .send(Ok(CaptureFrame {
+                raw_mic: Arc::from(vec![0.125; 777]),
+                raw_speaker: Arc::from(vec![-0.5; 777]),
+                aec_mic: None,
+            }))
+            .await
+            .unwrap();
+        ready(&runtime).await;
+        assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        ended(&runtime).await;
+        assert_eq!(sink.totals.lock().unwrap().frames, 777);
+        assert_eq!(
+            *sink.end.lock().unwrap(),
+            Some(DeviceRecordingEnd::Interrupted)
+        );
+        admitted(&root).await;
         root.stop(None);
         handle.await.unwrap();
     }

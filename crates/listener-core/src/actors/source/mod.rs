@@ -35,8 +35,17 @@ pub enum SourceMsg {
     DeviceHalt(String),
     DrainDevice(RpcReplyPort<Result<DeviceFinishReceipt, DeviceSinkError>>),
     DeviceDrainReady,
+    DeviceProducerStopped {
+        resources_stopped: bool,
+        complete_frames: Option<u64>,
+        admitted_frames: u64,
+        error: Option<String>,
+    },
     StreamFailed(String),
-    RecoveryChanged { microphone: bool, speaker: bool },
+    RecoveryChanged {
+        microphone: bool,
+        speaker: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -87,7 +96,11 @@ pub struct SourceState {
     pub(super) session_id: String,
     pub(super) mic_device: Option<String>,
     pub(super) onboarding: bool,
-    pub(super) run_task: Option<tokio::task::JoinHandle<()>>,
+    pub(super) run_task: Option<tokio::task::JoinHandle<stream::ProducerExit>>,
+    drain_task: Option<tokio::task::JoinHandle<()>>,
+    producer_outcome: Option<stream::ProducerExit>,
+    pub(super) stop_interrupted: Arc<std::sync::atomic::AtomicBool>,
+    pub(super) device_lifetime: Option<DeviceLifetime>,
     pub(super) stream_cancel_token: Option<CancellationToken>,
     pub(super) current_mode: ChannelMode,
     pub(super) capture_mode: Option<ChannelMode>,
@@ -107,6 +120,18 @@ pub struct SourceState {
     pub(super) recorder: Option<ActorRef<RecMsg>>,
     _device_watcher: Option<DeviceChangeWatcher>,
     _silence_stream_tx: Option<std::sync::mpsc::Sender<()>>,
+}
+
+pub(super) struct DeviceLifetime {
+    cancel: CancellationToken,
+    interrupted: Arc<std::sync::atomic::AtomicBool>,
+}
+impl Drop for DeviceLifetime {
+    fn drop(&mut self) {
+        self.interrupted
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.cancel.cancel();
+    }
 }
 
 pub struct SourceActor;
@@ -215,6 +240,10 @@ impl Actor for SourceActor {
                 mic_device,
                 onboarding: args.onboarding,
                 run_task: None,
+                drain_task: None,
+                producer_outcome: None,
+                stop_interrupted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                device_lifetime: None,
                 stream_cancel_token: None,
                 _device_watcher: device_watcher,
                 _silence_stream_tx: silence_stream_tx,
@@ -307,14 +336,39 @@ impl Actor for SourceActor {
                     begin_device_drain(&myself, st, None, None).await;
                 }
             }
+            SourceMsg::DeviceProducerStopped {
+                resources_stopped,
+                complete_frames,
+                admitted_frames,
+                error,
+            } => {
+                if let Some(error) = &error {
+                    st.interrupted.get_or_insert(error.clone());
+                }
+                if resources_stopped {
+                    st._silence_stream_tx.take();
+                    st._device_watcher.take();
+                }
+                st.producer_outcome = Some(stream::ProducerExit {
+                    resources_stopped,
+                    complete_frames,
+                    admitted_frames,
+                    error,
+                });
+                let _ = myself.cast(SourceMsg::DeviceDrainReady);
+            }
             SourceMsg::DeviceDrainReady => {
                 if let Some(reason) = provider_integrity_failure(st.provider_integrity.as_ref()) {
                     st.interrupted.get_or_insert(reason);
                 }
-                let end = if st.interrupted.is_some() {
-                    DeviceRecordingEnd::Interrupted
-                } else {
+                let complete = st.producer_outcome.as_ref().is_some_and(|outcome| {
+                    outcome.resources_stopped
+                        && outcome.complete_frames == Some(outcome.admitted_frames)
+                });
+                let end = if st.interrupted.is_none() && complete {
                     DeviceRecordingEnd::Complete
+                } else {
+                    DeviceRecordingEnd::Interrupted
                 };
                 let result = if let Some(recorder) = &st.recorder {
                     ractor::call!(recorder, RecMsg::DeviceFinish, end)
@@ -392,7 +446,12 @@ impl Actor for SourceActor {
         if let Some(cancel_token) = st.stream_cancel_token.take() {
             cancel_token.cancel();
         }
-        if let Some(task) = st.run_task.take() {
+        if st.device_ingress.is_some() {
+            st.stop_interrupted
+                .store(true, std::sync::atomic::Ordering::Release);
+            // A device producer retains native cleanup ownership after the actor exits.
+            drop(st.run_task.take());
+        } else if let Some(task) = st.run_task.take() {
             task.abort();
         }
 
@@ -407,18 +466,17 @@ async fn begin_device_drain(
     reply: Option<RpcReplyPort<Result<DeviceFinishReceipt, DeviceSinkError>>>,
 ) {
     if let Some(reason) = reason {
+        st.stop_interrupted
+            .store(true, std::sync::atomic::Ordering::Release);
         st.interrupted.get_or_insert(reason);
+    }
+    if let Some(reply) = reply {
+        st.drain_reply = Some(reply);
     }
     if st.drain_started {
         return;
     }
     st.drain_started = true;
-    if let Some((key, root, supervisor)) = &st.device_root {
-        let _ = root.cast(crate::actors::RootMsg::DeviceDraining(
-            key.clone(),
-            *supervisor,
-        ));
-    }
     st.runtime
         .emit_lifecycle(crate::SessionLifecycleEvent::Finalizing {
             session_id: st.session_id.clone(),
@@ -426,18 +484,25 @@ async fn begin_device_drain(
     if let Some(cancel) = st.stream_cancel_token.take() {
         cancel.cancel();
     }
-    if let Some(task) = st.run_task.take()
-        && let Err(error) = task.await
-    {
-        st.interrupted
-            .get_or_insert(format!("Audio producer failed: {error}"));
-    }
-    if let Some(reason) = provider_integrity_failure(st.provider_integrity.as_ref()) {
-        st.interrupted.get_or_insert(reason);
-    }
-    // The joined producer cannot enqueue later frames. This mailbox barrier follows all admitted frames.
-    if let Some(reply) = reply {
-        st.drain_reply = Some(reply);
-    }
-    let _ = myself.cast(SourceMsg::DeviceDrainReady);
+    let producer = st.run_task.take();
+    let actor = myself.clone();
+    st.drain_task = Some(tokio::spawn(async move {
+        let outcome = match producer {
+            Some(task) => task.await.unwrap_or_else(|_| stream::ProducerExit {
+                error: Some("Audio producer failed before its drain acknowledgement".into()),
+                ..stream::ProducerExit::default()
+            }),
+            None => stream::ProducerExit {
+                error: Some("Audio producer disappeared before draining".into()),
+                ..stream::ProducerExit::default()
+            },
+        };
+        // This join precedes the mailbox barrier, while the source actor keeps forwarding admitted frames.
+        let _ = actor.cast(SourceMsg::DeviceProducerStopped {
+            resources_stopped: outcome.resources_stopped,
+            complete_frames: outcome.complete_frames,
+            admitted_frames: outcome.admitted_frames,
+            error: outcome.error,
+        });
+    }));
 }
