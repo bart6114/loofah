@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-stream = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
@@ -20,6 +21,7 @@ image = { version = "0.25.10", default-features = false, features = ["gif", "jpe
 mime_guess = { workspace = true }
 notify = "8"
 regex = { workspace = true }
+reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -33,6 +35,7 @@ urlencoding = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+axum = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -7673,6 +7673,8 @@ name = "loofah-core"
 version = "0.1.0"
 dependencies = [
  "agent-access",
+ "async-stream",
+ "axum",
  "base64 0.22.1",
  "chrono",
  "fs-sync-core",
@@ -7682,6 +7684,7 @@ dependencies = [
  "mime_guess",
  "notify",
  "regex",
+ "reqwest 0.13.2",
  "search-cache",
  "serde",
  "serde_json",

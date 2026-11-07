@@ -130,6 +130,13 @@ async fn run(
     }
 }
 
+fn failure_completion(failure: ProcessingJobFailure) -> JobCompletion {
+    match failure {
+        ProcessingJobFailure::Interrupted => JobCompletion::Interrupted,
+        other => JobCompletion::Failed(other),
+    }
+}
+
 async fn execute(
     context: &Arc<VaultContext>,
     journal: &JobJournal,
@@ -141,7 +148,7 @@ async fn execute(
     let work = journal.work(id.into()).await?;
     let grant = match authorizer.authorize(&work).await {
         Ok(grant) => grant,
-        Err(failure) => return Ok(JobCompletion::Failed(failure)),
+        Err(failure) => return Ok(failure_completion(failure)),
     };
     let baseline = context
         .read_document(&work.request.session_id, &work.request.target)
@@ -198,7 +205,7 @@ async fn execute(
             }
         }
         if let Err(failure) = authorizer.authorize(&work).await {
-            break Err(JobCompletion::Failed(failure));
+            break Err(failure_completion(failure));
         }
     };
     let output = match outcome {
@@ -220,7 +227,7 @@ async fn execute(
             return Ok(if cancelled(journal, id).await? {
                 JobCompletion::Cancelled
             } else {
-                JobCompletion::Failed(failure)
+                failure_completion(failure)
             });
         }
     };
@@ -233,7 +240,7 @@ async fn execute(
     }
     let grant = match authorizer.authorize(&work).await {
         Ok(grant) => grant,
-        Err(failure) => return Ok(JobCompletion::Failed(failure)),
+        Err(failure) => return Ok(failure_completion(failure)),
     };
     if stop.is_cancelled() {
         return Ok(JobCompletion::Interrupted);

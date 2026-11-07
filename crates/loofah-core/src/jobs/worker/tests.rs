@@ -6,6 +6,48 @@ use hypr_loofah_protocol::{DocumentSaveOutcome, SaveDocumentRequest};
 use hypr_vault_write::SessionStore;
 use tokio::sync::{RwLock, Semaphore};
 
+struct InterruptedOnce(AtomicBool);
+impl JobAuthorizer for InterruptedOnce {
+    fn authorize<'a>(
+        &'a self,
+        _: &'a JobWork,
+    ) -> JobFuture<'a, Result<Box<dyn Send>, ProcessingJobFailure>> {
+        Box::pin(async move {
+            if self.0.swap(false, Ordering::SeqCst) {
+                Err(ProcessingJobFailure::Interrupted)
+            } else {
+                Ok(Box::new(()) as Box<dyn Send>)
+            }
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_interrupted_authorization_does_not_poison_the_worker_or_apply_content() {
+    let f = Fixture::new("# Decisions\n- Ship Friday", false).await;
+    let worker = JobWorker::start(
+        f.context.clone(),
+        f.journal.clone(),
+        f.generator.clone(),
+        Arc::new(InterruptedOnce(AtomicBool::new(true))),
+    )
+    .await
+    .unwrap();
+    let first = f.submit().await;
+    let snapshot = f.terminal(&first.id).await;
+    assert_eq!(snapshot.state, ProcessingJobState::Interrupted);
+    assert_eq!(snapshot.failure, Some(ProcessingJobFailure::Interrupted));
+    assert_eq!(f.generator.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(f.summary().await, "");
+    let second = f.submit().await;
+    f.generator.release.add_permits(1);
+    assert_eq!(
+        f.terminal(&second.id).await.state,
+        ProcessingJobState::Succeeded
+    );
+    worker.shutdown().await.unwrap();
+}
+
 struct Fixture {
     root: tempfile::TempDir,
     context: Arc<VaultContext>,

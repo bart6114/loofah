@@ -20,6 +20,7 @@ const MAX_JOBS: usize = 10_000;
 const MAX_PENDING: usize = 32;
 
 pub mod generation;
+pub mod providers;
 mod result;
 pub mod source;
 mod worker;

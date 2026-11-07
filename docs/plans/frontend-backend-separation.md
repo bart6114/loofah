@@ -2395,3 +2395,84 @@ Clippy reports 23 pre-existing warnings in unchanged code; ordinary vault-write
 Clippy passes with that same baseline, without suppressions or unrelated fixes.
 Native Windows and production provider/image/performance validation remain required
 for this increment. Build, test and cache artifacts remain physically on T7.
+
+### Shared HTTP model adapters
+
+`loofah-core::jobs::providers` now supplies a `TextModel` implementation without
+Tauri, a webview or a desktop session. It handles Responses for OpenAI/Azure
+OpenAI, Chat Completions for compatible providers (including OpenRouter, Ollama
+and Azure AI), Anthropic Messages and Google streaming generation. Provider
+selection, endpoint, model ID, credentials and permission to use an insecure
+non-loopback provider endpoint are host configuration; none is accepted in a job
+request. Configured model IDs remain unchanged. ChatGPT subscription credentials
+and inference remain on their existing local path pending their shared adapter.
+
+The adapter sends referenced images inline, preserves the Ollama origin header,
+and uses each provider's authentication headers. Plain compatible text prompts
+retain the current SDK's string form. Responses requests use instructions and
+set `store: false` to disable response storage for later retrieval; Loofah summaries
+do not need provider-stored response objects. The existing desktop AI path is still active.
+Host secret resolution and provider selection from current vault settings remain
+required before either desktop or server job wiring can use these adapters.
+
+The HTTP client disables redirects and automatic transport retries. It has a
+10-second connection deadline, 90-second read/headers inactivity deadline and
+15-minute total deadline per attempt. HTTPS is the default; loopback HTTP supports
+local model servers. Other HTTP endpoints require explicit host permission.
+Request encoding runs off the async executor and is capped at 24 MiB. SSE decoding
+bounds each frame to 1 MiB, the response to 32 MiB and the event count to 100,000;
+text has the existing 4 MiB body plus 16 KiB footer allowance. These are per-call
+bounds; global processing admission/fairness remains a separate release gate.
+
+Only explicit HTTP 429 rejection can repeat automatically, with at most the
+request's four-retry budget. Numeric `Retry-After` values up to 60 seconds are
+honored; unsupported/longer values stop for explicit retry. No provider request is
+repeated after a connection failure, ambiguous disconnect or stream error. Keys,
+provider bodies and endpoint diagnostics do not enter durable job failures.
+Cancellation releases the owned HTTP work and stops backoff; it cannot guarantee
+that an already accepted provider call stops remotely or incurs no charge.
+
+Decoding distinguishes explicit normal/length completion from interrupted EOF,
+refusal, filtering and tool invocation. Reasoning fields stay outside summary
+text, and the shared generator continues to handle inline reasoning tags.
+Malformed frames, unexpected text after completion and duplicate completion fail
+closed. The worker now maps interrupted source/provider/authorization outcomes to
+the journal's interrupted state, rather than attempting an invalid failed-state
+transition that would disable processing. An explicit subsequent job can run
+without restarting the worker; interrupted calls never apply partial output.
+
+Wire contracts were checked against the pinned frontend provider implementations
+and the official [Responses requests](https://developers.openai.com/api/reference/resources/responses/methods/create),
+[Responses streaming](https://developers.openai.com/api/reference/resources/responses/streaming-events),
+[Chat Completions streaming](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events)
+and [Anthropic streaming](https://platform.claude.com/docs/en/build-with-claude/streaming)
+references. This is shared transport functionality, not public server processing.
+Live-provider/model/image parity, host-owned secret adapters, authenticated public
+jobs, previews, title/tag application, custom-template trust and local UI migration
+remain required. The full objective and prior incomplete deployment, recording,
+CLI, native platform and production validation gates remain unchanged.
+
+Validation passes 198 shared-core tests (one ignored subprocess fixture) and all
+51 server library tests. Seventeen provider regressions include real HTTP request
+formats/headers/inline images, fragmented UTF-8/SSE, rate limiting, redirects,
+inactivity/total deadlines, cancellation at headers/body/backoff, explicit length
+completion, refusals/tool calls, bounded input/output, early validation retry and
+canonical-source-to-worker integration. Interrupted generation preserves the
+existing summary and note; a subsequent explicit job succeeds on the same worker.
+An additional authorization regression verifies the interrupted-state fix before
+generation begins. No live provider credentials or billable requests were used.
+
+Core/server/CLI checking, strict core production Clippy, generated-contract
+checking and formatting pass. The headless production dependency graph still
+excludes Tauri, wry, cpal, audio-actual and device-monitor. The executable
+startup/SIGTERM test failed once during local test identity-provider discovery;
+an isolated rerun of the same binary passed without source changes. Both outcomes
+are retained in `provider-full-tests.log` and `provider-executable-recheck.log`
+under `/Volumes/T7/loofah-backend-build/logs/`. This does not establish production
+startup/performance or live-provider parity.
+
+Hosted CI for the preceding shared-generation commit `7614c3a54` finished
+successfully, including native Windows x64/ARM64 checks, tests, installer builds
+and install/uninstall tests. Its optional real speech-model lane was skipped.
+Current-head native validation remains required for the subsequent source and
+provider increments. All build, validation and temporary artifacts remain on T7.
