@@ -59,6 +59,9 @@ fn prepare_request(
     model: String,
     request: ModelRequest,
 ) -> Result<ChatgptGeneration, ProcessingJobFailure> {
+    if request.temperature.is_some() {
+        return Err(ProcessingJobFailure::SourceUnavailable);
+    }
     if request.system.len() > 256 * 1024
         || request.prompt.len() > 16 * 1024 * 1024
         || request.max_output_tokens == 0

@@ -126,6 +126,12 @@ pub(super) fn body(
     model: String,
     request: ModelRequest,
 ) -> Result<Vec<u8>, ProcessingJobFailure> {
+    if request
+        .temperature
+        .is_some_and(|value| !value.is_finite() || !(0.0..=2.0).contains(&value))
+    {
+        return Err(ProcessingJobFailure::SourceUnavailable);
+    }
     if request.system.is_empty() || request.prompt.is_empty() || request.max_output_tokens == 0 {
         return Err(ProcessingJobFailure::SourceUnavailable);
     }
@@ -171,7 +177,12 @@ pub(super) fn body(
             _ => json!({"type":"image_url","image_url":{"url":format!("data:{};base64,{encoded}",image.mime_type)}}),
         });
     }
-    let body = match provider {
+    let omit_temperature = matches!(provider, HttpProvider::OpenAi | HttpProvider::AzureOpenAi)
+        && (model.starts_with("o1")
+            || model.starts_with("o3")
+            || model.starts_with("o4-mini")
+            || model.starts_with("gpt-5") && !model.starts_with("gpt-5-chat"));
+    let mut body = match provider {
         // A stateless summary never needs a provider-stored conversation.
         HttpProvider::OpenAi | HttpProvider::AzureOpenAi => {
             json!({"model":model,"instructions":request.system,"input":[{"role":"user","content":parts}],"max_output_tokens":request.max_output_tokens,"stream":true,"store":false})
@@ -196,6 +207,13 @@ pub(super) fn body(
             json!({"model":model,"messages":[{"role":"system","content":request.system},{"role":"user","content":content}],"max_tokens":request.max_output_tokens,"stream":true})
         }
     };
+    if let Some(temperature) = request.temperature.filter(|_| !omit_temperature) {
+        if matches!(provider, HttpProvider::Google) {
+            body["generationConfig"]["temperature"] = json!(temperature);
+        } else {
+            body["temperature"] = json!(temperature);
+        }
+    }
     let mut output = Body(Vec::new());
     serde_json::to_writer(&mut output, &body).map_err(|_| ProcessingJobFailure::ResourceLimit)?;
     Ok(output.0)

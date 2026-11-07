@@ -130,6 +130,7 @@ pub struct ModelRequest {
     pub images: Vec<SummaryImage>,
     pub max_output_tokens: u32,
     pub max_retries: u32,
+    pub temperature: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -192,6 +193,7 @@ impl JobGenerator for SummaryGenerator {
                             images: prepared.images.clone(),
                             max_output_tokens: 8192,
                             max_retries: 4,
+                            temperature: None,
                         },
                         attempt_cancel.clone(),
                     )
@@ -276,7 +278,7 @@ impl JobGenerator for SummaryGenerator {
     }
 }
 
-struct ReasoningFilter {
+pub(super) struct ReasoningFilter {
     opening: &'static str,
     closing: &'static str,
     pending: String,
@@ -286,7 +288,7 @@ struct ReasoningFilter {
 }
 
 impl ReasoningFilter {
-    fn new(opening: &'static str, closing: &'static str) -> Self {
+    pub(super) fn new(opening: &'static str, closing: &'static str) -> Self {
         Self {
             opening,
             closing,
@@ -297,7 +299,7 @@ impl ReasoningFilter {
         }
     }
 
-    fn push(&mut self, text: &str) -> String {
+    pub(super) fn push(&mut self, text: &str) -> String {
         let mut input = std::mem::take(&mut self.pending);
         input.push_str(text);
         let mut rest = input.as_str();

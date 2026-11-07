@@ -25,6 +25,7 @@ pub mod generation;
 pub mod providers;
 mod result;
 pub mod source;
+pub mod title_generation;
 mod worker;
 pub use result::GeneratedDocument;
 pub use worker::{JobAuthorizer, JobFuture, JobGenerator, JobWork, JobWorker};

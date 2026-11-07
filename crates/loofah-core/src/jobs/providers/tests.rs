@@ -142,6 +142,7 @@ fn request() -> ModelRequest {
         }],
         max_output_tokens: 8192,
         max_retries: 4,
+        temperature: None,
     }
 }
 fn event(value: Value) -> String {
@@ -198,6 +199,49 @@ async fn collect(model: &HttpModel) -> Result<Vec<ModelChunk>, ProcessingJobFail
         .await
         .into_iter()
         .collect()
+}
+
+#[tokio::test]
+async fn portable_title_generation_uses_the_supplied_http_model_with_bounded_delayed_streaming() {
+    let provider = HttpProvider::OpenAi;
+    let mut reply = Reply::sse(String::new());
+    reply.header_delay = Duration::from_millis(150);
+    reply.chunks = success(
+        provider,
+        "<think>private reasoning</think>  Release planning  ",
+    )
+    .as_bytes()
+    .chunks(17)
+    .map(|bytes| (Duration::from_millis(5), bytes.to_vec()))
+    .collect();
+    let server = Server::start(vec![reply]).await;
+    let generator = super::super::title_generation::TitleGenerator::new(
+        Arc::new(server.model(provider)),
+        Some("nl".into()),
+        Some(0.0),
+    );
+    let output = generator
+        .generate("# Decisions\nShip Friday.".into(), CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(output, Some("Release planning".into()));
+    {
+        let requests = server.state.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].uri.path(), "/api/responses");
+        let body = &requests[0].body;
+        assert_eq!(body["model"], "configured-model");
+        assert_eq!(body["max_output_tokens"], 128);
+        assert_eq!(body["temperature"], 0.0);
+        assert!(body["instructions"].as_str().unwrap().contains("Dutch"));
+        assert!(
+            body["input"][0]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("Ship Friday.")
+        );
+    }
+    server.close().await;
 }
 
 #[tokio::test]
@@ -579,6 +623,86 @@ fn sse_limits_invalid_utf8_unterminated_events_and_oversized_frames() {
         decoder.push(b'a').err(),
         Some(ProcessingJobFailure::ResourceLimit)
     );
+}
+
+#[test]
+fn sampling_is_optional_and_uses_the_existing_provider_wire_names() {
+    for provider in [
+        HttpProvider::OpenAi,
+        HttpProvider::AzureOpenAi,
+        HttpProvider::AzureAi,
+        HttpProvider::ChatCompletions,
+        HttpProvider::Ollama,
+        HttpProvider::Anthropic,
+        HttpProvider::Google,
+    ] {
+        for temperature in [None, Some(0.0)] {
+            let mut input = request();
+            input.temperature = temperature;
+            let bytes = request::body(provider, "configured".into(), input).unwrap();
+            let body: Value = serde_json::from_slice(&bytes).unwrap();
+            let value = if matches!(provider, HttpProvider::Google) {
+                assert!(body.get("temperature").is_none());
+                body["generationConfig"].get("temperature")
+            } else {
+                body.get("temperature")
+            };
+            match temperature {
+                None => assert!(value.is_none()),
+                Some(expected) => assert_eq!(value.and_then(Value::as_f64), Some(expected)),
+            }
+        }
+    }
+    let mut input = request();
+    input.temperature = Some(0.0);
+    let bytes = request::body(HttpProvider::Google, "gemma-model".into(), input).unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["generationConfig"]["temperature"], 0.0);
+}
+
+#[test]
+fn responses_reasoning_sampling_omission_matches_the_pinned_frontend_adapter_only() {
+    for provider in [HttpProvider::OpenAi, HttpProvider::AzureOpenAi] {
+        for (model, omitted) in [
+            ("o1", true),
+            ("o3-mini", true),
+            ("o4-mini-2025-04-16", true),
+            ("gpt-5", true),
+            ("gpt-5.1", true),
+            ("gpt-5.4", true),
+            ("gpt-5-mini", true),
+            ("gpt-5-chat-latest", false),
+            ("gpt-4o", false),
+            ("custom-gpt-5", false),
+        ] {
+            let mut input = request();
+            input.temperature = Some(0.0);
+            let bytes = request::body(provider, model.into(), input).unwrap();
+            let body: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(body.get("temperature").is_none(), omitted, "{model}");
+        }
+    }
+    for provider in [
+        HttpProvider::ChatCompletions,
+        HttpProvider::AzureAi,
+        HttpProvider::Ollama,
+    ] {
+        for model in ["gpt-5", "o3", "openai/gpt-5"] {
+            let mut input = request();
+            input.temperature = Some(0.0);
+            let bytes = request::body(provider, model.into(), input).unwrap();
+            let body: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(body["temperature"], 0.0, "{model}");
+        }
+    }
+    for temperature in [f64::NAN, f64::INFINITY, -0.1, 2.1] {
+        let mut input = request();
+        input.temperature = Some(temperature);
+        assert_eq!(
+            request::body(HttpProvider::OpenAi, "gpt-4o".into(), input).err(),
+            Some(ProcessingJobFailure::SourceUnavailable)
+        );
+    }
 }
 
 #[test]

@@ -8,7 +8,18 @@ fn input() -> ModelRequest {
         images: vec![],
         max_output_tokens: 8192,
         max_retries: 4,
+        temperature: None,
     }
+}
+
+#[test]
+fn subscription_model_rejects_sampling_controls_like_the_existing_frontend_adapter() {
+    let mut input = input();
+    input.temperature = Some(0.0);
+    assert!(matches!(
+        prepare_request("exact-model-id".into(), input),
+        Err(ProcessingJobFailure::SourceUnavailable)
+    ));
 }
 
 #[test]
