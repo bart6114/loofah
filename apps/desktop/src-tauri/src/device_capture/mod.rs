@@ -1,5 +1,6 @@
 //! Device-only capture. No server admission, canonical vault writes or uploader lives here.
 
+mod manager;
 mod runtime;
 mod sink;
 #[cfg(test)]
@@ -11,9 +12,11 @@ use hypr_loofah_client::capture_spool::{
     CaptureChannel, CaptureFormat, CaptureIdentity, CaptureSeal, CaptureSpool,
 };
 use tauri_plugin_transcription::{
-    DeviceCaptureArgs, DeviceCaptureKey, DeviceChannelMode, DeviceSinkError,
+    DeviceCaptureArgs, DeviceCaptureCompletion, DeviceCaptureKey, DeviceChannelMode,
+    DeviceSinkError,
 };
 
+pub use manager::*;
 pub use sink::SpoolRecordingSink;
 
 #[derive(Clone, Debug)]
@@ -55,6 +58,7 @@ pub struct PreparedDeviceCapture {
     pub key: DeviceCaptureKey,
     args: DeviceCaptureArgs,
     pub sink: Arc<SpoolRecordingSink>,
+    pub completion: DeviceCaptureCompletion,
 }
 
 impl PreparedDeviceCapture {
@@ -126,6 +130,7 @@ impl PreparedDeviceCapture {
         let sink = Arc::new(SpoolRecordingSink::new(writer, snapshot, observer));
         let runtime = Arc::new(runtime::DeviceRuntime::new(sink.clone()));
         sink.emit(DeviceCaptureEvent::Preparing);
+        let (reporter, completion) = DeviceCaptureCompletion::channel();
         Ok(Self {
             key: key.clone(),
             args: DeviceCaptureArgs {
@@ -133,8 +138,10 @@ impl PreparedDeviceCapture {
                 sink: sink.clone(),
                 mode,
                 runtime,
+                completion: reporter,
             },
             sink,
+            completion,
         })
     }
 

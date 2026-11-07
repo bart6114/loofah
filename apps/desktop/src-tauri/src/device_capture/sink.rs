@@ -17,6 +17,20 @@ pub struct SpoolRecordingSink {
     state: Mutex<SinkState>,
     operations: tokio::sync::Mutex<()>,
     observer: Arc<dyn DeviceCaptureObserver>,
+    completion: tokio::sync::watch::Sender<SinkCompletion>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum SinkCompletion {
+    Pending,
+    Finished {
+        end: DeviceRecordingEnd,
+        receipt: DeviceFinishReceipt,
+    },
+    Failed {
+        reason: String,
+        durable_prefix: Option<DeviceFinishReceipt>,
+    },
 }
 
 struct SinkState {
@@ -40,6 +54,7 @@ impl SpoolRecordingSink {
             }),
             operations: tokio::sync::Mutex::new(()),
             observer,
+            completion: tokio::sync::watch::channel(SinkCompletion::Pending).0,
         }
     }
 
@@ -55,6 +70,18 @@ impl SpoolRecordingSink {
             .lock()
             .ok()
             .and_then(|state| state.snapshot.seal.clone())
+    }
+
+    pub(super) fn completion(&self) -> tokio::sync::watch::Receiver<SinkCompletion> {
+        self.completion.subscribe()
+    }
+
+    pub(super) fn durable_prefix(&self) -> Option<DeviceFinishReceipt> {
+        self.state.lock().ok().map(|state| DeviceFinishReceipt {
+            chunk_count: state.snapshot.chunk_count,
+            frames: state.snapshot.frames,
+            pcm_bytes: state.snapshot.pcm_bytes,
+        })
     }
 
     pub(super) fn interrupted(&self, reason: String) {
@@ -189,6 +216,33 @@ impl DeviceRecordingSink for SpoolRecordingSink {
     }
 
     async fn finish(
+        &self,
+        end: DeviceRecordingEnd,
+    ) -> Result<DeviceFinishReceipt, DeviceSinkError> {
+        let result = self.finish_durable(end).await;
+        let completion = match &result {
+            Ok(receipt) => SinkCompletion::Finished {
+                end,
+                receipt: *receipt,
+            },
+            Err(error) => SinkCompletion::Failed {
+                reason: error.to_string(),
+                durable_prefix: self.durable_prefix(),
+            },
+        };
+        self.completion.send_if_modified(|state| {
+            if !matches!(state, SinkCompletion::Pending) {
+                return false;
+            }
+            *state = completion;
+            true
+        });
+        result
+    }
+}
+
+impl SpoolRecordingSink {
+    async fn finish_durable(
         &self,
         end: DeviceRecordingEnd,
     ) -> Result<DeviceFinishReceipt, DeviceSinkError> {
