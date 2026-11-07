@@ -1,6 +1,8 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    Live(#[from] hypr_meeting_live::LiveError),
+    #[error(transparent)]
     Cache(#[from] hypr_search_cache::Error),
     #[error(
         "Vault write persisted, but command completion failed: {reason}. Do not repeat the write; run loof init to refresh the cache"
@@ -50,12 +52,16 @@ impl Error {
             Self::NotFound(_) => 2,
             Self::VaultNotFound(_) => 3,
             Self::OutputExists(_) => 4,
-            Self::Operation { .. } | Self::Cache(_) | Self::WritePersisted { .. } => 1,
+            Self::Operation { .. }
+            | Self::Cache(_)
+            | Self::WritePersisted { .. }
+            | Self::Live(_) => 1,
         }
     }
 
-    pub fn code(&self) -> &'static str {
+    pub fn code(&self) -> &str {
         match self {
+            Self::Live(error) => &error.code,
             Self::Cache(hypr_search_cache::Error::NotReady) => "cache_not_ready",
             Self::Cache(hypr_search_cache::Error::Corrupt(_)) => "cache_corrupt",
             Self::Cache(hypr_search_cache::Error::Busy) => "cache_busy",

@@ -15,7 +15,7 @@ use hypr_agent_access as access;
 #[derive(Clone)]
 struct LoofahMcpServer {
     vault: Arc<PathBuf>,
-    cache: hypr_search_cache::Cache,
+    cache: Arc<tokio::sync::OnceCell<hypr_search_cache::Cache>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -25,16 +25,100 @@ enum ResourceRequest {
 }
 
 impl LoofahMcpServer {
-    fn new(vault: PathBuf, cache: hypr_search_cache::Cache) -> Self {
+    fn new(vault: PathBuf, cache: Option<hypr_search_cache::Cache>) -> Self {
         Self {
             vault: Arc::new(vault),
-            cache,
+            cache: Arc::new(tokio::sync::OnceCell::new_with(cache)),
+        }
+    }
+    async fn cache(&self) -> std::result::Result<&hypr_search_cache::Cache, McpError> {
+        self.cache
+            .get_or_try_init(|| async {
+                let vault = self.vault.clone();
+                tokio::task::spawn_blocking(move || {
+                    let cache = hypr_search_cache::Cache::for_vault(&vault)?;
+                    match cache.check() {
+                        Ok(()) => {}
+                        Err(hypr_search_cache::Error::NotReady) => {
+                            cache.initialize(&mut |_| {})?;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                    Ok(cache)
+                })
+                .await
+                .map_err(internal_error)?
+                .map_err(internal_error)
+            })
+            .await
+    }
+
+    async fn live_call(
+        &self,
+        request: hypr_meeting_live::Request,
+    ) -> std::result::Result<CallToolResult, McpError> {
+        match crate::live::request(&self.vault, request).await {
+            Ok(response) => structured(&crate::live::data(response)),
+            Err(error) => {
+                let mut result = CallToolResult::structured(
+                    serde_json::json!({ "error": { "code": error.code, "message": error.message } }),
+                );
+                result.is_error = Some(true);
+                Ok(result)
+            }
         }
     }
 }
 
 #[tool_router]
 impl LoofahMcpServer {
+    #[tool(
+        description = "Discover the active desktop recording and whether live transcription and nudges are available. Use its recording_id with live tools to avoid targeting another meeting.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn get_active_meeting(&self) -> std::result::Result<CallToolResult, McpError> {
+        self.live_call(hypr_meeting_live::Request::Status).await
+    }
+
+    #[tool(
+        description = "Read finalized live words and explicit corrections for a recording. Poll every five seconds using the returned cursor; drain has_more pages first. On reset replace previous context with the returned snapshot. Does not include provisional speech. Requires running macOS desktop.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn get_live_transcript(
+        &self,
+        Parameters(input): Parameters<hypr_meeting_live::TranscriptInput>,
+    ) -> std::result::Result<CallToolResult, McpError> {
+        self.live_call(hypr_meeting_live::Request::Transcript(input))
+            .await
+    }
+
+    #[tool(
+        description = "Display a plain-text coaching nudge of 1–200 characters in the active recording bar for 20 seconds, paused on hover. Replaces the previous nudge. Supply recording_id from get_active_meeting. Requires running macOS desktop with the floating bar enabled. Success means UI accepted, not that the person read it. Do not automatically retry timeouts.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn nudge(
+        &self,
+        Parameters(input): Parameters<hypr_meeting_live::NudgeInput>,
+    ) -> std::result::Result<CallToolResult, McpError> {
+        self.live_call(hypr_meeting_live::Request::Nudge(input))
+            .await
+    }
+
     #[tool(
         description = "List recent Loofah meetings with pagination metadata. Use query for relevance-ranked full-text matches, then pass next_offset as offset to continue.",
         annotations(
@@ -48,7 +132,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::ListMeetingsInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::list_meetings(&self.cache, input)
+        let page = access::list_meetings(self.cache().await?, input)
             .await
             .map_err(command_error)?;
         structured(&page)
@@ -105,7 +189,7 @@ impl LoofahMcpServer {
         &self,
         Parameters(input): Parameters<access::SearchMeetingsInput>,
     ) -> std::result::Result<CallToolResult, McpError> {
-        let page = access::search_meetings(&self.cache, input)
+        let page = access::search_meetings(self.cache().await?, input)
             .await
             .map_err(command_error)?;
         structured(&page)
@@ -127,7 +211,7 @@ impl ServerHandler for LoofahMcpServer {
             env!("LOOFAH_VERSION"),
         ))
         .with_instructions(
-            "Read-only, local access to Loofah meeting data. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
+            "Local access to Loofah meeting data and live recording tools. For external coaching, discover get_active_meeting, poll get_live_transcript every five seconds with its cursor, and use nudge sparingly with the recording_id. Nudges affect the desktop UI but never change vault content. Start with list_meetings to resolve a meeting_id, then call get_meeting for notes, summaries, and action items. Call get_meeting_transcript for the full transcript as speaker-labeled '[HH:MM:SS] Speaker: ...' lines. Use search_meetings for keyword search across titles, notes, summaries, and transcript words, using desktop relevance ranking and one result per session. Never invent meeting ids, access SQLite directly, or claim a write occurred: tools never change vault content; search and list requests refresh the local search cache. Documentation: https://github.com/bart6114/loofah",
         )
     }
 
@@ -148,7 +232,7 @@ impl ServerHandler for LoofahMcpServer {
             .transpose()?
             .unwrap_or(0);
         let page = access::list_meetings(
-            &self.cache,
+            self.cache().await?,
             access::ListMeetingsInput {
                 query: None,
                 limit: Some(access::DEFAULT_LIST_LIMIT),
@@ -234,8 +318,8 @@ impl ServerHandler for LoofahMcpServer {
     }
 }
 
-pub async fn serve(vault: PathBuf, cache: hypr_search_cache::Cache) -> crate::Result<()> {
-    let running = LoofahMcpServer::new(vault, cache)
+pub async fn serve(vault: PathBuf) -> crate::Result<()> {
+    let running = LoofahMcpServer::new(vault, None)
         .serve(rmcp::transport::stdio())
         .await
         .map_err(|error| Error::operation("start MCP server", error.to_string()))?;
@@ -306,7 +390,7 @@ mod tests {
     fn test_server(vault: &std::path::Path) -> LoofahMcpServer {
         let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
         cache.initialize(&mut |_| {}).unwrap();
-        LoofahMcpServer::new(vault.to_path_buf(), cache)
+        LoofahMcpServer::new(vault.to_path_buf(), Some(cache))
     }
 
     fn seed_vault_with_meeting() -> tempfile::TempDir {
@@ -475,9 +559,12 @@ mod tests {
         assert_eq!(
             tool_names,
             [
+                "get_active_meeting",
+                "get_live_transcript",
                 "get_meeting",
                 "get_meeting_transcript",
                 "list_meetings",
+                "nudge",
                 "search_meetings",
             ]
         );
@@ -497,18 +584,17 @@ mod tests {
             let properties = tool
                 .input_schema
                 .get("properties")
-                .and_then(Value::as_object)
-                .expect("tool input properties");
-            for parameter in properties.keys() {
+                .and_then(Value::as_object);
+            for parameter in properties.into_iter().flat_map(|p| p.keys()) {
                 assert!(
                     mcp_docs.contains(&format!("`{parameter}`")),
                     "MCP docs are missing `{parameter}`"
                 );
             }
             let annotations = tool.annotations.expect("tool annotations");
-            assert_eq!(annotations.read_only_hint, Some(true));
+            assert_eq!(annotations.read_only_hint, Some(tool.name != "nudge"));
             assert_eq!(annotations.destructive_hint, Some(false));
-            assert_eq!(annotations.idempotent_hint, Some(true));
+            assert_eq!(annotations.idempotent_hint, Some(tool.name != "nudge"));
             assert_eq!(annotations.open_world_hint, Some(false));
         }
 
@@ -567,5 +653,55 @@ mod tests {
             }
             value => value,
         }
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn corrupt_cache_does_not_block_live_tools() {
+        let vault = tempfile::tempdir().unwrap();
+        let cache = hypr_search_cache::Cache::for_vault(vault.path()).unwrap();
+        cache.initialize(&mut |_| {}).unwrap();
+        std::fs::write(cache.path().join("CURRENT"), "../invalid").unwrap();
+        let server = LoofahMcpServer::new(vault.path().into(), None);
+        let live = server.get_active_meeting().await.unwrap();
+        assert_eq!(live.is_error, Some(true));
+        assert_ne!(
+            live.structured_content.unwrap()["error"]["code"],
+            "cache_corrupt"
+        );
+        assert!(server.cache.get().is_none());
+        let search = server
+            .search_meetings(Parameters(access::SearchMeetingsInput {
+                query: "hello".into(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap_err();
+        assert!(search.message.contains("loof init"));
+    }
+
+    #[tokio::test]
+    async fn live_tool_failure_does_not_initialize_search_cache() {
+        let vault = tempfile::tempdir().unwrap();
+        let server = LoofahMcpServer::new(vault.path().into(), None);
+        let result = server.get_active_meeting().await.unwrap();
+        assert_eq!(result.is_error, Some(true));
+        assert!(server.cache.get().is_none());
+        let invalid = server
+            .nudge(Parameters(hypr_meeting_live::NudgeInput {
+                text: " ".into(),
+                recording_id: None,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(invalid.is_error, Some(true));
+        assert_eq!(
+            invalid.structured_content.unwrap()["error"]["code"],
+            "invalid_input"
+        );
     }
 }

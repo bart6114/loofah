@@ -20,4 +20,4 @@ Invalid arguments use the `invalid_arguments` error code with Clap's nonzero exi
 
 MCP reports missing meetings as invalid parameters. Vault and serialization failures are internal MCP errors.
 
-Never recover by editing vault files directly; go through the CLI's write commands or the desktop app. When a write command fails after creating a meeting, the error names the new meeting id. Finish the job against that id instead of retrying from scratch (for example `loof sessions note ID --set` after a failed note write, or `loof transcribe ID` after a failed `import --transcribe`). The MCP server remains read-only.
+Never recover by editing vault files directly; go through the CLI's write commands or the desktop app. When a write command fails after creating a meeting, the error names the new meeting id. Finish the job against that id instead of retrying from scratch (for example `loof sessions note ID --set` after a failed note write, or `loof transcribe ID` after a failed `import --transcribe`). The MCP server cannot change vault content; `nudge` only affects the recording bar.

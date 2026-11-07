@@ -62,3 +62,20 @@ public func _devtoolsPanelHide() -> Bool {
   DevtoolsPanelManager.shared.hide()
   return true
 }
+
+@_cdecl("_floating_bar_nudge")
+public func _floatingBarNudge(json: SRString) -> Bool {
+  guard Thread.isMainThread,
+    let data = json.toString().data(using: .utf8),
+    let payload = try? JSONDecoder().decode(FloatingNudgePayload.self, from: data)
+  else { return false }
+  return FloatingBarManager.shared.showNudge(payload)
+}
+
+@_cdecl("_floating_bar_clear_nudge")
+public func _floatingBarClearNudge(recording_id: SRString) -> Bool {
+  guard Thread.isMainThread else { return false }
+  let id = recording_id.toString()
+  FloatingBarManager.shared.clearNudge(recordingId: id.isEmpty ? nil : id)
+  return true
+}

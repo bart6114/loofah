@@ -3382,6 +3382,7 @@ dependencies = [
  "fs-format",
  "host",
  "intercept",
+ "meeting-live",
  "pico-args",
  "ractor",
  "serde",
@@ -7455,6 +7456,7 @@ dependencies = [
  "hound",
  "insta",
  "listener2-core",
+ "meeting-live",
  "owhisper-interface",
  "rmcp",
  "search-cache",
@@ -7696,6 +7698,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51c55d61e72fc3ab704396c5fa16f4c184db37978ae4e94ca8959693a235fc0e"
 dependencies = [
  "log",
+]
+
+[[package]]
+name = "meeting-live"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
