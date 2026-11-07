@@ -928,8 +928,23 @@ mod tests {
             .append_transcript("s1", delta_with_words(&["auto"]))
             .await
             .unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        assert!(vault.path().join("sessions/s1/transcript.json").is_file());
+        let path = vault.path().join("sessions/s1/transcript.json");
+        let json = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        break serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("cannot read debounced transcript: {error}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the debounce timer must persist words without an explicit flush");
+        assert_eq!(json["transcripts"][0]["words"].as_array().unwrap().len(), 1);
+        assert_eq!(json["transcripts"][0]["words"][0]["text"], "auto");
     }
 
     #[tokio::test]
