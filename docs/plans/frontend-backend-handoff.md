@@ -1,5 +1,10 @@
 # Paused frontend/backend separation
 
+The user explicitly resumed all work on 7 November 2026. The pause instructions
+below describe the historical standby checkpoint; they no longer pause the active
+goal. Read the current implementation-plan audit and git status for subsequent
+work. The original WIP backups remain preserved.
+
 Saved 7 November 2026, about 10:37 Europe/Zurich, at the user's explicit request
 before workstation standby. **Work is paused. Do not resume implementation or
 start agents/builds until the user resumes it.** The full implementation goal is

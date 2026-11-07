@@ -2919,3 +2919,32 @@ The final shared Rust/CLI and native desktop checks pass. Scoped Clippy passes
 with 23 existing shared-write warnings and no new query-module warnings;
 frontend lint retains 88 baseline warnings and no errors. Native bindings were
 exported and formatted, and generated protocol readback passes.
+
+### Resumed integration: owned reads, generated tags and device capture storage
+
+The standby snapshot was verified against all ten preserved source hashes before
+resuming. CI on pushed head `4942778ce` completed successfully, including native
+Windows x64 and ARM64; these results do not validate subsequent unpushed changes.
+
+The three reviewed generated-summary commits and the capture-spool checkpoint
+are integrated. Generated summary application now journals body, stable tasks,
+guarded tag metadata and fresh registry additions as one recoverable operation.
+Schema-3 recovery preserves unrelated/unknown metadata and registry fields and
+syncs the actual legacy enhanced-file directory, session directory and registry
+directory before clearing an intent. Schemas 1/2 remain supported. Backups must
+include operation state as well as vault files; recover/drain schema-3 intents
+with the current version before rollback, or restore a complete pre-upgrade
+backup. Older binaries cannot safely consume a pending new-format intent.
+
+Canonical ID summary reads now keep an owned VaultContext task, retaining the
+vault lease through actual recovery I/O even when a direct caller cancels. A
+regression blocks recovery, cancels/drops the caller and proves the real vault
+file lock remains exclusive until the read finishes.
+
+Combined validation passed 786 tests: client100, core229, server69 and
+vault-write388; six helper/stress cases remain ignored. Shared Rust/CLI check and
+scoped Clippy pass, retaining 23 pre-existing shared-write warnings. Logs are
+`resume-integrated-*` under the T7 build directory. The spool remains a
+device-storage component; these checks do not claim native capture, upload,
+transcription or finalization integration. Full recording/STT write reservations
+and title/template/preview/automatic-trigger parity remain open.
