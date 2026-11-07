@@ -4,6 +4,7 @@ pub mod root;
 pub mod session;
 pub mod source;
 
+pub use device_completion::*;
 pub use listener::*;
 pub use recorder::*;
 pub use root::*;
@@ -37,3 +38,4 @@ impl ChannelMode {
 pub struct AudioChunk {
     pub data: Vec<f32>,
 }
+mod device_completion;

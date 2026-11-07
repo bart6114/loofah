@@ -11,8 +11,9 @@ use crate::actors::session::lifecycle::{
     clear_sentry_session_context, configure_sentry_session_context, emit_session_ended,
 };
 use crate::actors::{
-    ChannelMode, DeviceCaptureKey, DeviceIngress, DeviceRecordingSink, RecordingDestination,
-    SessionConfigUpdate, SessionContext, SessionMsg, SessionParams, spawn_session_supervisor,
+    ChannelMode, DeviceCaptureKey, DeviceCaptureReporter, DeviceIngress, DeviceRecordingSink,
+    RecordingDestination, SessionConfigUpdate, SessionContext, SessionMsg, SessionParams,
+    spawn_session_supervisor,
 };
 use crate::{
     ListenerRuntime, SessionLifecycleEvent, Snapshot, StartSessionError, State, TranscriptionMode,
@@ -23,6 +24,7 @@ pub struct DeviceCaptureArgs {
     pub sink: Arc<dyn DeviceRecordingSink>,
     pub mode: ChannelMode,
     pub runtime: Arc<dyn ListenerRuntime>,
+    pub completion: DeviceCaptureReporter,
 }
 
 pub enum RootMsg {
@@ -33,6 +35,7 @@ pub enum RootMsg {
     ),
     StopDeviceCapture(DeviceCaptureKey, RpcReplyPort<bool>),
     DeviceResourcesStopped(DeviceCaptureKey, ractor::ActorId),
+    DeviceFirstAudioObserved(DeviceCaptureKey, ractor::ActorId, SystemTime),
     GetCaptureAdmission(RpcReplyPort<bool>),
     UpdateSessionConfig(SessionConfigUpdate, RpcReplyPort<()>),
     StopSession(RpcReplyPort<()>),
@@ -72,6 +75,7 @@ struct TrackedCapture {
     supervisor: ActorCell,
     resources_stopped: bool,
     supervisor_done: bool,
+    completion: Option<DeviceCaptureReporter>,
 }
 
 pub struct RootState {
@@ -151,14 +155,34 @@ impl Actor for RootActor {
                 }) {
                     let mut capture = state.active.take().expect("active capture was checked");
                     capture.resources_stopped = true;
+                    if let Some(completion) = &capture.completion {
+                        completion.resources_released();
+                    }
                     state.finalizing.insert(capture.key.clone(), capture);
                 } else if let Some(capture) = state.finalizing.get_mut(&key)
                     && capture.supervisor.get_id() == supervisor
                 {
                     capture.resources_stopped = true;
+                    if let Some(completion) = &capture.completion {
+                        completion.resources_released();
+                    }
                     if capture.supervisor_done {
                         state.finalizing.remove(&key);
                     }
+                }
+            }
+            RootMsg::DeviceFirstAudioObserved(key, supervisor, at) => {
+                let key = CaptureKey::Device(key);
+                let capture = state
+                    .active
+                    .as_ref()
+                    .filter(|capture| capture.key == key)
+                    .or_else(|| state.finalizing.get(&key));
+                if let Some(capture) = capture
+                    && capture.supervisor.get_id() == supervisor
+                    && let Some(completion) = &capture.completion
+                {
+                    completion.first_audio(at);
                 }
             }
             RootMsg::GetCaptureAdmission(reply) => {
@@ -250,6 +274,7 @@ async fn start_session_impl(
     device: Option<DeviceCaptureArgs>,
     state: &mut RootState,
 ) -> Result<(), StartSessionError> {
+    let completion = device.as_ref().map(|args| args.completion.clone());
     let stale = state
         .active
         .as_ref()
@@ -333,10 +358,14 @@ async fn start_session_impl(
         runtime: runtime.clone(),
         resources_stopped: !recording.is_device(),
         supervisor_done: stopped,
+        completion,
         recording,
         supervisor,
     };
     if stopped {
+        if let Some(completion) = &tracked.completion {
+            completion.supervisor_ended(Some("Capture stopped during startup".into()));
+        }
         if tracked.recording.is_device() {
             state.finalizing.insert(tracked.key.clone(), tracked);
         } else {
@@ -357,6 +386,9 @@ async fn start_session_impl(
 
 fn stop_session_impl(state: &mut RootState) {
     if let Some(active) = state.active.take() {
+        if let Some(completion) = &active.completion {
+            completion.stop_requested();
+        }
         active
             .runtime
             .emit_lifecycle(SessionLifecycleEvent::Finalizing {
@@ -390,6 +422,9 @@ fn handle_supervisor_completion(state: &mut RootState, cell: ActorCell, reason: 
     let Some(mut capture) = capture else {
         return;
     };
+    if let Some(completion) = &capture.completion {
+        completion.supervisor_ended(reason.clone());
+    }
     match &capture.recording {
         RecordingDestination::LocalDisk {
             vault_dir,
@@ -729,6 +764,7 @@ mod tests {
             sink,
             runtime,
             mode: ChannelMode::MicAndSpeaker,
+            completion: crate::actors::DeviceCaptureCompletion::channel().0,
         }
     }
     fn frame() -> CaptureFrame {
@@ -1236,16 +1272,53 @@ mod tests {
         )
         .await
         .unwrap();
-        let capture = numbered_args(16, sink.clone(), runtime.clone());
+        let mut capture = numbered_args(16, sink.clone(), runtime.clone());
+        let (reporter, mut completion) = crate::actors::DeviceCaptureCompletion::channel();
+        capture.completion = reporter;
         let key = capture.key.clone();
         ractor::call!(root, RootMsg::StartDeviceCapture, capture)
             .unwrap()
             .unwrap();
+        root.cast(RootMsg::DeviceFirstAudioObserved(
+            key.clone(),
+            root.get_cell().get_id(),
+            SystemTime::UNIX_EPOCH,
+        ))
+        .unwrap();
+        root.cast(RootMsg::DeviceResourcesStopped(
+            key.clone(),
+            root.get_cell().get_id(),
+        ))
+        .unwrap();
+        assert!(!ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap());
+        assert_eq!(
+            completion.current(),
+            crate::actors::DeviceCaptureCompletionSnapshot::default()
+        );
         frames.send(Ok(frame())).await.unwrap();
         tokio::time::timeout(Duration::from_secs(3), sink.entered.notified())
             .await
             .unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while completion
+                .current()
+                .first_admitted_audio_observed_at
+                .is_none()
+            {
+                completion.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let first_observed = completion.current().first_admitted_audio_observed_at;
         assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        assert!(completion.current().stop_requested_observed_at.is_some());
+        assert!(
+            completion
+                .current()
+                .resources_released_observed_at
+                .is_none()
+        );
         assert!(!ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap());
         assert!(matches!(
             ractor::call!(
@@ -1264,10 +1337,22 @@ mod tests {
         );
         gate.add_permits(1);
         admitted(&root).await;
+        assert!(
+            completion
+                .current()
+                .resources_released_observed_at
+                .is_some()
+        );
+        assert!(!completion.current().supervisor_ended);
+        assert_eq!(
+            completion.current().first_admitted_audio_observed_at,
+            first_observed
+        );
         // Acquisition is stopped although fsync/storage completion still owns the original bounded queue.
         assert!(sink.end.lock().unwrap().is_none());
         sink.release();
         ended(&runtime).await;
+        assert!(completion.current().supervisor_ended);
         assert_eq!(sink.totals.lock().unwrap().frames, 16_000);
         assert_eq!(
             *sink.end.lock().unwrap(),

@@ -76,6 +76,7 @@ async fn start_streams(
             device_ingress,
             provider_integrity,
             stop_interrupted,
+            device_root: device_root.clone(),
         };
 
         let outcome = std::panic::AssertUnwindSafe(run_stream_loop(ctx, mode))
@@ -110,6 +111,11 @@ struct StreamContext {
     device_ingress: Option<crate::actors::DeviceIngress>,
     provider_integrity: Option<ProviderIntegrity>,
     stop_interrupted: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    device_root: Option<(
+        crate::actors::DeviceCaptureKey,
+        ActorRef<crate::actors::RootMsg>,
+        ractor::ActorId,
+    )>,
 }
 
 impl StreamContext {
@@ -237,6 +243,8 @@ async fn run_device_stream(ctx: StreamContext, mut stream: CaptureStream) -> Pro
             Some(Ok(frame)) => frame.raw_mic.len().max(frame.raw_speaker.len()) as u64,
             _ => 0,
         };
+        let observed_at =
+            (frames != 0 && outcome.admitted_frames == 0).then(std::time::SystemTime::now);
         if matches!(handle_capture_item(&ctx, item), StreamResult::Stop) {
             outcome
                 .error
@@ -244,6 +252,15 @@ async fn run_device_stream(ctx: StreamContext, mut stream: CaptureStream) -> Pro
             discard = true;
         } else {
             outcome.admitted_frames += frames;
+            if let Some(at) = observed_at
+                && let Some((key, root, supervisor)) = &ctx.device_root
+            {
+                let _ = root.cast(crate::actors::RootMsg::DeviceFirstAudioObserved(
+                    key.clone(),
+                    *supervisor,
+                    at,
+                ));
+            }
         }
     }
     if let Some(control) = control {
@@ -451,6 +468,7 @@ mod tests {
             device_ingress: Some(crate::actors::DeviceIngress::default()),
             provider_integrity: Some(std::sync::Arc::new(std::sync::OnceLock::new())),
             stop_interrupted: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            device_root: None,
         };
         assert!(matches!(
             handle_capture_item(&ctx, None),

@@ -24,9 +24,11 @@ pub use hypr_transcription_core::listener::{
     SessionLifecycleEvent as DeviceSessionLifecycleEvent,
     SessionProgressEvent as DeviceSessionProgressEvent,
     actors::{
-        ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs, DeviceCaptureKey,
-        DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink, DeviceSinkError,
-        RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
+        ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs,
+        DeviceCaptureCompletion, DeviceCaptureCompletionSnapshot, DeviceCaptureKey,
+        DeviceCaptureReporter, DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink,
+        DeviceSinkError, RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
+        RootMsg as DeviceCaptureRootMsg,
     },
 };
 pub use hypr_transcription_core::listener2::{
@@ -34,8 +36,11 @@ pub use hypr_transcription_core::listener2::{
     is_supported_languages_batch, list_documented_language_codes_batch, parse_subtitle_from_path,
     suggest_providers_for_languages_batch,
 };
+pub use listener::{
+    DeviceCaptureStartError, device_capture_root_ready, start_device_capture, stop_device_capture,
+    tracked_start_device_capture,
+};
 pub use listener::{Listener, ListenerPluginExt};
-pub use listener::{start_device_capture, stop_device_capture};
 pub use listener2::{Listener2, Listener2PluginExt};
 
 use hypr_audio::AudioProvider;

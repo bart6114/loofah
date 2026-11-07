@@ -144,15 +144,39 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> ListenerPluginExt<R> for T {
 
 /// Rust-only device entry point; it deliberately bypasses the local SessionStore capture lease.
 pub async fn start_device_capture(args: crate::DeviceCaptureArgs) -> Result<(), crate::Error> {
-    let cell = registry::where_is(RootActor::name())
-        .ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+    tracked_start_device_capture(args)
+        .await
+        .map_err(|error| match error {
+            DeviceCaptureStartError::NotDispatched => {
+                crate::Error::ActorNotFound(RootActor::name())
+            }
+            DeviceCaptureStartError::Rejected => crate::Error::SessionAlreadyRunning,
+            DeviceCaptureStartError::Unconfirmed => crate::Error::StartSessionFailed,
+        })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeviceCaptureStartError {
+    NotDispatched,
+    Rejected,
+    Unconfirmed,
+}
+
+pub fn device_capture_root_ready() -> bool {
+    registry::where_is(RootActor::name())
+        .is_some_and(|root| root.get_status() != ractor::ActorStatus::Stopped)
+}
+
+pub async fn tracked_start_device_capture(
+    args: crate::DeviceCaptureArgs,
+) -> Result<(), DeviceCaptureStartError> {
+    let cell =
+        registry::where_is(RootActor::name()).ok_or(DeviceCaptureStartError::NotDispatched)?;
     let actor: ActorRef<RootMsg> = cell.into();
     match ractor::call!(actor, RootMsg::StartDeviceCapture, args) {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(StartSessionError::SessionAlreadyRunning)) => {
-            Err(crate::Error::SessionAlreadyRunning)
-        }
-        _ => Err(crate::Error::StartSessionFailed),
+        Ok(Err(StartSessionError::SessionAlreadyRunning)) => Err(DeviceCaptureStartError::Rejected),
+        _ => Err(DeviceCaptureStartError::Unconfirmed),
     }
 }
 
