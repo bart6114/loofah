@@ -4,6 +4,7 @@ mod attachment_upload;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod device_capture;
 mod device_vault_state;
 mod draft_cache;
 mod embedded_cli;

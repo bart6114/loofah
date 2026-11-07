@@ -141,3 +141,25 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> ListenerPluginExt<R> for T {
         }
     }
 }
+
+/// Rust-only device entry point; it deliberately bypasses the local SessionStore capture lease.
+pub async fn start_device_capture(args: crate::DeviceCaptureArgs) -> Result<(), crate::Error> {
+    let cell = registry::where_is(RootActor::name())
+        .ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+    let actor: ActorRef<RootMsg> = cell.into();
+    match ractor::call!(actor, RootMsg::StartDeviceCapture, args) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(StartSessionError::SessionAlreadyRunning)) => {
+            Err(crate::Error::SessionAlreadyRunning)
+        }
+        _ => Err(crate::Error::StartSessionFailed),
+    }
+}
+
+pub async fn stop_device_capture(key: crate::DeviceCaptureKey) -> bool {
+    let Some(cell) = registry::where_is(RootActor::name()) else {
+        return false;
+    };
+    let actor: ActorRef<RootMsg> = cell.into();
+    ractor::call!(actor, RootMsg::StopDeviceCapture, key).unwrap_or(false)
+}

@@ -18,12 +18,24 @@ pub use hypr_transcription_core::listener::{
     DegradedError, ListenerRuntime, LiveTranscriptDelta, LiveTranscriptEngine,
     LiveTranscriptSegment, LiveTranscriptSegmentDelta, LiveTranscriptUpdate,
 };
+pub use hypr_transcription_core::listener::{
+    ListenerRuntime as DeviceListenerRuntime, SessionDataEvent as DeviceSessionDataEvent,
+    SessionErrorEvent as DeviceSessionErrorEvent,
+    SessionLifecycleEvent as DeviceSessionLifecycleEvent,
+    SessionProgressEvent as DeviceSessionProgressEvent,
+    actors::{
+        ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs, DeviceCaptureKey,
+        DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink, DeviceSinkError,
+        RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
+    },
+};
 pub use hypr_transcription_core::listener2::{
     Error as Listener2Error, Result as Listener2Result, Subtitle, Token,
     is_supported_languages_batch, list_documented_language_codes_batch, parse_subtitle_from_path,
     suggest_providers_for_languages_batch,
 };
 pub use listener::{Listener, ListenerPluginExt};
+pub use listener::{start_device_capture, stop_device_capture};
 pub use listener2::{Listener2, Listener2PluginExt};
 
 use hypr_audio::AudioProvider;
