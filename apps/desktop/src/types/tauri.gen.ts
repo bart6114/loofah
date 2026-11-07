@@ -298,6 +298,60 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async deviceRecentSessions(
+    scope: string,
+  ): Promise<Result<string[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recent_sessions", { scope }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRememberSession(
+    scope: string,
+    id: string,
+  ): Promise<Result<string[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_remember_session", { scope, id }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async devicePinnedTabs(
+    scope: string,
+  ): Promise<Result<string | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_pinned_tabs", { scope }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceSetPinnedTabs(
+    scope: string,
+    value: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_set_pinned_tabs", { scope, value }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessions(
     limit: number,
     after: string | null,
@@ -1986,10 +2040,12 @@ export const commands = {
 
 export const events = __makeEvents__<{
   applicationChanged: ApplicationChanged;
+  deviceVaultStateChanged: DeviceVaultStateChanged;
   indexChanged: IndexChanged;
   startupProgress: StartupProgress;
 }>({
   applicationChanged: "application-changed",
+  deviceVaultStateChanged: "device-vault-state-changed",
   indexChanged: "index-changed",
   startupProgress: "startup-progress",
 });
@@ -2120,6 +2176,7 @@ export type DeleteRecordingRequest = { expected_sha256: string };
 export type DeviceAttachmentSource =
   | { kind: "path"; path: string }
   | { kind: "staged"; id: string };
+export type DeviceVaultStateChanged = { scope: string };
 export type Document = {
   id: string;
   kind: string;

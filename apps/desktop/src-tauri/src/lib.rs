@@ -4,6 +4,7 @@ mod attachment_upload;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod device_vault_state;
 mod draft_cache;
 mod embedded_cli;
 mod ext;
@@ -216,6 +217,7 @@ pub async fn main() {
         .manage(chatgpt::ChatgptState::default())
         .manage(processing::ProcessingState::default())
         .manage(job_submissions::JobSubmissionState::default())
+        .manage(device_vault_state::DeviceVaultState::default())
         .manage(remote::RemoteState::default())
         .manage(attachment_upload::DeviceUploadIo::default())
         .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
@@ -622,6 +624,10 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             job_submissions::device_job_submissions::<tauri::Wry>,
             job_submissions::device_job_submission_observe::<tauri::Wry>,
             job_submissions::device_job_submission_forget::<tauri::Wry>,
+            device_vault_state::device_recent_sessions::<tauri::Wry>,
+            device_vault_state::device_remember_session::<tauri::Wry>,
+            device_vault_state::device_pinned_tabs::<tauri::Wry>,
+            device_vault_state::device_set_pinned_tabs::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
             application::application_session_summaries::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
@@ -751,6 +757,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
         ])
         .events(tauri_specta::collect_events![
             application::ApplicationChanged,
+            device_vault_state::DeviceVaultStateChanged,
             session_store::IndexChanged,
             startup::StartupProgress
         ])

@@ -2948,3 +2948,28 @@ scoped Clippy pass, retaining 23 pre-existing shared-write warnings. Logs are
 device-storage component; these checks do not claim native capture, upload,
 transcription or finalization integration. Full recording/STT write reservations
 and title/template/preview/automatic-trigger parity remain open.
+
+### Scoped device recents and pinned-tab contract
+
+Desktop-only commands now read recent sessions, atomically prepend/deduplicate
+remembered sessions, read pinned tabs and save main-window pins for an immutable
+scope. They share one private schema-1 JSON file under app-local-data, independent
+of the selected vault/config/store2. Recent IDs are validated and bounded to ten;
+pin JSON is bounded to 128 entries/256 KiB; the full state has scope/file limits.
+Owned blocking I/O and an exclusive file lease serialize updates across windows
+and retain writes/notifications after a caller drops. Corrupt, future or symlinked
+state is refused without replacement. A scoped native event prompts reloads.
+
+Legacy recents and pins are imported together exactly once, only from the actual
+managed local VaultContext's vault and into its exact scope. Remote-only calls
+need no local vault or login and never read a fallback local store. The old
+store.json is left intact. The frontend deviceVaultState adapter exposes the same
+primitive contract for scoped tabs without local/remote transport branches.
+
+Six native tests cover migration, isolation, concurrent updates, cancellation,
+invalid state, private permissions and login-free use; three adapter tests and
+desktop typechecking pass. Native check and scoped lint pass, retaining twelve
+baseline native warnings and none in the new module. Evidence is in
+`device-vault-state-*` logs. The immutable scoped tabs/controller foundation is
+separately validated by its worker; production consumer wiring and atomic
+empty-session cleanup/draft-flush coordination remain to be integrated.
