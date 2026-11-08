@@ -420,7 +420,9 @@ async fn changing_owned_files_after_durable_intent_never_moves_or_retries_the_se
             let changed = changed.clone();
             async move {
                 if stage == Stage::Intent {
-                    std::fs::write(changed, "new external intent").map_err(io_error)?;
+                    // Replace the locked generation; an in-place Windows write can truncate before failing.
+                    hypr_storage::fs::atomic_write(&changed, "new external intent")
+                        .map_err(io_error)?;
                 }
                 Ok(())
             }
