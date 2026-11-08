@@ -20,6 +20,9 @@ pub type LocalMediaFuture<T> =
 
 /// Device engines receive private inputs and return artifacts; only Core publishes canonical files.
 pub trait LocalMediaHost: Send + Sync + 'static {
+    fn cancellation(&self, _request_id: &str) -> tokio_util::sync::CancellationToken {
+        tokio_util::sync::CancellationToken::new()
+    }
     fn normalize(
         &self,
         source: LocalCliArtifact,
@@ -103,6 +106,12 @@ impl LocalCli {
                 artifact: None,
             });
         }
+        progress(LocalCliProgress {
+            schema_version: "2".into(),
+            phase: "preparing media".into(),
+            processed: 0,
+            total: None,
+        });
         let result = match operation {
             LocalCliOperation::Import {
                 filename,
@@ -121,6 +130,31 @@ impl LocalCli {
                     into,
                     transcribe,
                     metadata,
+                    None,
+                    artifact
+                        .ok_or_else(|| error(ErrorCode::Validation, "Import source is required"))?,
+                    progress,
+                )
+                .await
+            }
+            LocalCliOperation::ImportIntoChecked {
+                session_id,
+                filename,
+                transcribe,
+                expected_metadata_revision,
+                created_at,
+            } => {
+                self.import(
+                    &request_id,
+                    &mut claim,
+                    host,
+                    &root,
+                    filename,
+                    None,
+                    Some(session_id),
+                    transcribe,
+                    LocalInitialSessionMetadata::default(),
+                    Some((expected_metadata_revision, created_at)),
                     artifact
                         .ok_or_else(|| error(ErrorCode::Validation, "Import source is required"))?,
                     progress,
@@ -183,9 +217,20 @@ impl LocalCli {
         into: Option<String>,
         transcribe: bool,
         metadata: LocalInitialSessionMetadata,
+        metadata_guard: Option<(String, Option<String>)>,
         source: LocalCliArtifact,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> Result<LocalCliReply, ApplicationError> {
+        if metadata_guard
+            .as_ref()
+            .and_then(|(_, created)| created.as_ref())
+            .is_some_and(|created| chrono::DateTime::parse_from_rfc3339(created).is_err())
+        {
+            return Err(error(ErrorCode::Validation, "Invalid imported audio date"));
+        }
+        if host.cancellation(request_id).is_cancelled() {
+            return Err(cancelled(false));
+        }
         let path = std::path::Path::new(&filename);
         let extension = path
             .extension()
@@ -217,7 +262,19 @@ impl LocalCli {
         self.context
             .ensure_recording_publication_ready(&session_id)?;
         let existing = match &into {
-            Some(id) => Some(self.context.read_metadata(id).await?.meta),
+            Some(id) => {
+                let snapshot = self.context.read_metadata(id).await?;
+                if metadata_guard
+                    .as_ref()
+                    .is_some_and(|(expected, _)| expected != &snapshot.revision)
+                {
+                    return Err(error(
+                        ErrorCode::Conflict,
+                        "Session metadata changed before audio import",
+                    ));
+                }
+                Some(snapshot.meta)
+            }
             None => None,
         };
         if existing.is_some()
@@ -282,6 +339,9 @@ impl LocalCli {
                 );
                 cause
             })?;
+        if host.cancellation(request_id).is_cancelled() {
+            return Err(cancelled(false));
+        }
         let request = RecordingPublicationRequest {
             vault_id: self.context.events.vault_id(),
             namespace: namespace.into(),
@@ -346,6 +406,26 @@ impl LocalCli {
                 ));
             }
         }
+        if let Some((_, Some(created_at))) = metadata_guard {
+            if let Ok(current) = self.context.read_metadata(&session_id).await
+                && current.meta.created_at == meta.created_at
+            {
+                let patch =
+                    serde_json::from_value(serde_json::json!({"created_at": created_at}))
+                        .map_err(|_| error(ErrorCode::Validation, "Invalid imported audio date"))?;
+                // The estimate is advisory; an edit during import must win.
+                let _ = self
+                    .context
+                    .save_metadata_local(
+                        &session_id,
+                        SaveMetadataRequest {
+                            patch,
+                            expected_revision: current.revision,
+                        },
+                    )
+                    .await;
+            }
+        }
         let audio_path = self
             .context
             .store
@@ -384,6 +464,9 @@ impl LocalCli {
         expected: Option<LocalMediaSourceSnapshot>,
         progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> Result<LocalTranscriptionOutcome, ApplicationError> {
+        if host.cancellation(request_id).is_cancelled() {
+            return Err(cancelled(false));
+        }
         let _admission = self.context.admit_session_work(session_id).await?;
         self.context
             .ensure_recording_publication_ready(session_id)?;
@@ -468,6 +551,9 @@ impl LocalCli {
             )
             .await
             .map_err(|cause| storage_error(cause, true))?;
+        if host.cancellation(request_id).is_cancelled() {
+            return Err(cancelled(true));
+        }
         if self
             .context
             .read_metadata(session_id)
@@ -558,4 +644,21 @@ impl LocalCli {
             )),
         }
     }
+}
+
+fn cancelled(retained: bool) -> ApplicationError {
+    let mut cause = error(
+        ErrorCode::Cancelled,
+        if retained {
+            "Transcription stopped; original generated output is retained for explicit recovery"
+        } else {
+            "Local media processing stopped"
+        },
+    );
+    cause.mutation_outcome = Some(if retained {
+        MutationOutcome::Unknown
+    } else {
+        MutationOutcome::NotCommitted
+    });
+    cause
 }

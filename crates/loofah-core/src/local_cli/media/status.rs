@@ -26,6 +26,9 @@ impl LocalCli {
                         .created_session_id("local-cli-import", request)?,
                 },
             ),
+            Some(LocalCliOperation::ImportIntoChecked { session_id, .. }) => {
+                (LocalMediaKind::ImportAudio, session_id)
+            }
             Some(
                 LocalCliOperation::Transcribe { session_id }
                 | LocalCliOperation::TranscribeChecked { session_id, .. },
@@ -161,4 +164,83 @@ fn apply_error(status: &mut LocalMediaStatus, cause: &ApplicationError) {
         LocalMediaState::Failed
     };
     status.error = Some(cause.clone());
+}
+
+impl LocalCli {
+    pub(crate) async fn media_origin(
+        &self,
+        request: &str,
+    ) -> Result<(LocalMediaKind, String, String), ApplicationError> {
+        if !uuid::Uuid::parse_str(request).is_ok_and(|id| !id.is_nil() && id.to_string() == request)
+        {
+            return Err(error(
+                ErrorCode::Validation,
+                "Invalid original media request UUID",
+            ));
+        }
+        let root = self
+            .context
+            .operations
+            .as_ref()
+            .ok_or_else(|| error(ErrorCode::Unavailable, "Local media state is unavailable"))?
+            .root
+            .join("local-media");
+        let claim = journal::Claim::recover(self.context.clone(), root, request).await?;
+        if !matches!(claim.result(), Some(Ok(_))) {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Original media operation has not confirmed publication",
+            ));
+        }
+        match claim.operation() {
+            Some(LocalCliOperation::Import { .. }) => {
+                let original = claim.import().ok_or_else(|| {
+                    error(
+                        ErrorCode::Conflict,
+                        "Original audio import identity is unavailable",
+                    )
+                })?;
+                Ok((
+                    LocalMediaKind::ImportAudio,
+                    original.meta.id,
+                    original.meta.created_at,
+                ))
+            }
+            Some(LocalCliOperation::ImportIntoChecked {
+                session_id,
+                created_at,
+                ..
+            }) => {
+                let original = claim.import().ok_or_else(|| {
+                    error(
+                        ErrorCode::Conflict,
+                        "Original audio import identity is unavailable",
+                    )
+                })?;
+                if session_id != original.meta.id {
+                    return Err(error(
+                        ErrorCode::Conflict,
+                        "Original audio import identity changed",
+                    ));
+                }
+                Ok((
+                    LocalMediaKind::ImportAudio,
+                    session_id,
+                    created_at.unwrap_or(original.meta.created_at),
+                ))
+            }
+            Some(LocalCliOperation::TranscribeChecked {
+                session_id,
+                expected,
+            }) if session_id == expected.session_id => Ok((
+                LocalMediaKind::Transcribe,
+                session_id,
+                expected.session_created_at,
+            )),
+            _ => Err(error(
+                ErrorCode::Conflict,
+                "Original manual media source identity is unavailable",
+            )),
+        }
+    }
 }

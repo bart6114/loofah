@@ -144,6 +144,7 @@ impl LocalCli {
         let media_request = matches!(
             &operation,
             LocalCliOperation::Import { .. }
+                | LocalCliOperation::ImportIntoChecked { .. }
                 | LocalCliOperation::Transcribe { .. }
                 | LocalCliOperation::TranscribeChecked { .. }
                 | LocalCliOperation::RecoverMedia { .. }
@@ -486,6 +487,7 @@ impl LocalCli {
             LocalCliOperation::Initialize {} => return self.initialize(progress).await,
             LocalCliOperation::Doctor {} => return self.doctor().await,
             operation @ (LocalCliOperation::Import { .. }
+            | LocalCliOperation::ImportIntoChecked { .. }
             | LocalCliOperation::Transcribe { .. }
             | LocalCliOperation::TranscribeChecked { .. }) => {
                 return self

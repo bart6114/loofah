@@ -1113,3 +1113,106 @@ async fn checked_manual_transcription_rejects_changed_raw_source_before_model_ad
     );
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn checked_audio_import_preserves_original_metadata_authority_and_date() {
+    let mut fixture = Fixture::new().await;
+    let session = fixture.create().await;
+    let snapshot = fixture.cli.context.read_metadata(&session).await.unwrap();
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    fixture.cli = Arc::new(
+        LocalCli::new(fixture.cli.context.clone())
+            .unwrap()
+            .with_media_host(Arc::new(TestMedia {
+                normalizations: calls.clone(),
+                transcriptions: Default::default(),
+                edit: None,
+            })),
+    );
+    let operation = LocalCliOperation::ImportIntoChecked {
+        session_id: session.clone(),
+        filename: "meeting.mp3".into(),
+        transcribe: false,
+        expected_metadata_revision: "stale".into(),
+        created_at: Some("2025-10-01T12:00:00Z".into()),
+    };
+    let rejected = fixture
+        .cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            operation.clone(),
+            Some(input_artifact(fixture._root.path())),
+            Arc::new(|_| {}),
+        )
+        .await;
+    assert_eq!(rejected.err().unwrap().code, ErrorCode::Conflict);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let LocalCliOperation::ImportIntoChecked {
+        session_id,
+        filename,
+        transcribe,
+        created_at,
+        ..
+    } = operation
+    else {
+        unreachable!()
+    };
+    let request = uuid::Uuid::new_v4().to_string();
+    fixture
+        .cli
+        .execute(
+            request.clone(),
+            LocalCliOperation::ImportIntoChecked {
+                session_id,
+                filename,
+                transcribe,
+                created_at,
+                expected_metadata_revision: snapshot.revision,
+            },
+            Some(input_artifact(fixture._root.path())),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture
+            .cli
+            .context
+            .read_metadata(&session)
+            .await
+            .unwrap()
+            .meta
+            .created_at,
+        "2025-10-01T12:00:00Z"
+    );
+    let status = fixture.cli.media_status(&request).await.unwrap();
+    assert_eq!(status.kind, LocalMediaKind::ImportAudio);
+    assert_eq!(status.state, LocalMediaState::Succeeded);
+    let origin = fixture.cli.media_origin(&request).await.unwrap();
+    assert_eq!(
+        origin,
+        (
+            LocalMediaKind::ImportAudio,
+            session.clone(),
+            "2025-10-01T12:00:00Z".into()
+        )
+    );
+    let current = fixture.cli.context.read_metadata(&session).await.unwrap();
+    fixture
+        .cli
+        .context
+        .save_metadata_local(
+            &session,
+            SaveMetadataRequest {
+                expected_revision: current.revision,
+                patch: serde_json::from_value(
+                    serde_json::json!({"created_at":"2026-10-01T12:00:00Z"}),
+                )
+                .unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(fixture.cli.media_origin(&request).await.unwrap(), origin);
+    fixture.stop().await;
+}

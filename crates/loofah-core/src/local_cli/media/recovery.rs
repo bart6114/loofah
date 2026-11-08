@@ -70,7 +70,22 @@ impl LocalCli {
                 return result.clone();
             }
         }
-        let result = match claim.operation() {
+        let operation = match claim.operation() {
+            Some(LocalCliOperation::ImportIntoChecked {
+                session_id,
+                filename,
+                transcribe,
+                ..
+            }) => Some(LocalCliOperation::Import {
+                filename,
+                title: None,
+                into: Some(session_id),
+                transcribe,
+                metadata: LocalInitialSessionMetadata::default(),
+            }),
+            operation => operation,
+        };
+        let result = match operation {
             Some(
                 LocalCliOperation::Transcribe { session_id }
                 | LocalCliOperation::TranscribeChecked { session_id, .. },

@@ -133,6 +133,13 @@ pub enum LocalCliOperation {
         transcribe: bool,
         metadata: LocalInitialSessionMetadata,
     },
+    ImportIntoChecked {
+        session_id: String,
+        filename: String,
+        transcribe: bool,
+        expected_metadata_revision: String,
+        created_at: Option<String>,
+    },
     Transcribe {
         session_id: String,
     },
@@ -177,7 +184,7 @@ impl LocalCliOperation {
             Self::Attach { .. } => LocalCliOperationKind::Attach,
             Self::Attachment { .. } => LocalCliOperationKind::Attachment,
             Self::AttachmentPage { .. } => LocalCliOperationKind::AttachmentPage,
-            Self::Import { .. } => LocalCliOperationKind::Import,
+            Self::Import { .. } | Self::ImportIntoChecked { .. } => LocalCliOperationKind::Import,
             Self::Transcribe { .. } | Self::TranscribeChecked { .. } => {
                 LocalCliOperationKind::Transcribe
             }
@@ -192,7 +199,7 @@ impl LocalCliOperation {
     pub fn has_blob(&self) -> bool {
         matches!(
             self,
-            Self::Attach { .. } | Self::Import { .. } | Self::ImportSubtitles { .. }
+            Self::Attach { .. } | Self::Import { .. } | Self::ImportIntoChecked { .. } | Self::ImportSubtitles { .. }
         )
     }
 
@@ -207,6 +214,7 @@ impl LocalCliOperation {
                 | Self::DeleteSession { .. }
                 | Self::Attach { .. }
                 | Self::Import { .. }
+                | Self::ImportIntoChecked { .. }
                 | Self::Transcribe { .. }
                 | Self::TranscribeChecked { .. }
                 | Self::RecoverMedia { .. }
