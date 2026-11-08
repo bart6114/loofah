@@ -1670,6 +1670,10 @@ msgstr ""
 msgid "Reload drafts"
 msgstr ""
 
+#: src/session/components/session-tags.tsx
+msgid "Reload tags"
+msgstr ""
+
 #: src/settings/general/notification.tsx
 msgid "Remind me to record meetings"
 msgstr ""

@@ -119,3 +119,11 @@ Each worker supplies focused regression evidence with its slice. The integrator 
 - Validate production macOS responsiveness with realistic vault sizes while capture, upload, search and AI compete. Validate backup/restore, upgrades and older-client/newer-server compatibility.
 
 If two tracks need to change the same transaction/lifecycle invariant, sequence that change through its owner before resuming parallel edits. If integration becomes the bottleneck, stop starting new features and use an available worker for reviews, fixtures or acceptance. Keep the original objective active until all implementation and release gates are demonstrated; bases, CRDTs, general remote offline synchronization, mobile clients and real-time collaborative editing remain excluded.
+
+## Current integration checkpoint
+
+Root source `67ea69e50` integrates scoped tag APIs/UI, lossless metadata patches, durable native timing, the prepared title resource bridge and authenticated capture staging. Local still starts offline without login. The preceding pushed batch `93dada10bb` is fully green, including Windows x64/ARM64 installers. The next validated batch may now be pushed.
+
+A is auditing the next actual main-shell/profile frontend slice after its tag UI passed 2,078 tests. B has a separate title-policy contract commit and a Core title-stage implementation awaiting validation; Root owns capability/SDK/native/UI pairing. C is finishing absent-only WAV publication storage; Root owns independent source encoding, Core/server integration and startup/read recovery gating. Pending-session creation and existing-recording append remain explicit follow-up work.
+
+Use an **exclusive shared-target validation window**, not just individual Cargo locks. Interleaved same-package worktrees once selected a baseline test binary with zero publication tests; that result was rejected. Require matching compiler-artifact source paths, a nonzero exact new-test inventory and executable SHA. C completed its verified window, B now holds it for title-stage checks, and Root holds Cargo while doing frontend/docs or unreferenced drafts. Per-package test debug-profile overrides can force only affected workspace artifacts in the existing cache; do not wipe or bypass shared targets. Actual production/default-profile checks remain required after integration.
