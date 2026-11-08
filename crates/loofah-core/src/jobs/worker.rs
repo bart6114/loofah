@@ -13,16 +13,6 @@ pub struct JobWork {
     pub request: SummaryJobRequest,
 }
 
-/// The generator prepares a body; the worker owns canonical application.
-/// Its future retains underlying processing resources until their I/O stops.
-pub trait JobGenerator: Send + Sync + 'static {
-    fn generate(
-        &self,
-        work: JobWork,
-        cancel: CancellationToken,
-    ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>>;
-}
-
 pub trait JobAuthorizer: Send + Sync + 'static {
     // A host grant holds current vault access through the short canonical commit.
     fn authorize<'a>(

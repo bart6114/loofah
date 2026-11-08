@@ -14,7 +14,7 @@ use super::{
     JobFuture, JobWork,
     generation::{SummaryPrompt, SummarySource},
 };
-use crate::VaultContext;
+use crate::{VaultContext, settings::AppConfig};
 
 mod images;
 
@@ -32,6 +32,7 @@ pub struct VaultSummarySource {
     include_images: bool,
     limits: SourceReadLimits,
     allow_custom_templates: bool,
+    system_snapshot: Option<EnhanceSystem>,
 }
 
 impl VaultSummarySource {
@@ -46,6 +47,7 @@ impl VaultSummarySource {
             include_images,
             limits: SourceReadLimits::default(),
             allow_custom_templates: true,
+            system_snapshot: None,
         }
     }
 
@@ -56,6 +58,11 @@ impl VaultSummarySource {
 
     pub fn with_custom_templates(mut self, allow: bool) -> Self {
         self.allow_custom_templates = allow;
+        self
+    }
+
+    pub(super) fn with_system_snapshot(mut self, system: EnhanceSystem) -> Self {
+        self.system_snapshot = Some(system);
         self
     }
 }
@@ -69,6 +76,7 @@ impl SummarySource for VaultSummarySource {
         let context = self.context.upgrade();
         let (identity, include_images, limits) = (self.identity, self.include_images, self.limits);
         let allow_custom_templates = self.allow_custom_templates;
+        let system_snapshot = self.system_snapshot.clone();
         Box::pin(async move {
             let context = context.ok_or(ProcessingJobFailure::SourceUnavailable)?;
             let self_id = match identity {
@@ -107,12 +115,22 @@ impl SummarySource for VaultSummarySource {
                 if cancel.is_cancelled() {
                     return Err(ProcessingJobFailure::Interrupted);
                 }
-                let config = context
-                    .settings
-                    .read_current()
-                    .await
-                    .map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
-                if !allow_custom_templates && !config.auto_summary_prompt.trim().is_empty() {
+                let config = if system_snapshot.is_none() {
+                    Some(
+                        context
+                            .settings
+                            .read_current()
+                            .await
+                            .map_err(|_| ProcessingJobFailure::SourceUnavailable)?,
+                    )
+                } else {
+                    None
+                };
+                let custom_prompt = system_snapshot
+                    .as_ref()
+                    .map(|system| system.prompt_override.as_str())
+                    .unwrap_or_else(|| config.as_ref().unwrap().auto_summary_prompt.as_str());
+                if !allow_custom_templates && !custom_prompt.trim().is_empty() {
                     return Err(ProcessingJobFailure::AccessDenied);
                 }
                 let legacy_owner =
@@ -125,14 +143,8 @@ impl SummarySource for VaultSummarySource {
                     } else {
                         Vec::new()
                     };
-                    let system = EnhanceSystem {
-                        language: (!config.ai_language.is_empty()).then_some(config.ai_language),
-                        prompt_override: if config.auto_summary_prompt.trim().is_empty() {
-                            String::new()
-                        } else {
-                            config.auto_summary_prompt
-                        },
-                    };
+                    let system =
+                        system_snapshot.unwrap_or_else(|| system_from_config(config.unwrap()));
                     Ok::<_, ProcessingJobFailure>((system, user, references))
                 })
                 .await
@@ -152,6 +164,17 @@ impl SummarySource for VaultSummarySource {
             .await
             .map_err(|_| ProcessingJobFailure::SourceUnavailable)?
         })
+    }
+}
+
+pub(super) fn system_from_config(config: AppConfig) -> EnhanceSystem {
+    EnhanceSystem {
+        language: (!config.ai_language.is_empty()).then_some(config.ai_language),
+        prompt_override: if config.auto_summary_prompt.trim().is_empty() {
+            String::new()
+        } else {
+            config.auto_summary_prompt
+        },
     }
 }
 

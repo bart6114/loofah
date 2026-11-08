@@ -1,13 +1,14 @@
 use std::sync::{Arc, Weak};
 
 use hypr_loofah_protocol::ProcessingJobFailure;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    GeneratedDocument, JobFuture, JobGenerator, JobWork,
+    GeneratedDocument, JobFuture, JobGenerator, JobWork, PreparedGeneration, TitleRunner,
     generation::{SummaryGenerator, TextModel},
-    source::{SummaryIdentity, VaultSummarySource},
+    source::{SummaryIdentity, VaultSummarySource, system_from_config},
+    title_generation::{TitleGenerator, deterministic_title_temperature},
 };
 use crate::{VaultContext, settings::AppConfig};
 
@@ -114,6 +115,29 @@ impl JobGenerator for ConfiguredSummaryGenerator {
         work: JobWork,
         cancel: CancellationToken,
     ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>> {
+        Box::pin(async move {
+            self.generate_owned(work, cancel, false)
+                .await
+                .map(|prepared| prepared.document)
+        })
+    }
+
+    fn generate_prepared(
+        &self,
+        work: JobWork,
+        cancel: CancellationToken,
+    ) -> JobFuture<'_, Result<PreparedGeneration, ProcessingJobFailure>> {
+        self.generate_owned(work, cancel, true)
+    }
+}
+
+impl ConfiguredSummaryGenerator {
+    fn generate_owned(
+        &self,
+        work: JobWork,
+        cancel: CancellationToken,
+        prepared: bool,
+    ) -> JobFuture<'static, Result<PreparedGeneration, ProcessingJobFailure>> {
         let (context, identity, models, admission) = (
             self.context.clone(),
             self.identity,
@@ -128,8 +152,8 @@ impl JobGenerator for ConfiguredSummaryGenerator {
             // capacity and vault lease until the actual operation has drained.
             tokio::spawn(async move {
                 if stopping.is_cancelled() { return Err(ProcessingJobFailure::Interrupted); }
-                let _total = admission.total.try_acquire_owned().map_err(|_| ProcessingJobFailure::ResourceLimit)?;
-                let _running = tokio::select! {
+                let total = admission.total.try_acquire_owned().map_err(|_| ProcessingJobFailure::ResourceLimit)?;
+                let running = tokio::select! {
                     biased;
                     _ = stopping.cancelled() => return Err(ProcessingJobFailure::Interrupted),
                     permit = admission.running.acquire_owned() => permit.map_err(|_| ProcessingJobFailure::Interrupted)?,
@@ -141,11 +165,56 @@ impl JobGenerator for ConfiguredSummaryGenerator {
                     return Err(ProcessingJobFailure::AccessDenied);
                 }
                 let selection = LlmSelection::from_config(&config)?;
+                let temperature = deterministic_title_temperature(&selection.provider_id, &selection.model_id);
+                let snapshot = prepared.then(|| system_from_config(config));
                 let resolved = models.resolve(selection, stopping.child_token()).await?;
                 if stopping.is_cancelled() { return Err(ProcessingJobFailure::Interrupted); }
-                let source = Arc::new(VaultSummarySource::new(&context,identity,resolved.include_images).with_custom_templates(allow_custom_templates));
-                SummaryGenerator::new(source,resolved.model).generate(work,stopping).await
+                let mut source = VaultSummarySource::new(&context,identity,resolved.include_images).with_custom_templates(allow_custom_templates);
+                if let Some(snapshot) = &snapshot {
+                    source = source.with_system_snapshot(snapshot.clone());
+                }
+                let document = SummaryGenerator::new(Arc::new(source),resolved.model.clone()).generate(work,stopping).await?;
+                let title = snapshot.map(|snapshot| {
+                    Box::new(ConfiguredTitleRunner {
+                        generator: TitleGenerator::new(resolved.model, snapshot.language, temperature),
+                        resources: Arc::new(Resources { _context: context, _total: total, _running: running }),
+                    }) as Box<dyn TitleRunner>
+                });
+                Ok(PreparedGeneration { document, title })
             }).await.map_err(|_| ProcessingJobFailure::Interrupted)?
+        })
+    }
+}
+
+struct Resources {
+    _context: Arc<VaultContext>,
+    _total: OwnedSemaphorePermit,
+    _running: OwnedSemaphorePermit,
+}
+
+struct ConfiguredTitleRunner {
+    generator: TitleGenerator,
+    resources: Arc<Resources>,
+}
+
+impl TitleRunner for ConfiguredTitleRunner {
+    fn generate(
+        self: Box<Self>,
+        enhanced_body: String,
+        cancel: CancellationToken,
+    ) -> JobFuture<'static, Result<Option<String>, ProcessingJobFailure>> {
+        Box::pin(async move {
+            let stopping = cancel.child_token();
+            let _stop_on_drop = stopping.clone().drop_guard();
+            tokio::spawn(async move {
+                let Self {
+                    generator,
+                    resources: _resources,
+                } = *self;
+                generator.generate(enhanced_body, stopping).await
+            })
+            .await
+            .map_err(|_| ProcessingJobFailure::Interrupted)?
         })
     }
 }

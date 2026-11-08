@@ -17,6 +17,8 @@ use crate::{
     startup::StartupState,
 };
 
+mod prepared;
+
 struct Fixture {
     _root: tempfile::TempDir,
     context: Arc<VaultContext>,

@@ -22,13 +22,15 @@ const MAX_PENDING: usize = 32;
 mod access;
 pub mod configured;
 pub mod generation;
+mod prepared;
 pub mod providers;
 mod result;
 pub mod source;
 pub mod title_generation;
 mod worker;
+pub use prepared::{JobGenerator, PreparedGeneration, TitleRunner};
 pub use result::GeneratedDocument;
-pub use worker::{JobAuthorizer, JobFuture, JobGenerator, JobWork, JobWorker};
+pub use worker::{JobAuthorizer, JobFuture, JobWork, JobWorker};
 
 pub(crate) struct ProcessingService {
     pub(crate) journal: JobJournal,
