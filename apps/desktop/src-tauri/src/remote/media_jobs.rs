@@ -25,6 +25,7 @@ pub enum MediaQuery {
     List { session_id: Option<String> },
     Status { request_id: String },
     Result { request_id: String },
+    SummaryStatus { request_id: String },
 }
 #[derive(serde::Serialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
@@ -33,6 +34,7 @@ pub enum MediaReply {
     List(Vec<MediaRequestStatus>),
     Status(MediaRequestStatus),
     Result(Option<TranscriptWithData>),
+    SummaryStatus(MediaSummaryStatus),
 }
 impl MediaJobState {
     async fn receipts<R: tauri::Runtime>(
@@ -161,6 +163,9 @@ pub async fn remote_media_request<R: tauri::Runtime>(
         MediaQuery::Result { request_id } => {
             Ok(MediaReply::Result(authority.result(&request_id).await?))
         }
+        MediaQuery::SummaryStatus { request_id } => Ok(MediaReply::SummaryStatus(
+            authority.summary_status(&request_id).await?,
+        )),
     }
 }
 #[tauri::command]

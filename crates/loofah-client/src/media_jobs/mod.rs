@@ -93,6 +93,42 @@ impl MediaAuthority {
         }
         Ok(value)
     }
+    pub async fn summary_status(&self, request: &str) -> Result<MediaSummaryStatus> {
+        let media = self.status(request).await?;
+        let value: MediaSummaryStatus = self
+            .json(
+                Method::GET,
+                &["requests", request, "summary"],
+                None::<&()>,
+                request,
+                SNAPSHOT_LIMIT,
+            )
+            .await?;
+        uuid(&value.child_request_id)
+            .map_err(|_| bad_reply("Invalid original media summary child"))?;
+        let session = media
+            .declaration
+            .operation
+            .session_id()
+            .or_else(|| media.media.as_ref().map(|m| m.session_id.as_str()));
+        if value.request_id != request
+            || session != Some(value.session_id.as_str())
+            || value.job.as_ref().is_some_and(|job| {
+                job.session_id != value.session_id
+                    || media
+                        .declaration
+                        .summary
+                        .as_ref()
+                        .is_none_or(|summary| summary.target != job.target)
+            })
+            || (value.state == MediaSummaryState::Child && value.job.is_none())
+        {
+            return Err(bad_reply(
+                "Media summary response changed its original scope",
+            ));
+        }
+        Ok(value)
+    }
     pub async fn result(&self, request: &str) -> Result<Option<TranscriptWithData>> {
         let status = self.status(request).await?;
         let value: Option<TranscriptWithData> = self

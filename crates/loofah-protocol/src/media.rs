@@ -235,3 +235,22 @@ fn canonical_uuid(value: &str) -> bool {
             }
         })
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaSummaryState {
+    PendingMedia,
+    SourceBound,
+    Skipped,
+    Child,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaSummaryStatus {
+    pub request_id: String,
+    pub session_id: String,
+    pub state: MediaSummaryState,
+    pub child_request_id: String,
+    pub job: Option<crate::ProcessingJobSnapshot>,
+    pub reason: Option<String>,
+}
