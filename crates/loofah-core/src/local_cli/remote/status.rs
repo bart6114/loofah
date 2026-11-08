@@ -59,7 +59,7 @@ impl MediaDispatcher {
                 state: LocalMediaState::Review,
                 transcript_id: None,
                 word_count: None,
-                error: None,
+                error: record.refusal.clone(),
                 imported: None,
             },
             Some(Err(cause)) => return Err(cause),
@@ -128,6 +128,15 @@ impl MediaDispatcher {
             .load(request)
             .await?
             .ok_or_else(|| error(ErrorCode::NotFound, "Media request not found"))?;
+        if self
+            .tasks
+            .lock()
+            .await
+            .get(request)
+            .is_some_and(|task| !task.join.is_finished())
+        {
+            return Ok(None);
+        }
         let cli = self.cli(&record.declaration, self.stop.child_token())?;
         let result = if matches!(
             record.declaration.operation,
@@ -199,7 +208,6 @@ impl MediaDispatcher {
         if record.phase == MediaPhase::Ready {
             self.dispatch(record).await?;
         } else if matches!(record.phase, MediaPhase::Running | MediaPhase::Review) {
-            let cli = self.cli(&record.declaration, self.stop.child_token())?;
             let operation = if matches!(
                 record.declaration.operation,
                 MediaOperation::ImportSubtitles { .. }
@@ -212,17 +220,7 @@ impl MediaDispatcher {
                     request_id: request.into(),
                 }
             };
-            let _result = cli
-                .execute(
-                    uuid::Uuid::new_v4().to_string(),
-                    operation,
-                    None,
-                    Arc::new(|_| {}),
-                )
-                .await;
-            if _result.is_ok() {
-                let _summary = self.complete_summary(request).await;
-            }
+            self.start_task(record, operation, false).await?;
         }
         self.status(request).await
     }

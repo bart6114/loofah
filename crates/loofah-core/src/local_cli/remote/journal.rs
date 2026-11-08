@@ -10,6 +10,8 @@ pub(super) struct Admission {
     pub declaration: MediaDeclaration,
     pub revision: String,
     pub phase: MediaPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<ApplicationError>,
 }
 impl Admission {
     pub fn new(vault_id: String, principal: String, declaration: MediaDeclaration) -> Self {
@@ -26,6 +28,7 @@ impl Admission {
             declaration,
             revision,
             phase,
+            refusal: None,
         }
     }
     fn validate(

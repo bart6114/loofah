@@ -265,11 +265,25 @@ impl MediaDispatcher {
         if record.phase != MediaPhase::Ready {
             return Err(conflict("Original media request cannot be dispatched"));
         }
-        self.check_baseline(&record.declaration).await?;
+        if let Err(cause) = self.check_baseline(&record.declaration).await {
+            record.phase = MediaPhase::Review;
+            record.refusal = Some(cause.clone());
+            self.save(record, false).await?;
+            return Err(cause);
+        }
+        let operation = operation(&record.declaration)?;
+        self.start_task(record, operation, true).await
+    }
+    async fn start_task(
+        self: &Arc<Self>,
+        mut record: Admission,
+        operation: LocalCliOperation,
+        needs_source: bool,
+    ) -> Result<(), ApplicationError> {
         let access = self.authorization.observe().await?;
         let cancel = self.stop.child_token();
         let cli = self.cli(&record.declaration, cancel.clone())?;
-        let operation = operation(&record.declaration)?;
+        record.refusal = None;
         record.phase = MediaPhase::Running;
         self.save(record.clone(), false).await?;
         let owner = self.clone();
@@ -280,6 +294,12 @@ impl MediaDispatcher {
         let mut tasks = self.tasks.lock().await;
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
+        }
+        if tasks
+            .get(&request_key)
+            .is_some_and(|task| !task.join.is_finished())
+        {
+            return Err(conflict("Original media work is still draining"));
         }
         let join = tokio::spawn(async move {
             let revoked = access.cancelled.clone();
@@ -295,7 +315,7 @@ impl MediaDispatcher {
                     permit = owner.capacity.clone().acquire_owned() => permit.map_err(|_| unavailable("Media capacity stopped"))?,
                 };
                 let _permit = permit;
-                let artifact = owner.artifact(&record).await?;
+                let artifact = if needs_source { owner.artifact(&record).await? } else { None };
                 cli.execute(request.clone(), operation, artifact, Arc::new(|_| {})).await
             }.await;
             if _result.is_ok() {
@@ -312,6 +332,9 @@ impl MediaDispatcher {
             } else {
                 MediaPhase::Review
             };
+            if let Err(cause) = _result {
+                record.refusal = Some(cause);
+            }
             // Canonical media/subtitle receipts remain the sole result authority.
             let _ = owner.save(record, false).await;
         });

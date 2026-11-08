@@ -209,7 +209,7 @@ async fn changed_baseline_after_upload_declaration_never_adopts_current_transcri
     );
     assert_eq!(
         fixture.media.status(&input.request_id).await.unwrap().phase,
-        MediaPhase::Ready
+        MediaPhase::Review
     );
     fixture.stop().await;
 }
@@ -258,8 +258,9 @@ async fn interrupted_dispatched_work_requires_review_and_never_replays_parser() 
         resumed.status(&input.request_id).await.unwrap().phase,
         MediaPhase::Review
     );
+    resumed.recover(&input.request_id).await.unwrap();
     assert_eq!(
-        resumed.recover(&input.request_id).await.unwrap().phase,
+        done(&resumed, &input.request_id).await.phase,
         MediaPhase::Review
     );
     assert!(resumed.result(&input.request_id).await.unwrap().is_none());
