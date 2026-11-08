@@ -157,7 +157,9 @@ impl RemoteClient {
         let cancel = self.stop.child_token();
         let task_cancel = cancel.clone();
         let client = self.clone();
+        let window_work = self.begin_window_work()?;
         let task = tokio::spawn(async move {
+            let _window_work = window_work;
             let mut after = after;
             let mut verified = false;
             let mut failures = 0u32;
@@ -239,17 +241,17 @@ impl RemoteClient {
         let access = self.access_token().await?;
         let response = tokio::time::timeout(
             Duration::from_secs(30),
-            self.http
-                .get(url)
-                .bearer_auth(&access)
-                .header("x-loofah-api-major", API_MAJOR.to_string())
-                .header("accept", "text/event-stream")
-                .header("last-event-id", cursor(binding, *after))
-                .send(),
+            self.send_window_request(
+                self.http
+                    .get(url)
+                    .bearer_auth(&access)
+                    .header("x-loofah-api-major", API_MAJOR.to_string())
+                    .header("accept", "text/event-stream")
+                    .header("last-event-id", cursor(binding, *after)),
+            ),
         )
         .await
-        .map_err(|_| unavailable())?
-        .map_err(|_| unavailable())?;
+        .map_err(|_| unavailable())??;
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.expire_access(&access).await;
             return Err(login_required());

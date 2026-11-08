@@ -126,6 +126,7 @@ impl RemoteClient {
         lease: MediaRef<'_>,
         cancel: CancellationToken,
     ) -> Result<()> {
+        let _window_work = self.begin_window_work()?;
         self.check_media_request(lease.kind(), &cancel)?;
         lease.validate()?;
         let (vault, id, metadata) = lease.parts();
@@ -174,6 +175,7 @@ impl RemoteClient {
         lease: &RecordingLease,
         cancel: CancellationToken,
     ) -> Result<RecordingWaveform> {
+        let _window_work = self.begin_window_work()?;
         if cancel.is_cancelled() {
             return Err(cancelled());
         }
@@ -302,6 +304,7 @@ impl RemoteClient {
         cancel: CancellationToken,
         validate: impl FnOnce(&T) -> Result<()> + Send,
     ) -> Result<Option<T>> {
+        let _window_work = self.begin_window_work()?;
         let operation = async {
             let response = self.media_request(Method::PUT, segments, &[]).await?;
             if response.status() != StatusCode::OK {
@@ -345,6 +348,7 @@ impl RemoteClient {
         lease_id: &str,
         cancel: CancellationToken,
     ) -> Result<()> {
+        let _window_work = self.begin_window_work()?;
         self.check_media_request(kind, &cancel)?;
         let id = normalize_id(lease_id)?;
         let operation = async {
@@ -395,6 +399,7 @@ impl RemoteClient {
         length: usize,
         cancel: CancellationToken,
     ) -> Result<Vec<u8>> {
+        let _window_work = self.begin_window_work()?;
         self.check_media_request(lease.kind(), &cancel)?;
         lease.validate()?;
         let (vault, id, metadata) = lease.parts();
@@ -517,7 +522,7 @@ impl RemoteClient {
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
-        let response = request.send().await.map_err(|_| unavailable())?;
+        let response = self.send_window_request(request).await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             self.expire_access(&access).await;
         }

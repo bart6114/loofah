@@ -126,6 +126,7 @@ impl MediaAuthority {
 }
 impl DispatchGuard {
     pub fn check_current(&self) -> Result<()> {
+        self.client.check_window_scope()?;
         if self.cancel.is_cancelled() || self.lifetime.is_cancelled() || self.client.is_closed() {
             return Err(crate::cancelled());
         }

@@ -24,6 +24,8 @@ mod sse;
 mod submissions;
 mod transcription_submissions;
 mod uploads;
+mod window_scope;
+pub use window_scope::WindowWork;
 
 pub use auth::LoginAttempt;
 pub use drafts::{
@@ -76,6 +78,7 @@ pub struct RemoteClient {
     stop: CancellationToken,
     upload_writers: Arc<tokio::sync::Semaphore>,
     media_source_readers: Arc<tokio::sync::Semaphore>,
+    window_scope: Option<window_scope::WindowScope>,
 }
 
 impl RemoteClient {
@@ -166,6 +169,7 @@ impl RemoteClient {
             stop: CancellationToken::new(),
             upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
             media_source_readers: Arc::new(tokio::sync::Semaphore::new(2)),
+            window_scope: None,
         }))
     }
 
@@ -180,18 +184,21 @@ impl RemoteClient {
     }
 
     pub async fn logout(&self) -> Result<()> {
+        self.reject_window_authentication()?;
         self.stop.cancel();
         let mut state = self.tokens.lock().await;
+        state.retired.cancel();
         *state = auth::TokenState {
             loaded: true,
             token: None,
             generation: state.generation.saturating_add(1),
+            retired: CancellationToken::new(),
         };
         self.credentials.save(&self.account, None).await
     }
 
     pub fn is_closed(&self) -> bool {
-        self.stop.is_cancelled()
+        self.stop.is_cancelled() || self.check_window_scope().is_err()
     }
 
     pub fn disconnect(&self) {
@@ -199,6 +206,7 @@ impl RemoteClient {
     }
 
     fn endpoint(&self, segments: &[&str]) -> Result<Url> {
+        self.validate_window_endpoint(segments)?;
         if self.stop.is_cancelled() {
             return Err(cancelled());
         }

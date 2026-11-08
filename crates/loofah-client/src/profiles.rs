@@ -45,6 +45,7 @@ struct LoadedProfile {
     stored: StoredProfile,
     raw: Vec<u8>,
     generation: u64,
+    retired: tokio_util::sync::CancellationToken,
     removed: bool,
 }
 
@@ -61,10 +62,15 @@ pub struct ProfileLease {
 pub struct ProfileGeneration {
     owner: Weak<Mutex<LoadedProfile>>,
     generation: u64,
+    retired: tokio_util::sync::CancellationToken,
     profile: ConnectionProfile,
 }
 
 impl ProfileGeneration {
+    pub(crate) fn retirement(&self) -> tokio_util::sync::CancellationToken {
+        self.retired.clone()
+    }
+
     pub fn profile(&self) -> &ConnectionProfile {
         &self.profile
     }
@@ -157,6 +163,7 @@ impl ConnectionProfiles {
                     stored,
                     raw,
                     generation: 0,
+                    retired: tokio_util::sync::CancellationToken::new(),
                     removed: false,
                 })),
                 _lock: lock,
@@ -291,6 +298,7 @@ impl ProfileLease {
         Ok(ProfileGeneration {
             owner: Arc::downgrade(&self.state),
             generation: state.generation,
+            retired: state.retired.clone(),
             profile: state.stored.profile.clone(),
         })
     }
@@ -331,6 +339,8 @@ impl ProfileLease {
             return Err(changed());
         }
         state.generation = state.generation.checked_add(1).ok_or_else(changed)?;
+        state.retired.cancel();
+        state.retired = tokio_util::sync::CancellationToken::new();
         let lease = self.clone();
         tokio::task::spawn_blocking(move || {
             let previous = &state.stored.profile;
@@ -374,6 +384,8 @@ impl ProfileLease {
             return Err(changed());
         }
         state.generation = state.generation.checked_add(1).ok_or_else(changed)?;
+        state.retired.cancel();
+        state.retired = tokio_util::sync::CancellationToken::new();
         let lease = self.clone();
         tokio::task::spawn_blocking(move || {
             let name = &state.stored.profile.name;
@@ -436,6 +448,7 @@ fn read_file(path: &Path) -> Result<Option<LoadedProfile>> {
         stored,
         raw,
         generation: 0,
+        retired: tokio_util::sync::CancellationToken::new(),
         removed: false,
     }))
 }

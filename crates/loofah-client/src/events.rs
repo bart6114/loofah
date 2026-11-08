@@ -77,7 +77,9 @@ impl RemoteClient {
         let cancel = self.stop.child_token();
         let task_cancel = cancel.clone();
         let client = self.clone();
+        let window_work = self.begin_window_work()?;
         let task = tokio::spawn(async move {
+            let _window_work = window_work;
             let mut cursor = None;
             let mut failures = 0_u32;
             let mut unauthorized_retry = false;
@@ -160,10 +162,10 @@ impl RemoteClient {
         if let Some(cursor) = cursor {
             request = request.header("last-event-id", cursor.as_str());
         }
-        let response = tokio::time::timeout(Duration::from_secs(30), request.send())
-            .await
-            .map_err(|_| unavailable())?
-            .map_err(|_| unavailable())?;
+        let response =
+            tokio::time::timeout(Duration::from_secs(30), self.send_window_request(request))
+                .await
+                .map_err(|_| unavailable())??;
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.expire_access(&access).await;
             return Err(login_required());

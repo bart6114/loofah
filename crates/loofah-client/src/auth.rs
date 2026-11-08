@@ -28,6 +28,7 @@ pub(crate) struct TokenState {
     pub loaded: bool,
     pub token: Option<Token>,
     pub generation: u64,
+    pub retired: CancellationToken,
 }
 
 impl TokenState {
@@ -124,6 +125,7 @@ pub(crate) async fn validate_config(
 
 impl RemoteClient {
     pub async fn begin_login(self: &Arc<Self>) -> Result<LoginAttempt> {
+        self.reject_window_authentication()?;
         if self.stop.is_cancelled() {
             return Err(cancelled());
         }
@@ -163,10 +165,12 @@ impl RemoteClient {
     }
 
     pub(crate) async fn access_token(self: &Arc<Self>) -> Result<String> {
+        self.check_window_scope()?;
         let client = self.clone();
         // Rotation and credential persistence continue if an individual request is cancelled.
         tokio::spawn(async move {
             let mut state = client.tokens.lock().await;
+            client.check_window_scope()?;
             if client.stop.is_cancelled() {
                 return Err(cancelled());
             }
@@ -208,6 +212,8 @@ impl RemoteClient {
                     if error.code == ErrorCode::Unauthenticated {
                         state.generation =
                             state.generation.checked_add(1).ok_or_else(login_required)?;
+                        state.retired.cancel();
+                        state.retired = CancellationToken::new();
                         state.token = None;
                         client.credentials.save(&client.account, None).await?;
                     }
@@ -337,6 +343,8 @@ impl LoginAttempt {
             return Err(cancelled());
         }
         state.generation = state.generation.checked_add(1).ok_or_else(login_required)?;
+        state.retired.cancel();
+        state.retired = CancellationToken::new();
         let reply = self
             .client
             .token_request(&[

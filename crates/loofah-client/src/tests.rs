@@ -17,6 +17,7 @@ mod transcript_editor;
 mod transcript_overview;
 mod transcription;
 mod uploads;
+mod window_scope;
 use std::{
     collections::HashMap,
     sync::{

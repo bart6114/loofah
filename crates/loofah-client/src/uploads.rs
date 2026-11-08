@@ -134,28 +134,30 @@ impl RemoteClient {
         let stopped = self.stop.clone();
         let producer_cancel = cancel.clone();
         // The reader owns admission until actual blocking I/O ends, even if this future is dropped.
+        let window_work = self.begin_window_work()?;
         tokio::task::spawn_blocking(move || {
+            let _window_work = window_work;
             let _permit = producer_permit;
             produce(source, input, send, producer_cancel, stopped);
         });
         // A streaming body deliberately has no Content-Length: an errored source must never
         // turn exactly the declared bytes into an apparently complete HTTP request.
-        let send = self
+        let request = self
             .http
             .post(url)
             .bearer_auth(&access)
             .header("x-loofah-api-major", API_MAJOR.to_string())
             .header("x-request-id", &request_id)
             .header("content-type", "application/octet-stream")
-            .body(body)
-            .send();
+            .body(body);
+        let send = self.send_window_request(request);
         tokio::pin!(send);
         let result = async {
             let mut progress_open = true;
             let response = loop {
                 let deadline = *progressed.borrow_and_update() + idle;
                 tokio::select! {
-                    result = &mut send => break result.map_err(|_| unavailable())?,
+                    result = &mut send => break result?,
                     _ = tokio::time::sleep_until(deadline) => return Err(unavailable()),
                     changed = progressed.changed(), if progress_open => { progress_open = changed.is_ok(); },
                 }

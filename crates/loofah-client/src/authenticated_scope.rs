@@ -72,6 +72,10 @@ impl RemoteClient {
 }
 
 impl AuthenticatedScope {
+    pub(crate) fn profile_retirement(&self) -> CancellationToken {
+        self.generation.retirement()
+    }
+
     pub fn scope(&self) -> &CaptureScope {
         &self.scope
     }
@@ -135,6 +139,9 @@ impl AuthenticatedScope {
     }
 }
 impl AuthenticatedScopeCommitGuard {
+    pub(crate) fn auth_retirement(&self) -> CancellationToken {
+        self.tokens.retired.clone()
+    }
     pub fn check_current(&self) -> Result<()> {
         if self.cancel.is_cancelled() || self.client.is_closed() {
             return Err(cancelled());

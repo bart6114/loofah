@@ -320,9 +320,14 @@ impl RemoteClient {
         cancel: CancellationToken,
         budget: Duration,
     ) -> Result<T> {
-        self.capture_request_with_dispatch(request, request_id, mutation, cancel, budget, async {
-            Ok(())
-        })
+        self.capture_request_with_dispatch(
+            request,
+            request_id,
+            mutation,
+            cancel,
+            budget,
+            self.window_dispatch_guard(),
+        )
         .await
     }
 
@@ -335,6 +340,7 @@ impl RemoteClient {
         budget: Duration,
         dispatch_guard: impl std::future::Future<Output = Result<G>>,
     ) -> Result<T> {
+        let _window_work = self.begin_window_work()?;
         let access = tokio::select! {
             _ = cancel.cancelled() => return Err(not_committed(cancelled())),
             _ = self.stop.cancelled() => return Err(not_committed(cancelled())),
@@ -348,6 +354,7 @@ impl RemoteClient {
         if cancel.is_cancelled() || self.stop.is_cancelled() {
             return Err(not_committed(cancelled()));
         }
+        self.check_window_scope().map_err(not_committed)?;
         let request = request
             .bearer_auth(&access)
             .header("x-loofah-api-major", API_MAJOR.to_string())

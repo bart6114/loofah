@@ -460,6 +460,7 @@ impl RemoteClient {
         request_id: &str,
         cancel: CancellationToken,
     ) -> Result<RemoteReply> {
+        let _window_work = self.begin_window_work()?;
         if uuid::Uuid::parse_str(request_id).is_err() {
             let mut error = invalid("A UUID request ID is required");
             if matches!(
@@ -497,6 +498,9 @@ impl RemoteClient {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
+        }
+        if matches!(operation, RemoteOperation::Provision) {
+            self.reject_window_authentication()?;
         }
         let required_feature = match &operation {
             operation if transcript_editor::is_operation(operation) => Some("transcript_editor"),
@@ -1652,7 +1656,7 @@ impl RemoteClient {
             request = request.json(&body);
         }
         let result = async {
-            let response = request.send().await.map_err(|_| unavailable())?;
+            let response = self.send_window_request(request).await?;
             let status = response.status();
             if status == reqwest::StatusCode::UNAUTHORIZED {
                 self.expire_access(&access).await;

@@ -57,7 +57,9 @@ impl MediaAuthority {
         let cancel = self.cancel.child_token();
         let _cancel_on_drop = cancel.clone().drop_guard();
         guard.check_current()?;
+        let window_work = self.client.begin_window_work()?;
         let transfer = tokio::spawn(async move {
+            let _window_work = window_work;
             let _capacity = capacity;
             let _pin = pin.clone();
             let mut writer = BufWriter::with_capacity(RECORDING_CHUNK_LIMIT, sink);
