@@ -14,7 +14,7 @@ mod normalization;
 mod remote;
 mod scope;
 pub use normalization::normalize_media_artifact;
-pub use remote::{MediaDispatcher, MediaLimits};
+pub use remote::{MediaDispatcher, MediaLimits, MediaSourceReader};
 pub use scope::MediaAuthorizer as MediaAuthorization;
 mod read_owner;
 mod subtitles;

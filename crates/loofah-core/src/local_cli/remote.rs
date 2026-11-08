@@ -6,6 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 mod journal;
 mod source;
+pub use source::MediaSourceReader;
 mod status;
 mod summary;
 #[cfg(test)]
@@ -44,6 +45,7 @@ pub struct MediaDispatcher {
     journal_gates: Mutex<HashMap<String, std::sync::Weak<tokio::sync::RwLock<()>>>>,
     receivers: Mutex<HashMap<String, (CancellationToken, tokio::sync::watch::Receiver<bool>)>>,
     stop: CancellationToken,
+    source_reads: Arc<tokio::sync::Semaphore>,
     #[cfg(test)]
     source_write_pause: std::sync::Mutex<
         Option<(
@@ -107,6 +109,7 @@ impl MediaDispatcher {
             journal_gates: Mutex::new(HashMap::new()),
             receivers: Mutex::new(HashMap::new()),
             stop: CancellationToken::new(),
+            source_reads: Arc::new(tokio::sync::Semaphore::new(4)),
             #[cfg(test)]
             source_write_pause: Default::default(),
             #[cfg(test)]
@@ -406,6 +409,7 @@ impl MediaDispatcher {
     }
     pub async fn shutdown(&self) {
         self.request_shutdown();
+        let _source_drain = self.source_reads.acquire_many(4).await;
         let receivers = std::mem::take(&mut *self.receivers.lock().await);
         for (_, (_, mut done)) in receivers {
             while !*done.borrow() {

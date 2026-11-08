@@ -7,6 +7,10 @@ pub(super) fn router() -> Router<Arc<Service>> {
         .route("/vaults/{vault}/media/requests", get(list).post(declare))
         .route("/vaults/{vault}/media/requests/{request}", get(status))
         .route(
+            "/vaults/{vault}/media/requests/{request}/source",
+            get(download_source),
+        )
+        .route(
             "/vaults/{vault}/media/requests/{request}/result",
             get(result),
         )
@@ -256,4 +260,44 @@ async fn summary_status(
         dispatcher.summary_status(&request).await
     })
     .await
+}
+
+async fn download_source(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, request)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let revision = headers
+        .get("X-Loofah-Media-Revision")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty() && value.len() <= 512)
+        .ok_or_else(|| ApiError::new(ErrorCode::Validation, "Media admission revision required"))?
+        .to_owned();
+    if headers.contains_key(axum::http::header::RANGE) {
+        return Err(ApiError::new(
+            ErrorCode::Validation,
+            "Download the complete original media source",
+        ));
+    }
+    let access = service.catalog.access(&identity, &vault, true).await?;
+    let dispatcher = service.media_dispatcher(&vault, &access.member_id).await?;
+    drop(access);
+    let permit = service
+        .media_streams
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::busy("Media stream capacity reached; retry shortly"))?;
+    let reader = dispatcher.open_source(&request, &revision).await?;
+    let size = reader.size_bytes;
+    let sha256 = reader.sha256.clone();
+    let body = crate::media::original_source_body(service, identity, vault, reader, permit);
+    Ok(Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
+        .header(axum::http::header::CONTENT_LENGTH, size)
+        .header(axum::http::header::CACHE_CONTROL, "no-store")
+        .header("X-Loofah-Media-Revision", revision)
+        .header("X-Loofah-Media-SHA256", sha256)
+        .body(body)
+        .unwrap())
 }

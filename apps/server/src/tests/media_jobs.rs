@@ -329,3 +329,73 @@ async fn media_source_revision_and_payload_mismatch_never_enter_publication() {
     assert_eq!(status["phase"], "receiving");
     fixture.service.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn original_media_download_is_bound_to_member_revision_and_verified_bytes() {
+    let fixture = Fixture::new().await;
+    let me = fixture.login("alice").await;
+    fixture.login("bob").await;
+    let vault = &me.personal_vault_id;
+    let request = uuid::Uuid::new_v4().to_string();
+    let admission = declare_subtitle(&fixture, vault, &request).await;
+    let revision = admission["revision"].as_str().unwrap();
+    let download = |subject: &str, revision: &str| {
+        fixture.app.clone().oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/vaults/{vault}/media/requests/{request}/source"
+                ))
+                .header(
+                    "authorization",
+                    format!("Bearer {}", fixture.token(subject)),
+                )
+                .header("x-loofah-api-major", "1")
+                .header("x-loofah-media-revision", revision)
+                .body(Body::empty())
+                .unwrap(),
+        )
+    };
+    assert_eq!(
+        download("alice", revision).await.unwrap().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        upload(&fixture, "alice", vault, &request, revision, SUBTITLE)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        download("alice", "different").await.unwrap().status(),
+        StatusCode::CONFLICT
+    );
+    assert!(
+        !download("bob", revision)
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
+    let response = download("alice", revision).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-loofah-media-revision"], revision);
+    assert_eq!(
+        response.headers()["content-length"],
+        SUBTITLE.len().to_string()
+    );
+    assert_eq!(
+        response.headers()["content-type"],
+        "application/octet-stream"
+    );
+    assert_eq!(
+        response.headers()["x-loofah-media-sha256"],
+        admission["declaration"]["operation"]["source"]["sha256"]
+            .as_str()
+            .unwrap()
+    );
+    assert_eq!(
+        to_bytes(response.into_body(), 1024).await.unwrap(),
+        SUBTITLE
+    );
+    fixture.service.shutdown().await.unwrap();
+}

@@ -512,3 +512,118 @@ async fn changed_or_unbound_operator_model_never_reinterprets_retained_media_sou
     }
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn original_source_export_is_verified_private_and_never_dispatches() {
+    let fixture = Fixture::new().await;
+    let input = fixture.declaration(SUBTITLE).await;
+    let request = input.request_id.clone();
+    let admission = fixture.media.declare(input).await.unwrap();
+    assert_eq!(
+        fixture
+            .media
+            .open_source(&request, &admission.revision)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        fixture
+            .media
+            .open_source(&request, "another-revision")
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    let directory = fixture.media.root.join(format!("{request}.source"));
+    ledger::ensure_directory(&directory).unwrap();
+    std::fs::write(directory.join("partial"), SUBTITLE).unwrap();
+    assert_eq!(
+        fixture
+            .media
+            .open_source(&request, &admission.revision)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    std::fs::write(directory.join("source"), SUBTITLE).unwrap();
+    let reader = fixture
+        .media
+        .open_source(&request, &admission.revision)
+        .await
+        .unwrap();
+    assert_eq!(reader.sha256, ledger::hash(SUBTITLE));
+    assert_eq!(
+        reader
+            .read_chunk_with_guard(0, 64 * 1024, ())
+            .await
+            .unwrap(),
+        SUBTITLE
+    );
+    let other = MediaDispatcher::new(
+        fixture.runtime.context.clone(),
+        "member-b".into(),
+        fixture.authority.clone(),
+        MediaLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        other
+            .open_source(&request, &admission.revision)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::NotFound
+    );
+    let mut changed = SUBTITLE.to_vec();
+    changed[0] = b'9';
+    std::fs::write(directory.join("source"), changed).unwrap();
+    assert_eq!(
+        reader
+            .read_chunk_with_guard(0, 64 * 1024, ())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        fixture
+            .media
+            .open_source(&request, &admission.revision)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    fixture.authority.revoked.cancel();
+    assert_eq!(
+        reader
+            .read_chunk_with_guard(0, 64 * 1024, ())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Forbidden
+    );
+    assert!(fixture.media.tasks.lock().await.is_empty());
+    assert!(
+        !fixture
+            .runtime
+            .context
+            .store
+            .vault_base()
+            .join("sessions")
+            .join(&fixture.session)
+            .join("transcript.json")
+            .exists()
+    );
+    drop(reader);
+    fixture.stop().await;
+}

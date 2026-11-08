@@ -914,3 +914,5 @@ These operations are also thin Native IPC wrappers over the same Core. The Local
 frontend capability remains disabled until the legacy recording/batch persistence
 barrier is installed; existing Local deletion and undo remain available during
 that migration. Shared frontend lifecycle actions are being integrated.
+
+Verified original media uploads can be downloaded with `GET /api/v1/vaults/{vault}/media/requests/{request}/source` and the original `X-Loofah-Media-Revision`. This member-private, editor-authorized operation returns the exact declared bytes, length and SHA-256 without decoding, publishing or restarting a job. Incomplete or changed uploads are unavailable. Streams recheck access for every bounded chunk and retain the original vault and descriptor until actual I/O ends; clients must verify the complete digest before saving. A request in review because its configured model changed can therefore recover its source without adopting a new model or canonical baseline.

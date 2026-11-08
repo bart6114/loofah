@@ -454,18 +454,41 @@ async fn response(
         service,
         identity,
         vault,
-        reader,
+        StreamReader::Canonical(reader),
         range,
         (permit, attachment_permit),
     );
     Ok(response)
 }
 
+enum StreamReader {
+    Canonical(hypr_loofah_core::media_leases::MediaReader),
+    Original(hypr_loofah_core::local_cli::MediaSourceReader),
+}
+
+pub(crate) fn original_source_body(
+    service: Arc<Service>,
+    identity: crate::auth::Identity,
+    vault: String,
+    reader: hypr_loofah_core::local_cli::MediaSourceReader,
+    permit: tokio::sync::OwnedSemaphorePermit,
+) -> Body {
+    let length = reader.size_bytes;
+    media_body(
+        service,
+        identity,
+        vault,
+        StreamReader::Original(reader),
+        ByteRange { start: 0, length },
+        (permit, None),
+    )
+}
+
 fn media_body(
     service: Arc<Service>,
     identity: crate::auth::Identity,
     vault: String,
-    reader: hypr_loofah_core::media_leases::MediaReader,
+    reader: StreamReader,
     range: ByteRange,
     permits: (
         tokio::sync::OwnedSemaphorePermit,
@@ -498,17 +521,27 @@ fn media_body(
             let operation = async {
                 let access = service
                     .catalog
-                    .access(&identity, &vault, false)
-                    .await
-                    .map_err(std::io::Error::other)?;
-                let bytes = reader
-                    .read_chunk_with_guard(
-                        offset,
-                        remaining.min(64 * 1024) as usize,
-                        permits.clone(),
+                    .access(
+                        &identity,
+                        &vault,
+                        matches!(reader, StreamReader::Original(_)),
                     )
                     .await
                     .map_err(std::io::Error::other)?;
+                let length = remaining.min(64 * 1024) as usize;
+                let bytes = match &reader {
+                    StreamReader::Canonical(reader) => {
+                        reader
+                            .read_chunk_with_guard(offset, length, permits.clone())
+                            .await
+                    }
+                    StreamReader::Original(reader) => {
+                        reader
+                            .read_chunk_with_guard(offset, length, permits.clone())
+                            .await
+                    }
+                }
+                .map_err(std::io::Error::other)?;
                 drop(access);
                 Ok::<_, std::io::Error>(bytes)
             };
