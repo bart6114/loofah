@@ -45,7 +45,9 @@ uuid = { workspace = true, features = ["v4"] }
 base64 = { workspace = true }
 hound = { workspace = true }
 http-body-util = "0.1"
-hypr-loofah-client = { workspace = true }
+hypr-loofah-client = { workspace = true, features = ["dev-fixtures"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["process", "test-util"] }
 tower = { workspace = true, features = ["util"] }
+
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
