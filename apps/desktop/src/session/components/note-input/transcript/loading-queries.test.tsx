@@ -1,8 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { createRenderCacheHost } from "./render-cache.test-support";
 import { useRenderedTranscriptData } from "./renderer/data-hooks";
 
 import { useSessionTranscriptsQuery } from "~/stt/queries";
@@ -25,16 +26,18 @@ const transcript = {
 };
 const people: [] = [];
 let client: QueryClient;
+let host: ReturnType<typeof createRenderCacheHost>;
 beforeEach(() => {
   vi.resetAllMocks();
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  host = createRenderCacheHost();
+  client = host.rootClient;
 });
 afterEach(() => {
   cleanup();
-  client.clear();
+  host.dispose();
 });
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return <host.Host>{children}</host.Host>;
 }
 
 it("distinguishes fetching from rendering, retries rendering, and clears removed words", async () => {

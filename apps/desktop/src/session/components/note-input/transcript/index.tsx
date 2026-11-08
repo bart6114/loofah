@@ -1,9 +1,12 @@
-import { useQueryClient } from "@tanstack/react-query";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useRegenerateTranscript } from "./actions";
 import { TranscriptLoadingState, TranscriptLoadError } from "./loading";
+import {
+  renderedTranscriptPrefix,
+  useTranscriptCacheOwner,
+} from "./render-cache";
 import { TranscriptViewer } from "./renderer";
 import { BatchState } from "./screens/batch";
 import { TranscriptEmptyState } from "./screens/empty";
@@ -26,14 +29,19 @@ export function Transcript({
   sessionId: string;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
-  const client = useQueryClient();
+  const owner = useTranscriptCacheOwner();
   const query = useSessionTranscriptsQuery(sessionId);
   const cached =
+    owner.available &&
     Boolean(query.data?.length) &&
     query.data!.every((transcript) =>
-      client
+      owner.scope.queryClient
         .getQueriesData({
-          queryKey: ["rendered-transcript-segments", transcript.id],
+          queryKey: renderedTranscriptPrefix(
+            owner.scope,
+            sessionId,
+            transcript.id,
+          ),
         })
         .some(([, data]) => data !== undefined),
     );

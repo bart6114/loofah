@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -9,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { createRenderCacheHost } from "../../note-input/transcript/render-cache.test-support";
 import { ExportModal } from "./export-modal";
 
 const mocks = vi.hoisted(() => ({
@@ -61,12 +61,10 @@ const transcript = {
   words: [{ id: "w1", text: "hello", start_ms: 0, end_ms: 100, channel: 0 }],
   speaker_hints: [],
 };
-let client: QueryClient;
+let host: ReturnType<typeof createRenderCacheHost>;
 beforeEach(() => {
   vi.clearAllMocks();
-  client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  host = createRenderCacheHost();
   mocks.read.mockResolvedValue({ status: "ok", data: [transcript] });
   mocks.render.mockResolvedValue({
     status: "ok",
@@ -85,21 +83,21 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  client.clear();
+  host.dispose();
   vi.useRealTimers();
 });
 
 function setup() {
   const onOpenChange = vi.fn();
   const content = (open: boolean) => (
-    <QueryClientProvider client={client}>
+    <host.Host>
       <ExportModal
         sessionId="s1"
         currentView={{ type: "raw" }}
         open={open}
         onOpenChange={onOpenChange}
       />
-    </QueryClientProvider>
+    </host.Host>
   );
   const view = render(content(true));
   return { ...view, setOpen: (open: boolean) => view.rerender(content(open)) };
@@ -122,12 +120,19 @@ it("exports duration without loading words, and only subscribes to words while s
   await waitFor(() =>
     expect(screen.queryByText("Preparing transcript...")).toBeNull(),
   );
-  const raw = client
+  const raw = host.rootClient
     .getQueryCache()
     .find({ queryKey: ["session-transcripts", "s1"] })!;
-  const rendered = client
+  const rendered = host.scope.queryClient
     .getQueryCache()
-    .findAll({ queryKey: ["transcript-export-segments", "s1"] })
+    .findAll({
+      queryKey: [
+        "vault",
+        host.scope.client.scope,
+        "transcript_export_segments",
+        "s1",
+      ],
+    })
     .find((query) => query.state.data !== undefined)!;
   expect(raw.getObserversCount()).toBe(1);
   fireEvent.click(screen.getByLabelText("Transcript"));
@@ -150,12 +155,21 @@ it("exports duration without loading words, and only subscribes to words while s
   view.setOpen(false);
   await act(() => vi.advanceTimersByTimeAsync(300001));
   expect(
-    client.getQueryCache().find({ queryKey: ["session-transcripts", "s1"] }),
+    host.rootClient
+      .getQueryCache()
+      .find({ queryKey: ["session-transcripts", "s1"] }),
   ).toBeUndefined();
   expect(
-    client
+    host.scope.queryClient
       .getQueryCache()
-      .findAll({ queryKey: ["transcript-export-segments", "s1"] })
+      .findAll({
+        queryKey: [
+          "vault",
+          host.scope.client.scope,
+          "transcript_export_segments",
+          "s1",
+        ],
+      })
       .filter((query) => query.state.data !== undefined),
   ).toHaveLength(0);
 });
@@ -228,6 +242,6 @@ it("finishes an immutable export snapshot after closing the dialog", async () =>
   await waitFor(() => expect(mocks.export).toHaveBeenCalled());
   expect(mocks.export.mock.calls[0][1].transcript.items[0].text).toBe("hello");
   await waitFor(() =>
-    expect(client.getMutationCache().getAll()).toHaveLength(0),
+    expect(host.rootClient.getMutationCache().getAll()).toHaveLength(0),
   );
 });

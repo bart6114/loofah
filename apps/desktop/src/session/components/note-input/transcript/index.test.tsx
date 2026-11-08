@@ -8,16 +8,30 @@ import {
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TranscriptContent as Transcript } from "./index";
+import {
+  Transcript as ScopedTranscript,
+  TranscriptContent as Transcript,
+} from "./index";
+import { renderedTranscriptPrefix } from "./render-cache";
+import { createRenderCacheHost } from "./render-cache.test-support";
 
 import type { TranscriptRecord } from "~/stt/queries";
 
-const { useListenerMock, useAudioPlayerMock, regenerateTranscriptMock } =
-  vi.hoisted(() => ({
-    useListenerMock: vi.fn(),
-    useAudioPlayerMock: vi.fn(),
-    regenerateTranscriptMock: vi.fn(),
-  }));
+const {
+  useListenerMock,
+  useAudioPlayerMock,
+  regenerateTranscriptMock,
+  transcriptQueryMock,
+} = vi.hoisted(() => ({
+  useListenerMock: vi.fn(),
+  transcriptQueryMock: vi.fn(),
+  useAudioPlayerMock: vi.fn(),
+  regenerateTranscriptMock: vi.fn(),
+}));
+
+vi.mock("~/stt/queries", () => ({
+  useSessionTranscriptsQuery: transcriptQueryMock,
+}));
 
 vi.mock("./actions", () => ({
   useRegenerateTranscript: () => regenerateTranscriptMock,
@@ -91,14 +105,17 @@ describe("Transcript", () => {
   };
   let transcripts: TranscriptRecord[];
   let animationFrames: FrameRequestCallback[];
+  let cacheHosts: ReturnType<typeof createRenderCacheHost>[];
 
   afterEach(() => {
     cleanup();
+    for (const host of cacheHosts) host.dispose();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
   beforeEach(() => {
+    cacheHosts = [];
     regenerateTranscriptMock.mockClear();
     animationFrames = [];
     vi.stubGlobal(
@@ -127,6 +144,56 @@ describe("Transcript", () => {
     useListenerMock.mockImplementation((selector) => selector(listenerState));
     useAudioPlayerMock.mockReturnValue({ audioExists: false });
   });
+
+  it.each([
+    "global",
+    "other-session",
+    "other-transcript",
+    "same-scope-replacement",
+    "owned",
+  ])(
+    "uses only the captured owning render cache for warm readiness: %s",
+    (location) => {
+      const host = createRenderCacheHost("same-scope");
+      const other = createRenderCacheHost("same-scope");
+      cacheHosts.push(host, other);
+      const row = makeTranscript([
+        { id: "w", text: "hello", start_ms: 0, end_ms: 100, channel: 0 },
+      ]);
+      transcriptQueryMock.mockReturnValue({
+        data: [row],
+        isPending: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+      const cache =
+        location === "global"
+          ? host.rootClient
+          : location === "same-scope-replacement"
+            ? other.scope.queryClient
+            : host.scope.queryClient;
+      const key = [
+        ...renderedTranscriptPrefix(
+          host.scope,
+          location === "other-session" ? "other" : sessionId,
+          location === "other-transcript" ? "other" : row.id,
+        ),
+        "request-hash",
+      ];
+      cache.setQueryData(key, []);
+      render(
+        <host.Host>
+          <ScopedTranscript sessionId={sessionId} scrollRef={createRef()} />
+        </host.Host>,
+      );
+      expect(screen.queryByTestId("transcript-viewer") !== null).toBe(
+        location === "owned",
+      );
+      expect(screen.queryByText("Loading transcript...") !== null).toBe(
+        location !== "owned",
+      );
+    },
+  );
 
   it("does not mistake delayed loading or a failed read for an empty transcript", () => {
     listenerState.getSessionMode = () => "inactive";
