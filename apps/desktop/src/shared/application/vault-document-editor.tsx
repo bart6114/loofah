@@ -159,8 +159,10 @@ function BoundDocumentEditor({
     return (
       <div role="alert">
         <p>
-          This server does not support the document editor. Upgrade the server,
-          then reconnect.
+          <Trans>
+            This server does not support the document editor. Upgrade the
+            server, then reconnect.
+          </Trans>
         </p>
         <DeviceRecovery scope={scope.client.scope} />
       </div>

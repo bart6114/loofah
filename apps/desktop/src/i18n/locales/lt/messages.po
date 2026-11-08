@@ -1140,6 +1140,7 @@ msgstr ""
 #: src/main/layout.tsx
 #: src/session/components/note-input/raw.tsx
 #: src/shared/application/notes-workspace.tsx
+#: src/shared/application/vault-document-editor.tsx
 #: src/shared/application/vault-note-editor.tsx
 msgid "Loading content…"
 msgstr ""
@@ -2501,6 +2502,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "This removes the saved request from this device. It does not stop processing. A new summary request may run again."
+msgstr ""
+
+#: src/shared/application/vault-document-editor.tsx
+msgid "This server does not support the document editor. Upgrade the server, then reconnect."
 msgstr ""
 
 #. placeholder {0}: pending.speakerCount
