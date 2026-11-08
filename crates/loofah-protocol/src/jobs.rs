@@ -22,7 +22,8 @@ pub struct SummaryJobRequest {
     pub session_id: String,
     pub target: DocumentTarget,
     pub expected_revision: String,
-    #[serde(default, skip_serializing_if = "TitlePolicy::is_preserve")]
+    // Specta rc.22 requires default last to export this custom-skipped field as optional.
+    #[serde(skip_serializing_if = "TitlePolicy::is_preserve", default)]
     pub title_policy: TitlePolicy,
 }
 
@@ -148,6 +149,12 @@ mod tests {
         let request: SummaryJobRequest = serde_json::from_slice(old).unwrap();
         assert_eq!(request.title_policy, TitlePolicy::Preserve);
         assert_eq!(serde_json::to_vec(&request).unwrap(), old);
+        let mut types = specta::TypeCollection::default();
+        types.register::<SummaryJobRequest>();
+        let exported = specta_typescript::Typescript::default()
+            .export(&types)
+            .unwrap();
+        assert!(exported.contains("title_policy?: TitlePolicy"));
         let explicit = br#"{"session_id":"note","target":{"kind":"summary"},"expected_revision":"revision","title_policy":"preserve"}"#;
         let request: SummaryJobRequest = serde_json::from_slice(explicit).unwrap();
         assert_eq!(serde_json::to_vec(&request).unwrap(), old);

@@ -351,8 +351,9 @@ status, allow cancellation, and let you copy confirmed generated text after a
 conflict or interruption. In an existing template output's editor, **Regenerate**
 uses the same saved-note/transcript summary generator and preserves the output's
 metadata. It does not recreate the retired template library or create a missing
-template output. Generated titles and streaming previews remain pending. The main
-local AI interface is still active.
+template output. The optional **Generate a title if this note is untitled** control uses the same
+saved request and shared worker. Streaming previews remain pending. The main local
+AI interface is still active.
 
 Generation first flushes the initiating session and target editors through their
 existing save queues, then checks scoped device recovery before capturing the
@@ -388,9 +389,10 @@ Earlier releases accept only summary receipts; resolve template receipts with
 the current version before rolling back. Recovery never resets an unreadable
 receipt file or invents a new UUID.
 
-Servers with processing configured advertise `summary_body_jobs` and
-`template_output_jobs`. Summary operations require the former; submitting a
-template-output job requires both. The Rust SDK rejects an unsupported capability
+Servers with processing configured advertise `summary_body_jobs`,
+`template_output_jobs` and `generated_titles`. Summary operations require the first;
+submitting a template-output job also requires the second. An optional title
+request requires `generated_titles`. The Rust SDK rejects an unsupported capability
 before prompting for credentials or dispatching a mutation. Native local jobs
 use the same operations without a Loofah login.
 
@@ -417,9 +419,33 @@ For an existing template output, use
 `"target": { "kind": "template_output", "document_id": "existing-output-id" }`
 and its current snapshot revision. Both targets apply bodies, reconciled tasks
 and the configured tag policy with the same revision/conflict guarantees. Missing
-or legacy template targets fail before a provider call. Generated titles and
-streaming previews are not enabled by these capabilities. Provider endpoints,
-keys and job owners are not request fields.
+or legacy template targets fail before a provider call. Provider endpoints, keys
+and job owners are not request fields.
+
+Omitting `title_policy` preserves the current title and keeps legacy request bytes
+unchanged. With `generated_titles`, either target also accepts
+`"title_policy": "generate_if_empty"`. The worker confirms the body commit first,
+then generates a title from that saved body using the same prepared model and
+settings. It applies the candidate only against its captured empty-title baseline;
+newer titles or captured output edits cause a title conflict. The existing title
+policy also stamps a leading title heading into the captured summary/output
+bodies, and into the raw note only if that note still matches its baseline. The
+retained generated text remains the original model output. Unknown and legacy
+metadata fields survive, and the complete prospective metadata size is checked.
+
+The retained result's optional `title` describes this separate stage and may
+include a candidate for explicit copying. Empty, failed, cancelled, conflicted or
+unconfirmed title work keeps a confirmed body successful. The generated body stays
+available during title work. A newer draft on the initiating device remains a
+draft; result viewing never writes a title or loads an old snapshot into it.
+
+Opt-in jobs use private job journal schema 2 and a bounded title sidecar. Preserve
+jobs retain schema 1. Restart never repeats paid body or title generation: a
+confirmed body remains successful, while a crash before its confirmation can leave
+an interrupted result needing review. A candidate not durably recorded before a
+crash is unavailable for recovery. Older executables cannot read these opt-in job
+records; drain/review them with this version or restore a matching binary and
+complete storage backup when rolling back. Canonical vault formats do not change.
 
 Keep the original UUID and declaration when retrying a lost submission reply.
 Receipt replay returns the same job even after its result was applied; it does

@@ -421,6 +421,29 @@ impl RemoteClient {
             error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             return Err(error);
         }
+        if matches!(
+            &operation,
+            RemoteOperation::SubmitSummaryJob {
+                input: SummaryJobRequest {
+                    title_policy: TitlePolicy::GenerateIfEmpty,
+                    ..
+                },
+                ..
+            }
+        ) && !self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "generated_titles")
+        {
+            let mut error = failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support generated titles. Upgrade the server, then reconnect.",
+            );
+            error.request_id = Some(request_id.to_owned());
+            error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            return Err(error);
+        }
         if let RemoteOperation::AttachmentInfo { attachment_id, .. }
         | RemoteOperation::AttachmentMetadata { attachment_id, .. }
         | RemoteOperation::RemoveAttachment { attachment_id, .. } = &operation

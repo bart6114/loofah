@@ -848,6 +848,45 @@ async fn template_jobs_require_both_capabilities_before_credentials_or_mutation(
 }
 
 #[tokio::test]
+async fn generated_title_jobs_require_the_extra_capability_before_credentials_or_mutation() {
+    for target in [
+        DocumentTarget::Summary,
+        DocumentTarget::TemplateOutput {
+            document_id: "output".into(),
+        },
+    ] {
+        let fixture = Fixture::new().await;
+        let mut client = fixture.client().await;
+        Arc::get_mut(&mut client).unwrap().capabilities.features =
+            vec!["summary_body_jobs".into(), "template_output_jobs".into()];
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let cause = client
+            .execute(
+                RemoteOperation::SubmitSummaryJob {
+                    vault_id: "test".into(),
+                    input: SummaryJobRequest {
+                        session_id: "note".into(),
+                        target,
+                        expected_revision: "revision".into(),
+                        title_policy: TitlePolicy::GenerateIfEmpty,
+                    },
+                },
+                &request_id,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(cause.code, ErrorCode::IncompatibleVersion);
+        assert!(cause.message.contains("generated titles"));
+        assert_eq!(cause.request_id.as_deref(), Some(request_id.as_str()));
+        assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert!(!client.tokens.lock().await.loaded);
+        assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
+        assert!(fixture.credentials.values.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
 async fn cleanup_requires_an_advertised_capability_before_credentials_or_mutation() {
     let fixture = Fixture::new().await;
     let client = fixture.client().await;

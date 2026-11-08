@@ -164,7 +164,7 @@ export type ProcessingJobFailure = "access_denied" | "source_unavailable" | "res
 
 export type ProcessingJobPage = { items: ProcessingJobSnapshot[]; next_cursor: string | null }
 
-export type ProcessingJobResult = { vault_id: string; job_id: string; session_id: string; target: DocumentTarget; markdown: string; suggested_tags?: ProcessingTagSuggestion[] | null }
+export type ProcessingJobResult = { vault_id: string; job_id: string; session_id: string; target: DocumentTarget; markdown: string; suggested_tags?: ProcessingTagSuggestion[] | null; title?: ProcessingTitleResult | null }
 
 export type ProcessingJobSnapshot = { id: string; session_id: string; target: DocumentTarget; state: ProcessingJobState; phase: ProcessingPhase | null; failure: ProcessingJobFailure | null; created_at: string; updated_at: string }
 
@@ -183,6 +183,10 @@ export type ProcessingSettingsSaveOutcome = { kind: "saved"; snapshot: Processin
 export type ProcessingSettingsSnapshot = { settings: ProcessingSettings; revision: string }
 
 export type ProcessingTagSuggestion = { name: string; confidence: number }
+
+export type ProcessingTitleResult = { status: ProcessingTitleStatus; candidate?: string | null; failure?: ProcessingJobFailure | null }
+
+export type ProcessingTitleStatus = "generating" | "applying" | "applied" | "empty" | "already_named" | "unsupported" | "failed" | "cancelled" | "conflict" | "interrupted" | "unconfirmed"
 
 export type RecordingLease = { id: string; vault_id: string; session_id: string; metadata: FileMetadata; idle_timeout_secs: number }
 
@@ -258,7 +262,7 @@ export type StartupPhase = { kind: "openingVault" } | { kind: "scanning"; sessio
 
 export type StartupStatus = { revision: number; vaultPath: string; isCloudStorage: boolean; phase: StartupPhase; migrationIssues: string[] }
 
-export type SummaryJobRequest = { session_id: string; target: DocumentTarget; expected_revision: string }
+export type SummaryJobRequest = { session_id: string; target: DocumentTarget; expected_revision: string; title_policy?: TitlePolicy }
 
 export type SummaryModelSelection = { provider_id: string; model_id: string; base_url: string }
 
@@ -310,6 +314,8 @@ export type TaskSource = { kind: "raw_note" } | { kind: "summary" } | { kind: "t
 export type TasksSaveOutcome = { kind: "saved"; snapshot: TasksSnapshot } | { kind: "conflict"; snapshot: TasksSnapshot }
 
 export type TasksSnapshot = { tasks: TaskItem[]; revision: string }
+
+export type TitlePolicy = "preserve" | "generate_if_empty"
 
 export type Transcript = { id: string; started_at_ms: number; ended_at_ms: number | null; memo: string; text: string; words: JsonValue[]; speaker_hints: JsonValue[] }
 

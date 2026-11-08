@@ -2522,6 +2522,7 @@ export type ProcessingJobResult = {
   target: DocumentTarget;
   markdown: string;
   suggested_tags?: ProcessingTagSuggestion[] | null;
+  title?: ProcessingTitleResult | null;
 };
 export type ProcessingJobSnapshot = {
   id: string;
@@ -2569,6 +2570,23 @@ export type ProcessingSettingsSnapshot = {
   revision: string;
 };
 export type ProcessingTagSuggestion = { name: string; confidence: number };
+export type ProcessingTitleResult = {
+  status: ProcessingTitleStatus;
+  candidate?: string | null;
+  failure?: ProcessingJobFailure | null;
+};
+export type ProcessingTitleStatus =
+  | "generating"
+  | "applying"
+  | "applied"
+  | "empty"
+  | "already_named"
+  | "unsupported"
+  | "failed"
+  | "cancelled"
+  | "conflict"
+  | "interrupted"
+  | "unconfirmed";
 /**
  * Summary of a `rebuild_index`/`refresh_session` pass. Counts reflect entries *derived
  * from files* this pass, not the resulting index size. `errors` never aborts the scan --
@@ -3024,6 +3042,7 @@ export type SummaryJobRequest = {
   session_id: string;
   target: DocumentTarget;
   expected_revision: string;
+  title_policy?: TitlePolicy;
 };
 export type SummaryModelSelection = {
   provider_id: string;
@@ -3102,6 +3121,7 @@ export type TasksSaveOutcome =
   | { kind: "saved"; snapshot: TasksSnapshot }
   | { kind: "conflict"; snapshot: TasksSnapshot };
 export type TasksSnapshot = { tasks: TaskItem[]; revision: string };
+export type TitlePolicy = "preserve" | "generate_if_empty";
 export type Transcript = {
   id: string;
   started_at_ms: number;

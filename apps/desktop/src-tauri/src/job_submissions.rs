@@ -101,11 +101,19 @@ mod tests {
                 document_id: "existing-output".into(),
             },
         ] {
-            round_trip(target).await;
+            for policy in [
+                hypr_loofah_protocol::TitlePolicy::Preserve,
+                hypr_loofah_protocol::TitlePolicy::GenerateIfEmpty,
+            ] {
+                round_trip(target.clone(), policy).await;
+            }
         }
     }
 
-    async fn round_trip(target: hypr_loofah_protocol::DocumentTarget) {
+    async fn round_trip(
+        target: hypr_loofah_protocol::DocumentTarget,
+        title_policy: hypr_loofah_protocol::TitlePolicy,
+    ) {
         let root = tempfile::tempdir().unwrap();
         let store = JobSubmissions::new(root.path().join("requests")).unwrap();
         let state = JobSubmissionState::default();
@@ -116,7 +124,7 @@ mod tests {
             .unwrap();
         let scope = "local:fixture".to_owned();
         let input = SummaryJobRequest {
-            title_policy: Default::default(),
+            title_policy,
             session_id: "note".into(),
             target,
             expected_revision: "baseline".into(),

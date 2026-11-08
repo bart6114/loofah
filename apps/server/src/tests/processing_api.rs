@@ -177,6 +177,12 @@ async fn public_jobs_replay_after_application_and_return_bound_private_recovery_
             .unwrap()
             .contains(&json!("summary_body_jobs"))
     );
+    assert!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("generated_titles"))
+    );
     fixture.service.shutdown().await.unwrap();
     provider.close().await;
 }
@@ -396,6 +402,12 @@ async fn disabled_processing_and_unsupported_or_injected_inputs_fail_explicitly(
             .as_array()
             .unwrap()
             .contains(&json!("summary_body_jobs"))
+    );
+    assert!(
+        !capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("generated_titles"))
     );
     fixture.service.shutdown().await.unwrap();
 }
@@ -874,4 +886,160 @@ async fn native_sdk_round_trips_maximum_json_escaped_processing_prompt() {
     fixture.service.shutdown().await.unwrap();
     server.abort();
     provider.close().await;
+}
+
+#[tokio::test]
+async fn native_title_requests_recover_lost_replies_without_repeating_either_model_call() {
+    for rtt in [50, 150, 500] {
+        let title = if rtt == 150 {
+            "invalid\nmultiline"
+        } else {
+            "Friday release"
+        };
+        let provider =
+            Provider::with_outputs(2, vec!["# Release\n- Ship Friday.".into(), title.into()]).await;
+        let fixture = Fixture::with_processing(Some(provider.config())).await;
+        let reply_gate = CancellationToken::new();
+        let (client, server) = native_client(&fixture, rtt, reply_gate.clone()).await;
+        assert!(
+            client
+                .capabilities()
+                .features
+                .iter()
+                .any(|value| value == "generated_titles")
+        );
+        let login = client.begin_login().await.unwrap();
+        let url = login.authorization_url().to_string();
+        let complete = tokio::spawn(login.complete());
+        assert!(reqwest::get(url).await.unwrap().status().is_success());
+        complete.await.unwrap().unwrap();
+        let RemoteReply::Me(me) = client
+            .execute(
+                RemoteOperation::Provision,
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("provision response")
+        };
+        let context = fixture.service.vault(&me.personal_vault_id).await.unwrap();
+        prepare(&context).await;
+        let baseline = context.read_metadata("note").await.unwrap();
+        assert!(matches!(
+            context
+                .save_metadata(
+                    "note",
+                    SaveMetadataRequest {
+                        patch: SessionMetaPatch {
+                            title: Some(String::new()),
+                            ..Default::default()
+                        },
+                        expected_revision: baseline.revision,
+                    }
+                )
+                .await
+                .unwrap(),
+            MetadataSaveOutcome::Saved(_)
+        ));
+        let note_before = context.read_note("note").await.unwrap();
+        let mut input = input(&context).await;
+        input.title_policy = TitlePolicy::GenerateIfEmpty;
+        let operation = RemoteOperation::SubmitSummaryJob {
+            vault_id: me.personal_vault_id.clone(),
+            input,
+        };
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let cancel = CancellationToken::new();
+        let pending = {
+            let (client, operation, request_id, cancel) = (
+                client.clone(),
+                operation.clone(),
+                request_id.clone(),
+                cancel.clone(),
+            );
+            tokio::spawn(async move { client.execute(operation, &request_id, cancel).await })
+        };
+        let job = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let page = context
+                    .list_processing_jobs(me.member.id.clone(), Default::default())
+                    .await
+                    .unwrap();
+                if let Some(job) = page.items.first() {
+                    break job.clone();
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        cancel.cancel();
+        assert_eq!(
+            pending.await.unwrap().unwrap_err().mutation_outcome,
+            Some(MutationOutcome::Unknown)
+        );
+        reply_gate.cancel();
+        assert_eq!(
+            terminal(&context, &job.id).await.state,
+            ProcessingJobState::Succeeded
+        );
+        for _ in 0..2 {
+            let reply = client
+                .execute(operation.clone(), &request_id, CancellationToken::new())
+                .await
+                .unwrap();
+            assert!(
+                matches!(reply, RemoteReply::ProcessingJob(ref replay) if replay.id == job.id && replay.state == ProcessingJobState::Succeeded)
+            );
+        }
+        let RemoteReply::ProcessingJobResult(Some(result)) = client
+            .execute(
+                RemoteOperation::ProcessingJobResult {
+                    vault_id: me.personal_vault_id.clone(),
+                    job_id: job.id.clone(),
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("private result")
+        };
+        assert_eq!(result.markdown, "# Release\n- Ship Friday.");
+        let saved_body = context
+            .read_document("note", &DocumentTarget::Summary)
+            .await
+            .unwrap()
+            .document
+            .unwrap()
+            .markdown;
+        let title_result = result.title.unwrap();
+        let current = context.read_note("note").await.unwrap();
+        if rtt == 150 {
+            assert_eq!(saved_body, result.markdown);
+            assert_eq!(current.markdown, note_before.markdown);
+            assert_eq!(title_result.status, ProcessingTitleStatus::Failed);
+            assert_eq!(
+                title_result.failure,
+                Some(ProcessingJobFailure::InvalidOutput)
+            );
+            assert!(current.title.is_empty());
+        } else {
+            assert_eq!(title_result.status, ProcessingTitleStatus::Applied);
+            assert_eq!(current.title, title);
+            assert_eq!(saved_body, "# Friday release\n\n# Release\n- Ship Friday.");
+            assert_eq!(
+                current.markdown.as_deref(),
+                Some("# Friday release\n\nShip Friday. Keep this source note.")
+            );
+        }
+        assert_eq!(provider.requests.lock().unwrap().len(), 2);
+        client.disconnect();
+        fixture.service.shutdown().await.unwrap();
+        server.abort();
+        provider.close().await;
+    }
 }

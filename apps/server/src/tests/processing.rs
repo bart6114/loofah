@@ -21,15 +21,20 @@ struct ProviderState {
     requests: Arc<Mutex<Vec<Value>>>,
     finish: Arc<Semaphore>,
     stop: CancellationToken,
+    outputs: Arc<Vec<String>>,
 }
 impl Provider {
     pub(super) async fn new(finish: usize) -> Self {
+        Self::with_outputs(finish, Vec::new()).await
+    }
+    pub(super) async fn with_outputs(finish: usize, outputs: Vec<String>) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
         let state = ProviderState {
             requests: Arc::new(Mutex::new(Vec::new())),
             finish: Arc::new(Semaphore::new(finish)),
             stop: CancellationToken::new(),
+            outputs: Arc::new(outputs),
         };
         let app = Router::new()
             .route("/v1/chat/completions", axum::routing::post(model))
@@ -62,8 +67,18 @@ impl Provider {
 }
 async fn model(State(state): State<ProviderState>, Json(body): Json<Value>) -> Response {
     assert_eq!(body["model"], "configured");
-    state.requests.lock().unwrap().push(body);
-    let text = json!({"choices":[{"index":0,"delta":{"content":"# Release\n- Ship Friday."},"finish_reason":null}]});
+    let index = {
+        let mut requests = state.requests.lock().unwrap();
+        let index = requests.len();
+        requests.push(body);
+        index
+    };
+    let output = state
+        .outputs
+        .get(index)
+        .map(String::as_str)
+        .unwrap_or("# Release\n- Ship Friday.");
+    let text = json!({"choices":[{"index":0,"delta":{"content":output},"finish_reason":null}]});
     let finish = json!({"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]});
     Response::builder().header("content-type","text/event-stream").body(Body::from_stream(futures_util::stream::unfold((state,0,text,finish),|(state,step,text,finish)|async move {
         if step==0 {return Some((Ok::<_,std::io::Error>(axum::body::Bytes::from(format!("data: {text}\n\n"))),(state,1,text,finish)));}
