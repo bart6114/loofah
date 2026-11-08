@@ -19,6 +19,7 @@ struct ObserverState {
     epoch: String,
     sequence: u64,
     emitted: Instant,
+    pending: Option<(String, bool)>,
 }
 impl GenerationPreview {
     pub(super) fn channel() -> (Self, watch::Receiver<Option<ProcessingPreviewSnapshot>>) {
@@ -29,6 +30,7 @@ impl GenerationPreview {
                     epoch: uuid::Uuid::new_v4().to_string(),
                     sequence: 0,
                     emitted: Instant::now(),
+                    pending: None,
                 }),
                 updates,
             })),
@@ -39,6 +41,7 @@ impl GenerationPreview {
         let mut state = self.0.state.lock().unwrap();
         state.epoch = uuid::Uuid::new_v4().to_string();
         state.sequence = 1;
+        state.pending = None;
         state.emitted = Instant::now();
         self.0.updates.send_replace(Some(ProcessingPreviewSnapshot {
             cursor: format!("{}:1", state.epoch),
@@ -48,15 +51,23 @@ impl GenerationPreview {
     }
     pub(super) fn update(&self, markdown: &str, final_update: bool) {
         let mut state = self.0.state.lock().unwrap();
-        if !final_update && state.emitted.elapsed() < INTERVAL {
+        let bounded = prefix(markdown, MAX_PROCESSING_PREVIEW_BYTES);
+        let truncated = bounded.len() < markdown.len();
+        state.pending = Some((bounded.into(), truncated));
+        drop(state);
+        self.publish_pending(final_update);
+    }
+    pub(super) fn publish_pending(&self, force: bool) {
+        let mut state = self.0.state.lock().unwrap();
+        if !force && state.emitted.elapsed() < INTERVAL {
             return;
         }
-        let prefix = prefix(markdown, MAX_PROCESSING_PREVIEW_BYTES);
-        let truncated = prefix.len() < markdown.len();
-        let same =
-            self.0.updates.borrow().as_ref().is_some_and(|previous| {
-                previous.markdown == prefix && previous.truncated == truncated
-            });
+        let Some((markdown, truncated)) = state.pending.take() else {
+            return;
+        };
+        let same = self.0.updates.borrow().as_ref().is_some_and(|previous| {
+            previous.markdown == markdown && previous.truncated == truncated
+        });
         if same {
             return;
         }
@@ -64,7 +75,7 @@ impl GenerationPreview {
         state.emitted = Instant::now();
         self.0.updates.send_replace(Some(ProcessingPreviewSnapshot {
             cursor: format!("{}:{}", state.epoch, state.sequence),
-            markdown: prefix.into(),
+            markdown,
             truncated,
         }));
     }

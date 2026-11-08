@@ -223,9 +223,12 @@ async fn execute(
     let mut changes = journal.0.events.subscribe(None);
     let mut checks = tokio::time::interval(std::time::Duration::from_secs(1));
     checks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut preview_tick = tokio::time::interval(std::time::Duration::from_millis(500));
+    preview_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let outcome = loop {
         tokio::select! {
             output = &mut generation => break Ok(output),
+            _ = preview_tick.tick() => { preview.publish_pending(false); },
             _ = preview_changes.changed() => { flush_preview(journal, id, &preview, &mut preview_cursor).await; },
             _ = stop.cancelled() => break Err(JobCompletion::Interrupted),
             _ = checks.tick() => {},

@@ -41,6 +41,12 @@ fn preview_observer_coalesces_tiny_chunks_bounds_utf8_and_resets_attempts() {
         observer.update("partial", false);
     }
     assert!(!updates.has_changed().unwrap());
+    observer.0.state.lock().unwrap().emitted -= INTERVAL;
+    observer.publish_pending(false);
+    assert_eq!(
+        updates.borrow_and_update().as_ref().unwrap().markdown,
+        "partial"
+    );
     observer.update(&"🌱".repeat(MAX_PROCESSING_PREVIEW_BYTES), true);
     let bounded = updates.borrow_and_update().clone().unwrap();
     assert_eq!(bounded.markdown.len(), MAX_PROCESSING_PREVIEW_BYTES);

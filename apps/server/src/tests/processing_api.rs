@@ -18,7 +18,7 @@ impl Fixture {
     }
 }
 
-async fn input(context: &hypr_loofah_core::VaultContext) -> SummaryJobRequest {
+pub(super) async fn input(context: &hypr_loofah_core::VaultContext) -> SummaryJobRequest {
     SummaryJobRequest {
         only_if_empty: false,
         title_policy: Default::default(),
@@ -31,7 +31,7 @@ async fn input(context: &hypr_loofah_core::VaultContext) -> SummaryJobRequest {
             .revision,
     }
 }
-async fn shared(fixture: &Fixture) -> (VaultInfo, Me) {
+pub(super) async fn shared(fixture: &Fixture) -> (VaultInfo, Me) {
     fixture.login("alice").await;
     let bob = fixture.login("bob").await;
     let identity = crate::auth::Identity {

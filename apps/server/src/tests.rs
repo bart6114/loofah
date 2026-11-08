@@ -14,6 +14,7 @@ mod metadata;
 mod note_editor;
 mod processing;
 mod processing_api;
+mod processing_preview;
 mod processing_settings;
 mod provider_credentials;
 mod recording;
