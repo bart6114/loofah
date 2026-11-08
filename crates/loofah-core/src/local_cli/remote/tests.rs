@@ -32,6 +32,17 @@ impl scope::MediaAuthorizer for Authority {
         })
     }
 }
+impl crate::capture_processing::CaptureProcessingAuthorizer for Authority {
+    fn authorize<'a>(
+        &'a self,
+        _: &'a str,
+    ) -> crate::transcription_jobs::TranscriptionFuture<
+        'a,
+        Result<Box<dyn Send>, TranscriptionFailure>,
+    > {
+        Box::pin(async move { Ok(Box::new(()) as Box<dyn Send>) })
+    }
+}
 struct Fixture {
     root: tempfile::TempDir,
     runtime: VaultRuntime,
@@ -48,7 +59,7 @@ impl Fixture {
         else {
             panic!("lease");
         };
-        let runtime = VaultRuntime::open_leased(
+        let mut runtime = VaultRuntime::open_leased(
             "test-vault".into(),
             lease,
             &root.path().join("cache"),
@@ -79,6 +90,20 @@ impl Fixture {
         let authority = Arc::new(Authority {
             revoked: CancellationToken::new(),
         });
+        runtime
+            .prepare_capture_processing(
+                crate::capture_processing::CaptureProcessingPolicy {
+                    model: Some(crate::capture_processing::CaptureProcessingModel {
+                        alias: "server-alias".into(),
+                        sha256: "a".repeat(64),
+                    }),
+                    summary_enabled: false,
+                    availability: Arc::new(|| TranscriptionAvailability::Ready),
+                },
+                authority.clone(),
+            )
+            .await
+            .unwrap();
         let media = MediaDispatcher::new(
             runtime.context.clone(),
             "member-a".into(),
@@ -399,5 +424,82 @@ async fn declaration_and_recovery_share_one_dispatch_and_original_task_owner() {
     );
     assert_eq!(media.tasks.lock().await.len(), 1);
     media.shutdown().await;
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn changed_or_unbound_operator_model_never_reinterprets_retained_media_source() {
+    let fixture = Fixture::new().await;
+    for original in [None, Some("b".repeat(64))] {
+        let bytes = b"retained raw source before decode";
+        let input = MediaDeclaration {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            operation: MediaOperation::ImportAudio {
+                session_id: None,
+                expected: None,
+                filename: "recording.wav".into(),
+                content_type: Some("audio/wav".into()),
+                created_at: None,
+                initial: None,
+                transcribe: true,
+                source: MediaUploadSource {
+                    size_bytes: bytes.len() as u64,
+                    sha256: ledger::hash(bytes),
+                },
+            },
+            transcription: Some(MediaTranscriptionOptions {
+                model: "server-alias".into(),
+                languages: vec![],
+            }),
+            summary: None,
+        };
+        let admitted = fixture.media.declare(input.clone()).await.unwrap();
+        let request = input.request_id;
+        let mut record = fixture.media.load(&request).await.unwrap().unwrap();
+        assert_eq!(
+            record.model_sha256.as_deref(),
+            Some("a".repeat(64).as_str())
+        );
+        record.model_sha256 = original;
+        fixture.media.save(record, false).await.unwrap();
+        let received = fixture
+            .media
+            .receive(request.clone(), admitted.revision, bytes.as_slice())
+            .await;
+        assert_eq!(received.unwrap_err().code, ErrorCode::Conflict);
+        assert!(fixture.media.tasks.lock().await.is_empty());
+        let status = fixture.media.status(&request).await.unwrap();
+        assert_eq!(status.phase, MediaPhase::Review);
+        let retained = fixture.media.load(&request).await.unwrap().unwrap();
+        assert!(
+            retained
+                .refusal
+                .as_ref()
+                .unwrap()
+                .message
+                .contains("model changed")
+        );
+        assert!(
+            !fixture
+                .runtime
+                .context
+                .store
+                .vault_base()
+                .join("sessions")
+                .join(status.media.unwrap().session_id)
+                .exists()
+        );
+        assert!(fixture.media.artifact(&retained).await.unwrap().is_some());
+        assert_eq!(
+            fixture
+                .media
+                .declare(status.declaration)
+                .await
+                .unwrap()
+                .status
+                .phase,
+            MediaPhase::Review
+        );
+    }
     fixture.stop().await;
 }

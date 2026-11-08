@@ -134,6 +134,12 @@ impl CaptureProcessingService {
     }
 }
 impl VaultContext {
+    pub(crate) fn operator_transcription_model(&self) -> Option<CaptureProcessingModel> {
+        self.capture_processing
+            .get()
+            .and_then(|service| service.policy.model.clone())
+    }
+
     pub async fn submit_capture_processing_authorized<G, F>(
         self: &Arc<Self>,
         member: String,

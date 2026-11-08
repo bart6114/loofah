@@ -190,10 +190,12 @@ impl MediaDispatcher {
             return Err(unavailable("Media source quota exhausted"));
         }
         self.check_baseline(&input).await?;
+        let model_sha256 = self.model_binding(&input)?;
         let mut record = Admission::new(
             self.context.events.vault_id(),
             self.principal.clone(),
             input,
+            model_sha256,
         );
         let ready = record.phase;
         record.phase = MediaPhase::Review;
@@ -213,6 +215,26 @@ impl MediaDispatcher {
             self.dispatch(record.clone()).await?;
         }
         self.admission_status(record).await
+    }
+    fn model_binding(&self, input: &MediaDeclaration) -> Result<Option<String>, ApplicationError> {
+        let Some(options) = &input.transcription else {
+            return Ok(None);
+        };
+        self.context
+            .operator_transcription_model()
+            .filter(|model| model.alias == options.model)
+            .map(|model| Some(model.sha256))
+            .ok_or_else(|| unavailable("Original media transcription model is unavailable"))
+    }
+    fn check_model_binding(&self, record: &Admission) -> Result<(), ApplicationError> {
+        if record.declaration.transcription.is_some() && record.model_sha256.is_none()
+            || self.model_binding(&record.declaration)? != record.model_sha256
+        {
+            return Err(conflict(
+                "Original media transcription model changed; retained source requires review",
+            ));
+        }
+        Ok(())
     }
     async fn check_baseline(&self, input: &MediaDeclaration) -> Result<(), ApplicationError> {
         match &input.operation {
@@ -265,7 +287,12 @@ impl MediaDispatcher {
         if record.phase != MediaPhase::Ready {
             return Err(conflict("Original media request cannot be dispatched"));
         }
-        if let Err(cause) = self.check_baseline(&record.declaration).await {
+        let checked = async {
+            self.check_model_binding(&record)?;
+            self.check_baseline(&record.declaration).await
+        }
+        .await;
+        if let Err(cause) = checked {
             record.phase = MediaPhase::Review;
             record.refusal = Some(cause.clone());
             self.save(record, false).await?;

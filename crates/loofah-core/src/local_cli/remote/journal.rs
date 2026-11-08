@@ -11,10 +11,17 @@ pub(super) struct Admission {
     pub revision: String,
     pub phase: MediaPhase,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<ApplicationError>,
 }
 impl Admission {
-    pub fn new(vault_id: String, principal: String, declaration: MediaDeclaration) -> Self {
+    pub fn new(
+        vault_id: String,
+        principal: String,
+        declaration: MediaDeclaration,
+        model_sha256: Option<String>,
+    ) -> Self {
         let revision = uuid::Uuid::new_v4().to_string();
         let phase = if declaration.operation.upload().is_some() {
             MediaPhase::Receiving
@@ -22,13 +29,14 @@ impl Admission {
             MediaPhase::Ready
         };
         Self {
-            version: 1,
+            version: if model_sha256.is_some() { 2 } else { 1 },
             vault_id,
             principal,
             declaration,
             revision,
             phase,
             refusal: None,
+            model_sha256,
         }
     }
     fn validate(
@@ -38,7 +46,9 @@ impl Admission {
     ) -> Result<(), ApplicationError> {
         validate_media_declaration(&self.declaration)
             .map_err(|_| conflict("Media admission requires review"))?;
-        if self.version != 1
+        if self.model_sha256.as_ref().is_some_and(|hash| {
+            !is_transcription_sha256(hash) || self.declaration.transcription.is_none()
+        }) || self.version != 1
             || self.vault_id != dispatcher.context.events.vault_id()
             || self.principal != dispatcher.principal
             || self.declaration.request_id != request
