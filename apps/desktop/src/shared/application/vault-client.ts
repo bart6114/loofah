@@ -399,6 +399,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "document_editor_read",
       "document_editor_write",
       "legacy_desktop_enhance",
+      "legacy_desktop_transcript_controls",
       "audio_metadata_read",
       "attachment_info",
       "attachment_list",
@@ -663,7 +664,11 @@ export function connectRemoteVault(
         options,
       ),
     features: connection.info.capabilities.features.filter(
-      (feature) => feature !== "legacy_desktop_enhance",
+      (feature) =>
+        ![
+          "legacy_desktop_enhance",
+          "legacy_desktop_transcript_controls",
+        ].includes(feature),
     ),
     processingPolicy: (options) =>
       connection.request(
