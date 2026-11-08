@@ -118,3 +118,76 @@ fn server_start_still_requires_config_and_maintenance_rejects_mixed_startup() {
 #[cfg(unix)]
 #[path = "fixtures/maintenance_acceptance.rs"]
 mod acceptance;
+
+#[tokio::test]
+async fn adoption_cli_preserves_provisioned_catalog_and_refuses_existing_output() {
+    let root = tempfile::tempdir().unwrap();
+    let storage = root.path().join("storage");
+    let catalog = loofah_server::catalog::Catalog::open(&storage)
+        .await
+        .unwrap();
+    let identity = loofah_server::auth::Identity {
+        issuer: "https://company.example".into(),
+        subject: "original-owner".into(),
+        name: "Owner".into(),
+        expires_at: u64::MAX,
+    };
+    catalog.provision(&identity).await.unwrap();
+    let vault = catalog
+        .create_shared(&identity, &uuid::Uuid::new_v4().to_string(), "Empty target")
+        .await
+        .unwrap();
+    drop(catalog);
+    let source = root.path().join("local");
+    std::fs::create_dir_all(source.join("sessions/original")).unwrap();
+    std::fs::write(
+        source.join("sessions/original/notes.md"),
+        b"Original Local note\n",
+    )
+    .unwrap();
+    std::fs::write(
+        source.join("sessions/original/unknown.bin"),
+        b"unknown bytes",
+    )
+    .unwrap();
+    let run = || {
+        command(root.path())
+            .args([
+                "adopt-vault",
+                "--storage-root",
+                "storage",
+                "--vault-id",
+                &vault.id,
+                "--source-vault",
+                "local",
+                "--output",
+                "adopted",
+            ])
+            .output()
+            .unwrap()
+    };
+    let result = run();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["vault_id"], vault.id);
+    assert_eq!(
+        std::fs::read(root.path().join("adopted/catalog.json")).unwrap(),
+        std::fs::read(storage.join("catalog.json")).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(
+            root.path()
+                .join("adopted/vaults")
+                .join(&vault.id)
+                .join("sessions/original/unknown.bin")
+        )
+        .unwrap(),
+        b"unknown bytes"
+    );
+    assert!(!run().status.success());
+    assert!(!root.path().join("cache").exists());
+}

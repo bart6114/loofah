@@ -12,6 +12,17 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Maintenance {
+    /// Copy a stopped Local vault into a fresh catalogued target in new server storage.
+    AdoptVault {
+        #[arg(long)]
+        storage_root: PathBuf,
+        #[arg(long)]
+        vault_id: String,
+        #[arg(long)]
+        source_vault: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Snapshot stopped storage, keeping provider credentials in a separate private bundle.
     Backup {
         #[arg(long)]
@@ -48,6 +59,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(command) = args.command {
         use loofah_server::maintenance;
         let report = match command {
+            Maintenance::AdoptVault {
+                storage_root,
+                vault_id,
+                source_vault,
+                output,
+            } => {
+                let report =
+                    maintenance::adopt_vault(&storage_root, &vault_id, &source_vault, &output)
+                        .await?;
+                println!("{}", serde_json::to_string(&report)?);
+                return Ok(());
+            }
             Maintenance::Backup {
                 storage_root,
                 output,

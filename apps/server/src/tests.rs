@@ -9,6 +9,7 @@ mod compatibility;
 mod document_editor;
 mod initial_metadata;
 mod lifecycle;
+mod maintenance_adoption;
 mod media_jobs;
 mod metadata;
 mod note_editor;

@@ -177,6 +177,15 @@ impl Catalog {
             .collect()
     }
 
+    pub(crate) async fn validate_adoption_target(&self, id: &str) -> Result<()> {
+        let state = self.state.lock().await;
+        check_health(&state)?;
+        match state.stored.vaults.get(id) {
+            Some(vault) if !vault.deleted && vault.id == id => Ok(()),
+            _ => Err(not_found()),
+        }
+    }
+
     pub fn subscribe(&self) -> watch::Receiver<u64> {
         self.changes.subscribe()
     }

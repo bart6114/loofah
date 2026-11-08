@@ -258,6 +258,53 @@ The example systemd unit still enforces `TimeoutStopSec=60`: a permanent storage
 failure can reach that external forced-stop limit. Allow more time when needed
 and check service errors before treating a backup as cleanly stopped.
 
+## Adopt a Local vault into a stopped server
+
+Adoption is an offline copy into a **new, absent complete server storage root**.
+It preserves the existing catalog, member identities, roles, other vaults and
+operation receipts. It does not turn a Local path into a live shared filesystem,
+merge two vaults, synchronize later edits, or change who can access the target.
+
+1. While the service is online, provision the intended empty target vault and
+   record its exact catalog UUID. Confirm its members and roles before adding
+   Local content. A vault with no sessions can still contain settings or jobs;
+   such a vault is not an acceptable target.
+2. Stop the server and every desktop/CLI owner of the Local source. Wait for
+   actual process exit and keep both roots quiescent. Take and verify the full
+   server backup/private bundle described below, and keep a Local source backup.
+3. Run the command with a new output directory under an existing private parent:
+
+   ```sh
+   loofah-server adopt-vault \
+     --storage-root /var/lib/loofah \
+     --vault-id ORIGINAL-PROVISIONED-VAULT-UUID \
+     --source-vault /home/operator/LocalVault \
+     --output /var/lib/loofah-adopted
+   ```
+
+4. On success, change only the service configuration's `storage_root` to the
+   new root. Keep the original authentication configuration and use an empty
+   derived cache. Start the service, authenticate as an existing intended member,
+   and verify the adopted notes/recordings. The original Local and server roots
+   remain available for rollback; do not run both server roots concurrently.
+5. To roll back before accepting new writes, stop the new service, restore the
+   original storage/cache configuration and start the original root. After new
+   writes, first back up the new root: switching roots does not merge those writes.
+
+The command holds the service and vault ownership locks through the actual copy,
+refuses an existing output, verifies complete byte/mode inventories, and publishes
+only the completed root. The target must contain only fresh initialization files
+and idle empty runtime locks; any canonical content, settings, Trash, credentials,
+job/admission/receipt state or unknown file is a refusal. Source canonical files,
+unknown attachments, dotfiles, empty directories and supported permission modes
+are copied unchanged; no content migration or inference runs during adoption.
+Symlinks, hardlinks, special files and changes during copying are rejected. The
+ordinary ephemeral ownership lock files may be created while checking ownership.
+A crash can leave a private `.loofah-maintenance-*` staging directory beside the
+output; preserve it for inspection, then remove only that failed invocation's
+staging directory after confirming all owners have exited. Retry with an absent
+output; never promote an unverified partial directory by hand.
+
 ## Offline backup, restore and upgrades
 
 Run maintenance commands as the service account, using persistent local storage

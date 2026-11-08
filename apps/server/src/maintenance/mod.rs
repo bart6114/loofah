@@ -1,6 +1,8 @@
 //! Offline, whole-storage snapshots. These operations never initialize authentication or models.
 
+mod adoption;
 mod copy;
+pub use adoption::{AdoptionReport, adopt_vault};
 #[cfg(test)]
 mod tests;
 
