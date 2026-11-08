@@ -18,16 +18,39 @@ use tauri::Manager;
 
 const NOTE: &str = "# Project Saffron\n\nPersonal reminder: keep the original planning notes.\n\n- Confirm the restore drill before Friday.\n";
 const TRANSCRIPT: &str = concat!(
-    "1\n00:00:01,000 --> 00:00:16,000\n",
     "Maya: We reviewed the Project Saffron migration. The pilot will start on Friday with the support team. ",
     "We agreed to keep the current service available until the restore drill passes.\n\n",
-    "2\n00:00:17,000 --> 00:00:32,000\n",
     "Jon: I will run the database restore drill on Thursday and document the results. ",
     "Maya will notify the support team after we confirm the rollback plan.\n\n",
-    "3\n00:00:33,000 --> 00:00:48,000\n",
     "Priya: The remaining risk is missing customer attachments during migration. ",
     "I will compare attachment counts on Wednesday. We will postpone the pilot if any files are missing.\n",
 );
+
+fn word_timed_subtitles() -> String {
+    fn time(milliseconds: usize) -> String {
+        format!(
+            "{:02}:{:02}:{:02},{:03}",
+            milliseconds / 3_600_000,
+            milliseconds / 60_000 % 60,
+            milliseconds / 1_000 % 60,
+            milliseconds % 1_000,
+        )
+    }
+    // Each SRT cue is one canonical transcript entry, even if its text has many words.
+    TRANSCRIPT
+        .split_whitespace()
+        .enumerate()
+        .map(|(index, word)| {
+            let start = 1_000 + index * 500;
+            format!(
+                "{}\n{} --> {}\n{word}\n\n",
+                index + 1,
+                time(start),
+                time(start + 450)
+            )
+        })
+        .collect()
+}
 
 fn configured_model() -> SummaryModelSelection {
     let base_url = std::env::var("LOOFAH_TEST_OLLAMA_BASE_URL")
@@ -184,7 +207,7 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
         .unwrap();
         assert!(matches!(saved, ProcessingSettingsSaveOutcome::Saved(_)));
         let (request, child) = declare_and_import(
-            &context, &cli, root.path(), "eligible", TRANSCRIPT,
+            &context, &cli, root.path(), "eligible", &word_timed_subtitles(),
         )
         .await;
         let session = vault.join("sessions/eligible");
