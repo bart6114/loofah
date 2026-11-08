@@ -76,6 +76,7 @@ impl LocalCli {
             AttachmentPage,
             Doctor,
             Initialize,
+            RecoverMedia,
         ];
         if self.media.is_some() {
             operations.extend([Import, Transcribe]);
@@ -115,36 +116,60 @@ impl LocalCli {
             ));
         }
         let dispatcher = self.clone();
-        tokio::spawn(async move {
-            if matches!(
-                dispatcher.context.startup.snapshot().phase,
-                StartupPhase::Stopping | StartupPhase::Stopped | StartupPhase::Failed { .. }
-            ) {
-                let mut cause = error(
-                    ErrorCode::Unavailable,
-                    "Vault owner is stopping or unavailable",
-                );
-                cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
-                return Err(cause);
-            }
-            dispatcher
-                .context
-                .store
-                .ensure_ready()
-                .map_err(|_| error(ErrorCode::Unavailable, "Vault startup is still in progress"))?;
-            dispatcher
-                .dispatch(request_id, operation, artifact, progress)
-                .await
-        })
-        .await
-        .unwrap_or_else(|cause| {
-            // The endpoint must retain ownership when admitted work loses its supervisor.
-            // An application-level Unknown response cannot communicate that drain failure.
-            if cause.is_panic() {
-                std::panic::resume_unwind(cause.into_panic());
-            }
-            panic!("Local operation supervisor was cancelled: {cause}");
-        })
+        let original_request_id = request_id.clone();
+        let media_request = matches!(
+            &operation,
+            LocalCliOperation::Import { .. }
+                | LocalCliOperation::Transcribe { .. }
+                | LocalCliOperation::RecoverMedia { .. }
+        );
+        let result =
+            tokio::spawn(async move {
+                if matches!(
+                    dispatcher.context.startup.snapshot().phase,
+                    StartupPhase::Stopping | StartupPhase::Stopped | StartupPhase::Failed { .. }
+                ) {
+                    let mut cause = error(
+                        ErrorCode::Unavailable,
+                        "Vault owner is stopping or unavailable",
+                    );
+                    cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+                    return Err(cause);
+                }
+                dispatcher.context.store.ensure_ready().map_err(|_| {
+                    error(ErrorCode::Unavailable, "Vault startup is still in progress")
+                })?;
+                dispatcher
+                    .dispatch(request_id, operation, artifact, progress)
+                    .await
+            })
+            .await
+            .unwrap_or_else(|cause| {
+                // The endpoint must retain ownership when admitted work loses its supervisor.
+                // An application-level Unknown response cannot communicate that drain failure.
+                if cause.is_panic() {
+                    std::panic::resume_unwind(cause.into_panic());
+                }
+                panic!("Local operation supervisor was cancelled: {cause}");
+            });
+        result
+            .map(|mut output| {
+                if let LocalCliReply::Imported {
+                    transcription: Some(Err(cause)),
+                    ..
+                } = &mut output.reply
+                {
+                    identify_media_error(cause, &original_request_id);
+                }
+                output
+            })
+            .map_err(|mut cause| {
+                identify_error(&mut cause, &original_request_id);
+                if media_request {
+                    identify_media_error(&mut cause, &original_request_id);
+                }
+                cause
+            })
     }
 
     async fn dispatch(
@@ -156,6 +181,9 @@ impl LocalCli {
     ) -> Result<LocalCliOutput, ApplicationError> {
         let context = &self.context;
         let reply = match operation {
+            LocalCliOperation::RecoverMedia { request_id } => {
+                return self.recover_media(request_id).await;
+            }
             LocalCliOperation::AgentList { input } => LocalCliReply::AgentList {
                 page: context.agent_list_local(input).await?,
             },
@@ -402,5 +430,18 @@ impl LocalCli {
             reply,
             artifact: None,
         })
+    }
+}
+
+fn identify_error(cause: &mut ApplicationError, request_id: &str) {
+    cause.request_id.get_or_insert_with(|| request_id.into());
+}
+
+fn identify_media_error(cause: &mut ApplicationError, request_id: &str) {
+    let id = cause.request_id.get_or_insert_with(|| request_id.into());
+    if cause.mutation_outcome == Some(MutationOutcome::Unknown)
+        && !cause.message.contains("sessions recover")
+    {
+        cause.message.push_str(&format!("; inspect or finish this request with loof sessions recover {id}; inference will not be repeated"));
     }
 }

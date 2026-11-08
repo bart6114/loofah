@@ -44,6 +44,7 @@ pub enum LocalCliOperationKind {
     AttachmentPage,
     Import,
     Transcribe,
+    RecoverMedia,
     Doctor,
     Initialize,
 }
@@ -133,6 +134,9 @@ pub enum LocalCliOperation {
     Transcribe {
         session_id: String,
     },
+    RecoverMedia {
+        request_id: String,
+    },
     Doctor {},
     Initialize {},
 }
@@ -162,6 +166,7 @@ impl LocalCliOperation {
             Self::AttachmentPage { .. } => LocalCliOperationKind::AttachmentPage,
             Self::Import { .. } => LocalCliOperationKind::Import,
             Self::Transcribe { .. } => LocalCliOperationKind::Transcribe,
+            Self::RecoverMedia { .. } => LocalCliOperationKind::RecoverMedia,
             Self::Doctor {} => LocalCliOperationKind::Doctor,
             Self::Initialize {} => LocalCliOperationKind::Initialize,
         }
@@ -183,6 +188,7 @@ impl LocalCliOperation {
                 | Self::Attach { .. }
                 | Self::Import { .. }
                 | Self::Transcribe { .. }
+                | Self::RecoverMedia { .. }
                 | Self::Doctor {}
         )
     }
@@ -359,6 +365,10 @@ impl LocalCliOperationKind {
                 | (Self::AttachmentPage, LocalCliReply::AttachmentPage { .. })
                 | (Self::Import, LocalCliReply::Imported { .. })
                 | (Self::Transcribe, LocalCliReply::Transcribed { .. })
+                | (
+                    Self::RecoverMedia,
+                    LocalCliReply::Transcribed { .. } | LocalCliReply::Imported { .. }
+                )
                 | (Self::Doctor, LocalCliReply::Doctor { .. })
                 | (Self::Initialize, LocalCliReply::Initialized { .. })
         )

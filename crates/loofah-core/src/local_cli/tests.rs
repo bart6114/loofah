@@ -761,3 +761,273 @@ async fn trusted_local_metadata_and_agent_queries_do_not_inherit_remote_budgets(
         .await;
     fixture.stop().await;
 }
+
+async fn retained_transcription(
+    fixture: &Fixture,
+    session_id: &str,
+) -> (String, std::path::PathBuf) {
+    let directory = fixture
+        .cli
+        .context
+        .store
+        .vault_base()
+        .join("sessions")
+        .join(session_id);
+    std::fs::write(directory.join("audio.mp3"), b"original audio").unwrap();
+    std::fs::write(
+        directory.join("transcript.json"),
+        br#"{"transcripts":[],"original":true}"#,
+    )
+    .unwrap();
+    let Some(hypr_vault_write::transcript_publication::TranscriptSourcePreparation::Ready(source)) =
+        fixture
+            .cli
+            .context
+            .store
+            .prepare_transcript_replacement_source(session_id)
+            .await
+            .unwrap()
+    else {
+        panic!("missing source");
+    };
+    let request = uuid::Uuid::new_v4().to_string();
+    let root = &fixture.cli.context.operations.as_ref().unwrap().root;
+    let generated: TranscriptWithData = serde_json::from_value(serde_json::json!({
+        "id":"retained", "user_id":"owner", "created_at":"2026-11-08T10:00:00Z", "session_id":session_id,
+        "started_at":0, "ended_at":1000, "memo_md":"", "words":[{"id":"word", "text":"Retained", "start_ms":0, "end_ms":1000, "channel":0}], "speaker_hints":[]
+    })).unwrap();
+    let plan = fixture
+        .cli
+        .context
+        .store
+        .prepare_transcript_publication(
+            &root.join("transcript-publications"),
+            hypr_vault_write::transcript_publication::TranscriptPublicationIdentity {
+                vault_id: fixture.cli.context.events.vault_id(),
+                namespace: "local-cli-transcribe".into(),
+                request_id: uuid::Uuid::parse_str(&request).unwrap(),
+            },
+            source.baseline(),
+            generated,
+        )
+        .await
+        .unwrap();
+    drop(plan);
+    let journal = root.join("local-media");
+    std::fs::create_dir_all(&journal).unwrap();
+    std::fs::write(
+        journal.join(format!("{request}.json")),
+        serde_json::to_vec(&serde_json::json!({
+            "version":1, "fingerprint":"a".repeat(64),
+            "operation":LocalCliOperation::Transcribe { session_id: session_id.into() },
+            "import":null, "transcription":{"transcript_id":"retained", "words":1}, "result":null,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    (request, directory)
+}
+
+#[tokio::test]
+async fn explicit_media_recovery_commits_retained_transcript_without_a_host_and_replays_history() {
+    let fixture = Fixture::new().await;
+    let session = fixture.create().await;
+    let (request_id, directory) = retained_transcription(&fixture, &session).await;
+    let recovered = fixture
+        .execute(LocalCliOperation::RecoverMedia {
+            request_id: request_id.clone(),
+        })
+        .await
+        .reply;
+    assert!(
+        matches!(&recovered, LocalCliReply::Transcribed { transcript_id, word_count: 1, .. } if transcript_id == "retained")
+    );
+    assert!(
+        std::fs::read_to_string(directory.join("transcript.json"))
+            .unwrap()
+            .contains("Retained")
+    );
+    let edited = br#"{"transcripts":[],"speaker_edit":"keep"}"#;
+    std::fs::write(directory.join("transcript.json"), edited).unwrap();
+    let replay = fixture
+        .execute(LocalCliOperation::RecoverMedia {
+            request_id: request_id.clone(),
+        })
+        .await
+        .reply;
+    assert_eq!(
+        serde_json::to_value(recovered).unwrap(),
+        serde_json::to_value(replay).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(directory.join("transcript.json")).unwrap(),
+        edited
+    );
+    std::fs::remove_dir_all(&directory).unwrap();
+    fixture
+        .execute(LocalCliOperation::RecoverMedia { request_id })
+        .await;
+    assert!(!directory.exists());
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn explicit_media_recovery_rejects_changed_source_and_deleted_session_without_inference() {
+    for deletion in [false, true] {
+        let fixture = Fixture::new().await;
+        let session = fixture.create().await;
+        let (request_id, directory) = retained_transcription(&fixture, &session).await;
+        let edit = br#"{"transcripts":[],"speaker_edit":"keep"}"#;
+        if deletion {
+            std::fs::remove_dir_all(&directory).unwrap();
+        } else {
+            std::fs::write(directory.join("transcript.json"), edit).unwrap();
+        }
+        let cause = fixture
+            .cli
+            .execute(
+                uuid::Uuid::new_v4().to_string(),
+                LocalCliOperation::RecoverMedia {
+                    request_id: request_id.clone(),
+                },
+                None,
+                Arc::new(|_| {}),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(cause.request_id.as_deref(), Some(request_id.as_str()));
+        assert_eq!(cause.mutation_outcome, Some(MutationOutcome::Unknown));
+        assert!(cause.message.contains("sessions recover"));
+        if deletion {
+            assert!(!directory.exists());
+        } else {
+            assert_eq!(
+                std::fs::read(directory.join("transcript.json")).unwrap(),
+                edit
+            );
+        }
+        let retained = std::fs::read_dir(
+            fixture
+                .cli
+                .context
+                .operations
+                .as_ref()
+                .unwrap()
+                .root
+                .join("transcript-publications"),
+        )
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("transcript-result-")
+        });
+        assert!(retained);
+        fixture.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn explicit_import_recovery_reports_committed_history_after_deletion_without_reencoding() {
+    let mut fixture = Fixture::new().await;
+    let normalizations = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    fixture.cli = Arc::new(
+        LocalCli::new(fixture.cli.context.clone())
+            .unwrap()
+            .with_media_host(Arc::new(TestMedia {
+                normalizations: normalizations.clone(),
+                transcriptions: Default::default(),
+                edit: None,
+            })),
+    );
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let imported = fixture
+        .cli
+        .execute(
+            request_id.clone(),
+            LocalCliOperation::Import {
+                filename: "meeting.mp3".into(),
+                title: None,
+                into: None,
+                transcribe: false,
+                metadata: Default::default(),
+            },
+            Some(input_artifact(fixture._root.path())),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap()
+        .reply;
+    let LocalCliReply::Imported { audio_path, .. } = &imported else {
+        panic!("wrong reply");
+    };
+    let directory = audio_path.parent().unwrap().to_owned();
+    let journal = fixture
+        .cli
+        .context
+        .operations
+        .as_ref()
+        .unwrap()
+        .root
+        .join("local-media")
+        .join(format!("{request_id}.json"));
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    record["result"] = serde_json::Value::Null;
+    std::fs::write(journal, serde_json::to_vec(&record).unwrap()).unwrap();
+    std::fs::remove_dir_all(&directory).unwrap();
+    fixture.cli = Arc::new(LocalCli::new(fixture.cli.context.clone()).unwrap());
+    let recovered = fixture
+        .execute(LocalCliOperation::RecoverMedia { request_id })
+        .await
+        .reply;
+    assert_eq!(
+        serde_json::to_value(imported).unwrap(),
+        serde_json::to_value(recovered).unwrap()
+    );
+    assert!(!directory.exists());
+    assert_eq!(normalizations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn explicit_media_recovery_cannot_race_the_original_admitted_request() {
+    let fixture = Fixture::new().await;
+    let request = uuid::Uuid::new_v4();
+    let guard = fixture
+        .cli
+        .context
+        .admit_session_lifecycle_request("local-media", "local-cli", request)
+        .unwrap();
+    let cause = fixture
+        .cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::RecoverMedia {
+                request_id: request.to_string(),
+            },
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(cause.request_id, Some(request.to_string()));
+    assert_eq!(cause.mutation_outcome, Some(MutationOutcome::Unknown));
+    assert!(
+        !fixture
+            .cli
+            .context
+            .operations
+            .as_ref()
+            .unwrap()
+            .root
+            .join("local-media")
+            .exists()
+    );
+    drop(guard);
+    fixture.stop().await;
+}

@@ -111,7 +111,7 @@ If CLI access is unavailable or the user requests MCP, use connected Loofah MCP 
 
 Run `loof doctor` first to verify the CLI can reach the vault (it also repairs
 a missing or stale `AGENTS.md`). Always pass `--json` for machine-readable
-output. Vault commands automatically initialize a missing or incompatible local cache, with progress on stderr. Use `loof --json init` for repair. Search and lists refresh changes automatically; successful writes are searchable.
+output. List/search and writes automatically initialize a missing or incompatible local cache, with progress on stderr. Per-session reads do not initialize global search or migrate settings; idle MCP does not open the vault. Use `loof --json init` for repair. Search and lists refresh changes automatically; successful writes are searchable.
 
 | Command | Purpose |
 | --- | --- |
@@ -130,6 +130,7 @@ output. Vault commands automatically initialize a missing or incompatible local 
 | `sessions tag add` | Add tags to a session, registering new ones in the vault. |
 | `sessions tag remove` | Remove tags from a session. |
 | `sessions delete` | Soft-delete one exact ID to recoverable trash, without prompting. |
+| `sessions recover` | Inspect or finish an original retained import/transcription request without repeating inference; pass the error's request ID. |
 | `sessions path` | Print the absolute path of a session directory. |
 | `sessions attach` | Store a file as a note attachment and print its id. |
 | `sessions export` | Export a session to Markdown or JSON. |
@@ -173,3 +174,5 @@ Errors never fall back to a local vault. Sign in before starting remote MCP;
 restart the MCP connection after changing the profile's account or vault.
 `profiles list` works offline. `profiles logout company` removes that CLI
 connection and its OS-stored credentials without changing the vault.
+
+For an uncertain Local media error, use `loof --json sessions recover REQUEST_ID` with its original request ID. Recovery keeps the original destination and recording/transcript binding, preserves later edits and deletion, and never runs a model. Confirmed historical replies do not recreate content. If no result was durably retained, report that outcome before requesting a new explicit transcription.

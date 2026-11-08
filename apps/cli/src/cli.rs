@@ -287,6 +287,8 @@ pub enum MeetingCommand {
         long_about = "Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge."
     )]
     Delete { id: String },
+    /// Inspect or finish retained local media publication without repeating transcription
+    Recover { request_id: String },
     /// Store a file as a note attachment of a meeting and print its attachment id
     Attach {
         id: String,
@@ -1000,5 +1002,30 @@ mod tests {
         for subcommand in command.get_subcommands() {
             assert_options_are_documented(subcommand, docs);
         }
+    }
+    #[test]
+    fn recovery_accepts_only_an_original_request_identifier() {
+        let args = Args::try_parse_from([
+            "loof",
+            "sessions",
+            "recover",
+            "3ee6ab27-391d-47cb-ad40-5c61b57f4181",
+        ])
+        .unwrap();
+        assert!(
+            matches!(args.command, Command::Sessions { command: MeetingCommand::Recover { request_id } } if request_id == "3ee6ab27-391d-47cb-ad40-5c61b57f4181")
+        );
+        assert!(Args::try_parse_from(["loof", "sessions", "recover"]).is_err());
+        assert!(
+            Args::try_parse_from([
+                "loof",
+                "sessions",
+                "recover",
+                "request",
+                "--into",
+                "new-session"
+            ])
+            .is_err()
+        );
     }
 }

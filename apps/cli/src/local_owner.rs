@@ -178,12 +178,30 @@ impl LocalGateway {
         };
         let request_id = uuid::Uuid::new_v4().to_string();
         let mutation = operation.is_mutation();
+        let media_recovery = match &operation {
+            LocalCliOperation::RecoverMedia { request_id } => Some(request_id.clone()),
+            LocalCliOperation::Import { .. } | LocalCliOperation::Transcribe { .. } => {
+                Some(request_id.clone())
+            }
+            _ => None,
+        };
         let output = client
             .execute_with_progress(request_id.clone(), operation, blob, move |event| {
                 progress(event)
             })
             .await
-            .map_err(owner_error);
+            .map_err(|cause| {
+                let mut cause = application_owner_error(cause);
+                if cause.mutation_outcome == Some(MutationOutcome::Unknown)
+                    && let Some(original) = media_recovery
+                {
+                    cause.request_id = Some(original.clone());
+                    cause.message.push_str(&format!(
+                        "; run loof sessions recover {original}; inference will not be repeated"
+                    ));
+                }
+                Error::local(cause)
+            });
         let stopped = match standalone {
             Some(owner) => owner.finish().await,
             None => Ok(()),

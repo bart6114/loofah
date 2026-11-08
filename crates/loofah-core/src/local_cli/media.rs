@@ -12,6 +12,7 @@ use super::{LocalCli, LocalCliArtifact, LocalCliOutput};
 use crate::vault::{error, storage_error};
 
 mod journal;
+mod recovery;
 
 pub type LocalMediaFuture<T> =
     Pin<Box<dyn Future<Output = Result<T, ApplicationError>> + Send + 'static>>;
@@ -75,11 +76,17 @@ impl LocalCli {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-        let claim = journal::Claim::open(
+        let _request = self.context.admit_session_lifecycle_request(
+            "local-media",
+            "local-cli",
+            uuid::Uuid::parse_str(&request_id).unwrap(),
+        )?;
+        let mut claim = journal::Claim::open(
             self.context.clone(),
             root.join("local-media"),
             &request_id,
             fingerprint,
+            operation.clone(),
         )
         .await?;
         if let Some(result) = claim.result() {
@@ -98,6 +105,7 @@ impl LocalCli {
             } => {
                 self.import(
                     &request_id,
+                    &mut claim,
                     host,
                     &root,
                     filename,
@@ -112,7 +120,7 @@ impl LocalCli {
                 .await
             }
             LocalCliOperation::Transcribe { session_id } => self
-                .transcribe(&request_id, host, &root, &session_id, progress)
+                .transcribe(&request_id, &mut claim, host, &root, &session_id, progress)
                 .await
                 .map(|outcome| LocalCliReply::Transcribed {
                     session_id,
@@ -132,6 +140,7 @@ impl LocalCli {
     async fn import(
         &self,
         request_id: &str,
+        claim: &mut journal::Claim,
         host: &Arc<dyn LocalMediaHost>,
         root: &std::path::Path,
         filename: String,
@@ -187,7 +196,7 @@ impl LocalCli {
             )
         {
             return Err(error(
-                ErrorCode::Conflict,
+                ErrorCode::Validation,
                 &format!(
                     "meeting {session_id} already has a recording; the CLI never replaces existing audio"
                 ),
@@ -251,6 +260,12 @@ impl LocalCli {
             first_audio_observed_at_ms: 0,
             capture_ended_at_ms: None,
         };
+        claim
+            .bind_import(journal::ImportRecovery {
+                meta: meta.clone(),
+                publication: request.clone(),
+            })
+            .await?;
         let mut ticket = self
             .context
             .recording_publications
@@ -265,10 +280,10 @@ impl LocalCli {
                 normalized,
             )
             .await
-            .map_err(|cause| storage_error(cause, false))?
+            .map_err(|cause| storage_error(cause, true))?
             .recheck()
             .await
-            .map_err(|cause| storage_error(cause, false))?;
+            .map_err(|cause| storage_error(cause, true))?;
         ticket.committing();
         match plan
             .commit()
@@ -310,7 +325,7 @@ impl LocalCli {
             .join("audio.mp3");
         let transcription = if transcribe {
             Some(
-                self.transcribe(request_id, host, root, &session_id, progress)
+                self.transcribe(request_id, claim, host, root, &session_id, progress)
                     .await,
             )
         } else {
@@ -323,9 +338,11 @@ impl LocalCli {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn transcribe(
         &self,
         request_id: &str,
+        claim: &mut journal::Claim,
         host: &Arc<dyn LocalMediaHost>,
         root: &std::path::Path,
         session_id: &str,
@@ -392,6 +409,7 @@ impl LocalCli {
             transcript_id: generated.id.clone(),
             words: generated.words.len(),
         };
+        claim.bind_transcription(outcome.clone()).await?;
         let identity = TranscriptPublicationIdentity {
             vault_id: self.context.events.vault_id(),
             namespace: "local-cli-transcribe".into(),
@@ -407,11 +425,11 @@ impl LocalCli {
                 generated,
             )
             .await
-            .map_err(|cause| storage_error(cause, false))?;
+            .map_err(|cause| storage_error(cause, true))?;
         match plan
             .recheck()
             .await
-            .map_err(|cause| storage_error(cause, false))?
+            .map_err(|cause| storage_error(cause, true))?
             .commit()
             .await
             .map_err(|cause| storage_error(cause, true))?

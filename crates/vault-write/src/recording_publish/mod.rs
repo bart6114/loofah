@@ -79,6 +79,30 @@ impl SessionStore {
     }
 
     /// Loads a retained decision without reading or consuming another capture source.
+    /// Inspect the durable historical receipt without reading or recreating canonical content.
+    pub async fn recording_publication_completed(
+        &self,
+        operations: &Path,
+        request: RecordingPublicationRequest,
+    ) -> Result<bool, StoreError> {
+        request.validate()?;
+        if !operations.is_absolute() {
+            return Err(StoreError::Serialize(
+                "Recording operations path must be absolute".into(),
+            ));
+        }
+        let path = io::receipt_path(operations, &request);
+        self.spawn_blocking(move || {
+            let Some(receipt) = io::read(&path)? else {
+                return Ok(false);
+            };
+            receipt.validate(&request)?;
+            Ok(receipt.state == State::Committed)
+        })
+        .await
+        .map_err(io::worker_error)?
+    }
+
     pub async fn prepare_recording_publication_status(
         &self,
         operations: &Path,

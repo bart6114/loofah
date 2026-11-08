@@ -222,6 +222,32 @@ pub(crate) async fn run_with_reader(
             }
         },
         MeetingCommand::Delete { id } => delete_session(reader.vault()?, &id, json).await,
+        MeetingCommand::Recover { request_id } => {
+            let reply = local(reader.vault()?)?
+                .execute(Operation::RecoverMedia {
+                    request_id: request_id.clone(),
+                })
+                .await?
+                .response
+                .result?;
+            let transcription_error = match &reply {
+                Reply::Imported {
+                    transcription: Some(Err(cause)),
+                    ..
+                } => Some(cause.clone()),
+                _ => None,
+            };
+            let value = serde_json::json!({ "request_id": request_id, "result": reply });
+            output::emit(&if json {
+                output::json("sessions.recover", &value, None)?
+            } else {
+                output::raw_json(&value)?
+            });
+            if let Some(cause) = transcription_error {
+                return Err(Error::local(cause));
+            }
+            Ok(())
+        }
         MeetingCommand::Path { id } => {
             let path = session_path(reader.vault()?, &id).await?;
             let rendered = if json {

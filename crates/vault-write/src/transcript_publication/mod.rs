@@ -461,6 +461,13 @@ async fn prepare_plan(
 }
 
 impl TranscriptPublicationPlan {
+    pub fn result_identity(&self) -> (&str, &str) {
+        (
+            &self.receipt.binding.session_id,
+            &self.receipt.transcript_id,
+        )
+    }
+
     pub async fn recheck(self) -> Result<Self, StoreError> {
         let admitted = self.receipt.state == State::Pending;
         tokio::spawn(async move { self.recheck_owned().await })

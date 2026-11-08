@@ -1,5 +1,9 @@
 use crate::{VaultContext, vault::error};
-use hypr_loofah_protocol::{ApplicationError, ErrorCode, LocalCliReply};
+use hypr_loofah_protocol::{
+    ApplicationError, ErrorCode, LocalCliOperation, LocalCliReply, LocalTranscriptionOutcome,
+};
+use hypr_vault_read::SessionMeta;
+use hypr_vault_write::recording_publish::RecordingPublicationRequest;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{File, OpenOptions},
@@ -13,7 +17,20 @@ use std::{
 struct Record {
     version: u32,
     fingerprint: String,
+    #[serde(default)]
+    operation: Option<LocalCliOperation>,
+    #[serde(default)]
+    import: Option<ImportRecovery>,
+    #[serde(default)]
+    transcription: Option<LocalTranscriptionOutcome>,
     result: Option<Result<LocalCliReply, ApplicationError>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ImportRecovery {
+    pub meta: SessionMeta,
+    pub publication: RecordingPublicationRequest,
 }
 
 pub(super) struct Claim {
@@ -27,57 +44,157 @@ impl Claim {
         root: PathBuf,
         request: &str,
         fingerprint: String,
+        operation: LocalCliOperation,
     ) -> Result<Self, ApplicationError> {
         let request = request.to_owned();
         tokio::task::spawn_blocking(move || {
             let path = root.join(format!("{request}.json"));
             check_parents(&path)?;
             std::fs::create_dir_all(&root).map_err(io_error)?;
-            let wanted = Record { version: 1, fingerprint, result: None };
+            let wanted = Record {
+                version: 1,
+                fingerprint,
+                operation: Some(operation),
+                import: None,
+                transcription: None,
+                result: None,
+            };
             let mut options = OpenOptions::new();
             options.write(true).create_new(true);
-            #[cfg(unix)] {
+            #[cfg(unix)]
+            {
                 use std::os::unix::fs::OpenOptionsExt;
                 options.mode(0o600);
             }
             let record = match options.open(&path) {
                 Ok(mut file) => {
-                    file.write_all(&serde_json::to_vec(&wanted).map_err(io_error)?).map_err(io_error)?;
+                    file.write_all(&serde_json::to_vec(&wanted).map_err(io_error)?)
+                        .map_err(io_error)?;
                     file.sync_all().map_err(io_error)?;
                     sync_parent(&path)?;
                     wanted
                 }
                 Err(cause) if cause.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let metadata = std::fs::symlink_metadata(&path).map_err(io_error)?;
-                    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 16 * 1024 * 1024 { return Err(super::unknown("Local media receipt requires review")); }
-                    let mut bytes = Vec::new();
-                    File::open(&path).map_err(io_error)?.take(16 * 1024 * 1024 + 1).read_to_end(&mut bytes).map_err(io_error)?;
-                    let current: Record = serde_json::from_slice(&bytes).map_err(|_| super::unknown("Local media receipt requires review"))?;
-                    if current.version != 1 || current.fingerprint != wanted.fingerprint { return Err(error(ErrorCode::Conflict, "Local media request changed")); }
-                    if current.result.is_none() { return Err(super::unknown("Local media work was admitted previously; inspect retained results before an explicit retry")); }
+                    let current = read(&path)?;
+                    if current.fingerprint != wanted.fingerprint {
+                        return Err(error(ErrorCode::Conflict, "Local media request changed"));
+                    }
+                    if current.result.is_none() {
+                        return Err(super::unknown("Local media work was admitted previously"));
+                    }
                     current
                 }
                 Err(cause) => return Err(io_error(cause)),
             };
-            Ok(Self { context, path, record })
-        }).await.map_err(io_error)?
+            Ok(Self {
+                context,
+                path,
+                record,
+            })
+        })
+        .await
+        .map_err(io_error)?
     }
+
+    pub async fn recover(
+        context: Arc<VaultContext>,
+        root: PathBuf,
+        request: &str,
+    ) -> Result<Self, ApplicationError> {
+        let path = root.join(format!("{request}.json"));
+        tokio::task::spawn_blocking(move || {
+            let record = read(&path)?;
+            Ok(Self {
+                context,
+                path,
+                record,
+            })
+        })
+        .await
+        .map_err(io_error)?
+    }
+
     pub fn result(&self) -> Option<&Result<LocalCliReply, ApplicationError>> {
         self.record.result.as_ref()
+    }
+    pub fn operation(&self) -> Option<LocalCliOperation> {
+        self.record.operation.clone()
+    }
+    pub fn import(&self) -> Option<ImportRecovery> {
+        self.record.import.clone()
+    }
+    pub fn transcription(&self) -> Option<LocalTranscriptionOutcome> {
+        self.record.transcription.clone()
+    }
+    pub async fn bind_import(&mut self, import: ImportRecovery) -> Result<(), ApplicationError> {
+        self.record.import = Some(import);
+        self.persist().await
+    }
+    pub async fn bind_transcription(
+        &mut self,
+        transcription: LocalTranscriptionOutcome,
+    ) -> Result<(), ApplicationError> {
+        self.record.transcription = Some(transcription);
+        self.persist().await
     }
     pub async fn finish(
         mut self,
         result: Result<LocalCliReply, ApplicationError>,
     ) -> Result<(), ApplicationError> {
         self.record.result = Some(result);
-        tokio::task::spawn_blocking(move || {
-            let _context = self.context;
-            check_parents(&self.path)?;
-            let bytes = serde_json::to_string(&self.record).map_err(io_error)?;
-            hypr_storage::fs::atomic_write(&self.path, &bytes).map_err(|_| super::unknown("Local media work finished but its receipt could not be saved; inspect canonical content before retrying"))?;
-            sync_parent(&self.path)
-        }).await.map_err(io_error)?
+        self.persist().await
     }
+    async fn persist(&self) -> Result<(), ApplicationError> {
+        let context = self.context.clone();
+        let path = self.path.clone();
+        let record = self.record.clone();
+        tokio::task::spawn_blocking(move || {
+            let _context = context;
+            check_parents(&path)?;
+            let bytes = serde_json::to_string(&record).map_err(io_error)?;
+            hypr_storage::fs::atomic_write(&path, &bytes)
+                .map_err(|_| super::unknown("Local media work could not be checkpointed"))?;
+            sync_parent(&path)
+        })
+        .await
+        .map_err(io_error)?
+    }
+}
+fn read(path: &Path) -> Result<Record, ApplicationError> {
+    check_parents(path)?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|cause| {
+        if cause.kind() == std::io::ErrorKind::NotFound {
+            error(ErrorCode::NotFound, "Local media request not found")
+        } else {
+            io_error(cause)
+        }
+    })?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(super::unknown("Local media receipt requires review"));
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .map_err(io_error)?
+        .take(metadata.len().saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(io_error)?;
+    if bytes.len() as u64 != metadata.len() {
+        return Err(super::unknown("Local media receipt changed while reading"));
+    }
+    let record: Record = serde_json::from_slice(&bytes)
+        .map_err(|_| super::unknown("Local media receipt requires review"))?;
+    if record.version != 1
+        || record.fingerprint.len() != 64
+        || !record
+            .fingerprint
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(super::unknown(
+            "Local media receipt version requires review",
+        ));
+    }
+    Ok(record)
 }
 fn check_parents(path: &Path) -> Result<(), ApplicationError> {
     for parent in path.ancestors() {

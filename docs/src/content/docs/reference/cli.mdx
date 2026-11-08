@@ -72,7 +72,7 @@ content.
 
 ## Local search cache
 
-Vault commands automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
+List/search commands and writes automatically build a missing or incompatible local Tantivy cache before running; desktop shares the same cache. Per-session reads such as `sessions get`, `sessions path`, and `sessions export` do not initialize global search or migrate settings. Idle MCP startup waits until a query needs the vault. First use may take longer, with progress on stderr. `loof --json init` explicitly builds, repairs, or refreshes the cache for an existing vault; it does not create a vault. Help, version, and `doctor` do not initialize the cache.
 
 With `--json`, initialization streams NDJSON progress on stderr; stdout contains only the requested command's response. Explicit `init` returns one final JSON response. Search and lists reconcile changes before querying; writes finish reconciliation before reporting success. A `write_persisted` error means the write was saved: do not repeat it; resolve the reported issue and run `init`. A `cache_busy` error is retryable.
 
@@ -147,6 +147,16 @@ Transcribes the meeting's audio recording on-device with the speech-to-text mode
 Supported models include **Soniqo Parakeet Streaming**, **Soniqo Parakeet Batch**, and **Nemotron 3.5 ASR (Multilingual)**. Download and select the model in the desktop app first. Nemotron uses your configured meeting languages to guide recognition, including automatic language detection when multiple languages are selected.
 
 The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (on-device Soniqo models on macOS and Parakeet ONNX models on Windows), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription supports Apple Silicon macOS and Windows 11 with their platform-specific models.
+
+## Recover retained media publication
+
+```bash
+loof --json sessions recover REQUEST_ID
+```
+
+Use the original `request_id` from an uncertain import or transcription error. Recovery checks the original private journal and retained publication against the current recording SHA and raw transcript revision. It never runs inference or reopens the imported source. Changed speaker edits and deleted sessions are preserved. A completed historical request reports its original result without recreating content.
+
+JSON uses `command: "sessions.recover"` with `data.request_id` and `data.result`, the original import or transcription reply. An unresolved optional transcription retains the import result and exits nonzero. If no result was durably retained, the error says so; recovery does not silently begin another transcription. This command is Local-only and requires no downloaded model or login.
 
 ## JSON response contract
 

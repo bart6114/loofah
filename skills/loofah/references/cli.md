@@ -12,7 +12,7 @@ loof --json sessions note MEETING_ID --kind note
 loof --json sessions note MEETING_ID --kind summary
 ```
 
-Vault commands automatically initialize a missing or incompatible cache. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
+List/search and writes automatically initialize a missing or incompatible cache. Per-session reads do not initialize global search or migrate settings; idle MCP does not open the vault. JSON progress streams on stderr; stdout contains only the requested command's response. Search/lists refresh changes automatically. Use `loof --json init` for explicit setup or repair.
 
 `doctor` exits with status 1 when its response contains `ready: false`. Inside a vault it also restores the root `AGENTS.md` agent guide when missing or stale (reported as `agents_md`).
 
@@ -95,6 +95,14 @@ loof --json transcribe MEETING_ID
 ```
 
 If `import --transcribe` exits non-zero but prints a meeting id, the import succeeded and only the transcription failed — fix the reported problem (usually a missing model or configuration) and run `loof transcribe MEETING_ID`.
+
+For an import or transcription error with `mutation_outcome: "unknown"`, use the original `request_id`:
+
+```bash
+loof --json sessions recover REQUEST_ID
+```
+
+This Local-only command inspects or finishes the original retained publication without rerunning a model or reading the source file again. It preserves changed transcripts and deleted sessions. Confirmed historical requests return their original result without recreating content. If the result was never durably retained, report that outcome before starting any new transcription.
 
 Export is intended for an explicit user request to save or transfer a complete meeting:
 
