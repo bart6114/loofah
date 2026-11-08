@@ -1244,7 +1244,7 @@ async fn events(
                 },
                 event = subscription.recv() => {
                     let Some(event) = event else { break; };
-                    if matches!(event.change, hypr_loofah_protocol::Change::ResyncRequired) { if let Some(metrics) = &metrics { metrics.resync(); } }
+                    if matches!(event.change, hypr_loofah_protocol::Change::ResyncRequired) && let Some(metrics) = &metrics { metrics.resync(); }
                     let Ok(access) = service.catalog.access(&identity, &id, false).await else { break; };
                     let Ok(json) = serde_json::to_string(&event) else { break; };
                     drop(access);

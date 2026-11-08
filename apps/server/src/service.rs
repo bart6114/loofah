@@ -17,6 +17,10 @@ use crate::{
 
 type ShutdownResult = Option<std::result::Result<(), hypr_loofah_protocol::ApplicationError>>;
 
+#[cfg(test)]
+type StartupPause =
+    std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>;
+
 pub struct Service {
     #[cfg(test)]
     pub(crate) transcription_test_engine:
@@ -27,8 +31,7 @@ pub struct Service {
     #[cfg(test)]
     pub(crate) injected_changes: std::sync::atomic::AtomicBool,
     #[cfg(test)]
-    pub(crate) startup_pause:
-        Arc<std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>>,
+    pub(crate) startup_pause: Arc<StartupPause>,
     pub(crate) observability: Arc<crate::operational::Observability>,
     operational_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub auth: Authenticator,
@@ -430,10 +433,10 @@ impl Service {
 
     async fn shutdown_owned(self: Arc<Self>) -> Result<()> {
         let mut failure = None;
-        if let Some(worker) = self.operational_worker.lock().await.take() {
-            if let Err(cause) = worker.await {
-                failure = Some(ApiError::internal(cause));
-            }
+        if let Some(worker) = self.operational_worker.lock().await.take()
+            && let Err(cause) = worker.await
+        {
+            failure = Some(ApiError::internal(cause));
         }
         let catalog_worker = self.catalog_worker.lock().await.take();
         if let Some(worker) = catalog_worker
