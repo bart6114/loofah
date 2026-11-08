@@ -32,6 +32,7 @@ struct ProfileHost {
 struct CaptureEntry {
     identity: CaptureIdentity,
     format: CaptureFormat,
+    processing: Option<hypr_capture_store::capture_spool::CaptureProcessingOptions>,
     device: DeviceCaptureTicket,
 }
 struct UploadEntry {
@@ -54,6 +55,7 @@ struct Inner {
     start_serial: tokio::sync::Mutex<()>,
     upload_updates: watch::Sender<u64>,
     uploads: Arc<CaptureUploader>,
+    processing: Arc<super::processing::ProcessingSupervisor>,
     finished: CancellationToken,
     draining: std::sync::atomic::AtomicBool,
     executor: tokio::runtime::Handle,
@@ -77,6 +79,8 @@ pub struct DeviceCaptureStartRequest {
     pub scope: CaptureScope,
     pub target: CaptureTarget,
     pub format: CaptureFormat,
+    #[serde(default)]
+    pub processing: Option<hypr_capture_store::capture_spool::CaptureProcessingOptions>,
 }
 
 pub struct RemoteDeviceCapture {
@@ -140,6 +144,7 @@ impl RemoteCaptureCoordinator {
                 "Device capture storage must be an absolute trusted path",
             ));
         }
+        let updates = watch::channel(0).0;
         Ok(Arc::new(Self {
             inner: Arc::new(Inner {
                 root,
@@ -153,7 +158,8 @@ impl RemoteCaptureCoordinator {
                 starts: Arc::new(Semaphore::new(8)),
                 exports: Arc::new(Semaphore::new(2)),
                 start_serial: tokio::sync::Mutex::new(()),
-                upload_updates: watch::channel(0).0,
+                upload_updates: updates.clone(),
+                processing: super::processing::ProcessingSupervisor::new(updates),
                 uploads: CaptureUploader::new(2)?,
                 finished: CancellationToken::new(),
                 draining: std::sync::atomic::AtomicBool::new(false),
@@ -182,6 +188,7 @@ impl RemoteCaptureCoordinator {
                 scope,
                 target,
                 format,
+                processing: None,
             },
         )
         .await
@@ -198,6 +205,7 @@ impl RemoteCaptureCoordinator {
             scope: expected_scope,
             target,
             format,
+            processing,
         } = request;
         if !valid_uuid(&request_id) {
             return Err(error(
@@ -246,6 +254,7 @@ impl RemoteCaptureCoordinator {
                     if entry.identity.scope != expected_scope
                         || entry.identity.target != target
                         || entry.format != format
+                        || entry.processing != processing
                     {
                         return Err(error(
                             ErrorCode::Conflict,
@@ -309,6 +318,7 @@ impl RemoteCaptureCoordinator {
                         profile_id: id.clone(),
                         identity: identity.clone(),
                         format: format.clone(),
+                        processing: processing.clone(),
                     })
                     .map_err(|cause| error(ErrorCode::Unavailable, &cause.to_string()))?
             };
@@ -337,6 +347,7 @@ impl RemoteCaptureCoordinator {
                     CaptureEntry {
                         identity: identity.clone(),
                         format,
+                        processing,
                         device: ticket.clone(),
                     },
                 );
@@ -358,6 +369,69 @@ impl RemoteCaptureCoordinator {
         })
         .await
         .map_err(|_| error(ErrorCode::Unavailable, "Device capture preparation stopped"))?
+    }
+
+    pub fn processing_progress(
+        &self,
+        profile_id: &str,
+        identity: &CaptureIdentity,
+    ) -> Option<super::DeviceProcessingProgress> {
+        self.inner
+            .processing
+            .current(profile_id, identity)
+            .or_else(|| {
+                let state = self.inner.state.lock().unwrap();
+                let entry = state
+                    .captures
+                    .get(&(profile_id.into(), identity.capture_id.clone()))?;
+                if entry.identity != *identity {
+                    return None;
+                }
+                let options = entry.processing.as_ref()?;
+                Some(super::DeviceProcessingProgress {
+                    format: entry.format.clone(),
+                    declaration: hypr_capture_store::capture_spool::CaptureProcessingDeclaration {
+                        request: options.request(hypr_loofah_protocol::capture_fingerprint(
+                            identity,
+                            &entry.format,
+                        )),
+                        cancel_requested: false,
+                    },
+                    status: None,
+                    error: None,
+                })
+            })
+    }
+
+    pub async fn cancel_processing(
+        &self,
+        profile: Arc<ProfileLease>,
+        identity: CaptureIdentity,
+    ) -> Result<CaptureSnapshot, ApplicationError> {
+        let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
+            error(
+                ErrorCode::ResourceLimit,
+                "Too many device capture operations",
+            )
+        })?;
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            let _permit = permit;
+            let id = profile.profile().await.id;
+            let writer = inner.host(&id).await?.spool.resume(identity).await?;
+            let snapshot = writer.cancel_processing().await?;
+            inner
+                .upload_updates
+                .send_modify(|revision| *revision = revision.wrapping_add(1));
+            Ok(snapshot)
+        })
+        .await
+        .map_err(|_| {
+            error(
+                ErrorCode::Unavailable,
+                "Refresh capture status to confirm processing cancellation",
+            )
+        })?
     }
 
     pub fn upload_updates(&self) -> watch::Receiver<u64> {
@@ -854,6 +928,7 @@ impl Inner {
             }
         }
         let writer = host.spool.resume(identity.clone()).await?;
+        let snapshot = writer.snapshot().await?;
         let mut state = self
             .state
             .lock()
@@ -875,13 +950,13 @@ impl Inner {
         }
         let ticket = self.uploads.start(
             client.clone(),
-            writer,
+            writer.clone(),
             CaptureUploadBinding {
                 profile_id: profile_id.into(),
                 scope: identity.scope.clone(),
                 credential_account: client.credential_account().into(),
             },
-            Box::new(owner),
+            Box::new(owner.clone()),
         )?;
         state.uploads.insert(
             key,
@@ -891,6 +966,13 @@ impl Inner {
                 ticket: ticket.clone(),
             },
         );
+        drop(state);
+        if let Err(cause) =
+            self.processing
+                .start(profile_id.into(), writer, snapshot, client, owner)
+        {
+            tracing::warn!(code=?cause.code, "device_capture_processing_remains_queued");
+        }
         self.upload_updates
             .send_modify(|version| *version = version.wrapping_add(1));
         Ok(ticket)
@@ -905,6 +987,7 @@ impl Inner {
             host.device.request_shutdown();
         }
         self.uploads.request_shutdown();
+        self.processing.request_shutdown();
     }
     fn spawn_drain(self: &Arc<Self>) {
         if self
@@ -936,6 +1019,7 @@ impl Inner {
                 }
             }
             inner.uploads.wait_shutdown().await;
+            inner.processing.wait_shutdown().await;
             for host in hosts {
                 host.spool.wait_for_io().await;
             }

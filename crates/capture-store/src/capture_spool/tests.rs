@@ -2235,3 +2235,282 @@ async fn rejected_declared_seal_does_not_freeze_or_replace_the_admitted_prefix()
     assert_eq!(std::fs::read(&manifest).unwrap(), sealed);
     assert!(writer.append_chunk(1, 8, pcm(8)).await.is_err());
 }
+
+fn processing_options() -> CaptureProcessingOptions {
+    CaptureProcessingOptions {
+        model: Some("operator-cpu".into()),
+        languages: vec!["en".into()],
+        keywords: vec!["Loofah".into()],
+        summary: Some(hypr_loofah_protocol::CaptureProcessingSummary {
+            target: hypr_loofah_protocol::DocumentTarget::Summary,
+            title_policy: hypr_loofah_protocol::TitlePolicy::GenerateIfEmpty,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn processing_declaration_precedes_audio_and_survives_observation_cancel_and_reopen() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_processing(
+            id.clone(),
+            CaptureFormat::stereo(),
+            Some(processing_options()),
+        )
+        .await
+        .unwrap();
+    let before = writer.snapshot().await.unwrap();
+    let expected = processing_options().request(before.capture_fingerprint.clone());
+    assert_eq!(before.processing.as_ref().unwrap().request, expected);
+    assert_eq!(before.identity, id);
+    assert_eq!(before.chunk_count, 0);
+    assert_eq!(before.first_admitted_audio_observed_at_ms, None);
+    let manifest = dir(&root, &id).join("manifest.json");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&manifest).unwrap()).unwrap()["schema_version"],
+        3
+    );
+    writer
+        .record_first_audio_observation(OBSERVATION_MS)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 160, pcm(160)).await.unwrap();
+    let seal = writer.seal().await.unwrap();
+    let cancelled = writer.cancel_processing().await.unwrap();
+    assert!(cancelled.processing.as_ref().unwrap().cancel_requested);
+    assert_eq!(cancelled.processing.as_ref().unwrap().request, expected);
+    assert_eq!(cancelled.seal, Some(seal));
+    assert_eq!(writer.cancel_processing().await.unwrap(), cancelled);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(160));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&manifest).unwrap()).unwrap()["schema_version"],
+        3
+    );
+    drop(writer);
+    drop(spool);
+    let reopened = open(&root).await;
+    let writer = reopened.resume(id.clone()).await.unwrap();
+    assert_eq!(writer.snapshot().await.unwrap(), cancelled);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(160));
+    assert!(
+        reopened
+            .begin_with_processing(
+                id.clone(),
+                CaptureFormat::stereo(),
+                Some(processing_options())
+            )
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .processing
+            .unwrap()
+            .cancel_requested
+    );
+    assert_eq!(
+        reopened
+            .begin(id, CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
+async fn processing_cannot_be_added_to_historical_capture_or_changed_after_first_begin() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let original = identity();
+    let writer = spool
+        .begin(original.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 2, pcm(2)).await.unwrap();
+    assert!(writer.snapshot().await.unwrap().processing.is_none());
+    assert_eq!(
+        spool
+            .begin_with_processing(
+                original.clone(),
+                CaptureFormat::stereo(),
+                Some(processing_options())
+            )
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(
+        writer.cancel_processing().await.err().unwrap().code,
+        ErrorCode::Conflict
+    );
+    assert!(writer.snapshot().await.unwrap().processing.is_none());
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(2));
+    let mut fresh = original;
+    fresh.capture_id = uuid::Uuid::new_v4().to_string();
+    fresh.request_id = uuid::Uuid::new_v4().to_string();
+    let declared = spool
+        .begin_with_processing(
+            fresh.clone(),
+            CaptureFormat::stereo(),
+            Some(processing_options()),
+        )
+        .await
+        .unwrap();
+    let before = declared.snapshot().await.unwrap();
+    let mut changed = processing_options();
+    changed.summary = None;
+    assert_eq!(
+        spool
+            .begin_with_processing(fresh, CaptureFormat::stereo(), Some(changed))
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(declared.snapshot().await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn processing_schema_and_fingerprint_tampering_never_rewrites_retained_audio() {
+    for mode in [
+        "old-schema",
+        "missing-declaration",
+        "foreign-fingerprint",
+        "unknown-option",
+        "oversized-options",
+        "append",
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin_with_processing(
+                identity(),
+                CaptureFormat::stereo(),
+                Some(processing_options()),
+            )
+            .await
+            .unwrap();
+        writer.append_chunk(0, 2, pcm(2)).await.unwrap();
+        drop(writer);
+        drop(spool);
+        let manifest = dir(&root, &identity()).join("manifest.json");
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        match mode {
+            "old-schema" => value["schema_version"] = json!(1),
+            "missing-declaration" => {
+                value["snapshot"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("processing");
+            }
+            "foreign-fingerprint" => {
+                value["snapshot"]["processing"]["request"]["capture_fingerprint"] =
+                    json!("b".repeat(64))
+            }
+            "unknown-option" => {
+                value["snapshot"]["processing"]["request"]["api_key"] = json!("private")
+            }
+            "oversized-options" => {
+                value["snapshot"]["processing"]["request"]["model"] = json!("x".repeat(513))
+            }
+            "append" => {
+                value["snapshot"]["identity"]["target"]["expected_audio_sha256"] =
+                    json!("a".repeat(64))
+            }
+            _ => unreachable!(),
+        }
+        let bytes = serde_json::to_vec(&value).unwrap();
+        std::fs::write(&manifest, &bytes).unwrap();
+        assert_eq!(
+            CaptureSpool::open(root.clone(), CaptureSpoolLimits::default())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::Internal,
+            "{mode}"
+        );
+        assert_eq!(std::fs::read(&manifest).unwrap(), bytes, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn processing_cancel_unknown_commit_keeps_exact_declaration_and_pcm_without_replaying_audio()
+{
+    for point in [
+        Fault::BeforeManifestWrite,
+        Fault::ShortManifestWrite,
+        Fault::AfterManifestRename,
+        Fault::AfterManifestDirectorySync,
+    ] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let writer = spool
+            .begin_with_processing(
+                identity(),
+                CaptureFormat::stereo(),
+                Some(processing_options()),
+            )
+            .await
+            .unwrap();
+        writer.append_chunk(0, 2, pcm(2)).await.unwrap();
+        let before = writer.snapshot().await.unwrap();
+        spool.fault.store(point as u8, Ordering::SeqCst);
+        assert_eq!(
+            writer
+                .cancel_processing()
+                .await
+                .unwrap_err()
+                .mutation_outcome,
+            Some(MutationOutcome::Unknown)
+        );
+        let observed = writer.snapshot().await.unwrap();
+        assert_eq!(
+            observed.processing.as_ref().unwrap().request,
+            before.processing.unwrap().request
+        );
+        assert_eq!(
+            observed.processing.as_ref().unwrap().cancel_requested,
+            matches!(
+                point,
+                Fault::AfterManifestRename | Fault::AfterManifestDirectorySync
+            )
+        );
+        assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(2));
+        spool.fault.store(0, Ordering::SeqCst);
+        assert!(
+            writer
+                .cancel_processing()
+                .await
+                .unwrap()
+                .processing
+                .unwrap()
+                .cancel_requested
+        );
+        drop(writer);
+        drop(spool);
+        assert!(
+            open(&root)
+                .await
+                .resume(identity())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .processing
+                .unwrap()
+                .cancel_requested
+        );
+    }
+}

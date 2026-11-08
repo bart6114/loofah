@@ -1,6 +1,8 @@
 //! Device-only capture. No server admission, canonical vault writes or uploader lives here.
 
 mod manager;
+mod processing;
+pub use processing::DeviceProcessingProgress;
 pub mod remote;
 mod runtime;
 mod sink;
@@ -13,7 +15,8 @@ static CAPTURE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new
 use std::sync::{Arc, OnceLock};
 
 use hypr_loofah_client::capture_spool::{
-    CaptureChannel, CaptureFormat, CaptureIdentity, CaptureSeal, CaptureSpool,
+    CaptureChannel, CaptureFormat, CaptureIdentity, CaptureProcessingOptions, CaptureSeal,
+    CaptureSpool,
 };
 use tauri_plugin_transcription::{
     DeviceCaptureArgs, DeviceCaptureCompletion, DeviceCaptureKey, DeviceChannelMode,
@@ -72,6 +75,16 @@ impl PreparedDeviceCapture {
         format: CaptureFormat,
         observer: Arc<dyn DeviceCaptureObserver>,
     ) -> Result<Self, DeviceSinkError> {
+        Self::prepare_with_processing(spool, identity, format, None, observer).await
+    }
+
+    pub async fn prepare_with_processing(
+        spool: Arc<CaptureSpool>,
+        identity: CaptureIdentity,
+        format: CaptureFormat,
+        processing: Option<CaptureProcessingOptions>,
+        observer: Arc<dyn DeviceCaptureObserver>,
+    ) -> Result<Self, DeviceSinkError> {
         let mode = match format.channels.as_slice() {
             [CaptureChannel::Microphone, CaptureChannel::SystemAudio] => {
                 DeviceChannelMode::MicAndSpeaker
@@ -114,7 +127,7 @@ impl PreparedDeviceCapture {
             ));
         }
         let writer = spool
-            .begin(identity, format)
+            .begin_with_processing(identity, format, processing)
             .await
             .map_err(|error| DeviceSinkError(error.to_string()))?;
         let snapshot = writer

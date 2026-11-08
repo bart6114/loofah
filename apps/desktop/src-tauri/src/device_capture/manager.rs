@@ -31,6 +31,7 @@ pub struct CaptureStartIntent {
     pub profile_id: String,
     pub identity: CaptureIdentity,
     pub format: CaptureFormat,
+    pub processing: Option<hypr_capture_store::capture_spool::CaptureProcessingOptions>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
@@ -484,10 +485,11 @@ impl DeviceCaptureHost {
             self.retire(&entry, DeviceHostPhase::NeverStarted, None);
             return;
         }
-        let prepared = match PreparedDeviceCapture::prepare(
+        let prepared = match PreparedDeviceCapture::prepare_with_processing(
             self.spool.clone(),
             intent.identity,
             intent.format,
+            intent.processing,
             self.observer.clone(),
         )
         .await

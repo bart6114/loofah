@@ -36,6 +36,7 @@ pub struct DeviceRecordingInfo {
     pub sealed: bool,
     pub publication: Option<CapturePublication>,
     pub upload: Option<CaptureUploadProgress>,
+    pub processing: Option<crate::device_capture::DeviceProcessingProgress>,
     pub failure: Option<String>,
 }
 
@@ -187,6 +188,25 @@ impl DeviceRecordingState {
             items.insert(item.identity.capture_id.clone(), item);
         }
         let mut recordings = items.into_values().collect::<Vec<_>>();
+        if let Some(host) = self.host.get() {
+            for capture in &mut recordings {
+                if let Some(processing) = host.processing_progress(&profile_id, &capture.identity) {
+                    let cancelled = capture
+                        .processing
+                        .as_ref()
+                        .is_some_and(|value| value.declaration.cancel_requested);
+                    capture.processing = Some(processing);
+                    if cancelled {
+                        capture
+                            .processing
+                            .as_mut()
+                            .unwrap()
+                            .declaration
+                            .cancel_requested = true;
+                    }
+                }
+            }
+        }
         recordings.sort_by(|a, b| a.identity.capture_id.cmp(&b.identity.capture_id));
         Ok(DeviceRecordingInventory {
             profile_id,
@@ -225,6 +245,7 @@ impl DeviceRecordingState {
                     .map(|ticket| ticket.current());
                 DeviceRecordingInfo {
                     profile_id: profile_id.into(),
+                    processing: host.processing_progress(profile_id, &capture.identity),
                     identity: capture.identity,
                     phase: Some(state.phase),
                     first_audio_ms,
@@ -271,6 +292,14 @@ fn saved(profile_id: &str, snapshot: CaptureSnapshot) -> DeviceRecordingInfo {
         sealed: snapshot.seal.is_some(),
         publication: snapshot.publication,
         upload: None,
+        processing: snapshot.processing.map(|declaration| {
+            crate::device_capture::DeviceProcessingProgress {
+                format: snapshot.format,
+                declaration,
+                status: None,
+                error: None,
+            }
+        }),
         failure: None,
     }
 }
@@ -289,6 +318,15 @@ fn overlay_live(saved: &DeviceRecordingInfo, mut live: DeviceRecordingInfo) -> D
         // Explicit recovery can seal a stopped producer's exact durable prefix.
         live.sealed |= saved.sealed;
         live.publication = live.publication.or_else(|| saved.publication.clone());
+    }
+    if live.identity == saved.identity {
+        if let (Some(stored), Some(current)) = (&saved.processing, &mut live.processing) {
+            if stored.declaration.request == current.declaration.request {
+                current.declaration.cancel_requested |= stored.declaration.cancel_requested;
+            }
+        } else if live.processing.is_none() {
+            live.processing = saved.processing.clone();
+        }
     }
     live
 }
@@ -462,6 +500,21 @@ pub async fn device_recording_recovery_inventory<R: tauri::Runtime>(
         }
     }
     for capture in &mut recordings {
+        if let Some(processing) = host.processing_progress(&profile_id, &capture.identity) {
+            let cancelled = capture
+                .processing
+                .as_ref()
+                .is_some_and(|value| value.declaration.cancel_requested);
+            capture.processing = Some(processing);
+            if cancelled {
+                capture
+                    .processing
+                    .as_mut()
+                    .unwrap()
+                    .declaration
+                    .cancel_requested = true;
+            }
+        }
         if let Some(upload) = host.upload_ticket(&profile_id, &capture.identity)? {
             let progress = upload.current();
             if let Some(publication) = &progress.publication {
@@ -532,6 +585,26 @@ pub async fn device_recording_stop<R: tauri::Runtime>(
             )
         })?;
     host.request_stop(&profile_id, &identity.scope, &capture.device.key)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_recording_cancel_processing<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    identity: CaptureIdentity,
+) -> Result<DeviceRecordingInfo, ApplicationError> {
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let snapshot = state
+        .host(&app)
+        .await?
+        .cancel_processing(profile, identity)
+        .await?;
+    *state.inventory.lock().unwrap() = None;
+    *state.recovery.lock().unwrap() = None;
+    Ok(saved(&profile_id, snapshot))
 }
 
 #[tauri::command]
@@ -744,6 +817,7 @@ mod tests {
             sealed: true,
             publication: None,
             upload: None,
+            processing: None,
             failure: None,
         };
         let mut live = stored.clone();

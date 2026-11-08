@@ -520,6 +520,7 @@ async fn concurrent_start_replay_reuses_one_capture_and_changed_declarations_nev
                     scope: left.identity.scope.clone(),
                     target: target.clone(),
                     format: CaptureFormat::stereo(),
+                    processing: None,
                 },
             )
             .await
@@ -778,6 +779,7 @@ async fn explicit_start_scope_cannot_follow_a_later_saved_destination() {
                     expected_audio_sha256: None,
                 },
                 format: CaptureFormat::stereo(),
+                processing: None,
             },
         )
         .await;
@@ -786,6 +788,102 @@ async fn explicit_start_scope_cannot_follow_a_later_saved_destination() {
     assert!(
         coordinator
             .wait_shutdown(Duration::from_secs(1))
+            .await
+            .safe_to_exit
+    );
+}
+
+#[tokio::test]
+async fn explicit_processing_replay_cannot_change_options_and_offline_cancel_preserves_identity() {
+    let _capture_test_guard = super::super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (temp, spool) = spool().await;
+    let profile = profile(temp.path()).await;
+    let saved_profile = profile.profile().await;
+    let observer = Arc::new(Observer::default());
+    let host = DeviceCaptureHost::with_driver(
+        spool.clone(),
+        observer.clone(),
+        driver(true, StartMode::Reject),
+    );
+    let coordinator =
+        RemoteCaptureCoordinator::new(temp.path().join("captures"), observer).unwrap();
+    coordinator.install_test_host(saved_profile.id.clone(), spool.clone(), host);
+    let scope = CaptureScope {
+        server: saved_profile.server.clone(),
+        member_id: saved_profile.member_id.clone().unwrap(),
+        vault_id: saved_profile.vault_id.clone().unwrap(),
+    };
+    let request = crate::device_capture::remote::DeviceCaptureStartRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        scope,
+        target: CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::new_v4().to_string(),
+        },
+        format: CaptureFormat::stereo(),
+        processing: Some(
+            hypr_capture_store::capture_spool::CaptureProcessingOptions {
+                model: None,
+                languages: vec!["en".into()],
+                keywords: vec![],
+                summary: None,
+            },
+        ),
+    };
+    let mut started = coordinator
+        .start_scoped(profile.clone(), None, request.clone())
+        .await
+        .unwrap();
+    until(&mut started.device, |state| {
+        state.phase == DeviceHostPhase::NeverStarted
+    })
+    .await;
+    let before = spool
+        .resume(started.identity.clone())
+        .await
+        .unwrap()
+        .snapshot()
+        .await
+        .unwrap();
+    assert_eq!(before.identity.request_id, request.request_id);
+    assert!(before.processing.is_some());
+    let replay = coordinator
+        .start_scoped(profile.clone(), None, request.clone())
+        .await
+        .unwrap();
+    assert_eq!(replay.identity, started.identity);
+    let mut changed = request.clone();
+    changed.processing.as_mut().unwrap().languages = vec!["nl".into()];
+    assert!(
+        matches!(coordinator.start_scoped(profile.clone(), None, changed).await, Err(cause) if cause.code == ErrorCode::Conflict)
+    );
+    let mut raw = request;
+    raw.processing = None;
+    assert!(
+        matches!(coordinator.start_scoped(profile.clone(), None, raw).await, Err(cause) if cause.code == ErrorCode::Conflict)
+    );
+    let mut signed_out = saved_profile;
+    signed_out.member_id = None;
+    signed_out.vault_id = None;
+    profile.save(signed_out).await.unwrap();
+    let cancelled = coordinator
+        .cancel_processing(profile.clone(), started.identity.clone())
+        .await
+        .unwrap();
+    assert_eq!(cancelled.identity, before.identity);
+    assert_eq!(
+        cancelled.processing.as_ref().unwrap().request,
+        before.processing.unwrap().request
+    );
+    assert!(cancelled.processing.unwrap().cancel_requested);
+    assert!(
+        coordinator
+            .upload_ticket(&started.profile_id, &started.identity)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        coordinator
+            .wait_shutdown(Duration::from_secs(2))
             .await
             .safe_to_exit
     );

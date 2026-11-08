@@ -346,9 +346,20 @@ pub(super) fn begin(
     id: CaptureIdentity,
     format: CaptureFormat,
     observation: Option<u64>,
+    processing: Option<CaptureProcessingDeclaration>,
 ) -> Result<()> {
     if state.entries.contains_key(&key(&id)) {
         return with_entry(spool, state, &id, |_, entry| {
+            if entry
+                .manifest
+                .snapshot
+                .processing
+                .as_ref()
+                .map(|value| &value.request)
+                != processing.as_ref().map(|value| &value.request)
+            {
+                return Err(conflict("Capture processing declaration cannot change"));
+            }
             if entry.manifest.snapshot.format != format {
                 return Err(conflict("Capture audio format cannot change"));
             }
@@ -388,7 +399,13 @@ pub(super) fn begin(
         .map_err(|_| damaged())?;
     let mut entry = Entry {
         manifest: Manifest {
-            schema_version: if observation.is_some() { 2 } else { 1 },
+            schema_version: if processing.is_some() {
+                3
+            } else if observation.is_some() {
+                2
+            } else {
+                1
+            },
             snapshot: CaptureSnapshot {
                 identity: id.clone(),
                 format,
@@ -402,6 +419,7 @@ pub(super) fn begin(
                 acknowledged: None,
                 seal: None,
                 publication: None,
+                processing,
                 first_admitted_audio_observed_at_ms: observation,
             },
         },
@@ -479,6 +497,28 @@ pub(super) fn snapshot(
     })
 }
 
+pub(super) fn cancel_processing(
+    spool: &CaptureSpool,
+    state: &mut State,
+    id: &CaptureIdentity,
+) -> Result<CaptureSnapshot> {
+    with_entry(spool, state, id, |state, entry| {
+        let declaration = entry
+            .manifest
+            .snapshot
+            .processing
+            .as_mut()
+            .ok_or_else(|| conflict("This capture has no processing declaration"))?;
+        if declaration.cancel_requested {
+            confirm(&spool.root, entry)?;
+        } else {
+            declaration.cancel_requested = true;
+            persist(&spool.root, &spool.limits, state, entry, Some(spool))?;
+        }
+        Ok(entry.manifest.snapshot.clone())
+    })
+}
+
 pub(super) fn record_first_audio_observation(
     spool: &CaptureSpool,
     state: &mut State,
@@ -495,7 +535,7 @@ pub(super) fn record_first_audio_observation(
             confirm(&spool.root, entry)?;
         } else {
             entry.manifest.snapshot.first_admitted_audio_observed_at_ms = Some(ms);
-            entry.manifest.schema_version = 2;
+            entry.manifest.schema_version = entry.manifest.schema_version.max(2);
             persist(&spool.root, &spool.limits, state, entry, Some(spool))?;
         }
         Ok(entry.manifest.snapshot.clone())
@@ -1034,9 +1074,12 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
         if !matches!(
             (
                 manifest.schema_version,
-                snapshot.first_admitted_audio_observed_at_ms
+                snapshot.first_admitted_audio_observed_at_ms,
+                snapshot.processing.is_some()
             ),
-            (1, None) | (2, Some(0..=MAX_JS_SAFE_MS))
+            (1, None, false)
+                | (2, Some(0..=MAX_JS_SAFE_MS), false)
+                | (3, None | Some(0..=MAX_JS_SAFE_MS), true)
         ) || snapshot.created_at_ms > MAX_JS_SAFE_MS
             || scope_key(&snapshot.identity.scope) != candidate.scope
             || snapshot.identity.capture_id != candidate.capture
@@ -1045,6 +1088,21 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
             || snapshot.chunk_count > limits.max_chunks as u64
         {
             return Err(damaged());
+        }
+        if let Some(declaration) = &snapshot.processing {
+            hypr_loofah_protocol::validate_capture_processing_request(&declaration.request)
+                .map_err(|_| damaged())?;
+            if declaration.request.capture_fingerprint != snapshot.capture_fingerprint
+                || matches!(
+                    snapshot.identity.target,
+                    CaptureTarget::ExistingSession {
+                        expected_audio_sha256: Some(_),
+                        ..
+                    }
+                )
+            {
+                return Err(damaged());
+            }
         }
         match &snapshot.identity.target {
             CaptureTarget::ExistingSession { session_id, .. }

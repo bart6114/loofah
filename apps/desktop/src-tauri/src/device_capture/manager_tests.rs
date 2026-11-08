@@ -50,6 +50,7 @@ fn intent() -> CaptureStartIntent {
             },
         },
         format: CaptureFormat::stereo(),
+        processing: None,
     }
 }
 async fn spool() -> (tempfile::TempDir, Arc<CaptureSpool>) {
@@ -1507,4 +1508,91 @@ async fn repeated_ambiguous_observation_acknowledgments_never_promote_visible_me
     );
     root.stop(None);
     handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn explicit_processing_intent_is_durable_before_the_native_producer_is_dispatched() {
+    let _capture_test_guard = super::super::CAPTURE_TEST_LOCK.lock().await;
+    struct InspectingDriver {
+        spool: Arc<CaptureSpool>,
+        identity: CaptureIdentity,
+        expected: hypr_capture_store::capture_spool::CaptureProcessingOptions,
+        inspected: AtomicBool,
+    }
+    #[ractor::async_trait]
+    impl CaptureDriver for InspectingDriver {
+        fn ready(&self) -> bool {
+            true
+        }
+        async fn start(
+            &self,
+            _args: tauri_plugin_transcription::DeviceCaptureArgs,
+        ) -> Result<(), DeviceCaptureStartError> {
+            let snapshot = self
+                .spool
+                .resume(self.identity.clone())
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap();
+            assert_eq!(snapshot.identity, self.identity);
+            assert_eq!(snapshot.chunk_count, 0);
+            assert_eq!(snapshot.first_admitted_audio_observed_at_ms, None);
+            let declaration = snapshot.processing.unwrap();
+            assert_eq!(
+                declaration.request,
+                self.expected.request(snapshot.capture_fingerprint)
+            );
+            assert!(!declaration.cancel_requested);
+            self.inspected.store(true, Ordering::Release);
+            Err(DeviceCaptureStartError::Rejected)
+        }
+        async fn stop(&self, _key: DeviceCaptureKey) -> bool {
+            false
+        }
+    }
+    let (_temp, spool) = spool().await;
+    let mut input = intent();
+    let options = hypr_capture_store::capture_spool::CaptureProcessingOptions {
+        model: Some("cpu-model".into()),
+        languages: vec!["nl".into()],
+        keywords: vec!["Loofah".into()],
+        summary: None,
+    };
+    input.processing = Some(options.clone());
+    let driver = Arc::new(InspectingDriver {
+        spool: spool.clone(),
+        identity: input.identity.clone(),
+        expected: options,
+        inspected: AtomicBool::new(false),
+    });
+    let host = DeviceCaptureHost::with_driver(
+        spool.clone(),
+        Arc::new(Observer::default()),
+        driver.clone(),
+    );
+    let mut ticket = host.start(input.clone()).unwrap();
+    until(&mut ticket, |state| {
+        state.phase == DeviceHostPhase::NeverStarted
+    })
+    .await;
+    assert!(driver.inspected.load(Ordering::Acquire));
+    assert!(
+        spool
+            .resume(input.identity)
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .processing
+            .is_some()
+    );
+    assert!(
+        host.wait_shutdown(Duration::from_secs(2))
+            .await
+            .unwrap()
+            .safe_to_exit
+    );
 }

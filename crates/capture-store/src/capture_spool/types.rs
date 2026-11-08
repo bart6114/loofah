@@ -5,6 +5,41 @@ pub use hypr_loofah_protocol::{
     CapturePrefixReceipt, CapturePublication, CaptureScope, CaptureSeal, CaptureTarget,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureProcessingOptions {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub languages: Vec<String>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub summary: Option<hypr_loofah_protocol::CaptureProcessingSummary>,
+}
+
+impl CaptureProcessingOptions {
+    pub fn request(
+        &self,
+        capture_fingerprint: String,
+    ) -> hypr_loofah_protocol::CaptureProcessingRequest {
+        hypr_loofah_protocol::CaptureProcessingRequest {
+            capture_fingerprint,
+            model: self.model.clone(),
+            languages: self.languages.clone(),
+            keywords: self.keywords.clone(),
+            summary: self.summary.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureProcessingDeclaration {
+    pub request: hypr_loofah_protocol::CaptureProcessingRequest,
+    pub cancel_requested: bool,
+}
+
 pub struct CaptureChunk {
     pub descriptor: CaptureChunkDescriptor,
     pub bytes: Vec<u8>,
@@ -25,6 +60,8 @@ pub struct CaptureSnapshot {
     pub acknowledged: Option<CapturePrefixReceipt>,
     pub seal: Option<CaptureSeal>,
     pub publication: Option<CapturePublication>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processing: Option<CaptureProcessingDeclaration>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

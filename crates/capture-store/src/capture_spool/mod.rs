@@ -78,7 +78,7 @@ impl CaptureSpool {
         identity: CaptureIdentity,
         format: CaptureFormat,
     ) -> Result<CaptureWriter> {
-        self.begin_inner(identity, format, None).await
+        self.begin_inner(identity, format, None, None).await
     }
 
     pub async fn begin_with_observation(
@@ -88,8 +88,43 @@ impl CaptureSpool {
         first_admitted_audio_observed_at_ms: u64,
     ) -> Result<CaptureWriter> {
         validate_observation(first_admitted_audio_observed_at_ms)?;
-        self.begin_inner(identity, format, Some(first_admitted_audio_observed_at_ms))
-            .await
+        self.begin_inner(
+            identity,
+            format,
+            Some(first_admitted_audio_observed_at_ms),
+            None,
+        )
+        .await
+    }
+
+    pub async fn begin_with_processing(
+        self: &Arc<Self>,
+        identity: CaptureIdentity,
+        format: CaptureFormat,
+        processing: Option<CaptureProcessingOptions>,
+    ) -> Result<CaptureWriter> {
+        let declaration = processing.map(|options| CaptureProcessingDeclaration {
+            request: options.request(hypr_loofah_protocol::capture_fingerprint(
+                &identity, &format,
+            )),
+            cancel_requested: false,
+        });
+        if let Some(declaration) = &declaration {
+            hypr_loofah_protocol::validate_capture_processing_request(&declaration.request)
+                .map_err(invalid)?;
+            if matches!(
+                identity.target,
+                CaptureTarget::ExistingSession {
+                    expected_audio_sha256: Some(_),
+                    ..
+                }
+            ) {
+                return Err(invalid(
+                    "Capture processing does not support appending recordings",
+                ));
+            }
+        }
+        self.begin_inner(identity, format, None, declaration).await
     }
 
     async fn begin_inner(
@@ -97,12 +132,15 @@ impl CaptureSpool {
         identity: CaptureIdentity,
         format: CaptureFormat,
         observation: Option<u64>,
+        processing: Option<CaptureProcessingDeclaration>,
     ) -> Result<CaptureWriter> {
         validate_identity(&identity)?;
         validate_format(&format)?;
         let coordinate = identity.clone();
-        self.run(move |spool, state| store::begin(spool, state, coordinate, format, observation))
-            .await?;
+        self.run(move |spool, state| {
+            store::begin(spool, state, coordinate, format, observation, processing)
+        })
+        .await?;
         Ok(CaptureWriter {
             spool: self.clone(),
             identity,
@@ -184,6 +222,13 @@ impl CaptureWriter {
         let id = self.identity.clone();
         self.spool
             .run(move |spool, state| store::snapshot(spool, state, &id))
+            .await
+    }
+
+    pub async fn cancel_processing(&self) -> Result<CaptureSnapshot> {
+        let id = self.identity.clone();
+        self.spool
+            .run(move |spool, state| store::cancel_processing(spool, state, &id))
             .await
     }
 
