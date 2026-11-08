@@ -571,6 +571,18 @@ fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn validate_backup_catalog(path: &Path) -> Result<()> {
+    let invalid = || {
+        ApiError::new(
+            ErrorCode::Unavailable,
+            "Service catalog is invalid or unsupported",
+        )
+    };
+    let bytes = std::fs::read(path).map_err(|_| invalid())?;
+    let stored: Stored = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    validate_stored(&stored)
+}
+
 fn validate_stored(stored: &Stored) -> Result<()> {
     let invalid = || {
         ApiError::new(

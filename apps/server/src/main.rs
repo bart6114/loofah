@@ -1,11 +1,42 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "loofah-server", version = env!("LOOFAH_VERSION"), about = "Loofah headless backend (experimental)")]
+#[command(name = "loofah-server", version = env!("LOOFAH_VERSION"), about = "Loofah headless backend (experimental)", subcommand_negates_reqs = true, args_conflicts_with_subcommands = true)]
 struct Args {
-    #[arg(long)]
-    config: PathBuf,
+    #[arg(long, required = true)]
+    config: Option<PathBuf>,
+    #[command(subcommand)]
+    command: Option<Maintenance>,
+}
+
+#[derive(Subcommand)]
+enum Maintenance {
+    /// Snapshot stopped storage, keeping provider credentials in a separate private bundle.
+    Backup {
+        #[arg(long)]
+        storage_root: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        secrets_output: PathBuf,
+    },
+    /// Verify file digests, catalog schema and the private bundle pairing without starting a service.
+    VerifyBackup {
+        #[arg(long)]
+        snapshot: PathBuf,
+        #[arg(long)]
+        secrets: Option<PathBuf>,
+    },
+    /// Restore verified bundles to a new, nonexistent storage directory.
+    Restore {
+        #[arg(long)]
+        snapshot: PathBuf,
+        #[arg(long)]
+        secrets: Option<PathBuf>,
+        #[arg(long)]
+        storage_root: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -14,8 +45,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = Args::parse();
-    let config: loofah_server::config::Config =
-        serde_json::from_slice(&std::fs::read(args.config)?)?;
+    if let Some(command) = args.command {
+        use loofah_server::maintenance;
+        let report = match command {
+            Maintenance::Backup {
+                storage_root,
+                output,
+                secrets_output,
+            } => maintenance::backup(&storage_root, &output, &secrets_output).await?,
+            Maintenance::VerifyBackup { snapshot, secrets } => {
+                maintenance::verify(&snapshot, secrets.as_deref()).await?
+            }
+            Maintenance::Restore {
+                snapshot,
+                secrets,
+                storage_root,
+            } => maintenance::restore(&snapshot, secrets.as_deref(), &storage_root).await?,
+        };
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    let config: loofah_server::config::Config = serde_json::from_slice(&std::fs::read(
+        args.config
+            .expect("Clap requires --config without a maintenance command"),
+    )?)?;
     let service = loofah_server::service::Service::open(config).await?;
     let listener = tokio::net::TcpListener::bind(service.config.listen).await?;
     tracing::info!(address = %listener.local_addr()?, "Loofah server listening behind HTTPS termination");

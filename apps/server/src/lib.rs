@@ -4,6 +4,7 @@ pub mod auth;
 pub mod catalog;
 pub mod config;
 pub mod error;
+pub mod maintenance;
 mod media;
 pub mod processing;
 pub mod routes;

@@ -233,6 +233,85 @@ The example systemd unit still enforces `TimeoutStopSec=60`: a permanent storage
 failure can reach that external forced-stop limit. Allow more time when needed
 and check service errors before treating a backup as cleanly stopped.
 
+## Offline backup, restore and upgrades
+
+Run maintenance commands as the service account, using persistent local storage
+with working file locks, atomic rename and directory sync. Stop the service and
+wait for its process to exit before taking a snapshot. `backup` acquires the
+existing service lock and every existing vault lock; it refuses a still-running
+service or another vault owner. These commands do not load server configuration,
+contact the identity provider, load models or create a cache.
+
+Create two absent output directories under existing, private backup parents:
+
+```bash
+loofah-server backup \
+  --storage-root /var/lib/loofah \
+  --output /srv/loofah-backups/before-upgrade \
+  --secrets-output /srv/loofah-private-backups/before-upgrade
+loofah-server verify-backup \
+  --snapshot /srv/loofah-backups/before-upgrade \
+  --secrets /srv/loofah-private-backups/before-upgrade
+```
+
+The main bundle contains the catalog, entire raw vault trees and required runtime
+state, including jobs, upload/capture state and mutation receipts. This explicit
+operator backup preserves unknown attachments, dotfiles and empty directories;
+it does not make them application content. The ephemeral service lock is omitted.
+Provider credentials under `runtime/<vault>/creates/provider-credentials/` appear
+only in the separate private bundle. Both bundles use owner-only permissions.
+The private manifest contains file digests, not credential values, and binds to
+the snapshot UUID and exact main manifest hash. If credentials were present,
+verification and restore require the matching private bundle. Keep it separately
+access-controlled and encrypt it with your backup system. The main bundle still
+contains private meeting data and must also remain protected. SHA-256 checks
+detect corruption; they do not authenticate an untrusted backup source.
+
+Back up the operator configuration, environment credentials and TLS/identity
+provider deployment separately. External caches and downloaded models are not
+part of `storage_root` and can be regenerated. Do not put their directories, or
+operator environment files, inside `storage_root`. Backup copies all unknown
+storage-root files, so such misplaced files would otherwise be included.
+
+Restore into a new, nonexistent storage directory on the same filesystem as its
+staging parent:
+
+```bash
+loofah-server restore \
+  --snapshot /srv/loofah-backups/before-upgrade \
+  --secrets /srv/loofah-private-backups/before-upgrade \
+  --storage-root /var/lib/loofah-restored
+```
+
+Restore verifies complete inventories, file digests, bundle pairing and catalog
+schema before atomically publishing the new directory. Existing destinations
+are never replaced. An interruption may leave a protected
+`.loofah-maintenance-<uuid>.partial` sibling, or a completed private bundle before
+the main bundle was published. These are not live storage or complete backup
+pairs. Preserve them for diagnosis; retry to absent destinations using the intact
+original storage or verified bundles. Remove abandoned staging directories only
+after confirming no maintenance process owns them.
+
+For an upgrade, first retain the stopped snapshot and matching executable, then
+start the new executable with the intended storage and unchanged operator policy.
+Shared startup recovery runs under the exclusive vault lease before content is
+ready. The offline verifier validates backup/catalog formats; each vault's real
+startup readers validate its runtime formats when opened. Unsupported future
+runtime records remain intact and fail that vault closed. Check authenticated
+canonical reads and representative writes for each required vault, along with
+capture/job recovery, before reopening access. A rollback uses the matching old
+executable and its pre-upgrade snapshot restored into an empty directory; do not
+point an older executable at potentially upgraded runtime records. Switch the
+service configuration only after the restore succeeds and ensure its systemd
+write-path restrictions cover the selected storage/cache roots.
+
+This path rejects symbolic links, hard-linked files, special files and file names
+that are not portable UTF-8 relative paths; it never dereferences them into a
+snapshot. No external writer may modify storage during maintenance. The current
+qualification includes stopped-service restore and legacy interrupted document
+recovery fixtures; it does not establish production upgrade downtime, all prior
+executable versions, live-client reconnect or uninterrupted device recording.
+
 ## Optional CPU transcription
 
 The default executable and [Dockerfile](Dockerfile) remain notes-only builds. CPU builds use `cargo build --locked --release -p loofah-server --features cpu-transcription` after the [pinned native setup](../../.github/actions/cli_native_setup/linux.sh). The explicit Linux x64 image provisions those dependencies; build it from the repository root:
