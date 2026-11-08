@@ -20,7 +20,7 @@ mod tests;
 mod worker;
 
 pub use source::TrustedTranscriptionSource;
-pub(crate) use worker::TranscriptionWorker;
+pub use worker::TranscriptionWorker;
 
 pub type TranscriptionFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -145,47 +145,61 @@ impl VaultRuntime {
         authorizer: Arc<dyn TranscriptionAuthorizer>,
         limits: TranscriptionLimits,
     ) -> Result<(), ApplicationError> {
-        if self.transcription.is_some() || self.context.transcription.get().is_some() {
+        if self.transcription.is_some() {
             return Err(error(
                 ErrorCode::Conflict,
                 "Transcription is already configured",
             ));
         }
-        self.context.store.ensure_ready().map_err(storage)?;
-        if self.context.lease.is_none() {
+        self.transcription = Some(
+            self.context
+                .start_transcription(engine, authorizer, limits)
+                .await?,
+        );
+        Ok(())
+    }
+}
+
+impl VaultContext {
+    pub async fn start_transcription(
+        self: &Arc<Self>,
+        engine: Arc<dyn TranscriptionEngine>,
+        authorizer: Arc<dyn TranscriptionAuthorizer>,
+        limits: TranscriptionLimits,
+    ) -> Result<TranscriptionWorker, ApplicationError> {
+        if self.transcription.get().is_some() {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Transcription is already configured",
+            ));
+        }
+        self.store.ensure_ready().map_err(storage)?;
+        if self.lease.is_none() {
             return Err(unavailable());
         }
         let root = self
-            .context
             .operations
             .as_ref()
             .ok_or_else(unavailable)?
             .root
             .join("transcription-jobs");
-        let journal = ledger::Journal::open(
-            root,
-            self.context.events.clone(),
-            limits,
-            Some(self.context.clone()),
-        )
-        .await?;
+        let journal =
+            ledger::Journal::open(root, self.events.clone(), limits, Some(self.clone())).await?;
         let worker =
-            TranscriptionWorker::start(self.context.clone(), journal.clone(), engine, authorizer)
-                .await?;
+            TranscriptionWorker::start(self.clone(), journal.clone(), engine, authorizer).await?;
         let service = TranscriptionService {
             journal,
             stop: worker.stop.clone(),
             finished: worker.finished.clone(),
         };
-        if self.context.transcription.set(service).is_err() {
+        if self.transcription.set(service).is_err() {
             worker.shutdown().await?;
             return Err(error(
                 ErrorCode::Conflict,
                 "Transcription is already configured",
             ));
         }
-        self.transcription = Some(worker);
-        Ok(())
+        Ok(worker)
     }
 }
 

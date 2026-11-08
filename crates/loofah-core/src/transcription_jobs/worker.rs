@@ -21,7 +21,7 @@ impl Signals {
     }
 }
 
-pub(crate) struct TranscriptionWorker {
+pub struct TranscriptionWorker {
     pub(super) stop: CancellationToken,
     pub(super) finished: CancellationToken,
     task: Option<tokio::task::JoinHandle<Result<(), ApplicationError>>>,

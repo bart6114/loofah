@@ -1146,3 +1146,58 @@ async fn readonly_queries_and_empty_claims_do_not_wake_an_idle_worker() {
     drop(journal);
     fixture.finish().await;
 }
+
+#[tokio::test]
+async fn managed_context_starts_one_owned_worker_without_a_second_runtime_or_store() {
+    let root = tempfile::tempdir().unwrap();
+    seed(root.path()).await;
+    let runtime = VaultRuntime::open_with_changes(
+        "vault".into(),
+        &root.path().join("vault"),
+        &root.path().join("cache"),
+        &root.path().join("operations"),
+        tokio::sync::mpsc::unbounded_channel().1,
+    )
+    .await
+    .unwrap();
+    let context = runtime.context.clone();
+    let original = context.store.clone();
+    let model = Fake::new(true);
+    let auth = Auth::new();
+    let worker = context
+        .start_transcription(
+            Arc::new(model.clone()),
+            auth.clone(),
+            TranscriptionLimits::default(),
+        )
+        .await
+        .unwrap();
+    let duplicate = context
+        .start_transcription(
+            Arc::new(model.clone()),
+            auth,
+            TranscriptionLimits::default(),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(duplicate.code, ErrorCode::Conflict);
+    let job = context
+        .submit_transcription_job(MEMBER.into(), REQUEST.into(), request())
+        .await
+        .unwrap();
+    model.started().await;
+    assert!(Arc::ptr_eq(&context.store, &original));
+    assert!(!unlocked(root.path()));
+    model.release();
+    assert_eq!(
+        terminal(&context, &job.id).await.state,
+        TranscriptionJobState::Succeeded
+    );
+    worker.shutdown().await.unwrap();
+    assert!(!unlocked(root.path()));
+    drop(original);
+    drop(context);
+    runtime.shutdown().await.unwrap();
+    assert!(unlocked(root.path()));
+}
