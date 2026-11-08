@@ -15,7 +15,7 @@ use super::*;
 
 #[path = "retirement.rs"]
 mod retirement;
-pub(super) use retirement::{VerifiedSource, retire, verify_source};
+pub(super) use retirement::{VerifiedSource, declare, retire, verify_source};
 
 const MANIFEST_LIMIT: usize = 16 * 1024;
 const HEADER_LIMIT: usize = 2048;
@@ -333,7 +333,7 @@ fn with_entry<T>(
         Err(conflict("Capture identity cannot be rebound"))
     } else {
         guard(&spool.root, &entry).and_then(|()| {
-            if entry.retirement.is_some() {
+            if retirement::fenced(&entry) {
                 return Err(conflict(
                     "Capture raw source has been fenced for retirement",
                 ));
@@ -1249,6 +1249,7 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
         }
         state.entries.insert(coordinate, entry);
     }
+    retirement::validate_receipts(&state)?;
     let completed = state
         .entries
         .values()

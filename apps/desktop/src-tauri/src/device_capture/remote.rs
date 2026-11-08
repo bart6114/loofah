@@ -686,6 +686,8 @@ impl RemoteCaptureCoordinator {
                     .as_ref()
                     .map(|declaration| declaration.request.clone()),
             };
+            drop(profile.guard_generation(&generation).await?);
+            let admission = admission.declare_request(request.clone()).await?;
             let authority = DeviceRetirementHost {
                 inner: inner.clone(),
                 profile_id,

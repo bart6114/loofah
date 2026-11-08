@@ -77,6 +77,7 @@ impl RemoteClient {
         // prove ownership. Interactive login invalidates this even for ABA scopes.
         self.access_token().await?;
         let auth_generation = self.tokens.lock().await.generation;
+        drop(profile.guard_generation(&generation).await?);
         self.verify_retirement_member(&request, &cancel).await?;
         let response: hypr_loofah_protocol::CaptureIngestStatus = self
             .capture_request(

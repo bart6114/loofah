@@ -779,6 +779,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::show_devtool::<tauri::Wry>,
             device_recordings::device_recording_start::<tauri::Wry>,
             device_recordings::device_recording_cancel_processing::<tauri::Wry>,
+            device_recordings::device_recording_retire::<tauri::Wry>,
             device_recordings::device_recording_inventory::<tauri::Wry>,
             device_recordings::device_recording_recovery_inventory::<tauri::Wry>,
             device_recordings::device_recording_finish_recovery::<tauri::Wry>,

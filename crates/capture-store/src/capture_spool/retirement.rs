@@ -20,7 +20,7 @@ pub(super) struct Journal {
     serialized: Vec<u8>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct FileStamp {
     volume: u64,
     index: u64,
@@ -64,6 +64,7 @@ fn stamp(file: &File) -> Result<FileStamp> {
     ))
 }
 
+#[derive(Clone)]
 pub(in crate::capture_spool) struct VerifiedSource {
     manifest: Vec<u8>,
     journal: Option<Vec<u8>>,
@@ -86,7 +87,7 @@ pub(in crate::capture_spool) fn verify_source(
         .as_ref()
         .map_or(&entry.chunks, |journal| &journal.chunks);
     let files = exact_files(&dir, expected, entry.retirement.is_some())?;
-    if entry.retirement.is_none() && files.len() != expected.len() {
+    if !fenced(entry) && files.len() != expected.len() {
         return Err(damaged());
     }
     let mut source = Sha256::new();
@@ -102,7 +103,7 @@ pub(in crate::capture_spool) fn verify_source(
         source.update(&chunk.bytes);
         verified.insert(sequence, before);
     }
-    if entry.retirement.is_none()
+    if !fenced(entry)
         && entry
             .manifest
             .snapshot
@@ -120,6 +121,13 @@ pub(in crate::capture_spool) fn verify_source(
             .map(|journal| journal.serialized.clone()),
         files: verified,
     })
+}
+
+pub(super) fn fenced(entry: &Entry) -> bool {
+    entry
+        .retirement
+        .as_ref()
+        .is_some_and(|journal| journal.state != CaptureRetirementState::Declared)
 }
 
 pub(super) fn completed(entry: &Entry) -> bool {
@@ -341,11 +349,23 @@ pub(super) fn load(
     let mut journal: Journal = serde_json::from_slice(&serialized).map_err(|_| damaged())?;
     validate_journal(entry, &journal, limits)?;
     let files = exact_files(&candidate.directory, &journal.chunks, true)?;
+    if journal.state == CaptureRetirementState::Declared && files.len() != journal.chunks.len() {
+        return Err(damaged());
+    }
     for (sequence, path) in files {
         let chunk = read_file(&path, limits)?;
         if chunk.descriptor != journal.chunks[sequence as usize] {
             return Err(damaged());
         }
+        if journal.state == CaptureRetirementState::Declared {
+            entry.source.update(&chunk.bytes);
+        }
+    }
+    if journal.state == CaptureRetirementState::Declared {
+        if source_digest(&entry.source) != journal.request.source.source_sha256 {
+            return Err(damaged());
+        }
+        entry.chunks = journal.chunks.clone();
     }
     journal.serialized = serialized;
     entry.retirement = Some(journal);
@@ -438,6 +458,16 @@ fn retire_entry(
     authority.check_current()?;
     guard(&spool.root, entry)?;
     validate_request(entry, &request)?;
+    if !completed(entry)
+        && state
+            .entries
+            .values()
+            .filter(|entry| completed(entry))
+            .count()
+            >= MAX_RECEIPTS
+    {
+        return Err(limit());
+    }
     if entry.manifest.snapshot.processing.is_none()
         && request.processing.is_some()
         && !authority.permits_external_processing(&request)
@@ -489,6 +519,15 @@ fn retire_entry(
         authority.check_current()?;
         persist_journal(spool, state, entry)?;
     }
+    if entry
+        .retirement
+        .as_ref()
+        .is_some_and(|journal| journal.state == CaptureRetirementState::Declared)
+    {
+        entry.retirement.as_mut().ok_or_else(damaged)?.state = CaptureRetirementState::Pending;
+        authority.check_current()?;
+        persist_journal(spool, state, entry)?;
+    }
     let journal = entry.retirement.as_ref().ok_or_else(damaged)?;
     let files = exact_files(&dir, &journal.chunks, true)?;
     // Full hashes were verified under exclusive source admission before slow
@@ -534,4 +573,96 @@ fn retire_entry(
     }
     entry.chunks.clear();
     snapshot(&spool.root, entry)
+}
+
+pub(in crate::capture_spool) fn declare(
+    spool: &CaptureSpool,
+    state: &mut State,
+    request: CaptureRetirementRequest,
+    verified: &VerifiedSource,
+) -> Result<(CaptureSnapshot, VerifiedSource)> {
+    if state.entries.values().any(|entry| {
+        entry.retirement.as_ref().is_some_and(|journal| {
+            journal.request.cleanup_request_id == request.cleanup_request_id
+                && journal.request.identity.scope == request.identity.scope
+                && journal.request != request
+        })
+    }) {
+        return Err(conflict(
+            "Cleanup request already belongs to another capture",
+        ));
+    }
+    let coordinate = key(&request.identity);
+    let mut entry = state
+        .entries
+        .remove(&coordinate)
+        .ok_or_else(|| failure(ErrorCode::NotFound, "Capture not found"))?;
+    let result = (|| {
+        guard(&spool.root, &entry)?;
+        validate_request(&entry, &request)?;
+        if entry
+            .manifest
+            .snapshot
+            .processing
+            .as_ref()
+            .map(|declaration| &declaration.request)
+            != request.processing.as_ref()
+        {
+            return Err(conflict(
+                "Cleanup declaration does not match the original device processing intent",
+            ));
+        }
+        if entry.serialized != verified.manifest
+            || entry.retirement.as_ref().map(|journal| &journal.serialized)
+                != verified.journal.as_ref()
+        {
+            return Err(damaged());
+        }
+        if let Some(journal) = &entry.retirement {
+            if journal.request != request {
+                return Err(conflict("Retry the original cleanup request"));
+            }
+        } else {
+            let dir = directory(&spool.root, &request.identity);
+            for (sequence, path) in exact_files(&dir, &entry.chunks, false)? {
+                if verified.files.get(&sequence) != Some(&stamp(&private_file(&path)?)?) {
+                    return Err(damaged());
+                }
+            }
+            entry.retirement = Some(Journal {
+                schema_version: 1,
+                request,
+                state: CaptureRetirementState::Declared,
+                chunks: entry.chunks.clone(),
+                serialized: vec![],
+            });
+            persist_journal(spool, state, &mut entry)?;
+        }
+        let mut verified = verified.clone();
+        verified.journal = entry
+            .retirement
+            .as_ref()
+            .map(|journal| journal.serialized.clone());
+        Ok((snapshot(&spool.root, &entry)?, verified))
+    })();
+    if result.is_err() {
+        state.dirty = true;
+    }
+    state.entries.insert(coordinate, entry);
+    result
+}
+
+pub(super) fn validate_receipts(state: &State) -> Result<()> {
+    let mut requests = std::collections::BTreeSet::new();
+    for entry in state.entries.values() {
+        if let Some(journal) = &entry.retirement {
+            if !requests.insert((
+                scope_key(&journal.request.identity.scope),
+                journal.request.cleanup_request_id.clone(),
+            )) {
+                return Err(damaged());
+            }
+        }
+    }
+    Ok(())
 }

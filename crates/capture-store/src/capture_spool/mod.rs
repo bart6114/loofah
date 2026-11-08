@@ -69,6 +69,26 @@ impl CaptureRetirementAdmission {
         &self.snapshot
     }
 
+    /// Persist the original explicit cleanup request before contacting a server.
+    /// This does not authorize removal or automatically resume cleanup on open.
+    pub async fn declare_request(
+        mut self,
+        request: hypr_loofah_protocol::CaptureRetirementRequest,
+    ) -> Result<Self> {
+        if request.identity != self.snapshot.identity {
+            return Err(conflict("Cleanup belongs to another capture"));
+        }
+        let spool = self._spool.clone();
+        spool
+            .run(move |spool, state| {
+                let (snapshot, verified) = store::declare(spool, state, request, &self.verified)?;
+                self.snapshot = snapshot;
+                self.verified = verified;
+                Ok(self)
+            })
+            .await
+    }
+
     pub async fn retire_verified(
         self,
         request: hypr_loofah_protocol::CaptureRetirementRequest,
@@ -320,17 +340,27 @@ impl CaptureSpool {
             // Neither a dropped caller nor cancellation releases storage ownership
             // while a filesystem operation is still running.
             let _permit = permit;
-            let mut state = spool.state.lock().map_err(|_| damaged())?;
-            if state.dirty {
-                *state = store::load(&spool.root, &spool.limits)?;
-            }
-            let result = action(&spool, &mut state);
-            if result.as_ref().is_err_and(|error| {
-                error.mutation_outcome == Some(MutationOutcome::Unknown)
-                    || error.code == ErrorCode::Internal
-            }) {
-                state.dirty = true;
-            }
+            let mut action = Some(action);
+            let result = (|| {
+                let mut state = spool.state.lock().map_err(|_| damaged())?;
+                if state.dirty {
+                    *state = store::load(&spool.root, &spool.limits)?;
+                }
+                let result =
+                    action.take().expect("one admitted storage operation")(&spool, &mut state);
+                if result.as_ref().is_err_and(|error| {
+                    error.mutation_outcome == Some(MutationOutcome::Unknown)
+                        || error.code == ErrorCode::Internal
+                }) {
+                    state.dirty = true;
+                }
+                result
+            })();
+            // Publish completion only after every non-returned operation owner
+            // has released its real lease, including failed pre-action loads.
+            drop(action);
+            drop(spool);
+            drop(_permit);
             result
         })
         .await

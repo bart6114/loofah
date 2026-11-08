@@ -3004,3 +3004,95 @@ async fn retirement_rejects_changed_source_generation_after_long_independent_ver
     );
     assert_eq!(std::fs::read(path).unwrap(), changed);
 }
+
+#[tokio::test]
+async fn cleanup_request_survives_lost_remote_reply_without_authorizing_source_removal() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .declare_request(request.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        admission.snapshot().retirement.as_ref().unwrap().request,
+        request
+    );
+    assert_eq!(
+        admission.snapshot().retirement.as_ref().unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Declared
+    );
+    drop(admission);
+    drop(spool);
+    let spool = open(&root).await;
+    let writer = spool.resume(request.identity.clone()).await.unwrap();
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(4));
+    assert_eq!(writer.read_chunk(1).await.unwrap().bytes, pcm(6));
+    let pending = writer.snapshot().await.unwrap().retirement.unwrap();
+    assert_eq!(pending.request, request);
+    assert_eq!(pending.remaining_chunks, 2);
+    drop(writer);
+    let mut wrong = request.clone();
+    wrong.cleanup_request_id = uuid::Uuid::new_v4().to_string();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .declare_request(wrong)
+            .await
+            .is_err()
+    );
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .declare_request(request.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        admission
+            .retire_verified(request, VerifiedRetirement)
+            .await
+            .unwrap()
+            .retirement
+            .unwrap()
+            .state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+}
+
+#[tokio::test]
+async fn completed_spool_calls_release_actual_root_lease_without_a_retry_window() {
+    for failed in [false, true] {
+        for _ in 0..32 {
+            let temp = test_directory();
+            let root = temp.path().join("spool");
+            let spool = open(&root).await;
+            let writer = spool
+                .begin(identity(), CaptureFormat::stereo())
+                .await
+                .unwrap();
+            if failed {
+                spool
+                    .fault
+                    .store(Fault::BeforeChunkWrite as u8, Ordering::SeqCst);
+                assert!(writer.append_chunk(0, 4, pcm(4)).await.is_err());
+            } else {
+                writer.append_chunk(0, 4, pcm(4)).await.unwrap();
+            }
+            drop(writer);
+            drop(spool);
+            // A successful join is completion evidence, not a request to poll
+            // until a task's captured owner eventually disappears.
+            let reopened = CaptureSpool::open(root, CaptureSpoolLimits::default())
+                .await
+                .unwrap();
+            drop(reopened);
+        }
+    }
+}
