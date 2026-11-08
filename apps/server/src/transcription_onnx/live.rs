@@ -32,7 +32,7 @@ impl CaptureLiveControl for Control {
         pcm: &Arc<[f32]>,
     ) -> Result<CaptureLiveIngress, CaptureLiveFailure> {
         if pcm.is_empty()
-            || pcm.len() % self.channels != 0
+            || !pcm.len().is_multiple_of(self.channels)
             || pcm.len() > 16000 * self.channels
             || pcm.iter().any(|sample| !sample.is_finite())
         {
@@ -212,9 +212,14 @@ fn run(
     let operation = || -> Result<(), CaptureLiveFailure> {
         let mut sessions = LiveSession::load_verified_pair(model)
             .map_err(|_| CaptureLiveFailure::EngineUnavailable)?;
-        let mut mapper =
-            LiveTranscriptMapper::new(control.channels).ok_or(CaptureLiveFailure::InvalidOutput)?;
-        let mut starts = [0.0; 2];
+        let mut emission = Emission {
+            spec: &spec,
+            mapper: LiveTranscriptMapper::new(control.channels)
+                .ok_or(CaptureLiveFailure::InvalidOutput)?,
+            starts: [0.0; 2],
+            captions: &captions,
+            count: &mut count,
+        };
         loop {
             if control.cancelled.load(Ordering::Acquire) {
                 return Err(CaptureLiveFailure::Interrupted);
@@ -240,16 +245,7 @@ fn run(
                             .append(&mono)
                             .map_err(|_| CaptureLiveFailure::EngineFailed)?
                         {
-                            emit(
-                                &spec,
-                                physical,
-                                partial,
-                                &mut starts[physical],
-                                end,
-                                &mut mapper,
-                                &captions,
-                                &mut count,
-                            )?;
+                            emission.emit(physical, partial, end)?;
                         }
                     }
                     consumed = end;
@@ -263,19 +259,10 @@ fn run(
                 .finalize()
                 .map_err(|_| CaptureLiveFailure::EngineFailed)?
             {
-                emit(
-                    &spec,
-                    physical,
-                    partial,
-                    &mut starts[physical],
-                    consumed,
-                    &mut mapper,
-                    &captions,
-                    &mut count,
-                )?;
+                emission.emit(physical, partial, consumed)?;
             }
         }
-        let tail = mapper.flush();
+        let tail = emission.mapper.flush();
         if !tail.replaced_ids.is_empty() {
             return Err(CaptureLiveFailure::InvalidOutput);
         }
@@ -297,7 +284,7 @@ fn run(
             captions
                 .try_send(CaptureLiveCaption {
                     generation_id: spec.generation_id.clone(),
-                    sequence: count,
+                    sequence: *emission.count,
                     physical_channel: physical as u8,
                     role: spec.format.channels[physical],
                     new_words: words,
@@ -306,7 +293,7 @@ fn run(
                     languages: vec!["en".into()],
                 })
                 .map_err(|_| CaptureLiveFailure::InvalidOutput)?;
-            count += 1;
+            *emission.count += 1;
         }
         Ok(())
     };
@@ -314,66 +301,71 @@ fn run(
     (consumed, count, failure)
 }
 
-fn emit(
-    spec: &CaptureLiveEngineSpec,
-    physical: usize,
-    partial: hypr_transcribe_onnx::Partial,
-    start: &mut f64,
-    end_frame: u64,
-    mapper: &mut LiveTranscriptMapper,
-    captions: &mpsc::Sender<CaptureLiveCaption>,
-    count: &mut u64,
-) -> Result<(), CaptureLiveFailure> {
-    let end = end_frame as f64 / 16000.0;
-    let text = partial.text.split_whitespace().collect::<Vec<_>>();
-    let duration = (end - *start).max(0.0);
-    let words = text
-        .iter()
-        .enumerate()
-        .map(|(index, word)| stream::Word {
-            word: (*word).into(),
-            punctuated_word: Some((*word).into()),
-            confidence: 1.0,
-            speaker: None,
-            language: Some("en".into()),
-            start: *start + duration * index as f64 / text.len() as f64,
-            end: *start + duration * (index + 1) as f64 / text.len() as f64,
-        })
-        .collect();
-    let response = stream::StreamResponse::TranscriptResponse {
-        start: *start,
-        duration,
-        is_final: partial.is_final,
-        speech_final: partial.is_final,
-        from_finalize: false,
-        channel_index: vec![physical as i32, spec.format.channels.len() as i32],
-        metadata: stream::Metadata::default(),
-        channel: stream::Channel {
-            alternatives: vec![stream::Alternatives {
-                transcript: partial.text,
-                words,
+struct Emission<'a> {
+    spec: &'a CaptureLiveEngineSpec,
+    mapper: LiveTranscriptMapper,
+    starts: [f64; 2],
+    captions: &'a mpsc::Sender<CaptureLiveCaption>,
+    count: &'a mut u64,
+}
+impl Emission<'_> {
+    fn emit(
+        &mut self,
+        physical: usize,
+        partial: hypr_transcribe_onnx::Partial,
+        end_frame: u64,
+    ) -> Result<(), CaptureLiveFailure> {
+        let end = end_frame as f64 / 16000.0;
+        let text = partial.text.split_whitespace().collect::<Vec<_>>();
+        let duration = (end - self.starts[physical]).max(0.0);
+        let words = text
+            .iter()
+            .enumerate()
+            .map(|(index, word)| stream::Word {
+                word: (*word).into(),
+                punctuated_word: Some((*word).into()),
                 confidence: 1.0,
-                languages: vec!["en".into()],
-            }],
-        },
-    };
-    if partial.is_final {
-        *start = end;
-    }
-    if let Some(delta) = mapper.process(&response) {
-        captions
-            .try_send(CaptureLiveCaption {
-                generation_id: spec.generation_id.clone(),
-                sequence: *count,
-                physical_channel: physical as u8,
-                role: spec.format.channels[physical],
-                partials: delta.partials,
-                new_words: delta.new_words,
-                replaced_ids: delta.replaced_ids,
-                languages: vec!["en".into()],
+                speaker: None,
+                language: Some("en".into()),
+                start: self.starts[physical] + duration * index as f64 / text.len() as f64,
+                end: self.starts[physical] + duration * (index + 1) as f64 / text.len() as f64,
             })
-            .map_err(|_| CaptureLiveFailure::InvalidOutput)?;
-        *count += 1;
+            .collect();
+        let response = stream::StreamResponse::TranscriptResponse {
+            start: self.starts[physical],
+            duration,
+            is_final: partial.is_final,
+            speech_final: partial.is_final,
+            from_finalize: false,
+            channel_index: vec![physical as i32, self.spec.format.channels.len() as i32],
+            metadata: stream::Metadata::default(),
+            channel: stream::Channel {
+                alternatives: vec![stream::Alternatives {
+                    transcript: partial.text,
+                    words,
+                    confidence: 1.0,
+                    languages: vec!["en".into()],
+                }],
+            },
+        };
+        if partial.is_final {
+            self.starts[physical] = end;
+        }
+        if let Some(delta) = self.mapper.process(&response) {
+            self.captions
+                .try_send(CaptureLiveCaption {
+                    generation_id: self.spec.generation_id.clone(),
+                    sequence: *self.count,
+                    physical_channel: physical as u8,
+                    role: self.spec.format.channels[physical],
+                    partials: delta.partials,
+                    new_words: delta.new_words,
+                    replaced_ids: delta.replaced_ids,
+                    languages: vec!["en".into()],
+                })
+                .map_err(|_| CaptureLiveFailure::InvalidOutput)?;
+            *self.count += 1;
+        }
+        Ok(())
     }
-    Ok(())
 }
