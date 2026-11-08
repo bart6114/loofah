@@ -13,7 +13,7 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#. placeholder {0}: attachmentToDelete.attachmentId
+#. placeholder {0}: attachmentToDelete.filename
 #: src/session/components/note-input/attachments.tsx
 msgid "“{0}” moved to Trash"
 msgstr ""
@@ -118,7 +118,9 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#. placeholder {0}: attachment.filename
 #. placeholder {0}: file.filename
+#: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 msgid "Actions for {0}"
 msgstr ""
@@ -592,6 +594,7 @@ msgstr ""
 msgid "Could not confirm the date change. Review the saved date before trying again."
 msgstr ""
 
+#: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
 msgstr ""
@@ -655,7 +658,7 @@ msgstr ""
 msgid "Couldn't load transcript."
 msgstr ""
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachment.filename
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
 msgstr ""
@@ -1144,6 +1147,7 @@ msgstr ""
 msgid "Load current settings"
 msgstr ""
 
+#: src/session/components/note-input/attachments.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 msgid "Load more"
@@ -1311,6 +1315,10 @@ msgstr ""
 
 #: src/settings/ai/stt/select.tsx
 msgid "Models marked Live support transcription while recording. Choose when to transcribe below."
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
+msgid "More files are available"
 msgstr ""
 
 #: src/settings/general/storage/change-location.tsx
@@ -1482,7 +1490,7 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachment.filename
 #: src/session/components/note-input/attachments.tsx
 msgid "Open {0}"
 msgstr ""
@@ -1790,7 +1798,7 @@ msgstr ""
 msgid "Remove"
 msgstr ""
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachment.filename
 #. placeholder {0}: attempt.candidate.name
 #. placeholder {0}: getBaseLanguageDisplayName(code, i18n.locale)
 #: src/session/components/note-input/attachments.tsx
@@ -2758,6 +2766,10 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload audio"
+msgstr ""
+
+#: src/session/components/note-input/attachments.tsx
+msgid "Upload could not be confirmed"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/index.tsx

@@ -13,7 +13,7 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#. placeholder {0}: attachmentToDelete.attachmentId
+#. placeholder {0}: attachmentToDelete.filename
 #: src/session/components/note-input/attachments.tsx
 msgid "“{0}” moved to Trash"
 msgstr "“{0}” moved to Trash"
@@ -118,7 +118,9 @@ msgstr "Access to this vault changed. Close this panel and reload your vaults."
 msgid "Actions"
 msgstr "Actions"
 
+#. placeholder {0}: attachment.filename
 #. placeholder {0}: file.filename
+#: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 msgid "Actions for {0}"
 msgstr "Actions for {0}"
@@ -592,6 +594,7 @@ msgstr "Could not complete file action. Check your connection and try again."
 msgid "Could not confirm the date change. Review the saved date before trying again."
 msgstr "Could not confirm the date change. Review the saved date before trying again."
 
+#: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
 msgstr "Could not confirm the file action. A copy may already be in Downloads/Loofah."
@@ -655,7 +658,7 @@ msgstr "Couldn’t load debug information."
 msgid "Couldn't load transcript."
 msgstr "Couldn't load transcript."
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachment.filename
 #: src/session/components/note-input/attachments.tsx
 msgid "Couldn’t open “{0}”"
 msgstr "Couldn’t open “{0}”"
@@ -1144,6 +1147,7 @@ msgstr "LM Studio or Ollama"
 msgid "Load current settings"
 msgstr "Load current settings"
 
+#: src/session/components/note-input/attachments.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-attachments-pane.tsx
 msgid "Load more"
@@ -1312,6 +1316,10 @@ msgstr "Model downloaded"
 #: src/settings/ai/stt/select.tsx
 msgid "Models marked Live support transcription while recording. Choose when to transcribe below."
 msgstr "Models marked Live support transcription while recording. Choose when to transcribe below."
+
+#: src/session/components/note-input/attachments.tsx
+msgid "More files are available"
+msgstr "More files are available"
 
 #: src/settings/general/storage/change-location.tsx
 msgid "Move my vault"
@@ -1482,7 +1490,7 @@ msgstr "Only existing company members can join. Readers can view; editors can ch
 msgid "Open"
 msgstr "Open"
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachment.filename
 #: src/session/components/note-input/attachments.tsx
 msgid "Open {0}"
 msgstr "Open {0}"
@@ -1790,7 +1798,7 @@ msgstr "Removal could not be confirmed. Check the attachment and vault Trash bef
 msgid "Remove"
 msgstr "Remove"
 
-#. placeholder {0}: attachment.attachmentId
+#. placeholder {0}: attachment.filename
 #. placeholder {0}: attempt.candidate.name
 #. placeholder {0}: getBaseLanguageDisplayName(code, i18n.locale)
 #: src/session/components/note-input/attachments.tsx
@@ -2759,6 +2767,10 @@ msgstr "Updating…"
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload audio"
 msgstr "Upload audio"
+
+#: src/session/components/note-input/attachments.tsx
+msgid "Upload could not be confirmed"
+msgstr "Upload could not be confirmed"
 
 #: src/session/components/outer-header/overflow/index.tsx
 msgid "Upload transcript"

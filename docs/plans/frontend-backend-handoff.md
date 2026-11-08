@@ -18,14 +18,15 @@ Do not restore old stashes or cancel healthy builds/CI.
   `refactor/frontend-backend-separation`.
 - Last pushed: `09495af6fe2ec34164fd38be177b4849efe5d485`.
 - Draft PR: <https://github.com/bart6114/loofah/pull/123>.
-- New Core/CPU/HTTP source is integrated through `013580cf3` (configured capability),
-  including `0ec0d4923` (actual CPU host activation), `3ac17c716` (authenticated jobs),
-  `27c765c1e` (durable Core jobs), `13a17539f` (result binding/interrupted distinction),
-  `9d3a4a258`/`2b49e78bc` (main source/title editing), and the CPU adapter/pure prep.
-- Root startup source lives in the fixed
+- Integrated source now includes startup `0f44dadda`, active-profile save fix
+  `b80001d47`, main attachments `5b27c9855` and CPU deployment `7cd59564f`.
+- Shared batch Core/CPU/HTTP operations are integrated through `013580cf3`;
+  model-to-canonical CPU proof is from the actual configured Service on macOS.
+- Root's fixed native runner is
   `/Volumes/T7/src/loofah-separation-desktop-bootstrap`,
-  `refactor/backend-desktop-bootstrap`. SDK startup selection is `c34a62db8`;
-  the validated native/frontend cohort is committed with this handoff.
+  `refactor/backend-desktop-bootstrap`. Rebase it onto the integration head only
+  while clean and no dependent Rust build is running; it currently has equivalent
+  startup save fix `98e0e8ab2` and must skip that already-applied patch.
 
 Earlier implementation and evidence are historical sections in the main plan.
 Do not append another large chronological checkpoint there. Update its current
@@ -61,7 +62,7 @@ Checks under `/Volumes/T7/loofah-backend-build/logs/desktop-bootstrap-*`:
 - Focused startup/transport checks: 46 passed. New owned UI lint has zero warnings;
   global lint retains 86 baseline warnings, zero errors.
 - All 109 locale catalogs extracted and strictly compiled. Global formatting and
-  changed-source formatting checks passed; verify locale drift after commit.
+  changed-source checks passed; startup locale drift passed after commit.
 - Native provenance JSON records own source/executable/.d, hashes and exact tests.
   The first native attempt lacked generated Codex catalog resources; running the
   existing preparation script fixed that. Successful second build took 1m21s;
@@ -75,36 +76,55 @@ round trip pass; desktop/CLI all-target checks pass and actual binding export ha
 no contract drift. See `logs/desktop-startup-leased-save-*` for proof.
 Title-only draft previews are memory-backed, not crash/restart durable.
 
+## Latest attachment and deployment integration
+
+The actual main attachment list, upload hook, raw/output resources, image strip
+and navigation now use scoped APIs and canonical IDs. Runtime URLs and local paths
+do not determine upload success or enter new saved references. Lists are paged;
+resource/copy actions are lazy. Local offline upload and Finder/Explorer behavior
+remain available through the local adapter. Unknown replies retain the same UUID
+and staged source for explicit retry. Root reviewed callbacks/ownership and the
+combined startup/attachment run passes 188 checks across 20 files; whole desktop
+typecheck passes. Worker proof covers 142 cases and 50/150/500 ms retirement.
+
+CPU deployment adds `Dockerfile.cpu` (Ubuntu 24.04 x64), a shared pinned Linux native
+setup and precise configured-Service runtime CI. Default notes-only image/job and
+macOS setup remain unchanged. Local capability checks and 23 workflow helper tests
+pass; exact model-to-canonical execution on Linux and full standalone Docker build
+remain pending. No local Docker daemon/VM was started.
+
 ## Active agents and next dependencies
 
 Use the existing fixed trees; no new worktree per subtask.
 
 - A `frontend_distribution`: `/Volumes/T7/src/loofah-separation-document-editor-ui`.
-  Migrating main attachment presentation/resolution/upload and canonical image
-  navigation to existing scoped APIs. Owns optional adapter-only directory open.
-  No native/export/locale/bootstrap changes.
+  Main attachment commit `ea81acb64` is integrated. Next: extract the real main
+  host with an explicit existing Scope, pure listener context and captured activity
+  input; Local wrapper preserves legacy services. Unknown activity skips cleanup.
+  No remote-main activation until timeline and unsafe affordances are migrated.
 - B `backend_distribution`: `/Volumes/T7/src/loofah-separation-batch-transcription`.
-  Implementing bounded durable uploader and native RemoteCaptureCoordinator,
-  reusing existing capture host/spool. Actual lost ACK/offline/reopen/identity/hash
-  checks; no new spool format. Initial publication only existing sessions without
-  audio. Pending/append remain explicit recovery states. Root owns public commands,
-  bootstrap, subscriptions/DTO generation, UI and safe quit integration.
+  Portable uploader `15b36b838` and native coordinator source `d18e40922` are ready
+  for Root review. Portable checks passed; native fixtures are SOURCE ONLY.
+  Next: stable caller start UUID, exact bounded replay, changed declaration refusal
+  and existing-spool recovery-only behavior. Root owns command/quit/UI integration
+  and automatic empty-session cleanup guards for active/queued captures.
 - C `capture_distribution`: `/Volumes/T7/src/loofah-separation-transcription-cpu`.
-  Owns Ubuntu 24.04 CPU Docker variant, shared Linux native setup script, CI and
-  deployment README plus capability checks. Default notes-only image stays intact.
-  Local Docker daemon is unavailable; actual Linux/runtime and standalone image
-  qualification remain distinct gates.
-- Root: integration, actual contracts, startup, remaining workflows and acceptance.
+  Deployment `1f4eedaa6` is integrated. Next: internal Core/CPU live vertical slice,
+  protocol leaf, pure processor mapping and actual drain/promotion proof. Reuse
+  durable HTTPS chunks; SSE delivery/SDK will follow after its API freezes. No
+  public live capability yet; no second model pool/spool or canonical format.
+- Root: integration, timeline contract, actual bindings, public recording commands,
+  safe quit and subsequent real-main activation, remaining workflows and acceptance.
 
-Build reservations: B owns target-root for frozen portable uploader/store checks.
-C owns target-tauri for warm CPU capability-test relink after Root released it.
-Confirm explicit release before another Cargo invocation. Physical shared roots:
-`/Volumes/T7/loofah-search-build/{target-root,target-tauri}`. Keep Rust source frozen
-through its dependent build/tests. Use Root's fixed bootstrap tree for consolidated
-native checks going forward; avoid rebuilding the same integration source from a
-second absolute worktree path. Generate bindings only from the actual binary,
-with cwd `apps/desktop/src-tauri`, then oxfmt the native generated file. Keep the
-protocol exporter format unchanged.
+Both cache windows were released by B/C; Root owns target-tauri for the next
+consolidated native capture cohort. Confirm reservations before another Cargo
+invocation. Physical shared roots are
+`/Volumes/T7/loofah-search-build/{target-root,target-tauri}`. Keep source frozen
+through dependent builds. Use Root's fixed runner for native checks rather than
+compiling identical integration source from a second absolute worktree path.
+Generate native bindings with cwd `apps/desktop/src-tauri`, then oxfmt the resulting
+file from the repo root (do not pass paths containing `..`). Keep protocol export
+format unchanged.
 
 ## Hosted checks and release gates
 

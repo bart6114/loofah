@@ -128,14 +128,13 @@ login-free. The full objective remains active; no merge or release yet.
 
 The first-wave descriptions above are historical. Current allocation:
 
-- A: main attachment presentation, canonical references, scoped upload/resource
-  lifecycle and local Finder/Explorer behavior through the client adapter.
-- B: bounded background capture uploader and native coordinator, using the existing
-  durable spool/recorder. Verify lost acknowledgments, offline capture, immutable
-  destination, reopen/resume, independently hashed publication and actual drains.
-- C: Ubuntu 24.04 CPU packaging/CI, single-source native setup and configured
-  capability checks. Preserve the default notes-only image; distinguish tested
-  runtime artifacts from the standalone Docker builder qualification.
+- A: extract the actual main host and its scoped activity/service boundaries; main
+  attachments are integrated. Do not activate Remote before the remaining gates.
+- B: finish stable start UUID/recovery in the existing uploader/coordinator, then
+  HTTP/SSE and SDK live support after C freezes its internal contract.
+- C: Core/CPU live transcription over existing durable chunks, a bounded caption
+  ledger and actual drain/promotion proof. CPU deployment is integrated; Linux
+  runtime and standalone Docker builder qualification remain pending.
 - Root: saved-profile/remote-only startup, contracts and generated bindings,
   public recording commands/quit/UI integration, remaining workflows and acceptance.
 
