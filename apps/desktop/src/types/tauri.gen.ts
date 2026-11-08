@@ -3967,12 +3967,14 @@ export type MediaQuery =
   | { kind: "source"; session_id: string }
   | { kind: "list"; session_id: string | null }
   | { kind: "status"; request_id: string }
-  | { kind: "result"; request_id: string };
+  | { kind: "result"; request_id: string }
+  | { kind: "summary_status"; request_id: string };
 export type MediaReply =
   | { kind: "source"; value: MediaSessionSnapshot }
   | { kind: "list"; value: MediaRequestStatus[] }
   | { kind: "status"; value: MediaRequestStatus }
-  | { kind: "result"; value: TranscriptWithData | null };
+  | { kind: "result"; value: TranscriptWithData | null }
+  | { kind: "summary_status"; value: MediaSummaryStatus };
 export type MediaRequestStatus = {
   declaration: MediaDeclaration;
   revision: string;
@@ -3996,6 +3998,19 @@ export type MediaSubmission = {
   scope: MediaScope;
   declaration: MediaDeclaration;
   admission_revision: string | null;
+};
+export type MediaSummaryState =
+  | "pending_media"
+  | "source_bound"
+  | "skipped"
+  | "child";
+export type MediaSummaryStatus = {
+  request_id: string;
+  session_id: string;
+  state: MediaSummaryState;
+  child_request_id: string;
+  job: ProcessingJobSnapshot | null;
+  reason: string | null;
 };
 export type MediaTranscriptionOptions = { model: string; languages: string[] };
 export type MediaUploadSource = { sha256: string; size_bytes: number };

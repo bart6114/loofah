@@ -200,6 +200,24 @@ export type LocalMediaStatus = { request_id: string; session_id: string; kind: L
 
 export type Me = { member: MemberInfo; personal_vault_id: string }
 
+export type MediaDeclaration = { request_id: string; operation: MediaOperation; transcription: MediaTranscriptionOptions | null; summary: CaptureProcessingSummary | null }
+
+export type MediaOperation = { kind: "import_audio"; session_id: string | null; expected: MediaSessionSnapshot | null; filename: string; content_type: string | null; created_at: string | null; transcribe: boolean; source: MediaUploadSource } | { kind: "transcribe"; expected: LocalMediaSourceSnapshot } | { kind: "import_subtitles"; session_id: string; expected: MediaSessionSnapshot; filename: string; source: MediaUploadSource }
+
+export type MediaPhase = "receiving" | "ready" | "running" | "review" | "succeeded" | "failed" | "cancelled"
+
+export type MediaRequestStatus = { declaration: MediaDeclaration; revision: string; phase: MediaPhase; media: LocalMediaStatus | null }
+
+export type MediaSessionSnapshot = { metadata: MetadataSnapshot; transcript_revision: string; transcript_present: boolean; recording: LocalMediaSourceSnapshot | null }
+
+export type MediaSummaryState = "pending_media" | "source_bound" | "skipped" | "child"
+
+export type MediaSummaryStatus = { request_id: string; session_id: string; state: MediaSummaryState; child_request_id: string; job: ProcessingJobSnapshot | null; reason: string | null }
+
+export type MediaTranscriptionOptions = { model: string; languages: string[] }
+
+export type MediaUploadSource = { sha256: string; size_bytes: number }
+
 export type Meeting = { id: string; title: string; kind: string; status: string; created_at: string; updated_at: string; started_at: string; ended_at: string; timezone: string; language: string; tags: string[]; author: string | null; skill: string | null; note: Document | null; summaries: Document[]; action_items: ActionItem[] }
 
 export type MeetingExport = ({ id: string; title: string; kind: string; status: string; created_at: string; updated_at: string; started_at: string; ended_at: string; timezone: string; language: string; tags: string[]; author: string | null; skill: string | null; note: Document | null; summaries: Document[]; action_items: ActionItem[] }) & { transcripts: Transcript[] }

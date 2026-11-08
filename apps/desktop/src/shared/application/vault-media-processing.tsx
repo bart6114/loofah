@@ -1,12 +1,15 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { open as selectFile } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { Button } from "@hypr/ui/components/ui/button";
 
+import { deviceFileName } from "./device-attachment-source";
 import { ApplicationRequestError } from "./errors";
-import type { LocalMediaStatus, ProcessingJobState } from "./protocol.gen";
+import type { ProcessingJobState } from "./protocol.gen";
+import { mediaPending, type MediaStatus } from "./vault-client";
 import type { VaultScope } from "./vault-scope";
 
 export function VaultMediaProcessing({
@@ -45,7 +48,7 @@ export function VaultMediaProcessing({
       enabled: connected,
       staleTime: 0,
       refetchInterval: (query) =>
-        query.state.data?.some((job) => job.state === "running") ? 1000 : 15000,
+        query.state.data?.some((job) => mediaPending(job)) ? 1000 : 15000,
     },
     scope.queryClient,
   );
@@ -57,7 +60,7 @@ export function VaultMediaProcessing({
         kind,
         id,
       }: {
-        kind: "cancel" | "recover" | "copy";
+        kind: "cancel" | "recover" | "copy" | "resume";
         id: string;
       }) => {
         if (
@@ -70,6 +73,26 @@ export function VaultMediaProcessing({
         if (kind === "cancel") return scope.run(() => api.cancel(id, options));
         if (kind === "recover")
           return scope.run(() => api.recover(id, options));
+        if (kind === "resume" && api.resumeSource) {
+          const path = await selectFile({ multiple: false, directory: false });
+          if (!path) return;
+          if (!lifetime.active || scope.getSnapshot().state !== "connected")
+            return;
+          const prepared = await scope.prepareAttachmentSource({
+            kind: "path",
+            path,
+            name: deviceFileName(path),
+          });
+          try {
+            if (!lifetime.active || scope.getSnapshot().state !== "connected")
+              return;
+            return await scope.run(() =>
+              api.resumeSource!(id, prepared, options),
+            );
+          } finally {
+            await prepared.close();
+          }
+        }
         const result = await scope.run(() => api.result(id, options));
         if (
           !lifetime.active ||
@@ -104,7 +127,19 @@ export function VaultMediaProcessing({
           <p role="status">{mediaStatus(job)}</p>
           {job.error && <p>{job.error.message}</p>}
           <div className="flex flex-wrap gap-2">
-            {job.state === "running" && (
+            {job.state === "receiving" && api.resumeSource && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={disabled || !scope.client.canEdit}
+                onClick={() =>
+                  action.mutate({ kind: "resume", id: job.request_id })
+                }
+              >
+                <Trans>Choose original file to resume upload</Trans>
+              </Button>
+            )}
+            {mediaPending(job) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -141,7 +176,7 @@ export function VaultMediaProcessing({
               </>
             )}
           </div>
-          {job.state !== "running" && (
+          {!mediaPending(job) && (
             <MediaSummary
               scope={scope}
               requestId={job.request_id}
@@ -222,8 +257,12 @@ function MediaSummary({
     </>
   );
 }
-function mediaStatus(job: LocalMediaStatus) {
+function mediaStatus(job: MediaStatus) {
   switch (job.state) {
+    case "receiving":
+      return <Trans>Waiting for the original media upload</Trans>;
+    case "ready":
+      return <Trans>Media queued</Trans>;
     case "running":
       return <Trans>Processing media</Trans>;
     case "succeeded":

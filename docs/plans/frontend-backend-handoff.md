@@ -573,3 +573,32 @@ source checkpoint still requires the parent's actual Native build, exporter,
 frontend integration, and platform validation; it is not Windows qualification.
 
 Remote media SDK and Native bridge source now bind immutable declaration receipts to the original profile ID, HTTPS server, member, and vault before mutation HTTP. Existing-session audio/subtitle imports carry explicit metadata/raw-transcript/recording baselines; source bytes use a separate SHA/size checked PUT and the original opaque admission revision is persisted first. Ordinary duplicate submission only inspects status. Explicit recovery can re-declare the same saved input after authoritative NotFound; explicit source retry requires caller-selected bytes matching the original descriptor. Source readers keep original profile/client/device ownership until actual I/O drains; short account locks cover owned dispatch without blocking unrelated requests during large uploads. Login ABA, changed profile, lost replies, and receipt immutability have focused SDK regression source. NativeRemoteConnection exposes the same scoped query/submit/cancel/recover/result controls for the generic Remote media adapter; Core/server capability and summary scoping remain part of the coordinated implementation. No Cargo/platform validation was run in worker worktrees.
+
+The shared desktop export dialog now calls the scoped Native export owner for
+Local and Remote PDF/text/Markdown/Org exports, including the selected summary or
+template document. Its five focused UI cases pass, including cancellation and
+late-output refusal after closing. Native export shutdown/drain is included in
+all exit paths. The manual-media status panel exposes original-request recovery,
+cancellation and retained-output copying; six UI cases pass, including access
+loss and navigation while a result is in flight.
+
+The Remote media facade now consumes the immutable Native/SDK declaration and
+source-upload operations. Receiving and Ready remain pending, with the original
+reserved session ID. An explicit upload retry reuses the original request and
+checks the original selected bytes; ordinary repeated submission only reads
+status and never adopts fresh settings or baselines. Remote model/summary
+choices come from server policy/settings. Unavailable transcription preserves
+raw-audio import. Core/server integration and fresh combined/platform acceptance
+remain pending for this facade.
+
+The workstation's home Rust installation was discovered to contain individual
+files resolving to the historical external drive. A fresh official Rust 1.94.0
+installation now lives under the local cache's `rustup/`; `env.sh` sets both
+`RUSTUP_HOME` and `CARGO_HOME`. Helper binaries, package links, model/cache roots,
+Apple tools and their loaded libraries were checked for external-drive links.
+The new local toolchain passed the focused 20-package lane: five SDK media cases
+(including actual cancelled blocking-source drain), three Remote CLI gateway
+cases and actual Native/plugin exporters. The earlier full lane had 2,279 passing
+tests, 26 ignored tests and three failing CLI HTTP fixtures; those three now pass
+with the fixture correction. This does not substitute for a new full integrated
+run after the pending Remote Core/server and CLI media source lands.

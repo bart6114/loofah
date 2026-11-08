@@ -8,6 +8,7 @@ import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { AUDIO_IMPORT_COMPLETED_NOTIFICATION_KEY } from "./audio-import-notification";
 
 import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { mediaPending } from "~/shared/application/vault-client";
 import type { VaultScope } from "~/shared/application/vault-scope";
 import {
   type AudioImportItem,
@@ -75,8 +76,20 @@ function ItemPipeline({ item }: { item: AudioImportItem }) {
     mutationFn: async () => {
       check();
       const media = owner.scope.client.media!;
-      if (item.attempt > 0)
-        return owner.scope.run(() => media.recover(item.id));
+      if (item.attempt > 0) {
+        const status = await owner.scope.run(() => media.recover(item.id));
+        if (status.state !== "receiving" || !media.resumeSource) return status;
+        check();
+        const prepared = await owner.scope.prepareAttachmentSource(item.source);
+        try {
+          check();
+          return await owner.scope.run(() =>
+            media.resumeSource!(item.id, prepared),
+          );
+        } finally {
+          await prepared.close();
+        }
+      }
       const source = item.source;
       const prepared = await owner.scope.prepareAttachmentSource(
         source.kind === "path"
@@ -119,7 +132,7 @@ function ItemPipeline({ item }: { item: AudioImportItem }) {
         return;
       }
       useAudioImport.getState().setItemSession(item.id, status.session_id);
-      if (status.state === "running")
+      if (mediaPending(status))
         useAudioImport.getState().setItemStatus(item.id, "transcribing");
       else
         useAudioImport
@@ -175,18 +188,16 @@ function ItemPipeline({ item }: { item: AudioImportItem }) {
         owner.current() &&
         !!owner.scope.client.media &&
         !!mutation.data &&
-        mutation.data.state === "running",
+        mediaPending(mutation.data),
       retry: false,
       networkMode: "always",
       refetchInterval: (query) =>
-        query.state.data?.state === "running" || !query.state.data
-          ? 500
-          : false,
+        !query.state.data || mediaPending(query.state.data) ? 500 : false,
     },
     owner.scope.queryClient,
   );
   useEffect(() => {
-    if (!status.data || status.data.state === "running") return;
+    if (!status.data || mediaPending(status.data)) return;
     useAudioImport
       .getState()
       .finishItem(

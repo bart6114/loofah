@@ -114,6 +114,62 @@ it("same-string vault replacement never imports an old queue item into the new o
   expect(replacement.media.importAudio).not.toHaveBeenCalled();
   expect(replacement.client.prepareAttachmentSource).not.toHaveBeenCalled();
 });
+it("explicit retry resumes the original receiving request with the original selected file", async () => {
+  const f = await fixture();
+  useAudioImport
+    .getState()
+    .enqueue(
+      [{ kind: "path", name: "meeting.mp3", path: "/meeting.mp3" }],
+      f.scope,
+    );
+  const original = useAudioImport.getState().items[0].id;
+  useAudioImport.getState().finishItem(original, "Upload interrupted");
+  useAudioImport.getState().retryItem(original);
+  f.media.recover.mockResolvedValue({
+    session_id: "reserved-note",
+    state: "receiving",
+  });
+  const resumeSource = vi.fn(async () => ({
+    session_id: "reserved-note",
+    state: "succeeded",
+  }));
+  f.scope.client.media!.resumeSource = resumeSource as never;
+  render(<AudioImportWorker />, { wrapper: f.wrapper });
+  await waitFor(() =>
+    expect(useAudioImport.getState().items[0].status).toBe("done"),
+  );
+  expect(f.media.recover).toHaveBeenCalledWith(original);
+  expect(resumeSource).toHaveBeenCalledWith(
+    original,
+    expect.objectContaining({
+      input: f.prepared.input,
+      source: f.prepared.source,
+    }),
+  );
+  expect(f.media.importAudio).not.toHaveBeenCalled();
+  expect(f.prepared.close).toHaveBeenCalledOnce();
+});
+it("receiving remains pending until the original server request actually completes", async () => {
+  const f = await fixture();
+  f.media.importAudio.mockResolvedValue({
+    session_id: "reserved-note",
+    state: "receiving",
+  });
+  f.media.status.mockResolvedValue({
+    session_id: "reserved-note",
+    state: "ready",
+  });
+  useAudioImport
+    .getState()
+    .enqueue(
+      [{ kind: "path", name: "meeting.mp3", path: "/meeting.mp3" }],
+      f.scope,
+    );
+  render(<AudioImportWorker />, { wrapper: f.wrapper });
+  await waitFor(() => expect(f.media.status).toHaveBeenCalled());
+  expect(useAudioImport.getState().items[0].status).toBe("transcribing");
+  expect(useAudioImport.getState().completionAnnounced).toBe(false);
+});
 it("scope loss during browser staging closes bytes and preserves the original queue identity", async () => {
   const f = await fixture();
   const pending = deferred<typeof f.prepared>();

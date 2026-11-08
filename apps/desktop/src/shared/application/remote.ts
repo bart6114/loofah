@@ -39,6 +39,11 @@ type Reply<K extends RemoteReply["kind"]> = Extract<
   { kind: K }
 >["value"];
 
+type MediaValue<K extends MediaReply["kind"]> = Extract<
+  MediaReply,
+  { kind: K }
+>["value"];
+
 export class NativeRemoteConnection {
   private closed = false;
   private signedOut = false;
@@ -153,7 +158,7 @@ export class NativeRemoteConnection {
     query: MediaQuery,
     expected: K,
     options?: RequestOptions,
-  ): Promise<Extract<MediaReply, { kind: K }>["value"]> {
+  ): Promise<MediaValue<K>> {
     const requestId = options?.requestId ?? crypto.randomUUID();
     const reply = await this.mediaAction(requestId, options, false, async () =>
       applicationResult(
@@ -174,7 +179,7 @@ export class NativeRemoteConnection {
         current_revision: null,
         mutation_outcome: null,
       });
-    return reply.value as Extract<MediaReply, { kind: K }>["value"];
+    return reply.value as MediaValue<K>;
   }
 
   submitMedia(

@@ -105,6 +105,7 @@ import type {
   SaveProviderCredentialRequest,
 } from "./protocol.gen";
 import type { NativeRemoteConnection } from "./remote";
+import { remoteMedia } from "./remote-media";
 
 import {
   commands,
@@ -126,6 +127,12 @@ export type VaultClientEvent =
       state: ConnectionState;
       error: ApplicationError | null;
     };
+
+export type MediaStatus = Omit<LocalMediaStatus, "state"> & {
+  state: LocalMediaStatus["state"] | "receiving" | "ready";
+};
+export const mediaPending = (status: MediaStatus) =>
+  ["receiving", "ready", "running"].includes(status.state);
 
 export type VaultClient = {
   readonly scope: string;
@@ -166,24 +173,24 @@ export type VaultClient = {
         contentType?: string;
       },
       options: RequestOptions & { requestId: string },
-    ) => Promise<LocalMediaStatus>;
+    ) => Promise<MediaStatus>;
     retranscribe: (
       expected: LocalMediaSourceSnapshot,
       options: RequestOptions & { requestId: string },
-    ) => Promise<LocalMediaStatus>;
+    ) => Promise<MediaStatus>;
     importSubtitles: (
       sessionId: string,
       prepared: Pick<PreparedAttachmentUpload, "input" | "source">,
       options: RequestOptions & { requestId: string },
-    ) => Promise<LocalMediaStatus>;
+    ) => Promise<MediaStatus>;
     list: (
       sessionId: string | null,
       options?: RequestOptions,
-    ) => Promise<LocalMediaStatus[]>;
+    ) => Promise<MediaStatus[]>;
     status: (
       requestId: string,
       options?: RequestOptions,
-    ) => Promise<LocalMediaStatus>;
+    ) => Promise<MediaStatus>;
     result: (
       requestId: string,
       options?: RequestOptions,
@@ -191,11 +198,16 @@ export type VaultClient = {
     cancel: (
       requestId: string,
       options?: RequestOptions,
-    ) => Promise<LocalMediaStatus>;
+    ) => Promise<MediaStatus>;
     recover: (
       requestId: string,
       options?: RequestOptions,
-    ) => Promise<LocalMediaStatus>;
+    ) => Promise<MediaStatus>;
+    resumeSource?: (
+      requestId: string,
+      prepared: Pick<PreparedAttachmentUpload, "input" | "source">,
+      options?: RequestOptions,
+    ) => Promise<MediaStatus>;
     summaryStatus: (
       requestId: string,
       options?: RequestOptions,
@@ -1084,6 +1096,9 @@ export function connectRemoteVault(
               ),
             options,
           )
+      : undefined,
+    media: connection.info.capabilities.features.includes("media_jobs")
+      ? remoteMedia(connection, vaultId)
       : undefined,
     transcriptionJobs:
       connection.info.capabilities.features.includes(
