@@ -74,19 +74,21 @@ impl SessionStore {
             };
             drop(snapshot);
             // The reservation belongs to actual I/O, even after its caller abandons the future.
-            tokio::task::spawn_blocking(move || {
-                let staged = StagedAttachment::prepare(&directory, write).map_err(io_error)?;
-                Ok(Some(SessionAttachmentStage {
-                    staged,
-                    _reservation: reservation,
-                    store,
-                    session_id,
-                    filename,
-                    relative_directory,
-                }))
-            })
-            .await
-            .map_err(worker_error)?
+            store
+                .clone()
+                .spawn_blocking(move || {
+                    let staged = StagedAttachment::prepare(&directory, write).map_err(io_error)?;
+                    Ok(Some(SessionAttachmentStage {
+                        staged,
+                        _reservation: reservation,
+                        store,
+                        session_id,
+                        filename,
+                        relative_directory,
+                    }))
+                })
+                .await
+                .map_err(worker_error)?
         })
         .await
         .map_err(worker_error)?
@@ -120,16 +122,17 @@ impl SessionAttachmentStage {
                     "Session attachment directory changed".into(),
                 ));
             }
-            let filename = tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                let _reservation = self._reservation;
-                self.staged
-                    .publish_unique(&self.filename)
-                    .map(|(_, name)| name)
-                    .map_err(io_error)
-            })
-            .await
-            .map_err(worker_error)??;
+            let filename = store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    let _reservation = self._reservation;
+                    self.staged
+                        .publish_unique(&self.filename)
+                        .map(|(_, name)| name)
+                        .map_err(io_error)
+                })
+                .await
+                .map_err(worker_error)??;
             store.notify_attachment_changed(&session, Some(&filename));
             Ok(SavedAttachment {
                 relative_path: relative_directory.join(&filename),

@@ -423,7 +423,7 @@ impl SessionStore {
         }
 
         let session_dir = self.vault_base.join(self.session_dir(session_id).await?);
-        tokio::task::spawn_blocking(move || session_has_attachments(&session_dir))
+        self.spawn_blocking(move || session_has_attachments(&session_dir))
             .await
             .map_err(|error| StoreError::Io(format!("attachment probe task failed: {error}")))?
             .map(|has_attachments| !has_attachments)
@@ -842,7 +842,7 @@ impl SessionStore {
         relative: std::path::PathBuf,
     ) -> Option<Vec<TaskItem>> {
         let path = self.vault_base.join(relative);
-        tokio::task::spawn_blocking(move || -> Option<Vec<TaskItem>> {
+        self.spawn_blocking(move || -> Option<Vec<TaskItem>> {
             let bytes = match std::fs::read(&path) {
                 Ok(bytes) => bytes,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(Vec::new()),

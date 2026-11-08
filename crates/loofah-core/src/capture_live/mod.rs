@@ -110,12 +110,7 @@ impl VaultContext {
         let Some(operations) = &self.operations else {
             return Ok(());
         };
-        let lease = self
-            .lease
-            .as_ref()
-            .map(|lease| lease.try_clone())
-            .transpose()
-            .map_err(storage)?;
+        let lease = self.lease_pin();
         ledger::ensure_idle_unopened(
             operations.root.join("capture-live"),
             self.events.vault_id(),

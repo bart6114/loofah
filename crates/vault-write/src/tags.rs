@@ -142,7 +142,7 @@ impl SessionStore {
         let path = self.vault_base.join(paths::tags_path());
         let names = names.to_vec();
         let limit = self.content_limits.metadata_bytes;
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             use std::io::Read;
             let mut value = match std::fs::symlink_metadata(&path) {
                 Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
@@ -268,7 +268,7 @@ impl SessionStore {
     /// take the typeahead down with it — sessions keep their raw tag strings either way.
     async fn read_tags(&self) -> Result<Vec<TagItem>, StoreError> {
         let path = self.vault_base.join(paths::tags_path());
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let raw = match std::fs::read(&path) {
                 Ok(raw) => raw,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),

@@ -156,7 +156,7 @@ impl SessionStore {
         let vault = self.vault_base.clone();
         let session = session_id.to_owned();
         let target = target.clone();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let located = match &target {
                 DocumentTarget::Summary => {
                     hypr_vault_read::summary::locate_in(&vault, &dir, &session)?

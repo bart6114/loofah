@@ -47,27 +47,31 @@ impl SessionStore {
                 .vault_base
                 .join(store.session_dir_locked(&snapshot._guard, &id).await?)
                 .join("attachments");
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                let Some(metadata) = attachment_metadata(&directory)? else {
-                    return Ok(None);
-                };
-                if !metadata.is_dir() || metadata.file_type().is_symlink() {
-                    return Err(StoreError::Io(
-                        "Attachment directory is not a regular directory".into(),
-                    ));
-                }
-                let Some(file) = crate::media::open_regular_file(&directory.join(&attachment_id))?
-                else {
-                    return Ok(None);
-                };
-                Ok(Some(OpenedAttachment {
-                    file,
-                    attachment_id,
-                }))
-            })
-            .await
-            .map_err(|cause| StoreError::Io(format!("attachment read worker failed: {cause}")))?
+            store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    let Some(metadata) = attachment_metadata(&directory)? else {
+                        return Ok(None);
+                    };
+                    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                        return Err(StoreError::Io(
+                            "Attachment directory is not a regular directory".into(),
+                        ));
+                    }
+                    let Some(file) =
+                        crate::media::open_regular_file(&directory.join(&attachment_id))?
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(Some(OpenedAttachment {
+                        file,
+                        attachment_id,
+                    }))
+                })
+                .await
+                .map_err(|cause| {
+                    StoreError::Io(format!("attachment read worker failed: {cause}"))
+                })?
         })
         .await
         .map_err(|cause| StoreError::Io(format!("attachment request worker failed: {cause}")))?
@@ -89,22 +93,23 @@ impl SessionStore {
             let dir = store.session_dir_locked(&guard, &id).await?;
             let relative_dir = dir.join("attachments");
             let abs_dir = store.vault_base.join(&relative_dir);
-            let final_filename = tokio::task::spawn_blocking(move || {
-                use std::io::Write;
-                let filename = hypr_fs_sync_core::attachment::sanitize_filename(&filename)
+            let final_filename = store
+                .spawn_blocking(move || {
+                    use std::io::Write;
+                    let filename = hypr_fs_sync_core::attachment::sanitize_filename(&filename)
+                        .map_err(|cause| StoreError::Io(cause.to_string()))?;
+                    let staged = hypr_fs_sync_core::attachment::StagedAttachment::prepare(
+                        &abs_dir,
+                        |file| file.write_all(&bytes),
+                    )
                     .map_err(|cause| StoreError::Io(cause.to_string()))?;
-                let staged =
-                    hypr_fs_sync_core::attachment::StagedAttachment::prepare(&abs_dir, |file| {
-                        file.write_all(&bytes)
-                    })
-                    .map_err(|cause| StoreError::Io(cause.to_string()))?;
-                staged
-                    .publish_unique(&filename)
-                    .map(|(_, name)| name)
-                    .map_err(|cause| StoreError::Io(cause.to_string()))
-            })
-            .await
-            .map_err(|e| StoreError::Io(format!("attachment file worker failed: {e}")))??;
+                    staged
+                        .publish_unique(&filename)
+                        .map(|(_, name)| name)
+                        .map_err(|cause| StoreError::Io(cause.to_string()))
+                })
+                .await
+                .map_err(|e| StoreError::Io(format!("attachment file worker failed: {e}")))??;
             drop(guard);
             store.notify_attachment_changed(&id, Some(&final_filename));
             Ok(SavedAttachment {

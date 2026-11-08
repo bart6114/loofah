@@ -91,14 +91,16 @@ impl From<&DocumentTarget> for RecoveryTarget {
     }
 }
 
-pub(super) struct PendingDocument(PathBuf);
+pub(super) struct PendingDocument(PathBuf, SessionStore);
 
 impl PendingDocument {
     pub(super) fn path(&self) -> &Path {
         &self.0
     }
     pub(super) async fn finish(self) -> Result<(), StoreError> {
-        tokio::task::spawn_blocking(move || remove(&self.0))
+        let Self(path, store) = self;
+        store
+            .spawn_blocking(move || remove(&path))
             .await
             .map_err(join_error)?
     }
@@ -120,35 +122,36 @@ impl SessionStore {
         self.validate_document_root(root)?;
         let guard = self.lock_writes().await;
         let root = root.to_path_buf();
-        let files = tokio::task::spawn_blocking(move || {
-            if !regular_directory(&root)? {
-                return Ok(Vec::new());
-            }
-            let mut files = Vec::new();
-            for entry in std::fs::read_dir(root).map_err(io_error)? {
-                let entry = entry.map_err(io_error)?;
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if name.starts_with('.') {
-                    continue;
+        let files = self
+            .spawn_blocking(move || {
+                if !regular_directory(&root)? {
+                    return Ok(Vec::new());
                 }
-                if name.len() != 69
-                    || !name.ends_with(".json")
-                    || !name[..64].bytes().all(|b| b.is_ascii_hexdigit())
-                {
-                    return Err(StoreError::Io(
-                        "unrecognized document recovery record".into(),
-                    ));
+                let mut files = Vec::new();
+                for entry in std::fs::read_dir(root).map_err(io_error)? {
+                    let entry = entry.map_err(io_error)?;
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                    if name.len() != 69
+                        || !name.ends_with(".json")
+                        || !name[..64].bytes().all(|b| b.is_ascii_hexdigit())
+                    {
+                        return Err(StoreError::Io(
+                            "unrecognized document recovery record".into(),
+                        ));
+                    }
+                    files.push(entry.path());
+                    if files.len() > 256 {
+                        return Err(StoreError::Io("too many pending document writes".into()));
+                    }
                 }
-                files.push(entry.path());
-                if files.len() > 256 {
-                    return Err(StoreError::Io("too many pending document writes".into()));
-                }
-            }
-            Ok(files)
-        })
-        .await
-        .map_err(join_error)??;
+                Ok(files)
+            })
+            .await
+            .map_err(join_error)??;
         for path in files {
             self.recover_document_write_at_locked(&guard, &path).await?;
         }
@@ -173,7 +176,8 @@ impl SessionStore {
     ) -> Result<(), StoreError> {
         let read_path = path.to_path_buf();
         let limit = self.content_limits.recovery_bytes;
-        let intent = tokio::task::spawn_blocking(move || read(&read_path, limit))
+        let intent = self
+            .spawn_blocking(move || read(&read_path, limit))
             .await
             .map_err(join_error)??;
         let Some(intent) = intent else {
@@ -247,7 +251,7 @@ impl SessionStore {
         let current = self
             .document_snapshot_locked(guard, &intent.session_id, &target)
             .await?;
-        let pending = PendingDocument(path.to_path_buf());
+        let pending = PendingDocument(path.to_path_buf(), self.clone());
         let Some(current) = current else {
             return pending.finish().await;
         };
@@ -346,7 +350,7 @@ impl SessionStore {
                 "recording is active; generated summary recovery requires review".into(),
             ));
         }
-        let pending = PendingDocument(path.to_owned());
+        let pending = PendingDocument(path.to_owned(), self.clone());
         let Some(current) = self
             .document_snapshot_locked(guard, &intent.session_id, &target)
             .await?
@@ -436,7 +440,7 @@ impl SessionStore {
         let vault = self.vault_base.clone();
         let id = id.to_owned();
         let target = target.clone();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let paths = match target {
                 DocumentTarget::Summary => generated_summary_sync_paths(&vault, &directory, &id)?,
                 DocumentTarget::TemplateOutput { document_id } => [
@@ -568,7 +572,7 @@ impl SessionStore {
         title: &str,
         body_revision: &str,
     ) -> Result<(), StoreError> {
-        let pending = PendingDocument(path.to_owned());
+        let pending = PendingDocument(path.to_owned(), self.clone());
         let Some(current) = self
             .read_note_snapshot_locked(guard, &intent.session_id)
             .await?
@@ -781,7 +785,7 @@ impl SessionStore {
         self.validate_document_root(root)?;
         let path = intent_path(root, session_id);
         let write_path = path.clone();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let bytes =
                 serde_json::to_string(&intent).map_err(|e| StoreError::Serialize(e.to_string()))?;
             if bytes.len() > limit {
@@ -821,13 +825,13 @@ impl SessionStore {
         })
         .await
         .map_err(join_error)??;
-        Ok(PendingDocument(path))
+        Ok(PendingDocument(path, self.clone()))
     }
 
     pub(super) async fn document_tasks_hash(&self, session_id: &str) -> Result<String, StoreError> {
         let dir = self.session_dir(session_id).await?;
         let path = self.vault_base.join(paths::session_tasks_path_in(&dir));
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let raw = match std::fs::symlink_metadata(&path) {
                 Ok(meta) if !meta.is_file() => {
                     return Err(StoreError::Io("tasks is not a regular file".into()));
@@ -946,8 +950,13 @@ fn read(path: &Path, limit: usize) -> Result<Option<StoredIntent>, StoreError> {
     }
 }
 
-pub(super) async fn finish_title_intent(path: &Path) -> Result<(), StoreError> {
-    PendingDocument(path.to_owned()).finish().await
+pub(super) async fn finish_title_intent(
+    store: &SessionStore,
+    path: &Path,
+) -> Result<(), StoreError> {
+    PendingDocument(path.to_owned(), store.clone())
+        .finish()
+        .await
 }
 
 fn oversized_schema_version(path: &Path) -> Result<u32, StoreError> {

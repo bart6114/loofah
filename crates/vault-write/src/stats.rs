@@ -121,41 +121,42 @@ impl SessionStore {
         }
 
         let vault_base = self.vault_base.clone();
-        let disk = tokio::task::spawn_blocking(move || {
-            let mut years: BTreeMap<u32, VaultYearStats> = BTreeMap::new();
-            let mut recordings = 0u64;
-            let mut recording_bytes = 0u64;
+        let disk = self
+            .spawn_blocking(move || {
+                let mut years: BTreeMap<u32, VaultYearStats> = BTreeMap::new();
+                let mut recordings = 0u64;
+                let mut recording_bytes = 0u64;
 
-            for (row, dir) in rows.iter().zip(&dirs) {
-                if let Some(year) = row.year {
-                    let entry = years.entry(year).or_insert_with(|| VaultYearStats {
-                        year,
-                        ..VaultYearStats::default()
-                    });
-                    entry.sessions += 1;
-                    entry.enhanced_docs += row.enhanced_docs;
-                    entry.duration_seconds += row.duration_seconds;
-                    entry.transcript_words += row.word_count;
-                }
-
-                let Some(dir) = dir else { continue };
-
-                let audio_path = hypr_fs_sync_core::audio::path(&vault_base.join(dir));
-                if let Some(audio_path) = audio_path {
-                    recordings += 1;
-                    recording_bytes += std::fs::metadata(&audio_path)
-                        .map(|meta| meta.len())
-                        .unwrap_or(0);
+                for (row, dir) in rows.iter().zip(&dirs) {
                     if let Some(year) = row.year {
-                        years.get_mut(&year).unwrap().recordings += 1;
+                        let entry = years.entry(year).or_insert_with(|| VaultYearStats {
+                            year,
+                            ..VaultYearStats::default()
+                        });
+                        entry.sessions += 1;
+                        entry.enhanced_docs += row.enhanced_docs;
+                        entry.duration_seconds += row.duration_seconds;
+                        entry.transcript_words += row.word_count;
+                    }
+
+                    let Some(dir) = dir else { continue };
+
+                    let audio_path = hypr_fs_sync_core::audio::path(&vault_base.join(dir));
+                    if let Some(audio_path) = audio_path {
+                        recordings += 1;
+                        recording_bytes += std::fs::metadata(&audio_path)
+                            .map(|meta| meta.len())
+                            .unwrap_or(0);
+                        if let Some(year) = row.year {
+                            years.get_mut(&year).unwrap().recordings += 1;
+                        }
                     }
                 }
-            }
 
-            (years, recordings, recording_bytes)
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("stats task failed: {e}")))?;
+                (years, recordings, recording_bytes)
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("stats task failed: {e}")))?;
 
         let (years, recordings, recording_bytes) = disk;
         stats.recordings = recordings;

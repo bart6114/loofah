@@ -141,15 +141,16 @@ impl SessionStore {
                 let directory = store.vault_base.join(paths::validated_session_dir(&id)?);
                 let read_id = id.clone();
                 let limit = store.content_limits.note_read_bytes.min(MAX_MATERIAL);
-                let (documents, note) = tokio::task::spawn_blocking(move || {
-                    let documents = capture_documents(&directory, &read_id, limit)?;
-                    let used = documents.iter().map(|doc| doc.raw.len()).sum::<usize>();
-                    let note =
-                        capture_note(&directory, limit.min(MAX_MATERIAL.saturating_sub(used)));
-                    Ok::<_, StoreError>((documents, note))
-                })
-                .await
-                .map_err(worker_error)??;
+                let (documents, note) = store
+                    .spawn_blocking(move || {
+                        let documents = capture_documents(&directory, &read_id, limit)?;
+                        let used = documents.iter().map(|doc| doc.raw.len()).sum::<usize>();
+                        let note =
+                            capture_note(&directory, limit.min(MAX_MATERIAL.saturating_sub(used)));
+                        Ok::<_, StoreError>((documents, note))
+                    })
+                    .await
+                    .map_err(worker_error)??;
                 Ok(GeneratedTitlePreparation::Ready(GeneratedTitleBaseline {
                     owner: std::sync::Arc::downgrade(&store.write_lock),
                     vault: store.vault_base.clone(),
@@ -236,15 +237,16 @@ impl SessionStore {
                 let read_id = id.clone();
                 let limit = store.content_limits.note_read_bytes.min(MAX_MATERIAL);
                 let write_limit = store.content_limits.note_write_bytes.min(MAX_MATERIAL);
-                let planned = tokio::task::spawn_blocking(move || {
-                    let fresh = capture_documents(&plan_directory, &read_id, limit)?;
-                    if !same_documents(&baseline.documents, &fresh) {
-                        return Ok(None);
-                    }
-                    make_intent(baseline, title, &plan_directory, write_limit).map(Some)
-                })
-                .await
-                .map_err(worker_error)??;
+                let planned = store
+                    .spawn_blocking(move || {
+                        let fresh = capture_documents(&plan_directory, &read_id, limit)?;
+                        if !same_documents(&baseline.documents, &fresh) {
+                            return Ok(None);
+                        }
+                        make_intent(baseline, title, &plan_directory, write_limit).map(Some)
+                    })
+                    .await
+                    .map_err(worker_error)??;
                 let Some(mut intent) = planned else {
                     return Ok(GeneratedTitleOutcome::Conflict);
                 };
@@ -280,7 +282,7 @@ impl SessionStore {
     ) -> Result<(), StoreError> {
         self.finish_title_locked(guard, &mut intent, path, &mut |_| async { Ok(()) })
             .await?;
-        crate::document_operation::finish_title_intent(path).await
+        crate::document_operation::finish_title_intent(self, path).await
     }
 
     async fn finish_title_locked<C, F>(
@@ -312,21 +314,22 @@ impl SessionStore {
             };
             let path = self.vault_base.join(&directory).join(&document.path);
             let check = document.clone();
-            let current = tokio::task::spawn_blocking(move || {
-                let raw = read_file(&path, MAX_MATERIAL)?
-                    .ok_or_else(|| StoreError::Conflict("title output was deleted".into()))?;
-                let hash = crate::sha256(raw.as_bytes());
-                if hash != check.before_hash
-                    && hash != crate::sha256(check.after.as_ref().unwrap().as_bytes())
-                {
-                    return Err(StoreError::Conflict(
-                        "title output changed; recovery requires review".into(),
-                    ));
-                }
-                Ok::<_, StoreError>(raw)
-            })
-            .await
-            .map_err(worker_error)??;
+            let current = self
+                .spawn_blocking(move || {
+                    let raw = read_file(&path, MAX_MATERIAL)?
+                        .ok_or_else(|| StoreError::Conflict("title output was deleted".into()))?;
+                    let hash = crate::sha256(raw.as_bytes());
+                    if hash != check.before_hash
+                        && hash != crate::sha256(check.after.as_ref().unwrap().as_bytes())
+                    {
+                        return Err(StoreError::Conflict(
+                            "title output changed; recovery requires review".into(),
+                        ));
+                    }
+                    Ok::<_, StoreError>(raw)
+                })
+                .await
+                .map_err(worker_error)??;
             if current != *after {
                 self.write_file_locked(
                     guard,
@@ -376,7 +379,7 @@ impl SessionStore {
             intent.note = NotePlan::Skip { outcome: raw_note };
             let record = intent.clone();
             let path = intent_path.to_owned();
-            tokio::task::spawn_blocking(move || crate::operation_io::persist(&path, &record))
+            self.spawn_blocking(move || crate::operation_io::persist(&path, &record))
                 .await
                 .map_err(worker_error)??;
         }
@@ -392,7 +395,7 @@ impl SessionStore {
                 vault.join(paths::note_path_in(&directory)),
             ])
             .collect::<Vec<_>>();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             for path in paths {
                 crate::operation_io::sync_parent(&path)?;
             }
@@ -434,7 +437,7 @@ impl SessionStore {
             .join(paths::validated_session_dir(&intent.session_id)?);
         let id = intent.session_id.clone();
         let expected = intent.documents.clone();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let actual = capture_documents(&directory, &id, MAX_MATERIAL)?;
             if actual.len() != expected.len()
                 || actual
@@ -474,11 +477,13 @@ impl SessionStore {
         };
         let directory = paths::validated_session_dir(&intent.session_id)?;
         let path = self.vault_base.join(&directory);
-        let captured =
-            match tokio::task::spawn_blocking(move || capture_note(&path, MAX_MATERIAL)).await {
-                Ok(value) => value,
-                Err(_) => return Ok(RawNoteTitleOutcome::Unavailable),
-            };
+        let captured = match self
+            .spawn_blocking(move || capture_note(&path, MAX_MATERIAL))
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => return Ok(RawNoteTitleOutcome::Unavailable),
+        };
         match captured {
             CapturedNote::Ready {
                 raw,

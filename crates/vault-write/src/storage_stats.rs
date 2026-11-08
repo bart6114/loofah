@@ -49,6 +49,7 @@ impl SessionStore {
         &self,
         refresh: bool,
     ) -> Result<VaultStorageStats, StoreError> {
+        let store = self.clone();
         let requested_at = Instant::now();
         let cache = self.storage_stats.clone();
         let base = self.vault_base.clone();
@@ -61,7 +62,8 @@ impl SessionStore {
             {
                 return Ok(stats.clone());
             }
-            let stats = tokio::task::spawn_blocking(move || scan(&base, MAX_ENTRIES, SCAN_BUDGET))
+            let stats = store
+                .spawn_blocking(move || scan(&base, MAX_ENTRIES, SCAN_BUDGET))
                 .await
                 .map_err(|error| StoreError::Io(format!("storage scan failed: {error}")))??;
             *cached = Some((Instant::now(), stats.clone()));

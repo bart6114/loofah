@@ -87,7 +87,8 @@ impl SessionStore {
         tokio::spawn(async move {
             let serial = store.attachment_removals.clone().lock_owned().await;
             let read_path = path.clone();
-            let existing = tokio::task::spawn_blocking(move || read_receipt::<Receipt>(&read_path))
+            let existing = store
+                .spawn_blocking(move || read_receipt::<Receipt>(&read_path))
                 .await
                 .map_err(worker_error)??;
             if let Some(receipt) = &existing
@@ -114,32 +115,34 @@ impl SessionStore {
                 .join("attachments")
                 .join(&request.attachment);
             let fresh = existing.is_none();
-            let initial = tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                if !fresh {
-                    return Ok(None);
-                }
-                open_candidate(&source)
-            })
-            .await
-            .map_err(worker_error)??;
+            let initial = store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    if !fresh {
+                        return Ok(None);
+                    }
+                    open_candidate(&source)
+                })
+                .await
+                .map_err(worker_error)??;
             let request_hash = request.expected_sha256.clone();
-            let (initial, finished) = tokio::task::spawn_blocking(move || {
-                if let Some(file) = &initial {
-                    if file.hash()? != request_hash {
-                        return Ok((initial, Some(AttachmentRemoval::Changed)));
+            let (initial, finished) = store
+                .spawn_blocking(move || {
+                    if let Some(file) = &initial {
+                        if file.hash()? != request_hash {
+                            return Ok((initial, Some(AttachmentRemoval::Changed)));
+                        }
+                        if !file.lock_for_recheck()? {
+                            return Ok((initial, Some(AttachmentRemoval::Busy)));
+                        }
+                        if file.hash()? != request_hash {
+                            return Ok((initial, Some(AttachmentRemoval::Changed)));
+                        }
                     }
-                    if !file.lock_for_recheck()? {
-                        return Ok((initial, Some(AttachmentRemoval::Busy)));
-                    }
-                    if file.hash()? != request_hash {
-                        return Ok((initial, Some(AttachmentRemoval::Changed)));
-                    }
-                }
-                Ok::<_, StoreError>((initial, None))
-            })
-            .await
-            .map_err(worker_error)??;
+                    Ok::<_, StoreError>((initial, None))
+                })
+                .await
+                .map_err(worker_error)??;
             Ok(Some(AttachmentRemovalPlan {
                 store,
                 path,
@@ -187,102 +190,107 @@ impl AttachmentRemovalPlan {
                 .join(&self.request.session)
                 .join("attachments")
                 .join(&self.request.attachment);
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                let _serial = self._serial;
-                if let Some(result) = self.finished {
-                    return Ok(result);
-                }
-                if let Some(mut receipt) = self.existing.clone() {
-                    if receipt.schema_version != 1 {
-                        return Ok(AttachmentRemoval::Uncertain);
+            self.store
+                .clone()
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    let _serial = self._serial;
+                    if let Some(result) = self.finished {
+                        return Ok(result);
                     }
-                    let result = match receipt.state {
-                        State::Removed => AttachmentRemoval::Removed,
-                        State::Absent => AttachmentRemoval::Absent,
-                        State::Uncertain => AttachmentRemoval::Uncertain,
-                        State::Rejected => AttachmentRemoval::Rejected,
-                        State::Pending => {
-                            // Never resume an interrupted destructive action against the live name.
-                            let target = receipt.target.as_deref().ok_or_else(|| {
-                                StoreError::Io("Missing attachment trash target".into())
-                            })?;
-                            let target =
-                                validate_target(self.store.vault_base(), &self.request, target)?;
-                            if let Some(file) = open_candidate(&target)? {
-                                if file.hash()? == self.request.expected_sha256 {
-                                    receipt.state = State::Removed;
-                                    AttachmentRemoval::Removed
+                    if let Some(mut receipt) = self.existing.clone() {
+                        if receipt.schema_version != 1 {
+                            return Ok(AttachmentRemoval::Uncertain);
+                        }
+                        let result = match receipt.state {
+                            State::Removed => AttachmentRemoval::Removed,
+                            State::Absent => AttachmentRemoval::Absent,
+                            State::Uncertain => AttachmentRemoval::Uncertain,
+                            State::Rejected => AttachmentRemoval::Rejected,
+                            State::Pending => {
+                                // Never resume an interrupted destructive action against the live name.
+                                let target = receipt.target.as_deref().ok_or_else(|| {
+                                    StoreError::Io("Missing attachment trash target".into())
+                                })?;
+                                let target = validate_target(
+                                    self.store.vault_base(),
+                                    &self.request,
+                                    target,
+                                )?;
+                                if let Some(file) = open_candidate(&target)? {
+                                    if file.hash()? == self.request.expected_sha256 {
+                                        receipt.state = State::Removed;
+                                        AttachmentRemoval::Removed
+                                    } else {
+                                        receipt.state = State::Uncertain;
+                                        AttachmentRemoval::Uncertain
+                                    }
                                 } else {
                                     receipt.state = State::Uncertain;
                                     AttachmentRemoval::Uncertain
                                 }
-                            } else {
-                                receipt.state = State::Uncertain;
-                                AttachmentRemoval::Uncertain
                             }
-                        }
+                        };
+                        persist(&self.path, &receipt)?;
+                        return Ok(result);
+                    }
+                    let current = open_candidate(&source)?;
+                    let same = match (&self.initial, &current) {
+                        (None, None) => true,
+                        (Some(before), Some(after)) => before.unchanged(after)?,
+                        _ => false,
                     };
+                    if !same {
+                        return Ok(AttachmentRemoval::Changed);
+                    }
+                    let mut receipt = Receipt {
+                        schema_version: 1,
+                        request: self.request.clone(),
+                        target: None,
+                        state: State::Absent,
+                    };
+                    if current.is_none() {
+                        persist(&self.path, &receipt)?;
+                        return Ok(AttachmentRemoval::Absent);
+                    }
+                    let target = hypr_fs_sync_core::export::prepare_trash_destination(
+                        self.store.vault_base(),
+                        &source,
+                    )
+                    .map_err(fs_error)?;
+                    let relative = target
+                        .strip_prefix(self.store.vault_base())
+                        .map_err(|_| StoreError::Io("Invalid attachment trash target".into()))?;
+                    let relative = relative
+                        .components()
+                        .map(|part| {
+                            part.as_os_str().to_str().ok_or_else(|| {
+                                StoreError::Io("Invalid attachment trash name".into())
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                        .join("/");
+                    receipt.target = Some(relative);
+                    receipt.state = State::Pending;
                     persist(&self.path, &receipt)?;
-                    return Ok(result);
-                }
-                let current = open_candidate(&source)?;
-                let same = match (&self.initial, &current) {
-                    (None, None) => true,
-                    (Some(before), Some(after)) => before.unchanged(after)?,
-                    _ => false,
-                };
-                if !same {
-                    return Ok(AttachmentRemoval::Changed);
-                }
-                let mut receipt = Receipt {
-                    schema_version: 1,
-                    request: self.request.clone(),
-                    target: None,
-                    state: State::Absent,
-                };
-                if current.is_none() {
+                    if let Err(cause) = hypr_storage::fs::rename_no_replace(&source, &target) {
+                        receipt.state = State::Rejected;
+                        persist(&self.path, &receipt)?;
+                        return Err(io_error(cause));
+                    }
+                    self.store.notify_attachment_changed(
+                        &self.request.session,
+                        Some(&self.request.attachment),
+                    );
+                    sync_parent(&source)?;
+                    sync_parent(&target)?;
+                    after_move()?;
+                    receipt.state = State::Removed;
                     persist(&self.path, &receipt)?;
-                    return Ok(AttachmentRemoval::Absent);
-                }
-                let target = hypr_fs_sync_core::export::prepare_trash_destination(
-                    self.store.vault_base(),
-                    &source,
-                )
-                .map_err(fs_error)?;
-                let relative = target
-                    .strip_prefix(self.store.vault_base())
-                    .map_err(|_| StoreError::Io("Invalid attachment trash target".into()))?;
-                let relative = relative
-                    .components()
-                    .map(|part| {
-                        part.as_os_str()
-                            .to_str()
-                            .ok_or_else(|| StoreError::Io("Invalid attachment trash name".into()))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .join("/");
-                receipt.target = Some(relative);
-                receipt.state = State::Pending;
-                persist(&self.path, &receipt)?;
-                if let Err(cause) = hypr_storage::fs::rename_no_replace(&source, &target) {
-                    receipt.state = State::Rejected;
-                    persist(&self.path, &receipt)?;
-                    return Err(io_error(cause));
-                }
-                self.store.notify_attachment_changed(
-                    &self.request.session,
-                    Some(&self.request.attachment),
-                );
-                sync_parent(&source)?;
-                sync_parent(&target)?;
-                after_move()?;
-                receipt.state = State::Removed;
-                persist(&self.path, &receipt)?;
-                Ok(AttachmentRemoval::Removed)
-            })
-            .await
-            .map_err(worker_error)?
+                    Ok(AttachmentRemoval::Removed)
+                })
+                .await
+                .map_err(worker_error)?
         })
         .await
         .map_err(worker_error)?

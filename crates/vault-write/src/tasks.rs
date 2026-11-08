@@ -212,11 +212,13 @@ impl SessionStore {
         validate_session_id(session_id)?;
         let dir = self.session_dir(session_id).await?;
         let vault = self.vault_base.clone();
-        let mut tasks = tokio::task::spawn_blocking(move || {
-            hypr_vault_read::tasks::read_session_tasks_in(&vault, &dir).map_err(StoreError::from)
-        })
-        .await
-        .map_err(|cause| StoreError::Io(cause.to_string()))??;
+        let mut tasks = self
+            .spawn_blocking(move || {
+                hypr_vault_read::tasks::read_session_tasks_in(&vault, &dir)
+                    .map_err(StoreError::from)
+            })
+            .await
+            .map_err(|cause| StoreError::Io(cause.to_string()))??;
         sort_tasks(&mut tasks);
         Ok(tasks)
     }
@@ -241,11 +243,11 @@ impl SessionStore {
         content: &serde_json::Value,
     ) -> Result<Vec<TaskItem>, StoreError> {
         let markdown = previous_markdown.to_owned();
-        let previous =
-            tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
-                .await
-                .map_err(|error| StoreError::Io(error.to_string()))?
-                .map_err(StoreError::Serialize)?;
+        let previous = self
+            .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+            .await
+            .map_err(|error| StoreError::Io(error.to_string()))?
+            .map_err(StoreError::Serialize)?;
         self.prepare_content_tasks(session_id, source_type, source_id, content, Some(&previous))
             .await
     }
@@ -564,17 +566,18 @@ impl SessionStore {
 
                 let vault_base = self.vault_base.clone();
                 let doc_id = source_id.to_string();
-                let found = tokio::task::spawn_blocking(move || -> Option<String> {
-                    let discovery = hypr_vault_read::discover_sessions(&vault_base).ok()?;
-                    discovery.sessions.into_iter().find_map(|(location, _)| {
-                        vault_base
-                            .join(paths::enhanced_doc_path_in(&location.relative_dir, &doc_id))
-                            .is_file()
-                            .then_some(location.id)
+                let found = self
+                    .spawn_blocking(move || -> Option<String> {
+                        let discovery = hypr_vault_read::discover_sessions(&vault_base).ok()?;
+                        discovery.sessions.into_iter().find_map(|(location, _)| {
+                            vault_base
+                                .join(paths::enhanced_doc_path_in(&location.relative_dir, &doc_id))
+                                .is_file()
+                                .then_some(location.id)
+                        })
                     })
-                })
-                .await
-                .map_err(|e| StoreError::Io(format!("task join error: {e}")))?;
+                    .await
+                    .map_err(|e| StoreError::Io(format!("task join error: {e}")))?;
 
                 found.map(TaskScope::Session).ok_or_else(|| {
                     StoreError::Io(format!(
@@ -626,7 +629,7 @@ impl SessionStore {
             let vault = self.vault_base.clone();
             let dir = self.session_dir(id).await?;
             let session_id = id.to_owned();
-            tokio::task::spawn_blocking(move || {
+            self.spawn_blocking(move || {
                 hypr_vault_read::summary::locate_in(&vault, &dir, &session_id)
                     .map(|summary| summary.and_then(|s| s.legacy_id))
             })
@@ -663,7 +666,7 @@ impl SessionStore {
 
     async fn read_tasks_at(&self, scope: &TaskScope) -> Result<Vec<TaskItem>, StoreError> {
         let path = self.vault_base.join(self.task_scope_path(scope).await?);
-        tokio::task::spawn_blocking(move || -> Result<Vec<TaskItem>, StoreError> {
+        self.spawn_blocking(move || -> Result<Vec<TaskItem>, StoreError> {
             let raw = match std::fs::read(&path) {
                 Ok(raw) => raw,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -703,7 +706,7 @@ impl SessionStore {
     /// the vault-root file. Cheap because sessions without tasks have no file at all.
     async fn scan_task_scopes(&self) -> Result<Vec<TaskScope>, StoreError> {
         let vault_base = self.vault_base.clone();
-        tokio::task::spawn_blocking(move || -> Result<Vec<TaskScope>, StoreError> {
+        self.spawn_blocking(move || -> Result<Vec<TaskScope>, StoreError> {
             let mut scopes = Vec::new();
             if vault_base.join(paths::vault_tasks_path()).is_file() {
                 scopes.push(TaskScope::Vault);

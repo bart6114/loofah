@@ -157,7 +157,7 @@ impl SessionStore {
         let path = self.vault_base.join(paths::meta_path_in(&directory));
         let meta = meta.clone();
         let limit = self.content_limits.metadata_bytes;
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let mut value = read_json(&path, limit)?
                 .ok_or_else(|| StoreError::Io("Session metadata disappeared".into()))?;
             let object = value.as_object_mut().ok_or_else(|| {
@@ -205,7 +205,7 @@ impl SessionStore {
         let path = self.vault_base.join(paths::tags_path());
         let name = name.to_owned();
         let limit = self.content_limits.metadata_bytes;
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let mut value =
                 read_json(&path, limit)?.unwrap_or_else(|| serde_json::json!({"tags":[]}));
             let object = value

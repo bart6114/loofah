@@ -173,7 +173,7 @@ async fn cancelled_tag_writes_keep_the_context_and_lease_until_the_owned_storage
             .write(true)
             .open(&lock_path)
             .unwrap();
-        Arc::get_mut(&mut context).unwrap().lease = Some(lease);
+        Arc::get_mut(&mut context).unwrap().lease = Some(lease.into());
         let blocked = context.store.lock_snapshot().await;
         let lifetime = Arc::downgrade(&context);
         let caller = context.clone();

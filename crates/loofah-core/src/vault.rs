@@ -20,7 +20,7 @@ pub struct VaultContext {
     pub events: EventHub,
     capture_ingestion: std::sync::OnceLock<capture_ingest::CaptureIngestion>,
     pub(crate) recording_publications: capture_ingest::publication::PublicationGates,
-    pub(crate) lease: Option<std::fs::File>,
+    pub(crate) lease: Option<Arc<std::fs::File>>,
     pub(crate) operations: Option<crate::operations::SessionOperations>,
     pub(crate) lifecycle_admission: crate::session_lifecycle_gate::SessionLifecycleGates,
     pub(crate) media_readers: Arc<tokio::sync::Semaphore>,
@@ -57,6 +57,32 @@ impl VaultContext {
             transcription: std::sync::OnceLock::new(),
             capture_live: std::sync::OnceLock::new(),
         }
+    }
+
+    pub fn with_vault_lease(
+        mut self,
+        lease: hypr_storage::vault::VaultLease,
+    ) -> Result<Self, ApplicationError> {
+        let pin = lease.pin();
+        if self
+            .lease
+            .as_ref()
+            .is_some_and(|current| !Arc::ptr_eq(current, &pin))
+        {
+            return Err(error(
+                ErrorCode::Conflict,
+                "Context already has a different vault owner",
+            ));
+        }
+        self.store
+            .pin_vault_lease(&lease)
+            .map_err(|cause| storage_error(cause, false))?;
+        self.lease = Some(pin);
+        Ok(self)
+    }
+
+    pub(crate) fn lease_pin(&self) -> Option<Arc<std::fs::File>> {
+        self.lease.clone()
     }
 
     pub(crate) fn validate(&self, session_id: &str) -> Result<(), ApplicationError> {
@@ -340,5 +366,64 @@ mod tests {
             .await;
         assert_eq!(result.unwrap_err().code, ErrorCode::Unavailable);
         assert_eq!(context.read_note("note").await.unwrap(), before);
+    }
+}
+
+#[cfg(test)]
+mod lease_tests {
+    use super::*;
+    use hypr_storage::vault::{LeaseAttempt, VaultLease};
+
+    fn acquire(path: &std::path::Path) -> VaultLease {
+        match VaultLease::try_acquire_existing(path).unwrap() {
+            LeaseAttempt::Acquired(lease) => lease,
+            LeaseAttempt::Busy => panic!("unexpected owner"),
+        }
+    }
+
+    #[test]
+    fn context_and_legacy_store_clones_share_the_original_descriptor() {
+        let root = tempfile::tempdir().unwrap();
+        let lease = acquire(root.path());
+        let pin = lease.pin();
+        let original = Arc::downgrade(&pin);
+        let store = Arc::new(SessionStore::new(root.path().into()));
+        let legacy = store.as_ref().clone();
+        let context = VaultContext::new(
+            "vault".into(),
+            store,
+            StartupState::new(None),
+            Arc::new(ConfigState::load_or_default(root.path())),
+            Arc::new(SearchService::default()),
+        )
+        .with_vault_lease(lease)
+        .unwrap();
+        assert!(Arc::ptr_eq(&context.lease_pin().unwrap(), &pin));
+        drop(pin);
+        drop(context);
+        assert!(original.upgrade().is_some());
+        assert!(matches!(
+            VaultLease::try_acquire_existing(root.path()).unwrap(),
+            LeaseAttempt::Busy
+        ));
+        drop(legacy);
+        assert!(original.upgrade().is_none());
+        drop(acquire(root.path()));
+    }
+
+    #[test]
+    fn context_rejects_a_proof_for_another_canonical_vault() {
+        let root = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(root.path().into()));
+        let context = VaultContext::new(
+            "vault".into(),
+            store,
+            StartupState::new(None),
+            Arc::new(ConfigState::load_or_default(root.path())),
+            Arc::new(SearchService::default()),
+        );
+        assert!(context.with_vault_lease(acquire(other.path())).is_err());
+        drop(acquire(root.path()));
     }
 }

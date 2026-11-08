@@ -120,12 +120,14 @@ impl SessionStore {
             // session audio lock while retaining this directory snapshot.
             let snapshot = store.lock_snapshot().await;
             store.ensure_ready()?;
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                scan(&operations, &vault, limits, store.write_lock.clone())
-            })
-            .await
-            .map_err(io::worker_error)?
+            store
+                .clone()
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    scan(&operations, &vault, limits, store.write_lock.clone())
+                })
+                .await
+                .map_err(io::worker_error)?
         })
         .await
         .map_err(io::worker_error)?
@@ -152,7 +154,8 @@ impl SessionStore {
         let operations = operations.to_path_buf();
         tokio::spawn(async move {
             let root = operations.clone();
-            let resolved = tokio::task::spawn_blocking(move || checked_root(&root))
+            let resolved = store
+                .spawn_blocking(move || checked_root(&root))
                 .await
                 .map_err(io::worker_error)??;
             if resolved.as_ref() != Some(&pending.operations)

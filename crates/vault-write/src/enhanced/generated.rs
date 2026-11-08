@@ -81,7 +81,8 @@ impl SessionStore {
             ));
         }
         let parse = markdown.clone();
-        let content = tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
+        let content = self
+            .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
             .await
             .map_err(|cause| StoreError::Io(cause.to_string()))?
             .map_err(StoreError::Serialize)?;
@@ -122,22 +123,23 @@ impl SessionStore {
                     let preparation_id = id.clone();
                     let original = document.clone();
                     let replacement = markdown.clone();
-                    let bytes = tokio::task::spawn_blocking(move || {
-                        let raw = read_template(&raw_path, limit)?;
-                        if crate::document_revision::revision(
-                            &preparation_id,
-                            &preparation_target,
-                            Some(raw.as_bytes()),
-                        )? != expected
-                        {
-                            return Err(StoreError::Conflict(
-                                "template output changed during preparation".into(),
-                            ));
-                        }
-                        Ok(replace_body(&raw, &original, &replacement)?.into_bytes())
-                    })
-                    .await
-                    .map_err(|cause| StoreError::Io(cause.to_string()))??;
+                    let bytes = store
+                        .spawn_blocking(move || {
+                            let raw = read_template(&raw_path, limit)?;
+                            if crate::document_revision::revision(
+                                &preparation_id,
+                                &preparation_target,
+                                Some(raw.as_bytes()),
+                            )? != expected
+                            {
+                                return Err(StoreError::Conflict(
+                                    "template output changed during preparation".into(),
+                                ));
+                            }
+                            Ok(replace_body(&raw, &original, &replacement)?.into_bytes())
+                        })
+                        .await
+                        .map_err(|cause| StoreError::Io(cause.to_string()))??;
                     let before_tasks = store.document_tasks_hash(&id).await?;
                     let mut meta = store
                         .metadata_snapshot_locked(guard, &id)

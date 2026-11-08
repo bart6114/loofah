@@ -42,7 +42,7 @@ impl SessionStore {
         let excluded = excluded.to_vec();
         let registry = self.list_tags().await?;
         let store = self.clone();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             store.ensure_ready()?;
             let index = store.index.read().unwrap();
             let candidates = registry.iter().map(|tag| tag.name.as_str()).chain(

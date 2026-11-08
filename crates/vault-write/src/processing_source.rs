@@ -86,63 +86,65 @@ impl SessionStore {
                     let vault = store.vault_base.clone();
                     let directory = store.session_dir_locked(&snapshot._guard, &id).await?;
                     let meta = metadata.meta;
-                    tokio::task::spawn_blocking(move || {
-                        let raw = bounded_file(
-                            &vault.join(crate::paths::transcript_path_in(&directory)),
-                            limits.transcript_bytes,
-                        )?;
-                        let people = bounded_file(
-                            &vault.join(crate::paths::people_path()),
-                            limits.registry_bytes,
-                        )?;
-                        let tags = bounded_file(
-                            &vault.join(crate::paths::tags_path()),
-                            limits.registry_bytes,
-                        )?;
-                        // Decoding a large transcript must not delay interactive writes or recording flushes.
-                        drop(snapshot);
-                        let mut transcripts = match raw {
-                            Some(raw) => {
-                                serde_json::from_slice::<TranscriptJson>(&raw)
-                                    .map_err(|_| {
-                                        StoreError::Serialize(
-                                            "Cannot parse processing transcript".into(),
-                                        )
-                                    })?
-                                    .transcripts
-                            }
-                            None => Vec::new(),
-                        };
-                        crate::index::sort_transcripts(&mut transcripts);
-                        let mut people = people
-                            .and_then(|raw| {
-                                serde_json::from_slice::<crate::people::PeopleFile>(&raw).ok()
-                            })
-                            .map(|file| file.people)
-                            .unwrap_or_default();
-                        people.sort_by(|a, b| {
-                            a.name
-                                .to_lowercase()
-                                .cmp(&b.name.to_lowercase())
-                                .then_with(|| a.id.cmp(&b.id))
-                        });
-                        let tags = tags
-                            .and_then(|raw| {
-                                serde_json::from_slice::<crate::tags::TagsFile>(&raw).ok()
-                            })
-                            .map(|file| file.tags)
-                            .unwrap_or_default();
-                        let tag_context = store.tag_context_from_meta(&meta, tags);
-                        Ok(Some(ProcessingSource {
-                            meta,
-                            note_markdown: note.markdown,
-                            transcripts,
-                            people,
-                            tag_context,
-                        }))
-                    })
-                    .await
-                    .map_err(|_| StoreError::Io("Processing source reader stopped".into()))?
+                    store
+                        .clone()
+                        .spawn_blocking(move || {
+                            let raw = bounded_file(
+                                &vault.join(crate::paths::transcript_path_in(&directory)),
+                                limits.transcript_bytes,
+                            )?;
+                            let people = bounded_file(
+                                &vault.join(crate::paths::people_path()),
+                                limits.registry_bytes,
+                            )?;
+                            let tags = bounded_file(
+                                &vault.join(crate::paths::tags_path()),
+                                limits.registry_bytes,
+                            )?;
+                            // Decoding a large transcript must not delay interactive writes or recording flushes.
+                            drop(snapshot);
+                            let mut transcripts = match raw {
+                                Some(raw) => {
+                                    serde_json::from_slice::<TranscriptJson>(&raw)
+                                        .map_err(|_| {
+                                            StoreError::Serialize(
+                                                "Cannot parse processing transcript".into(),
+                                            )
+                                        })?
+                                        .transcripts
+                                }
+                                None => Vec::new(),
+                            };
+                            crate::index::sort_transcripts(&mut transcripts);
+                            let mut people = people
+                                .and_then(|raw| {
+                                    serde_json::from_slice::<crate::people::PeopleFile>(&raw).ok()
+                                })
+                                .map(|file| file.people)
+                                .unwrap_or_default();
+                            people.sort_by(|a, b| {
+                                a.name
+                                    .to_lowercase()
+                                    .cmp(&b.name.to_lowercase())
+                                    .then_with(|| a.id.cmp(&b.id))
+                            });
+                            let tags = tags
+                                .and_then(|raw| {
+                                    serde_json::from_slice::<crate::tags::TagsFile>(&raw).ok()
+                                })
+                                .map(|file| file.tags)
+                                .unwrap_or_default();
+                            let tag_context = store.tag_context_from_meta(&meta, tags);
+                            Ok(Some(ProcessingSource {
+                                meta,
+                                note_markdown: note.markdown,
+                                transcripts,
+                                people,
+                                tag_context,
+                            }))
+                        })
+                        .await
+                        .map_err(|_| StoreError::Io("Processing source reader stopped".into()))?
                 },
             )
             .await

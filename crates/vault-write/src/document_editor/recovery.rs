@@ -117,7 +117,7 @@ pub(crate) async fn recover(
     if current.snapshot.document.revision == record.after_document {
         finish(store, guard, path, record).await.map(|_| ())
     } else if before(record, &current) {
-        crate::document_operation::finish_title_intent(path).await
+        crate::document_operation::finish_title_intent(store, path).await
     } else {
         Err(StoreError::Conflict(
             "Editor files diverged; recovery requires review".into(),
@@ -221,18 +221,19 @@ pub(super) async fn finish(
             .vault_base
             .join(crate::paths::session_tasks_path_in(&directory)),
     ];
-    tokio::task::spawn_blocking(move || {
-        for path in paths {
-            crate::operation_io::sync_parent(&path)?;
-        }
-        Ok::<_, StoreError>(())
-    })
-    .await
-    .map_err(|error| StoreError::Io(error.to_string()))??;
+    store
+        .spawn_blocking(move || {
+            for path in paths {
+                crate::operation_io::sync_parent(&path)?;
+            }
+            Ok::<_, StoreError>(())
+        })
+        .await
+        .map_err(|error| StoreError::Io(error.to_string()))??;
     store.index_editor(&record.session_id, &after);
     #[cfg(test)]
     super::tests::checkpoint("readback");
-    crate::document_operation::finish_title_intent(path).await?;
+    crate::document_operation::finish_title_intent(store, path).await?;
     #[cfg(test)]
     super::tests::checkpoint("removed");
     Ok(after.snapshot)

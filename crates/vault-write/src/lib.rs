@@ -28,6 +28,7 @@ mod metadata_revision;
 pub mod migrate;
 mod note_revision;
 mod operation_io;
+mod ownership;
 pub mod paths;
 pub mod people;
 pub mod processing_source;
@@ -75,6 +76,7 @@ pub use transcript::TranscriptDelta;
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     vault_base: PathBuf,
+    vault_lease: Arc<std::sync::OnceLock<Arc<std::fs::File>>>,
     content_limits: ContentLimits,
     journal: Arc<journal::WriteJournal>,
     rebuild_lock: Arc<tokio::sync::Mutex<Option<(u64, Result<RebuildReport, StoreError>)>>>,
@@ -235,6 +237,7 @@ impl SessionStore {
         let (index_changes_tx, index_changes_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             vault_base,
+            vault_lease: Default::default(),
             content_limits,
             journal: Arc::new(journal::WriteJournal::new()),
             rebuild_lock: Arc::new(tokio::sync::Mutex::new(None)),
@@ -340,20 +343,23 @@ impl SessionStore {
         let journal = self.journal.clone();
         let journal_relative = relative_str.clone();
 
-        let hash = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&parent_path)
-                .map_err(|e| StoreError::Io(format!("failed to create parent directory: {}", e)))?;
+        let hash = self
+            .spawn_blocking(move || {
+                std::fs::create_dir_all(&parent_path).map_err(|e| {
+                    StoreError::Io(format!("failed to create parent directory: {}", e))
+                })?;
 
-            trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
+                trash_foreign_bytes(&journal, &vault_base, &abs_path, &journal_relative, &bytes)?;
 
-            let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
-            hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes)
-                .map_err(|e| StoreError::Io(format!("failed to write file atomically: {}", e)))?;
+                let tmp_path = hypr_fs_sync_core::export::tmp_sibling_path(&abs_path);
+                hypr_storage::fs::write_staged_file(&abs_path, &tmp_path, &bytes).map_err(|e| {
+                    StoreError::Io(format!("failed to write file atomically: {}", e))
+                })?;
 
-            Ok::<String, StoreError>(sha256(&bytes))
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
+                Ok::<String, StoreError>(sha256(&bytes))
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
 
         self.journal.record(&relative_str, &hash);
 

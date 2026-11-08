@@ -370,7 +370,7 @@ impl SessionStore {
             let vault_base = self.vault_base.clone();
             let session_dir = self.session_dir_locked(&guard, session_id).await?;
             let relative = paths::transcript_path_in(&session_dir);
-            tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+            self.spawn_blocking(move || -> Result<(), StoreError> {
                 let abs = vault_base.join(relative);
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs)
                     .map(|_| ())
@@ -644,7 +644,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let relative = paths::transcript_path_in(&self.session_dir(session_id).await?);
 
-        tokio::task::spawn_blocking(move || -> Result<TranscriptJson, StoreError> {
+        self.spawn_blocking(move || -> Result<TranscriptJson, StoreError> {
             let path = vault_base.join(&relative);
 
             // Attempt-then-match, not exists()-then-read: see read_meta's comment in
@@ -684,7 +684,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let relative = paths::transcript_path_in(&self.session_dir(session_id).await?);
 
-        tokio::task::spawn_blocking(move || -> Result<TranscriptSummary, StoreError> {
+        self.spawn_blocking(move || -> Result<TranscriptSummary, StoreError> {
             let path = vault_base.join(&relative);
             let bytes = match std::fs::read(&path) {
                 Ok(bytes) => bytes,

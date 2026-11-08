@@ -114,7 +114,7 @@ impl SessionStore {
                 .ensure_ready()
                 .map_err(SessionCleanupError::Rejected)?;
             // Completed decisions are historical, even if the session was restored or is now busy.
-            if let Some(receipt) = read(&receipt_path).await? {
+            if let Some(receipt) = read(&store, &receipt_path).await? {
                 validate_receipt(&receipt, &binding)?;
                 if let State::Completed { outcome } = receipt.state {
                     return Ok(outcome);
@@ -138,7 +138,7 @@ impl SessionStore {
             store
                 .ensure_ready()
                 .map_err(SessionCleanupError::Rejected)?;
-            if let Some(receipt) = read(&receipt_path).await? {
+            if let Some(receipt) = read(&store, &receipt_path).await? {
                 validate_receipt(&receipt, &binding)?;
                 return store
                     .recover_cleanup(&snapshot, receipt, &receipt_path)
@@ -155,7 +155,7 @@ impl SessionStore {
                         binding,
                         state: State::Completed { outcome },
                     };
-                    persist(&receipt_path, &receipt)
+                    persist(&store, &receipt_path, &receipt)
                         .await
                         .map_err(SessionCleanupError::Rejected)?;
                     return Ok(outcome);
@@ -170,16 +170,17 @@ impl SessionStore {
             );
             let planned_source = source.clone();
             let planned_vault = vault.clone();
-            let trash = tokio::task::spawn_blocking(move || {
-                hypr_fs_sync_core::export::prepare_trash_destination(
-                    &planned_vault,
-                    &planned_source,
-                )
-                .map_err(io_error)
-            })
-            .await
-            .map_err(worker_error)?
-            .map_err(SessionCleanupError::Rejected)?;
+            let trash = store
+                .spawn_blocking(move || {
+                    hypr_fs_sync_core::export::prepare_trash_destination(
+                        &planned_vault,
+                        &planned_source,
+                    )
+                    .map_err(io_error)
+                })
+                .await
+                .map_err(worker_error)?
+                .map_err(SessionCleanupError::Rejected)?;
             let mut receipt = Receipt {
                 schema_version: 1,
                 binding,
@@ -191,7 +192,7 @@ impl SessionStore {
                     meta_sha256: baseline.meta_sha256.clone(),
                 },
             };
-            persist(&receipt_path, &receipt)
+            persist(&store, &receipt_path, &receipt)
                 .await
                 .map_err(SessionCleanupError::Uncertain)?;
             checkpoint(Stage::Intent)
@@ -203,19 +204,20 @@ impl SessionStore {
                 .map_err(admitted)?;
             if !matches!(rechecked, Inspection::Empty(ref current) if current == &baseline) {
                 receipt.state = State::Uncertain;
-                persist(&receipt_path, &receipt)
+                persist(&store, &receipt_path, &receipt)
                     .await
                     .map_err(SessionCleanupError::Uncertain)?;
                 return Err(uncertain("Session changed before cleanup"));
             }
             let move_source = source.clone();
             let move_trash = trash.clone();
-            tokio::task::spawn_blocking(move || {
-                hypr_storage::fs::rename_no_replace(&move_source, &move_trash).map_err(io_error)
-            })
-            .await
-            .map_err(worker_error)?
-            .map_err(SessionCleanupError::Uncertain)?;
+            store
+                .spawn_blocking(move || {
+                    hypr_storage::fs::rename_no_replace(&move_source, &move_trash).map_err(io_error)
+                })
+                .await
+                .map_err(worker_error)?
+                .map_err(SessionCleanupError::Uncertain)?;
             store.live.lock().await.remove(&receipt.binding.session_id);
             store.recent_deletions.lock().unwrap().insert(
                 receipt.binding.session_id.clone(),
@@ -232,7 +234,7 @@ impl SessionStore {
             checkpoint(Stage::Renamed)
                 .await
                 .map_err(SessionCleanupError::Uncertain)?;
-            sync_parents(source, trash)
+            sync_parents(&store, source, trash)
                 .await
                 .map_err(SessionCleanupError::Uncertain)?;
             checkpoint(Stage::Synced)
@@ -241,7 +243,7 @@ impl SessionStore {
             receipt.state = State::Completed {
                 outcome: DeleteEmptySessionOutcome::Deleted,
             };
-            persist(&receipt_path, &receipt)
+            persist(&store, &receipt_path, &receipt)
                 .await
                 .map_err(SessionCleanupError::Uncertain)?;
             checkpoint(Stage::Completed)
@@ -282,17 +284,18 @@ impl SessionStore {
             let directory = self
                 .vault_base
                 .join(session_directory(id).map_err(SessionCleanupError::Rejected)?);
-            return tokio::task::spawn_blocking(move || match directory.symlink_metadata() {
-                Ok(_) => Err(SessionCleanupError::Rejected(StoreError::Io(
-                    "Session metadata is missing".into(),
-                ))),
-                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {
-                    Ok(Inspection::Skip(DeleteEmptySessionOutcome::NotFound))
-                }
-                Err(cause) => Err(SessionCleanupError::Rejected(io_error(cause))),
-            })
-            .await
-            .map_err(worker_error)?;
+            return self
+                .spawn_blocking(move || match directory.symlink_metadata() {
+                    Ok(_) => Err(SessionCleanupError::Rejected(StoreError::Io(
+                        "Session metadata is missing".into(),
+                    ))),
+                    Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {
+                        Ok(Inspection::Skip(DeleteEmptySessionOutcome::NotFound))
+                    }
+                    Err(cause) => Err(SessionCleanupError::Rejected(io_error(cause))),
+                })
+                .await
+                .map_err(worker_error)?;
         };
         if metadata
             .meta
@@ -326,8 +329,8 @@ impl SessionStore {
         let vault = self.vault_base.clone();
         let directory = vault.join(session_directory(id).map_err(SessionCleanupError::Rejected)?);
         let meta_limit = self.content_limits.metadata_bytes.min(8 * 1024 * 1024);
-        let other_content =
-            tokio::task::spawn_blocking(move || -> Result<Option<String>, StoreError> {
+        let other_content = self
+            .spawn_blocking(move || -> Result<Option<String>, StoreError> {
                 if has_attachments(&directory)? || has_documents(&directory)? {
                     return Ok(None);
                 }
@@ -390,26 +393,27 @@ impl SessionStore {
         let expected = meta_sha256.clone();
         let id = receipt.binding.session_id.clone();
         let limit = self.content_limits.metadata_bytes.min(8 * 1024 * 1024);
-        let proven = tokio::task::spawn_blocking(move || {
-            match check_source.symlink_metadata() {
-                Ok(_) => return Ok(false),
-                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {}
-                Err(cause) => return Err(io_error(cause)),
-            }
-            safe_trash_directory(&vault, &check_trash)?;
-            let Some(raw) = bounded_file(&check_trash.join("_meta.json"), limit)? else {
-                return Ok(false);
-            };
-            let meta: crate::SessionMeta = serde_json::from_slice(&raw)
-                .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
-            Ok(meta.id == id && crate::sha256(&raw) == expected)
-        })
-        .await
-        .map_err(worker_error)?
-        .map_err(SessionCleanupError::Uncertain)?;
+        let proven = self
+            .spawn_blocking(move || {
+                match check_source.symlink_metadata() {
+                    Ok(_) => return Ok(false),
+                    Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(cause) => return Err(io_error(cause)),
+                }
+                safe_trash_directory(&vault, &check_trash)?;
+                let Some(raw) = bounded_file(&check_trash.join("_meta.json"), limit)? else {
+                    return Ok(false);
+                };
+                let meta: crate::SessionMeta = serde_json::from_slice(&raw)
+                    .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
+                Ok(meta.id == id && crate::sha256(&raw) == expected)
+            })
+            .await
+            .map_err(worker_error)?
+            .map_err(SessionCleanupError::Uncertain)?;
         if !proven {
             receipt.state = State::Uncertain;
-            persist(receipt_path, &receipt)
+            persist(self, receipt_path, &receipt)
                 .await
                 .map_err(SessionCleanupError::Uncertain)?;
             return Err(uncertain(
@@ -422,13 +426,13 @@ impl SessionStore {
             .unwrap()
             .insert(receipt.binding.session_id.clone());
         self.index_remove_session_and_notify(&receipt.binding.session_id);
-        sync_parents(source, trash)
+        sync_parents(self, source, trash)
             .await
             .map_err(SessionCleanupError::Uncertain)?;
         receipt.state = State::Completed {
             outcome: DeleteEmptySessionOutcome::Deleted,
         };
-        persist(receipt_path, &receipt)
+        persist(self, receipt_path, &receipt)
             .await
             .map_err(SessionCleanupError::Uncertain)?;
         Ok(DeleteEmptySessionOutcome::Deleted)
@@ -458,27 +462,34 @@ fn validate_receipt(receipt: &Receipt, expected: &Binding) -> Result<(), Session
     }
     Ok(())
 }
-async fn read(path: &Path) -> Result<Option<Receipt>, SessionCleanupError> {
+async fn read(store: &SessionStore, path: &Path) -> Result<Option<Receipt>, SessionCleanupError> {
     let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || operation_io::read_receipt(&path))
+    store
+        .spawn_blocking(move || operation_io::read_receipt(&path))
         .await
         .map_err(worker_error)?
         .map_err(SessionCleanupError::Uncertain)
 }
-async fn persist(path: &Path, receipt: &Receipt) -> Result<(), StoreError> {
+async fn persist(store: &SessionStore, path: &Path, receipt: &Receipt) -> Result<(), StoreError> {
     let path = path.to_path_buf();
     let receipt = receipt.clone();
-    tokio::task::spawn_blocking(move || operation_io::persist(&path, &receipt))
+    store
+        .spawn_blocking(move || operation_io::persist(&path, &receipt))
         .await
         .map_err(|cause| StoreError::Io(cause.to_string()))?
 }
-async fn sync_parents(source: PathBuf, trash: PathBuf) -> Result<(), StoreError> {
-    tokio::task::spawn_blocking(move || {
-        operation_io::sync_parent(&source)?;
-        operation_io::sync_parent(&trash)
-    })
-    .await
-    .map_err(|cause| StoreError::Io(cause.to_string()))?
+async fn sync_parents(
+    store: &SessionStore,
+    source: PathBuf,
+    trash: PathBuf,
+) -> Result<(), StoreError> {
+    store
+        .spawn_blocking(move || {
+            operation_io::sync_parent(&source)?;
+            operation_io::sync_parent(&trash)
+        })
+        .await
+        .map_err(|cause| StoreError::Io(cause.to_string()))?
 }
 fn bounded_file(path: &Path, limit: usize) -> Result<Option<Vec<u8>>, StoreError> {
     let Some(file) = crate::media::open_regular_file(path)? else {

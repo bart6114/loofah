@@ -99,50 +99,51 @@ impl SessionStore {
         let dir = paths::validated_session_dir(session_id)?;
         let id = session_id.to_owned();
         let limit = self.content_limits.tasks_file_bytes;
-        let snapshot = tokio::task::spawn_blocking(move || {
-            let path = vault.join(paths::session_tasks_path_in(&dir));
-            let raw = match std::fs::symlink_metadata(&path) {
-                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => None,
-                Err(cause) => return Err(StoreError::Io(cause.to_string())),
-                Ok(meta) if meta.file_type().is_symlink() || !meta.is_file() => {
-                    return Err(StoreError::Io(
-                        "Session tasks are not a regular file".into(),
-                    ));
-                }
-                Ok(meta) if meta.len() > limit as u64 => {
-                    return Err(StoreError::ResourceLimit(
-                        "Session tasks exceed their size limit".into(),
-                    ));
-                }
-                Ok(_) => {
-                    use std::io::Read;
-                    let mut bytes = Vec::new();
-                    std::fs::File::open(&path)
-                        .map_err(|cause| StoreError::Io(cause.to_string()))?
-                        .take(limit.saturating_add(1) as u64)
-                        .read_to_end(&mut bytes)
-                        .map_err(|cause| StoreError::Io(cause.to_string()))?;
-                    if bytes.len() > limit {
+        let snapshot = self
+            .spawn_blocking(move || {
+                let path = vault.join(paths::session_tasks_path_in(&dir));
+                let raw = match std::fs::symlink_metadata(&path) {
+                    Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(cause) => return Err(StoreError::Io(cause.to_string())),
+                    Ok(meta) if meta.file_type().is_symlink() || !meta.is_file() => {
+                        return Err(StoreError::Io(
+                            "Session tasks are not a regular file".into(),
+                        ));
+                    }
+                    Ok(meta) if meta.len() > limit as u64 => {
                         return Err(StoreError::ResourceLimit(
                             "Session tasks exceed their size limit".into(),
                         ));
                     }
-                    Some(bytes)
-                }
-            };
-            let tasks = raw
-                .as_ref()
-                .map(|bytes| serde_json::from_slice::<TasksFile>(bytes).map(|file| file.tasks))
-                .transpose()
-                .map_err(|cause| StoreError::Serialize(cause.to_string()))?
-                .unwrap_or_default();
-            Ok(Some(TasksSnapshot {
-                tasks,
-                revision: revision(&id, raw.as_deref()),
-            }))
-        })
-        .await
-        .map_err(|cause| StoreError::Io(cause.to_string()))??;
+                    Ok(_) => {
+                        use std::io::Read;
+                        let mut bytes = Vec::new();
+                        std::fs::File::open(&path)
+                            .map_err(|cause| StoreError::Io(cause.to_string()))?
+                            .take(limit.saturating_add(1) as u64)
+                            .read_to_end(&mut bytes)
+                            .map_err(|cause| StoreError::Io(cause.to_string()))?;
+                        if bytes.len() > limit {
+                            return Err(StoreError::ResourceLimit(
+                                "Session tasks exceed their size limit".into(),
+                            ));
+                        }
+                        Some(bytes)
+                    }
+                };
+                let tasks = raw
+                    .as_ref()
+                    .map(|bytes| serde_json::from_slice::<TasksFile>(bytes).map(|file| file.tasks))
+                    .transpose()
+                    .map_err(|cause| StoreError::Serialize(cause.to_string()))?
+                    .unwrap_or_default();
+                Ok(Some(TasksSnapshot {
+                    tasks,
+                    revision: revision(&id, raw.as_deref()),
+                }))
+            })
+            .await
+            .map_err(|cause| StoreError::Io(cause.to_string()))??;
         let Some(mut snapshot) = snapshot else {
             return Ok(None);
         };

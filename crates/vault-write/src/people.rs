@@ -56,7 +56,7 @@ impl SessionStore {
     /// take rendering down with it — labels fall back to the raw hint value either way.
     async fn read_people(&self) -> Result<Vec<PersonItem>, StoreError> {
         let path = self.vault_base.join(paths::people_path());
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let raw = match std::fs::read(&path) {
                 Ok(raw) => raw,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),

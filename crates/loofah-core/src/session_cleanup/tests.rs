@@ -111,7 +111,7 @@ async fn cancelled_cleanup_retains_context_vault_lease_and_write_grant_through_a
     let lease_path = vault.path().join("cleanup-test.lock");
     let lease = std::fs::File::create(&lease_path).unwrap();
     lease.try_lock().unwrap();
-    context.lease = Some(lease);
+    context.lease = Some(lease.into());
     let context = Arc::new(context);
     let weak = Arc::downgrade(&context);
     let competitor = std::fs::OpenOptions::new()

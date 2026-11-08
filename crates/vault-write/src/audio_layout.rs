@@ -50,11 +50,12 @@ impl SessionStore {
         }
         let vault = self.vault_base.clone();
         let dir = self.session_dir(id).await?;
-        let transcripts = tokio::task::spawn_blocking(move || {
-            hypr_vault_read::transcript::read_transcript_json_in(&vault, &dir)
-        })
-        .await
-        .map_err(|e| StoreError::Io(e.to_string()))??;
+        let transcripts = self
+            .spawn_blocking(move || {
+                hypr_vault_read::transcript::read_transcript_json_in(&vault, &dir)
+            })
+            .await
+            .map_err(|e| StoreError::Io(e.to_string()))??;
         let words = transcripts.transcripts.iter().flat_map(|t| &t.words);
         let sources: Vec<_> = words
             .map(|w| {

@@ -42,28 +42,31 @@ impl SessionStore {
             let directory = store
                 .vault_base
                 .join(store.session_dir_locked(&snapshot._guard, &id).await?);
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                let legacy = directory.join("audio");
-                for directory in [&directory, &legacy] {
-                    match std::fs::symlink_metadata(directory) {
-                        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => continue,
-                        Err(cause) => return Err(io_error(cause)),
-                        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
-                            return Err(StoreError::Io(
-                                "Recording directory is not a regular directory".into(),
-                            ));
+            store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    let legacy = directory.join("audio");
+                    for directory in [&directory, &legacy] {
+                        match std::fs::symlink_metadata(directory) {
+                            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(cause) => return Err(io_error(cause)),
+                            Ok(metadata)
+                                if !metadata.is_dir() || metadata.file_type().is_symlink() =>
+                            {
+                                return Err(StoreError::Io(
+                                    "Recording directory is not a regular directory".into(),
+                                ));
+                            }
+                            Ok(_) => {}
                         }
-                        Ok(_) => {}
+                        if let Some(file) = open_recording_in(directory)? {
+                            return Ok(Some(RecordingSnapshot::File(file)));
+                        }
                     }
-                    if let Some(file) = open_recording_in(directory)? {
-                        return Ok(Some(RecordingSnapshot::File(file)));
-                    }
-                }
-                Ok(Some(RecordingSnapshot::Absent))
-            })
-            .await
-            .map_err(|cause| StoreError::Io(format!("recording file worker failed: {cause}")))?
+                    Ok(Some(RecordingSnapshot::Absent))
+                })
+                .await
+                .map_err(|cause| StoreError::Io(format!("recording file worker failed: {cause}")))?
         })
         .await
         .map_err(|cause| StoreError::Io(format!("recording read worker failed: {cause}")))?

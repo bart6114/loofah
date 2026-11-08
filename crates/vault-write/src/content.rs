@@ -49,18 +49,19 @@ impl SessionStore {
         let dir = self.session_dir_locked(&guard, &meta.id).await?;
         let note_path = self.vault_base.join(paths::note_path_in(&dir));
         let legacy_path = self.vault_base.join(paths::legacy_note_path_in(&dir));
-        let previous = tokio::task::spawn_blocking(move || {
-            for path in [note_path, legacy_path] {
-                match std::fs::read(path) {
-                    Ok(bytes) => return Ok(Some(bytes)),
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(error) => return Err(StoreError::Io(error.to_string())),
+        let previous = self
+            .spawn_blocking(move || {
+                for path in [note_path, legacy_path] {
+                    match std::fs::read(path) {
+                        Ok(bytes) => return Ok(Some(bytes)),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => return Err(StoreError::Io(error.to_string())),
+                    }
                 }
-            }
-            Ok(None)
-        })
-        .await
-        .map_err(|error| StoreError::Io(error.to_string()))??;
+                Ok(None)
+            })
+            .await
+            .map_err(|error| StoreError::Io(error.to_string()))??;
         if previous
             .as_ref()
             .is_some_and(|bytes| bytes != markdown.as_bytes())
@@ -253,7 +254,7 @@ impl SessionStore {
         validate_session_id(id)?;
         let vault = self.vault_base.clone();
         let id = id.to_string();
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             hypr_vault_read::meta::read_session_meta(&vault, &id).map_err(StoreError::from)
         })
         .await
@@ -331,43 +332,44 @@ impl SessionStore {
         };
         let dir = self.vault_base.join(self.session_dir(id).await?);
         let limit = self.content_limits.note_read_bytes;
-        let raw = tokio::task::spawn_blocking(move || {
-            for path in [paths::note_path_in(&dir), paths::legacy_note_path_in(&dir)] {
-                match std::fs::symlink_metadata(&path) {
-                    Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(cause) => return Err(StoreError::Io(cause.to_string())),
-                    Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
-                        return Err(StoreError::Io("Note is not a regular file".into()));
+        let raw = self
+            .spawn_blocking(move || {
+                for path in [paths::note_path_in(&dir), paths::legacy_note_path_in(&dir)] {
+                    match std::fs::symlink_metadata(&path) {
+                        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(cause) => return Err(StoreError::Io(cause.to_string())),
+                        Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+                            return Err(StoreError::Io("Note is not a regular file".into()));
+                        }
+                        Ok(meta) if meta.len() > limit as u64 => {
+                            return Err(StoreError::ResourceLimit(
+                                "Note exceeds its read size limit".into(),
+                            ));
+                        }
+                        Ok(_) => {}
                     }
-                    Ok(meta) if meta.len() > limit as u64 => {
-                        return Err(StoreError::ResourceLimit(
-                            "Note exceeds its read size limit".into(),
-                        ));
+                    use std::io::Read;
+                    let mut bytes = Vec::new();
+                    match std::fs::File::open(path).and_then(|file| {
+                        file.take(limit.saturating_add(1) as u64)
+                            .read_to_end(&mut bytes)
+                    }) {
+                        Ok(_) if bytes.len() > limit => {
+                            return Err(StoreError::ResourceLimit(
+                                "Note exceeds its read size limit".into(),
+                            ));
+                        }
+                        Ok(_) => return Ok(Some(bytes)),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => {
+                            return Err(StoreError::Io(format!("failed to read note: {error}")));
+                        }
                     }
-                    Ok(_) => {}
                 }
-                use std::io::Read;
-                let mut bytes = Vec::new();
-                match std::fs::File::open(path).and_then(|file| {
-                    file.take(limit.saturating_add(1) as u64)
-                        .read_to_end(&mut bytes)
-                }) {
-                    Ok(_) if bytes.len() > limit => {
-                        return Err(StoreError::ResourceLimit(
-                            "Note exceeds its read size limit".into(),
-                        ));
-                    }
-                    Ok(_) => return Ok(Some(bytes)),
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(error) => {
-                        return Err(StoreError::Io(format!("failed to read note: {error}")));
-                    }
-                }
-            }
-            Ok(None)
-        })
-        .await
-        .map_err(|error| StoreError::Io(format!("task join error: {error}")))??;
+                Ok(None)
+            })
+            .await
+            .map_err(|error| StoreError::Io(format!("task join error: {error}")))??;
         // Hash canonical bytes, including frontmatter, but exclude metadata unrelated to editing.
         let revision = note_revision(&meta.title, raw.as_deref());
         let markdown = raw
@@ -488,10 +490,11 @@ impl SessionStore {
         let legacy_abs = self.vault_base.join(paths::legacy_note_path_in(&dir));
         if legacy_abs.is_file() {
             let vault_base = self.vault_base.clone();
-            let moved = tokio::task::spawn_blocking(move || {
-                hypr_fs_sync_core::export::move_to_trash(&vault_base, &legacy_abs)
-            })
-            .await;
+            let moved = self
+                .spawn_blocking(move || {
+                    hypr_fs_sync_core::export::move_to_trash(&vault_base, &legacy_abs)
+                })
+                .await;
             match moved {
                 Ok(Ok(_)) => {}
                 Ok(Err(error)) => {
@@ -510,26 +513,27 @@ impl SessionStore {
         let dir = self.session_dir(id).await?;
         let vault_base = self.vault_base.clone();
 
-        let result = tokio::task::spawn_blocking(move || -> Result<Option<String>, StoreError> {
-            // `notes.md` first, then the pre-rename `_memo.md` -- `notes.md` always wins
-            // when both exist (the store only writes `notes.md`; see write_note).
-            for path in [
-                vault_base.join(paths::note_path_in(&dir)),
-                vault_base.join(paths::legacy_note_path_in(&dir)),
-            ] {
-                // Same attempt-then-match rationale as read_meta above.
-                match std::fs::read_to_string(&path) {
-                    Ok(content) => return Ok(Some(super::strip_leading_frontmatter(content))),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(e) => {
-                        return Err(StoreError::Io(format!("failed to read note file: {}", e)));
+        let result = self
+            .spawn_blocking(move || -> Result<Option<String>, StoreError> {
+                // `notes.md` first, then the pre-rename `_memo.md` -- `notes.md` always wins
+                // when both exist (the store only writes `notes.md`; see write_note).
+                for path in [
+                    vault_base.join(paths::note_path_in(&dir)),
+                    vault_base.join(paths::legacy_note_path_in(&dir)),
+                ] {
+                    // Same attempt-then-match rationale as read_meta above.
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => return Ok(Some(super::strip_leading_frontmatter(content))),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(e) => {
+                            return Err(StoreError::Io(format!("failed to read note file: {}", e)));
+                        }
                     }
                 }
-            }
-            Ok(None)
-        })
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
+                Ok(None)
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {}", e)))??;
 
         Ok(result)
     }
@@ -551,8 +555,8 @@ impl SessionStore {
         let relative_dir = self.session_dir_locked(&guard, id).await?;
 
         let vault_base = self.vault_base.clone();
-        let trash_path = tokio::task::spawn_blocking(
-            move || -> Result<Option<std::path::PathBuf>, StoreError> {
+        let trash_path = self
+            .spawn_blocking(move || -> Result<Option<std::path::PathBuf>, StoreError> {
                 let session_path = vault_base.join(&relative_dir);
                 for path in [
                     vault_base.join("sessions"),
@@ -580,10 +584,9 @@ impl SessionStore {
                 }
                 hypr_fs_sync_core::export::move_to_trash(&vault_base, &session_path)
                     .map_err(|e| StoreError::Io(format!("failed to move session to trash: {e}")))
-            },
-        )
-        .await
-        .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
+            })
+            .await
+            .map_err(|e| StoreError::Io(format!("task join error: {e}")))??;
 
         if let Some(trash_path) = &trash_path {
             self.live.lock().await.remove(id);
@@ -615,7 +618,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let id_owned = id.to_string();
         let deletion = record.clone();
-        let restored = tokio::task::spawn_blocking(move || -> Result<bool, StoreError> {
+        let restored = self.spawn_blocking(move || -> Result<bool, StoreError> {
             // The trash entry must still be this session: a parseable `_meta.json`
             // claiming the requested full id. A vanished entry is an expired undo; a
             // tampered one fails loudly rather than restoring someone else's bytes.

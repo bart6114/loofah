@@ -150,7 +150,7 @@ async fn cancelled_generated_template_retains_context_and_vault_lease_until_actu
     let lock_path = root.path().join("lease");
     let lease = std::fs::File::create(&lock_path).unwrap();
     lease.try_lock().unwrap();
-    context.lease = Some(lease);
+    context.lease = Some(lease.into());
     let context = Arc::new(context);
     let weak = Arc::downgrade(&context);
     let competitor = std::fs::OpenOptions::new()

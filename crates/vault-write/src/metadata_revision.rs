@@ -139,7 +139,7 @@ impl SessionStore {
         let directory = paths::validated_session_dir(id)?;
         let id = id.to_owned();
         let limit = self.content_limits.metadata_bytes;
-        tokio::task::spawn_blocking(move || {
+        self.spawn_blocking(move || {
             let path = vault.join(paths::meta_path_in(&directory));
             for (candidate, is_file) in [
                 (vault.join("sessions"), false),

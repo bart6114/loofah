@@ -162,47 +162,49 @@ impl SessionStore {
                 Some(value) => serde_json::from_value(value.clone()).map_err(io::serialization)?,
                 None => hypr_vault_read::SessionAudio::default(),
             };
-            let initial = tokio::task::spawn_blocking(move || -> Result<_, StoreError> {
-                let _snapshot = snapshot;
-                if !io::absent(&directory.join("transcript.json"))? {
-                    return Ok(Err(TranscriptSourcePreparation::Conflict));
-                }
-                Ok(io::select(&directory)?.ok_or(TranscriptSourcePreparation::NoRecording))
-            })
-            .await
-            .map_err(io::error)??;
+            let initial = store
+                .spawn_blocking(move || -> Result<_, StoreError> {
+                    let _snapshot = snapshot;
+                    if !io::absent(&directory.join("transcript.json"))? {
+                        return Ok(Err(TranscriptSourcePreparation::Conflict));
+                    }
+                    Ok(io::select(&directory)?.ok_or(TranscriptSourcePreparation::NoRecording))
+                })
+                .await
+                .map_err(io::error)??;
             let (selection, recording) = match initial {
                 Ok(source) => source,
                 Err(outcome) => return Ok(Some(outcome)),
             };
             let owner = store.write_lock.clone();
-            let baseline = tokio::task::spawn_blocking(move || -> Result<_, StoreError> {
-                let _audio = audio;
-                let _transcript = transcript;
-                if !recording.lock_for_recheck()? {
-                    return Ok(None);
-                }
-                let sha256 = io::hash_bounded(recording.file(), u32::MAX as u64)?;
-                let mut reader = recording.file();
-                std::io::Seek::rewind(&mut reader).map_err(io::error)?;
-                let current = FileSnapshot::new(io::clone_file(recording.file())?)?;
-                if !recording.unchanged(&current)? {
-                    return Ok(None);
-                }
-                Ok(Some(TranscriptPublicationBaseline(Arc::new(Baseline {
-                    owner,
-                    binding: Binding {
-                        session_id: id,
-                        recording_selection: selection,
-                        recording_sha256: sha256,
-                        transcript_revision: io::absent_revision(),
-                        audio: audio_metadata,
-                    },
-                    recording,
-                }))))
-            })
-            .await
-            .map_err(io::error)??;
+            let baseline = store
+                .spawn_blocking(move || -> Result<_, StoreError> {
+                    let _audio = audio;
+                    let _transcript = transcript;
+                    if !recording.lock_for_recheck()? {
+                        return Ok(None);
+                    }
+                    let sha256 = io::hash_bounded(recording.file(), u32::MAX as u64)?;
+                    let mut reader = recording.file();
+                    std::io::Seek::rewind(&mut reader).map_err(io::error)?;
+                    let current = FileSnapshot::new(io::clone_file(recording.file())?)?;
+                    if !recording.unchanged(&current)? {
+                        return Ok(None);
+                    }
+                    Ok(Some(TranscriptPublicationBaseline(Arc::new(Baseline {
+                        owner,
+                        binding: Binding {
+                            session_id: id,
+                            recording_selection: selection,
+                            recording_sha256: sha256,
+                            transcript_revision: io::absent_revision(),
+                            audio: audio_metadata,
+                        },
+                        recording,
+                    }))))
+                })
+                .await
+                .map_err(io::error)??;
             Ok(Some(match baseline {
                 Some(baseline) => {
                     TranscriptSourcePreparation::Ready(Box::new(TranscriptSourceSnapshot {
@@ -241,19 +243,20 @@ impl SessionStore {
         let store = self.clone();
         let root = operations.to_path_buf();
         tokio::spawn(async move {
-            let result = tokio::task::spawn_blocking(move || {
-                let bytes = io::encode_result(&TranscriptJson {
-                    transcripts: vec![generated],
-                })?;
-                if bytes.len() > io::RESULT_LIMIT {
-                    return Err(StoreError::ResourceLimit(
-                        "Generated transcript exceeds its size limit".into(),
-                    ));
-                }
-                Ok(bytes)
-            })
-            .await
-            .map_err(io::error)??;
+            let result = store
+                .spawn_blocking(move || {
+                    let bytes = io::encode_result(&TranscriptJson {
+                        transcripts: vec![generated],
+                    })?;
+                    if bytes.len() > io::RESULT_LIMIT {
+                        return Err(StoreError::ResourceLimit(
+                            "Generated transcript exceeds its size limit".into(),
+                        ));
+                    }
+                    Ok(bytes)
+                })
+                .await
+                .map_err(io::error)??;
             let (receipt_path, result_path) = io::paths(&root, &identity);
             let wanted = Receipt {
                 schema_version: 1,
@@ -266,27 +269,28 @@ impl SessionStore {
             };
             let snapshot = store.lock_snapshot().await;
             store.ensure_ready()?;
-            let receipt = tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                if let Some(existing) =
-                    io::read_receipt(&receipt_path, &identity).map_err(StoreError::after_commit)?
-                {
-                    if existing.binding != wanted.binding
-                        || existing.result_sha256 != wanted.result_sha256
-                        || existing.transcript_id != wanted.transcript_id
+            let receipt = store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    if let Some(existing) = io::read_receipt(&receipt_path, &identity)
+                        .map_err(StoreError::after_commit)?
                     {
-                        return Err(StoreError::Conflict(
-                            "Transcript publication request changed".into(),
-                        ));
+                        if existing.binding != wanted.binding
+                            || existing.result_sha256 != wanted.result_sha256
+                            || existing.transcript_id != wanted.transcript_id
+                        {
+                            return Err(StoreError::Conflict(
+                                "Transcript publication request changed".into(),
+                            ));
+                        }
+                        return Ok(existing);
                     }
-                    return Ok(existing);
-                }
-                io::save_result(&result_path, &result)?;
-                io::persist(&receipt_path, &wanted)?;
-                Ok(wanted)
-            })
-            .await
-            .map_err(io::error)??;
+                    io::save_result(&result_path, &result)?;
+                    io::persist(&receipt_path, &wanted)?;
+                    Ok(wanted)
+                })
+                .await
+                .map_err(io::error)??;
             prepare_plan(store, root, receipt, Some(baseline)).await
         })
         .await
@@ -309,10 +313,10 @@ impl SessionStore {
         let root = operations.to_owned();
         let outcome = tokio::spawn(async move {
             let receipt_path = io::paths(&root, &identity).0;
-            let receipt =
-                tokio::task::spawn_blocking(move || io::read_receipt(&receipt_path, &identity))
-                    .await
-                    .map_err(io::error)??;
+            let receipt = store
+                .spawn_blocking(move || io::read_receipt(&receipt_path, &identity))
+                .await
+                .map_err(io::error)??;
             let Some(receipt) = receipt else {
                 return Ok(None);
             };
@@ -382,35 +386,39 @@ async fn prepare_plan(
     let result_sha256 = plan.receipt.result_sha256.clone();
     let transcript_id = plan.receipt.transcript_id.clone();
     let session_id = plan.receipt.binding.session_id.clone();
-    let (result, empty, summary) = tokio::task::spawn_blocking(move || {
-        let bytes = io::read(&path, io::RESULT_LIMIT)?
-            .ok_or_else(|| StoreError::Conflict("Retained transcript result disappeared".into()))?;
-        if crate::sha256(&bytes) != result_sha256 {
-            return Err(StoreError::Conflict(
-                "Retained transcript result changed".into(),
-            ));
-        }
-        let raw = serde_json::from_slice::<crate::metadata_revision::UniqueValue>(&bytes)
-            .map_err(io::serialization)?
-            .0;
-        let file: TranscriptJson = serde_json::from_value(raw).map_err(io::serialization)?;
-        if file.transcripts.len() != 1 {
-            return Err(StoreError::Serialize(
-                "Invalid retained transcript result".into(),
-            ));
-        }
-        validate_generated(&file.transcripts[0])?;
-        if file.transcripts[0].id != transcript_id || file.transcripts[0].session_id != session_id {
-            return Err(StoreError::Conflict(
-                "Retained transcript identity changed".into(),
-            ));
-        }
-        let summary = crate::transcript::summarize_transcript_bytes(&bytes)?;
-        Ok((bytes, file.transcripts[0].words.is_empty(), summary))
-    })
-    .await
-    .map_err(io::error)?
-    .map_err(StoreError::after_commit)?;
+    let (result, empty, summary) = store
+        .spawn_blocking(move || {
+            let bytes = io::read(&path, io::RESULT_LIMIT)?.ok_or_else(|| {
+                StoreError::Conflict("Retained transcript result disappeared".into())
+            })?;
+            if crate::sha256(&bytes) != result_sha256 {
+                return Err(StoreError::Conflict(
+                    "Retained transcript result changed".into(),
+                ));
+            }
+            let raw = serde_json::from_slice::<crate::metadata_revision::UniqueValue>(&bytes)
+                .map_err(io::serialization)?
+                .0;
+            let file: TranscriptJson = serde_json::from_value(raw).map_err(io::serialization)?;
+            if file.transcripts.len() != 1 {
+                return Err(StoreError::Serialize(
+                    "Invalid retained transcript result".into(),
+                ));
+            }
+            validate_generated(&file.transcripts[0])?;
+            if file.transcripts[0].id != transcript_id
+                || file.transcripts[0].session_id != session_id
+            {
+                return Err(StoreError::Conflict(
+                    "Retained transcript identity changed".into(),
+                ));
+            }
+            let summary = crate::transcript::summarize_transcript_bytes(&bytes)?;
+            Ok((bytes, file.transcripts[0].words.is_empty(), summary))
+        })
+        .await
+        .map_err(io::error)?
+        .map_err(StoreError::after_commit)?;
     plan.result = result;
     plan.empty = empty;
     plan.summary = Some(summary);
@@ -451,35 +459,38 @@ impl TranscriptPublicationPlan {
         if busy(&store, &self.receipt.binding.session_id, &meta.meta).await {
             return Ok(self.finish(TranscriptPublicationOutcome::Busy));
         }
-        tokio::task::spawn_blocking(move || {
-            let snapshot = snapshot;
-            let mut plan = self;
-            let current = io::select(&plan.directory)?;
-            drop(snapshot);
-            let Some((selection, recording)) = current else {
-                return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
-            };
-            if selection != plan.receipt.binding.recording_selection
-                || !recording.lock_for_recheck()?
-            {
-                return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
-            }
-            if let Some(baseline) = &plan.baseline
-                && !baseline.0.recording.unchanged(&recording)?
-            {
-                return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
-            }
-            let sha256 = io::hash_bounded(recording.file(), u32::MAX as u64)?;
-            let after = FileSnapshot::new(io::clone_file(recording.file())?)?;
-            if sha256 != plan.receipt.binding.recording_sha256 || !recording.unchanged(&after)? {
-                return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
-            }
-            plan.source = Some(recording);
-            plan.checked = true;
-            Ok(plan)
-        })
-        .await
-        .map_err(io::error)?
+        store
+            .spawn_blocking(move || {
+                let snapshot = snapshot;
+                let mut plan = self;
+                let current = io::select(&plan.directory)?;
+                drop(snapshot);
+                let Some((selection, recording)) = current else {
+                    return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                };
+                if selection != plan.receipt.binding.recording_selection
+                    || !recording.lock_for_recheck()?
+                {
+                    return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                }
+                if let Some(baseline) = &plan.baseline
+                    && !baseline.0.recording.unchanged(&recording)?
+                {
+                    return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                }
+                let sha256 = io::hash_bounded(recording.file(), u32::MAX as u64)?;
+                let after = FileSnapshot::new(io::clone_file(recording.file())?)?;
+                if sha256 != plan.receipt.binding.recording_sha256
+                    || !recording.unchanged(&after)?
+                {
+                    return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
+                }
+                plan.source = Some(recording);
+                plan.checked = true;
+                Ok(plan)
+            })
+            .await
+            .map_err(io::error)?
     }
 
     pub async fn commit(self) -> Result<TranscriptPublicationOutcome, StoreError> {
@@ -522,12 +533,13 @@ impl TranscriptPublicationPlan {
             if busy(&store, &plan.receipt.binding.session_id, &meta.meta).await {
                 return Ok(TranscriptPublicationOutcome::Busy);
             }
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                plan.commit_sync(fault)
-            })
-            .await
-            .map_err(io::error)?
+            store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    plan.commit_sync(fault)
+                })
+                .await
+                .map_err(io::error)?
         })
         .await
         .map_err(io::error)?
@@ -547,24 +559,26 @@ impl TranscriptPublicationPlan {
         }
         let store = self.store.clone();
         let guard = store.lock_snapshot().await;
-        tokio::task::spawn_blocking(move || {
-            let _guard = guard;
-            let path = io::paths(&self.root, &self.receipt.identity).0;
-            if io::read_receipt(&path, &self.receipt.identity)?.as_ref() != Some(&self.receipt) {
-                return Ok(TranscriptPublicationOutcome::RequiresReview);
-            }
-            let outcome = if self.receipt.state == State::Pending {
-                self.receipt.state = State::Review;
-                TranscriptPublicationOutcome::RequiresReview
-            } else {
-                self.receipt.state = State::Conflict;
-                outcome
-            };
-            io::persist(&path, &self.receipt)?;
-            Ok(outcome)
-        })
-        .await
-        .map_err(io::error)?
+        store
+            .spawn_blocking(move || {
+                let _guard = guard;
+                let path = io::paths(&self.root, &self.receipt.identity).0;
+                if io::read_receipt(&path, &self.receipt.identity)?.as_ref() != Some(&self.receipt)
+                {
+                    return Ok(TranscriptPublicationOutcome::RequiresReview);
+                }
+                let outcome = if self.receipt.state == State::Pending {
+                    self.receipt.state = State::Review;
+                    TranscriptPublicationOutcome::RequiresReview
+                } else {
+                    self.receipt.state = State::Conflict;
+                    outcome
+                };
+                io::persist(&path, &self.receipt)?;
+                Ok(outcome)
+            })
+            .await
+            .map_err(io::error)?
     }
 
     fn finish(mut self, outcome: TranscriptPublicationOutcome) -> Self {

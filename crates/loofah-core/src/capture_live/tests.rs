@@ -217,7 +217,7 @@ async fn context(root: &Path, fake: Fake, auth: Arc<Auth>) -> Arc<VaultContext> 
         Arc::new(SearchService::default()),
     )
     .with_operation_storage(root.join("operations"));
-    context.lease = Some(file);
+    context.lease = Some(file.into());
     context
         .enable_capture_ingestion("https://capture.example/".into(), Default::default())
         .unwrap();

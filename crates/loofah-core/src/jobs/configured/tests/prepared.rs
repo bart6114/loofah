@@ -179,7 +179,7 @@ fn lease(fixture: &mut Fixture) -> std::fs::File {
     let path = fixture._root.path().join("prepared-test-lease");
     let owner = std::fs::File::create(&path).unwrap();
     owner.try_lock().unwrap();
-    Arc::get_mut(&mut fixture.context).unwrap().lease = Some(owner);
+    Arc::get_mut(&mut fixture.context).unwrap().lease = Some(owner.into());
     std::fs::OpenOptions::new()
         .read(true)
         .write(true)

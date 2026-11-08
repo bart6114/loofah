@@ -73,7 +73,7 @@ mod tests {
             Arc::new(ConfigState::load_or_default(vault.path())),
             Arc::new(SearchService::default()),
         );
-        context.lease = Some(lease);
+        context.lease = Some(lease.into());
         let context = Arc::new(context);
         let lifetime = Arc::downgrade(&context);
         let caller = context.clone();

@@ -15,8 +15,8 @@ impl crate::VaultContext {
         store: Arc<SessionStore>,
         vault: String,
         operations: PathBuf,
-        lease: File,
-    ) -> Result<(File, PublicationGates), StoreError> {
+        lease: Arc<File>,
+    ) -> Result<(Arc<File>, PublicationGates), StoreError> {
         tokio::spawn(async move {
             let gates = PublicationGates::default();
             match store

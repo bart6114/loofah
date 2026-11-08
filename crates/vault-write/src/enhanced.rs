@@ -190,7 +190,7 @@ impl SessionStore {
                 StoreError::Serialize("task reconciliation requires Markdown".into())
             })?;
             Some(
-                tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
+                self.spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&markdown))
                     .await
                     .map_err(|error| StoreError::Io(format!("task parse failed: {error}")))?
                     .map_err(StoreError::Serialize)?,
@@ -376,7 +376,7 @@ impl SessionStore {
         let doc_id = doc_id.to_string();
 
         let session_dir = self.session_dir(&session_id).await?;
-        tokio::task::spawn_blocking(move || -> Result<Option<EnhancedDoc>, StoreError> {
+        self.spawn_blocking(move || -> Result<Option<EnhancedDoc>, StoreError> {
             let path = vault_base.join(paths::enhanced_doc_path_in(&session_dir, &doc_id));
             // Attempt-then-match, same rationale as read_meta: never mistake a transient
             // read failure for "doc doesn't exist".
@@ -414,7 +414,7 @@ impl SessionStore {
         let vault_base = self.vault_base.clone();
         let relative = paths::enhanced_doc_path_in(&session_dir, doc_id);
 
-        tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+        self.spawn_blocking(move || -> Result<(), StoreError> {
             let abs = vault_base.join(relative);
             hypr_fs_sync_core::export::move_to_trash(&vault_base, &abs).map_err(|e| {
                 StoreError::Io(format!("failed to move enhanced doc to trash: {e}"))

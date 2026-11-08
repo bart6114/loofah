@@ -181,11 +181,10 @@ impl SessionStore {
         let session = id.to_owned();
         let selected = target.clone();
         let limits = self.content_limits;
-        let content = tokio::task::spawn_blocking(move || {
-            plan::read_content(&vault, &session, &selected, limits)
-        })
-        .await
-        .map_err(|error| StoreError::Io(format!("Editor snapshot worker failed: {error}")))??;
+        let content = self
+            .spawn_blocking(move || plan::read_content(&vault, &session, &selected, limits))
+            .await
+            .map_err(|error| StoreError::Io(format!("Editor snapshot worker failed: {error}")))??;
         content
             .map(|content| State::new(id, target, metadata, raw, content))
             .transpose()

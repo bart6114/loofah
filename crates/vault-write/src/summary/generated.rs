@@ -75,7 +75,8 @@ impl SessionStore {
         }
         let markdown = markdown.to_owned();
         let parse = markdown.clone();
-        let content = tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
+        let content = self
+            .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
             .await
             .map_err(|error| StoreError::Io(error.to_string()))?
             .map_err(StoreError::Serialize)?;
@@ -137,11 +138,12 @@ impl SessionStore {
                     let vault = store.vault_base.clone();
                     let read_directory = directory.clone();
                     let read_id = id.clone();
-                    let located = tokio::task::spawn_blocking(move || {
-                        hypr_vault_read::summary::locate_in(&vault, &read_directory, &read_id)
-                    })
-                    .await
-                    .map_err(|error| StoreError::Io(error.to_string()))??;
+                    let located = store
+                        .spawn_blocking(move || {
+                            hypr_vault_read::summary::locate_in(&vault, &read_directory, &read_id)
+                        })
+                        .await
+                        .map_err(|error| StoreError::Io(error.to_string()))??;
                     let (relative, bytes) = match located {
                         Some(located) => {
                             let bytes = if let Some(legacy) = located.legacy_id {

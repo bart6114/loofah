@@ -99,7 +99,7 @@ struct Inner {
     records: Mutex<BTreeMap<String, Record>>,
     io: Arc<Semaphore>,
     _lease: File,
-    _vault_lease: File,
+    _vault_lease: Arc<File>,
     failed: std::sync::atomic::AtomicBool,
 }
 
@@ -120,11 +120,8 @@ impl Journal {
                 .try_lock()
                 .map_err(|_| unavailable("Live capture ledger already has an owner"))?;
             let vault_lease = context
-                .lease
-                .as_ref()
-                .ok_or_else(|| unavailable("Vault lease required"))?
-                .try_clone()
-                .map_err(storage)?;
+                .lease_pin()
+                .ok_or_else(|| unavailable("Vault lease required"))?;
             let vault = context.events.vault_id();
             let mut records = read_records(&root, &vault)?;
             for record in records.values_mut() {
@@ -519,7 +516,7 @@ pub(super) async fn ensure_idle_unopened(
     root: PathBuf,
     vault: String,
     session: String,
-    vault_lease: Option<File>,
+    vault_lease: Option<Arc<File>>,
 ) -> Result<(), ApplicationError> {
     tokio::task::spawn_blocking(move || {
         let owned_vault_lease = vault_lease;

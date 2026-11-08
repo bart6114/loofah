@@ -111,30 +111,32 @@ async fn prepare(
         let checked_path = path.clone();
         let checked_request = request.clone();
         let recovery_only = expected_receipt.is_some();
-        let receipt = tokio::task::spawn_blocking(move || {
-            let current = io::read(&checked_path)?;
-            if let Some(current) = &current {
-                current.validate(&checked_request)?;
-            }
-            if let Some(expected) = expected_receipt {
-                let Some(current) = &current else {
-                    return Err(StoreError::Conflict(
-                        "Discovered recording receipt disappeared".into(),
-                    ));
-                };
-                if !recovery::same_intent(current, &expected)
-                    || matches!(current.state, State::Uncertain)
-                    || (expected.state == State::MetadataWritten && current.state == State::Pending)
-                {
-                    return Err(StoreError::Conflict(
-                        "Discovered recording intent changed".into(),
-                    ));
+        let receipt = store
+            .spawn_blocking(move || {
+                let current = io::read(&checked_path)?;
+                if let Some(current) = &current {
+                    current.validate(&checked_request)?;
                 }
-            }
-            Ok::<_, StoreError>(current)
-        })
-        .await
-        .map_err(io::worker_error)??;
+                if let Some(expected) = expected_receipt {
+                    let Some(current) = &current else {
+                        return Err(StoreError::Conflict(
+                            "Discovered recording receipt disappeared".into(),
+                        ));
+                    };
+                    if !recovery::same_intent(current, &expected)
+                        || matches!(current.state, State::Uncertain)
+                        || (expected.state == State::MetadataWritten
+                            && current.state == State::Pending)
+                    {
+                        return Err(StoreError::Conflict(
+                            "Discovered recording intent changed".into(),
+                        ));
+                    }
+                }
+                Ok::<_, StoreError>(current)
+            })
+            .await
+            .map_err(io::worker_error)??;
         if recovery_only
             && receipt
                 .as_ref()
@@ -164,69 +166,71 @@ async fn prepare(
             .as_ref()
             .is_some_and(|raw| io::busy(&store, &request.session_id, raw));
         drop(snapshot);
-        tokio::task::spawn_blocking(move || {
-            let mut plan = RecordingPublicationPlan {
-                store,
-                request,
-                receipt_path: path,
-                directory,
-                receipt,
-                artifact: None,
-                stage: None,
-                target: false,
-                checked: false,
-                finished: None,
-                _audio: audio,
-                _transcript: transcript,
-            };
-            if metadata.is_none() {
-                plan.finished = Some(if plan.receipt.is_some() {
-                    RecordingPublication::Uncertain
-                } else {
-                    RecordingPublication::Changed
-                });
-                return Ok(Some(plan));
-            }
-            if busy {
-                plan.finished = Some(RecordingPublication::Busy);
-                return Ok(Some(plan));
-            }
-            io::regular_directory(&plan.directory)?;
-            if plan.requires_transcript_absence() && !io::transcript_absent(&plan.directory)? {
-                plan.finished = Some(if plan.receipt.is_some() {
-                    RecordingPublication::Uncertain
-                } else {
-                    RecordingPublication::Changed
-                });
-                return Ok(Some(plan));
-            }
-            if let Some(receipt) = plan.receipt.as_ref() {
-                let stage = io::Stage::from_receipt(&plan.directory, receipt)?;
-                let staged = io::open_snapshot(stage.path())?;
-                let target = io::open_snapshot(&plan.directory.join("audio.wav"))?;
-                let pending = receipt.state == State::Pending;
-                plan.stage = Some(stage);
-                match (staged, target) {
-                    (Some(file), None) if pending => plan.artifact = Some(file),
-                    (None, Some(file)) => {
-                        plan.artifact = Some(file);
-                        plan.target = true;
-                    }
-                    _ => plan.finished = Some(RecordingPublication::Uncertain),
-                }
-            } else {
-                if !io::absent(&plan.directory, None)? {
-                    plan.finished = Some(RecordingPublication::Changed);
+        store
+            .clone()
+            .spawn_blocking(move || {
+                let mut plan = RecordingPublicationPlan {
+                    store,
+                    request,
+                    receipt_path: path,
+                    directory,
+                    receipt,
+                    artifact: None,
+                    stage: None,
+                    target: false,
+                    checked: false,
+                    finished: None,
+                    _audio: audio,
+                    _transcript: transcript,
+                };
+                if metadata.is_none() {
+                    plan.finished = Some(if plan.receipt.is_some() {
+                        RecordingPublication::Uncertain
+                    } else {
+                        RecordingPublication::Changed
+                    });
                     return Ok(Some(plan));
                 }
-                let stage = io::write_stage(&plan.directory, source.unwrap(), &plan.request)?;
-                plan.artifact = io::open_snapshot(stage.path())?;
-                plan.stage = Some(stage);
-            }
-            Ok(Some(plan))
-        })
-        .await
-        .map_err(io::worker_error)?
+                if busy {
+                    plan.finished = Some(RecordingPublication::Busy);
+                    return Ok(Some(plan));
+                }
+                io::regular_directory(&plan.directory)?;
+                if plan.requires_transcript_absence() && !io::transcript_absent(&plan.directory)? {
+                    plan.finished = Some(if plan.receipt.is_some() {
+                        RecordingPublication::Uncertain
+                    } else {
+                        RecordingPublication::Changed
+                    });
+                    return Ok(Some(plan));
+                }
+                if let Some(receipt) = plan.receipt.as_ref() {
+                    let stage = io::Stage::from_receipt(&plan.directory, receipt)?;
+                    let staged = io::open_snapshot(stage.path())?;
+                    let target = io::open_snapshot(&plan.directory.join("audio.wav"))?;
+                    let pending = receipt.state == State::Pending;
+                    plan.stage = Some(stage);
+                    match (staged, target) {
+                        (Some(file), None) if pending => plan.artifact = Some(file),
+                        (None, Some(file)) => {
+                            plan.artifact = Some(file);
+                            plan.target = true;
+                        }
+                        _ => plan.finished = Some(RecordingPublication::Uncertain),
+                    }
+                } else {
+                    if !io::absent(&plan.directory, None)? {
+                        plan.finished = Some(RecordingPublication::Changed);
+                        return Ok(Some(plan));
+                    }
+                    let stage = io::write_stage(&plan.directory, source.unwrap(), &plan.request)?;
+                    plan.artifact = io::open_snapshot(stage.path())?;
+                    plan.stage = Some(stage);
+                }
+                Ok(Some(plan))
+            })
+            .await
+            .map_err(io::worker_error)?
     })
     .await
     .map_err(io::worker_error)?
@@ -236,7 +240,9 @@ impl RecordingPublicationPlan {
     /// Hashing and Windows file-lock acquisition happen outside the store write guard.
     /// Core can recheck authorization after this call and hold its grant through `commit`.
     pub async fn recheck(self) -> Result<Self, StoreError> {
-        tokio::task::spawn_blocking(move || self.recheck_sync())
+        self.store
+            .clone()
+            .spawn_blocking(move || self.recheck_sync())
             .await
             .map_err(io::worker_error)?
     }
@@ -304,23 +310,29 @@ impl RecordingPublicationPlan {
                 .content_limits
                 .metadata_bytes
                 .min(8 * 1024 * 1024);
-            let result = tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                plan.commit_sync(raw, limit, &fault)
-                    .map(|step| (step, fault))
-            })
-            .await
-            .map_err(io::worker_error)??;
+            let result = plan
+                .store
+                .clone()
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    plan.commit_sync(raw, limit, &fault)
+                        .map(|step| (step, fault))
+                })
+                .await
+                .map_err(io::worker_error)??;
             let (step, fault) = result;
             match step {
                 CommitStep::Finished(outcome) => Ok(outcome),
                 CommitStep::Confirm(plan) => {
-                    let fault = tokio::task::spawn_blocking(move || {
-                        fault(6)?;
-                        Ok::<_, StoreError>(fault)
-                    })
-                    .await
-                    .map_err(io::worker_error)??;
+                    let fault = plan
+                        .store
+                        .clone()
+                        .spawn_blocking(move || {
+                            fault(6)?;
+                            Ok::<_, StoreError>(fault)
+                        })
+                        .await
+                        .map_err(io::worker_error)??;
                     // A canonical checksum can take seconds. Keep the audio lease, not the
                     // store-wide write guard, while hashing the published artifact.
                     let mut plan = (*plan).recheck().await?;
@@ -329,12 +341,15 @@ impl RecordingPublicationPlan {
                     }
                     let snapshot = plan.store.lock_snapshot().await;
                     plan.store.ensure_ready()?;
-                    let result = tokio::task::spawn_blocking(move || {
-                        let _snapshot = snapshot;
-                        plan.confirm_sync(fault)
-                    })
-                    .await
-                    .map_err(io::worker_error)??;
+                    let result = plan
+                        .store
+                        .clone()
+                        .spawn_blocking(move || {
+                            let _snapshot = snapshot;
+                            plan.confirm_sync(fault)
+                        })
+                        .await
+                        .map_err(io::worker_error)??;
                     Ok(result)
                 }
             }
@@ -559,19 +574,20 @@ async fn read_current(
     let path = directory.to_path_buf();
     let limit = store.content_limits.metadata_bytes.min(8 * 1024 * 1024);
     let id = id.to_owned();
-    tokio::task::spawn_blocking(move || {
-        let Some(raw) = io::read_metadata(&path, limit)? else {
-            return Ok(None);
-        };
-        let meta: crate::SessionMeta =
-            serde_json::from_value(raw.clone()).map_err(io::serialize_error)?;
-        if meta.id != id {
-            return Err(StoreError::Serialize(
-                "Session metadata identity does not match its directory".into(),
-            ));
-        }
-        Ok(Some(raw))
-    })
-    .await
-    .map_err(io::worker_error)?
+    store
+        .spawn_blocking(move || {
+            let Some(raw) = io::read_metadata(&path, limit)? else {
+                return Ok(None);
+            };
+            let meta: crate::SessionMeta =
+                serde_json::from_value(raw.clone()).map_err(io::serialize_error)?;
+            if meta.id != id {
+                return Err(StoreError::Serialize(
+                    "Session metadata identity does not match its directory".into(),
+                ));
+            }
+            Ok(Some(raw))
+        })
+        .await
+        .map_err(io::worker_error)?
 }

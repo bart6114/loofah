@@ -19,7 +19,7 @@ async fn fixture(wav: bool) -> (tempfile::TempDir, Arc<VaultContext>) {
         .open(root.path().join(".loofah-vault.lock"))
         .unwrap();
     lease.try_lock().unwrap();
-    Arc::get_mut(&mut context).unwrap().lease = Some(lease);
+    Arc::get_mut(&mut context).unwrap().lease = Some(lease.into());
     if wav {
         let spec = hound::WavSpec {
             channels: 1,

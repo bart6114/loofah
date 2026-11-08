@@ -122,7 +122,8 @@ async fn prepare(
     tokio::spawn(async move {
         let serial = store.attachment_publications.clone().lock_owned().await;
         let read_path = path.clone();
-        let mut receipt = tokio::task::spawn_blocking(move || read_receipt::<Receipt>(&read_path))
+        let mut receipt = store
+            .spawn_blocking(move || read_receipt::<Receipt>(&read_path))
             .await
             .map_err(worker_error)??;
         if let Some(existing) = &receipt {
@@ -160,82 +161,87 @@ async fn prepare(
         } else {
             None
         };
-        tokio::task::spawn_blocking(move || {
-            let source = if let Some(prepared) = &stage {
-                if prepared.filename
-                    != hypr_fs_sync_core::attachment::sanitize_filename(&request.input.filename)
-                        .map_err(io_error)?
-                {
-                    return Err(StoreError::Conflict(
-                        "Attachment upload filename changed".into(),
-                    ));
-                }
-                let file = open_regular_file(prepared.path())?
-                    .ok_or_else(|| StoreError::Conflict("Attachment stage disappeared".into()))?;
-                let source = FileSnapshot::new(file)?;
-                if !source.lock_for_recheck()? {
-                    return Ok(Some(AttachmentPublicationPlan {
-                        store,
-                        stage,
-                        path,
-                        request,
-                        receipt,
-                        source: None,
-                        recovery: None,
-                        finished: Some(AttachmentPublication::Busy),
-                        _serial: serial,
-                    }));
-                }
-                if !matches_input(&source, &request.input)? {
-                    return Err(StoreError::Conflict(
-                        "Attachment bytes do not match the declared length and checksum".into(),
-                    ));
-                }
-                Some(source)
-            } else {
-                None
-            };
-            let finished = match &receipt {
-                Some(existing) => match existing.state {
-                    State::Committed => {
-                        Some(AttachmentPublication::Published(existing.filename.clone()))
+        store
+            .clone()
+            .spawn_blocking(move || {
+                let source = if let Some(prepared) = &stage {
+                    if prepared.filename
+                        != hypr_fs_sync_core::attachment::sanitize_filename(&request.input.filename)
+                            .map_err(io_error)?
+                    {
+                        return Err(StoreError::Conflict(
+                            "Attachment upload filename changed".into(),
+                        ));
                     }
-                    State::Uncertain => Some(AttachmentPublication::Uncertain),
-                    State::Rejected if stage.is_none() => Some(AttachmentPublication::Rejected),
-                    State::Rejected => {
-                        receipt = None;
-                        None
+                    let file = open_regular_file(prepared.path())?.ok_or_else(|| {
+                        StoreError::Conflict("Attachment stage disappeared".into())
+                    })?;
+                    let source = FileSnapshot::new(file)?;
+                    if !source.lock_for_recheck()? {
+                        return Ok(Some(AttachmentPublicationPlan {
+                            store,
+                            stage,
+                            path,
+                            request,
+                            receipt,
+                            source: None,
+                            recovery: None,
+                            finished: Some(AttachmentPublication::Busy),
+                            _serial: serial,
+                        }));
                     }
-                    State::Pending => {
-                        if let Some(file) = &recovery {
-                            if !file.lock_for_recheck()? {
-                                Some(AttachmentPublication::Busy)
-                            } else if matches_input(file, &request.input)? {
-                                Some(AttachmentPublication::Published(existing.filename.clone()))
+                    if !matches_input(&source, &request.input)? {
+                        return Err(StoreError::Conflict(
+                            "Attachment bytes do not match the declared length and checksum".into(),
+                        ));
+                    }
+                    Some(source)
+                } else {
+                    None
+                };
+                let finished = match &receipt {
+                    Some(existing) => match existing.state {
+                        State::Committed => {
+                            Some(AttachmentPublication::Published(existing.filename.clone()))
+                        }
+                        State::Uncertain => Some(AttachmentPublication::Uncertain),
+                        State::Rejected if stage.is_none() => Some(AttachmentPublication::Rejected),
+                        State::Rejected => {
+                            receipt = None;
+                            None
+                        }
+                        State::Pending => {
+                            if let Some(file) = &recovery {
+                                if !file.lock_for_recheck()? {
+                                    Some(AttachmentPublication::Busy)
+                                } else if matches_input(file, &request.input)? {
+                                    Some(AttachmentPublication::Published(
+                                        existing.filename.clone(),
+                                    ))
+                                } else {
+                                    Some(AttachmentPublication::Uncertain)
+                                }
                             } else {
                                 Some(AttachmentPublication::Uncertain)
                             }
-                        } else {
-                            Some(AttachmentPublication::Uncertain)
                         }
-                    }
-                },
-                None => None,
-            };
-            Ok(Some(AttachmentPublicationPlan {
-                store,
-                stage,
-                path,
-                request,
-                receipt,
-                source,
-                recovery,
-                finished,
-                _serial: serial,
-            }))
-        })
-        .await
-        .map_err(worker_error)?
+                    },
+                    None => None,
+                };
+                Ok(Some(AttachmentPublicationPlan {
+                    store,
+                    stage,
+                    path,
+                    request,
+                    receipt,
+                    source,
+                    recovery,
+                    finished,
+                    _serial: serial,
+                }))
+            })
+            .await
+            .map_err(worker_error)?
     })
     .await
     .map_err(worker_error)?
@@ -261,7 +267,7 @@ impl AttachmentPublicationPlan {
             let directory = self.store.vault_base.join(&relative).join("attachments");
             let needs_session = self.receipt.as_ref().is_none_or(|receipt| receipt.schema_version == 1 && matches!(receipt.state, State::Pending));
             let session_exists = needs_session && self.store.metadata_snapshot_locked(&snapshot._guard, &self.request.session).await?.is_some();
-            tokio::task::spawn_blocking(move || {
+            self.store.clone().spawn_blocking(move || {
                 let _snapshot = snapshot;
                 let _serial = self._serial;
                 if let Some(mut existing) = self.receipt {

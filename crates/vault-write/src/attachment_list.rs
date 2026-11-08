@@ -39,24 +39,27 @@ impl SessionStore {
                 .vault_base
                 .join(store.session_dir_locked(&snapshot._guard, &id).await?)
                 .join("attachments");
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                let directory_meta = match std::fs::symlink_metadata(&directory) {
-                    Ok(meta) => meta,
-                    Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {
-                        return Ok(Some(Vec::new()));
+            store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    let directory_meta = match std::fs::symlink_metadata(&directory) {
+                        Ok(meta) => meta,
+                        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(Some(Vec::new()));
+                        }
+                        Err(cause) => return Err(StoreError::Io(cause.to_string())),
+                    };
+                    if !directory_meta.is_dir() || directory_meta.file_type().is_symlink() {
+                        return Err(StoreError::Io(
+                            "Attachment directory is not a regular directory".into(),
+                        ));
                     }
-                    Err(cause) => return Err(StoreError::Io(cause.to_string())),
-                };
-                if !directory_meta.is_dir() || directory_meta.file_type().is_symlink() {
-                    return Err(StoreError::Io(
-                        "Attachment directory is not a regular directory".into(),
-                    ));
-                }
-                scan_attachments(directory, limit, after.as_deref(), 50_000).map(Some)
-            })
-            .await
-            .map_err(|cause| StoreError::Io(format!("Attachment listing worker failed: {cause}")))?
+                    scan_attachments(directory, limit, after.as_deref(), 50_000).map(Some)
+                })
+                .await
+                .map_err(|cause| {
+                    StoreError::Io(format!("Attachment listing worker failed: {cause}"))
+                })?
         })
         .await
         .map_err(|cause| StoreError::Io(format!("Attachment listing request failed: {cause}")))?

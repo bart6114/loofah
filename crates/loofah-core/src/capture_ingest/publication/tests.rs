@@ -36,7 +36,7 @@ async fn leased_context(
         store.clone(),
         "vault".into(),
         operations.join("recording-publications"),
-        lease,
+        lease.into(),
     )
     .await
     .unwrap();
@@ -876,7 +876,7 @@ async fn dropped_bootstrap_waiter_retains_the_real_vault_lease_through_admitted_
     assert!(directory.join("audio.wav").is_file());
     Arc::get_mut(fixture.context.as_mut().unwrap())
         .unwrap()
-        .lease = Some(contender);
+        .lease = Some(contender.into());
     fixture.stop().await;
 }
 

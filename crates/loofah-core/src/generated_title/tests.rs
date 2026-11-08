@@ -119,7 +119,7 @@ async fn cancelled_title_prepare_and_apply_retain_context_and_real_vault_lease_u
         let path = root.path().join("lease");
         let lease = std::fs::File::create(&path).unwrap();
         lease.try_lock().unwrap();
-        context.lease = Some(lease);
+        context.lease = Some(lease.into());
         let context = Arc::new(context);
         let prepared = if apply {
             Some(baseline(&context).await)

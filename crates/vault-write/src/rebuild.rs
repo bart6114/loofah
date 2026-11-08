@@ -557,7 +557,7 @@ impl SessionStore {
                 .collect()
         };
         let vault_base = self.vault_base.clone();
-        tokio::task::spawn_blocking(move || -> Result<SessionLayoutScan, StoreError> {
+        self.spawn_blocking(move || -> Result<SessionLayoutScan, StoreError> {
             let started = std::time::Instant::now();
             let progress = |found| {
                 if let Some(on_sessions_found) = &on_sessions_found {
@@ -627,7 +627,7 @@ impl SessionStore {
             .vault_base
             .join(paths::enhanced_dir_in(&self.session_dir(id).await?));
         let session_id = id.to_string();
-        tokio::task::spawn_blocking(
+        self.spawn_blocking(
             move || -> Result<Vec<(String, Result<super::EnhancedDoc, StoreError>)>, StoreError> {
                 let mut out = Vec::new();
                 let entries = match std::fs::read_dir(&dir) {
@@ -684,7 +684,7 @@ impl SessionStore {
     /// `transcript.json`) despite having no `_meta.json`. Never reads file contents.
     async fn session_has_content(&self, id: &str) -> Result<bool, StoreError> {
         let dir = self.vault_base.join(self.session_dir(id).await?);
-        tokio::task::spawn_blocking(move || dir_has_session_content(&dir))
+        self.spawn_blocking(move || dir_has_session_content(&dir))
             .await
             .map_err(|e| StoreError::Io(format!("task join error: {e}")))?
     }

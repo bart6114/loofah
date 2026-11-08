@@ -96,24 +96,17 @@ impl VaultRuntime {
         let operations = operation_root.to_path_buf();
         let (vault, lease, operation_root) = tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&vault).map_err(io_error)?;
-            let vault = std::fs::canonicalize(&vault).map_err(io_error)?;
-            let lock_path = vault.join(".loofah-vault.lock");
-            if std::fs::symlink_metadata(&lock_path).is_ok_and(|meta| meta.file_type().is_symlink())
+            let lease = match hypr_storage::vault::VaultLease::try_acquire_existing(&vault)
+                .map_err(io_error)?
             {
-                return Err(StoreError::Io(
-                    "vault lock must not be a symbolic link".into(),
-                ));
-            }
-            let lease = std::fs::File::options()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(lock_path)
-                .map_err(io_error)?;
-            lease.try_lock().map_err(|_| {
-                StoreError::Conflict("vault is already open or cannot be locked".into())
-            })?;
+                hypr_storage::vault::LeaseAttempt::Acquired(lease) => lease,
+                hypr_storage::vault::LeaseAttempt::Busy => {
+                    return Err(StoreError::Conflict(
+                        "vault is already open; connect through its local owner".into(),
+                    ));
+                }
+            };
+            let vault = lease.canonical_vault().to_owned();
             // This is trusted host configuration, not a client path. Resolve its
             // ancestor aliases once; private descendants still use strict guards.
             std::fs::create_dir_all(&operations).map_err(io_error)?;
@@ -123,11 +116,12 @@ impl VaultRuntime {
         .await
         .map_err(|error| StoreError::Io(error.to_string()))??;
         let store = Arc::new(SessionStore::new(vault.clone()));
-        let (lease, recording_publications) = VaultContext::bootstrap_recording_publications(
+        store.pin_vault_lease(&lease)?;
+        let (lease_pin, recording_publications) = VaultContext::bootstrap_recording_publications(
             store.clone(),
             id.clone(),
             operation_root.join("recording-publications"),
-            lease,
+            lease.pin(),
         )
         .await?;
         store.set_startup_pending(true);
@@ -157,7 +151,7 @@ impl VaultRuntime {
             Arc::new(SearchService::default()),
         )
         .with_operation_storage(operation_root.to_path_buf());
-        context.lease = Some(lease);
+        context.lease = Some(lease_pin);
         context.recording_publications = recording_publications;
         let context = Arc::new(context);
         let stop = CancellationToken::new();

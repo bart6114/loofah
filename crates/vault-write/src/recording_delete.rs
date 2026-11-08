@@ -105,19 +105,21 @@ impl SessionStore {
                 .vault_base
                 .join(store.session_dir_locked(&snapshot._guard, &id).await?);
             let initial = directory.clone();
-            let original = tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                candidates(&initial)
-            })
-            .await
-            .map_err(worker_error)??;
-            let (original, hashes) = tokio::task::spawn_blocking(move || {
-                before_hash();
-                let hashes = recording_hashes(&original)?;
-                Ok::<_, StoreError>((original, hashes))
-            })
-            .await
-            .map_err(worker_error)??;
+            let original = store
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    candidates(&initial)
+                })
+                .await
+                .map_err(worker_error)??;
+            let (original, hashes) = store
+                .spawn_blocking(move || {
+                    before_hash();
+                    let hashes = recording_hashes(&original)?;
+                    Ok::<_, StoreError>((original, hashes))
+                })
+                .await
+                .map_err(worker_error)??;
             if hashes.first().is_some_and(|sha| sha != &expected) {
                 return Ok(Some(RecordingDeletionPlan::Finished(
                     RecordingDeletion::Changed,
@@ -150,21 +152,23 @@ impl RecordingDeletionCommit {
         self,
         before_hash: impl FnOnce() + Send + 'static,
     ) -> Result<RecordingDeletionPlan<CheckedRecordingDeletionCommit>, StoreError> {
-        tokio::task::spawn_blocking(move || {
-            if !lock_for_recheck(&self.original)? {
-                return Ok(RecordingDeletionPlan::Finished(RecordingDeletion::Busy));
-            }
-            before_hash();
-            // Windows can preserve all change metadata after an in-place edit.
-            if recording_hashes(&self.original)? != self.hashes {
-                return Ok(RecordingDeletionPlan::Finished(RecordingDeletion::Changed));
-            }
-            Ok(RecordingDeletionPlan::Prepared(Box::new(
-                CheckedRecordingDeletionCommit(self),
-            )))
-        })
-        .await
-        .map_err(worker_error)?
+        self.store
+            .clone()
+            .spawn_blocking(move || {
+                if !lock_for_recheck(&self.original)? {
+                    return Ok(RecordingDeletionPlan::Finished(RecordingDeletion::Busy));
+                }
+                before_hash();
+                // Windows can preserve all change metadata after an in-place edit.
+                if recording_hashes(&self.original)? != self.hashes {
+                    return Ok(RecordingDeletionPlan::Finished(RecordingDeletion::Changed));
+                }
+                Ok(RecordingDeletionPlan::Prepared(Box::new(
+                    CheckedRecordingDeletionCommit(self),
+                )))
+            })
+            .await
+            .map_err(worker_error)?
     }
 
     pub async fn commit(self) -> Result<Option<RecordingDeletion>, StoreError> {
@@ -212,52 +216,55 @@ impl CheckedRecordingDeletionCommit {
             if unavailable(&prepared.store, &prepared.id, &meta.meta) {
                 return Ok(Some(RecordingDeletion::Busy));
             }
-            tokio::task::spawn_blocking(move || {
-                let _snapshot = snapshot;
-                let _audio = prepared._audio;
-                let original = prepared.original;
-                let current = candidates(&prepared.directory)?;
-                if !same_candidates(&original, &current)? {
-                    return Ok(Some(RecordingDeletion::Changed));
-                }
-                let mut paths = Vec::new();
-                for base in [&prepared.directory, &prepared.directory.join("audio")] {
-                    if !regular_directory(base)? {
-                        continue;
+            prepared
+                .store
+                .clone()
+                .spawn_blocking(move || {
+                    let _snapshot = snapshot;
+                    let _audio = prepared._audio;
+                    let original = prepared.original;
+                    let current = candidates(&prepared.directory)?;
+                    if !same_candidates(&original, &current)? {
+                        return Ok(Some(RecordingDeletion::Changed));
                     }
-                    for name in SESSION_TRANSIENT_FILES
-                        .iter()
-                        .copied()
-                        .chain([SESSION_PEAKS_FILE])
-                        .chain(RECORDINGS)
-                    {
-                        let path = base.join(name);
-                        if open_regular_file(&path)?.is_some() {
-                            paths.push(path);
+                    let mut paths = Vec::new();
+                    for base in [&prepared.directory, &prepared.directory.join("audio")] {
+                        if !regular_directory(base)? {
+                            continue;
+                        }
+                        for name in SESSION_TRANSIENT_FILES
+                            .iter()
+                            .copied()
+                            .chain([SESSION_PEAKS_FILE])
+                            .chain(RECORDINGS)
+                        {
+                            let path = base.join(name);
+                            if open_regular_file(&path)?.is_some() {
+                                paths.push(path);
+                            }
                         }
                     }
-                }
-                let primary = original.first().map(|entry| &entry.path);
-                paths.sort_by_key(|path| Some(path) == primary);
-                let mut changed = false;
-                let result = (|| {
-                    for path in paths {
-                        remove(&path).map_err(io_error)?;
-                        changed = true;
+                    let primary = original.first().map(|entry| &entry.path);
+                    paths.sort_by_key(|path| Some(path) == primary);
+                    let mut changed = false;
+                    let result = (|| {
+                        for path in paths {
+                            remove(&path).map_err(io_error)?;
+                            changed = true;
+                        }
+                        Ok(Some(if original.is_empty() {
+                            RecordingDeletion::Absent
+                        } else {
+                            RecordingDeletion::Deleted
+                        }))
+                    })();
+                    if changed {
+                        prepared.store.notify_artifacts_changed(&prepared.id);
                     }
-                    Ok(Some(if original.is_empty() {
-                        RecordingDeletion::Absent
-                    } else {
-                        RecordingDeletion::Deleted
-                    }))
-                })();
-                if changed {
-                    prepared.store.notify_artifacts_changed(&prepared.id);
-                }
-                result
-            })
-            .await
-            .map_err(worker_error)?
+                    result
+                })
+                .await
+                .map_err(worker_error)?
         })
         .await
         .map_err(worker_error)?

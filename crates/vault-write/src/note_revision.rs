@@ -111,11 +111,11 @@ impl SessionStore {
                 };
                 let markdown = current.note.markdown.clone().unwrap_or_default();
                 let parse = markdown.clone();
-                let content =
-                    tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
-                        .await
-                        .map_err(|cause| StoreError::Io(cause.to_string()))?
-                        .map_err(StoreError::Serialize)?;
+                let content = store
+                    .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
+                    .await
+                    .map_err(|cause| StoreError::Io(cause.to_string()))?
+                    .map_err(StoreError::Serialize)?;
                 let tasks = store
                     .prepare_edited_tasks(&id, "session_raw_note", &id, &markdown, &content)
                     .await?;
@@ -178,7 +178,8 @@ impl SessionStore {
         crate::validate_session_id(session_id)?;
         let markdown = markdown.to_owned();
         let parse = markdown.clone();
-        let content = tokio::task::spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
+        let content = self
+            .spawn_blocking(move || hypr_tiptap::md_to_tiptap_json(&parse))
             .await
             .map_err(|cause| StoreError::Io(cause.to_string()))?
             .map_err(StoreError::Serialize)?;
