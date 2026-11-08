@@ -65,6 +65,20 @@ pub(crate) struct OnnxHost {
 }
 
 impl OnnxHost {
+    #[cfg(test)]
+    pub(crate) fn batch_inference_active_for_test(&self) -> bool {
+        let batch = self
+            .resources
+            .models
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|models| models.batch.clone());
+        batch.is_some_and(|batch| {
+            matches!(batch.try_lock(), Err(std::sync::TryLockError::WouldBlock))
+        })
+    }
+
     pub(crate) fn start(config: &crate::config::TranscriptionConfig) -> Arc<Self> {
         let resources = Arc::new(Resources {
             shutdown: CancellationToken::new(),

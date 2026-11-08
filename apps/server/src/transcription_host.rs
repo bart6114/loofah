@@ -118,6 +118,14 @@ impl TranscriptionHost {
     }
 
     #[cfg(test)]
+    pub(crate) fn batch_inference_active_for_test(&self) -> bool {
+        match &self.engine {
+            Engine::Onnx(engine) => engine.batch_inference_active_for_test(),
+            Engine::Whisper(_) => false,
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn observer(&self) -> hypr_transcribe_whisper_local::resources::ResourceObserver {
         match &self.engine {
             Engine::Whisper(engine) => engine.observer(),

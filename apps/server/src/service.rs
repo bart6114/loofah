@@ -366,6 +366,13 @@ impl Service {
     }
 
     #[cfg(all(test, feature = "cpu-transcription"))]
+    pub(crate) fn transcription_host_for_test(
+        &self,
+    ) -> Option<Arc<crate::transcription_host::TranscriptionHost>> {
+        self.transcription.clone()
+    }
+
+    #[cfg(all(test, feature = "cpu-transcription"))]
     pub(crate) fn transcription_resource_observer(
         &self,
     ) -> Option<hypr_transcribe_whisper_local::resources::ResourceObserver> {
