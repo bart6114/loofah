@@ -519,21 +519,19 @@ fn media_body(
                 }
             };
             let operation = async {
-                let access = service
-                    .catalog
-                    .access(
-                        &identity,
-                        &vault,
-                        matches!(reader, StreamReader::Original(_)),
-                    )
-                    .await
-                    .map_err(std::io::Error::other)?;
                 let length = remaining.min(64 * 1024) as usize;
                 let bytes = match &reader {
                     StreamReader::Canonical(reader) => {
-                        reader
-                            .read_chunk_with_guard(offset, length, permits.clone())
+                        let access = service
+                            .catalog
+                            .access(&identity, &vault, false)
                             .await
+                            .map_err(std::io::Error::other)?;
+                        let bytes = reader
+                            .read_chunk_with_guard(offset, length, permits.clone())
+                            .await;
+                        drop(access);
+                        bytes
                     }
                     StreamReader::Original(reader) => {
                         reader
@@ -542,7 +540,6 @@ fn media_body(
                     }
                 }
                 .map_err(std::io::Error::other)?;
-                drop(access);
                 Ok::<_, std::io::Error>(bytes)
             };
             let result = tokio::select! {
