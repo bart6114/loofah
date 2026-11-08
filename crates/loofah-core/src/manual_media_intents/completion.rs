@@ -64,8 +64,10 @@ impl VaultContext {
                     if original_session != session
                         || kind != expected
                         || record
-                            .session_created_at
+                            .declaration
+                            .expected_created_at
                             .as_ref()
+                            .or(record.session_created_at.as_ref())
                             .is_some_and(|original| original != &created)
                     {
                         return Err(review("Original manual media source generation changed"));

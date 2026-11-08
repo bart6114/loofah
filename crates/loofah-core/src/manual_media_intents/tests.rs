@@ -36,6 +36,7 @@ fn declaration() -> ManualMediaSummaryDeclaration {
         request_id: uuid::Uuid::new_v4().to_string(),
         session_id: "note".into(),
         fresh_session: false,
+        expected_created_at: None,
         kind: ManualMediaKind::Subtitles,
         summary: Some(CaptureProcessingSummary {
             target: DocumentTarget::Summary,

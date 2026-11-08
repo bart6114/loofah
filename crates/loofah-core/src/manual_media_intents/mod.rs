@@ -29,6 +29,8 @@ pub struct ManualMediaSummaryDeclaration {
     pub request_id: String,
     pub session_id: String,
     pub fresh_session: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_created_at: Option<String>,
     pub kind: ManualMediaKind,
     pub summary: Option<CaptureProcessingSummary>,
     pub only_if_empty: bool,
@@ -77,6 +79,16 @@ pub(crate) struct ManualMediaChildOrigin {
     source: ManualMediaSource,
 }
 impl ManualMediaChildOrigin {
+    pub(crate) fn validate_identity(
+        &self,
+        owner: &str,
+        child: &str,
+    ) -> Result<(), ApplicationError> {
+        if owner != OWNER || child != self.child_request_id {
+            return Err(review("Original manual summary child request changed"));
+        }
+        Ok(())
+    }
     pub(crate) fn validate_request(
         &self,
         request: &SummaryJobRequest,
@@ -307,6 +319,16 @@ fn validate_declaration(
 ) -> Result<(), ApplicationError> {
     uuid(&declaration.request_id)?;
     hypr_vault_read::paths::validate_session_id(&declaration.session_id).map_err(review)?;
+    if let Some(created) = &declaration.expected_created_at {
+        if declaration.kind != ManualMediaKind::AudioImport
+            || chrono::DateTime::parse_from_rfc3339(created).is_err()
+        {
+            return Err(error(
+                ErrorCode::Validation,
+                "Only audio import may declare a valid metadata date hint",
+            ));
+        }
+    }
     if declaration.fresh_session && declaration.kind != ManualMediaKind::AudioImport {
         return Err(error(
             ErrorCode::Validation,
