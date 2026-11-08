@@ -372,7 +372,7 @@ fn remote_media_recovery_keeps_explicit_source_and_original_id() {
     ])
     .unwrap();
     assert!(
-        matches!(args.command,crate::cli::Command::Sessions {command:crate::cli::MeetingCommand::Recover {request_id,source:Some(source)}} if request_id=="3ee6ab27-391d-47cb-ad40-5c61b57f4181" && source==PathBuf::from("original.wav"))
+        matches!(args.command,crate::cli::Command::Sessions {command:crate::cli::MeetingCommand::Recover {request_id,source:Some(source)}} if request_id=="3ee6ab27-391d-47cb-ad40-5c61b57f4181" && source==std::path::Path::new("original.wav"))
     );
 }
 
