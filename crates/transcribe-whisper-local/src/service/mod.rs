@@ -1,7 +1,8 @@
 mod batch;
 mod language;
 mod live_input;
-mod live_worker;
+pub(crate) mod live_pipeline;
+pub(crate) mod live_worker;
 mod message;
 mod packing;
 mod recorded;
@@ -274,4 +275,23 @@ mod tests {
         assert_eq!(segments[1].start, 10.0);
         assert_eq!(segments[1].duration, 0.0);
     }
+}
+
+pub(crate) fn live_response(
+    segment: &Segment,
+    finalized: bool,
+    metadata: &owhisper_interface::stream::Metadata,
+    channel: usize,
+    count: usize,
+) -> owhisper_interface::stream::StreamResponse {
+    response::build_transcript_response(
+        segment,
+        if finalized {
+            response::TranscriptKind::Finalized
+        } else {
+            response::TranscriptKind::Confirmed
+        },
+        metadata,
+        &[channel as i32, count as i32],
+    )
 }

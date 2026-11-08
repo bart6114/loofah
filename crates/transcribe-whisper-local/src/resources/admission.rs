@@ -12,13 +12,17 @@ pub(super) enum Kind {
 pub(super) struct Admission {
     pub inner: Arc<Inner>,
     pub cancellation: Arc<AtomicBool>,
-    kind: Kind,
+    pub(super) kind: Kind,
 }
 
 impl Drop for Admission {
     fn drop(&mut self) {
         {
             let mut state = self.inner.lock();
+            let cancellation = Arc::downgrade(&self.cancellation);
+            state
+                .cancellations
+                .retain(|registered| !registered.ptr_eq(&cancellation));
             match self.kind {
                 Kind::Batch => state.batch_groups -= 1,
                 Kind::Live(channels) => {

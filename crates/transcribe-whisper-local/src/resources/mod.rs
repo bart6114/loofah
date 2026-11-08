@@ -4,6 +4,7 @@
 //! This module performs no vault authorization, transcript publication or live transport.
 
 mod admission;
+pub mod live;
 #[cfg(test)]
 mod tests;
 
@@ -125,6 +126,18 @@ struct State {
 }
 
 trait Engine: Send + Sync {
+    fn live(
+        &self,
+        _params: ListenParams,
+        _cancelled: Arc<AtomicBool>,
+    ) -> Result<crate::service::live_worker::OwnedWorker, ResourceError> {
+        Err(ResourceError::Unavailable)
+    }
+
+    fn metadata(&self) -> owhisper_interface::stream::Metadata {
+        Default::default()
+    }
+
     fn batch(
         &self,
         source: &TrustedBatchSource,
@@ -135,12 +148,25 @@ trait Engine: Send + Sync {
 }
 
 struct CpuEngine {
-    model: hypr_whisper_local::LoadedWhisper,
+    model: Arc<hypr_whisper_local::LoadedWhisper>,
     path: PathBuf,
     _file: File,
 }
 
 impl Engine for CpuEngine {
+    fn live(
+        &self,
+        params: ListenParams,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<crate::service::live_worker::OwnedWorker, ResourceError> {
+        crate::service::live_worker::start_owned(self.model.clone(), params, cancelled)
+            .map_err(failed)
+    }
+
+    fn metadata(&self) -> owhisper_interface::stream::Metadata {
+        crate::service::build_metadata(&self.path)
+    }
+
     fn batch(
         &self,
         source: &TrustedBatchSource,
@@ -239,7 +265,7 @@ impl WhisperResources {
                     .map_err(failed)
             })?;
             Ok(Arc::new(CpuEngine {
-                model,
+                model: Arc::new(model),
                 path: spec.absolute_path,
                 _file: file,
             }))
