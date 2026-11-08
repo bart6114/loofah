@@ -215,6 +215,13 @@ impl VaultContext {
 }
 
 impl VaultContext {
+    pub fn transcription_available(&self) -> bool {
+        self.store.ensure_ready().is_ok()
+            && self.transcription.get().is_some_and(|service| {
+                !service.stop.is_cancelled() && !service.finished.is_cancelled()
+            })
+    }
+
     pub(crate) async fn retry_unstarted_capture_repair(
         &self,
         member: &str,

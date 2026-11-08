@@ -1,5 +1,6 @@
 mod appearance;
 mod application;
+mod application_transcription;
 mod attachment_upload;
 mod autostart;
 mod chatgpt;
@@ -671,6 +672,15 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             draft_cache::draft_cache_remove::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
             application::application_processing_available::<tauri::Wry>,
+            application_transcription::application_transcription_available::<tauri::Wry>,
+            application_transcription::application_transcription_policy::<tauri::Wry>,
+            application_transcription::application_submit_transcription::<tauri::Wry>,
+            application_transcription::application_transcription_jobs::<tauri::Wry>,
+            application_transcription::application_transcription_job::<tauri::Wry>,
+            application_transcription::application_transcription_job_result::<tauri::Wry>,
+            application_transcription::application_cancel_transcription_job::<tauri::Wry>,
+            application_transcription::application_resume_transcription_result::<tauri::Wry>,
+
             application::application_processing_policy::<tauri::Wry>,
             application::application_processing_settings::<tauri::Wry>,
             application::application_save_processing_settings::<tauri::Wry>,
