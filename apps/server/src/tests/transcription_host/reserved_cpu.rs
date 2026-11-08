@@ -1,7 +1,9 @@
 use super::*;
 use futures_util::FutureExt;
 use hypr_loofah_core::capture_live::{CaptureLiveEngineSpec, CaptureLiveIngress};
-use hypr_loofah_protocol::{CaptureFormat, CaptureLiveRequest, TranscriptionAvailability};
+use hypr_loofah_protocol::{
+    CaptureFormat, CaptureLiveFailure, CaptureLiveRequest, TranscriptionAvailability,
+};
 use std::{io::Cursor, panic::AssertUnwindSafe, time::Instant};
 
 struct LiveSource {
@@ -79,9 +81,10 @@ async fn real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http
             for chunk in feed_audio.chunks(3200) {
                 let pcm: Arc<[f32]> = chunk.into();
                 loop {
-                    match control.try_accept(frame, &pcm).unwrap() {
-                        CaptureLiveIngress::Accepted => break,
-                        CaptureLiveIngress::Busy => tokio::time::sleep(Duration::from_millis(5)).await,
+                    match control.try_accept(frame, &pcm) {
+                        Ok(CaptureLiveIngress::Accepted) => break,
+                        Err(CaptureLiveFailure::Interrupted) => return,
+                        Ok(CaptureLiveIngress::Busy) => tokio::time::sleep(Duration::from_millis(5)).await,
                         other => panic!("unexpected ingress: {other:?}"),
                     }
                 }
@@ -103,7 +106,7 @@ async fn real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http
         let health = tokio::time::timeout(Duration::from_secs(2), fixture.app.clone().oneshot(
             Request::builder().uri("/health").body(Body::empty()).unwrap(),
         )).await.unwrap().unwrap();
-        assert_eq!(health.status(), StatusCode::OK);
+        assert_eq!(health.status(), StatusCode::NO_CONTENT);
         let (status, _) = tokio::time::timeout(Duration::from_secs(2), fixture.call("alice", "GET", &format!("/api/v1/vaults/{}/sessions/speech/metadata",me.personal_vault_id),None)).await.unwrap();
         assert_eq!(status, StatusCode::OK);
         let http_elapsed = http_started.elapsed();
