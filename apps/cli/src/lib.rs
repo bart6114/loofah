@@ -205,6 +205,9 @@ async fn dispatch(
 }
 
 #[cfg(test)]
+mod future_sizes;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
