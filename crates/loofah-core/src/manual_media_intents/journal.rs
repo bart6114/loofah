@@ -9,7 +9,9 @@ pub(super) async fn load(
     let owner = context.clone();
     tokio::task::spawn_blocking(move || {
         let _owner = &owner;
-        ledger::ensure_directory(&root)?;
+        if !ledger::existing_directory(&root)? {
+            return Ok(None);
+        }
         let path = root.join(format!("{request}.json"));
         if !ledger::check_file(&path)? {
             return Ok(None);

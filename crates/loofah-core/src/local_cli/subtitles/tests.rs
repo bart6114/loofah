@@ -239,15 +239,15 @@ fn retained_parsing_reuses_original_ids_and_rejects_changed_declarations_or_sour
         Box::new(()),
     );
     let directory = root.path().join("request");
-    let first = journal::prepare(&directory, &intent, Some(artifact)).unwrap();
-    let again = journal::prepare(&directory, &intent, None).unwrap();
+    let first = journal::prepare(&directory, &intent, Some(artifact), &|_| {}).unwrap();
+    let again = journal::prepare(&directory, &intent, None, &|_| {}).unwrap();
     assert_eq!(first.transcript, again.transcript);
     let mut changed = intent.clone();
     changed.transcript_present = true;
-    assert!(journal::prepare(&directory, &changed, None).is_err());
+    assert!(journal::prepare(&directory, &changed, None, &|_| {}).is_err());
     std::fs::remove_file(directory.join("parsed.json")).unwrap();
     std::fs::write(directory.join("source.srt"), b"changed").unwrap();
-    assert!(journal::prepare(&directory, &intent, None).is_err());
+    assert!(journal::prepare(&directory, &intent, None, &|_| {}).is_err());
 }
 
 #[tokio::test]
@@ -283,7 +283,7 @@ async fn retained_subtitle_result_recovers_without_caller_file_and_never_rebinds
             .root
             .join("local-subtitles")
             .join(&request);
-        let parsed = journal::prepare(&directory, &intent, Some(f.artifact(SRT))).unwrap();
+        let parsed = journal::prepare(&directory, &intent, Some(f.artifact(SRT)), &|_| {}).unwrap();
         if changed {
             std::fs::write(f.canonical(), b"{\"transcripts\":[],\"future\":42}").unwrap();
         }
@@ -338,6 +338,39 @@ async fn empty_subtitles_are_an_explicit_noop_with_recoverable_history() {
             ..
         }
     ));
+    assert!(!f.canonical().exists());
+    f.stop().await;
+}
+
+#[tokio::test]
+async fn subtitle_inventory_is_read_only_and_retains_original_history_after_canonical_deletion() {
+    let f = Fixture::new(true).await;
+    let root = f
+        .runtime
+        .context
+        .operations
+        .as_ref()
+        .unwrap()
+        .root
+        .join("local-subtitles");
+    assert!(!root.exists());
+    assert!(f.cli.subtitle_statuses(None).await.unwrap().is_empty());
+    assert!(!root.exists());
+    let request = uuid::Uuid::new_v4().to_string();
+    f.import(&request, "words.srt", SRT).await.unwrap();
+    std::fs::remove_file(f.canonical()).unwrap();
+    let statuses = f.cli.subtitle_statuses(Some(&f.session)).await.unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].request_id, request);
+    assert_eq!(statuses[0].state, LocalMediaState::Succeeded);
+    assert_eq!(statuses[0].word_count, Some(1));
+    assert!(!f.canonical().exists());
+    let path = root.join(&request).join("intent.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    value["version"] = 2.into();
+    std::fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(f.cli.subtitle_statuses(None).await.is_err());
     assert!(!f.canonical().exists());
     f.stop().await;
 }

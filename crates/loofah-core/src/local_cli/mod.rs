@@ -240,7 +240,7 @@ impl LocalCli {
             operation @ (LocalCliOperation::ImportSubtitles { .. }
             | LocalCliOperation::RecoverSubtitles { .. }) => {
                 return self
-                    .execute_subtitles(request_id, operation, artifact)
+                    .execute_subtitles(request_id, operation, artifact, progress)
                     .await;
             }
             LocalCliOperation::RecoverMedia { request_id } => {

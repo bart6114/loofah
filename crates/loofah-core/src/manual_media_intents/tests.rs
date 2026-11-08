@@ -318,3 +318,26 @@ async fn unqualified_or_disabled_automatic_summary_is_a_durable_skip() {
         worker.shutdown().await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn manual_summary_status_never_initializes_parent_storage() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let operation = context
+        .operations
+        .as_ref()
+        .unwrap()
+        .root
+        .join("manual-media-summary");
+    assert!(!operation.exists());
+    assert_eq!(
+        context
+            .manual_media_summary_status(&uuid::Uuid::new_v4().to_string())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotFound
+    );
+    assert!(!operation.exists());
+}

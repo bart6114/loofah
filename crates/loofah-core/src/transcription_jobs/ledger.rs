@@ -887,6 +887,21 @@ pub(crate) fn read(path: &Path, limit: u64) -> Result<Vec<u8>, ApplicationError>
     }
     Ok(bytes)
 }
+pub(crate) fn existing_directory(path: &Path) -> Result<bool, ApplicationError> {
+    if !path.is_absolute() {
+        return Err(storage("operation path is not absolute"));
+    }
+    let mut present = true;
+    for parent in path.ancestors() {
+        match std::fs::symlink_metadata(parent) {
+            Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => present = false,
+            Err(cause) => return Err(storage(cause)),
+            _ => return Err(storage("unsafe operation directory")),
+        }
+    }
+    Ok(present)
+}
 pub(crate) fn ensure_directory(path: &Path) -> Result<(), ApplicationError> {
     if !path.is_absolute() {
         return Err(storage("transcription operation path is not absolute"));

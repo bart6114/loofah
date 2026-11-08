@@ -9,6 +9,8 @@ use std::path::Path;
 
 #[path = "subtitles/journal.rs"]
 mod journal;
+#[path = "subtitles/status.rs"]
+mod status;
 #[cfg(test)]
 #[path = "subtitles/tests.rs"]
 mod tests;
@@ -46,6 +48,7 @@ impl LocalCli {
         request_id: String,
         operation: LocalCliOperation,
         artifact: Option<LocalCliArtifact>,
+        progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
     ) -> Result<LocalCliOutput, ApplicationError> {
         let (request, import) = match operation {
             LocalCliOperation::ImportSubtitles {
@@ -197,7 +200,7 @@ impl LocalCli {
         let owner = self.context.clone();
         let parsed = tokio::task::spawn_blocking(move || {
             let _owner = owner;
-            journal::prepare(&path, &intent_copy, artifact)
+            journal::prepare(&path, &intent_copy, artifact, progress.as_ref())
         })
         .await
         .map_err(unknown)??;
@@ -269,6 +272,10 @@ fn outcome_reply(
     words: usize,
     outcome: TranscriptPublicationOutcome,
 ) -> Result<LocalCliOutput, ApplicationError> {
+    if matches!(&outcome, TranscriptPublicationOutcome::Published { transcript_id, .. } | TranscriptPublicationOutcome::AlreadyCommitted { transcript_id, .. } if transcript_id != &intent.transcript_id)
+    {
+        return Err(unknown("Original subtitle publication identity changed"));
+    }
     let (transcript_id, revision) = match outcome {
         TranscriptPublicationOutcome::Published {
             transcript_id,

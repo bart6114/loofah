@@ -7,10 +7,13 @@ use std::io::{Read, Seek, SeekFrom};
 struct ParsedReceipt {
     intent_sha256: String,
     result_sha256: String,
+    word_count: usize,
 }
 
 pub(super) fn load(directory: &Path) -> Result<Option<Intent>, ApplicationError> {
-    ledger::ensure_directory(directory)?;
+    if !ledger::existing_directory(directory)? {
+        return Ok(None);
+    }
     let path = directory.join("intent.json");
     if !ledger::check_file(&path)? {
         return Ok(None);
@@ -46,6 +49,7 @@ pub(super) fn prepare(
     directory: &Path,
     intent: &Intent,
     artifact: Option<LocalCliArtifact>,
+    progress: &dyn Fn(LocalCliProgress),
 ) -> Result<Parsed, ApplicationError> {
     ledger::ensure_directory(directory)?;
     let bytes = intent_bytes(intent)?;
@@ -57,6 +61,16 @@ pub(super) fn prepare(
     } else {
         ledger::write_new(&intent_path, &bytes)?;
     }
+    progress(LocalCliProgress {
+        schema_version: "2".into(),
+        phase: "preparing media".into(),
+        processed: 0,
+        total: None,
+        added: 0,
+        updated: 0,
+        deleted: 0,
+        elapsed_ms: 0,
+    });
     let result_path = directory.join("parsed.json");
     if ledger::check_file(&result_path)? {
         return read_parsed(directory, intent);
@@ -134,6 +148,7 @@ pub(super) fn prepare(
     let receipt = ParsedReceipt {
         intent_sha256: parsed.intent_sha256,
         result_sha256: digest(&bytes),
+        word_count: parsed.transcript.words.len(),
     };
     ledger::write_new(
         &directory.join("parsed-receipt.json"),
@@ -164,5 +179,24 @@ pub(super) fn read_parsed(directory: &Path, intent: &Intent) -> Result<Parsed, A
         return Err(unknown("Retained subtitle result identity changed"));
     }
     ledger::validate_result(transcript)?;
+    if transcript.words.len() != receipt.word_count {
+        return Err(unknown("Retained subtitle word count changed"));
+    }
     Ok(parsed)
+}
+
+pub(super) fn parsed_word_count(
+    directory: &Path,
+    intent: &Intent,
+) -> Result<usize, ApplicationError> {
+    let receipt: ParsedReceipt =
+        serde_json::from_slice(&ledger::read(&directory.join("parsed-receipt.json"), 1024)?)
+            .map_err(unknown)?;
+    if receipt.intent_sha256 != digest(&intent_bytes(intent)?)
+        || !is_transcription_sha256(&receipt.result_sha256)
+        || receipt.word_count > 250_000
+    {
+        return Err(unknown("Retained subtitle receipt changed"));
+    }
+    Ok(receipt.word_count)
 }

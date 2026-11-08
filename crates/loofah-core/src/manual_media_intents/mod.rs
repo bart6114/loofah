@@ -333,7 +333,7 @@ fn uuid(value: &str) -> Result<uuid::Uuid, ApplicationError> {
         .ok_or_else(|| error(ErrorCode::Validation, "Canonical request UUID required"))
 }
 fn review(cause: impl std::fmt::Display) -> ApplicationError {
-    let mut cause = error(ErrorCode::Unavailable, cause.to_string());
+    let mut cause = error(ErrorCode::Unavailable, &cause.to_string());
     cause.mutation_outcome = Some(MutationOutcome::Unknown);
     cause
 }
