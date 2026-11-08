@@ -212,7 +212,10 @@ async fn maintenance(root: &Path, args: &[&str], success: bool) -> Value {
     }
 }
 fn hash(bytes: impl AsRef<[u8]>) -> String {
-    format!("{:x}", Sha256::digest(bytes.as_ref()))
+    Sha256::digest(bytes.as_ref())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 fn inventory(root: &Path) -> BTreeMap<PathBuf, (bool, u32, u64, String)> {
     use std::os::unix::fs::PermissionsExt;
