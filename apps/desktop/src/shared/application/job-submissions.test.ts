@@ -147,6 +147,110 @@ function fixture(scopeId = "scope") {
 }
 
 describe("durable device summary submissions", () => {
+  it("persists explicit title policy with the original baseline and replays exactly that input after a lost reply", async () => {
+    const { controller, scope, store, client, disk } = fixture();
+    client.features.push("generated_titles");
+    client.submitSummaryJob.mockRejectedValueOnce(new Error("Reply lost"));
+    await expect(
+      controller.generateSummary("note", { titlePolicy: "generate_if_empty" }),
+    ).rejects.toThrow("Reply lost");
+    const original = structuredClone(disk[0]);
+    expect(original.input).toEqual({
+      session_id: "note",
+      target: { kind: "summary" },
+      expected_revision: "baseline",
+      title_policy: "generate_if_empty",
+    });
+    client.readDocument.mockResolvedValue({
+      document: null,
+      revision: "newer-body",
+    });
+    await new JobSubmissions(scope, store).resume(original.request_id);
+    expect(client.readDocument).toHaveBeenCalledOnce();
+    expect(client.submitSummaryJob.mock.calls[1]).toEqual([
+      original.input,
+      { requestId: original.request_id },
+    ]);
+  });
+
+  it("omits an explicit preserve policy so old request hashes and servers keep working", async () => {
+    const { controller, client, disk } = fixture();
+    await controller.generateSummary("note", { titlePolicy: "preserve" });
+    expect(disk[0].input).not.toHaveProperty("title_policy");
+    expect(client.submitSummaryJob).toHaveBeenCalledWith(disk[0].input, {
+      requestId: disk[0].request_id,
+    });
+  });
+
+  it("refuses title opt-in before persistence, source reads, or dispatch when unsupported", async () => {
+    const { controller, store, client } = fixture();
+    await expect(
+      controller.generateSummary("note", { titlePolicy: "generate_if_empty" }),
+    ).rejects.toMatchObject({
+      detail: {
+        code: "incompatible_version",
+        mutation_outcome: "not_committed",
+      },
+    });
+    expect(store.list).not.toHaveBeenCalled();
+    expect(store.prepare).not.toHaveBeenCalled();
+    expect(client.readDocument).not.toHaveBeenCalled();
+    expect(client.submitSummaryJob).not.toHaveBeenCalled();
+  });
+
+  it("never downgrades a saved opted-in request on an older server but still refreshes an acknowledged job", async () => {
+    const { controller, store, client, disk, job } = fixture();
+    const receipt = await store.prepare({
+      session_id: "note",
+      target: { kind: "summary" },
+      expected_revision: "original",
+      title_policy: "generate_if_empty",
+    });
+    const original = structuredClone(receipt);
+    await expect(controller.resume(receipt.request_id)).rejects.toMatchObject({
+      detail: {
+        code: "incompatible_version",
+        mutation_outcome: "not_committed",
+      },
+    });
+    expect(client.submitSummaryJob).not.toHaveBeenCalled();
+    expect(disk).toEqual([original]);
+    disk[0].job = job;
+    await controller.resume(receipt.request_id);
+    expect(client.processingJob).toHaveBeenCalledWith(job.id, undefined);
+    expect(client.submitSummaryJob).not.toHaveBeenCalled();
+    expect(disk[0].input).toEqual(original.input);
+  });
+
+  it("keeps opted-in requests bound to their exact existing output", async () => {
+    const { controller, client, disk } = fixture();
+    client.features.push("generated_titles", "template_output_jobs");
+    client.readDocument.mockResolvedValue({
+      document: {
+        id: "output",
+        session_id: "note",
+        kind: "template_output",
+        title: "Kept",
+        template_id: "template",
+        sort_order: 9,
+        markdown: "Original output",
+      },
+      revision: "output-r0",
+    });
+    await controller.generateDocument(
+      "note",
+      { kind: "template_output", document_id: "output" },
+      { titlePolicy: "generate_if_empty" },
+    );
+    expect(disk[0].input).toEqual({
+      session_id: "note",
+      target: { kind: "template_output", document_id: "output" },
+      expected_revision: "output-r0",
+      title_policy: "generate_if_empty",
+    });
+    expect(client.submitSummaryJob.mock.calls[0][0]).toEqual(disk[0].input);
+  });
+
   it("requires atomic create-only admission through the native command", async () => {
     const { store, disk } = fixture();
     const input: SummaryJobRequest = {

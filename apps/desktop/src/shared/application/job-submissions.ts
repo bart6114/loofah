@@ -3,6 +3,7 @@ import type {
   DocumentTarget,
   SummaryJobRequest,
   ProcessingJobSnapshot,
+  TitlePolicy,
 } from "./protocol.gen";
 import { captureSessionGenerationGuard } from "./session-generation-guard";
 import type { RequestOptions } from "./vault-client";
@@ -76,25 +77,32 @@ export class JobSubmissions {
     > = new NativeJobSubmissions(scope.client.scope),
   ) {}
 
-  async generateSummary(sessionId: string, options?: RequestOptions) {
+  async generateSummary(
+    sessionId: string,
+    options?: RequestOptions & { titlePolicy?: TitlePolicy },
+  ) {
     return this.generateDocument(sessionId, { kind: "summary" }, options);
   }
 
   async generateDocument(
     sessionId: string,
     input: DocumentTarget,
-    options?: RequestOptions,
+    options?: RequestOptions & { titlePolicy?: TitlePolicy },
   ) {
+    const { titlePolicy = "preserve", ...requestOptions } = options ?? {};
+    const transportOptions = Object.keys(requestOptions).length
+      ? requestOptions
+      : undefined;
     const target: DocumentTarget =
       input.kind === "summary"
         ? { kind: "summary" }
         : { kind: "template_output", document_id: input.document_id };
-    this.requireFeature(target);
+    this.requireFeature(target, titlePolicy);
     const guard = captureSessionGenerationGuard(
       this.scope,
       sessionId,
       target,
-      options?.signal,
+      transportOptions?.signal,
     );
     try {
       await guard.prepare();
@@ -124,11 +132,11 @@ export class JobSubmissions {
         });
       for (const receipt of receipts) {
         if (receipt.job && activeJob(receipt.job))
-          await this.resume(receipt.request_id, options);
+          await this.resume(receipt.request_id, transportOptions);
         guard.assertReady();
       }
       const baseline = await this.scope.run(() =>
-        this.scope.client.readDocument(sessionId, target, options),
+        this.scope.client.readDocument(sessionId, target, transportOptions),
       );
       guard.assertReady();
       if (
@@ -141,15 +149,18 @@ export class JobSubmissions {
         throw new Error(
           "This template output is no longer available for regeneration",
         );
-      options?.signal?.throwIfAborted();
+      transportOptions?.signal?.throwIfAborted();
       const receipt = await this.store.prepare({
         session_id: sessionId,
         target,
         expected_revision: baseline.revision,
+        ...(titlePolicy === "generate_if_empty"
+          ? { title_policy: titlePolicy }
+          : {}),
       });
       guard.assertReady();
-      options?.signal?.throwIfAborted();
-      return await this.dispatch(receipt.request_id, options, guard);
+      transportOptions?.signal?.throwIfAborted();
+      return await this.dispatch(receipt.request_id, transportOptions, guard);
     } finally {
       guard.dispose();
     }
@@ -171,7 +182,8 @@ export class JobSubmissions {
         "Saved summary request not found for this account and vault",
       );
     prepared?.assertReady();
-    if (!receipt.job) this.requireFeature(receipt.input.target);
+    if (!receipt.job)
+      this.requireFeature(receipt.input.target, receipt.input.title_policy);
     options?.signal?.throwIfAborted();
     const guard = receipt.job
       ? null
@@ -212,7 +224,7 @@ export class JobSubmissions {
     return job;
   }
 
-  private requireFeature(target?: DocumentTarget) {
+  private requireFeature(target?: DocumentTarget, titlePolicy?: TitlePolicy) {
     if (
       !this.scope.client.features.includes("summary_body_jobs") ||
       (target?.kind === "template_output" &&
@@ -221,6 +233,18 @@ export class JobSubmissions {
       throw new ApplicationRequestError({
         code: "incompatible_version",
         message: "This connection does not support summary generation",
+        retryable: false,
+        request_id: null,
+        current_revision: null,
+        mutation_outcome: "not_committed",
+      });
+    if (
+      titlePolicy === "generate_if_empty" &&
+      !this.scope.client.features.includes("generated_titles")
+    )
+      throw new ApplicationRequestError({
+        code: "incompatible_version",
+        message: "This connection does not support generated titles",
         retryable: false,
         request_id: null,
         current_revision: null,

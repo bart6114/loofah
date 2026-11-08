@@ -1,4 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
+import { useForm } from "@tanstack/react-form";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -14,7 +15,12 @@ import {
 } from "@hypr/ui/components/ui/dialog";
 
 import { activeJob, JobSubmissions } from "./job-submissions";
-import type { DocumentTarget, ProcessingJobSnapshot } from "./protocol.gen";
+import type {
+  DocumentTarget,
+  ProcessingJobSnapshot,
+  ProcessingTitleResult,
+  TitlePolicy,
+} from "./protocol.gen";
 import { VaultProcessingSettings } from "./vault-processing-settings";
 import type { VaultScope } from "./vault-scope";
 
@@ -96,6 +102,7 @@ function SummaryJobs({
 }) {
   const { t } = useLingui();
   const controller = useMemo(() => new JobSubmissions(scope), [scope]);
+  const form = useForm({ defaultValues: { generateTitle: false } });
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const connected = connection.state === "connected";
   const denied = [
@@ -153,7 +160,8 @@ function SummaryJobs({
   );
   const generate = useMutation(
     {
-      mutationFn: () => controller.generateDocument(sessionId, target),
+      mutationFn: (titlePolicy: TitlePolicy) =>
+        controller.generateDocument(sessionId, target, { titlePolicy }),
       networkMode: "always",
       retry: false,
       onSettled: () => refresh(controller),
@@ -206,7 +214,13 @@ function SummaryJobs({
                   activeJob(known.get(job.id) ?? job),
               )
             }
-            onClick={() => generate.mutate()}
+            onClick={() =>
+              generate.mutate(
+                form.getFieldValue("generateTitle")
+                  ? "generate_if_empty"
+                  : "preserve",
+              )
+            }
           >
             {generate.isPending ? (
               <Trans>Starting summary…</Trans>
@@ -217,6 +231,24 @@ function SummaryJobs({
             )}
           </Button>
         )}
+        {scope.client.features.includes("generated_titles") &&
+          scope.client.canEdit && (
+            <form.Field name="generateTitle">
+              {(field) => (
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={field.state.value}
+                    disabled={!connected || generate.isPending || pending}
+                    onChange={(event) =>
+                      field.handleChange(event.target.checked)
+                    }
+                  />
+                  <Trans>Generate a title if this note is untitled</Trans>
+                </label>
+              )}
+            </form.Field>
+          )}
         <AllDeviceRequests
           controller={controller}
           connected={connected}
@@ -380,7 +412,12 @@ function ReceiptList({
           )}
           <span>{new Date(receipt.created_at_ms).toLocaleString()}</span>
           {receipt.job ? (
-            <JobStatus job={receipt.job} />
+            <JobStatus
+              job={receipt.job}
+              hasTitleStage={controller.scope.client.features.includes(
+                "generated_titles",
+              )}
+            />
           ) : (
             <span>
               <Trans>
@@ -467,6 +504,8 @@ function JobRow({
   job: ProcessingJobSnapshot;
   connected: boolean;
 }) {
+  const hasTitleStage =
+    controller.scope.client.features.includes("generated_titles");
   const cancel = useMutation(
     {
       mutationFn: () => controller.cancel(job.id),
@@ -481,7 +520,7 @@ function JobRow({
       <time dateTime={job.created_at} className="text-muted-foreground">
         {new Date(job.created_at).toLocaleString()}
       </time>
-      <JobStatus job={job} />
+      <JobStatus job={job} hasTitleStage={hasTitleStage} />
       {activeJob(job) ? (
         <Button
           size="sm"
@@ -491,9 +530,14 @@ function JobRow({
           }
           onClick={() => cancel.mutate()}
         >
-          <Trans>Cancel summary</Trans>
+          {hasTitleStage ? (
+            <Trans>Cancel processing</Trans>
+          ) : (
+            <Trans>Cancel summary</Trans>
+          )}
         </Button>
-      ) : (
+      ) : null}
+      {(!activeJob(job) || hasTitleStage) && (
         <GeneratedText
           scope={controller.scope}
           jobId={job.id}
@@ -569,6 +613,13 @@ function GeneratedText({
           </p>
         ) : result.data ? (
           <>
+            {result.data.title && (
+              <TitleResult
+                title={result.data.title}
+                copy={copy.mutate}
+                copying={copy.isPending}
+              />
+            )}
             <pre className="min-h-0 overflow-y-auto text-xs break-words whitespace-pre-wrap">
               {result.data.markdown.slice(0, 64 * 1024)}
             </pre>
@@ -600,12 +651,67 @@ function GeneratedText({
   );
 }
 
-function JobStatus({ job }: { job: ProcessingJobSnapshot }) {
+function TitleResult({
+  title,
+  copy,
+  copying,
+}: {
+  title: ProcessingTitleResult;
+  copy: (text: string) => void;
+  copying: boolean;
+}) {
+  const { t } = useLingui();
+  const status = {
+    generating: t`Generating title...`,
+    applying: t`Saving title…`,
+    applied: t`Title saved`,
+    empty: t`No title was generated.`,
+    already_named: t`Existing title kept.`,
+    unsupported: t`Title generation is unavailable.`,
+    failed: t`Title generation failed.`,
+    cancelled: t`Title generation cancelled.`,
+    conflict: t`Content changed during title generation.`,
+    interrupted: t`Title generation interrupted.`,
+    unconfirmed: t`The title save could not be confirmed. Review the saved note before using this title.`,
+  }[title.status];
+  return (
+    <div className="flex flex-col gap-2 rounded border p-2 text-xs">
+      <p>
+        <Trans>Summary saved</Trans>
+      </p>
+      <p role="status">{status}</p>
+      {title.candidate && (
+        <>
+          <p className="max-h-24 overflow-y-auto break-words whitespace-pre-wrap">
+            {title.candidate.slice(0, 4096)}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={copying}
+            onClick={() => copy(title.candidate!)}
+          >
+            <Trans>Copy generated title</Trans>
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function JobStatus({
+  job,
+  hasTitleStage = false,
+}: {
+  job: ProcessingJobSnapshot;
+  hasTitleStage?: boolean;
+}) {
   const { t } = useLingui();
   const label = {
     queued: t`Queued`,
-    running:
-      job.phase === "applying"
+    running: hasTitleStage
+      ? t`Processing request`
+      : job.phase === "applying"
         ? t`Saving summary`
         : job.phase === "generating"
           ? t`Generating summary`

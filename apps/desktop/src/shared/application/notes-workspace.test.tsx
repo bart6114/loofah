@@ -67,6 +67,7 @@ import * as editorMarkdown from "@hypr/editor/markdown";
 
 import { documentDraftId } from "./document-draft";
 import { ApplicationRequestError } from "./errors";
+import { noteDrafts } from "./note-draft";
 import { noteEditorDraftId, noteEditorDrafts } from "./note-editor-draft";
 import { VaultNotesWorkspace } from "./notes-workspace";
 import type {
@@ -1409,6 +1410,74 @@ describe("shared note workspace", () => {
     );
     expect(backend.client.saveNote).not.toHaveBeenCalled();
     expect((editor as HTMLTextAreaElement).value).toBe("Just typed output");
+  });
+
+  it("keeps a title typed during generation when the canonical generated title arrives", async () => {
+    const backend = fixture();
+    backend.set({ markdown: "Original", title: "", revision: "a" });
+    const client = {
+      ...backend.client,
+      features: [
+        "notes",
+        "content_read",
+        "document_edit",
+        "summary_body_jobs",
+        "generated_titles",
+      ],
+    };
+    await open(client);
+    fireEvent.click(screen.getByRole("button", { name: "Outputs" }));
+    const generate = await screen.findByRole("button", {
+      name: "Summarize saved notes",
+    });
+    await waitFor(() => expect(generate).toHaveProperty("disabled", false));
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Generate a title if this note is untitled",
+      }),
+    );
+    fireEvent.click(generate);
+    await waitFor(() =>
+      expect(backend.client.submitSummaryJob).toHaveBeenCalledOnce(),
+    );
+    expect(native.receipts[0].input).toMatchObject({
+      session_id: "same",
+      target: { kind: "summary" },
+      title_policy: "generate_if_empty",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Note" }));
+    const title = await screen.findByRole("textbox", { name: "Title" });
+    fireEvent.change(title, { target: { value: "My unsaved newer title" } });
+    act(() => {
+      backend.set({
+        markdown: "Original",
+        title: "Generated canonical title",
+        revision: "generated-title",
+      });
+      backend.emit({
+        kind: "change",
+        change: { kind: "index_changed", entity: "sessions", ids: ["same"] },
+      });
+    });
+    await screen.findByText(
+      "This content changed elsewhere. Review the saved version before choosing.",
+    );
+    expect(title).toHaveProperty("value", "My unsaved newer title");
+    const draft = noteDrafts.get(client.scope, "same")!;
+    expect(draft.getSnapshot().draft.title).toBe("My unsaved newer title");
+    expect(draft.getSnapshot().conflict?.title).toBe(
+      "Generated canonical title",
+    );
+    await waitFor(() =>
+      expect(native.draftCachePut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: client.scope,
+          sessionId: "same",
+          draft: { markdown: "Original", title: "My unsaved newer title" },
+        }),
+      ),
+    );
+    expect(backend.client.saveNote).not.toHaveBeenCalled();
   });
 
   it("keeps a target editor's lost-save recovery and skips generation instead of using the older body", async () => {

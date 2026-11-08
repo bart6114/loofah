@@ -28,6 +28,7 @@ import type {
   ListProcessingJobsInput,
   SummaryJobRequest,
   DocumentSnapshot,
+  ProcessingJobResult,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultProcessing } from "./vault-processing";
@@ -136,7 +137,7 @@ async function fixture(
       ),
       next_cursor: null,
     })),
-    readDocument: vi.fn(
+    readDocument: vi.fn<VaultClient["readDocument"]>(
       async (): Promise<DocumentSnapshot> => ({
         document: null,
         revision: "baseline",
@@ -155,14 +156,16 @@ async function fixture(
       data.jobs = [cancelled];
       return cancelled;
     }),
-    processingJobResult: vi.fn(async () => ({
-      vault_id: "vault",
-      job_id: job.id,
-      session_id: "note",
-      target: job.target,
-      markdown: "# Recovered\nKeep this result.",
-      suggested_tags: null,
-    })),
+    processingJobResult: vi.fn(
+      async (): Promise<ProcessingJobResult | null> => ({
+        vault_id: "vault",
+        job_id: job.id,
+        session_id: "note",
+        target: job.target,
+        markdown: "# Recovered\nKeep this result.",
+        suggested_tags: null,
+      }),
+    ),
   };
   const client = {
     scope: crypto.randomUUID(),
@@ -192,6 +195,253 @@ it("hides unsupported processing without touching device request storage", async
   render(<VaultProcessing scope={scope} sessionId="note" />);
   expect(screen.queryByRole("region")).toBeNull();
   expect(native.deviceJobSubmissions).not.toHaveBeenCalled();
+});
+
+it("only opts into title generation when explicitly checked and captures that policy before device persistence", async () => {
+  const { scope, calls, data } = await fixture({
+    features: ["summary_body_jobs", "generated_titles"],
+  });
+  render(<VaultProcessing scope={scope} sessionId="note" />);
+  const checkbox = screen.getByRole("checkbox", {
+    name: "Generate a title if this note is untitled",
+  });
+  expect(checkbox).toHaveProperty("checked", false);
+  const generate = screen.getByRole("button", {
+    name: "Summarize saved notes",
+  });
+  await waitFor(() => expect(generate).toHaveProperty("disabled", false));
+  fireEvent.click(checkbox);
+  fireEvent.click(generate);
+  await screen.findByText("Summary saved");
+  expect(data.receipts[0].input).toEqual({
+    session_id: "note",
+    target: { kind: "summary" },
+    expected_revision: "baseline",
+    title_policy: "generate_if_empty",
+  });
+  expect(calls.submitSummaryJob.mock.calls[0][0]).toEqual(
+    data.receipts[0].input,
+  );
+  expect(calls.readDocument.mock.calls[0][2]).toBeUndefined();
+});
+
+it.each([
+  { canEdit: true, features: ["summary_body_jobs"] },
+  { canEdit: false, features: ["summary_body_jobs", "generated_titles"] },
+])(
+  "does not offer generated titles without support and write permission $canEdit/$features",
+  async (options) => {
+    const { scope } = await fixture(options);
+    render(<VaultProcessing scope={scope} sessionId="note" />);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  },
+);
+
+it("keeps default preserve requests byte-compatible even when generated titles are supported", async () => {
+  const { scope, data } = await fixture({
+    features: ["summary_body_jobs", "generated_titles"],
+  });
+  render(<VaultProcessing scope={scope} sessionId="note" />);
+  const button = screen.getByRole("button", { name: "Summarize saved notes" });
+  await waitFor(() => expect(button).toHaveProperty("disabled", false));
+  fireEvent.click(button);
+  await screen.findByText("Summary saved");
+  expect(data.receipts[0].input).not.toHaveProperty("title_policy");
+});
+
+it.each(["generating", "applying"] as const)(
+  "keeps the saved body inspectable during the optional title %s stage without eager result requests",
+  async (status) => {
+    const { scope, calls, job, data } = await fixture({
+      features: ["summary_body_jobs", "generated_titles"],
+    });
+    data.jobs = [{ ...job, state: "running", phase: "applying" }];
+    calls.processingJobResult.mockResolvedValue({
+      vault_id: "vault",
+      job_id: job.id,
+      session_id: "note",
+      target: job.target,
+      markdown: "Saved body",
+      title: { status },
+      suggested_tags: null,
+    });
+    render(<VaultProcessing scope={scope} sessionId="note" />);
+    await screen.findByText("Processing request");
+    expect(screen.queryByText("Saving summary")).toBeNull();
+    expect(calls.processingJobResult).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Cancel processing" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generated text" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Saved body");
+    expect(within(dialog).getByText("Summary saved")).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        status === "generating" ? "Generating title..." : "Saving title…",
+      ),
+    ).toBeTruthy();
+  },
+);
+
+it("reports title failure separately from body success and only copies recovered title candidates", async () => {
+  const { scope, calls, job, data } = await fixture({
+    features: ["summary_body_jobs", "generated_titles"],
+  });
+  data.jobs = [job];
+  calls.processingJobResult.mockResolvedValue({
+    vault_id: "vault",
+    job_id: job.id,
+    session_id: "note",
+    target: job.target,
+    markdown: "Saved summary",
+    title: {
+      status: "failed",
+      candidate: "Recovered title",
+      failure: "storage",
+    },
+    suggested_tags: null,
+  });
+  render(<VaultProcessing scope={scope} sessionId="note" />);
+  await screen.findByText("Summary saved");
+  fireEvent.click(screen.getByRole("button", { name: "Generated text" }));
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByText("Title generation failed.");
+  expect(within(dialog).getByText("Saved summary")).toBeTruthy();
+  expect(screen.queryByText("Summary failed")).toBeNull();
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Copy generated title" }),
+  );
+  await waitFor(() =>
+    expect(native.copy).toHaveBeenCalledWith("Recovered title"),
+  );
+  expect(calls.submitSummaryJob).not.toHaveBeenCalled();
+  expect(calls.readDocument).not.toHaveBeenCalled();
+  expect(native.deviceJobSubmissionPrepare).not.toHaveBeenCalled();
+});
+
+it("resets title opt-in when the session or immutable target changes", async () => {
+  const { scope, calls } = await fixture({
+    features: ["summary_body_jobs", "generated_titles", "template_output_jobs"],
+  });
+  const mounted = render(<VaultProcessing scope={scope} sessionId="note" />);
+  const checkbox = screen.getByRole("checkbox");
+  fireEvent.click(checkbox);
+  expect(checkbox).toHaveProperty("checked", true);
+  mounted.rerender(<VaultProcessing scope={scope} sessionId="other" />);
+  expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+  fireEvent.click(screen.getByRole("checkbox"));
+  mounted.rerender(
+    <VaultProcessing
+      scope={scope}
+      sessionId="other"
+      target={{ kind: "template_output", document_id: "output" }}
+    />,
+  );
+  expect(screen.getByRole("checkbox")).toHaveProperty("checked", false);
+  expect(calls.submitSummaryJob).not.toHaveBeenCalled();
+});
+
+it("never displays or caches a late private title result after access loss", async () => {
+  const { scope, calls, job, data, emit } = await fixture({
+    features: ["summary_body_jobs", "generated_titles"],
+  });
+  data.jobs = [job];
+  let finish!: (result: ProcessingJobResult) => void;
+  calls.processingJobResult.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<VaultProcessing scope={scope} sessionId="note" />);
+  await screen.findByText("Summary saved");
+  fireEvent.click(screen.getByRole("button", { name: "Generated text" }));
+  await waitFor(() => expect(calls.processingJobResult).toHaveBeenCalledOnce());
+  act(() => emit({ kind: "connection", state: "access_denied", error: null }));
+  await act(async () =>
+    finish({
+      vault_id: "vault",
+      job_id: job.id,
+      session_id: "note",
+      target: job.target,
+      markdown: "PRIVATE BODY",
+      title: { status: "applied", candidate: "PRIVATE TITLE" },
+      suggested_tags: null,
+    }),
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText("PRIVATE TITLE")).toBeNull();
+  expect(
+    scope.queryClient.getQueryData(
+      scope.processingJobResultOptions(job.id).queryKey,
+    ),
+  ).toBeUndefined();
+  expect(native.copy).not.toHaveBeenCalled();
+});
+
+it("isolates late historical title candidates from a replacement scope with identical IDs", async () => {
+  const first = await fixture({
+    features: ["summary_body_jobs", "generated_titles"],
+  });
+  first.data.jobs = [first.job];
+  let finish!: (result: ProcessingJobResult) => void;
+  first.calls.processingJobResult.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const mounted = render(
+    <VaultProcessing scope={first.scope} sessionId="note" />,
+  );
+  await screen.findByText("Summary saved");
+  fireEvent.click(screen.getByRole("button", { name: "Generated text" }));
+  await waitFor(() =>
+    expect(first.calls.processingJobResult).toHaveBeenCalledOnce(),
+  );
+  const canonical: ProcessingJobResult = {
+    vault_id: "other-vault",
+    job_id: first.job.id,
+    session_id: "note",
+    target: first.job.target,
+    markdown: "Replacement body",
+    title: { status: "already_named" },
+    suggested_tags: null,
+  };
+  const second = await activate({
+    ...first.client,
+    processingJobs: vi.fn(async () => ({
+      items: [first.job],
+      next_cursor: null,
+    })),
+    processingJobResult: vi.fn(async () => canonical),
+  });
+  mounted.rerender(<VaultProcessing scope={second} sessionId="note" />);
+  act(() => first.scope.dispose());
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Generated text" }),
+  );
+  await screen.findByText("Replacement body");
+  await act(async () =>
+    finish({
+      ...canonical,
+      markdown: "PRIVATE OLD BODY",
+      title: { status: "applied", candidate: "PRIVATE OLD TITLE" },
+    }),
+  );
+  expect(screen.queryByText("PRIVATE OLD TITLE")).toBeNull();
+  expect(
+    second.queryClient.getQueryData(
+      second.processingJobResultOptions(first.job.id).queryKey,
+    ),
+  ).toEqual(canonical);
+  expect(
+    first.scope.queryClient.getQueryData(
+      first.scope.processingJobResultOptions(first.job.id).queryKey,
+    ),
+  ).toBeUndefined();
 });
 
 it.each([
