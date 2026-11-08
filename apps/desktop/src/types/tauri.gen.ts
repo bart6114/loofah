@@ -570,6 +570,21 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationProcessingJobPreview(
+    jobId: string,
+  ): Promise<Result<ProcessingJobPreview, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_processing_job_preview", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationCancelProcessingJob(
     jobId: string,
   ): Promise<Result<ProcessingJobSnapshot, ApplicationError>> {
@@ -3610,6 +3625,7 @@ export type Change =
   | { kind: "processing_settings_changed" }
   | { kind: "resync_required" }
   | { kind: "job_changed"; job_id: string }
+  | { kind: "job_preview_changed"; job_id: string }
   | { kind: "unknown" };
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change };
 export type ChannelProfile = "DirectMic" | "RemoteParty" | "MixedCapture";
@@ -4246,6 +4262,11 @@ export type ProcessingJobPage = {
   items: ProcessingJobSnapshot[];
   next_cursor: string | null;
 };
+export type ProcessingJobPreview = {
+  vault_id: string;
+  job: ProcessingJobSnapshot;
+  preview: ProcessingPreviewSnapshot | null;
+};
 export type ProcessingJobResult = {
   vault_id: string;
   job_id: string;
@@ -4278,6 +4299,11 @@ export type ProcessingPhase = "preparing" | "generating" | "applying";
 export type ProcessingPolicy = {
   providers: ProcessingProviderPolicy[];
   allow_custom_templates: boolean;
+};
+export type ProcessingPreviewSnapshot = {
+  cursor: string;
+  markdown: string;
+  truncated: boolean;
 };
 export type ProcessingProviderPolicy = {
   id: string;
@@ -4458,6 +4484,7 @@ export type RemoteOperation =
       input: ListProcessingJobsInput;
     }
   | { kind: "processing_job"; vault_id: string; job_id: string }
+  | { kind: "processing_job_preview"; vault_id: string; job_id: string }
   | { kind: "processing_job_result"; vault_id: string; job_id: string }
   | { kind: "cancel_processing_job"; vault_id: string; job_id: string }
   | {
@@ -4649,6 +4676,7 @@ export type RemoteReply =
   | { kind: "processing_settings_save"; value: ProcessingSettingsSaveOutcome }
   | { kind: "processing_job"; value: ProcessingJobSnapshot }
   | { kind: "processing_jobs"; value: ProcessingJobPage }
+  | { kind: "processing_job_preview"; value: ProcessingJobPreview }
   | { kind: "processing_job_result"; value: ProcessingJobResult | null }
   | { kind: "transcription_job"; value: TranscriptionJobSnapshot }
   | { kind: "transcription_jobs"; value: TranscriptionJobPage }

@@ -105,7 +105,7 @@ export type CaptureSeal = { capture_fingerprint: string; chunk_count: number; fr
 
 export type CaptureTarget = { kind: "existing_session"; session_id: string; expected_audio_sha256: string | null } | { kind: "append_session"; session_id: string; admission: CaptureAppendAdmission } | { kind: "pending_session"; create_request_id: string }
 
-export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "processing_settings_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
+export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "processing_settings_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "job_preview_changed"; job_id: string } | { kind: "unknown" }
 
 export type ChangeEvent = { vault_id: string; cursor: string; change: Change }
 
@@ -270,6 +270,8 @@ export type ProcessingJobFailure = "access_denied" | "source_unavailable" | "res
 
 export type ProcessingJobPage = { items: ProcessingJobSnapshot[]; next_cursor: string | null }
 
+export type ProcessingJobPreview = { vault_id: string; job: ProcessingJobSnapshot; preview: ProcessingPreviewSnapshot | null }
+
 export type ProcessingJobResult = { vault_id: string; job_id: string; session_id: string; target: DocumentTarget; markdown: string; suggested_tags?: ProcessingTagSuggestion[] | null; title?: ProcessingTitleResult | null }
 
 export type ProcessingJobSnapshot = { id: string; session_id: string; target: DocumentTarget; state: ProcessingJobState; phase: ProcessingPhase | null; failure: ProcessingJobFailure | null; created_at: string; updated_at: string }
@@ -279,6 +281,8 @@ export type ProcessingJobState = "queued" | "running" | "cancelling" | "cancelle
 export type ProcessingPhase = "preparing" | "generating" | "applying"
 
 export type ProcessingPolicy = { providers: ProcessingProviderPolicy[]; allow_custom_templates: boolean }
+
+export type ProcessingPreviewSnapshot = { cursor: string; markdown: string; truncated: boolean }
 
 export type ProcessingProviderPolicy = { id: string; models: string[]; base_url: string; allow_custom_model: boolean; allow_custom_endpoint: boolean; requires_key: boolean }
 

@@ -1,20 +1,37 @@
 # Separate Loofah’s application backend from its desktop shell
 
-Status: implementation paused for workstation handoff; see [the continuation prompt](./frontend-backend-continuation-prompt.md). The architecture and release gates below remain the full target; see the implementation audit at the end. Functionality is proposed unless verified there.
+Status: implementation resumed on the replacement workstation. The full target
+and release gates below remain active; current source and commit-scoped evidence
+are recorded in [the handoff](./frontend-backend-handoff.md). This draft is not
+ready for merge or release.
 
-Parallel work allocation, ownership and integration gates are defined in [the distribution plan](./frontend-backend-distribution.md).
+Parallel work allocation and integration gates are defined in
+[the distribution plan](./frontend-backend-distribution.md). The current user's
+local-storage override supersedes historical T7 requirements for this run.
 
-Current implementation supports shared checked note/task and summary/template editing, scoped queries/recovery, search, authenticated changes, attachment operations, range playback, configured AI jobs, shared-vault roles, and remote CLI/MCP reads. The existing main editor now also uses scoped transcript/source/title operations. Local use remains the default, offline and login-free.
+The shared Rust application layer now serves checked notes/tasks, outputs,
+metadata, search, attachments, media imports and exports, processing jobs, and
+CLI/MCP operations through Local IPC and authenticated Remote adapters. Local
+remains the default, standalone, offline and login-free. Saved Remote startup
+opens the shared main shell without opening a Local vault; failures never fall
+back to Local. Device credentials and operator provider secrets have separate
+ownership and storage.
 
-Desktop startup can select a saved server profile before opening any local vault. This opens the experimental server notes workspace; the full main desktop shell and remaining feature parity are still being migrated. A failed remote profile never falls back to a local vault. Profile credentials stay in the OS credential store, separately for each saved profile.
+Durable device capture/upload, explicit processing declarations, pending notes,
+append/repair, authenticated bounded live captions and verified cleanup are
+implemented. Native Local ownership and CLI routing are composed with the managed
+vault. Checked Local session lifecycle and output deletion activation remain
+default off pending final producer/persistence and platform acceptance. Streamed
+processing previews and independent Remote note windows are under integration.
 
-Configured CPU batch transcription now has durable shared Core jobs, authenticated HTTPS/SDK operations, retained results and checked canonical publication. The actual model-to-canonical path has passed on macOS. Hosted Linux CPU validation and the default server container pass; standalone CPU-image qualification remains a deployment gate. Native capture has a durable spool, background uploader, typed device controls and verified shutdown drain. Signed-out retained-audio WAV export and explicit interrupted-prefix preparation are implemented. Live caption delivery, automatic processing and full capture parity remain under implementation.
-
-The existing main timeline now uses bounded, revision-checked pages and complete tag facets through both adapters. Its captured main-workspace adapter is implemented with the real shell and editor; activation still waits for the remaining feature gates. Experimental server notes now include device audio capture and a recording queue that survives disconnection. The last full combined frontend cohort passed 2,563 tests across 279 files, typechecking and localization compilation. Retained-audio recovery and shared lifecycle adapters passed 104 unique focused Rust cases, CPU-feature checks and actual binding exports. New Local startup and producer/persistence barriers are being validated; physical recording and fresh hosted platform validation remain required.
-
-Pending device recordings can now start before server sign-in using a previously saved destination; eventual note creation remains server-authorized and online. The service advertises pending publication separately from ordinary capture publication and advertises live transcription only for configured hosts. Desktop vault ownership is acquired before settings migration and retained through settings and Store I/O. Shared checked delete/restore Core, IPC, HTTPS and SDK operations are implemented and tested. The shared UI is integrated, with Local activation gated on native producer and transcript-persistence safeguards. The secure Local owner transport foundation is tested; CLI/MCP and managed Native activation remain in progress.
-
-Remaining release work: complete the main remote shell and content/AI/import/export workflows; owner-managed provider credentials; reliable capture upload and recovery, pending-note/append behavior, authenticated live transcription and repair; local CLI ownership and remote mutations; retention, upgrade/compatibility, production performance, long-recording and macOS/Windows acceptance. This is a broad migration, with no full-completion or release claim. Current source ownership, checks and continuation details are kept in [the handoff](./frontend-backend-handoff.md).
+Current validation includes Native, TLS/HTTP, frontend, configured local models,
+packaged Linux CPU, stopped-service upgrade and forced backup/restore interruption
+checks. Each result is scoped to its recorded source and artifact. The original
+paced two-hour run exposed semantic and memory failures; corrected full-size
+non-paced replay and original-source repair passed, without qualifying a second
+paced run. The final integrated platform matrix, physical recording, production
+responsiveness during concurrent work, deployment/client compatibility and Local
+vault adoption remain open. No full-completion claim is made.
 
 Inspection baseline: clean `main` at `a6a8f001d`, November 5, 2026. Root instructions and applicable plugin, fs-sync, and documentation instructions were inspected. No implementation or runtime testing was performed while preparing this plan.
 
@@ -314,17 +331,23 @@ This delivers a standalone local application and a multi-vault remote applicatio
 
 ## Implementation audit
 
-Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backend-separation` worktree. Keep all local build artifacts, target caches, compiler caches, temporary build files and validation artifacts on T7. This audit records progress against the original scope; passing a phase does not complete the full plan.
+Work is isolated on `refactor/frontend-backend-separation` in the
+`loofah-backend-separation` worktree. This workstation uses the local cache paths
+recorded in the handoff. The unchecked phases below retain their remaining
+qualification gates; historical checkpoints after this audit describe their
+original source state, not an outstanding-work list.
 
-- [ ] **Phase 1: shared application layer.** `loofah-core` now contains startup, settings persistence, watcher reconciliation, search orchestration, a vault context, and headless lifecycle. Desktop startup, settings, watcher, search, and summary policy use this layer. `loofah-protocol` defines generated request/error/change/note contracts. Note replacements support revisions checked against canonical bytes under the write lock. Remaining: finish adapter parity and platform validation.
-- [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
-- [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
-- [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Shared processing settings/model selection are implemented. Existing-template body/task/tag generation and shared portable title/model-resource helpers are implemented. Optional title-stage orchestration, capability gates, scoped opt-in/results and exact-policy device recovery are implemented. Remaining main frontend AI migration, streaming previews and any uncovered existing summary/tag/template policy, owner-managed provider secrets, server model management and authenticated transcription remain open.
-- [ ] **Phase 6: resilient remote capture.** Neutral durable capture storage, first-audio timing, an internal managed native host and authenticated chunk/status/seal staging APIs are implemented. Native timing and real lost-reply/latency tests pass. Absent-only canonical WAV publication, startup/same-process media gates and the authenticated SDK/HTTP path are implemented and validated. Trusted device source admission, durable uploader orchestration, public controls/lifecycle, live transcription, append/repair and end-to-end finalization remain open.
-- [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
+- [ ] **Phase 1: shared application layer.** Shared vault writes, application operations, ownership, startup, settings, watcher, search and generated contracts are implemented. Complete final adapter/platform qualification.
+- [ ] **Phase 2: frontend client.** The shared main shell, scoped requests/subscriptions, editing/recovery, content, assets, jobs and device capture are integrated. Complete standalone Remote windows, preview UI, postqualification Local activation and final regressions.
+- [ ] **Phase 3: first remote slice.** OIDC/PKCE, OS credentials, private provisioning, HTTPS, SSE and saved-profile Remote-only startup are implemented. Existing Native TLS/media tests include 50/150/500 ms RTT and reconnects. Complete clean deployment and actual-client compatibility acceptance.
+- [ ] **Phase 4: vault sharing and content.** Shared roles, checked mutations, attachment staging/recovery, authenticated playback, source export, import/export and Local/Remote CLI ownership are implemented. Complete final Native and Windows qualification, guarded Local lifecycle/output activation and stopped Local-vault adoption.
+- [ ] **Phase 5: processing.** Shared summary/title/tag/template and transcription policies, durable jobs/recovery, owner-managed provider secrets and configured CPU models are implemented. Streamed private preview source is under integration with its capability disabled. Complete preview, final Native provider and platform acceptance.
+- [ ] **Phase 6: resilient remote capture.** Durable native staging/uploader, processing intent, pending/append/repair, live captions and verified cleanup are implemented. Controlled outage/restart, exact-source repair and full-size replay evidence is recorded honestly in the handoff. Complete physical capture, realistic latency/jitter/bandwidth and final sustained/platform acceptance.
+- [ ] **Phase 7: release hardening.** Linux images, systemd/Caddy, readiness, private operational observations, retention, stopped-service maintenance, upgrade and interrupted large-copy recovery are implemented and qualified on recorded artifacts. Complete final-head hosted Linux x64/Windows x64/ARM64 checks, compatibility/deployment and production macOS QA.
 
-Local remains the default and no authentication or account provisioning has been added to local startup. Remote deployment is available only through the opt-in experimental notes preview. This implementation must remain experimental until every acceptance criterion above is verified.
+Local startup needs no authentication or account provisioning. Remote remains
+experimental until all acceptance criteria are verified. No merge, release,
+version bump or deployment is authorized by this implementation task.
 
 ### Foundation checkpoint validation
 

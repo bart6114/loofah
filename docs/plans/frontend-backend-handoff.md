@@ -71,14 +71,16 @@ replacement/import controls still require migration to checked replacement
 authority; this UI does not grant it. Current-source integration and Native
 acceptance remain pending for these additions.
 
-Local shared lifecycle UI activation remains default OFF. Managed Local CLI
-stale-channel deletion now uses the tested strict Native physical-resource host
-proof; unregistered or uncertain hosts refuse. Recording append,
-verified retention, complete Native automatic processing, realistic production UX,
-sustained recording/network acceptance and final macOS/Windows/Linux qualification
-remain required. Stopped backup/restore source and focused validation are present;
-full service upgrade acceptance is still pending. Local stays standalone, offline
-and login-free. Do not merge, release or bump versions.
+Local shared lifecycle/output deletion activation remains default OFF pending
+final Native and Windows acceptance. Recording append, verified retention,
+automatic processing, provider credentials, imports/exports and Local owner
+routing are integrated; the later checkpoints record their exact qualification.
+Stopped-service upgrade and forced large-copy interruption acceptance have passed
+on their frozen Linux artifacts. Streamed previews and independent Remote note
+windows are under integration. Physical recording, concurrent production UX,
+realistic capture network profiles, Local-vault adoption and the final combined
+macOS/Windows/Linux matrix remain open. Local stays standalone, offline and
+login-free. Do not merge, release or bump versions.
 
 The latest broad seventeen-package macOS library cohort passed 2,135 cases,
 with one Local actor fixture failure and 26 explicit ignored cases. Its sole
@@ -942,3 +944,18 @@ Packaged Linux x64 CPU CI now requires and runs the reserved ONNX overlap case f
 Forced backup/restore interruption acceptance completed on 2026-11-09 using immutable Linux ARM64 image `sha256:0f42e74bb02a9f88a1dc42990b93d70c52a0c19e4d26fddceca73ff020e259ed`, source `43977c22c6`, executable SHA-256 `0a0ed95e379b23584f2ba28fce4ff986647da303ed9357df8d7fd01a2421e9f3`. The maintenance implementation is unchanged at current `db4920390b`; intervening catalog changes only add readiness accessors/tests. One 768 MiB non-sparse synthetic unknown attachment was added to a private copy of the earlier stopped-storage fixture. Backup and restore were observed with real partial source prefixes, SIGSTOP-frozen at 21,889,024 and 25,034,752 bytes respectively, then SIGKILL-terminated (exit137, no OOM). Competing backup refused the held original service lock. Partial restore never published its destination, existing canonical storage refused replacement, and all 15 original file hashes plus directory modes remained unchanged. Exact-destination retries produced verified paired bundles and an identical restored inventory. Peak logical storage was 2,462,987,004 bytes, within the 5 GiB budget; only this harness's abandoned staging directories were removed after process retirement and evidence retention.
 
 The external reusable harness and 12 checkpoints are retained under `~/Library/Caches/loofah-separation/operator-copy-interruption-43977c22c-20261109/`, with log `operator-copy-interruption-43977c22c.log`. `proof.json` SHA-256 is `c03920476803b0e2d2307a6b511b6bb90e11b56320ed1512a582a705efbd78cd`; `run.py` SHA-256 is `7c26f10c95a16d52eaad2b495cb36fde0417acbb20b4884566728c7b67e72059`. No new build, image, service deployment, account, model or production data was used. This qualifies those exact controlled artifacts and copy paths, not latest-root execution, Linux x64, arbitrary released-version rollback, live reconnect or uninterrupted physical recording.
+
+
+Independent Remote SDK views now retain their original account/profile/vault
+authority, share transfer capacity, and own their stop/drain lifetime. Short
+dispatch fences release profile/login mutexes before response IO. The six matching
+Native SDK/Core cases passed, including delayed headers and predispatch ABA;
+Native child-window/UI integration remains in progress.
+
+Private bounded processing-preview Core/API source is integrated with the
+capability still disabled. The initial current 21-package Native graph passed
+three real-TLS SDK preview cases and four Core sidecar/retention cases, plus actual
+Native/plugin binding exports. Generated contracts were formatted and desktop
+typecheck passed. Timer-flushed partial updates, UI, server network tests and the
+full combined preview cohort remain pending. These are focused integration
+results; the final source/platform matrix is still required.
