@@ -89,6 +89,34 @@ pub enum JobCompletion {
 }
 
 impl JobJournal {
+    pub(crate) async fn replay_local_capture(
+        &self,
+        request_id: String,
+        request: SummaryJobRequest,
+        origin: crate::local_capture_intents::LocalCaptureChildOrigin,
+    ) -> Result<Option<ProcessingJobSnapshot>, ApplicationError> {
+        origin.validate_request(&request)?;
+        let request_id = parse_uuid(&request_id)?;
+        self.run(move |state, _| {
+            let Some(record) = state.records.get(&key(
+                crate::local_capture_intents::SUMMARY_OWNER,
+                &request_id,
+            )) else {
+                return Ok(None);
+            };
+            if record.request != request
+                || record.local_capture.as_ref() != Some(&origin)
+                || record.capture_processing.is_some()
+            {
+                return Err(rejected(
+                    ErrorCode::Conflict,
+                    "Original Local summary child changed",
+                ));
+            }
+            Ok(Some(record.snapshot.clone()))
+        })
+        .await
+    }
     pub(crate) async fn local_capture_origin(
         &self,
         id: String,

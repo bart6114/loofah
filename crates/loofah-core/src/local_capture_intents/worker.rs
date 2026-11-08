@@ -58,6 +58,10 @@ impl LocalCaptureIntents {
         if self.stop.is_cancelled() {
             return Err(review("Local processing stopped before dispatch"));
         }
+        if self.context.read_metadata(&session).await?.meta.created_at != record.session_created_at
+        {
+            return Err(review("Original Local session generation changed"));
+        }
         if !matches!(record.physical, Some(Ok(()))) {
             return Err(review("Original physical completion is unknown"));
         }
@@ -82,16 +86,19 @@ impl LocalCaptureIntents {
         let binding = guard.binding().clone();
         drop(guard);
         record = self
-            .update(request, |record| record.source = Some(binding))
+            .update(request, |record| {
+                record.source = Some(binding);
+                if !record.inference_dispatched {
+                    record.status.transcript_id = persisted.new_transcript_id.clone();
+                }
+            })
             .await?;
         let repair = record.status.declaration.transcription.is_some()
             && (record.status.declaration.batch_requested
                 || persisted.needs_batch_repair
                 || !persisted.live_transcription_active);
         if record.status.declaration.transcription.is_none()
-            || (record.status.declaration.append
-                && !repair
-                && persisted.new_transcript_id.is_none())
+            || (!repair && persisted.new_transcript_id.is_none())
         {
             self.update(request, |record| {
                 record.status.state = LocalCaptureState::Skipped;
@@ -153,15 +160,8 @@ impl LocalCaptureIntents {
             .await?;
             return Ok(());
         };
-        // The child owns a separate lifecycle admission. Durable parent source
-        // guards reject deletion/changed transcript while that admission is queued.
-        self.state
-            .lock()
-            .await
-            .get_mut(request)
-            .unwrap()
-            .admission
-            .take();
+        // Exclusive lifecycle admissions never queue. Keep the original shared
+        // admission while the child acquires its own and through actual completion.
         self.update(request, |record| {
             record.status.state = LocalCaptureState::Summarizing
         })
@@ -346,6 +346,12 @@ impl LocalCaptureIntents {
                     record.status.message = Some("No speech detected".into());
                 })
                 .await;
+        }
+        if self.context.read_metadata(&session).await?.meta.created_at != record.session_created_at
+        {
+            return Err(review(
+                "Local session generation changed during transcription",
+            ));
         }
         let plan = self
             .context

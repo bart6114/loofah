@@ -314,3 +314,245 @@ fn eligibility_counts_unicode_characters_and_requires_five_canonical_words() {
     }
     assert!(!worker::automatic_eligible(&[transcript]));
 }
+
+#[derive(Default)]
+struct Summary {
+    entered: Notify,
+    release: Notify,
+    calls: AtomicUsize,
+}
+impl crate::jobs::JobGenerator for Summary {
+    fn generate(
+        &self,
+        work: crate::jobs::JobWork,
+        _: CancellationToken,
+    ) -> crate::jobs::JobFuture<
+        '_,
+        Result<crate::jobs::GeneratedDocument, hypr_loofah_protocol::ProcessingJobFailure>,
+    > {
+        Box::pin(async move {
+            assert_eq!(work.principal, SUMMARY_OWNER);
+            assert!(work.request.only_if_empty);
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.entered.notify_one();
+            self.release.notified().await;
+            Ok(crate::jobs::GeneratedDocument {
+                markdown: "Generated summary".into(),
+                suggested_tags: None,
+            })
+        })
+    }
+}
+impl crate::jobs::JobAuthorizer for Auth {
+    fn authorize<'a>(
+        &'a self,
+        work: &'a crate::jobs::JobWork,
+    ) -> crate::jobs::JobFuture<'a, Result<Box<dyn Send>, hypr_loofah_protocol::ProcessingJobFailure>>
+    {
+        Box::pin(async move {
+            assert_eq!(work.principal, SUMMARY_OWNER);
+            Ok(Box::new(()) as Box<dyn Send>)
+        })
+    }
+}
+async fn live_summary_capture(
+    context: &Arc<VaultContext>,
+    service: &Arc<LocalCaptureIntents>,
+    root: &std::path::Path,
+) -> (LocalCaptureDeclaration, LocalCaptureIntent) {
+    let mut declaration = declaration();
+    declaration.transcription = Some(LocalTranscriptionOptions {
+        model: "frozen-model".into(),
+        languages: vec!["nl".into()],
+        keywords: vec![],
+    });
+    declaration.summary = Some(CaptureProcessingSummary {
+        target: hypr_loofah_protocol::DocumentTarget::Summary,
+        title_policy: Default::default(),
+    });
+    let token = service.declare(declaration.clone()).await.unwrap();
+    std::fs::write(
+        root.join("vault/sessions/note/audio.wav"),
+        b"native completed audio",
+    )
+    .unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let transcript:TranscriptWithData=serde_json::from_value(serde_json::json!({"id":id,"session_id":"note","user_id":TRANSCRIPTION_OWNER,"created_at":"2026-11-08T00:00:00Z","started_at":0.0,"ended_at":null,"memo_md":"","words":(0..5).map(|i|serde_json::json!({"id":uuid::Uuid::new_v4().to_string(),"text":"界".repeat(40),"start_ms":i as f64,"end_ms":i as f64+1.0,"channel":0.0,"speaker":null,"metadata":null})).collect::<Vec<_>>(),"speaker_hints":[]})).unwrap();
+    context
+        .store
+        .write_transcript("note", transcript)
+        .await
+        .unwrap();
+    token.physical_finished(Ok(())).await.unwrap();
+    token
+        .persistence_finished(Ok(LocalCapturePersistence {
+            live_transcription_active: true,
+            needs_batch_repair: false,
+            new_transcript_id: Some(id),
+        }))
+        .await
+        .unwrap();
+    (declaration, token)
+}
+#[tokio::test]
+async fn summary_keeps_original_lifecycle_admission_until_actual_cancelled_generation_drains() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let context = context(&root).await;
+    let summary = Arc::new(Summary::default());
+    let worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let (declaration, token) = live_summary_capture(&context, &service, &root).await;
+    summary.entered.notified().await;
+    token.physical_finished(Ok(())).await.unwrap();
+    assert!(context.try_session_lifecycle_change("note").is_err());
+    service.request_shutdown();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(20), service.shutdown())
+            .await
+            .is_err()
+    );
+    assert!(context.try_session_lifecycle_change("note").is_err());
+    summary.release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(10), service.shutdown())
+        .await
+        .unwrap();
+    assert_ne!(
+        service.status(&declaration.request_id).await.unwrap().state,
+        LocalCaptureState::Succeeded
+    );
+    assert!(
+        context
+            .read_document("note", &hypr_loofah_protocol::DocumentTarget::Summary)
+            .await
+            .unwrap()
+            .document
+            .is_none()
+    );
+    worker.shutdown().await.unwrap();
+}
+#[tokio::test]
+async fn changed_transcript_during_summary_keeps_the_target_unchanged() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let context = context(&root).await;
+    let summary = Arc::new(Summary::default());
+    let worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let (declaration, _token) = live_summary_capture(&context, &service, &root).await;
+    summary.entered.notified().await;
+    let path = root.join("vault/sessions/note/transcript.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    value["future_user_edit"] = serde_json::json!(true);
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    summary.release.notify_one();
+    assert_eq!(
+        terminal(&service, &declaration.request_id).await.state,
+        LocalCaptureState::Conflict
+    );
+    assert!(
+        context
+            .read_document("note", &hypr_loofah_protocol::DocumentTarget::Summary)
+            .await
+            .unwrap()
+            .document
+            .is_none()
+    );
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 1);
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn confirmed_batch_capture_publishes_retained_output_once_under_original_owner() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let context = context(&root).await;
+    let engine = Engine::default();
+    let worker = context
+        .start_transcription(Arc::new(engine.clone()), Arc::new(Auth), Default::default())
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let mut input = declaration();
+    input.batch_requested = true;
+    input.transcription = Some(LocalTranscriptionOptions {
+        model: "frozen-model".into(),
+        languages: vec!["nl".into()],
+        keywords: vec![],
+    });
+    let token = service.declare(input.clone()).await.unwrap();
+    std::fs::write(
+        root.join("vault/sessions/note/audio.wav"),
+        b"original native audio",
+    )
+    .unwrap();
+    token.physical_finished(Ok(())).await.unwrap();
+    token.persistence_finished(Ok(persistence())).await.unwrap();
+    engine.entered.notified().await;
+    engine.release.notify_one();
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Succeeded
+    );
+    let output = context.session_transcripts("note").await.unwrap();
+    assert_eq!(output.len(), 1);
+    assert_eq!(output[0].words.len(), 5);
+    assert_eq!(output[0].user_id, TRANSCRIPTION_OWNER);
+    assert_eq!(
+        service.recover(input.request_id).await.unwrap().state,
+        LocalCaptureState::Succeeded
+    );
+    assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}
+#[tokio::test]
+async fn lost_parent_summary_completion_replays_original_child_without_new_generation_or_write() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let context = context(&root).await;
+    let summary = Arc::new(Summary::default());
+    let worker = context
+        .start_processing(summary.clone(), Arc::new(Auth))
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let (declaration, _token) = live_summary_capture(&context, &service, &root).await;
+    summary.entered.notified().await;
+    summary.release.notify_one();
+    assert_eq!(
+        terminal(&service, &declaration.request_id).await.state,
+        LocalCaptureState::Succeeded
+    );
+    let before = std::fs::read(root.join("vault/sessions/note/summary.md")).unwrap();
+    service
+        .update(&declaration.request_id, |record| {
+            record.status.state = LocalCaptureState::Review;
+            record.status.summary_job_id = None;
+        })
+        .await
+        .unwrap();
+    service
+        .recover(declaration.request_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        terminal(&service, &declaration.request_id).await.state,
+        LocalCaptureState::Succeeded
+    );
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        std::fs::read(root.join("vault/sessions/note/summary.md")).unwrap(),
+        before
+    );
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}

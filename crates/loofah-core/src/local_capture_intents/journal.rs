@@ -25,7 +25,7 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
             return Err(review("Local intent inventory exceeds its byte budget"));
         }
         let mut record: Record = serde_json::from_slice(&raw).map_err(review)?;
-        validate(&record.status.declaration)?;
+        validate_record(&record)?;
         if record.version != 1
             || record.vault_id != vault
             || record.status.declaration.request_id != name
@@ -44,6 +44,7 @@ pub(super) fn load(root: &Path, vault: &str) -> Result<Vec<Record>, ApplicationE
     Ok(records)
 }
 pub(super) fn persist(root: &Path, record: &Record, create: bool) -> Result<(), ApplicationError> {
+    validate_record(record)?;
     let directory = root.join(&record.status.declaration.request_id);
     ledger::ensure_directory(&directory)?;
     let path = directory.join("intent.json");
@@ -57,4 +58,62 @@ pub(super) fn persist(root: &Path, record: &Record, create: bool) -> Result<(), 
     hypr_storage::fs::atomic_write(&path, std::str::from_utf8(&bytes).map_err(review)?)
         .map_err(review)?;
     ledger::sync_parent(&path)
+}
+
+fn validate_record(record: &Record) -> Result<(), ApplicationError> {
+    validate(&record.status.declaration)?;
+    if record.version != 1
+        || record.status.transcription_owner != TRANSCRIPTION_OWNER
+        || record.status.summary_owner != SUMMARY_OWNER
+        || chrono::DateTime::parse_from_rfc3339(&record.session_created_at).is_err()
+    {
+        return Err(review("Invalid Local intent binding"));
+    }
+    let declaration = &record.status.declaration;
+    match (&declaration.summary, &record.summary) {
+        (None, None) => {}
+        (Some(wanted), Some(actual))
+            if actual.session_id == declaration.session_id
+                && actual.target == wanted.target
+                && actual.title_policy == wanted.title_policy
+                && actual.only_if_empty == !declaration.append
+                && hypr_loofah_protocol::is_transcription_sha256(&actual.expected_revision) => {}
+        _ => return Err(review("Original summary declaration changed")),
+    }
+    for id in [&record.status.transcript_id, &record.status.summary_job_id]
+        .into_iter()
+        .flatten()
+    {
+        uuid(id)?;
+    }
+    if let Some(source) = &record.source {
+        if record.physical != Some(Ok(()))
+            || !matches!(record.persistence, Some(Ok(_)))
+            || !hypr_loofah_protocol::is_transcription_sha256(&source.recording_sha256)
+            || !hypr_loofah_protocol::is_transcription_sha256(&source.transcript_revision)
+        {
+            return Err(review("Local source has no confirmed native completion"));
+        }
+    }
+    if record.inference_dispatched
+        && (record.source.is_none() || declaration.transcription.is_none())
+    {
+        return Err(review("Local inference has no original source"));
+    }
+    if let Some(result) = &record.result_sha256 {
+        if !record.inference_dispatched || !hypr_loofah_protocol::is_transcription_sha256(result) {
+            return Err(review("Invalid retained Local inference identity"));
+        }
+    }
+    if let Some(revision) = &record.published_revision {
+        if record.result_sha256.is_none()
+            || !hypr_loofah_protocol::is_transcription_sha256(revision)
+            || record.source.as_ref().is_none_or(|source| {
+                !source.transcript_present || source.transcript_revision != *revision
+            })
+        {
+            return Err(review("Invalid Local publication proof"));
+        }
+    }
+    Ok(())
 }

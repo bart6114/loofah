@@ -80,6 +80,7 @@ struct Record {
     vault_id: String,
     status: LocalCaptureStatus,
     had_transcript_before: bool,
+    session_created_at: String,
     summary: Option<SummaryJobRequest>,
     physical: Option<Result<(), String>>,
     persistence: Option<Result<LocalCapturePersistence, String>>,
@@ -231,6 +232,12 @@ impl LocalCaptureIntents {
         self.context
             .ensure_recording_publication_ready(&input.session_id)?;
         self.context.read_note(&input.session_id).await?;
+        let session_created_at = self
+            .context
+            .read_metadata(&input.session_id)
+            .await?
+            .meta
+            .created_at;
         let recording = self
             .context
             .store
@@ -301,6 +308,7 @@ impl LocalCaptureIntents {
                 message: None,
             },
             had_transcript_before,
+            session_created_at,
             summary,
             physical: None,
             persistence: None,
@@ -567,7 +575,17 @@ impl VaultContext {
         {
             return Err(review("Local summary parent is not ready"));
         }
+        let created = entry.record.session_created_at.clone();
         drop(state);
+        if self
+            .read_metadata(&origin.session_id)
+            .await?
+            .meta
+            .created_at
+            != created
+        {
+            return Err(review("Local summary session generation changed"));
+        }
         self.store
             .guard_processing_source(&origin.session_id, Some(origin.source.clone()))
             .await

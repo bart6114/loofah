@@ -161,6 +161,13 @@ impl VaultContext {
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
         let context = self.clone();
         tokio::spawn(async move {
+            if let Some(snapshot) = context
+                .processing_jobs()?
+                .replay_local_capture(request_id.clone(), input.clone(), origin.clone())
+                .await?
+            {
+                return Ok(snapshot);
+            }
             let _admission = context.admit_session_work(&input.session_id).await?;
             drop(
                 context
