@@ -13,6 +13,8 @@ use crate::{
     startup::{self, StartupPhase, StartupState},
 };
 
+#[cfg(test)]
+mod ownership_tests;
 mod processing;
 mod watch;
 
@@ -22,6 +24,13 @@ pub struct VaultRuntime {
     workers: Vec<tokio::task::JoinHandle<()>>,
     watcher: Option<watch::FileWatcher>,
     processing: Option<crate::jobs::JobWorker>,
+    host: tokio::runtime::Handle,
+    draining: bool,
+}
+
+struct RuntimeDrain {
+    task: tokio::task::JoinHandle<Result<(), StoreError>>,
+    phase: tokio::sync::watch::Receiver<&'static str>,
 }
 
 impl VaultRuntime {
@@ -31,7 +40,14 @@ impl VaultRuntime {
         cache_root: &Path,
         operation_root: &Path,
     ) -> Result<Self, StoreError> {
-        Self::open_inner(id, vault, cache_root, operation_root, None).await
+        Self::open_owned(
+            id,
+            vault.to_path_buf(),
+            cache_root.to_path_buf(),
+            operation_root.to_path_buf(),
+            None,
+        )
+        .await
     }
 
     /// Reuse a host-owned change source when the host manages filesystem observation.
@@ -42,14 +58,30 @@ impl VaultRuntime {
         operation_root: &Path,
         changes: tokio::sync::mpsc::UnboundedReceiver<String>,
     ) -> Result<Self, StoreError> {
-        Self::open_inner(
+        Self::open_owned(
             id,
-            vault,
-            cache_root,
-            operation_root,
+            vault.to_path_buf(),
+            cache_root.to_path_buf(),
+            operation_root.to_path_buf(),
             Some(crate::vault_watch::ChangeSource::Unbounded(changes)),
         )
         .await
+    }
+
+    async fn open_owned(
+        id: String,
+        vault: std::path::PathBuf,
+        cache: std::path::PathBuf,
+        operations: std::path::PathBuf,
+        changes: Option<crate::vault_watch::ChangeSource>,
+    ) -> Result<Self, StoreError> {
+        // Dropping a request detaches this owner; nested blocking recovery/migration
+        // still runs to completion with the real filesystem lease in its stack.
+        tokio::spawn(
+            async move { Self::open_inner(id, &vault, &cache, &operations, changes).await },
+        )
+        .await
+        .map_err(|cause| StoreError::Io(format!("vault initialization worker failed: {cause}")))?
     }
 
     async fn open_inner(
@@ -60,7 +92,8 @@ impl VaultRuntime {
         changes: Option<crate::vault_watch::ChangeSource>,
     ) -> Result<Self, StoreError> {
         let vault = vault.to_path_buf();
-        let (vault, lease) = tokio::task::spawn_blocking(move || {
+        let operations = operation_root.to_path_buf();
+        let (vault, lease, operation_root) = tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&vault).map_err(io_error)?;
             let vault = std::fs::canonicalize(&vault).map_err(io_error)?;
             let lock_path = vault.join(".loofah-vault.lock");
@@ -80,7 +113,11 @@ impl VaultRuntime {
             lease.try_lock().map_err(|_| {
                 StoreError::Conflict("vault is already open or cannot be locked".into())
             })?;
-            Ok((vault, lease))
+            // This is trusted host configuration, not a client path. Resolve its
+            // ancestor aliases once; private descendants still use strict guards.
+            std::fs::create_dir_all(&operations).map_err(io_error)?;
+            let operations = std::fs::canonicalize(operations).map_err(io_error)?;
+            Ok((vault, lease, operations))
         })
         .await
         .map_err(|error| StoreError::Io(error.to_string()))??;
@@ -138,10 +175,7 @@ impl VaultRuntime {
         let watch_store = store.clone();
         let watch_stop = stop.clone();
         let watch_worker = tokio::spawn(async move {
-            tokio::select! {
-                _ = watch_stop.cancelled() => {},
-                _ = crate::vault_watch::run_source(watch_store, source) => {},
-            }
+            crate::vault_watch::run_source_until_stopped(watch_store, source, watch_stop).await;
         });
         let changes = store
             .take_index_change_receiver()
@@ -183,42 +217,77 @@ impl VaultRuntime {
             workers: vec![events_worker, search_worker, watch_worker, settings_worker],
             watcher,
             processing: None,
+            host: tokio::runtime::Handle::current(),
+            draining: false,
         })
     }
 
-    pub async fn shutdown(mut self) -> Result<(), StoreError> {
-        self.begin_stopping();
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        let watcher = self
-            .watcher
-            .take()
-            .map(|watcher| tokio::task::spawn_blocking(move || drop(watcher)));
-        let flush = tokio::time::timeout_at(deadline, self.context.store.flush_all())
+    /// A deadline limits this response, not the owned drain. Process hosts retain
+    /// a StartupState clone and await Stopped before tearing down their runtime.
+    pub async fn shutdown(self) -> Result<(), StoreError> {
+        self.shutdown_with_deadline(Duration::from_secs(5)).await
+    }
+
+    async fn shutdown_with_deadline(mut self, deadline: Duration) -> Result<(), StoreError> {
+        let Some(RuntimeDrain { task, phase }) = self.start_drain() else {
+            return Ok(());
+        };
+        tokio::time::timeout(deadline, task)
             .await
-            .map_err(|_| StoreError::Io("vault flush exceeded shutdown deadline".into()))?;
-        flush?;
-        if let Some(worker) = self.processing.take() {
-            tokio::time::timeout_at(deadline, worker.shutdown())
-                .await
-                .map_err(|_| StoreError::Io("processing worker exceeded shutdown deadline".into()))?
-                .map_err(|_| StoreError::Io("processing worker did not stop cleanly".into()))?;
+            .map_err(|_| StoreError::Io((*phase.borrow()).into()))?
+            .map_err(|cause| StoreError::Io(format!("vault drain worker failed: {cause}")))?
+    }
+
+    fn start_drain(&mut self) -> Option<RuntimeDrain> {
+        if self.draining {
+            return None;
         }
-        for worker in &mut self.workers {
-            tokio::time::timeout_at(deadline, worker)
-                .await
-                .map_err(|_| {
-                    StoreError::Io("vault workers did not stop before shutdown deadline".into())
-                })?
-                .map_err(|error| StoreError::Io(format!("vault worker failed: {error}")))?;
+        self.draining = true;
+        self.begin_stopping();
+        let context = self.context.clone();
+        let workers = std::mem::take(&mut self.workers);
+        let processing = self.processing.take();
+        if let Some(watcher) = self.watcher.take() {
+            // Native cleanup only owns the closed event input, never Store or vault data.
+            self.host.spawn_blocking(move || drop(watcher));
         }
-        if let Some(watcher) = watcher {
-            tokio::time::timeout_at(deadline, watcher)
-                .await
-                .map_err(|_| StoreError::Io("vault watcher exceeded shutdown deadline".into()))?
-                .map_err(|error| StoreError::Io(format!("vault watcher did not stop: {error}")))?;
-        }
-        self.context.startup.set_phase(StartupPhase::Stopped);
-        Ok(())
+        let (phase, progress) =
+            tokio::sync::watch::channel("vault flush exceeded shutdown deadline");
+        let task = self.host.spawn(async move {
+            let mut retry = Duration::from_secs(1);
+            loop {
+                match context.store.flush_all().await {
+                    Ok(()) => break,
+                    Err(cause) => {
+                        // The buffers may contain the only copy. A response deadline
+                        // cannot release ownership while their existing retry tasks run.
+                        tracing::error!(%cause, "vault shutdown retains ownership until buffered transcripts are saved");
+                        tokio::time::sleep(retry).await;
+                        retry = (retry * 2).min(Duration::from_secs(30));
+                    }
+                }
+            }
+            let mut failure = None;
+            if let Some(worker) = processing {
+                phase.send_replace("processing worker exceeded shutdown deadline");
+                if let Err(cause) = worker.shutdown().await {
+                    tracing::error!(%cause, "processing worker did not stop cleanly");
+                    failure = Some(StoreError::Io("processing worker did not stop cleanly".into()));
+                }
+            }
+            phase.send_replace("vault workers did not stop before shutdown deadline");
+            for worker in workers {
+                if let Err(cause) = worker.await {
+                    failure.get_or_insert_with(|| StoreError::Io(format!("vault worker failed: {cause}")));
+                }
+            }
+            context.startup.set_phase(StartupPhase::Stopped);
+            failure.map_or(Ok(()), Err)
+        });
+        Some(RuntimeDrain {
+            task,
+            phase: progress,
+        })
     }
 
     fn begin_stopping(&self) {
@@ -235,17 +304,9 @@ impl VaultRuntime {
 
 impl Drop for VaultRuntime {
     fn drop(&mut self) {
-        self.begin_stopping();
-        for worker in &self.workers {
-            worker.abort();
-        }
-        if let Some(watcher) = self.watcher.take() {
-            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                runtime.spawn_blocking(move || drop(watcher));
-            } else {
-                drop(watcher);
-            }
-        }
+        // Detach the same owned drain used by explicit shutdown. Aborting an async
+        // waiter would detach its blocking I/O and release Context's lease early.
+        let _ = self.start_drain();
     }
 }
 

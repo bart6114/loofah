@@ -325,9 +325,27 @@ pub async fn run(
     run_source(store, ChangeSource::Unbounded(changed_paths)).await;
 }
 
-pub(crate) async fn run_source(store: Arc<SessionStore>, mut changed_paths: ChangeSource) {
+pub(crate) async fn run_source(store: Arc<SessionStore>, changed_paths: ChangeSource) {
+    run_source_until_stopped(
+        store,
+        changed_paths,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+}
+
+pub(crate) async fn run_source_until_stopped(
+    store: Arc<SessionStore>,
+    mut changed_paths: ChangeSource,
+    stop: tokio_util::sync::CancellationToken,
+) {
     loop {
-        let Some(first) = changed_paths.recv().await else {
+        let first = tokio::select! {
+            biased;
+            _ = stop.cancelled() => break,
+            first = changed_paths.recv() => first,
+        };
+        let Some(first) = first else {
             break;
         };
         let mut changed = HashSet::from([first]);
@@ -343,7 +361,12 @@ pub(crate) async fn run_source(store: Arc<SessionStore>, mut changed_paths: Chan
             } else {
                 COALESCE_WINDOW
             };
-            match tokio::time::timeout(wait, changed_paths.recv()).await {
+            let next = tokio::select! {
+                biased;
+                _ = stop.cancelled() => return,
+                next = tokio::time::timeout(wait, changed_paths.recv()) => next,
+            };
+            match next {
                 Ok(Some(path)) => {
                     if !bounded || !changed.contains("sessions") {
                         changed.insert(path);
@@ -358,6 +381,10 @@ pub(crate) async fn run_source(store: Arc<SessionStore>, mut changed_paths: Chan
             }
         }
 
+        if stop.is_cancelled() {
+            return;
+        }
+        // Once a batch begins, await all of its actual Store I/O before stopping.
         handle_batch(&store, &changed).await;
     }
 }

@@ -49,15 +49,15 @@ async fn status(
     ApiPath((vault, capture)): ApiPath<(String, String)>,
 ) -> Result<Json<CaptureIngestStatus>> {
     let (context, member) = context(&service, &identity, &vault, false).await?;
-    Ok(Json(
-        context
-            .capture_status_authorized(
-                member,
-                capture,
-                authorization(service, identity, vault, false),
-            )
-            .await?,
-    ))
+    let authorize = authorization(service.clone(), identity, vault, false);
+    admitted_write(&service, async move {
+        Ok(Json(
+            context
+                .capture_status_authorized(member, capture, authorize)
+                .await?,
+        ))
+    })
+    .await
 }
 
 async fn append(

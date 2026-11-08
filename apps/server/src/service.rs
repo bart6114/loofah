@@ -15,6 +15,8 @@ use crate::{
     error::{ApiError, Result},
 };
 
+type ShutdownResult = Option<std::result::Result<(), hypr_loofah_protocol::ApplicationError>>;
+
 pub struct Service {
     #[cfg(test)]
     pub(crate) injected_changes: std::sync::atomic::AtomicBool,
@@ -37,6 +39,7 @@ pub struct Service {
     processing: Option<Arc<crate::processing::ProcessingHost>>,
     runtimes: Mutex<BTreeMap<String, Arc<OnceCell<VaultRuntime>>>>,
     catalog_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    shutdown: OnceCell<tokio::sync::watch::Receiver<ShutdownResult>>,
 }
 
 impl Service {
@@ -79,6 +82,7 @@ impl Service {
             processing,
             runtimes: Mutex::new(BTreeMap::new()),
             catalog_worker: Mutex::new(None),
+            shutdown: OnceCell::new(),
         });
         let mut changes = service.catalog.subscribe();
         let weak = Arc::downgrade(&service);
@@ -188,11 +192,25 @@ impl Service {
                         tracing::error!(%cause, "vault startup failed");
                         ApiError::new(ErrorCode::Unavailable, "Vault could not be opened")
                     })?;
-                    opened
-                        .context
-                        .enable_capture_ingestion(capture_origin, Default::default())?;
-                    if let Some(processing) = processing {
-                        processing.attach(&mut opened, catalog.clone()).await?;
+                    let prepared = async {
+                        opened
+                            .context
+                            .enable_capture_ingestion(capture_origin, Default::default())?;
+                        if let Some(processing) = processing {
+                            processing.attach(&mut opened, catalog.clone()).await?;
+                        }
+                        Ok::<_, ApiError>(())
+                    }
+                    .await;
+                    if let Err(cause) = prepared {
+                        // An empty OnceCell cannot account for a detached Runtime::Drop
+                        // drain. Keep this initializer registered until actual cleanup ends.
+                        let startup = opened.context.startup.clone();
+                        if let Err(error) = opened.shutdown().await {
+                            tracing::error!(%error, "failed vault initialization is still draining");
+                        }
+                        startup.wait_until_stopped().await.map_err(ApiError::internal)?;
+                        return Err(cause);
                     }
                     Ok::<_, ApiError>(opened)
                 })
@@ -203,53 +221,108 @@ impl Service {
         .map_err(ApiError::internal)?
     }
 
-    pub async fn shutdown(&self) -> Result<()> {
-        self.stop.cancel();
-        if let Some(worker) = self.catalog_worker.lock().await.take() {
-            worker.await.map_err(ApiError::internal)?;
-        }
-        let _drained = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-            let writes = self
-                .writes
-                .clone()
-                .acquire_many_owned(32)
-                .await
-                .map_err(ApiError::internal)?;
-            let reads = self
-                .content_reads
-                .clone()
-                .acquire_many_owned(4)
-                .await
-                .map_err(ApiError::internal)?;
-            Ok::<_, ApiError>((writes, reads))
-        })
-        .await
-        .map_err(|_| {
-            ApiError::new(
-                ErrorCode::Unavailable,
-                "Active operations did not drain before shutdown",
-            )
-        })??;
-        self.media_leases.close_all();
-        let runtimes = std::mem::take(&mut *self.runtimes.lock().await);
-        for (_, cell) in runtimes {
-            tokio::time::timeout(std::time::Duration::from_secs(30), async {
-                while Arc::strong_count(&cell) > 1 {
-                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                }
-            })
+    pub async fn shutdown(self: &Arc<Self>) -> Result<()> {
+        self.shutdown_with_deadline(std::time::Duration::from_secs(30))
+            .await
+    }
+
+    pub(crate) async fn shutdown_with_deadline(
+        self: &Arc<Self>,
+        deadline: std::time::Duration,
+    ) -> Result<()> {
+        let completion = self.shutdown_completion().await;
+        tokio::time::timeout(deadline, wait_shutdown(completion))
             .await
             .map_err(|_| {
-                ApiError::new(ErrorCode::Unavailable, "Vault initialization did not drain")
-            })?;
-            let cell = Arc::try_unwrap(cell).map_err(|_| {
-                ApiError::new(ErrorCode::Unavailable, "Vault startup has not drained")
-            })?;
+                ApiError::new(
+                    ErrorCode::Unavailable,
+                    "Server shutdown deadline exceeded; owned operations are still draining",
+                )
+            })?
+    }
+
+    /// The process host awaits this before tearing down Tokio, including after a response deadline.
+    pub async fn wait_for_shutdown(self: &Arc<Self>) -> Result<()> {
+        wait_shutdown(self.shutdown_completion().await).await
+    }
+
+    async fn shutdown_completion(self: &Arc<Self>) -> tokio::sync::watch::Receiver<ShutdownResult> {
+        self.stop.cancel();
+        self.shutdown
+            .get_or_init(|| async {
+                let (result, completion) = tokio::sync::watch::channel(None);
+                let service = self.clone();
+                tokio::spawn(async move {
+                    let outcome = service.shutdown_owned().await.map_err(|cause| cause.0);
+                    result.send_replace(Some(outcome));
+                });
+                completion
+            })
+            .await
+            .clone()
+    }
+
+    async fn shutdown_owned(self: Arc<Self>) -> Result<()> {
+        let mut failure = None;
+        let catalog_worker = self.catalog_worker.lock().await.take();
+        if let Some(worker) = catalog_worker
+            && let Err(cause) = worker.await
+        {
+            failure = Some(ApiError::internal(cause));
+        }
+        let _writes = drain_slots(self.writes.clone(), 32).await;
+        let _reads = drain_slots(self.content_reads.clone(), 4).await;
+        let _media_reads = drain_slots(self.media_reads.clone(), 2).await;
+        self.media_leases.shutdown().await;
+        let runtimes = std::mem::take(&mut *self.runtimes.lock().await);
+        for (_, mut cell) in runtimes {
+            let cell = loop {
+                match Arc::try_unwrap(cell) {
+                    Ok(cell) => break cell,
+                    Err(current) => {
+                        cell = current;
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                }
+            };
             if let Some(runtime) = cell.into_inner() {
-                runtime.shutdown().await.map_err(ApiError::internal)?;
+                let startup = runtime.context.startup.clone();
+                if let Err(cause) = runtime.shutdown().await {
+                    failure.get_or_insert_with(|| ApiError::internal(cause));
+                }
+                // A runtime's response deadline does not stop its owner or retry flusher.
+                if let Err(cause) = startup.wait_until_stopped().await {
+                    failure.get_or_insert_with(|| ApiError::internal(cause));
+                }
             }
         }
-        Ok(())
+        failure.map_or(Ok(()), Err)
+    }
+}
+
+async fn wait_shutdown(mut completion: tokio::sync::watch::Receiver<ShutdownResult>) -> Result<()> {
+    loop {
+        let outcome = completion.borrow_and_update().clone();
+        if let Some(outcome) = outcome {
+            return outcome.map_err(ApiError);
+        }
+        completion.changed().await.map_err(ApiError::internal)?;
+    }
+}
+
+async fn drain_slots(
+    slots: Arc<Semaphore>,
+    count: u32,
+) -> Option<tokio::sync::OwnedSemaphorePermit> {
+    match slots.clone().acquire_many_owned(count).await {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            // Closing admission does not release permits held by actual operations.
+            while slots.available_permits() < count as usize {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            None
+        }
     }
 }
 

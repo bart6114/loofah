@@ -51,14 +51,14 @@ async fn status(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,
     ApiPath((vault, job)): ApiPath<(String, String)>,
-) -> Result<Json<ProcessingJobSnapshot>> {
+) -> Result<Response> {
     let access = service.catalog.access(&identity, &vault, false).await?;
     let context = service.vault(&vault).await?;
-    Ok(Json(
-        context
-            .processing_job(access.member_id.clone(), job)
-            .await?,
-    ))
+    let namespace = access.member_id.clone();
+    content_read(&service, access, 1024 * 1024, async move {
+        context.processing_job(namespace, job).await
+    })
+    .await
 }
 
 async fn result(

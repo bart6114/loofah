@@ -60,7 +60,8 @@ struct State {
 #[derive(Clone)]
 pub struct Catalog {
     #[cfg(test)]
-    pause: Arc<std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>>,
+    pub(crate) pause:
+        Arc<std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>>,
     _lease: Arc<std::fs::File>,
     path: PathBuf,
     state: Arc<Mutex<State>>,

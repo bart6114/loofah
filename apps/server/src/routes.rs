@@ -329,7 +329,11 @@ async fn provision(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,
 ) -> Result<Json<Me>> {
-    Ok(Json(service.catalog.provision(&identity).await?))
+    let catalog = service.catalog.clone();
+    admitted_write(&service, async move {
+        Ok(Json(catalog.provision(&identity).await?))
+    })
+    .await
 }
 async fn me(
     State(service): State<Arc<Service>>,
@@ -364,12 +368,16 @@ async fn create_vault(
     headers: HeaderMap,
     ApiJson(request): ApiJson<CreateVaultRequest>,
 ) -> Result<Json<VaultInfo>> {
-    Ok(Json(
-        service
-            .catalog
-            .create_shared(&identity, request_id(&headers)?, &request.name)
-            .await?,
-    ))
+    let request_id = request_id(&headers)?.to_owned();
+    let catalog = service.catalog.clone();
+    admitted_write(&service, async move {
+        Ok(Json(
+            catalog
+                .create_shared(&identity, &request_id, &request.name)
+                .await?,
+        ))
+    })
+    .await
 }
 async fn rename_vault(
     State(service): State<Arc<Service>>,
@@ -377,12 +385,15 @@ async fn rename_vault(
     ApiPath(id): ApiPath<String>,
     ApiJson(request): ApiJson<UpdateVaultRequest>,
 ) -> Result<Json<VaultMutation>> {
-    Ok(Json(
-        service
-            .catalog
-            .rename(&identity, &id, &request.name, &request.expected_revision)
-            .await?,
-    ))
+    let catalog = service.catalog.clone();
+    admitted_write(&service, async move {
+        Ok(Json(
+            catalog
+                .rename(&identity, &id, &request.name, &request.expected_revision)
+                .await?,
+        ))
+    })
+    .await
 }
 #[derive(Deserialize)]
 struct RevisionQuery {
@@ -394,12 +405,15 @@ async fn delete_vault(
     ApiPath(id): ApiPath<String>,
     ApiQuery(request): ApiQuery<RevisionQuery>,
 ) -> Result<Json<VaultMutation>> {
-    Ok(Json(
-        service
-            .catalog
-            .delete(&identity, &id, &request.expected_revision)
-            .await?,
-    ))
+    let catalog = service.catalog.clone();
+    admitted_write(&service, async move {
+        Ok(Json(
+            catalog
+                .delete(&identity, &id, &request.expected_revision)
+                .await?,
+        ))
+    })
+    .await
 }
 async fn memberships(
     State(service): State<Arc<Service>>,
@@ -414,18 +428,21 @@ async fn set_membership(
     ApiPath((id, member)): ApiPath<(String, String)>,
     ApiJson(request): ApiJson<SetMembershipRequest>,
 ) -> Result<Json<VaultMutation>> {
-    Ok(Json(
-        service
-            .catalog
-            .set_membership(
-                &identity,
-                &id,
-                &member,
-                Some(request.role),
-                &request.expected_revision,
-            )
-            .await?,
-    ))
+    let catalog = service.catalog.clone();
+    admitted_write(&service, async move {
+        Ok(Json(
+            catalog
+                .set_membership(
+                    &identity,
+                    &id,
+                    &member,
+                    Some(request.role),
+                    &request.expected_revision,
+                )
+                .await?,
+        ))
+    })
+    .await
 }
 async fn remove_membership(
     State(service): State<Arc<Service>>,
@@ -433,12 +450,15 @@ async fn remove_membership(
     ApiPath((id, member)): ApiPath<(String, String)>,
     ApiQuery(request): ApiQuery<RevisionQuery>,
 ) -> Result<Json<VaultMutation>> {
-    Ok(Json(
-        service
-            .catalog
-            .set_membership(&identity, &id, &member, None, &request.expected_revision)
-            .await?,
-    ))
+    let catalog = service.catalog.clone();
+    admitted_write(&service, async move {
+        Ok(Json(
+            catalog
+                .set_membership(&identity, &id, &member, None, &request.expected_revision)
+                .await?,
+        ))
+    })
+    .await
 }
 
 #[derive(Deserialize)]
@@ -483,11 +503,13 @@ async fn session(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,
     ApiPath((id, session)): ApiPath<(String, String)>,
-) -> Result<Json<SessionDocument>> {
-    let _access = service.catalog.access(&identity, &id, false).await?;
-    Ok(Json(
-        service.vault(&id).await?.session_document(&session).await?,
-    ))
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 8 * 1024 * 1024, async move {
+        context.session_document(&session).await
+    })
+    .await
 }
 async fn create_session(
     State(service): State<Arc<Service>>,
@@ -513,9 +535,13 @@ async fn note(
     State(service): State<Arc<Service>>,
     axum::Extension(identity): IdentityExtension,
     ApiPath((id, session)): ApiPath<(String, String)>,
-) -> Result<Json<NoteSnapshot>> {
-    let _access = service.catalog.access(&identity, &id, false).await?;
-    Ok(Json(service.vault(&id).await?.read_note(&session).await?))
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 8 * 1024 * 1024, async move {
+        context.read_note(&session).await
+    })
+    .await
 }
 
 async fn metadata(
@@ -943,6 +969,12 @@ pub(crate) async fn content_read<T: serde::Serialize + Send + 'static>(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ApiError::busy("Content read capacity reached; retry later"))?;
+    if service.stop.is_cancelled() {
+        return Err(ApiError::new(
+            ErrorCode::Unavailable,
+            "Server is shutting down",
+        ));
+    }
     tokio::spawn(async move {
         let value = operation.await?;
         tokio::task::spawn_blocking(move || {
@@ -1055,11 +1087,13 @@ async fn search(
     axum::Extension(identity): IdentityExtension,
     ApiPath(id): ApiPath<String>,
     ApiJson(request): ApiJson<hypr_search_cache::SearchRequest>,
-) -> Result<Json<hypr_search_cache::SearchResult>> {
-    let _access = service.catalog.access(&identity, &id, false).await?;
-    Ok(Json(
-        service.vault(&id).await?.search_sessions(request).await?,
-    ))
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &id, false).await?;
+    let context = service.vault(&id).await?;
+    content_read(&service, access, 8 * 1024 * 1024, async move {
+        context.search_sessions(request).await
+    })
+    .await
 }
 
 async fn events(
@@ -1148,6 +1182,12 @@ pub(crate) async fn admitted_write<T: Send + 'static>(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ApiError::busy("Write capacity reached; retry later"))?;
+    if service.stop.is_cancelled() {
+        return Err(ApiError::new(
+            ErrorCode::Unavailable,
+            "Server is shutting down",
+        ));
+    }
     tokio::spawn(async move {
         let _permit = permit;
         operation.await

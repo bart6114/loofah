@@ -57,6 +57,19 @@ impl StartupState {
         }
     }
 
+    pub async fn wait_until_stopped(&self) -> Result<(), String> {
+        let mut receiver = self.inner.subscribe();
+        loop {
+            if matches!(receiver.borrow_and_update().phase, StartupPhase::Stopped) {
+                return Ok(());
+            }
+            receiver
+                .changed()
+                .await
+                .map_err(|cause| cause.to_string())?;
+        }
+    }
+
     pub fn set_phase(&self, phase: StartupPhase) -> StartupStatus {
         let mut updated = None;
         self.inner.send_modify(|status| {

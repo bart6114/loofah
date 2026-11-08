@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(service.config.listen).await?;
     tracing::info!(address = %listener.local_addr()?, "Loofah server listening behind HTTPS termination");
     let stop = service.stop.clone();
+    let shutdown = service.clone();
     let server = axum::serve(listener, loofah_server::routes::router(service.clone()))
         .with_graceful_shutdown(async move {
             #[cfg(unix)]
@@ -32,8 +33,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(not(unix))]
             let _ = tokio::signal::ctrl_c().await;
             stop.cancel();
+            // Drain actual storage work while Axum finishes network connections.
+            tokio::spawn(async move {
+                if let Err(error) = shutdown.shutdown().await {
+                    tracing::error!(%error, "shutdown deadline or drain error; owned drain continues");
+                }
+            });
         });
-    server.await?;
-    service.shutdown().await?;
+    let server_result = server.await;
+    if let Err(error) = service.shutdown().await {
+        tracing::error!(%error, "shutdown deadline or drain error; waiting for actual owned operations before exit");
+    }
+    let drained = service.wait_for_shutdown().await;
+    server_result?;
+    drained?;
     Ok(())
 }

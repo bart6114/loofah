@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod attachment_tests;
+#[cfg(test)]
+mod shutdown_tests;
 mod waveform;
 
 use std::{
@@ -33,8 +35,10 @@ const HASH_INDEX_LIMIT: usize = 16 * 1024 * 1024;
 pub struct MediaLeases(Arc<Registry>);
 
 struct Registry {
+    stopping: AtomicBool,
     state: Mutex<State>,
     slots: Arc<Semaphore>,
+    slot_capacity: u32,
     waveforms: Arc<Semaphore>,
     index_budget: Arc<Semaphore>,
     index_limit: usize,
@@ -118,8 +122,10 @@ impl MediaLeases {
         index_limit: usize,
     ) -> Self {
         Self(Arc::new(Registry {
+            stopping: AtomicBool::new(false),
             state: Mutex::new(State::default()),
             slots: Arc::new(Semaphore::new(capacity)),
+            slot_capacity: u32::try_from(capacity).expect("bounded media lease capacity"),
             waveforms: Arc::new(Semaphore::new(2)),
             index_budget: Arc::new(Semaphore::new(index_budget)),
             index_limit,
@@ -182,6 +188,12 @@ impl MediaLeases {
         let id = normalize_id(id)?;
         let entry = {
             let mut state = self.0.state.lock().unwrap();
+            if self.0.stopping.load(Ordering::Acquire) {
+                return Err(error(
+                    ErrorCode::Unavailable,
+                    "Media service is shutting down",
+                ));
+            }
             self.prune(&mut state);
             if let Some(entry) = state.active.get(&id) {
                 entry.check_scope(owner, &context.events.vault_id())?;
@@ -315,6 +327,12 @@ impl MediaLeases {
     ) -> Result<MediaReader, ApplicationError> {
         let id = normalize_id(id)?;
         let mut state = self.0.state.lock().unwrap();
+        if self.0.stopping.load(Ordering::Acquire) {
+            return Err(error(
+                ErrorCode::Unavailable,
+                "Media service is shutting down",
+            ));
+        }
         self.prune(&mut state);
         let entry = state.active.get(&id).ok_or_else(not_found)?;
         entry.check_scope(owner, vault)?;
@@ -425,6 +443,27 @@ impl MediaLeases {
             }
         });
         self.prune(&mut state);
+    }
+
+    /// Terminal host shutdown, unlike reusable close_all. Pending opens register
+    /// Entry before I/O; native hash/chunk/waveform workers retain it through exit.
+    pub async fn shutdown(&self) {
+        {
+            let _state = self.0.state.lock().unwrap();
+            self.0.stopping.store(true, Ordering::Release);
+        }
+        self.close_all();
+        // _slot is Entry's final field: all permits return only AFTER descriptor
+        // and Context teardown, unlike a weak strong-count reaching zero.
+        let _drained = self
+            .0
+            .slots
+            .clone()
+            .acquire_many_owned(self.0.slot_capacity)
+            .await
+            .expect("media lease slots remain open");
+        let mut state = self.0.state.lock().unwrap();
+        state.live.retain(|entry| entry.strong_count() > 0);
     }
 
     pub fn close_all(&self) {

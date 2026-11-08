@@ -232,6 +232,12 @@ pub(crate) async fn metadata_read<T: serde::Serialize + Send + 'static>(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ApiError::busy("Media readers are busy; retry shortly"))?;
+    if service.stop.is_cancelled() {
+        return Err(ApiError::new(
+            ErrorCode::Unavailable,
+            "Server is shutting down",
+        ));
+    }
     let service = service.clone();
     drop(access);
     // File hashing retains global admission after disconnect, without blocking membership changes.
