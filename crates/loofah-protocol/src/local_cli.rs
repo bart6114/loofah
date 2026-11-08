@@ -45,6 +45,8 @@ pub enum LocalCliOperationKind {
     Import,
     Transcribe,
     RecoverMedia,
+    ImportSubtitles,
+    RecoverSubtitles,
     Doctor,
     Initialize,
 }
@@ -141,6 +143,13 @@ pub enum LocalCliOperation {
     RecoverMedia {
         request_id: String,
     },
+    ImportSubtitles {
+        session_id: String,
+        filename: String,
+    },
+    RecoverSubtitles {
+        request_id: String,
+    },
     Doctor {},
     Initialize {},
 }
@@ -173,13 +182,18 @@ impl LocalCliOperation {
                 LocalCliOperationKind::Transcribe
             }
             Self::RecoverMedia { .. } => LocalCliOperationKind::RecoverMedia,
+            Self::ImportSubtitles { .. } => LocalCliOperationKind::ImportSubtitles,
+            Self::RecoverSubtitles { .. } => LocalCliOperationKind::RecoverSubtitles,
             Self::Doctor {} => LocalCliOperationKind::Doctor,
             Self::Initialize {} => LocalCliOperationKind::Initialize,
         }
     }
 
     pub fn has_blob(&self) -> bool {
-        matches!(self, Self::Attach { .. } | Self::Import { .. })
+        matches!(
+            self,
+            Self::Attach { .. } | Self::Import { .. } | Self::ImportSubtitles { .. }
+        )
     }
 
     pub fn is_mutation(&self) -> bool {
@@ -196,6 +210,8 @@ impl LocalCliOperation {
                 | Self::Transcribe { .. }
                 | Self::TranscribeChecked { .. }
                 | Self::RecoverMedia { .. }
+                | Self::ImportSubtitles { .. }
+                | Self::RecoverSubtitles { .. }
                 | Self::Doctor {}
         )
     }
@@ -277,6 +293,12 @@ pub enum LocalCliReply {
         meta: hypr_vault_read::SessionMeta,
         audio_path: PathBuf,
         transcription: Option<Result<LocalTranscriptionOutcome, ApplicationError>>,
+    },
+    SubtitlesImported {
+        session_id: String,
+        transcript_id: Option<String>,
+        word_count: usize,
+        revision: Option<String>,
     },
     Transcribed {
         session_id: String,
@@ -360,11 +382,16 @@ impl LocalCliOperationKind {
                     | Self::Import
                     | Self::Transcribe
                     | Self::RecoverMedia
+                    | Self::ImportSubtitles
+                    | Self::RecoverSubtitles
             );
         }
         matches!(
             (self, reply),
-            (Self::AgentList, LocalCliReply::AgentList { .. })
+            (
+                Self::ImportSubtitles | Self::RecoverSubtitles,
+                LocalCliReply::SubtitlesImported { .. }
+            ) | (Self::AgentList, LocalCliReply::AgentList { .. })
                 | (Self::AgentSearch, LocalCliReply::AgentSearch { .. })
                 | (Self::AgentMeeting, LocalCliReply::AgentMeeting { .. })
                 | (Self::AgentTranscript, LocalCliReply::AgentTranscript { .. })

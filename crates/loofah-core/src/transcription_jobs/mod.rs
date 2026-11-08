@@ -17,7 +17,7 @@ mod append;
 mod local;
 mod local_media;
 pub(crate) use append::CaptureSuffixInput;
-pub(crate) use local::LocalInferenceInput;
+pub(crate) use local::{LocalInferenceInput, local_memo};
 pub(crate) mod ledger;
 mod source;
 #[cfg(test)]

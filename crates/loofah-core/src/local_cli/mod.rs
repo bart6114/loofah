@@ -11,6 +11,7 @@ mod media;
 pub use media::{LocalMediaFuture, LocalMediaHost};
 mod mutations;
 mod read_owner;
+mod subtitles;
 #[cfg(test)]
 mod tests;
 pub use artifact::{LocalCliArtifact, MaterializedLocalArtifact};
@@ -88,6 +89,8 @@ impl LocalCli {
             Doctor,
             Initialize,
             RecoverMedia,
+            ImportSubtitles,
+            RecoverSubtitles,
         ];
         if self.media.is_some() {
             operations.extend([Import, Transcribe]);
@@ -129,7 +132,8 @@ impl LocalCli {
         let dispatcher = self.clone();
         let original_request_id = request_id.clone();
         let completion_request = match &operation {
-            LocalCliOperation::RecoverMedia { request_id } => request_id.clone(),
+            LocalCliOperation::RecoverMedia { request_id }
+            | LocalCliOperation::RecoverSubtitles { request_id } => request_id.clone(),
             _ => request_id.clone(),
         };
         let note_session = match &operation {
@@ -174,7 +178,7 @@ impl LocalCli {
                 panic!("Local operation supervisor was cancelled: {cause}");
             });
         let mut output = result.map_err(|mut cause| {
-            identify_error(&mut cause, &original_request_id);
+            identify_error(&mut cause, &completion_request);
             if media_request {
                 identify_media_error(&mut cause, &original_request_id);
             }
@@ -202,7 +206,8 @@ impl LocalCli {
                 Some(meta.id.clone())
             }
             LocalCliReply::SessionDeleted { session_id, .. }
-            | LocalCliReply::Transcribed { session_id, .. } => Some(session_id.clone()),
+            | LocalCliReply::Transcribed { session_id, .. }
+            | LocalCliReply::SubtitlesImported { session_id, .. } => Some(session_id.clone()),
             _ => None,
         };
         if let Some(session) = affected
@@ -231,6 +236,12 @@ impl LocalCli {
     ) -> Result<LocalCliOutput, ApplicationError> {
         let context = &self.context;
         let reply = match operation {
+            operation @ (LocalCliOperation::ImportSubtitles { .. }
+            | LocalCliOperation::RecoverSubtitles { .. }) => {
+                return self
+                    .execute_subtitles(request_id, operation, artifact)
+                    .await;
+            }
             LocalCliOperation::RecoverMedia { request_id } => {
                 return self.recover_media(request_id).await;
             }
