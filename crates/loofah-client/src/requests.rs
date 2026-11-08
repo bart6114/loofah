@@ -9,11 +9,20 @@ use tokio_util::sync::CancellationToken;
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
 mod document_editor;
+mod timeline;
 mod transcription;
 
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    TimelineHeaders {
+        vault_id: String,
+        input: TimelineQuery,
+    },
+    TimelineFacets {
+        vault_id: String,
+        input: TimelineFacetsQuery,
+    },
     DeleteEmptySession {
         vault_id: String,
         input: DeleteEmptySessionRequest,
@@ -285,6 +294,8 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    TimelineHeaders(TimelinePage),
+    TimelineFacets(TimelineFacets),
     SessionCleanup(DeleteEmptySessionOutcome),
     SessionSummaries(Vec<SessionSummary>),
     ProcessingPolicy(ProcessingPolicy),
@@ -373,6 +384,9 @@ impl RemoteClient {
             operation if transcription::is_operation(operation) => Some("batch_transcription_jobs"),
             RemoteOperation::DeleteEmptySession { .. } => Some("session_cleanup"),
             RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
+            RemoteOperation::TimelineHeaders { .. } | RemoteOperation::TimelineFacets { .. } => {
+                Some("timeline_read")
+            }
             RemoteOperation::TranscriptOverview { .. } => Some("transcript_overview"),
             RemoteOperation::TagSuggestions { .. }
             | RemoteOperation::EnsureTag { .. }
@@ -410,6 +424,8 @@ impl RemoteClient {
                 ref operation if transcription::is_operation(operation) => "batch transcription",
                 RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
+                RemoteOperation::TimelineHeaders { .. }
+                | RemoteOperation::TimelineFacets { .. } => "timeline projections",
                 RemoteOperation::TranscriptOverview { .. } => "transcript overview",
                 RemoteOperation::DocumentEditor { .. }
                 | RemoteOperation::SaveDocumentEditor { .. } => "the compound document editor",
@@ -594,8 +610,20 @@ impl RemoteClient {
         if let RemoteOperation::SessionSummaries { input, .. } = &operation {
             validate_session_summary_query(input).map_err(invalid)?;
         }
+        timeline::validate_operation(&operation)?;
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::TimelineHeaders { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "timeline", "headers"],
+                )
+            }
+            RemoteOperation::TimelineFacets { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "timeline", "facets"])
+            }
             RemoteOperation::DeleteEmptySession { vault_id, input } => {
                 body = Some(value(input)?);
                 (Method::POST, vec!["vaults", vault_id, "session-cleanups"])
@@ -1161,6 +1189,8 @@ impl RemoteClient {
             operation,
             RemoteOperation::Search { .. }
                 | RemoteOperation::SessionSummaries { .. }
+                | RemoteOperation::TimelineHeaders { .. }
+                | RemoteOperation::TimelineFacets { .. }
                 | RemoteOperation::TagSuggestions { .. }
                 | RemoteOperation::AgentList { .. }
                 | RemoteOperation::AgentSearch { .. }
@@ -1266,6 +1296,17 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                RemoteOperation::TimelineHeaders { input, .. } => {
+                    let page: TimelinePage = json_body(response, TIMELINE_RESPONSE_LIMIT).await?;
+                    timeline::validate_page(&page, &input)?;
+                    RemoteReply::TimelineHeaders(page)
+                }
+                RemoteOperation::TimelineFacets { input, .. } => {
+                    let facets: TimelineFacets =
+                        json_body(response, TIMELINE_RESPONSE_LIMIT).await?;
+                    timeline::validate_facets(&facets, &input)?;
+                    RemoteReply::TimelineFacets(facets)
+                }
                 RemoteOperation::DeleteEmptySession { .. } => {
                     RemoteReply::SessionCleanup(json_body(response, 1024).await?)
                 }

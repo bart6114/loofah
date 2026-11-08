@@ -43,6 +43,7 @@ pub mod summary;
 pub mod tags;
 pub mod tasks;
 mod tasks_revision;
+mod timeline;
 pub mod transcript;
 mod transcript_operation;
 mod transcript_overview;

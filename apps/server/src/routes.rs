@@ -27,6 +27,7 @@ mod processing_settings;
 mod session_cleanup;
 mod session_summaries;
 mod tag_editing;
+mod timeline;
 mod transcript_overview;
 mod transcription;
 
@@ -39,6 +40,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(processing_settings::router())
         .merge(session_cleanup::router())
         .merge(session_summaries::router())
+        .merge(timeline::router())
         .merge(transcript_overview::router())
         .merge(transcription::router())
         .merge(tag_editing::router())
@@ -180,6 +182,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "capture_publication".into(),
             "notes".into(),
             "session_summaries".into(),
+            "timeline_read".into(),
             "transcript_overview".into(),
             "tag_editing".into(),
             "session_cleanup".into(),

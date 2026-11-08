@@ -184,6 +184,7 @@ fn session_has_attachments(session_dir: &std::path::Path) -> Result<bool, StoreE
 /// collections are normalized to absent keys so `PartialEq` diffs stay meaningful.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct VaultIndex {
+    pub(super) timeline_revision: uuid::Uuid,
     pub sessions: HashMap<String, SessionEntry>,
     /// Session id -> that session's `enhanced/<uuid>.md` docs.
     pub docs: HashMap<String, Vec<EnhancedDoc>>,
@@ -570,6 +571,9 @@ impl SessionStore {
             }
         }
         let header_changed = previous_header != index.session_header(&meta.id);
+        if header_changed {
+            index.timeline_revision = uuid::Uuid::new_v4();
+        }
         drop(index);
         if header_changed {
             self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
@@ -597,6 +601,9 @@ impl SessionStore {
             },
         );
         let header_changed = previous_header != index.session_header(&meta.id);
+        if header_changed {
+            index.timeline_revision = uuid::Uuid::new_v4();
+        }
         drop(index);
         if header_changed {
             self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
@@ -620,6 +627,9 @@ impl SessionStore {
         }
         index.summaries.insert(meta.id.clone(), markdown);
         let header_changed = previous_header != index.session_header(&meta.id);
+        if header_changed {
+            index.timeline_revision = uuid::Uuid::new_v4();
+        }
         drop(index);
         if header_changed {
             self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
@@ -645,6 +655,9 @@ impl SessionStore {
             None => docs.push(doc.clone()),
         }
         let header_changed = previous_header != index.session_header(&meta.id);
+        if header_changed {
+            index.timeline_revision = uuid::Uuid::new_v4();
+        }
         drop(index);
         if header_changed {
             self.notify_index_changed(IndexEntity::SessionHeaders, vec![meta.id.clone()]);
@@ -685,6 +698,9 @@ impl SessionStore {
             index.transcripts.insert(session_id.to_string(), summary);
         }
         let header_changed = previous_header != index.session_header(session_id);
+        if header_changed {
+            index.timeline_revision = uuid::Uuid::new_v4();
+        }
         drop(index);
         if header_changed {
             self.notify_index_changed(IndexEntity::SessionHeaders, vec![session_id.to_string()]);
@@ -716,6 +732,7 @@ impl SessionStore {
         let mut index = self.index.write().unwrap();
         let mut changes = Vec::new();
         if index.sessions.remove(session_id).is_some() {
+            index.timeline_revision = uuid::Uuid::new_v4();
             self.deleted_sessions
                 .lock()
                 .unwrap()

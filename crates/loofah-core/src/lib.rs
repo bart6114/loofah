@@ -27,4 +27,5 @@ mod session_cleanup;
 mod session_summaries;
 mod tag_editing;
 mod tasks;
+mod timeline;
 mod transcript_overview;

@@ -523,6 +523,7 @@ impl SessionStore {
                 }
             }
             if previous_header != index.session_header(id) {
+                index.timeline_revision = uuid::Uuid::new_v4();
                 changes.push((IndexEntity::SessionHeaders, id.to_string()));
             }
         }

@@ -18,6 +18,7 @@ mod session_summaries;
 mod tag_editing;
 mod tasks;
 mod template_jobs;
+mod timeline;
 mod transcript_overview;
 mod transcription;
 #[cfg(feature = "cpu-transcription")]
