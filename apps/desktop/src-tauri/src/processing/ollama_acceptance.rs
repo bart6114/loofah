@@ -220,19 +220,36 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
         assert_eq!(admitted.state, ManualMediaSummaryState::Child, "{admitted:?}");
         assert_eq!(admitted.child_request_id, child);
         let original_job = admitted.job.unwrap().id;
+        let mut saw_generating_preview = false;
         let terminal = tokio::time::timeout(Duration::from_secs(300), async {
             loop {
                 let status = context.manual_media_summary_status(&request).await.unwrap();
                 let job = status.job.expect("original eligible child");
                 assert_eq!(job.id, original_job);
+                let preview = application::application_processing_job_preview(app.handle().clone(), original_job.clone()).await.unwrap();
+                assert_eq!(preview.vault_id, "local:ollama-acceptance");
+                assert_eq!(preview.job.id, original_job);
+                assert_eq!(preview.job.session_id, "eligible");
+                assert_eq!(preview.job.target, DocumentTarget::Summary);
+                if let Some(partial) = preview.preview {
+                    assert!(partial.markdown.len() <= hypr_loofah_protocol::MAX_PROCESSING_PREVIEW_BYTES);
+                    assert!(!partial.markdown.contains("<think") && !partial.markdown.contains("<loofah-tags"));
+                    if preview.job.phase == Some(hypr_loofah_protocol::ProcessingPhase::Generating) && !partial.markdown.trim().is_empty() {
+                        saw_generating_preview = true;
+                    }
+                }
                 if job.state.is_terminal() { break job; }
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         }).await.expect("local summary/title did not finish within five minutes");
         assert_eq!(terminal.state, ProcessingJobState::Succeeded, "{terminal:?}");
+        assert!(saw_generating_preview, "the actual Native LocalModels path must expose a nonempty partial while generating the original summary");
         let result = application::application_processing_job_result(
             app.handle().clone(), original_job.clone(),
         ).await.unwrap().unwrap();
+        let retained_preview = application::application_processing_job_preview(app.handle().clone(), original_job.clone()).await.unwrap();
+        assert_eq!(retained_preview.job.state, ProcessingJobState::Succeeded);
+        assert!(retained_preview.preview.as_ref().is_some_and(|preview| !preview.markdown.trim().is_empty()));
         assert!(!result.markdown.trim().is_empty());
         assert!(result.markdown.len() > 80, "summary lacks meaningful meeting content: {result:?}");
         let normalized = result.markdown.to_lowercase();
@@ -256,6 +273,8 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
         let replay = context.complete_manual_media_summary(request.clone()).await.unwrap();
         assert_eq!(replay.child_request_id, child);
         assert_eq!(replay.job.unwrap().id, original_job);
+        assert_eq!(application::application_processing_job_preview(app.handle().clone(), original_job.clone()).await.unwrap(), retained_preview);
+        assert_eq!(context.read_document("eligible", &DocumentTarget::Summary).await.unwrap().document.unwrap().markdown, published_summary);
         assert_eq!(application::application_processing_job_result(app.handle().clone(), original_job).await.unwrap(), Some(result));
 
         let (short, _) = declare_and_import(&context, &cli, root.path(), "short", "1\n00:00:01,000 --> 00:00:02,000\nThank you.\n").await;
