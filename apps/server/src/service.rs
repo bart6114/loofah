@@ -28,7 +28,7 @@ pub struct Service {
     pub(crate) injected_changes: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     pub(crate) startup_pause:
-        std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>,
+        Arc<std::sync::Mutex<Option<(std::sync::mpsc::Sender<()>, Arc<std::sync::Barrier>)>>>,
     pub(crate) observability: Arc<crate::operational::Observability>,
     operational_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub auth: Authenticator,
@@ -219,7 +219,7 @@ impl Service {
         > = Arc::new(|| hypr_loofah_protocol::TranscriptionAvailability::Disabled);
         let capture_origin = format!("{}/", self.config.public_url.origin().ascii_serialization());
         #[cfg(test)]
-        let pause = self.startup_pause.lock().unwrap().take();
+        let startup_pause = self.startup_pause.clone();
         #[cfg(test)]
         let injected_changes = self
             .injected_changes
@@ -229,6 +229,8 @@ impl Service {
             let _catalog = catalog.clone();
             let context = cell
                 .get_or_try_init(|| async {
+                    #[cfg(test)]
+                    let pause = startup_pause.lock().unwrap().take();
                     #[cfg(test)]
                     if let Some((entered, resume)) = pause {
                         tokio::task::spawn_blocking(move || {

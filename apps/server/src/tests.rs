@@ -600,7 +600,6 @@ async fn canonical_storage_and_derived_search_cache_are_private_to_the_service_u
 #[tokio::test]
 async fn symlinks_cannot_redirect_one_vault_into_another() {
     let fixture = Fixture::new().await;
-    let alice = fixture.login("alice").await;
     let bob = fixture.login("bob").await;
     let context = fixture.service.vault(&bob.personal_vault_id).await.unwrap();
     let meta = serde_json::from_value(
@@ -611,6 +610,14 @@ async fn symlinks_cannot_redirect_one_vault_into_another() {
         .store
         .create_note_session(&meta, "bob-secret")
         .await
+        .unwrap();
+    let (entered, receiver) = std::sync::mpsc::channel();
+    let resume = Arc::new(std::sync::Barrier::new(2));
+    *fixture.service.startup_pause.lock().unwrap() = Some((entered, resume.clone()));
+    let alice = fixture.login("alice").await;
+    tokio::task::spawn_blocking(move || receiver.recv_timeout(std::time::Duration::from_secs(2)))
+        .await
+        .unwrap()
         .unwrap();
     let alice_session = fixture
         .service
@@ -627,6 +634,9 @@ async fn symlinks_cannot_redirect_one_vault_into_another() {
         )
         .unwrap();
     }
+    tokio::task::spawn_blocking(move || resume.wait())
+        .await
+        .unwrap();
     let (status, body) = fixture
         .call(
             "alice",
