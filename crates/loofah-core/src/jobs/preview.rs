@@ -161,6 +161,7 @@ impl JobJournal {
         self.run(move |state, _| {
             let job = state.owned(&namespace, &id)?;
             Ok(ProcessingJobPreview {
+                vault_id: state.vault_id.clone(),
                 job: job.snapshot.clone(),
                 preview: read(state, job).ok().flatten(),
             })

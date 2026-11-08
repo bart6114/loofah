@@ -1220,6 +1220,12 @@ async fn events(
     if cursor.is_some_and(|cursor| cursor.len() > 128) {
         return Err(ApiError::new(ErrorCode::Validation, "Invalid event cursor"));
     }
+    let namespace = access.member_id.clone();
+    let mut previews = (headers
+        .get("x-loofah-job-previews")
+        .and_then(|value| value.to_str().ok())
+        == Some("1"))
+    .then(|| context.events.subscribe_previews_for(&namespace));
     let mut subscription = context.events.subscribe_for(&access.member_id, cursor);
     drop(access);
     let permit = service
@@ -1241,6 +1247,16 @@ async fn events(
                 _ = &mut expiry => break,
                 change = access_changes.changed() => {
                     if change.is_err() || service.catalog.access(&identity, &id, false).await.is_err() { break; }
+                },
+                preview = async {
+                    match &mut previews { Some(previews) => previews.recv().await, None => std::future::pending().await }
+                } => {
+                    let Some(event) = preview else { break; };
+                    let Ok(access) = service.catalog.access(&identity, &id, false).await else { break; };
+                    if access.member_id != namespace { break; }
+                    let Ok(json) = serde_json::to_string(&event) else { break; };
+                    drop(access);
+                    yield Ok(Event::default().event("processing_preview").data(json));
                 },
                 event = subscription.recv() => {
                     let Some(event) = event else { break; };

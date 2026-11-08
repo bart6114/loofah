@@ -9,6 +9,7 @@ mod document_editor;
 mod downloads;
 mod initial_metadata;
 mod media_jobs;
+mod processing_preview;
 mod provider_credentials;
 mod session_lifecycle;
 mod tag_editing;

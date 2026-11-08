@@ -750,6 +750,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_processing_jobs::<tauri::Wry>,
             application::application_processing_job::<tauri::Wry>,
             application::application_processing_job_result::<tauri::Wry>,
+            application::application_processing_job_preview::<tauri::Wry>,
             application::application_cancel_processing_job::<tauri::Wry>,
             job_submissions::device_job_submission_prepare::<tauri::Wry>,
             transcription_submissions::device_transcription_submission_prepare::<tauri::Wry>,

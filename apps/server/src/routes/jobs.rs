@@ -5,6 +5,7 @@ pub(super) fn router() -> Router<Arc<Service>> {
         .route("/vaults/{vault}/jobs", get(list).post(submit))
         .route("/vaults/{vault}/jobs/{job}", get(status))
         .route("/vaults/{vault}/jobs/{job}/result", get(result))
+        .route("/vaults/{vault}/jobs/{job}/preview", get(preview))
         .route(
             "/vaults/{vault}/jobs/{job}/cancel",
             axum::routing::post(cancel),
@@ -73,6 +74,25 @@ async fn result(
         context.processing_job_result(namespace, job).await
     })
     .await
+}
+
+async fn preview(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, job)): ApiPath<(String, String)>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    let context = service.vault(&vault).await?;
+    let namespace = access.member_id.clone();
+    let mut response = content_read(&service, access, 128 * 1024, async move {
+        context.processing_job_preview(namespace, job).await
+    })
+    .await?;
+    response.headers_mut().insert(
+        "cache-control",
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok(response)
 }
 
 async fn cancel(

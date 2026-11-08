@@ -143,7 +143,7 @@ impl RemoteClient {
         Ok(Subscription { cancel, task })
     }
 
-    async fn event_connection(
+    pub(crate) async fn event_connection(
         self: &Arc<Self>,
         url: url::Url,
         vault_id: &str,
@@ -159,6 +159,14 @@ impl RemoteClient {
             .bearer_auth(&access)
             .header("x-loofah-api-major", API_MAJOR.to_string())
             .header("accept", "text/event-stream");
+        let previews = self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "processing_previews");
+        if previews {
+            request = request.header("x-loofah-job-previews", "1");
+        }
         if let Some(cursor) = cursor {
             request = request.header("last-event-id", cursor.as_str());
         }
@@ -201,6 +209,29 @@ impl RemoteClient {
                 return Ok(());
             };
             for message in decoder.push(&chunk.map_err(|_| unavailable())?)? {
+                if message.event == "processing_preview" {
+                    let event: ChangeEvent = serde_json::from_str(&message.data).map_err(|_| {
+                        failure(
+                            ErrorCode::IncompatibleVersion,
+                            "Invalid private preview event",
+                        )
+                    })?;
+                    if !previews
+                        || message.id.is_some()
+                        || event.vault_id != vault_id
+                        || !matches!(&event.change, Change::JobPreviewChanged { job_id }
+                            if uuid::Uuid::parse_str(job_id).is_ok_and(|id| !id.is_nil() && id.to_string() == *job_id))
+                    {
+                        return Err(failure(
+                            ErrorCode::IncompatibleVersion,
+                            "Invalid private preview event",
+                        ));
+                    }
+                    if !listener(RemoteEvent::Change { event }) {
+                        return Err(cancelled());
+                    }
+                    continue;
+                }
                 let id = message.id.filter(|id| !id.is_empty()).ok_or_else(|| {
                     failure(
                         ErrorCode::IncompatibleVersion,
@@ -217,6 +248,12 @@ impl RemoteClient {
                     return Err(failure(
                         ErrorCode::IncompatibleVersion,
                         "Change event scope or cursor does not match the subscription",
+                    ));
+                }
+                if matches!(event.change, Change::JobPreviewChanged { .. }) {
+                    return Err(failure(
+                        ErrorCode::IncompatibleVersion,
+                        "Preview event used the canonical cursor stream",
                     ));
                 }
                 if !matches!(message.event.as_str(), "" | "message" | "change")

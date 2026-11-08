@@ -117,6 +117,7 @@ async fn sidecar_retention_and_encoded_size_are_bounded_without_touching_job_res
             )
             .await
             .unwrap();
+        journal.cancel(job.id.clone()).await.unwrap();
         journal
             .complete(job.id, JobCompletion::Cancelled)
             .await

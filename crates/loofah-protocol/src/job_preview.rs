@@ -15,6 +15,7 @@ pub struct ProcessingPreviewSnapshot {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessingJobPreview {
+    pub vault_id: String,
     pub job: ProcessingJobSnapshot,
     pub preview: Option<ProcessingPreviewSnapshot>,
 }

@@ -11,6 +11,7 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 mod capture_live;
 mod capture_processing;
 mod document_editor;
+mod processing_preview;
 mod provider_credentials;
 mod session_lifecycle;
 mod timeline;
@@ -127,6 +128,10 @@ pub enum RemoteOperation {
         input: ListProcessingJobsInput,
     },
     ProcessingJob {
+        vault_id: String,
+        job_id: String,
+    },
+    ProcessingJobPreview {
         vault_id: String,
         job_id: String,
     },
@@ -404,6 +409,7 @@ pub enum RemoteReply {
     ProcessingSettingsSave(ProcessingSettingsSaveOutcome),
     ProcessingJob(ProcessingJobSnapshot),
     ProcessingJobs(ProcessingJobPage),
+    ProcessingJobPreview(ProcessingJobPreview),
     ProcessingJobResult(Option<ProcessingJobResult>),
     TranscriptionJob(TranscriptionJobSnapshot),
     TranscriptionJobs(TranscriptionJobPage),
@@ -503,6 +509,7 @@ impl RemoteClient {
             self.reject_window_authentication()?;
         }
         let required_feature = match &operation {
+            RemoteOperation::ProcessingJobPreview { .. } => Some("processing_previews"),
             operation if transcript_editor::is_operation(operation) => Some("transcript_editor"),
             RemoteOperation::CreateSessionWithMetadata { .. } => Some("session_initial_metadata"),
             operation if provider_credentials::is_operation(operation) => {
@@ -555,6 +562,7 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::ProcessingJobPreview { .. } => "private processing previews",
                 ref operation if transcript_editor::is_operation(operation) => {
                     "checked transcript speaker editing"
                 }
@@ -822,6 +830,7 @@ impl RemoteClient {
             error
         })?;
         timeline::validate_operation(&operation)?;
+        processing_preview::validate_operation(&operation)?;
         capture_live::validate_operation(&operation, request_id).map_err(|mut error| {
             if capture_live::is_write(&operation) {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
@@ -1092,6 +1101,10 @@ impl RemoteClient {
             RemoteOperation::ProcessingJob { vault_id, job_id } => {
                 (Method::GET, vec!["vaults", vault_id, "jobs", job_id])
             }
+            RemoteOperation::ProcessingJobPreview { vault_id, job_id } => (
+                Method::GET,
+                vec!["vaults", vault_id, "jobs", job_id, "preview"],
+            ),
             RemoteOperation::ProcessingJobResult { vault_id, job_id } => (
                 Method::GET,
                 vec!["vaults", vault_id, "jobs", job_id, "result"],
@@ -1825,6 +1838,11 @@ impl RemoteClient {
                     let page: ProcessingJobPage = json_body(response, 1024 * 1024).await?;
                     validate_processing_page(&page, &input)?;
                     RemoteReply::ProcessingJobs(page)
+                }
+                RemoteOperation::ProcessingJobPreview { vault_id, job_id } => {
+                    let snapshot: ProcessingJobPreview = json_body(response, 131_072).await?;
+                    processing_preview::validate_reply(&snapshot, &vault_id, &job_id)?;
+                    RemoteReply::ProcessingJobPreview(snapshot)
                 }
                 RemoteOperation::ProcessingJobResult { vault_id, job_id } => {
                     let result: Option<ProcessingJobResult> =

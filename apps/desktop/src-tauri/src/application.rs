@@ -388,6 +388,9 @@ pub fn forward_changes<R: tauri::Runtime>(app: &tauri::AppHandle<R>, context: &A
     let mut changes = context
         .events
         .subscribe_for(crate::processing::PRINCIPAL, None);
+    let mut previews = context
+        .events
+        .subscribe_previews_for(crate::processing::PRINCIPAL);
     let stopping = app.state::<crate::processing::ProcessingState>().stopping();
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -401,6 +404,7 @@ pub fn forward_changes<R: tauri::Runtime>(app: &tauri::AppHandle<R>, context: &A
                     continue;
                 },
                 event = changes.recv() => match event { Some(event) => event, None => break },
+                event = previews.recv() => match event { Some(event) => event, None => break },
             };
             if let Err(error) = (ApplicationChanged { event }).emit(&app) {
                 tracing::warn!(%error, "failed to emit application change");
@@ -471,6 +475,17 @@ pub async fn application_processing_job<R: tauri::Runtime>(
 ) -> Result<hypr_loofah_protocol::ProcessingJobSnapshot, ApplicationError> {
     context(&app)?
         .processing_job(crate::processing::PRINCIPAL.into(), job_id)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_processing_job_preview<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    job_id: String,
+) -> Result<hypr_loofah_protocol::ProcessingJobPreview, ApplicationError> {
+    context(&app)?
+        .processing_job_preview(crate::processing::PRINCIPAL.into(), job_id)
         .await
 }
 
