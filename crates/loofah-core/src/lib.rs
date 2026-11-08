@@ -6,6 +6,7 @@ pub mod processing_settings;
 pub mod search;
 pub mod settings;
 pub mod startup;
+pub mod transcription_jobs;
 mod vault;
 pub mod vault_watch;
 pub use vault::VaultContext;

@@ -24,6 +24,7 @@ pub struct VaultRuntime {
     workers: Vec<tokio::task::JoinHandle<()>>,
     watcher: Option<watch::FileWatcher>,
     processing: Option<crate::jobs::JobWorker>,
+    pub(crate) transcription: Option<crate::transcription_jobs::TranscriptionWorker>,
     host: tokio::runtime::Handle,
     draining: bool,
 }
@@ -217,6 +218,7 @@ impl VaultRuntime {
             workers: vec![events_worker, search_worker, watch_worker, settings_worker],
             watcher,
             processing: None,
+            transcription: None,
             host: tokio::runtime::Handle::current(),
             draining: false,
         })
@@ -247,6 +249,7 @@ impl VaultRuntime {
         let context = self.context.clone();
         let workers = std::mem::take(&mut self.workers);
         let processing = self.processing.take();
+        let transcription = self.transcription.take();
         if let Some(watcher) = self.watcher.take() {
             // Native cleanup only owns the closed event input, never Store or vault data.
             self.host.spawn_blocking(move || drop(watcher));
@@ -268,6 +271,13 @@ impl VaultRuntime {
                 }
             }
             let mut failure = None;
+            if let Some(worker) = transcription {
+                phase.send_replace("transcription worker exceeded shutdown deadline");
+                if let Err(cause) = worker.shutdown().await {
+                    tracing::error!(%cause, "transcription worker did not stop cleanly");
+                    failure = Some(StoreError::Io("transcription worker did not stop cleanly".into()));
+                }
+            }
             if let Some(worker) = processing {
                 phase.send_replace("processing worker exceeded shutdown deadline");
                 if let Err(cause) = worker.shutdown().await {
@@ -297,6 +307,9 @@ impl VaultRuntime {
         }
         self.stop.cancel();
         if let Some(worker) = &self.processing {
+            worker.request_shutdown();
+        }
+        if let Some(worker) = &self.transcription {
             worker.request_shutdown();
         }
     }
