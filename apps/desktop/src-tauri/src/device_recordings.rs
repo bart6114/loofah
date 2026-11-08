@@ -75,6 +75,7 @@ pub struct DeviceRecordingState {
     closing: AtomicBool,
     exit_started: AtomicBool,
     inventory: Mutex<Option<DeviceRecordingInventory>>,
+    recovery: Mutex<Option<Vec<DeviceRecordingInfo>>>,
     profile_id: OnceLock<String>,
 }
 
@@ -289,6 +290,10 @@ pub async fn device_recording_start<R: tauri::Runtime>(
         .transpose()?;
     let state = app.state::<DeviceRecordingState>();
     state.bind_profile(&profile_id)?;
+    // A later start can retire an in-memory ticket. Reconcile all persisted
+    // captures before treating the previous inventory as complete again.
+    *state.inventory.lock().unwrap() = None;
+    *state.recovery.lock().unwrap() = None;
     let request_id = input.request_id.clone();
     let capture = state
         .host(&app)
@@ -332,6 +337,66 @@ pub async fn device_recording_inventory<R: tauri::Runtime>(
         recordings,
     });
     state.snapshot(&profile).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_recording_recovery_inventory<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    refresh: bool,
+) -> Result<Vec<DeviceRecordingInfo>, ApplicationError> {
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let host = state.host(&app).await?;
+    let cached = state.recovery.lock().unwrap().clone();
+    let mut recordings = if refresh || cached.is_none() {
+        let saved = host
+            .recovery_inventory(profile)
+            .await?
+            .into_iter()
+            .map(|snapshot| saved(&profile_id, snapshot))
+            .collect::<Vec<_>>();
+        *state.recovery.lock().unwrap() = Some(saved.clone());
+        saved
+    } else {
+        cached.unwrap()
+    };
+    for capture in state.live(&profile_id) {
+        if let Some(existing) = recordings
+            .iter_mut()
+            .find(|item| item.identity == capture.identity)
+        {
+            *existing = capture;
+        } else {
+            recordings.push(capture);
+        }
+    }
+    for capture in &mut recordings {
+        if let Some(upload) = host.upload_ticket(&profile_id, &capture.identity)? {
+            let progress = upload.current();
+            if let Some(publication) = &progress.publication {
+                capture.publication = Some(publication.clone());
+            }
+            capture.upload = Some(progress);
+        }
+    }
+    recordings.sort_by(|a, b| {
+        (
+            &a.identity.scope.server,
+            &a.identity.scope.member_id,
+            &a.identity.scope.vault_id,
+            &a.identity.capture_id,
+        )
+            .cmp(&(
+                &b.identity.scope.server,
+                &b.identity.scope.member_id,
+                &b.identity.scope.vault_id,
+                &b.identity.capture_id,
+            ))
+    });
+    Ok(recordings)
 }
 
 #[tauri::command]

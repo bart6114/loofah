@@ -505,6 +505,10 @@ async fn scopes_capture_ids_and_request_ids_cannot_be_rebound_or_cross_read() {
     assert_eq!(second.snapshot().await.unwrap().chunk_count, 0);
     assert_eq!(spool.inventory(id.scope.clone()).await.unwrap().len(), 1);
     assert_eq!(spool.inventory(other.scope.clone()).await.unwrap().len(), 1);
+    let recovered = spool.recovery_inventory().await.unwrap();
+    assert_eq!(recovered.len(), 2);
+    assert!(recovered.iter().any(|capture| capture.identity == id));
+    assert!(recovered.iter().any(|capture| capture.identity == other));
     assert_ne!(
         writer.snapshot().await.unwrap().capture_fingerprint,
         second.snapshot().await.unwrap().capture_fingerprint
@@ -1022,6 +1026,10 @@ async fn request_lookup_is_profile_wide_and_survives_reopen_without_changing_man
     drop(other_writer);
     drop(spool);
     let spool = open(&root).await;
+    let recovered = spool.recovery_inventory().await.unwrap();
+    assert_eq!(recovered.len(), 2);
+    assert!(recovered.iter().any(|capture| capture.identity == first));
+    assert!(recovered.iter().any(|capture| capture.identity == other));
     assert!(spool.request_exists(&first.request_id).await.unwrap());
     assert!(spool.request_exists(&other.request_id).await.unwrap());
     assert_eq!(

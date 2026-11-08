@@ -1280,6 +1280,31 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async remoteSubscribeCaptureLive(
+    connectionId: string,
+    vaultId: string,
+    subscriptionId: string,
+    binding: CaptureLiveBinding,
+    after: number | null,
+    onEvent: TAURI_CHANNEL<CaptureLiveEvent>,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_subscribe_capture_live", {
+          connectionId,
+          vaultId,
+          subscriptionId,
+          binding,
+          after,
+          onEvent,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async remoteUnsubscribe(
     connectionId: string,
     subscriptionId: string,
@@ -1519,6 +1544,21 @@ export const commands = {
       return {
         status: "ok",
         data: await TAURI_INVOKE("device_recording_inventory"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingRecoveryInventory(
+    refresh: boolean,
+  ): Promise<Result<DeviceRecordingInfo[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_recovery_inventory", {
+          refresh,
+        }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -2482,6 +2522,81 @@ export type CaptureIdentity = {
   request_id: string;
   target: CaptureTarget;
 };
+export type CaptureLiveBinding = {
+  capture_id: string;
+  generation_id: string;
+  capture_fingerprint: string;
+  session_id: string;
+  format: CaptureFormat;
+};
+export type CaptureLiveCaption = {
+  generation_id: string;
+  sequence: number;
+  physical_channel: number;
+  role: CaptureChannel;
+  new_words: FinalizedWord[];
+  partials?: PartialWord[];
+  replaced_ids: string[];
+  languages: string[];
+};
+export type CaptureLiveCaptionPage = {
+  snapshot: CaptureLiveSnapshot;
+  captions: CaptureLiveCaption[];
+  next_cursor: number | null;
+};
+export type CaptureLiveEvent =
+  | {
+      kind: "connection";
+      state: ConnectionState;
+      error: ApplicationError | null;
+    }
+  | { kind: "page"; page: CaptureLiveCaptionPage };
+export type CaptureLiveFailure =
+  | "access_denied"
+  | "interrupted"
+  | "engine_unavailable"
+  | "engine_failed"
+  | "resource_limit"
+  | "invalid_output"
+  | "source_changed"
+  | "backlog"
+  | "idle"
+  | "storage";
+export type CaptureLiveRequest = {
+  capture_fingerprint: string;
+  expected_transcript: AbsentTranscriptExpectation;
+  model: string;
+  languages?: string[];
+  keywords?: string[];
+};
+export type CaptureLiveSnapshot = {
+  capture_id: string;
+  capture_fingerprint: string;
+  generation_id: string;
+  session_id: string;
+  state: CaptureLiveState;
+  failure: CaptureLiveFailure | null;
+  admitted_end_frame: number;
+  input_consumed_end_frame: number;
+  completed_through_frame: number | null;
+  next_caption_sequence: number;
+  result_available: boolean;
+  publication: TranscriptionPublication | null;
+};
+export type CaptureLiveState =
+  | "starting"
+  | "running"
+  | "finishing"
+  | "cancelling"
+  | "awaiting_recording"
+  | "publishing"
+  | "completed"
+  | "empty"
+  | "cancelled"
+  | "interrupted"
+  | "repair_required"
+  | "conflict"
+  | "uncertain";
 /**
  * An authenticated verifier must compare the finalized service receipt with an
  * independent canonical artifact read before supplying this observation.
@@ -2767,6 +2882,15 @@ export type FileMetadata = {
   sizeBytes: number;
   sha256: string;
 };
+export type FinalizedWord = {
+  id: string;
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  state: WordState;
+  speaker_index?: number | null;
+};
 export type HighlightRange = { start: number; end: number };
 /**
  * Emitted (coalesced) to every webview as the `index-changed` event.
@@ -2916,6 +3040,13 @@ export type Pagination = {
   total: number | null;
   next_offset: number | null;
 };
+export type PartialWord = {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+  channel: number;
+  speaker_index?: number | null;
+};
 export type PersonItem = { id: string; name?: string };
 export type ProcessingJobFailure =
   | "access_denied"
@@ -3044,6 +3175,34 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | {
+      kind: "start_capture_live";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+      input: CaptureLiveRequest;
+    }
+  | {
+      kind: "capture_live_status";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+    }
+  | {
+      kind: "capture_live_captions";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+      after: number | null;
+      limit: number;
+    }
+  | {
+      kind: "capture_live_result";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+    }
+  | {
+      kind: "cancel_capture_live";
+      vault_id: string;
+      binding: CaptureLiveBinding;
+    }
   | { kind: "timeline_headers"; vault_id: string; input: TimelineQuery }
   | { kind: "timeline_facets"; vault_id: string; input: TimelineFacetsQuery }
   | {
@@ -3222,6 +3381,9 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "capture_live_snapshot"; value: CaptureLiveSnapshot }
+  | { kind: "capture_live_captions"; value: CaptureLiveCaptionPage }
+  | { kind: "capture_live_result"; value: TranscriptionJobResult | null }
   | { kind: "timeline_headers"; value: TimelinePage }
   | { kind: "timeline_facets"; value: TimelineFacets }
   | { kind: "session_cleanup"; value: DeleteEmptySessionOutcome }
@@ -3817,6 +3979,15 @@ export type VaultYearStats = {
   enhanced_docs: number;
   duration_seconds: number;
 };
+/**
+ * Whether a finalized word is stable or awaiting correction.
+ *
+ * A word is `Pending` when it has been confirmed by the STT model but a
+ * correction source (cloud STT fallback, LLM postprocessor, etc.) is still
+ * processing it. The word has an ID and is persisted, but its text may be
+ * replaced when the correction resolves via `TranscriptDelta::replaced_ids`.
+ */
+export type WordState = "final" | "pending";
 
 /** tauri-specta globals **/
 

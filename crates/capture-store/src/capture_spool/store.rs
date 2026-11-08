@@ -449,13 +449,13 @@ pub(super) fn resume(spool: &CaptureSpool, state: &mut State, id: &CaptureIdenti
 pub(super) fn inventory(
     spool: &CaptureSpool,
     state: &mut State,
-    scope: &CaptureScope,
+    scope: Option<&CaptureScope>,
 ) -> Result<Vec<CaptureSnapshot>> {
     let mut result = vec![];
     for entry in state
         .entries
         .values()
-        .filter(|entry| entry.manifest.snapshot.identity.scope == *scope)
+        .filter(|entry| scope.is_none_or(|scope| entry.manifest.snapshot.identity.scope == *scope))
     {
         guard(&spool.root, entry)?;
         result.push(entry.manifest.snapshot.clone());

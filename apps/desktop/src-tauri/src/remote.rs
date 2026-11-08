@@ -693,39 +693,77 @@ pub fn remote_subscribe<R: tauri::Runtime>(
     subscription_id: String,
     on_event: Channel<RemoteEvent>,
 ) -> Result<(), ApplicationError> {
-    if uuid::Uuid::parse_str(&subscription_id).is_err() {
-        return Err(failure(
-            ErrorCode::Validation,
-            "A UUID subscription ID is required",
-        ));
+    app.state::<RemoteState>().register_subscription(
+        &connection_id,
+        window.label(),
+        subscription_id,
+        |client| client.subscribe(vault_id, move |event| on_event.send(event).is_ok()),
+    )
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn remote_subscribe_capture_live<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+    connection_id: String,
+    vault_id: String,
+    subscription_id: String,
+    binding: hypr_loofah_client::CaptureLiveBinding,
+    after: Option<u64>,
+    on_event: Channel<hypr_loofah_client::CaptureLiveEvent>,
+) -> Result<(), ApplicationError> {
+    app.state::<RemoteState>().register_subscription(
+        &connection_id,
+        window.label(),
+        subscription_id,
+        |client| {
+            client.subscribe_capture_live(vault_id, binding, after, move |event| {
+                on_event.send(event).is_ok()
+            })
+        },
+    )
+}
+
+impl RemoteState {
+    fn register_subscription(
+        &self,
+        connection_id: &str,
+        owner: &str,
+        subscription_id: String,
+        subscribe: impl FnOnce(&Arc<RemoteClient>) -> Result<Subscription, ApplicationError>,
+    ) -> Result<(), ApplicationError> {
+        if uuid::Uuid::parse_str(&subscription_id).is_err() {
+            return Err(failure(
+                ErrorCode::Validation,
+                "A UUID subscription ID is required",
+            ));
+        }
+        let mut registry = self.registry.lock().unwrap();
+        let connection = registry.get_mut(connection_id).ok_or_else(missing)?;
+        if !connection.leases.contains_key(owner) {
+            return Err(missing());
+        }
+        let key = (owner.into(), subscription_id);
+        connection
+            .cancelled_subscriptions
+            .retain(|_, at| at.elapsed() < Duration::from_secs(60));
+        if connection.cancelled_subscriptions.remove(&key).is_some() {
+            return Ok(());
+        }
+        if connection.subscriptions.contains_key(&key) {
+            return Err(failure(
+                ErrorCode::Conflict,
+                "This subscription is already running",
+            ));
+        }
+        if connection.subscriptions.len() >= 8 {
+            return Err(capacity());
+        }
+        let subscription = subscribe(&connection.client)?;
+        connection.subscriptions.insert(key, subscription);
+        Ok(())
     }
-    let state = app.state::<RemoteState>();
-    let mut registry = state.registry.lock().unwrap();
-    let connection = registry.get_mut(&connection_id).ok_or_else(missing)?;
-    if !connection.leases.contains_key(window.label()) {
-        return Err(missing());
-    }
-    let key = (window.label().into(), subscription_id);
-    connection
-        .cancelled_subscriptions
-        .retain(|_, at| at.elapsed() < Duration::from_secs(60));
-    if connection.cancelled_subscriptions.remove(&key).is_some() {
-        return Ok(());
-    }
-    if connection.subscriptions.contains_key(&key) {
-        return Err(failure(
-            ErrorCode::Conflict,
-            "This subscription is already running",
-        ));
-    }
-    if connection.subscriptions.len() >= 8 {
-        return Err(capacity());
-    }
-    let subscription = connection
-        .client
-        .subscribe(vault_id, move |event| on_event.send(event).is_ok())?;
-    connection.subscriptions.insert(key, subscription);
-    Ok(())
 }
 
 #[tauri::command]

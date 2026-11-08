@@ -446,6 +446,31 @@ impl RemoteCaptureCoordinator {
         .map_err(|_| error(ErrorCode::Unavailable, "Device capture inventory stopped"))?
     }
 
+    pub async fn recovery_inventory(
+        &self,
+        profile: Arc<ProfileLease>,
+    ) -> Result<Vec<CaptureSnapshot>, ApplicationError> {
+        let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
+            error(
+                ErrorCode::ResourceLimit,
+                "Too many device capture operations",
+            )
+        })?;
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            let _permit = permit;
+            let id = profile.profile().await.id;
+            inner.host(&id).await?.spool.recovery_inventory().await
+        })
+        .await
+        .map_err(|_| {
+            error(
+                ErrorCode::Unavailable,
+                "Device capture recovery inventory stopped",
+            )
+        })?
+    }
+
     pub async fn resume_upload(
         &self,
         profile: Arc<ProfileLease>,

@@ -122,7 +122,14 @@ impl CaptureSpool {
 
     pub async fn inventory(self: &Arc<Self>, scope: CaptureScope) -> Result<Vec<CaptureSnapshot>> {
         validate_scope(&scope)?;
-        self.run(move |spool, state| store::inventory(spool, state, &scope))
+        self.run(move |spool, state| store::inventory(spool, state, Some(&scope)))
+            .await
+    }
+
+    /// Device recovery remains available when a profile no longer selects the
+    /// original account or vault. This is not a remotely authorized listing.
+    pub async fn recovery_inventory(self: &Arc<Self>) -> Result<Vec<CaptureSnapshot>> {
+        self.run(move |spool, state| store::inventory(spool, state, None))
             .await
     }
 

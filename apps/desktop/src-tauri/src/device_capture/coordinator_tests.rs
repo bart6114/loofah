@@ -527,6 +527,16 @@ async fn existing_spool_request_after_restart_is_recovery_only_even_after_scope_
             matches!(coordinator.start(profile.clone(),None,request.clone(),identity.target.clone(),CaptureFormat::stereo()).await,Err(error) if error.code==ErrorCode::Conflict)
         );
     }
+    let mut signed_out = original.clone();
+    signed_out.member_id = None;
+    signed_out.vault_id = None;
+    profile.save(signed_out).await.unwrap();
+    let recovered = coordinator
+        .recovery_inventory(profile.clone())
+        .await
+        .unwrap();
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0], before);
     profile.save(original).await.unwrap();
     assert_eq!(coordinator.inventory(profile).await.unwrap(), vec![before]);
     assert!(observer.0.lock().unwrap().is_empty());
