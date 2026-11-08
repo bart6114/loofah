@@ -28,6 +28,8 @@ const native = vi.hoisted(() => ({
     applicationDeleteEmptySession: vi.fn(),
     applicationSessions: vi.fn(),
     applicationSessionSummaries: vi.fn(),
+    applicationTimelineHeaders: vi.fn(),
+    applicationTimelineFacets: vi.fn(),
     applicationSession: vi.fn(),
     applicationSearch: vi.fn(),
     applicationDocuments: vi.fn(),
@@ -179,6 +181,66 @@ it("uses matching bounded session-summary queries across both transports", async
   expect(request).toHaveBeenCalledWith(
     { kind: "session_summaries", vault_id: "first", input },
     "session_summaries",
+    options,
+  );
+});
+
+it("uses the same bounded timeline and facets through both transports", async () => {
+  const input = {
+    view: { kind: "upcoming" as const, after_ms: 100, before_ms: null },
+    limit: 25,
+    cursor: "opaque-cursor",
+    expected_revision: "revision",
+  };
+  const page = {
+    items: [],
+    next_cursor: null,
+    revision: "revision",
+    total_count: 0,
+    future_count: 0,
+    undated_count: 0,
+  };
+  const facets = { revision: "revision", nodes: [], untagged_count: 0 };
+  const facetInput = { expected_revision: "revision" };
+  native.commands.applicationTimelineHeaders.mockResolvedValue({
+    status: "ok",
+    data: page,
+  });
+  native.commands.applicationTimelineFacets.mockResolvedValue({
+    status: "ok",
+    data: facets,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toContain("timeline_read");
+  expect(await local.timelineHeaders(input)).toEqual(page);
+  expect(await local.timelineFacets(facetInput)).toEqual(facets);
+  const request = vi
+    .fn()
+    .mockImplementation(async (operation) =>
+      operation.kind === "timeline_headers" ? page : facets,
+    );
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["timeline_read"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  const options = { signal: new AbortController().signal };
+  expect(await remote.timelineHeaders(input, options)).toEqual(page);
+  expect(await remote.timelineFacets(facetInput, options)).toEqual(facets);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "timeline_headers", vault_id: "first", input },
+    "timeline_headers",
+    options,
+  );
+  expect(request).toHaveBeenCalledWith(
+    { kind: "timeline_facets", vault_id: "first", input: facetInput },
+    "timeline_facets",
     options,
   );
 });

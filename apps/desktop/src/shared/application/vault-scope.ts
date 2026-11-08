@@ -20,6 +20,8 @@ import type {
   ListProcessingJobsInput,
   ProcessingSettingsSnapshot,
   SessionSummaryQuery,
+  TimelineQuery,
+  TimelineFacetsQuery,
   TagSuggestionsRequest,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
@@ -543,6 +545,22 @@ export class VaultScope {
         this.run(() => this.client.processingPolicy({ signal })),
     });
   }
+  timelineHeadersOptions(input: TimelineQuery) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "timeline_headers", input],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.timelineHeaders(input, { signal })),
+    });
+  }
+  timelineFacetsOptions(
+    input: TimelineFacetsQuery = { expected_revision: null },
+  ) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "timeline_facets", input],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.timelineFacets(input, { signal })),
+    });
+  }
   sessionSummariesOptions(input: SessionSummaryQuery) {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "session_summaries", input],
@@ -592,7 +610,12 @@ export class VaultScope {
       !(await this.confirmSnapshot(this.noteOptions(sessionId).queryKey, note))
     )
       return;
-    for (const kind of ["session_page", "session_summaries"])
+    for (const kind of [
+      "session_page",
+      "session_summaries",
+      "timeline_headers",
+      "timeline_facets",
+    ])
       void this.queryClient.invalidateQueries({
         queryKey: ["vault", this.client.scope, kind],
       });
@@ -627,7 +650,12 @@ export class VaultScope {
         queryKey: ["vault", this.client.scope, kind, sessionId],
       });
     }
-    for (const kind of ["session_page", "session_summaries"])
+    for (const kind of [
+      "session_page",
+      "session_summaries",
+      "timeline_headers",
+      "timeline_facets",
+    ])
       void this.queryClient.invalidateQueries({
         queryKey: ["vault", this.client.scope, kind],
       });
@@ -683,7 +711,12 @@ export class VaultScope {
         queryKey: ["vault", this.client.scope, kind, sessionId],
       });
     }
-    for (const kind of ["session_page", "session_summaries"])
+    for (const kind of [
+      "session_page",
+      "session_summaries",
+      "timeline_headers",
+      "timeline_facets",
+    ])
       void this.queryClient.invalidateQueries({
         queryKey: ["vault", this.client.scope, kind],
       });
@@ -807,6 +840,10 @@ export class VaultScope {
             kind === change.entity
           )
             return true;
+          if (kind === "timeline_headers" || kind === "timeline_facets")
+            return ["sessions", "session_headers", "tags"].includes(
+              change.entity,
+            );
           if (kind === "session_page" || kind === "session_summaries")
             return ["sessions", "session_headers"].includes(change.entity);
           if (

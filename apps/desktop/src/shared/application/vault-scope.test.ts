@@ -33,6 +33,19 @@ function fixture(scope: string, networkMode: "always" | "online" = "always") {
     session: vi.fn(),
     sessions: vi.fn(),
     sessionSummaries: vi.fn().mockResolvedValue([]),
+    timelineHeaders: vi.fn().mockResolvedValue({
+      items: [],
+      next_cursor: null,
+      revision: "revision",
+      total_count: 0,
+      future_count: 0,
+      undated_count: 0,
+    }),
+    timelineFacets: vi.fn().mockResolvedValue({
+      revision: "revision",
+      nodes: [],
+      untagged_count: 0,
+    }),
     tagSuggestions: vi.fn().mockResolvedValue([]),
     search: vi.fn(),
     subscribe: vi.fn(async (listener) => {
@@ -230,6 +243,41 @@ describe("vault-scoped query lifecycle", () => {
       expect(active.queryClient.getQueryData(options.queryKey)).toBeUndefined();
       active.dispose();
     }
+  });
+  it("keeps timeline pages scoped and invalidates headers and facets without fetching cursors", async () => {
+    const { active, backend, emit } = fixture("timeline");
+    await active.start();
+    const input = {
+      view: { kind: "date" as const, before_ms: 1000 },
+      limit: 25,
+      cursor: null,
+      expected_revision: null,
+    };
+    const headers = active.timelineHeadersOptions(input);
+    const facets = active.timelineFacetsOptions();
+    await active.queryClient.fetchQuery(headers);
+    await active.queryClient.fetchQuery(facets);
+    expect(backend.timelineHeaders).toHaveBeenCalledTimes(1);
+    expect(backend.timelineHeaders).toHaveBeenCalledWith(input, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(backend.timelineFacets).toHaveBeenCalledWith(
+      { expected_revision: null },
+      { signal: expect.any(AbortSignal) },
+    );
+    const foreign = ["vault", "foreign", "timeline_headers", input];
+    active.queryClient.setQueryData(foreign, {});
+    emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tags", ids: [] },
+    });
+    for (const key of [headers.queryKey, facets.queryKey])
+      expect(active.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(active.queryClient.getQueryState(foreign)?.isInvalidated).toBe(
+      false,
+    );
+    expect(backend.timelineHeaders).toHaveBeenCalledTimes(1);
+    active.dispose();
   });
   it("scopes summary queries and invalidates them on header changes and reconnect", async () => {
     const { active, backend, emit } = fixture("scope");

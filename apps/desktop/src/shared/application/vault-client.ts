@@ -63,6 +63,10 @@ import type {
   SessionPage,
   SessionSummary,
   SessionSummaryQuery,
+  TimelineQuery,
+  TimelinePage,
+  TimelineFacetsQuery,
+  TimelineFacets,
   TagItem,
   TagSuggestionsRequest,
   EnsureTagRequest,
@@ -301,6 +305,14 @@ export type VaultClient = {
     input: TagSuggestionActionRequest,
     options?: RequestOptions,
   ) => Promise<MetadataSaveOutcome>;
+  timelineHeaders: (
+    input: TimelineQuery,
+    options?: RequestOptions,
+  ) => Promise<TimelinePage>;
+  timelineFacets: (
+    input: TimelineFacetsQuery,
+    options?: RequestOptions,
+  ) => Promise<TimelineFacets>;
   sessionSummaries: (
     input: SessionSummaryQuery,
     options?: RequestOptions,
@@ -400,6 +412,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "recording_delete",
       "notes",
       "session_summaries",
+      "timeline_read",
       "transcript_overview",
       "tag_editing",
       "session_cleanup",
@@ -595,6 +608,10 @@ export async function connectLocalVault(): Promise<VaultClient> {
         options,
         true,
       ),
+    timelineHeaders: (input, options) =>
+      ipc(() => commands.applicationTimelineHeaders(input), options),
+    timelineFacets: (input, options) =>
+      ipc(() => commands.applicationTimelineFacets(input), options),
     sessionSummaries: (input, options) =>
       ipc(() => commands.applicationSessionSummaries(input), options),
     sessions: (limit, after, options) =>
@@ -1001,6 +1018,18 @@ export function connectRemoteVault(
           input,
         },
         "metadata_save",
+        options,
+      ),
+    timelineHeaders: (input, options) =>
+      connection.request(
+        { kind: "timeline_headers", vault_id: vaultId, input },
+        "timeline_headers",
+        options,
+      ),
+    timelineFacets: (input, options) =>
+      connection.request(
+        { kind: "timeline_facets", vault_id: vaultId, input },
+        "timeline_facets",
         options,
       ),
     sessionSummaries: (input, options) =>
