@@ -15,17 +15,33 @@ pub(super) struct NoteGrant {
 
 #[derive(Default)]
 pub(super) struct NoteDrains {
-    active: std::sync::atomic::AtomicUsize,
-    stopping: std::sync::atomic::AtomicBool,
+    state: Mutex<NoteDrainState>,
+    stop: CancellationToken,
     changed: tokio::sync::Notify,
+}
+#[derive(Default)]
+struct NoteDrainState {
+    active: usize,
+    stopping: bool,
 }
 struct NoteDrain(Arc<NoteDrains>);
 impl Drop for NoteDrain {
     fn drop(&mut self) {
-        self.0
-            .active
-            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.state.lock().unwrap().active -= 1;
         self.0.changed.notify_waiters();
+    }
+}
+impl NoteDrains {
+    fn admit(self: &Arc<Self>) -> Result<NoteDrain, ApplicationError> {
+        let mut state = self.state.lock().unwrap();
+        if state.stopping {
+            return Err(missing());
+        }
+        if state.active >= 32 {
+            return Err(capacity());
+        }
+        state.active += 1;
+        Ok(NoteDrain(self.clone()))
     }
 }
 
@@ -54,15 +70,11 @@ pub(super) fn require_primary_connection_window(owner: &str) -> Result<(), Appli
 
 impl RemoteState {
     pub fn note_windows_initialized(&self) -> bool {
-        self.note_drains
-            .active
-            .load(std::sync::atomic::Ordering::SeqCst)
-            != 0
+        self.note_drains.state.lock().unwrap().active != 0
     }
     pub fn stop_note_windows(&self) {
-        self.note_drains
-            .stopping
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.note_drains.state.lock().unwrap().stopping = true;
+        self.note_drains.stop.cancel();
         for connection in self.registry.lock().unwrap().values() {
             for view in connection.views.values() {
                 view.disconnect();
@@ -91,11 +103,7 @@ impl RemoteState {
         info: RemoteNoteWindowInfo,
     ) -> Result<(), ApplicationError> {
         let mut notes = self.notes.lock().unwrap();
-        if self
-            .note_drains
-            .stopping
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
+        if self.note_drains.state.lock().unwrap().stopping {
             return Err(missing());
         }
         if notes.len() >= 16 || notes.contains_key(label) {
@@ -149,9 +157,64 @@ pub async fn remote_open_note_window(
     require_primary_connection_window(window.label())?;
     uuid::Uuid::parse_str(&request_id)
         .map_err(|_| failure(ErrorCode::Validation, "A UUID request ID is required"))?;
+    let drain = app.state::<RemoteState>().note_drains.admit()?;
+    let owner = window.label().to_owned();
+    let abandoned = CancellationToken::new();
+    let _abandon_on_drop = abandoned.clone().drop_guard();
+    // The admitted creator owns preparation through actual completion even if
+    // its IPC waiter disappears. Shutdown cancels it and waits for this owner.
+    tokio::spawn(async move {
+        open_note_owned(
+            app,
+            owner,
+            NoteWindowRequest {
+                connection_id,
+                request_id,
+                vault_id,
+                session_id,
+            },
+            abandoned,
+            drain,
+        )
+        .await
+    })
+    .await
+    .map_err(|_| failure(ErrorCode::Internal, "Note window preparation stopped"))?
+}
+
+struct NoteWindowRequest {
+    connection_id: String,
+    request_id: String,
+    vault_id: String,
+    session_id: String,
+}
+async fn open_note_owned(
+    app: tauri::AppHandle,
+    owner: String,
+    request: NoteWindowRequest,
+    abandoned: CancellationToken,
+    drain: NoteDrain,
+) -> Result<(), ApplicationError> {
+    let NoteWindowRequest {
+        connection_id,
+        request_id,
+        vault_id,
+        session_id,
+    } = request;
     let state = app.state::<RemoteState>();
     let (client, profile, cancel, _pending) =
-        state.admit_export(&connection_id, window.label(), &request_id)?;
+        state.admit_export(&connection_id, &owner, &request_id)?;
+    let linked_cancel = cancel.clone();
+    let stopped = state.note_drains.stop.clone();
+    let finished = CancellationToken::new();
+    let _finish_on_drop = finished.clone().drop_guard();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = finished.cancelled() => {},
+            _ = abandoned.cancelled() => linked_cancel.cancel(),
+            _ = stopped.cancelled() => linked_cancel.cancel(),
+        }
+    });
     let member = match client
         .execute(
             RemoteOperation::Me,
@@ -209,19 +272,7 @@ pub async fn remote_open_note_window(
         vault,
         session_id,
     };
-    state
-        .note_drains
-        .active
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let drain = NoteDrain(state.note_drains.clone());
-    state.reserve_note(
-        &connection_id,
-        window.label(),
-        &label,
-        &client,
-        view.clone(),
-        info,
-    )?;
+    state.reserve_note(&connection_id, &owner, &label, &client, view.clone(), info)?;
     drop(guard);
     let stopped = view.window_view_lifetime().ok_or_else(missing)?;
     let owner = app.clone();
@@ -281,4 +332,37 @@ pub fn remote_claim_note_window<R: tauri::Runtime>(
     window: tauri::Window<R>,
 ) -> Result<RemoteNoteWindowInfo, ApplicationError> {
     app.state::<RemoteState>().claim_note(window.label())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn note_creator_drain_covers_prebootstrap_owned_work_and_closes_admission() {
+        let state = RemoteState::default();
+        let creator = state.note_drains.admit().unwrap();
+        assert!(state.note_windows_initialized());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let hold = release.clone();
+        let joined = tokio::spawn(async move {
+            let _creator = creator;
+            hold.notified().await;
+        });
+        // Dropping the IPC waiter cannot release the actual preparation owner.
+        drop(joined);
+        state.stop_note_windows();
+        assert!(state.note_drains.stop.is_cancelled());
+        assert!(state.note_drains.admit().is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), state.drain_note_windows())
+                .await
+                .is_err()
+        );
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(1), state.drain_note_windows())
+            .await
+            .unwrap();
+        assert!(!state.note_windows_initialized());
+        assert!(state.note_drains.admit().is_err());
+    }
 }
