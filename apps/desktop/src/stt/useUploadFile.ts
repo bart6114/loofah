@@ -19,6 +19,7 @@ import { isStoppedTranscriptionError, useRunBatch } from "./useRunBatch";
 import { getEnhancerService } from "~/services/enhancer";
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
 import { useSession, useUpdateSession } from "~/session/queries";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { createTranscript } from "~/stt/queries";
 
@@ -56,6 +57,7 @@ export function useUploadFile(
   assertCurrent?: () => void,
   enabled = true,
 ) {
+  const summaryOwner = useVaultReadScope();
   const check = useCallback(() => assertCurrent?.(), [assertCurrent]);
   const current = useCallback(() => {
     try {
@@ -86,11 +88,13 @@ export function useUploadFile(
   const triggerEnhance = useCallback(() => {
     check();
     const service = getEnhancerService();
-    if (!service) return;
+    if (!summaryOwner.current() || service?.scope !== summaryOwner.scope)
+      return;
 
     void Promise.resolve(service.enhance(sessionId))
       .then((result) => {
         check();
+        if (!summaryOwner.current()) return;
         if (
           (result.type === "started" || result.type === "already_active") &&
           sessionTab
@@ -104,16 +108,26 @@ export function useUploadFile(
       .catch((error) => {
         console.error("[enhancer] failed to enhance uploaded file", error);
       });
-  }, [sessionId, sessionTab, updateSessionTabState, check]);
+  }, [
+    sessionId,
+    sessionTab,
+    updateSessionTabState,
+    check,
+    summaryOwner.current,
+    summaryOwner.scope,
+  ]);
 
   const triggerEnhanceIfSummaryEmpty = useCallback(() => {
     check();
+    const service = getEnhancerService();
+    if (!summaryOwner.current() || service?.scope !== summaryOwner.scope)
+      return;
     void Promise.resolve(
-      getEnhancerService()?.queueAutoEnhanceIfSummaryEmpty(sessionId),
+      service.queueAutoEnhanceIfSummaryEmpty(sessionId),
     ).catch((error) => {
       console.error("[enhancer] failed to queue uploaded file", error);
     });
-  }, [sessionId, check]);
+  }, [sessionId, check, summaryOwner.current, summaryOwner.scope]);
 
   const applyEstimatedAudioNoteDate = useCallback(
     async (filePath: string) => {

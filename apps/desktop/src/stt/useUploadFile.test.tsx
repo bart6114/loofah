@@ -17,6 +17,9 @@ const {
   parseSubtitleMock,
   createTranscriptMock,
   enhanceMock,
+  autoEnhanceMock,
+  getEnhancerServiceMock,
+  summaryOwner,
   handleBatchFailedMock,
   handleBatchStartedMock,
   updateBatchProgressMock,
@@ -36,6 +39,9 @@ const {
   parseSubtitleMock: vi.fn(),
   createTranscriptMock: vi.fn(),
   enhanceMock: vi.fn(),
+  autoEnhanceMock: vi.fn(),
+  getEnhancerServiceMock: vi.fn(),
+  summaryOwner: { scope: { client: { scope: "local" } }, current: vi.fn() },
   handleBatchFailedMock: vi.fn(),
   handleBatchStartedMock: vi.fn(),
   updateBatchProgressMock: vi.fn(),
@@ -92,12 +98,11 @@ vi.mock("./useRunBatch", () => ({
 }));
 
 vi.mock("~/services/enhancer", () => ({
-  getEnhancerService: vi.fn(() => ({
-    enhance: enhanceMock,
-    queueAutoEnhanceIfSummaryEmpty: vi.fn().mockResolvedValue({
-      type: "queued",
-    }),
-  })),
+  getEnhancerService: getEnhancerServiceMock,
+}));
+
+vi.mock("~/shared/application/use-vault-read-scope", () => ({
+  useVaultReadScope: () => summaryOwner,
 }));
 
 vi.mock("~/session/queries", () => ({
@@ -126,6 +131,13 @@ function createWrapper() {
 describe("useUploadFile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    summaryOwner.current.mockReturnValue(true);
+    autoEnhanceMock.mockResolvedValue({ type: "queued" });
+    getEnhancerServiceMock.mockReturnValue({
+      scope: summaryOwner.scope,
+      enhance: enhanceMock,
+      queueAutoEnhanceIfSummaryEmpty: autoEnhanceMock,
+    });
 
     audioImportDataMock.mockResolvedValue({
       status: "ok",
@@ -419,6 +431,58 @@ describe("useUploadFile", () => {
       "Brian Shin.qta",
       "audio/quicktime",
     );
+  });
+
+  test.each(["audio", "transcript"])(
+    "does not dispatch imported %s to a replacement service with the same scope string",
+    async (kind) => {
+      getEnhancerServiceMock.mockReturnValue({
+        scope: { client: { scope: "local" } },
+        enhance: enhanceMock,
+        queueAutoEnhanceIfSummaryEmpty: autoEnhanceMock,
+      });
+      parseSubtitleMock.mockResolvedValue({
+        status: "ok",
+        data: { tokens: [{ text: "Hello", start_time: 0, end_time: 500 }] },
+      });
+      const { result } = renderHook(() => useUploadFile("session-1"), {
+        wrapper: createWrapper(),
+      });
+      await act(async () => {
+        if (kind === "audio")
+          await result.current.processAudioPath("/tmp/file.wav");
+        else await result.current.processFile("/tmp/file.vtt", "transcript");
+      });
+      expect(getEnhancerServiceMock).toHaveBeenCalled();
+      expect(enhanceMock).not.toHaveBeenCalled();
+      expect(autoEnhanceMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("does not dispatch a delayed imported transcript after its owner retires", async () => {
+    let finish!: () => void;
+    createTranscriptMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          finish = done;
+        }),
+    );
+    parseSubtitleMock.mockResolvedValue({
+      status: "ok",
+      data: { tokens: [{ text: "Hello", start_time: 0, end_time: 500 }] },
+    });
+    const { result } = renderHook(() => useUploadFile("session-1"), {
+      wrapper: createWrapper(),
+    });
+    const pending = result.current.processFile("/tmp/file.vtt", "transcript");
+    await waitFor(() => expect(createTranscriptMock).toHaveBeenCalled());
+    summaryOwner.current.mockReturnValue(false);
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(enhanceMock).not.toHaveBeenCalled();
+    expect(autoEnhanceMock).not.toHaveBeenCalled();
   });
 
   test("persists imported subtitles before enhancing", async () => {
