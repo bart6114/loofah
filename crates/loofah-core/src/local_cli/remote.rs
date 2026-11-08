@@ -36,6 +36,7 @@ pub struct MediaDispatcher {
     authorization: Arc<dyn scope::MediaAuthorizer>,
     root: PathBuf,
     limits: MediaLimits,
+    capacity: Arc<tokio::sync::Semaphore>,
     admission: Mutex<()>,
     tasks: Mutex<HashMap<String, Task>>,
     request_gates: Mutex<HashMap<String, Arc<Mutex<()>>>>,
@@ -48,6 +49,21 @@ impl MediaDispatcher {
         principal: String,
         authorization: Arc<dyn scope::MediaAuthorizer>,
         limits: MediaLimits,
+    ) -> Result<Arc<Self>, ApplicationError> {
+        Self::with_capacity(
+            context,
+            principal,
+            authorization,
+            limits,
+            Arc::new(tokio::sync::Semaphore::new(2)),
+        )
+    }
+    pub fn with_capacity(
+        context: Arc<VaultContext>,
+        principal: String,
+        authorization: Arc<dyn scope::MediaAuthorizer>,
+        limits: MediaLimits,
+        capacity: Arc<tokio::sync::Semaphore>,
     ) -> Result<Arc<Self>, ApplicationError> {
         let scope = Arc::new(scope::MediaExecutionScope::new(
             &context.events.vault_id(),
@@ -68,6 +84,7 @@ impl MediaDispatcher {
             authorization,
             root,
             limits,
+            capacity,
             admission: Mutex::new(()),
             tasks: Mutex::new(HashMap::new()),
             request_gates: Mutex::new(HashMap::new()),
@@ -221,13 +238,13 @@ impl MediaDispatcher {
         let cancel = self.stop.child_token();
         let cli = self.cli(&record.declaration, cancel.clone())?;
         let operation = operation(&record.declaration)?;
-        let artifact = self.artifact(&record).await?;
         record.phase = MediaPhase::Running;
         self.save(record.clone(), false).await?;
         let owner = self.clone();
         let request = record.declaration.request_id.clone();
         let request_key = request.clone();
         let stop = cancel.clone();
+        let cancel_work = cancel.clone();
         let mut tasks = self.tasks.lock().await;
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
@@ -240,13 +257,26 @@ impl MediaDispatcher {
             let watcher = tokio::spawn(async move {
                 tokio::select! { _ = revoked.cancelled() => stop.cancel(), _ = interrupted.cancelled() => stop.cancel(), _ = finished.cancelled() => {} }
             });
-            let _result = cli
-                .execute(request.clone(), operation, artifact, Arc::new(|_| {}))
-                .await;
+            let _result: Result<LocalCliOutput, ApplicationError> = async {
+                let permit = tokio::select! {
+                    _ = cancel_work.cancelled() => return Err(error(ErrorCode::Cancelled, "Media request stopped before dispatch")),
+                    permit = owner.capacity.clone().acquire_owned() => permit.map_err(|_| unavailable("Media capacity stopped"))?,
+                };
+                let _permit = permit;
+                let artifact = owner.artifact(&record).await?;
+                cli.execute(request.clone(), operation, artifact, Arc::new(|_| {})).await
+            }.await;
             done.cancel();
             let _ = watcher.await;
             drop(access);
-            record.phase = MediaPhase::Review;
+            record.phase = if _result.as_ref().is_err_and(|cause| {
+                cause.code == ErrorCode::Cancelled
+                    && cause.mutation_outcome != Some(MutationOutcome::Unknown)
+            }) {
+                MediaPhase::Cancelled
+            } else {
+                MediaPhase::Review
+            };
             // Canonical media/subtitle receipts remain the sole result authority.
             let _ = owner.save(record, false).await;
         });

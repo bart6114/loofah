@@ -41,6 +41,7 @@ pub struct Service {
     pub media_streams: Arc<Semaphore>,
     pub attachment_streams: Arc<Semaphore>,
     pub attachment_uploads: Arc<Semaphore>,
+    pub(crate) media_processing: Arc<Semaphore>,
     pub streams: Arc<Semaphore>,
     processing: Option<Arc<crate::processing::ProcessingHost>>,
     #[cfg(feature = "cpu-transcription")]
@@ -98,6 +99,7 @@ impl Service {
             media_streams: Arc::new(Semaphore::new(8)),
             attachment_streams: Arc::new(Semaphore::new(2)),
             attachment_uploads: Arc::new(Semaphore::new(2)),
+            media_processing: Arc::new(Semaphore::new(2)),
             streams: Arc::new(Semaphore::new(128)),
             processing,
             #[cfg(feature = "cpu-transcription")]

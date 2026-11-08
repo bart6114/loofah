@@ -69,11 +69,7 @@ impl LocalCli {
                 },
             )
             .await
-            .map_err(|cause| {
-                #[cfg(test)]
-                eprintln!("subtitle receipt read failed: {cause:?}");
-                storage_error(cause, false)
-            })?;
+            .map_err(|cause| storage_error(cause, false))?;
         let mut status = LocalMediaStatus {
             request_id: request.into(),
             session_id: intent.session_id.clone(),

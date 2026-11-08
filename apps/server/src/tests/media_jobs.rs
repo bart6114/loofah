@@ -40,6 +40,24 @@ async fn upload(
     revision: &str,
     bytes: &'static str,
 ) -> (StatusCode, Value) {
+    upload_bytes(
+        fixture,
+        subject,
+        vault,
+        request,
+        revision,
+        bytes.as_bytes().to_vec(),
+    )
+    .await
+}
+async fn upload_bytes(
+    fixture: &Fixture,
+    subject: &str,
+    vault: &str,
+    request: &str,
+    revision: &str,
+    bytes: Vec<u8>,
+) -> (StatusCode, Value) {
     let response = fixture
         .app
         .clone()
@@ -67,6 +85,102 @@ async fn upload(
     let body = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
         .unwrap();
     (status, body)
+}
+
+#[tokio::test]
+async fn raw_media_import_works_with_server_transcription_disabled() {
+    let fixture = Fixture::new().await;
+    let me = fixture.login("alice").await;
+    let vault = &me.personal_vault_id;
+    let request = uuid::Uuid::new_v4().to_string();
+    let mut output = std::io::Cursor::new(Vec::new());
+    {
+        let mut wav = hound::WavWriter::new(
+            &mut output,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .unwrap();
+        for n in 0..1600 {
+            wav.write_sample::<i16>(((n as f32 / 12.0).sin() * 1000.0) as i16)
+                .unwrap();
+        }
+        wav.finalize().unwrap();
+    }
+    let bytes = output.into_inner();
+    let sha: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let declaration = json!({"request_id":request,"operation":{
+        "kind":"import_audio","session_id":null,"expected":null,"filename":"Voice.wav","content_type":"audio/wav",
+        "created_at":null,"transcribe":false,"source":{"sha256":sha,"size_bytes":bytes.len()}
+    },"transcription":null,"summary":null});
+    let (code, admission) = fixture
+        .call_token(
+            &fixture.token("alice"),
+            "POST",
+            &format!("/api/v1/vaults/{vault}/media/requests"),
+            Some(declaration),
+            Some(&request),
+        )
+        .await;
+    assert_eq!(code, StatusCode::OK, "{admission}");
+    let session = admission["status"]["media"]["session_id"].as_str().unwrap();
+    let (code, uploaded) = upload_bytes(
+        &fixture,
+        "alice",
+        vault,
+        &request,
+        admission["revision"].as_str().unwrap(),
+        bytes,
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK, "{uploaded}");
+    let status = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            let (_, status) = fixture
+                .call(
+                    "alice",
+                    "GET",
+                    &format!("/api/v1/vaults/{vault}/media/requests/{request}"),
+                    None,
+                )
+                .await;
+            if status["phase"] != "running" {
+                break status;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(status["phase"], "succeeded", "{status}");
+    assert!(status["media"]["transcript_id"].is_null());
+    let context = fixture.service.vault(vault).await.unwrap();
+    assert!(
+        context
+            .store
+            .vault_base()
+            .join("sessions")
+            .join(session)
+            .join("audio.mp3")
+            .is_file()
+    );
+    assert!(
+        !context
+            .store
+            .vault_base()
+            .join("sessions")
+            .join(session)
+            .join("transcript.json")
+            .exists()
+    );
+    fixture.service.shutdown().await.unwrap();
 }
 #[tokio::test]
 async fn media_wire_uses_member_private_declaration_and_verified_subtitle_publication() {

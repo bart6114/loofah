@@ -68,7 +68,7 @@ impl Service {
         if dispatchers.len() >= 4096 {
             return Err(ApiError::busy("Media service admission capacity exhausted"));
         }
-        let dispatcher = MediaDispatcher::new(
+        let dispatcher = MediaDispatcher::with_capacity(
             context,
             member.into(),
             Arc::new(Authorization {
@@ -80,6 +80,7 @@ impl Service {
                 ),
             }),
             MediaLimits::default(),
+            self.media_processing.clone(),
         )?;
         dispatchers.insert(key, dispatcher.clone());
         Ok(dispatcher)
