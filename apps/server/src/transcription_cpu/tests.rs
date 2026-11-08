@@ -488,3 +488,54 @@ async fn queued_batch_waits_past_native_source_drop_until_original_admission_ret
     drop(next_native);
     drop(next_capacity);
 }
+
+#[tokio::test]
+async fn preparation_failure_keeps_fifo_capacity_until_native_future_is_destroyed() {
+    use std::{
+        future::Future,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    struct Refused {
+        native: Option<tokio::sync::OwnedSemaphorePermit>,
+        capacity: Option<Arc<SpeechPermit>>,
+        admission: Arc<SpeechAdmission>,
+    }
+    impl Future for Refused {
+        type Output = Result<(), TranscriptionFailure>;
+        fn poll(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+            // Reproduce an early-return local-drop order: scheduler owner first.
+            drop(self.capacity.take());
+            assert!(matches!(
+                self.admission.try_live(),
+                Err(AdmissionError::Busy)
+            ));
+            Poll::Ready(Err(TranscriptionFailure::SourceUnavailable))
+        }
+    }
+    impl Drop for Refused {
+        fn drop(&mut self) {
+            drop(self.native.take());
+        }
+    }
+    let admission = SpeechAdmission::new(1, 0, 2).unwrap();
+    let capacity = Arc::new(admission.batch(&CancellationToken::new()).await.unwrap());
+    let native_slots = Arc::new(tokio::sync::Semaphore::new(1));
+    let native = native_slots.clone().try_acquire_owned().unwrap();
+    let result = retain_capacity(
+        capacity.clone(),
+        Refused {
+            native: Some(native),
+            capacity: Some(capacity),
+            admission: admission.clone(),
+        },
+    )
+    .await;
+    assert_eq!(result, Err(TranscriptionFailure::SourceUnavailable));
+    let next = admission.batch(&CancellationToken::new()).await.unwrap();
+    let native = native_slots
+        .try_acquire_owned()
+        .expect("failed preparation retired native owner before waking next request");
+    drop(native);
+    drop(next);
+}

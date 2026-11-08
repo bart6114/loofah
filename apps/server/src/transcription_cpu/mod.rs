@@ -122,7 +122,7 @@ impl TranscriptionEngine for CpuTranscriptionHost {
             Ok(Box::new(PreparedCpu {
                 resources: self.resources.clone(),
                 admission,
-                capacity,
+                capacity: Arc::new(capacity),
                 params,
                 request: request.clone(),
                 failed: self.failed.clone(),
@@ -171,7 +171,7 @@ fn parameters_for_options(
 struct PreparedCpu {
     resources: Arc<WhisperResources>,
     admission: BatchAdmission,
-    capacity: SpeechPermit,
+    capacity: Arc<SpeechPermit>,
     params: ListenParams,
     request: TranscriptionJobRequest,
     failed: Arc<AtomicBool>,
@@ -208,6 +208,29 @@ struct NativeSource {
 }
 
 async fn run(
+    prepared: PreparedCpu,
+    input: TranscriptionInput,
+    cancel: CancellationToken,
+) -> Result<TranscriptWithData, TranscriptionFailure> {
+    // Also cover preparation failures: the inner future must drop its native
+    // admission before any FIFO waiter can acquire this final scheduler owner.
+    retain_capacity(
+        prepared.capacity.clone(),
+        run_owned(prepared, input, cancel),
+    )
+    .await
+}
+
+async fn retain_capacity<T>(
+    capacity: Arc<SpeechPermit>,
+    work: impl std::future::Future<Output = T>,
+) -> T {
+    let result = work.await;
+    drop(capacity);
+    result
+}
+
+async fn run_owned(
     prepared: PreparedCpu,
     input: TranscriptionInput,
     cancel: CancellationToken,
@@ -270,7 +293,6 @@ async fn run(
         .try_into()
         .map_err(|_| TranscriptionFailure::InvalidOutput)?;
     params.sample_rate = audio.pcm.sample_rate;
-    let capacity = Arc::new(capacity);
     let source = TrustedBatchSource::new(
         audio.path.clone(),
         NativeSource {
