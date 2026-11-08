@@ -411,6 +411,31 @@ fn rss(pid: u32) -> Value {
     )
 }
 
+fn check_server_memory(root: &Path, server: &tokio::process::Child, stage: &str) {
+    let pid = server.id().unwrap();
+    let status = fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+    let peak: u64 = status
+        .lines()
+        .find_map(|line| line.strip_prefix("VmHWM:"))
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let limit: u64 = std::env::var("LOOFAH_SOAK_SERVER_RSS_LIMIT_KIB")
+        .map(|value| value.parse().unwrap())
+        .unwrap_or(768 * 1024);
+    record(
+        root,
+        json!({"server_pid":pid,"memory_stage":stage,"server_peak_rss_kib":peak,"server_rss_limit_kib":limit}),
+    );
+    assert!(
+        peak <= limit,
+        "{stage}: server RSS exceeded acceptance budget: {peak} > {limit} KiB"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "real wall-clock operator acceptance; set a new LOOFAH_SOAK_ROOT"]
 async fn capture_soak_wall_clock() {
@@ -512,6 +537,7 @@ async fn run_capture_acceptance(realtime: bool) {
         }
         if realtime && !restarted && elapsed >= duration / 2 + long {
             faults.offline.store(true, Ordering::SeqCst);
+            check_server_memory(&root, &server, "before_scheduled_restart");
             stop(&mut server).await;
             server = self::server(&root, &origin, &issuer, &faults).await;
             restarted = true;
@@ -543,6 +569,7 @@ async fn run_capture_acceptance(realtime: bool) {
     if realtime {
         assert!(start.elapsed() >= Duration::from_secs(duration));
     } else {
+        check_server_memory(&root, &server, "before_memory_replay_restart");
         stop(&mut server).await;
         server = self::server(&root, &origin, &issuer, &faults).await;
         faults.lose_chunk.store(true, Ordering::SeqCst);
@@ -613,29 +640,7 @@ async fn run_capture_acceptance(realtime: bool) {
     assert!(samples.next().is_none());
     assert!(faults.dropped_chunks.load(Ordering::SeqCst) >= if realtime { 2 } else { 1 });
     assert_eq!(faults.dropped_publications.load(Ordering::SeqCst), 1);
-    if !realtime {
-        let status = fs::read_to_string(format!("/proc/{}/status", server.id().unwrap())).unwrap();
-        let peak: u64 = status
-            .lines()
-            .find_map(|line| line.strip_prefix("VmHWM:"))
-            .unwrap()
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .parse()
-            .unwrap();
-        let limit: u64 = std::env::var("LOOFAH_SOAK_SERVER_RSS_LIMIT_KIB")
-            .map(|value| value.parse().unwrap())
-            .unwrap_or(768 * 1024);
-        record(
-            &root,
-            json!({"server_peak_rss_kib":peak,"server_rss_limit_kib":limit}),
-        );
-        assert!(
-            peak <= limit,
-            "publication/repair exceeded the server RSS budget: {peak} > {limit} KiB"
-        );
-    }
+    check_server_memory(&root, &server, "canonical_verified");
     let spool = CaptureSpool::open(root.join("device"), CaptureSpoolLimits::default())
         .await
         .unwrap();
@@ -697,6 +702,7 @@ async fn run_capture_acceptance(realtime: bool) {
         json!({"verified_device_retirement":retired.retirement}),
     );
     drop(spool);
+    check_server_memory(&root, &server, "retirement_completed");
     record(
         &root,
         json!({"accepted":true,"seconds":duration,"paced":realtime,"real_time_qualification":realtime&&duration>=7200,"frames":publication.source.frames,"canonical_sha256":actual_hash,"lost_chunk_replies":faults.dropped_chunks.load(Ordering::SeqCst),"lost_publication_replies":faults.dropped_publications.load(Ordering::SeqCst),"http_requests":faults.requests.load(Ordering::SeqCst)}),
@@ -944,14 +950,15 @@ async fn capture_soak_device_worker() {
                     }
                 }
             }
-            for window in [0, ((duration - 1) / 300) * 300] {
+            let speech_windows = (0..duration).step_by(300).collect::<Vec<_>>();
+            for window in &speech_windows {
                 let text = transcripts
                     .iter()
                     .flat_map(|t| &t.words)
                     .filter(|w| {
                         w.channel == 0.0
-                            && w.start_ms >= window as f64 * 1000.0
-                            && w.start_ms < (window + 45) as f64 * 1000.0
+                            && w.start_ms >= *window as f64 * 1000.0
+                            && w.start_ms < (*window + 45) as f64 * 1000.0
                     })
                     .map(|w| w.text.as_str())
                     .collect::<Vec<_>>()
@@ -973,7 +980,7 @@ async fn capture_soak_device_worker() {
             .unwrap();
             record(
                 &root,
-                json!({"semantic_speech_verified":["hello","jersey"],"speech_fixture_sha256":hash(SPEECH)}),
+                json!({"semantic_speech_verified":["hello","jersey"],"semantic_speech_windows":speech_windows,"speech_fixture_sha256":hash(SPEECH)}),
             );
         }
     }
