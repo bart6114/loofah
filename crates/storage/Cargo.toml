@@ -11,6 +11,7 @@ specta = ["dep:specta"]
 dirs = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 shellexpand = { workspace = true }
 specta = { workspace = true, optional = true }
 tempfile = { workspace = true }
