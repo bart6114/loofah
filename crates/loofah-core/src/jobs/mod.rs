@@ -715,7 +715,7 @@ fn validate_record(
         manual.validate_identity(&record.namespace, &record.request_id)?;
         if record.capture_processing.is_some()
             || record.local_capture.is_some()
-            || record.namespace != "desktop"
+            || record.namespace != manual.owner()
         {
             return Err(storage());
         }
