@@ -108,8 +108,12 @@ impl MediaAuthority {
         // Refresh can perform HTTP and persist credentials. The short commit
         // fence starts only afterwards and still rejects either original epoch changing.
         self.client.access_token().await?;
-        let profile = self.profile.guard_generation(&self.generation).await?;
-        let tokens = self.client.tokens.clone().lock_owned().await;
+        let (profile, tokens) = crate::authenticated_scope::original_commit_guards(
+            &self.profile,
+            &self.generation,
+            &self.client.tokens,
+        )
+        .await?;
         if tokens.generation != self.auth_generation || !tokens.current_for_commit() {
             return Err(changed());
         }

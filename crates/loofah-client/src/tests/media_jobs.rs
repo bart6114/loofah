@@ -609,3 +609,78 @@ async fn media_guard_refresh_does_not_hold_profile_and_rechecks_original_generat
     assert_eq!(result.err().unwrap().code, ErrorCode::Conflict);
     assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn concurrent_refresh_never_holds_profile_while_commit_guards_wait_for_tokens() {
+    for media in [false, true] {
+        let fixture = Fixture::with_tls(Some(Duration::ZERO)).await;
+        let mut client = fixture.client().await;
+        Arc::get_mut(&mut client)
+            .unwrap()
+            .capabilities
+            .features
+            .push("media_jobs".into());
+        let root = tempfile::tempdir().unwrap();
+        let (bound, profile) =
+            authority(&fixture, &client, root.path(), CancellationToken::new()).await;
+        let selected = client
+            .bind_authenticated_scope(
+                profile.clone(),
+                CaptureScope {
+                    server: client.address().into(),
+                    member_id: "member".into(),
+                    vault_id: "vault".into(),
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        let baseline = profile.generation().await.unwrap();
+        let original = baseline.profile().clone();
+        let gate = profile.guard_generation(&baseline).await.unwrap();
+        let commit = async {
+            if media {
+                bound.guard().await.map(|_| ())
+            } else {
+                selected.guard_commit().await.map(|_| ())
+            }
+        };
+        tokio::pin!(commit);
+        // The media guard has refreshed, but is queued before acquiring the
+        // profile. A different operation now begins a slow refresh.
+        assert!(matches!(
+            futures_util::poll!(&mut commit),
+            std::task::Poll::Pending
+        ));
+        let access = client.access_token().await.unwrap();
+        client.expire_access(&access).await;
+        fixture.state.delay.store(500, Ordering::SeqCst);
+        let refresh = client.access_token();
+        tokio::pin!(refresh);
+        assert!(matches!(
+            futures_util::poll!(&mut refresh),
+            std::task::Poll::Pending
+        ));
+        assert!(client.tokens.try_lock().is_err());
+        drop(gate);
+        assert!(matches!(
+            futures_util::poll!(&mut commit),
+            std::task::Poll::Pending
+        ));
+        // Old code retained the profile while queued on the refresh token lock.
+        tokio::time::timeout(Duration::from_millis(200), profile.save(original))
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), refresh)
+            .await
+            .unwrap()
+            .unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(2), commit)
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Conflict);
+        assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 1);
+    }
+}

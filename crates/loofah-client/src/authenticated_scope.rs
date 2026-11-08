@@ -127,8 +127,8 @@ impl AuthenticatedScope {
 
     /// Network and rendering must finish before taking this short publication fence.
     pub async fn guard_commit(&self) -> Result<AuthenticatedScopeCommitGuard> {
-        let profile = self.profile.guard_generation(&self.generation).await?;
-        let tokens = self.client.tokens.clone().lock_owned().await;
+        let (profile, tokens) =
+            original_commit_guards(&self.profile, &self.generation, &self.client.tokens).await?;
         if tokens.generation != self.auth_generation || !tokens.current_for_commit() {
             return Err(changed());
         }
@@ -161,4 +161,24 @@ fn changed() -> hypr_loofah_protocol::ApplicationError {
         ErrorCode::Conflict,
         "The original account or profile changed; restart the export in its original workspace",
     )
+}
+
+// A concurrent refresh owns tokens across HTTP and credential persistence. Never
+// wait for it while holding the profile fence: release, wait, then revalidate.
+pub(crate) async fn original_commit_guards(
+    profile: &Arc<ProfileLease>,
+    generation: &ProfileGeneration,
+    tokens: &Arc<tokio::sync::Mutex<crate::auth::TokenState>>,
+) -> Result<(
+    ProfileCommitGuard,
+    tokio::sync::OwnedMutexGuard<crate::auth::TokenState>,
+)> {
+    loop {
+        let profile_guard = profile.guard_generation(generation).await?;
+        if let Ok(tokens_guard) = tokens.clone().try_lock_owned() {
+            return Ok((profile_guard, tokens_guard));
+        }
+        drop(profile_guard);
+        drop(tokens.lock().await);
+    }
 }
