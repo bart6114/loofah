@@ -242,6 +242,7 @@ impl Service {
                 transcript_id: None,
                 word_count: None,
                 error: None,
+                imported: None,
             }),
             admitted: CancellationToken::new(),
             done: CancellationToken::new(),

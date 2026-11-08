@@ -48,6 +48,7 @@ impl LocalCli {
             transcript_id: None,
             word_count: None,
             error: None,
+            imported: None,
         };
         match claim.result() {
             Some(Ok(LocalCliReply::Transcribed {
@@ -59,7 +60,12 @@ impl LocalCli {
                 status.transcript_id = Some(transcript_id.clone());
                 status.word_count = Some(*word_count);
             }
-            Some(Ok(LocalCliReply::Imported { transcription, .. })) => {
+            Some(Ok(LocalCliReply::Imported {
+                meta,
+                transcription,
+                ..
+            })) => {
+                status.imported = Some(meta.clone());
                 status.state = LocalMediaState::Succeeded;
                 match transcription {
                     Some(Ok(result)) => {

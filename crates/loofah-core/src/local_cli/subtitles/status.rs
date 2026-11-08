@@ -78,6 +78,7 @@ impl LocalCli {
             transcript_id: None,
             word_count: None,
             error: None,
+            imported: None,
         };
         if let Some(outcome) = outcome {
             let path = directory.clone();

@@ -38,4 +38,6 @@ pub struct LocalMediaStatus {
     pub transcript_id: Option<String>,
     pub word_count: Option<usize>,
     pub error: Option<crate::ApplicationError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<hypr_vault_read::SessionMeta>,
 }

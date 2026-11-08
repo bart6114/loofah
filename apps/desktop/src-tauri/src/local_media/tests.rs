@@ -77,6 +77,7 @@ async fn cancel_does_not_claim_completion_or_release_original_task_before_worker
             transcript_id: None,
             word_count: None,
             error: None,
+            imported: None,
         }),
         admitted: CancellationToken::new(),
         done: CancellationToken::new(),

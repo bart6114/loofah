@@ -315,6 +315,13 @@ fn validate_status(value: &MediaRequestStatus) -> Result<()> {
         if media.kind != kind {
             return Err(bad_reply("Media result operation changed"));
         }
+        if media
+            .imported
+            .as_ref()
+            .is_some_and(|meta| meta.id != media.session_id || kind != LocalMediaKind::ImportAudio)
+        {
+            return Err(bad_reply("Original imported session receipt changed"));
+        }
     }
     Ok(())
 }
