@@ -1,5 +1,6 @@
 //! Device-owned recording recovery. This stores audio bytes and upload receipts;
-//! it never opens a vault, dispatches uploads, or removes captured audio.
+//! it never opens a vault or dispatches uploads. Raw retirement requires an
+//! explicit immutable request and an owned host verification/commit guard.
 
 use std::{
     collections::BTreeMap,
@@ -47,9 +48,34 @@ pub struct CaptureRetirementAdmission {
     _usage: Arc<tokio::sync::OwnedRwLockWriteGuard<()>>,
 }
 
+/// Trusted host authority. Implementations own canonical verification and all
+/// original scope/resource guards, and reject revocation before each unlink.
+/// Storage admission alone must never be used as this authorization.
+pub trait CaptureRetirementAuthority: Send + 'static {
+    fn check_current(&self) -> Result<()>;
+}
+
 impl CaptureRetirementAdmission {
     pub fn snapshot(&self) -> &CaptureSnapshot {
         &self.snapshot
+    }
+
+    pub async fn retire_verified(
+        self,
+        request: hypr_loofah_protocol::CaptureRetirementRequest,
+        authority: impl CaptureRetirementAuthority,
+    ) -> Result<CaptureSnapshot> {
+        hypr_loofah_protocol::validate_capture_retirement_request(&request).map_err(invalid)?;
+        if request.identity != self.snapshot.identity {
+            return Err(conflict("Retirement admission belongs to another capture"));
+        }
+        let spool = self._spool.clone();
+        spool
+            .run(move |spool, state| {
+                let _admission = self;
+                store::retire(spool, state, request, authority)
+            })
+            .await
     }
 }
 
@@ -243,6 +269,12 @@ impl CaptureSpool {
             _spool: self.clone(),
             _usage: usage,
         })
+    }
+
+    pub async fn snapshot(self: &Arc<Self>, identity: CaptureIdentity) -> Result<CaptureSnapshot> {
+        validate_identity(&identity)?;
+        self.run(move |spool, state| store::snapshot(spool, state, &identity))
+            .await
     }
 
     pub async fn inventory(self: &Arc<Self>, scope: CaptureScope) -> Result<Vec<CaptureSnapshot>> {

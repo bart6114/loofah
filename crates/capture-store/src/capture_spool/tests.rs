@@ -2666,3 +2666,330 @@ async fn retirement_admission_requires_original_published_identity_but_never_del
         0
     );
 }
+
+struct VerifiedRetirement;
+impl CaptureRetirementAuthority for VerifiedRetirement {
+    fn check_current(&self) -> Result<()> {
+        Ok(())
+    }
+}
+async fn retirement_fixture(
+    spool: &Arc<CaptureSpool>,
+    id: CaptureIdentity,
+) -> hypr_loofah_protocol::CaptureRetirementRequest {
+    let writer = spool.begin(id, CaptureFormat::stereo()).await.unwrap();
+    writer.append_chunk(0, 4, pcm(4)).await.unwrap();
+    writer.append_chunk(1, 6, pcm(6)).await.unwrap();
+    writer.seal().await.unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    writer.acknowledge_prefix(receipt(&snapshot)).await.unwrap();
+    let publication = publication(&snapshot);
+    writer
+        .observe_publication(publication.clone())
+        .await
+        .unwrap();
+    hypr_loofah_protocol::CaptureRetirementRequest {
+        cleanup_request_id: uuid::Uuid::from_u128(99).to_string(),
+        identity: snapshot.identity,
+        format: snapshot.format,
+        source: snapshot.seal.unwrap(),
+        publication,
+        processing: None,
+    }
+}
+
+#[tokio::test]
+async fn retirement_keeps_original_receipt_fences_raw_replay_and_does_not_consume_raw_quota() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let limits = CaptureSpoolLimits {
+        max_captures: 1,
+        ..Default::default()
+    };
+    let spool = CaptureSpool::open(root.clone(), limits.clone())
+        .await
+        .unwrap();
+    let request = retirement_fixture(&spool, identity()).await;
+    let original_manifest =
+        std::fs::read(dir(&root, &request.identity).join("manifest.json")).unwrap();
+    let snapshot = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .retire_verified(request.clone(), VerifiedRetirement)
+        .await
+        .unwrap();
+    assert_eq!(
+        snapshot.retirement.as_ref().unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+    assert_eq!(snapshot.retirement.as_ref().unwrap().remaining_chunks, 0);
+    assert_eq!(
+        std::fs::read(dir(&root, &request.identity).join("manifest.json")).unwrap(),
+        original_manifest
+    );
+    assert!(spool.resume(request.identity.clone()).await.is_err());
+    assert!(
+        spool
+            .begin(request.identity.clone(), request.format.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        spool
+            .request_exists(&request.identity.request_id)
+            .await
+            .unwrap()
+    );
+    drop(spool);
+    let spool = CaptureSpool::open(root, limits).await.unwrap();
+    assert_eq!(
+        spool.snapshot(request.identity.clone()).await.unwrap(),
+        snapshot
+    );
+    assert_eq!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(request.clone(), VerifiedRetirement)
+            .await
+            .unwrap(),
+        snapshot
+    );
+    let mut changed = request.clone();
+    changed.cleanup_request_id = uuid::Uuid::from_u128(100).to_string();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(changed, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    let mut next = identity();
+    next.capture_id = uuid::Uuid::from_u128(3).to_string();
+    next.request_id = uuid::Uuid::from_u128(4).to_string();
+    assert!(spool.begin(next, CaptureFormat::stereo()).await.is_ok());
+}
+
+struct RevokeAfterFirstUnlink {
+    first: PathBuf,
+}
+impl CaptureRetirementAuthority for RevokeAfterFirstUnlink {
+    fn check_current(&self) -> Result<()> {
+        if !self.first.exists() {
+            Err(conflict("Original authorization was revoked"))
+        } else {
+            Ok(())
+        }
+    }
+}
+#[tokio::test]
+async fn interrupted_retirement_requires_explicit_same_request_and_fresh_authority_after_reopen() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let chunks = dir(&root, &request.identity).join("chunks");
+    let result = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .retire_verified(
+            request.clone(),
+            RevokeAfterFirstUnlink {
+                first: chunks.join("00000000000000000000.chunk"),
+            },
+        )
+        .await;
+    assert_eq!(
+        result.unwrap_err().mutation_outcome,
+        Some(MutationOutcome::Unknown)
+    );
+    let retained = std::fs::read(chunks.join("00000000000000000001.chunk")).unwrap();
+    drop(spool);
+    let spool = open(&root).await;
+    let snapshot = spool.snapshot(request.identity.clone()).await.unwrap();
+    assert_eq!(
+        snapshot.retirement.unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Pending
+    );
+    assert_eq!(
+        std::fs::read(chunks.join("00000000000000000001.chunk")).unwrap(),
+        retained
+    );
+    assert!(spool.resume(request.identity.clone()).await.is_err());
+    let mut wrong = request.clone();
+    wrong.publication.canonical_audio_sha256 = "0".repeat(64);
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(wrong, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(chunks.join("00000000000000000001.chunk")).unwrap(),
+        retained
+    );
+    spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap()
+        .retire_verified(request, VerifiedRetirement)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn retirement_rejects_unknown_files_and_all_raw_users_before_writing_intent() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let writer = spool.resume(request.identity.clone()).await.unwrap();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .is_err()
+    );
+    drop(writer);
+    let capture = dir(&root, &request.identity);
+    for name in [
+        ".unknown",
+        "chunks/unknown",
+        "chunks/00000000000000000002.chunk",
+        "chunks/00000000000000000002.pending",
+    ] {
+        let path = capture.join(name);
+        std::fs::write(&path, b"do not remove").unwrap();
+        assert!(
+            spool
+                .admit_retirement(request.identity.clone())
+                .await
+                .unwrap()
+                .retire_verified(request.clone(), VerifiedRetirement)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"do not remove");
+        assert!(!capture.join("retirement.json").exists());
+        assert!(capture.join("chunks/00000000000000000000.chunk").exists());
+        std::fs::remove_file(&path).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn retirement_refuses_hardlinked_private_source_and_manifest() {
+    for filename in ["manifest.json", "chunks/00000000000000000000.chunk"] {
+        let temp = test_directory();
+        let root = temp.path().join("spool");
+        let spool = open(&root).await;
+        let request = retirement_fixture(&spool, identity()).await;
+        let capture = dir(&root, &request.identity);
+        let before = std::fs::read(capture.join(filename)).unwrap();
+        let external = temp.path().join("outside");
+        std::fs::hard_link(capture.join(filename), &external).unwrap();
+        assert!(
+            spool
+                .admit_retirement(request.identity.clone())
+                .await
+                .unwrap()
+                .retire_verified(request, VerifiedRetirement)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(external).unwrap(), before);
+        assert!(!capture.join("retirement.json").exists());
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn retirement_refuses_unknown_symlink_without_touching_target() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let external = temp.path().join("outside");
+    std::fs::write(&external, b"outside").unwrap();
+    std::os::unix::fs::symlink(&external, dir(&root, &request.identity).join(".unknown")).unwrap();
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .unwrap()
+            .retire_verified(request, VerifiedRetirement)
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read(external).unwrap(), b"outside");
+}
+
+struct BlockingRetirementAuthority {
+    entered: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+impl CaptureRetirementAuthority for BlockingRetirementAuthority {
+    fn check_current(&self) -> Result<()> {
+        if let Some(entered) = self.entered.lock().unwrap().take() {
+            let _ = entered.send(());
+            self.release.lock().unwrap().recv().unwrap();
+        }
+        Ok(())
+    }
+}
+impl Drop for BlockingRetirementAuthority {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+    }
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn retirement_owns_source_and_scope_guards_through_cancelled_waiter() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let request = retirement_fixture(&spool, identity()).await;
+    let admission = spool
+        .admit_retirement(request.identity.clone())
+        .await
+        .unwrap();
+    let (entered, started) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let guard = BlockingRetirementAuthority {
+        entered: std::sync::Mutex::new(Some(entered)),
+        release: std::sync::Mutex::new(released),
+        dropped: dropped.clone(),
+    };
+    let task = tokio::spawn(admission.retire_verified(request.clone(), guard));
+    started.await.unwrap();
+    task.abort();
+    let _ = task.await;
+    assert!(!dropped.load(Ordering::SeqCst));
+    assert!(
+        spool
+            .admit_retirement(request.identity.clone())
+            .await
+            .is_err()
+    );
+    release.send(()).unwrap();
+    spool.wait_for_io().await;
+    assert!(dropped.load(Ordering::SeqCst));
+    assert_eq!(
+        spool
+            .snapshot(request.identity)
+            .await
+            .unwrap()
+            .retirement
+            .unwrap()
+            .state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+}

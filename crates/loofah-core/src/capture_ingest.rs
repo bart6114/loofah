@@ -403,6 +403,7 @@ fn status(snapshot: CaptureSnapshot) -> Result<CaptureIngestStatus, ApplicationE
         first_admitted_audio_observed_at_ms: observation,
         session_id: snapshot.session_id,
         publication: snapshot.publication,
+        retirement: snapshot.retirement,
     };
     if serde_json::to_vec(&result)
         .map_err(|_| error(ErrorCode::Internal, "Capture status could not be encoded"))?

@@ -15,9 +15,11 @@ mod endpoint;
 pub use endpoint::validate_endpoint;
 
 mod capture;
+mod capture_retirement;
 pub use capture::*;
 mod capture_append;
 pub use capture_append::*;
+pub use capture_retirement::*;
 mod capture_live;
 pub use capture_live::*;
 mod capture_processing;

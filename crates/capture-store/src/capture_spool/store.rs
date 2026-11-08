@@ -13,6 +13,10 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 
+#[path = "retirement.rs"]
+mod retirement;
+pub(super) use retirement::retire;
+
 const MANIFEST_LIMIT: usize = 16 * 1024;
 const HEADER_LIMIT: usize = 2048;
 const MAGIC: &[u8; 8] = b"LFCAP001";
@@ -36,6 +40,7 @@ struct Entry {
     serialized: Vec<u8>,
     chunks: Vec<CaptureChunkDescriptor>,
     source: Sha256,
+    retirement: Option<retirement::Journal>,
 }
 
 #[derive(Default)]
@@ -327,7 +332,14 @@ fn with_entry<T>(
     let result = if entry.manifest.snapshot.identity != *id {
         Err(conflict("Capture identity cannot be rebound"))
     } else {
-        guard(&spool.root, &entry).and_then(|()| action(state, &mut entry))
+        guard(&spool.root, &entry).and_then(|()| {
+            if entry.retirement.is_some() {
+                return Err(conflict(
+                    "Capture raw source has been fenced for retirement",
+                ));
+            }
+            action(state, &mut entry)
+        })
     };
     if result
         .as_ref()
@@ -371,7 +383,13 @@ pub(super) fn begin(
             confirm(&spool.root, entry)
         });
     }
-    if state.entries.len() >= spool.limits.max_captures {
+    if state
+        .entries
+        .values()
+        .filter(|entry| !retirement::completed(entry))
+        .count()
+        >= spool.limits.max_captures
+    {
         return Err(limit());
     }
     if state.entries.values().any(|entry| {
@@ -420,6 +438,7 @@ pub(super) fn begin(
                 acknowledged: None,
                 seal: None,
                 publication: None,
+                retirement: None,
                 processing,
                 first_admitted_audio_observed_at_ms: observation,
             },
@@ -427,6 +446,7 @@ pub(super) fn begin(
         serialized: vec![],
         chunks: vec![],
         source: Sha256::new(),
+        retirement: None,
     };
     let initial_size = serde_json::to_vec(&entry.manifest)
         .map_err(|_| damaged())?
@@ -477,7 +497,7 @@ pub(super) fn inventory(
         .filter(|entry| scope.is_none_or(|scope| entry.manifest.snapshot.identity.scope == *scope))
     {
         guard(&spool.root, entry)?;
-        result.push(entry.manifest.snapshot.clone());
+        result.push(retirement::snapshot(&spool.root, entry)?);
     }
     result.sort_by(|left, right| {
         right
@@ -493,9 +513,15 @@ pub(super) fn snapshot(
     state: &mut State,
     id: &CaptureIdentity,
 ) -> Result<CaptureSnapshot> {
-    with_entry(spool, state, id, |_, entry| {
-        Ok(entry.manifest.snapshot.clone())
-    })
+    let entry = state
+        .entries
+        .get(&key(id))
+        .ok_or_else(|| failure(ErrorCode::NotFound, "Capture not found in this scope"))?;
+    if entry.manifest.snapshot.identity != *id {
+        return Err(conflict("Capture identity cannot be rebound"));
+    }
+    guard(&spool.root, entry)?;
+    retirement::snapshot(&spool.root, entry)
 }
 
 pub(super) fn cancel_processing(
@@ -1053,7 +1079,7 @@ fn candidates(
             if !chunk_directory {
                 return Err(damaged());
             }
-            if result.len() >= limits.max_captures {
+            if result.len() >= limits.max_captures.saturating_add(retirement::MAX_RECEIPTS) {
                 return Err(limit());
             }
             result.push(candidate);
@@ -1085,7 +1111,7 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
             || scope_key(&snapshot.identity.scope) != candidate.scope
             || snapshot.identity.capture_id != candidate.capture
             || snapshot.capture_fingerprint != fingerprint(&snapshot.identity, &snapshot.format)
-            || snapshot.chunk_count > candidate.files.len() as u64
+            || snapshot.retirement.is_some()
             || snapshot.chunk_count > limits.max_chunks as u64
         {
             return Err(damaged());
@@ -1122,7 +1148,23 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
             serialized: bytes,
             chunks: vec![],
             source: Sha256::new(),
+            retirement: None,
         };
+        if retirement::load(root, limits, &candidate, &mut entry)? {
+            let coordinate = key(&entry.manifest.snapshot.identity);
+            if state.entries.values().any(|other| {
+                other.manifest.snapshot.identity.scope == entry.manifest.snapshot.identity.scope
+                    && other.manifest.snapshot.identity.request_id
+                        == entry.manifest.snapshot.identity.request_id
+            }) {
+                return Err(damaged());
+            }
+            state.entries.insert(coordinate, entry);
+            continue;
+        }
+        if entry.manifest.snapshot.chunk_count > candidate.files.len() as u64 {
+            return Err(damaged());
+        }
         for (sequence, path) in &candidate.files {
             let chunk = read_file(path, limits)?;
             accept_loaded(&mut entry, *sequence, chunk)?;
@@ -1206,6 +1248,15 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
             return Err(damaged());
         }
         state.entries.insert(coordinate, entry);
+    }
+    let completed = state
+        .entries
+        .values()
+        .filter(|entry| retirement::completed(entry))
+        .count();
+    if completed > retirement::MAX_RECEIPTS || state.entries.len() - completed > limits.max_captures
+    {
+        return Err(limit());
     }
     Ok(state)
 }

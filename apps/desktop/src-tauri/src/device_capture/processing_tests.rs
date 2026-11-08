@@ -399,6 +399,7 @@ async fn processing_pending_session_uses_authoritative_ingest_binding_instead_of
         session_id: processing.session_id.clone(),
         seal: None,
         publication: None,
+        retirement: None,
     };
     assert!(validate_pending_binding(&snapshot, &processing, &binding).is_ok());
     for mode in ["session", "member", "observation", "fingerprint"] {
@@ -443,6 +444,7 @@ async fn capture_source(
         session_id: snapshot.session_id,
         seal: snapshot.seal,
         publication: snapshot.publication,
+        retirement: snapshot.retirement,
     })
 }
 async fn caption_events(State(api): State<Arc<Api>>, headers: HeaderMap) -> impl IntoResponse {

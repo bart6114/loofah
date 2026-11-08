@@ -89,6 +89,7 @@ impl Live {
             first_admitted_audio_observed_at_ms: 1234,
             session_id: Some("note".into()),
             publication: None,
+            retirement: None,
         });
         CaptureLiveBinding {
             capture_id: CAPTURE.into(),

@@ -22,4 +22,6 @@ pub struct CaptureIngestStatus {
     pub first_admitted_audio_observed_at_ms: u64,
     pub session_id: Option<String>,
     pub publication: Option<CapturePublication>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retirement: Option<crate::CaptureRetirementSnapshot>,
 }

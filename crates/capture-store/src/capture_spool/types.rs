@@ -35,6 +35,8 @@ pub struct CaptureSnapshot {
     pub seal: Option<CaptureSeal>,
     pub publication: Option<CapturePublication>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retirement: Option<hypr_loofah_protocol::CaptureRetirementSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub processing: Option<CaptureProcessingDeclaration>,
     #[serde(
         default,

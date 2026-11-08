@@ -98,6 +98,7 @@ impl Server {
                 .first_admitted_audio_observed_at_ms
                 .unwrap(),
             publication: self.publication.lock().await.clone(),
+            retirement: snapshot.retirement,
         }
     }
 }
