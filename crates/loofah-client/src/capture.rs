@@ -320,18 +320,54 @@ impl RemoteClient {
         cancel: CancellationToken,
         budget: Duration,
     ) -> Result<T> {
+        self.capture_request_with_dispatch(request, request_id, mutation, cancel, budget, async {
+            Ok(())
+        })
+        .await
+    }
+
+    pub(crate) async fn capture_request_with_dispatch<T: DeserializeOwned, G>(
+        self: &Arc<Self>,
+        request: reqwest::RequestBuilder,
+        request_id: &str,
+        mutation: bool,
+        cancel: CancellationToken,
+        budget: Duration,
+        dispatch_guard: impl std::future::Future<Output = Result<G>>,
+    ) -> Result<T> {
         let access = tokio::select! {
             _ = cancel.cancelled() => return Err(not_committed(cancelled())),
             _ = self.stop.cancelled() => return Err(not_committed(cancelled())),
             result = self.access_token() => result.map_err(not_committed)?,
         };
+        let guard = tokio::select! {
+            _ = cancel.cancelled() => return Err(not_committed(cancelled())),
+            _ = self.stop.cancelled() => return Err(not_committed(cancelled())),
+            result = dispatch_guard => result.map_err(not_committed)?,
+        };
+        if cancel.is_cancelled() || self.stop.is_cancelled() {
+            return Err(not_committed(cancelled()));
+        }
         let request = request
             .bearer_auth(&access)
             .header("x-loofah-api-major", API_MAJOR.to_string())
             .header("x-request-id", request_id)
             .timeout(budget);
+        let response = request.send();
+        tokio::pin!(response);
+        // The logical dispatch and its immutable credential are admitted while
+        // the caller's short scope fence is held, never through response I/O.
+        let first = std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(std::future::Future::poll(response.as_mut(), cx))
+        })
+        .await;
+        drop(guard);
         let result = async {
-            let response = request.send().await.map_err(|_| unavailable())?;
+            let response = match first {
+                std::task::Poll::Ready(value) => value,
+                std::task::Poll::Pending => response.await,
+            }
+            .map_err(|_| unavailable())?;
             if response.status() == reqwest::StatusCode::UNAUTHORIZED {
                 self.expire_access(&access).await;
             }

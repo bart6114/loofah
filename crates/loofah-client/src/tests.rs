@@ -101,6 +101,7 @@ struct Provider {
     download_offsets: Mutex<Vec<u64>>,
     download_opens: AtomicUsize,
     delay: AtomicUsize,
+    me_started: AtomicUsize,
     event_connections: Mutex<Vec<Option<String>>>,
 }
 struct Fixture {
@@ -153,6 +154,7 @@ impl Fixture {
             download_offsets: Mutex::new(Vec::new()),
             download_opens: AtomicUsize::new(0),
             delay: AtomicUsize::new(0),
+            me_started: AtomicUsize::new(0),
             event_connections: Mutex::new(Vec::new()),
         });
         let app = Router::new()
@@ -362,6 +364,7 @@ async fn token(
     Json(json!({"token_type":"Bearer","access_token":format!("access-{number}"),"refresh_token":refresh,"expires_in":3600})).into_response()
 }
 async fn me(State(state): State<Arc<Provider>>, headers: HeaderMap) -> axum::response::Response {
+    state.me_started.fetch_add(1, Ordering::SeqCst);
     tokio::time::sleep(Duration::from_millis(
         state.delay.load(Ordering::SeqCst) as u64
     ))

@@ -83,7 +83,7 @@ impl RemoteClient {
         drop(profile.guard_generation(&generation).await?);
         self.verify_retirement_member(&request, &cancel).await?;
         let response: hypr_loofah_protocol::CaptureIngestStatus = self
-            .capture_request_with_budget(
+            .capture_request_with_dispatch(
                 self.http
                     .post(self.endpoint(&[
                         "vaults",
@@ -100,6 +100,14 @@ impl RemoteClient {
                 // Large captures outlive ordinary transport calls; cancellation still
                 // stops this waiter without claiming the server's owned work drained.
                 Duration::from_secs(300),
+                async {
+                    let selected = profile.guard_generation(&generation).await?;
+                    let tokens = self.tokens.clone().lock_owned().await;
+                    if tokens.generation != auth_generation || !tokens.current_for_commit() {
+                        return Err(changed());
+                    }
+                    Ok((selected, tokens))
+                },
             )
             .await?;
         let response = self.capture_status_checked(

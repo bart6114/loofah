@@ -1285,3 +1285,129 @@ async fn cleanup_rejects_same_member_interactive_login_queued_during_original_re
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn cleanup_dispatch_rejects_original_profile_or_login_aba_during_member_verification() {
+    for change in ["login", "profile"] {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let server = Server::new(&root).await;
+        let (fixture, client) = fixture(&server, None).await;
+        let (spool, profile, request) = retirement_source(&root, &client).await;
+        let entered = fixture.state.me_started.load(Ordering::SeqCst);
+        fixture.state.delay.store(500, Ordering::SeqCst);
+        let verifying = tokio::spawn({
+            let client = client.clone();
+            let profile = profile.clone();
+            let request = request.clone();
+            async move {
+                client
+                    .verify_capture_retirement(
+                        profile.clone(),
+                        profile.generation().await.unwrap(),
+                        request,
+                        CancellationToken::new(),
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while fixture.state.me_started.load(Ordering::SeqCst) == entered {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        fixture.state.delay.store(0, Ordering::SeqCst);
+        if change == "login" {
+            fixture.login(&client).await;
+        } else {
+            let original = profile.profile().await;
+            let mut changed = original.clone();
+            changed.vault_id = Some("other".into());
+            profile.save(changed).await.unwrap();
+            profile.save(original).await.unwrap();
+        }
+        assert!(verifying.await.unwrap().is_err());
+        assert_eq!(
+            server.retirements.load(Ordering::SeqCst),
+            0,
+            "{change} reached destructive server retirement"
+        );
+        assert!(
+            spool
+                .resume(request.identity)
+                .await
+                .unwrap()
+                .snapshot()
+                .await
+                .unwrap()
+                .retirement
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn cleanup_dispatch_releases_profile_fence_before_waiting_for_retirement_response() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let server = Server::new(&root).await;
+    let (_fixture, client) = fixture(&server, None).await;
+    let (spool, profile, request) = retirement_source(&root, &client).await;
+    let original = profile.profile().await;
+    server.retirement_delay_ms.store(500, Ordering::SeqCst);
+    let verifying = tokio::spawn({
+        let client = client.clone();
+        let profile = profile.clone();
+        let request = request.clone();
+        async move {
+            client
+                .verify_capture_retirement(
+                    profile.clone(),
+                    profile.generation().await.unwrap(),
+                    request,
+                    CancellationToken::new(),
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while server.retirements.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut changed = original.clone();
+    changed.vault_id = Some("other".into());
+    tokio::time::timeout(Duration::from_millis(100), profile.save(changed))
+        .await
+        .unwrap()
+        .unwrap();
+    profile.save(original).await.unwrap();
+    let proof = verifying.await.unwrap().unwrap();
+    assert!(
+        proof
+            .retire_device(
+                spool
+                    .admit_retirement(request.identity.clone())
+                    .await
+                    .unwrap(),
+                RetirementHost
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        spool
+            .resume(request.identity)
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .retirement
+            .is_none()
+    );
+}
