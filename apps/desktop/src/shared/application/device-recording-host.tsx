@@ -24,6 +24,7 @@ import {
   createDeviceRecordingClient,
   createDeviceRecordingMonitor,
 } from "./device-recordings";
+import { MediaRecoveryPanel } from "./media-recovery-panel";
 import { useVaultReadScope } from "./use-vault-read-scope";
 import { VaultHostContext } from "./vault-provider";
 import type { VaultScope } from "./vault-scope";
@@ -57,7 +58,9 @@ export function DeviceRecordingAccess() {
     () => (scope && recording ? recording.bindAccess(scope) : undefined),
     [scope, recording],
   );
-  return null;
+  return scope?.client.media?.pendingSubmissions ? (
+    <MediaRecoveryPanel key={scope.client.scope} scope={scope} />
+  ) : null;
 }
 
 export function DeviceRecordingHost({
