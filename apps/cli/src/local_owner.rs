@@ -46,15 +46,16 @@ impl LocalGateway {
         let mut upload = upload;
         for attempt in 0..3 {
             let mut transport_lost = false;
-            let response = self
-                .execute_once(
-                    operation.clone(),
-                    upload.take(),
-                    progress.clone(),
-                    request_id.clone(),
-                    &mut transport_lost,
-                )
-                .await;
+            // Owner startup/recovery is a large state machine. Keep it out of
+            // every enclosing command future on Windows' fixed main-thread stack.
+            let response = Box::pin(self.execute_once(
+                operation.clone(),
+                upload.take(),
+                progress.clone(),
+                request_id.clone(),
+                &mut transport_lost,
+            ))
+            .await;
             if !transport_lost || operation.is_mutation() || attempt == 2 {
                 return response;
             }

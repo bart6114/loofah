@@ -117,13 +117,12 @@ async fn connect(
     Ok(RemoteClient::discover(&profile.server, credentials, false).await?)
 }
 async fn request(client: &Arc<RemoteClient>, operation: RemoteOperation) -> Result<RemoteReply> {
-    Ok(client
-        .execute(
-            operation,
-            &uuid::Uuid::new_v4().to_string(),
-            CancellationToken::new(),
-        )
-        .await?)
+    Ok(Box::pin(client.execute(
+        operation,
+        &uuid::Uuid::new_v4().to_string(),
+        CancellationToken::new(),
+    ))
+    .await?)
 }
 
 impl RemoteTarget {
@@ -263,14 +262,14 @@ impl RemoteSession {
         build: impl FnOnce(String) -> RemoteOperation,
     ) -> Result<RemoteReply> {
         let _guard = self.guard().await?;
-        Ok(self
-            .client
-            .execute(
-                build(self.vault.clone()),
-                &self.request_id,
-                CancellationToken::new(),
-            )
-            .await?)
+        // Heap-pin the transport state once, instead of embedding it in every
+        // branch of the command gateway. The original authority guard still drains it.
+        Ok(Box::pin(self.client.execute(
+            build(self.vault.clone()),
+            &self.request_id,
+            CancellationToken::new(),
+        ))
+        .await?)
     }
 }
 impl Drop for RemoteSession {
