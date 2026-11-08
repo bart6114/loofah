@@ -19,6 +19,9 @@ type ShutdownResult = Option<std::result::Result<(), hypr_loofah_protocol::Appli
 
 pub struct Service {
     #[cfg(test)]
+    pub(crate) transcription_test_engine:
+        std::sync::OnceLock<Arc<dyn hypr_loofah_core::transcription_jobs::TranscriptionEngine>>,
+    #[cfg(test)]
     pub(crate) injected_changes: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     pub(crate) startup_pause:
@@ -62,6 +65,8 @@ impl Service {
             .map(crate::processing::ProcessingHost::load)
             .transpose()?;
         let service = Arc::new(Self {
+            #[cfg(test)]
+            transcription_test_engine: Default::default(),
             #[cfg(test)]
             injected_changes: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
@@ -151,6 +156,10 @@ impl Service {
         let cache = self.config.cache_root.clone();
         let catalog = self.catalog.clone();
         let processing = self.processing.clone();
+        #[cfg(test)]
+        let transcription_test_engine = self.transcription_test_engine.get().cloned();
+        #[cfg(test)]
+        let transcription_stop = self.stop.clone();
         let capture_origin = format!("{}/", self.config.public_url.origin().ascii_serialization());
         #[cfg(test)]
         let pause = self.startup_pause.lock().unwrap().take();
@@ -196,6 +205,20 @@ impl Service {
                         opened
                             .context
                             .enable_capture_ingestion(capture_origin, Default::default())?;
+                        #[cfg(test)]
+                        if let Some(engine) = transcription_test_engine {
+                            opened
+                                .enable_transcription(
+                                    engine,
+                                    Arc::new(crate::transcription_authorization::CatalogTranscriptionAuthorizer::new(
+                                        catalog.clone(),
+                                        opened.context.events.vault_id(),
+                                        transcription_stop,
+                                    )),
+                                    Default::default(),
+                                )
+                                .await?;
+                        }
                         if let Some(processing) = processing {
                             processing.attach(&mut opened, catalog.clone()).await?;
                         }
