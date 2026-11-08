@@ -157,23 +157,22 @@ last fully green platform head remains `93dada10bb`.
 
 ## Current continuation allocation
 
-The first-wave descriptions above are historical. The current integration source
-is 9f166ae94; read [the handoff](./frontend-backend-handoff.md) for live-check
-instructions and evidence. All seven plan phases remain open.
+The first-wave descriptions above are historical. Read [the handoff](./frontend-backend-handoff.md)
+for current commits, worktrees and evidence. All seven plan phases remain open.
 
-- A: slim scoped TranscriptOverview read and eligible main consumers; agree the
-  small contract before editing shared registrations. Root exports bindings.
-- B: first transcript publication Store primitive is validated at bb33b5d382;
-  Root integrates it. B audits startup cancellation and actual lease/drain
-  ownership read-only before a minimal hardening proposal.
-- C: typed f32 live worker, bounded per-channel input and authoritative output,
-  native join/drain and fake/opt-in CPU validation. C exclusively owns the
-  shared target-root Cargo window until explicitly released.
-- Root: reviewed integration, native/protocol exports, cross-adapter checks,
-  docs/PR/CI and subsequent Core transcription orchestration.
+- A: overview read/main consumers integrated and tested; read-only audit of a
+  coherent main Enhanced editor/task migration next.
+- B: first transcript publication integrated; frozen lifecycle ownership fix now
+  validates using the exclusive existing target-tauri cache.
+- C: typed f32 live facade; final-source 69 unit cases and real two-session CPU
+  fixture pass, final package checks continue using exclusive target-root.
+- Root: reviewed integration, actual contracts, frontend checks, shared canonical
+  mapper extraction, stopped-storage restore acceptance, docs/PR/CI and later
+  Core transcription orchestration. No Root Cargo until a worker releases its
+  cache window.
 
-The previous aade Windows run has completed on both architectures with the same
-known capture-fixture lease-release race as macOS. Its bounded test-only fix is
-integrated and 28 local capture cases pass. Push the validated corrective batch;
-no healthy old run needs cancellation. Preserve independent source/build windows,
-actual artifact provenance and all remaining platform/feature acceptance gates.
+The corrective 66b88b660 batch is pushed. Backend/container/Linux CPU, CLI and
+format/security workflows are green; desktop frontend is green. Mac Rust and
+Windows x64/ARM64 are still active. Batch further pushes after Windows finishes;
+never cancel healthy CI. Preserve actual artifact provenance and all remaining
+platform/feature acceptance gates.

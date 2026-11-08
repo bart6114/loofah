@@ -8,8 +8,8 @@ completion. All seven delivery phases remain open.
 
 - Integration worktree: `/Volumes/T7/src/loofah-backend-separation`.
 - Branch: `refactor/frontend-backend-separation`.
-- Last source checkpoint: `9f166ae9403b7027c9e4c4605c95850c30231feb`.
-- Last pushed head: `aade2e309e08c93249c6d440e64b3e9485457b86`.
+- Last source checkpoint: `dc32e18570d3d7dfa9d42324b75956ba2cf165c9`.
+- Last pushed head: `66b88b660e86efb53a5938e45e872769d0f74153`.
 - Draft PR: <https://github.com/bart6114/loofah/pull/123>; no merge or release.
 - Original `/Volumes/T7/src/free-meeting-transcriber` remains on main with tracked
   files untouched. Preserve its pre-existing untracked documentation.
@@ -65,33 +65,51 @@ Important evidence under `/Volumes/T7/loofah-backend-build/`:
 Actual generated files at this checkpoint:
 
 - `apps/desktop/src/types/tauri.gen.ts` SHA256
-  `37ac8b22422c84fc951284a49c7e4061277d004800614dcd31d7e657aebd1cdd`.
+  `2fe77c7e8ea0bdc67730062c5955bb3e322d0a4dcf535e3f9183e3c70c4a5ab4`.
 - `apps/desktop/src/shared/application/protocol.gen.ts` SHA256
-  `4c9d0800a69ffbdc1d74a93fe6647b07cfe825e1151861491a7965b975ad7e4a`.
+  `3537e8aba7ffaba920ddfbfbae0f42486cf8cdbee4e05dd2981339f3a87e7624`.
 
 Do not hand-edit generated bindings. For TitlePolicy, serde `default` must follow
 its custom `skip_serializing_if` attribute so Specta exports the field optional.
 
 ## Active distribution and build windows
 
-- A (`frontend_distribution`): next slim TranscriptOverview contract/read across
-  adapters and scoped main consumers, from 9f166. Narrow shared-registration edit
-  exception granted; Root still exports bindings/locales. Agree contract first.
-- B (`backend_distribution`): completed Store-only first transcript publication,
-  commit `bb33b5d382a02f484fd82664dfb31730df26add4`, base e03cee596. Six scoped
-  files; 83 cases pass, check 0 diagnostics, library Clippy 31 baseline/0 new.
-  Proof `agents/transcript-publication/logs/verification.json`; executable SHA256
-  `dcd9f9edae3770ad3148a95edce580ee54ca3729cdcfde9fdaf92019fc7f59de`.
-  Integrated as `87997f6d5`; paired Core orchestration remains pending. B now audits startup ownership
-  read-only. Service::vault already owns initialization in a detached task;
-  direct runtime initialization and Drop/shutdown-timeout paths need tracing.
-- C (`capture_distribution`): typed f32 live facade, bounded atomic per-channel
-  admission and authoritative outputs, scoped existing VAD/Whisper reuse and
-  actual native thread joining. Source freeze/build follows final credit review.
-  C owns the exclusive target-root Cargo window. No other target-root build until
-  C explicitly releases it. Run fake/legacy gates before opt-in real CPU test.
-- Root: integrate reviewed commits, keep docs and PR accurate, run normal native
-  integration checks using the separate existing target-tauri cache when needed.
+- A (`frontend_distribution`): overview API integrated as `dfe918246`, actual
+  generated contracts as `238c02a66`, frontend as `dc32e1857`. Worker 196 tests and
+  actual-binding typecheck pass; Root 93 targeted UI tests, 10 API tests, one
+  native login-free test, all-target desktop/CLI/Core/client/server checks pass.
+  A now audits a coherent main Enhanced editor/task migration read-only.
+- B (`backend_distribution`): first transcript publication integrated as
+  `87997f6d5`; Store 83 selected tests pass. Source-only lifecycle fix is frozen
+  in `/Volumes/T7/src/loofah-runtime-ownership`, branch
+  `fix/backend-runtime-ownership`, base `66b88b660`. B has the exclusive existing
+  target-tauri validation window. Root must not run native-cache Cargo until B
+  explicitly releases it. C's target-root window remains independent.
+- C (`capture_distribution`): typed f32 live facade in
+  `/Volumes/T7/src/loofah-separation-typed-live`, branch
+  `refactor/backend-typed-live`. Final frozen source snapshot
+  `41222a235741ca71a81396d504084f99c31dbfab117d0c348ed4effc4c23f4c4` passed
+  69 unit tests/eight ignored and one opt-in CPU test with two independent live
+  sessions. Final check/Clippy remain in progress; no integration or public STT
+  claim yet. C exclusively owns target-root until explicitly released.
+- Root: reviewed integration, exports, frontend checks/docs/CI. Portable mapper
+  extraction integrated as `9f11e7a16`: production mapping text unchanged, six
+  pure mapping cases plus original Soniqo integration case pass, package checks
+  pass. No new endpoint. Source Cargo edges add fs-format and serde to existing
+  transcribe-core. Root currently has no Cargo or test process running.
+
+New proof files under `/Volumes/T7/loofah-backend-build/logs/`:
+`restore-test-provenance.json` (stopped full-storage restore, cold cache, preserved
+identities/access/receipts/unknown files and resumed sealed publication),
+`transcript-publication-integrated-provenance.json`,
+`transcript-overview-test-provenance.json`,
+`transcript-overview-native-provenance.json`,
+`transcript-overview-check-provenance.json`,
+`transcript-overview-integrated-ui-tests.log` (90 cases),
+`transcript-overview-integrated-export-tests.log` (three cases),
+`transcript-overview-integrated-ui-typecheck.log`,
+`shared-transcript-mapper-provenance.json`.
+Worker overview logs: `agents/transcript-overview/logs/`.
 
 Source must stay frozen through each dependent build. Require compiler artifact
 `fresh=false`, own source path and dep-file, exact nonzero new-test inventory,
@@ -102,12 +120,17 @@ binary assessment can stall compilation or launch for minutes; inspect first.
 ## CI and next integration batch
 
 The last fully green head remains `93dada10bb592c824ae59eeff72187b5079a9558`,
-including Windows x64/ARM64 installers. The later aade batch has finished all
-workflows: four succeeded; macOS Rust and both Windows architectures failed the
-same capture-fixture lease-release race. The integrated test-only fix passes 28
-local capture tests. No healthy previous run remains to wait for; push the next
-validated corrective batch, update the draft PR and record its exact SHA/results.
-Do not claim the optional speech-model lane or real hardware acceptance ran.
+including Windows x64/ARM64 installers. The aade batch finished with one shared
+capture-fixture lease-release race on macOS and both Windows architectures. Its
+bounded test-only fix passed 28 local capture cases and is included in the new
+pushed `66b88b660` batch.
+
+For 66b, four workflows are green: backend-ci (headless, container and Linux CPU
+STT), cli-ci, ci and zizmor. Desktop frontend is green; macOS Rust and Windows
+x64/ARM64 remain active at this checkpoint. Keep healthy CI running and batch
+subsequent pushes after Windows finishes. Do not count the skipped Windows
+speech-model lane or prerecorded CPU tests as hardware/real-device acceptance.
+Draft PR #123 body/head was verified at 66b; update after the next validated push.
 
 ## Remaining acceptance gates
 
@@ -125,8 +148,9 @@ only recoverable audio. Recording queues are distinct from offline remote editin
 
 Production macOS responsiveness, real capture/STT, realistic 50/150/500 ms networks,
 disconnects, two-hour recordings and Windows native x64/ARM64 remain required.
-The runtime cancellation audit must distinguish detached Service initialization
-from direct open/Drop paths before proposing changes.
+The lifecycle fix must distinguish existing detached Service initialization
+from direct open/Drop paths. Systemd retains its 60-second stop budget; forced
+termination cannot guarantee in-memory legacy transcript durability.
 
 ## Preserved recovery state
 
