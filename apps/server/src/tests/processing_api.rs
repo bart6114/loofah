@@ -124,6 +124,7 @@ async fn public_jobs_replay_after_application_and_return_bound_private_recovery_
     assert_eq!(result.session_id, "note");
     assert_eq!(result.markdown, "# Release\n- Ship Friday.");
     let invalid_target = SummaryJobRequest {
+        only_if_empty: false,
         title_policy: Default::default(),
         session_id: "note".into(),
         target: DocumentTarget::TemplateOutput {
