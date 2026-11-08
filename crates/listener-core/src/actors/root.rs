@@ -623,6 +623,10 @@ mod tests {
         time::Duration,
     };
 
+    // Production permits one Local producer. These fixtures construct separate
+    // RootActors, but their Local source/recorder child names remain singleton.
+    static LOCAL_CAPTURE_FIXTURE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[derive(Default)]
     struct Runtime {
         events: Mutex<Vec<SessionLifecycleEvent>>,
@@ -1141,6 +1145,7 @@ mod tests {
 
     #[tokio::test]
     async fn owned_local_runtime_and_stale_stop_are_bound_to_the_original_request() {
+        let _local = LOCAL_CAPTURE_FIXTURE.lock().await;
         let directory = tempfile::tempdir().unwrap();
         let audio = Arc::new(Audio::default());
         let global = Arc::new(Runtime::default());
@@ -1241,6 +1246,7 @@ mod tests {
 
     #[tokio::test]
     async fn tracked_local_completion_requires_native_drain_and_finished_file_writers() {
+        let _local = LOCAL_CAPTURE_FIXTURE.lock().await;
         async fn rejects_new_capture(root: &ActorRef<RootMsg>, params: &SessionParams) {
             let reporter = crate::actors::DeviceCaptureCompletion::channel().0;
             assert!(matches!(
