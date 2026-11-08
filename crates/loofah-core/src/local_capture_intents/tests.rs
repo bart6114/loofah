@@ -163,6 +163,7 @@ async fn declaration_binds_authoritative_append_state_and_original_summary_revis
 #[derive(Clone, Default)]
 struct Engine {
     calls: Arc<AtomicUsize>,
+    busy: Arc<std::sync::atomic::AtomicBool>,
     entered: Arc<Notify>,
     release: Arc<Notify>,
 }
@@ -176,6 +177,9 @@ impl TranscriptionEngine for Engine {
         Box::pin(async move {
             assert_eq!(request.model, "frozen-model");
             assert_eq!(request.languages, vec!["nl"]);
+            if self.busy.load(Ordering::SeqCst) {
+                return Err(TranscriptionFailure::ResourceLimit);
+            }
             Ok(Box::new(Prepared(self.clone())) as Box<dyn PreparedTranscription>)
         })
     }
@@ -260,7 +264,12 @@ async fn changed_canonical_source_retains_output_and_explicit_recovery_never_rep
     std::fs::write(&audio, b"original native audio").unwrap();
     token.physical_finished(Ok(())).await.unwrap();
     token.persistence_finished(Ok(persistence())).await.unwrap();
-    engine.entered.notified().await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        engine.entered.notified(),
+    )
+    .await
+    .unwrap();
     std::fs::write(&audio, b"replacement audio").unwrap();
     engine.release.notify_one();
     assert_eq!(
@@ -406,7 +415,12 @@ async fn summary_keeps_original_lifecycle_admission_until_actual_cancelled_gener
         .unwrap();
     let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
     let (declaration, token) = live_summary_capture(&context, &service, &root).await;
-    summary.entered.notified().await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        summary.entered.notified(),
+    )
+    .await
+    .unwrap();
     token.physical_finished(Ok(())).await.unwrap();
     assert!(context.try_session_lifecycle_change("note").is_err());
     service.request_shutdown();
@@ -446,7 +460,12 @@ async fn changed_transcript_during_summary_keeps_the_target_unchanged() {
         .unwrap();
     let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
     let (declaration, _token) = live_summary_capture(&context, &service, &root).await;
-    summary.entered.notified().await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        summary.entered.notified(),
+    )
+    .await
+    .unwrap();
     let path = root.join("vault/sessions/note/transcript.json");
     let mut value: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -496,7 +515,12 @@ async fn confirmed_batch_capture_publishes_retained_output_once_under_original_o
     .unwrap();
     token.physical_finished(Ok(())).await.unwrap();
     token.persistence_finished(Ok(persistence())).await.unwrap();
-    engine.entered.notified().await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        engine.entered.notified(),
+    )
+    .await
+    .unwrap();
     engine.release.notify_one();
     assert_eq!(
         terminal(&service, &input.request_id).await.state,
@@ -526,7 +550,12 @@ async fn lost_parent_summary_completion_replays_original_child_without_new_gener
         .unwrap();
     let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
     let (declaration, _token) = live_summary_capture(&context, &service, &root).await;
-    summary.entered.notified().await;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        summary.entered.notified(),
+    )
+    .await
+    .unwrap();
     summary.release.notify_one();
     assert_eq!(
         terminal(&service, &declaration.request_id).await.state,
@@ -553,6 +582,72 @@ async fn lost_parent_summary_completion_replays_original_child_without_new_gener
         std::fs::read(root.join("vault/sessions/note/summary.md")).unwrap(),
         before
     );
+    service.shutdown().await;
+    worker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn busy_model_preflight_copies_no_audio_and_explicit_retry_dispatches_only_once() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let context = context(&root).await;
+    let engine = Engine::default();
+    engine.busy.store(true, Ordering::SeqCst);
+    let worker = context
+        .start_transcription(Arc::new(engine.clone()), Arc::new(Auth), Default::default())
+        .await
+        .unwrap();
+    let service = LocalCaptureIntents::open(context.clone()).await.unwrap();
+    let mut input = declaration();
+    input.batch_requested = true;
+    input.transcription = Some(LocalTranscriptionOptions {
+        model: "frozen-model".into(),
+        languages: vec!["nl".into()],
+        keywords: vec![],
+    });
+    let token = service.declare(input.clone()).await.unwrap();
+    std::fs::write(
+        root.join("vault/sessions/note/audio.wav"),
+        b"original native audio",
+    )
+    .unwrap();
+    token.physical_finished(Ok(())).await.unwrap();
+    token.persistence_finished(Ok(persistence())).await.unwrap();
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Review
+    );
+    assert!(
+        !service
+            .root
+            .join(&input.request_id)
+            .join("source.wav")
+            .exists()
+    );
+    assert!(
+        !service
+            .state
+            .lock()
+            .await
+            .get(&input.request_id)
+            .unwrap()
+            .record
+            .inference_dispatched
+    );
+    engine.busy.store(false, Ordering::SeqCst);
+    service.recover(input.request_id.clone()).await.unwrap();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        engine.entered.notified(),
+    )
+    .await
+    .unwrap();
+    engine.release.notify_one();
+    assert_eq!(
+        terminal(&service, &input.request_id).await.state,
+        LocalCaptureState::Succeeded
+    );
+    assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
     service.shutdown().await;
     worker.shutdown().await.unwrap();
 }

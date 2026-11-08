@@ -271,15 +271,6 @@ impl LocalCaptureIntents {
                 .and_then(|value| value.to_str())
                 .ok_or_else(|| review("Invalid recording selection"))?;
             let path = directory.join(format!("source.{extension}"));
-            let copy = source.clone();
-            let target = path.clone();
-            let pin = self.context.clone();
-            tokio::task::spawn_blocking(move || {
-                let _pin = pin;
-                copy_source(&copy, &target)
-            })
-            .await
-            .map_err(review)??;
             let admission = self
                 .state
                 .lock()
@@ -305,11 +296,15 @@ impl LocalCaptureIntents {
                 .context
                 .prepare_local_capture_engine(input, self.stop.child_token())
                 .await?;
-            if record.inference_dispatched {
-                return Err(review(
-                    "Inference was already dispatched; explicit retained-output recovery is required",
-                ));
-            }
+            let copy = source.clone();
+            let target = input.path.clone();
+            let pin = self.context.clone();
+            tokio::task::spawn_blocking(move || {
+                let _pin = pin;
+                copy_source(&copy, &target)
+            })
+            .await
+            .map_err(review)??;
             self.update(request, |record| {
                 record.inference_dispatched = true;
                 record.status.state = LocalCaptureState::Transcribing;
