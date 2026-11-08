@@ -287,6 +287,26 @@ async fn frozen_summary_target_and_declaration_refuse_rebinding_before_inference
         ErrorCode::Conflict
     );
     assert_eq!(summary.calls.load(Ordering::SeqCst), 0);
+    let status = context
+        .manual_media_summary_status(&declaration.request_id)
+        .await
+        .unwrap();
+    assert!(status.reason.as_deref().unwrap().contains("target changed"));
+    assert!(status.job.is_none());
+    let retained = journal::load(&context, &declaration.request_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.status.reason, status.reason);
+    assert_eq!(
+        context
+            .complete_manual_media_summary(declaration.request_id.clone())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 0);
     worker.shutdown().await.unwrap();
 }
 #[tokio::test]

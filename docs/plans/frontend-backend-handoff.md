@@ -548,3 +548,4 @@ UUID. The recording-parent and transcription-job panels display durable status
 without automatic inference replay; copied retained transcripts do not mutate
 changed canonical content. Generated Native/protocol contracts and the complete
 manual-media frontend migration require the integration build/checks.
+Manual-media summary completion refusals now retain an actionable `reason` in the original parent status, including source/target conflicts and unavailable processing. The parent preserves its existing source/child state because a lost receipt may already have admitted owned child work; recording a refusal never revokes that authority or starts another inference. Read-only status exposes the retained reason after restart, while successful original-child replay clears it. Source-only regression extends the frozen-target conflict case to retained status and repeated exact-request refusal.

@@ -5,16 +5,33 @@ impl VaultContext {
         request_id: String,
     ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
         let owner = self.clone();
-        tokio::spawn(async move { owner.complete_manual_summary_owned(&request_id).await })
-            .await
-            .map_err(review)?
+        tokio::spawn(async move {
+            let _request = owner.admit_session_lifecycle_request(
+                "manual-media-summary",
+                OWNER,
+                uuid(&request_id)?,
+            )?;
+            let result = owner.complete_manual_summary_owned(&request_id).await;
+            if let Err(cause) = &result {
+                if let Some(mut record) = journal::load(&owner, &request_id).await? {
+                    // A child may already own work after a lost completion receipt. Preserve
+                    // its source authority; the reason reports refusal without inventing a terminal state.
+                    record.status.reason = Some(format!(
+                        "Automatic summary requires review: {}",
+                        cause.message
+                    ));
+                    journal::persist(&owner, &record, false).await?;
+                }
+            }
+            result
+        })
+        .await
+        .map_err(review)?
     }
     async fn complete_manual_summary_owned(
         self: &Arc<Self>,
         request_id: &str,
     ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
-        let _request =
-            self.admit_session_lifecycle_request("manual-media-summary", OWNER, uuid(request_id)?)?;
         let mut record = journal::load(self, request_id).await?.ok_or_else(|| {
             error(
                 ErrorCode::NotFound,
@@ -157,6 +174,7 @@ impl VaultContext {
         {
             record.status.job = Some(job);
             record.status.state = ManualMediaSummaryState::Child;
+            record.status.reason = None;
             journal::persist(self, &record, false).await?;
             return Ok(record.status);
         }
@@ -198,6 +216,7 @@ impl VaultContext {
             .await?;
         record.status.job = Some(job);
         record.status.state = ManualMediaSummaryState::Child;
+        record.status.reason = None;
         journal::persist(self, &record, false).await?;
         Ok(record.status)
     }
