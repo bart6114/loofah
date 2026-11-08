@@ -24,6 +24,7 @@ const native = vi.hoisted(() => ({
   cancelProcessing: vi.fn(),
   updates: new Set<() => void>(),
   destinations: [] as unknown[],
+  authorizations: [] as (() => boolean)[],
 }));
 vi.mock("./device-recordings", () => ({
   createDeviceRecordingMonitor: () => {
@@ -51,6 +52,7 @@ vi.mock("./device-recordings", () => ({
       recoveryInventory: vi.fn(async () => native.records),
       resumeUpload: native.resume,
       retire: (identity: unknown, request: string, current: () => boolean) => {
+        native.authorizations.push(current);
         if (!current()) throw new Error("Original scope closed");
         return native.retire(identity, request);
       },
@@ -115,6 +117,7 @@ beforeEach(() => {
   native.monitors.length = 0;
   native.updates.clear();
   native.destinations.length = 0;
+  native.authorizations.length = 0;
 });
 afterEach(() => {
   cleanup();
@@ -157,15 +160,15 @@ async function mount({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   caches.push(cache);
-  const content = (
+  const content = (profileId = "profile", boundScope = scope) => (
     <QueryClientProvider client={cache}>
       <DeviceRecordingHost
-        profileId="profile"
+        profileId={profileId}
         destination={bound ? destination : null}
       >
         <div>Server sign-in or workspace</div>
         <VaultHostContext.Provider
-          value={{ scope, error: null, retry: () => {} }}
+          value={{ scope: boundScope, error: null, retry: () => {} }}
         >
           <DeviceRecordingAccess />
           <DeviceRecordButton sessionId="note" />
@@ -173,8 +176,20 @@ async function mount({
       </DeviceRecordingHost>
     </QueryClientProvider>
   );
-  const result = render(strict ? <StrictMode>{content}</StrictMode> : content);
-  return { ...result, scope, backend };
+  const renderContent = (profileId = "profile", boundScope = scope) =>
+    strict ? (
+      <StrictMode>{content(profileId, boundScope)}</StrictMode>
+    ) : (
+      content(profileId, boundScope)
+    );
+  const result = render(renderContent());
+  return {
+    ...result,
+    scope,
+    backend,
+    rerenderHost: (profileId = "profile", boundScope = scope) =>
+      result.rerender(renderContent(profileId, boundScope)),
+  };
 }
 
 it("keeps Stop available outside server sign-in and never stops capture on StrictMode retirement", async () => {
@@ -271,7 +286,7 @@ it("starts a pending capture before server sign-in using only the saved destinat
   render(
     <QueryClientProvider client={cache}>
       <DeviceRecordingHost
-        profileId="profile"
+        profileId={profileId}
         destination={{
           scopeKey: destination.scopeKey,
           scope: destination.scope,
@@ -724,4 +739,35 @@ it("unfinished source removal remains fenced and uncertain processing never enab
   expect((button as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(button);
   expect(native.retire).not.toHaveBeenCalled();
+});
+
+it("retires cleanup authorization when only the profile changes", async () => {
+  native.records = [publishedRecord()];
+  native.retire.mockImplementation(() => new Promise(() => {}));
+  const view = await mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Free device audio" }),
+  );
+  await waitFor(() => expect(native.authorizations).toHaveLength(1));
+  const original = native.authorizations[0];
+  expect(original()).toBe(true);
+  view.rerenderHost("other-profile");
+  expect(original()).toBe(false);
+});
+
+it("does not reuse cleanup authorization after the access scope is replaced", async () => {
+  native.records = [publishedRecord()];
+  native.retire.mockImplementation(() => new Promise(() => {}));
+  const view = await mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Free device audio" }),
+  );
+  await waitFor(() => expect(native.authorizations).toHaveLength(1));
+  const original = native.authorizations[0];
+  const replacement = new VaultScope(view.backend);
+  scopes.push(replacement);
+  await replacement.start();
+  view.rerenderHost("profile", replacement);
+  await waitFor(() => expect(original()).toBe(false));
+  expect(view.scope.getSnapshot().state).toBe("connected");
 });

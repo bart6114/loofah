@@ -72,7 +72,11 @@ export function DeviceRecordingHost({
     client: ReturnType<typeof createDeviceRecordingMonitor>;
   } | null>(null);
   const [owner, setOwner] = useState<
-    (DeviceRecordingOwner & { destination: DeviceRecordingDestination }) | null
+    | (DeviceRecordingOwner & {
+        profileId: string;
+        destination: DeviceRecordingDestination;
+      })
+    | null
   >(null);
   useEffect(() => {
     const client = createDeviceRecordingMonitor();
@@ -85,10 +89,18 @@ export function DeviceRecordingHost({
       return;
     }
     const client = createDeviceRecordingClient(destination);
-    setOwner({ scopeKey: destination.scopeKey, client, destination });
+    setOwner({
+      profileId,
+      scopeKey: destination.scopeKey,
+      client,
+      destination,
+    });
     return () => client.dispose();
-  }, [destination]);
-  const current = destination === owner?.destination ? owner : null;
+  }, [destination, profileId]);
+  const current =
+    destination === owner?.destination && profileId === owner.profileId
+      ? owner
+      : null;
   const [access, setAccess] = useState<{
     scope: VaultScope;
     client: DeviceRecordingOwner["client"];
@@ -119,7 +131,12 @@ export function DeviceRecordingHost({
     ),
     useCallback(() => access?.scope.getSnapshot().state ?? "closed", [access]),
   );
+  const latestAuthorization = useRef({ current, access, profileId });
+  latestAuthorization.current = { current, access, profileId };
   const cleanupCurrent = () =>
+    latestAuthorization.current.current === current &&
+    latestAuthorization.current.access === access &&
+    latestAuthorization.current.profileId === profileId &&
     !!current &&
     access?.client === current.client &&
     access.scope.client.scope === current.scopeKey &&
