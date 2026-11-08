@@ -270,7 +270,9 @@ async fn changed_canonical_source_retains_output_and_explicit_recovery_never_rep
     )
     .await
     .unwrap();
-    std::fs::write(&audio, b"replacement audio").unwrap();
+    // Replace the path as an external editor does; the original file remains
+    // shared-locked through model work and Windows correctly rejects truncation.
+    hypr_storage::fs::atomic_write(&audio, "replacement audio").unwrap();
     engine.release.notify_one();
     assert_eq!(
         terminal(&service, &input.request_id).await.state,
@@ -284,7 +286,7 @@ async fn changed_canonical_source_retains_output_and_explicit_recovery_never_rep
             .is_file()
     );
     assert!(!path.join("vault/sessions/note/transcript.json").exists());
-    std::fs::write(&audio, b"original native audio").unwrap();
+    hypr_storage::fs::atomic_write(&audio, "original native audio").unwrap();
     service.recover(input.request_id.clone()).await.unwrap();
     assert_eq!(
         terminal(&service, &input.request_id).await.state,

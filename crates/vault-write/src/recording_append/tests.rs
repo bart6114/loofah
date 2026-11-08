@@ -464,7 +464,26 @@ async fn changed_generation_between_recheck_and_commit_never_overwrites_canonica
             .recheck()
             .await
             .unwrap();
-        std::fs::write(fixture.directory.join(changed), b"external generation").unwrap();
+        #[cfg(windows)]
+        if changed == "audio.mp3" {
+            use std::io::Write;
+            let mut in_place = std::fs::OpenOptions::new()
+                .write(true)
+                .open(fixture.directory.join(changed))
+                .unwrap();
+            assert_eq!(
+                in_place
+                    .write_all(b"must stay locked")
+                    .unwrap_err()
+                    .raw_os_error(),
+                Some(33),
+                "the original shared lock must still prevent in-place audio writes"
+            );
+        }
+        // A real external save can replace the directory entry while the original
+        // source descriptor stays shared-locked (Windows rejects in-place writes).
+        hypr_storage::fs::atomic_write(&fixture.directory.join(changed), "external generation")
+            .unwrap();
         assert_eq!(
             plan.commit().await.unwrap(),
             RecordingAppendOutcome::Changed

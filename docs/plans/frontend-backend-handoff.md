@@ -680,3 +680,15 @@ case on the existing stable Native test graph. Both successful and failed
 assertions drain real summary/title work before releasing the disposable vault.
 This source checkpoint has formatting validation only; root-lane execution is
 pending and does not replace physical microphone or platform GUI acceptance.
+
+Windows x64 checkpoint `0d` exposed two append durability bugs: SDK receipt
+replay and Core PCM description called `sync_all` on read-only handles, which
+Windows rejects. SDK replay now reopens the same verified private receipt with
+write access and no truncate/create flags. Core normalization/concatenation now
+sync the original owned output descriptor after WAV finalization; inspecting
+retained prefix/suffix inputs remains read-only. A new immutable-input regression
+covers the latter. Two changed-source fixtures now simulate external atomic
+replacement instead of truncating a mandatory-locked Windows source; the Store
+case also asserts that the original Windows in-place write remains locked. No
+production lease, lock, CAS or durability check was removed. Source formatting
+passed; Native focused and fresh x64/ARM64 execution remain pending.

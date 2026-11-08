@@ -50,11 +50,9 @@ pub fn normalize_baseline(
     } else {
         1
     };
-    let mut output = hound::WavWriter::new(
-        File::create_new(normalized_path).map_err(io)?,
-        pcm_spec(output_channels),
-    )
-    .map_err(io)?;
+    let mut output_file = File::create_new(normalized_path).map_err(io)?;
+    let mut output =
+        hound::WavWriter::new(&mut output_file, pcm_spec(output_channels)).map_err(io)?;
     let mut input = descriptor.reader().map_err(io)?;
     for start in (0..descriptor.frames).step_by(PCM_BLOCK_FRAMES) {
         let end = (start + PCM_BLOCK_FRAMES).min(descriptor.frames);
@@ -79,6 +77,10 @@ pub fn normalize_baseline(
         }
     }
     output.finalize().map_err(io)?;
+    // Windows requires a writable handle for FlushFileBuffers. Retained source
+    // verification stays read-only; only this original output owner flushes it.
+    output_file.sync_all().map_err(io)?;
+    drop(output_file);
     describe(
         normalized_path,
         CaptureFormat {
@@ -118,11 +120,10 @@ pub fn concatenate(
     if pcm_bytes > u32::MAX as u64 - 128 {
         return Err(conflict("Append recording exceeds the WAV format limit"));
     }
-    let mut output = hound::WavWriter::new(
-        File::create_new(output_path).map_err(io)?,
-        pcm_spec(prefix.format.channels.len()),
-    )
-    .map_err(io)?;
+    let mut output_file = File::create_new(output_path).map_err(io)?;
+    let mut output =
+        hound::WavWriter::new(&mut output_file, pcm_spec(prefix.format.channels.len()))
+            .map_err(io)?;
     for (path, expected) in [(prefix_path, prefix), (suffix_path, suffix)] {
         let actual = describe(path, expected.format.clone())?;
         if actual.frames != expected.frames
@@ -141,6 +142,10 @@ pub fn concatenate(
         }
     }
     output.finalize().map_err(io)?;
+    // Windows requires a writable handle for FlushFileBuffers. Retained source
+    // verification stays read-only; only this original output owner flushes it.
+    output_file.sync_all().map_err(io)?;
+    drop(output_file);
     let result = describe(output_path, prefix.format.clone())?;
     if result.frames != frames {
         return Err(conflict("Append frame count changed"));
@@ -155,7 +160,6 @@ fn describe(path: &Path, format: CaptureFormat) -> Result<NormalizedAppendAudio,
         return Err(conflict("Append layout does not match PCM"));
     }
     let mut file = File::open(path).map_err(io)?;
-    file.sync_all().map_err(io)?;
     let bytes = file.metadata().map_err(io)?.len();
     if bytes > u32::MAX as u64 {
         return Err(conflict("Append recording exceeds the WAV format limit"));
@@ -267,6 +271,43 @@ mod tests {
             })
             .collect();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn concatenation_reads_immutable_inputs_and_syncs_only_its_owned_output() {
+        let root = tempfile::tempdir().unwrap();
+        let prefix_path = root.path().join("prefix.wav");
+        let suffix_path = root.path().join("suffix.wav");
+        wave(&prefix_path, 16_000, 2, 17);
+        wave(&suffix_path, 16_000, 2, 19);
+        let prefix = describe(&prefix_path, CaptureFormat::stereo()).unwrap();
+        let suffix = describe(&suffix_path, CaptureFormat::stereo()).unwrap();
+        let inputs = [&prefix_path, &suffix_path].map(|path| {
+            let original = path.metadata().unwrap().permissions();
+            let mut readonly = original.clone();
+            readonly.set_readonly(true);
+            std::fs::set_permissions(path, readonly).unwrap();
+            original
+        });
+        let output = root.path().join("combined.wav");
+        let combined = concatenate(&prefix_path, &prefix, &suffix_path, &suffix, &output);
+        for (path, permissions) in [&prefix_path, &suffix_path].into_iter().zip(inputs) {
+            std::fs::set_permissions(path, permissions).unwrap();
+        }
+        let combined = combined.unwrap();
+        assert_eq!(combined.frames, 36);
+        assert_eq!(
+            file_hash(&mut File::open(prefix_path).unwrap()).unwrap(),
+            prefix.sha256
+        );
+        assert_eq!(
+            file_hash(&mut File::open(suffix_path).unwrap()).unwrap(),
+            suffix.sha256
+        );
+        assert_eq!(
+            file_hash(&mut File::open(output).unwrap()).unwrap(),
+            combined.sha256
+        );
     }
 
     #[test]

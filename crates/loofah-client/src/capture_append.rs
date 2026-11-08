@@ -222,7 +222,15 @@ fn immutable<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq>(
             if read::<T>(path)?.as_ref() != Some(value) {
                 return Err(damaged());
             }
-            File::open(path).map_err(io)?.sync_all().map_err(io)?;
+            // FlushFileBuffers on Windows needs write access even when replay only
+            // verifies already persisted bytes. Never truncate or recreate a receipt.
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+                .map_err(io)?
+                .sync_all()
+                .map_err(io)?;
         }
         Err(cause) => return Err(io(cause)),
     }
@@ -377,6 +385,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(restored.admission().await.unwrap(), Some(admission.clone()));
+        assert_eq!(
+            restored.observe(admission.clone()).await.unwrap(),
+            admission
+        );
         let mut changed = admission;
         changed.baseline.frames += 1;
         assert!(restored.observe(changed).await.is_err());
