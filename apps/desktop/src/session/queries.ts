@@ -11,8 +11,10 @@ import { useTaskStorageOptional } from "@hypr/editor/task-storage";
 import { hydrateTaskContent } from "@hypr/editor/tasks";
 
 import { waitForPendingSoftDelete } from "~/session/pending-soft-deletes";
+import { useSessionSummaries } from "~/session/summary-queries";
 import { ensureFirstLineTitle } from "~/session/title-content";
 import { getApplicationClient } from "~/shared/application/client";
+import { useVaultHost } from "~/shared/application/vault-provider";
 import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
@@ -118,23 +120,17 @@ export function useSessionRawMd(sessionId: string): string | null {
 export function useSessionSummary(
   sessionId: string,
 ): SessionSummaryRecord | null {
-  const { data = null } = useIndexQuery({
-    entity: "sessions",
-    ids: [sessionId],
-    queryKey: ["session-summary", sessionId],
-    queryFn: async () => {
-      const result = await getApplicationClient().store.sessionGet(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      const meta = result.data?.meta;
-      return meta
-        ? { id: meta.id, title: meta.title, created_at: meta.created_at }
-        : null;
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : null;
+  const { scope } = useVaultHost();
+  if (!scope)
+    throw new Error("Session headers require an immutable vault host");
+  const { data } = useSessionSummaries(
+    scope,
+    { kind: "ids", ids: sessionId ? [sessionId] : [] },
+    Boolean(sessionId) && scope.client.features.includes("session_summaries"),
+  );
+  return sessionId && scope.getSnapshot().state === "connected"
+    ? (data?.find((header) => header.id === sessionId) ?? null)
+    : null;
 }
 
 export function useUpdateSession(sessionId: string) {

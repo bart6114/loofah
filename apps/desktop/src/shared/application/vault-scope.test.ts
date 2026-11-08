@@ -1,4 +1,9 @@
-import { QueryObserver } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryObserver,
+  focusManager,
+  onlineManager,
+} from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AttachmentResource } from "./attachments";
@@ -8,12 +13,12 @@ import type { NoteEditorSnapshot, NoteSnapshot } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 import { VaultScope } from "./vault-scope";
 
-function fixture(scope: string) {
+function fixture(scope: string, networkMode: "always" | "online" = "always") {
   let event!: (value: VaultClientEvent) => void;
   const unsubscribe = vi.fn();
   const backend = {
     scope,
-    networkMode: "always",
+    networkMode,
     canEdit: true,
     readNote: vi
       .fn()
@@ -62,6 +67,110 @@ function watchCacheCleanup(scope: VaultScope) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("balances its own query-client lease once without consuming an existing preview provider lease", () => {
+    const mount = vi.spyOn(QueryClient.prototype, "mount");
+    const unmount = vi.spyOn(QueryClient.prototype, "unmount");
+    const { active } = fixture("lease");
+    let previewHeld = false;
+    try {
+      expect(mount).toHaveBeenCalledOnce();
+      active.queryClient.mount();
+      previewHeld = true;
+      active.dispose();
+      active.dispose();
+      expect(unmount).toHaveBeenCalledOnce();
+      active.queryClient.unmount();
+      previewHeld = false;
+      expect(mount).toHaveBeenCalledTimes(2);
+      expect(unmount).toHaveBeenCalledTimes(2);
+    } finally {
+      active.dispose();
+      if (previewHeld) active.queryClient.unmount();
+      mount.mockRestore();
+      unmount.mockRestore();
+    }
+  });
+
+  it.each([
+    "dispose",
+    "access_denied",
+    "login_required",
+    "closed",
+    "incompatible",
+  ] as const)(
+    "cannot dispatch a paused remote read after %s",
+    async (state) => {
+      onlineManager.setOnline(false);
+      const { active, backend, emit } = fixture("paused", "online");
+      await active.start();
+      const options = active.sessionSummariesOptions({
+        kind: "ids",
+        ids: ["same"],
+      });
+      const observer = new QueryObserver(active.queryClient, options);
+      const stop = observer.subscribe(() => {});
+      try {
+        expect(
+          active.queryClient.getQueryState(options.queryKey)?.fetchStatus,
+        ).toBe("paused");
+        if (state === "dispose") active.dispose();
+        else emit({ kind: "connection", state, error: null });
+        onlineManager.setOnline(true);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(backend.sessionSummaries).not.toHaveBeenCalled();
+        expect(active.queryClient.getQueryCache().getAll()).toHaveLength(0);
+      } finally {
+        stop();
+        active.dispose();
+        onlineManager.setOnline(true);
+      }
+    },
+  );
+
+  it("only revalidates once when window visibility and focus managers report the same foreground transition", async () => {
+    const { active, backend } = fixture("focused", "online");
+    await active.start();
+    const options = active.noteOptions("note");
+    const observer = new QueryObserver(active.queryClient, options);
+    const stop = observer.subscribe(() => {});
+    const previousVisibility = Object.getOwnPropertyDescriptor(
+      document,
+      "visibilityState",
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().isSuccess).toBe(true),
+      );
+      backend.readNote.mockClear();
+      Object.defineProperty(document, "visibilityState", {
+        value: "hidden",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+      focusManager.setFocused(false);
+      await active.queryClient.invalidateQueries({
+        queryKey: options.queryKey,
+        refetchType: "none",
+      });
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+      focusManager.setFocused(true);
+      await vi.waitFor(() => expect(backend.readNote).toHaveBeenCalledOnce());
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(backend.readNote).toHaveBeenCalledOnce();
+    } finally {
+      stop();
+      active.dispose();
+      if (previousVisibility)
+        Object.defineProperty(document, "visibilityState", previousVisibility);
+      else Reflect.deleteProperty(document, "visibilityState");
+      focusManager.setFocused(undefined);
+    }
+  });
+
   it("invalidates bounded tag queries on registry and all header changes without touching another vault", async () => {
     const { active, backend, emit } = fixture("scope");
     await active.start();

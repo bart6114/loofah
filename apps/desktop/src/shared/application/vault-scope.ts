@@ -58,6 +58,8 @@ export class VaultScope {
         },
       },
     });
+    // Main-shell hooks use this client beneath the window's separate QueryClientProvider.
+    this.queryClient.mount();
     this.stopResourceCache = this.queryClient
       .getQueryCache()
       .subscribe((event) => {
@@ -659,6 +661,7 @@ export class VaultScope {
     this.unsubscribe?.();
     window.removeEventListener("focus", this.focus);
     document.removeEventListener("visibilitychange", this.visible);
+    this.queryClient.unmount();
     void this.queryClient.cancelQueries();
     this.queryClient.clear();
     this.stopResourceCache();

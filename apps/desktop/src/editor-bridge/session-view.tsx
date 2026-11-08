@@ -15,7 +15,7 @@ import {
 } from "@hypr/editor/tasks";
 import { cn, safeParseDate } from "@hypr/utils";
 
-import { useSession } from "~/session/queries";
+import { useSessionSummary } from "~/session/queries";
 import { toTz, useTimezone } from "~/shared/hooks/useNow";
 import { useTabs } from "~/store/zustand/tabs";
 import { useListener } from "~/stt/contexts";
@@ -27,7 +27,7 @@ export const SessionNodeView = forwardRef<
   const { node, getPos } = nodeProps;
   const sessionId = node.attrs.sessionId as string;
 
-  const session = useSession(sessionId);
+  const session = useSessionSummary(sessionId);
   const tz = useTimezone();
   const liveSessionId = useListener((state) => state.live.sessionId);
   const liveStatus = useListener((state) => state.live.status);
