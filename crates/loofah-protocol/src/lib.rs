@@ -13,6 +13,8 @@ pub use endpoint::validate_endpoint;
 
 mod capture;
 pub use capture::*;
+mod capture_live;
+pub use capture_live::*;
 mod jobs;
 pub use jobs::*;
 mod processing_settings;
