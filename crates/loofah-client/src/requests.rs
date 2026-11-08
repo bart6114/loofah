@@ -10,12 +10,25 @@ use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavai
 
 mod capture_live;
 mod document_editor;
+mod session_lifecycle;
 mod timeline;
 mod transcription;
 
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    SessionLifecycle {
+        vault_id: String,
+        session_id: String,
+    },
+    DeleteSession {
+        vault_id: String,
+        input: DeleteSessionRequest,
+    },
+    RestoreSession {
+        vault_id: String,
+        input: RestoreSessionRequest,
+    },
     TranscriptionPolicy {
         vault_id: String,
     },
@@ -321,6 +334,9 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    SessionLifecycle(SessionLifecycleSnapshot),
+    SessionDelete(DeleteSessionOutcome),
+    SessionRestore(RestoreSessionOutcome),
     TranscriptionPolicy(TranscriptionPolicy),
     CaptureLiveSnapshot(CaptureLiveSnapshot),
     CaptureLiveCaptions(CaptureLiveCaptionPage),
@@ -396,6 +412,7 @@ impl RemoteClient {
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || session_lifecycle::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -408,12 +425,14 @@ impl RemoteClient {
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || session_lifecycle::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
         }
         let required_feature = match &operation {
+            operation if session_lifecycle::is_operation(operation) => Some("session_lifecycle"),
             RemoteOperation::TranscriptionPolicy { .. } => Some("transcription_policy"),
             operation if capture_live::is_operation(operation) => {
                 Some("capture_live_transcription")
@@ -458,6 +477,9 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                ref operation if session_lifecycle::is_operation(operation) => {
+                    "checked note deletion and restoration"
+                }
                 RemoteOperation::TranscriptionPolicy { .. } => "transcription policy",
                 ref operation if capture_live::is_operation(operation) => {
                     "live capture transcription"
@@ -498,7 +520,8 @@ impl RemoteClient {
                 ),
             );
             error.request_id = Some(request_id.to_owned());
-            if capture_live::is_write(&operation)
+            if session_lifecycle::is_write(&operation)
+                || capture_live::is_write(&operation)
                 || matches!(
                     operation,
                     RemoteOperation::SaveNoteEditor { .. }
@@ -653,6 +676,13 @@ impl RemoteClient {
         if let RemoteOperation::SessionSummaries { input, .. } = &operation {
             validate_session_summary_query(input).map_err(invalid)?;
         }
+        session_lifecycle::validate_operation(&operation).map_err(|mut error| {
+            error.request_id = Some(request_id.to_owned());
+            if session_lifecycle::is_write(&operation) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            error
+        })?;
         timeline::validate_operation(&operation)?;
         capture_live::validate_operation(&operation, request_id).map_err(|mut error| {
             if capture_live::is_write(&operation) {
@@ -662,6 +692,24 @@ impl RemoteClient {
         })?;
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::SessionLifecycle {
+                vault_id,
+                session_id,
+            } => (
+                Method::GET,
+                vec!["vaults", vault_id, "sessions", session_id, "lifecycle"],
+            ),
+            RemoteOperation::DeleteSession { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "session-deletions"])
+            }
+            RemoteOperation::RestoreSession { vault_id, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "session-restorations"],
+                )
+            }
             RemoteOperation::TranscriptionPolicy { vault_id } => (
                 Method::GET,
                 vec!["vaults", vault_id, "transcription", "policy"],
@@ -1329,6 +1377,7 @@ impl RemoteClient {
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || session_lifecycle::is_write(&operation)
             {
                 error.request_id.get_or_insert_with(|| request_id.into());
                 error
@@ -1352,6 +1401,9 @@ impl RemoteClient {
             let status = response.status();
             if status == reqwest::StatusCode::UNAUTHORIZED {
                 self.expire_access(&access).await;
+            }
+            if status == reqwest::StatusCode::CONFLICT && session_lifecycle::is_write(&operation) {
+                return session_lifecycle::decode(response, &operation, true).await;
             }
             if status == reqwest::StatusCode::CONFLICT
                 && matches!(operation, RemoteOperation::SaveNote { .. })
@@ -1419,6 +1471,11 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                operation @ (RemoteOperation::SessionLifecycle { .. }
+                | RemoteOperation::DeleteSession { .. }
+                | RemoteOperation::RestoreSession { .. }) => {
+                    session_lifecycle::decode(response, &operation, false).await?
+                }
                 RemoteOperation::TranscriptionPolicy { .. } => {
                     let policy: TranscriptionPolicy = json_body(response, 4096).await?;
                     validate_transcription_policy(&policy).map_err(|_| {

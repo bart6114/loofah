@@ -7,7 +7,7 @@ use hypr_loofah_protocol::{
 };
 use tauri::Manager;
 
-fn context<R: tauri::Runtime>(
+pub(crate) fn context<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<Arc<VaultContext>, ApplicationError> {
     app.try_state::<Arc<VaultContext>>()

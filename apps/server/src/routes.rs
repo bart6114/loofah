@@ -26,6 +26,7 @@ mod document_editor;
 mod jobs;
 mod processing_settings;
 mod session_cleanup;
+mod session_lifecycle;
 mod session_summaries;
 mod tag_editing;
 mod timeline;
@@ -41,6 +42,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(jobs::router())
         .merge(processing_settings::router())
         .merge(session_cleanup::router())
+        .merge(session_lifecycle::router())
         .merge(session_summaries::router())
         .merge(timeline::router())
         .merge(transcript_overview::router())

@@ -4,6 +4,7 @@ mod capture_live;
 mod capture_upload;
 mod document_editor;
 mod downloads;
+mod session_lifecycle;
 mod tag_editing;
 mod timeline;
 mod transcript_overview;
