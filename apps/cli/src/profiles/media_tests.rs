@@ -84,11 +84,11 @@ impl Fixture {
             pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
         };
         let cert = CertificateDer::from_pem_slice(include_bytes!(
-            "../../../../../crates/loofah-client/tests/fixtures/localhost.pem"
+            "../../../../crates/loofah-client/tests/fixtures/localhost.pem"
         ))
         .unwrap();
         let key = PrivateKeyDer::from_pem_slice(include_bytes!(
-            "../../../../../crates/loofah-client/tests/fixtures/localhost.key"
+            "../../../../crates/loofah-client/tests/fixtures/localhost.key"
         ))
         .unwrap();
         let config = rustls::ServerConfig::builder_with_provider(Arc::new(
@@ -142,7 +142,7 @@ impl Fixture {
         let client = RemoteClient::discover_fixture(
             &origin,
             credentials.clone(),
-            include_bytes!("../../../../../crates/loofah-client/tests/fixtures/localhost-ca.pem"),
+            include_bytes!("../../../../crates/loofah-client/tests/fixtures/localhost-ca.pem"),
         )
         .await
         .unwrap();
