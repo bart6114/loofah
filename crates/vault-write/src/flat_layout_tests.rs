@@ -467,7 +467,7 @@ async fn normal_rebuild_never_migrates_and_permission_failures_retry_next_startu
     {
         use std::os::unix::fs::PermissionsExt;
         let path = vault.path().join("sessions/Readable/_meta.json");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0)).unwrap();
         let layout = store.normalize_startup_layout().await.unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         assert_eq!(layout.session_count(), 0);
@@ -589,7 +589,7 @@ async fn startup_index_reuses_metadata_without_reading_it_again() {
     seed_session_at(vault.path(), "sessions/Readable", ID, "snapshot");
     let layout = store.normalize_startup_layout().await.unwrap();
     let path = vault.path().join(CANONICAL_DIR).join("_meta.json");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0)).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0)).unwrap();
     let report = store
         .rebuild_index_from_startup_layout(layout)
         .await
