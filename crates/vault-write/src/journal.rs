@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::Path;
 use std::sync::Mutex;
+
+use crate::{file_snapshot::FileSnapshot, media::open_regular_file};
 
 #[derive(Debug)]
 pub struct WriteJournal(Mutex<HashMap<String, String>>);
@@ -26,15 +29,68 @@ impl WriteJournal {
             .ok()
             .and_then(|j| j.get(relative.as_ref()).cloned());
 
-        if let Ok(current_bytes) = std::fs::read(&abs) {
-            let current_hash = sha256(&current_bytes);
-            return stored_hash.as_deref() == Some(&current_hash);
-        }
-
-        false
+        let Some(stored_hash) = stored_hash else {
+            return false;
+        };
+        let Ok(Some(file)) = open_regular_file(&abs) else {
+            return false;
+        };
+        let Ok(snapshot) = FileSnapshot::new(file) else {
+            return false;
+        };
+        matches_snapshot(&abs, &stored_hash, snapshot).unwrap_or(false)
     }
 }
 
+fn matches_snapshot(
+    path: &Path,
+    expected: &str,
+    snapshot: FileSnapshot,
+) -> Result<bool, crate::StoreError> {
+    let length = snapshot.file().metadata().map_err(io_error)?.len();
+    let actual = hash_reader(snapshot.file(), length).map_err(io_error)?;
+    if actual.as_deref() != Some(expected) {
+        return Ok(false);
+    }
+    let Some(current) = open_regular_file(path)? else {
+        return Ok(false);
+    };
+    snapshot.unchanged(&FileSnapshot::new(current)?)
+}
+
+fn hash_reader(reader: impl Read, length: u64) -> std::io::Result<Option<String>> {
+    use sha2::{Digest, Sha256};
+    let Some(bound) = length.checked_add(1) else {
+        return Ok(None);
+    };
+    let mut reader = reader.take(bound);
+    let mut buffer = [0; 64 * 1024];
+    let mut total = 0;
+    let mut hash = Sha256::new();
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        total += count as u64;
+        if total > length {
+            return Ok(None);
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok((total == length).then(|| {
+        hash.finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }))
+}
+
+fn io_error(error: std::io::Error) -> crate::StoreError {
+    crate::StoreError::Io(error.to_string())
+}
+
+#[cfg(test)]
 fn sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     use std::fmt::Write;
@@ -110,5 +166,40 @@ mod tests {
         std::fs::write(&file_path, b"goodbye world").unwrap();
 
         assert!(!journal.matches_current_file(vault.path(), "test.txt"));
+    }
+
+    #[test]
+    fn journal_hash_is_bounded_and_refuses_growth_truncation_and_changed_tails() {
+        struct BoundedReader<R>(R);
+        impl<R: Read> Read for BoundedReader<R> {
+            fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+                assert!(bytes.len() <= 64 * 1024);
+                self.0.read(bytes)
+            }
+        }
+        let mut bytes = vec![7; 256 * 1024 + 13];
+        let expected = sha256(&bytes);
+        assert_eq!(
+            hash_reader(BoundedReader(bytes.as_slice()), bytes.len() as u64).unwrap(),
+            Some(expected.clone())
+        );
+        assert_eq!(hash_reader(std::io::repeat(7), 13).unwrap(), None);
+        assert_eq!(hash_reader(&bytes[..12], 13).unwrap(), None);
+        *bytes.last_mut().unwrap() = 8;
+        assert_ne!(
+            hash_reader(BoundedReader(bytes.as_slice()), bytes.len() as u64).unwrap(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn a_replaced_named_file_cannot_match_an_old_opened_journal_generation() {
+        let vault = tempfile::tempdir().unwrap();
+        let path = vault.path().join("recorded.wav");
+        std::fs::write(&path, b"same bytes").unwrap();
+        let initial = FileSnapshot::new(std::fs::File::open(&path).unwrap()).unwrap();
+        std::fs::rename(&path, vault.path().join("previous.wav")).unwrap();
+        std::fs::write(&path, b"same bytes").unwrap();
+        assert!(!matches_snapshot(&path, &sha256(b"same bytes"), initial).unwrap());
     }
 }
