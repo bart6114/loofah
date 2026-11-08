@@ -338,10 +338,10 @@ async fn append_scope_commit_fence_releases_before_delayed_native_acknowledgemen
         fixture.spool.clone(),
         host,
     );
-    let mut capture = fixture.start().await.unwrap();
-    delayed.entered.acquire().await.unwrap().forget();
     let mut next = fixture.profile.profile().await;
     next.vault_id = Some("later-choice".into());
+    let mut capture = fixture.start().await.unwrap();
+    delayed.entered.acquire().await.unwrap().forget();
     tokio::time::timeout(Duration::from_secs(2), fixture.profile.save(next))
         .await
         .expect("profile UI must not wait for native acknowledgement")
@@ -353,4 +353,84 @@ async fn append_scope_commit_fence_releases_before_delayed_native_acknowledgemen
     .await;
     assert_eq!(capture.identity.scope, fixture.request.scope);
     assert_eq!(capture.identity.capture_id, fixture.request.capture_id);
+}
+
+#[tokio::test]
+async fn copied_append_admission_requires_private_authority_and_exact_source_format() {
+    let _capture = crate::device_capture::CAPTURE_TEST_LOCK.lock().await;
+    let fixture = Fixture::new(true).await;
+    let prepared = hypr_loofah_client::CaptureAppendPreparation::prepare(
+        fixture._temp.path().join("isolated-preparation"),
+        fixture.request.clone(),
+    )
+    .await
+    .unwrap();
+    let admission = fixture
+        .client
+        .prepare_capture_append(&prepared, fixture.lifetime.clone())
+        .await
+        .unwrap();
+    let request = crate::device_capture::remote::DeviceCaptureStartRequest {
+        request_id: fixture.request.request_id.clone(),
+        scope: fixture.request.scope.clone(),
+        target: CaptureTarget::AppendSession {
+            session_id: "note".into(),
+            admission: admission.clone(),
+        },
+        format: admission.baseline.format.clone(),
+        processing: None,
+    };
+    assert!(
+        fixture
+            .host
+            .start_scoped(
+                fixture.profile.clone(),
+                Some(fixture.client.clone()),
+                request.clone()
+            )
+            .await
+            .is_err()
+    );
+    let authority = fixture
+        .client
+        .bind_capture_append(
+            fixture.profile.clone(),
+            fixture.request.clone(),
+            fixture.lifetime.clone(),
+        )
+        .await
+        .unwrap();
+    let host = DeviceCaptureHost::with_driver(
+        fixture.spool.clone(),
+        Arc::new(Observer::default()),
+        fixture.driver.clone(),
+    );
+    let mut input = CaptureStartIntent {
+        profile_id: fixture.profile.profile().await.id,
+        identity: CaptureIdentity {
+            scope: request.scope,
+            capture_id: fixture.request.capture_id.clone(),
+            request_id: request.request_id,
+            target: request.target,
+        },
+        format: CaptureFormat::stereo(),
+        processing: None,
+    };
+    assert!(
+        host.start_authorized(input.clone(), Some(authority.clone()))
+            .is_err()
+    );
+    input.format = admission.baseline.format;
+    assert!(host.start(input.clone()).is_err());
+    input.identity.request_id = uuid::Uuid::new_v4().to_string();
+    assert!(host.start_authorized(input, Some(authority)).is_err());
+    assert_eq!(fixture.driver.starts.load(Ordering::Acquire), 0);
+    assert!(
+        fixture
+            .spool
+            .inventory(fixture.request.scope.clone())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
