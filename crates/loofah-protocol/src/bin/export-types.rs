@@ -11,6 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<CaptureLiveRequest>()
         .register::<CaptureLiveSnapshot>()
         .register::<CaptureLiveCaptionPage>()
+        .register::<CaptureProcessingRequest>()
+        .register::<CaptureProcessingSnapshot>()
         .register::<CaptureScope>()
         .register::<CaptureTarget>()
         .register::<CaptureIdentity>()
