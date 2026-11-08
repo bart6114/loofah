@@ -419,8 +419,19 @@ impl RemoteCaptureCoordinator {
         tokio::spawn(async move {
             let _permit = permit;
             let id = profile.profile().await.id;
-            let writer = inner.host(&id).await?.spool.resume(identity).await?;
+            let writer = inner.host(&id).await?.spool.resume(identity.clone()).await?;
             let snapshot = writer.cancel_processing().await?;
+            if profile_scope(&profile).await.is_ok_and(|(_, scope)| scope == identity.scope) {
+                let original = inner.state.lock().unwrap().uploads.get(&(id.clone(), identity.capture_id.clone()))
+                    .filter(|entry| entry.identity == identity)
+                    .and_then(|entry| entry.client.upgrade())
+                    .filter(|client| !client.is_closed());
+                if let Some(client) = original {
+                    if let Err(cause) = inner.processing.start(id, writer, snapshot.clone(), client, profile) {
+                        tracing::warn!(code=?cause.code, "device_capture_processing_cancellation_remains_queued");
+                    }
+                }
+            }
             inner
                 .upload_updates
                 .send_modify(|revision| *revision = revision.wrapping_add(1));

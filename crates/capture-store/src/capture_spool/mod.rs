@@ -103,6 +103,8 @@ impl CaptureSpool {
         format: CaptureFormat,
         processing: Option<CaptureProcessingOptions>,
     ) -> Result<CaptureWriter> {
+        validate_identity(&identity)?;
+        validate_format(&format)?;
         let declaration = processing.map(|options| CaptureProcessingDeclaration {
             request: options.request(hypr_loofah_protocol::capture_fingerprint(
                 &identity, &format,

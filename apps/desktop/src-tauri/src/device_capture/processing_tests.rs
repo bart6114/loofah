@@ -291,6 +291,20 @@ async fn processing_supervisor_never_infers_historical_work_and_optional_failure
     );
     writer.append_chunk(1, 1, vec![0; 8]).await.unwrap();
     assert_eq!(writer.seal().await.unwrap().frames, 2);
+    writer.cancel_processing().await.unwrap();
+    fixture.start(&supervisor, &writer).await;
+    wait_finished(&supervisor, &profile, writer.identity()).await;
+    assert_eq!(fixture.api.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.api.cancels.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        supervisor
+            .current(&profile, writer.identity())
+            .unwrap()
+            .status
+            .unwrap()
+            .state,
+        hypr_loofah_protocol::CaptureProcessingState::Cancelled
+    );
     supervisor.wait_shutdown().await;
 }
 
