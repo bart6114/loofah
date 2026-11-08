@@ -663,8 +663,18 @@ The scoped device shell now has source seams for bounded latest-value Native
 telemetry and identity-bearing floating Stop events on macOS and Windows.
 Telemetry callbacks use a nonblocking bounded cache; UI reads select the complete
 original capture identity. Floating views copy their rendered capture key into
-the Stop event; legacy Local listeners ignore keyed events. The Remote event and
-overlay host is still being connected, and Recording settings remain gated.
+the Stop event; legacy Local listeners ignore keyed events. The Remote device
+host now owns reminders, auto-stop, sleep-stop and the floating overlay without
+mounting the Local listener or creating a Local note. Button, shortcut and tray
+starts share the same original destination, frozen options and pending request
+IDs; unknown replies require explicit retry of that same request. Recording
+settings are available only with the scoped device controls mounted. Device
+preference initialization excludes local inference and model/language defaults.
+The active-only telemetry loop stops on retirement; delayed Stop events retain
+the rendered capture identity. Auto-stop rechecks microphone usage and the
+original capture, and cancels after a network interruption. Focused frontend
+verification passed 105 tests. Actual generated bindings, Native builds and both
+Windows architectures still need integration qualification for this checkpoint.
 
 An opt-in Native acceptance case now covers configured Local Ollama through the
 production `ProcessingState` / `LocalModels` / `DeviceSecrets` constructor and

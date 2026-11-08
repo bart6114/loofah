@@ -11,6 +11,7 @@ import {
 
 import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { SettingsHydrationBoundary } from "~/settings/hydration-boundary";
+import { useDeviceStartActions } from "~/shared/application/device-recording-controls";
 import { VaultProcessingSettings } from "~/shared/application/vault-processing-settings";
 import {
   deferredView,
@@ -43,6 +44,7 @@ export function TabContentSettings({
   tab: Extract<Tab, { type: "settings" }>;
 }) {
   const access = useLegacyDesktopAccess();
+  const deviceRecording = useDeviceStartActions();
   const requested = tab.state.tab as string | undefined;
   const active = requested === "data" ? "storage" : (requested ?? "app");
   if (active === "permissions")
@@ -59,7 +61,11 @@ export function TabContentSettings({
           active === "transcription"
         ? "legacy_desktop_transcript_controls"
         : "legacy_desktop_session_controls";
-  if (active !== "app" && !access.isAvailable(feature))
+  if (
+    active !== "app" &&
+    !(active === "notifications" && deviceRecording) &&
+    !access.isAvailable(feature)
+  )
     return (
       <StandardContentWrapper>
         <div

@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { events as windowsEvents } from "@hypr/plugin-windows";
 
 import { createAsyncListenerScope } from "../async-listener-scope";
-import { useNewNote } from "../useNewNote";
+import { useNewNote, useNewNoteAndListen } from "../useNewNote";
 
 import { useAboutDialog } from "~/store/zustand/about-dialog";
 import { isTabInputSupported, useTabs } from "~/store/zustand/tabs";
@@ -14,6 +14,7 @@ export const useNavigationEvents = () => {
   const navigate = useNavigate();
   const openNew = useTabs((state) => state.openNew);
   const openNewNote = useNewNote({ behavior: "new" });
+  const recordNew = useNewNoteAndListen();
 
   useEffect(() => {
     const scope = createAsyncListenerScope();
@@ -33,7 +34,8 @@ export const useNavigationEvents = () => {
         windowsEvents.navigate(webview).listen(
           scope.guard(({ payload }) => {
             if (payload.path === "/app/new") {
-              openNewNote();
+              if (payload.search?.record === "true") recordNew();
+              else openNewNote();
             } else if (payload.path === "/app/about") {
               useAboutDialog.getState().setOpen(true);
             } else if (payload.path === "/app/settings") {
@@ -57,7 +59,8 @@ export const useNavigationEvents = () => {
         windowsEvents.openTab(webview).listen(
           scope.guard(({ payload }) => {
             if (payload.tab.type === "sessions" && payload.tab.id === "new") {
-              openNewNote();
+              if (payload.tab.state?.autoStart) recordNew();
+              else openNewNote();
             } else if (!isTabInputSupported(payload.tab)) {
               return;
             } else {
@@ -74,5 +77,5 @@ export const useNavigationEvents = () => {
       delete (window as any).__HYPR_NAVIGATE__;
       scope.dispose();
     };
-  }, [navigate, openNew, openNewNote]);
+  }, [navigate, openNew, openNewNote, recordNew]);
 };

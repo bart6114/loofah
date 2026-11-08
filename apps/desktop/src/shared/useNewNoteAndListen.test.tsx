@@ -3,7 +3,14 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  error: vi.fn(),
+  device: null as { startPending: ReturnType<typeof vi.fn> } | null,
+}));
+vi.mock("./application/device-recording-controls", () => ({
+  useDeviceStartActions: () => mocks.device,
+}));
 vi.mock("~/session/queries", () => ({ createSession: mocks.create }));
 vi.mock("@hypr/ui/components/ui/toast", () => ({
   sonnerToast: { error: mocks.error },
@@ -51,6 +58,7 @@ function fixture(allowed = true) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mocks.device = null;
   onlineManager.setOnline(true);
 });
 
@@ -110,4 +118,19 @@ it("does not replace an unrelated tab selected during recording-note creation", 
   act(() => f.store.getState().openNew({ type: "sessions", id: "unrelated" }));
   await act(async () => pending.resolve("late"));
   expect(f.store.getState().currentTab).toMatchObject({ id: "unrelated" });
+});
+
+it("routes Remote New+Record through the original device host without Local creation or an auto-start tab", async () => {
+  const startPending = vi.fn(async () => ({}));
+  mocks.device = { startPending };
+  onlineManager.setOnline(false);
+  const f = fixture(false);
+  const { result } = renderHook(() => useNewNoteAndListen(), {
+    wrapper: f.Host,
+  });
+  await act(async () => result.current());
+  expect(startPending).toHaveBeenCalledOnce();
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(mocks.error).not.toHaveBeenCalled();
+  expect(f.store.getState().currentTab?.type).toBe("empty");
 });

@@ -3,7 +3,6 @@ import { useRef } from "react";
 import {
   commands as windowsCommands,
   events as windowsEvents,
-  type FloatingBarSettingsChange,
 } from "@hypr/plugin-windows";
 
 import {
@@ -12,6 +11,7 @@ import {
   type MeetingFloatData,
   subscribeMeetingFloatData,
 } from "./hooks";
+import { getSettingsValuesFromNativeChange } from "./settings-change";
 
 import {
   getStoredSettingValues,
@@ -946,76 +946,6 @@ function normalizeLiveCaptionPosition(value: unknown): LiveCaptionPosition {
   }
 
   return DEFAULT_FLOATING_OVERLAY_SETTINGS.liveCaptionPosition;
-}
-
-function getSettingsValuesFromNativeChange(change: FloatingBarSettingsChange) {
-  const values: Partial<FloatingOverlaySettingsStorage> = {};
-
-  if (
-    change.floatingBarOpacity !== null &&
-    change.floatingBarOpacity !== undefined
-  ) {
-    values.floating_bar_opacity = normalizeOpacity(
-      change.floatingBarOpacity,
-      DEFAULT_FLOATING_OVERLAY_SETTINGS.floatingBarOpacity,
-      FLOATING_BAR_MIN_OPACITY,
-      FLOATING_BAR_MAX_OPACITY,
-    );
-  }
-
-  if (
-    change.liveCaptionOpacity !== null &&
-    change.liveCaptionOpacity !== undefined
-  ) {
-    values.live_caption_opacity = normalizeOpacity(
-      change.liveCaptionOpacity,
-      DEFAULT_FLOATING_OVERLAY_SETTINGS.liveCaptionOpacity,
-      LIVE_CAPTION_MIN_OPACITY,
-      LIVE_CAPTION_MAX_OPACITY,
-    );
-  }
-
-  if (
-    change.liveCaptionWidth !== null &&
-    change.liveCaptionWidth !== undefined
-  ) {
-    values.live_caption_width = normalizeNumber(
-      change.liveCaptionWidth,
-      DEFAULT_FLOATING_OVERLAY_SETTINGS.liveCaptionWidth,
-      LIVE_CAPTION_MIN_WIDTH,
-      LIVE_CAPTION_MAX_WIDTH,
-    );
-  }
-
-  if (
-    change.liveCaptionLineCount !== null &&
-    change.liveCaptionLineCount !== undefined
-  ) {
-    values.live_caption_line_count = normalizeInteger(
-      change.liveCaptionLineCount,
-      DEFAULT_FLOATING_OVERLAY_SETTINGS.liveCaptionLineCount,
-      LIVE_CAPTION_MIN_LINE_COUNT,
-      LIVE_CAPTION_MAX_LINE_COUNT,
-    );
-  }
-
-  if (
-    change.liveCaptionPosition !== null &&
-    change.liveCaptionPosition !== undefined
-  ) {
-    values.live_caption_position = normalizeLiveCaptionPosition(
-      change.liveCaptionPosition,
-    );
-  }
-
-  if (
-    change.liveCaptionMinimized !== null &&
-    change.liveCaptionMinimized !== undefined
-  ) {
-    values.live_caption_minimized = change.liveCaptionMinimized === true;
-  }
-
-  return values;
 }
 
 export async function openFloatingMeetingPanel({

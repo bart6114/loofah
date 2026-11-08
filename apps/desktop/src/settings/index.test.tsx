@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   available: vi.fn(),
   hydrate: vi.fn(),
   preload: vi.fn(),
+  deviceRecording: null as object | null,
 }));
 vi.mock("~/main/use-legacy-activity", () => ({
   useLegacyDesktopAccess: () => ({
@@ -14,13 +15,16 @@ vi.mock("~/main/use-legacy-activity", () => ({
     isAvailable: mocks.available,
   }),
 }));
+vi.mock("~/shared/application/device-recording-controls", () => ({
+  useDeviceStartActions: () => mocks.deviceRecording,
+}));
 vi.mock("./general", () => ({
   SettingsApp: () => <div>Device appearance</div>,
   SettingsPermissions: () => (
     <div>Native microphone and system audio permissions</div>
   ),
   SettingsNotifications: () => (
-    <div>Legacy recording and reminder controls</div>
+    <div>Device recording and reminder controls</div>
   ),
   SettingsStorage: () => <div>Local vault storage</div>,
 }));
@@ -40,6 +44,7 @@ vi.mock("~/shared/deferred-view", () => ({
   deferredView: () => ({
     View: () => <div>Legacy processor</div>,
     preload: vi.fn(),
+    deviceRecording: null as object | null,
   }),
   DeferredView: ({ children }: { children: ReactNode }) => children,
   usePreloadViews: mocks.preload,
@@ -54,6 +59,7 @@ function tab(active: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.available.mockReturnValue(false);
+  mocks.deviceRecording = null;
 });
 afterEach(cleanup);
 describe("device settings in a Remote workspace", () => {
@@ -73,7 +79,7 @@ describe("device settings in a Remote workspace", () => {
       expect(screen.getByRole("status")).toBeTruthy();
       expect(screen.getByText("Server processing settings")).toBeTruthy();
       expect(
-        screen.queryByText("Legacy recording and reminder controls"),
+        screen.queryByText("Device recording and reminder controls"),
       ).toBeNull();
       expect(screen.queryByText("Local vault storage")).toBeNull();
       expect(mocks.hydrate).not.toHaveBeenCalled();
@@ -83,8 +89,19 @@ describe("device settings in a Remote workspace", () => {
     mocks.available.mockReturnValue(true);
     render(<TabContentSettings tab={tab("notifications")} />);
     expect(
-      screen.getByText("Legacy recording and reminder controls"),
+      screen.getByText("Device recording and reminder controls"),
     ).toBeTruthy();
     expect(mocks.hydrate).toHaveBeenCalledOnce();
   });
+});
+
+it("opens device Recording settings only when the scoped device controls are mounted", () => {
+  mocks.deviceRecording = {};
+  render(<TabContentSettings tab={tab("notifications")} />);
+  expect(
+    screen.getByText("Device recording and reminder controls"),
+  ).toBeTruthy();
+  expect(mocks.hydrate).toHaveBeenCalledOnce();
+  expect(mocks.preload).toHaveBeenCalledWith([]);
+  expect(screen.queryByText("Server processing settings")).toBeNull();
 });

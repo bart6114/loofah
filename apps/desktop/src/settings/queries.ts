@@ -43,6 +43,18 @@ export function getStoredSettingValues(): Promise<StoredSettingValues> {
   return fetchStoredSettingValues();
 }
 
+export async function initializeDeviceSettings(): Promise<void> {
+  const { values } = await getStoredSettingValues();
+  applySettingSideEffects({
+    autostart: values.autostart,
+    respect_dnd: values.respect_dnd,
+    ignored_platforms: values.ignored_platforms,
+    included_platforms: values.included_platforms,
+    show_app_in_dock: values.show_app_in_dock,
+    show_tray_icon: values.show_tray_icon,
+  });
+}
+
 export async function initializeApplicationSettings(): Promise<void> {
   const stored = await getStoredSettingValues();
   const languageResult = await detectCommands

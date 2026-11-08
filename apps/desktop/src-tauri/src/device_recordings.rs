@@ -73,8 +73,12 @@ impl DeviceCaptureObserver for DeviceEvents {
     fn emit(&self, event: ScopedDeviceCaptureEvent) {
         // Audio callbacks never wait for UI readers and never enqueue amplitude history.
         if let Ok(mut values) = self.telemetry.try_lock() {
-            if matches!(event.event, DeviceCaptureEvent::Preparing)
-                && !values.iter().any(|value| value.identity == event.identity)
+            if matches!(
+                event.event,
+                DeviceCaptureEvent::Preparing
+                    | DeviceCaptureEvent::Capturing { .. }
+                    | DeviceCaptureEvent::Amplitude { .. }
+            ) && !values.iter().any(|value| value.identity == event.identity)
             {
                 if values.len() == 8 {
                     values.remove(0);

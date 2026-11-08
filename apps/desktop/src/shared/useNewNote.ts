@@ -7,6 +7,7 @@ import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { createSession } from "~/session/queries";
+import { useDeviceStartActions } from "~/shared/application/device-recording-controls";
 import {
   captureNoteCreation,
   noteCreationAvailable,
@@ -178,6 +179,7 @@ export function useNewNoteAndListen({
 }: {
   behavior?: "new" | "current";
 } = {}) {
+  const device = useDeviceStartActions();
   const { openNew, openCurrent } = useTabs(
     useShallow((state) => ({
       openNew: state.openNew,
@@ -191,6 +193,12 @@ export function useNewNoteAndListen({
     liveSessionId = legacy.liveSessionId;
 
   const handler = useCallback(() => {
+    if (device) {
+      void device
+        .startPending()
+        .catch((error) => sonnerToast.error(error.message));
+      return;
+    }
     if (!isAvailable()) {
       sonnerToast.error("Recording is not available for this connection.");
       return;
@@ -221,6 +229,7 @@ export function useNewNoteAndListen({
         console.error("[session] failed to create listening note", error);
       });
   }, [
+    device,
     status,
     liveSessionId,
     openNew,

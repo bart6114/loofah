@@ -28,6 +28,9 @@ const native = vi.hoisted(() => ({
   destinations: [] as unknown[],
   authorizations: [] as (() => boolean)[],
 }));
+vi.mock("./device-recording-shell", () => ({
+  DeviceRecordingShell: () => null,
+}));
 vi.mock("./device-recordings", () => ({
   createDeviceRecordingMonitor: () => {
     const monitor = {
