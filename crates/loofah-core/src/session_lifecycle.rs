@@ -80,6 +80,13 @@ impl VaultContext {
 
 impl VaultContext {
     pub(crate) async fn ensure_session_jobs_idle(&self, id: &str) -> Result<(), ApplicationError> {
+        if let Some(service) = self.local_capture_intents.get() {
+            service
+                .upgrade()
+                .ok_or_else(|| error(ErrorCode::Unavailable, "Local capture owner unavailable"))?
+                .ensure_idle(id)
+                .await?;
+        }
         if let Some(service) = self.processing.get() {
             service.journal.ensure_session_idle(id.to_owned()).await?;
         } else {

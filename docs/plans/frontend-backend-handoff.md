@@ -408,3 +408,21 @@ requires review. These SDK changes await the shared integration validation lane.
 Native remote recording append uses the SDK's durable preparation inventory and original account/profile dispatch capability. Existing-recording UI calls the explicit append command only for the original connected editable scope with `capture_append`; pending new recordings remain available offline. Lost preparation replies reuse every saved UUID and processing choice, including after process restart. An unresolved same-session declaration blocks a fresh baseline. Native takes the authoritative Mixed mono or mic/system stereo format from the saved admission, persists that complete target before producer dispatch, and deterministically downmixes native stereo into Mixed mono without changing 16 kHz frame counts. Profile/token fences cover actor RPC dispatch and release before its acknowledgement. Raw-only append retains the existing transcript as an incomplete prefix; explicit processing includes the suffix through the shared coordinator. Server capability advertisement and Native/Windows acceptance remain gated on integrated validation.
 
 Manual transcription submissions now have their own bounded device receipt store and typed Native prepare/list/get/observe/forget commands. Preparation persists one immutable request UUID, account/vault scope and complete Absent-only transcription input before network submission; an unresolved, active or uncertain request for the same session blocks a fresh UUID. Read/list never dispatch work. Explicit recovery reconfirms the original saved receipt, keeps monotonic observed job identity/state, and never grants transcript replacement authority. Source tests cover process death, failed directory sync, scope changes, changed model/hash/options, corrupt/future records and cancelled I/O waiters; integrated Native/SDK validation remains required.
+Local native capture now declares a Core-owned durable intent before producer
+admission. The original session, append state, selected STT options, summary
+revision and separate child owners (zero UUID transcription, `desktop` summary)
+are immutable. Native physical drain and canonical persistence are independent
+trusted callbacks; neither renderer acknowledgement nor terminal UI state grants
+post-processing authority. Source fingerprints are acquired only after both
+callbacks succeed. Restarted incomplete producers require review.
+
+Automatic Local repair uses the existing owned native transcription engine with a
+checked replacement baseline, private original audio, a durable dispatch marker
+and retained bounded result. Unknown dispatch without retained output is never
+replayed. Explicit `LocalCaptureIntents::recover` reconciles only the original
+intent/output; a changed canonical baseline remains a conflict. Automatic summary
+requires five canonical words and 160 whitespace-normalized Unicode characters.
+Its durable child keeps the original recording/transcript source binding and
+summary target revision through generation and apply; fresh captures use
+`only_if_empty`. Manual note-only summaries retain their existing API. This Core
+slice awaits Native adapter integration and shared-lane validation.

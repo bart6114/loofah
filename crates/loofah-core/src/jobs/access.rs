@@ -153,6 +153,49 @@ impl VaultContext {
         Ok(&service.journal)
     }
 
+    pub(crate) async fn submit_local_capture_summary(
+        self: &std::sync::Arc<Self>,
+        request_id: String,
+        input: SummaryJobRequest,
+        origin: crate::local_capture_intents::LocalCaptureChildOrigin,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        let context = self.clone();
+        tokio::spawn(async move {
+            let _admission = context.admit_session_work(&input.session_id).await?;
+            drop(
+                context
+                    .guard_local_capture_summary(
+                        crate::local_capture_intents::SUMMARY_OWNER,
+                        &request_id,
+                        Some(&origin),
+                    )
+                    .await?,
+            );
+            let target = context
+                .read_document(&input.session_id, &input.target)
+                .await?;
+            if target.revision != input.expected_revision
+                || conditional_target_filled(&input, &target)
+            {
+                return Err(rejected(
+                    ErrorCode::Conflict,
+                    "Automatic summary target changed during capture",
+                ));
+            }
+            context
+                .processing_jobs()?
+                .submit_with_origins(
+                    crate::local_capture_intents::SUMMARY_OWNER.into(),
+                    request_id,
+                    input,
+                    None,
+                    Some(origin),
+                )
+                .await
+        })
+        .await
+        .map_err(|_| storage())?
+    }
     pub async fn submit_summary_job(
         self: &std::sync::Arc<Self>,
         namespace: String,

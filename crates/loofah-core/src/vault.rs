@@ -21,6 +21,8 @@ pub struct VaultContext {
     capture_ingestion: std::sync::OnceLock<capture_ingest::CaptureIngestion>,
     pub(crate) recording_publications: capture_ingest::publication::PublicationGates,
     pub(crate) lease: Option<Arc<std::fs::File>>,
+    pub(crate) local_capture_intents:
+        std::sync::OnceLock<std::sync::Weak<crate::local_capture_intents::LocalCaptureIntents>>,
     pub(crate) operations: Option<crate::operations::SessionOperations>,
     pub(crate) local_lifecycle_host:
         std::sync::OnceLock<Arc<dyn crate::session_lifecycle::LocalSessionLifecycleHost>>,
@@ -55,6 +57,7 @@ impl VaultContext {
             capture_ingestion: std::sync::OnceLock::new(),
             recording_publications: Default::default(),
             operations: None,
+            local_capture_intents: std::sync::OnceLock::new(),
             local_lifecycle_host: std::sync::OnceLock::new(),
             lifecycle_admission: Default::default(),
             media_readers: Arc::new(tokio::sync::Semaphore::new(4)),

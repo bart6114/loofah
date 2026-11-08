@@ -75,6 +75,8 @@ struct Record {
     body_applied: Option<title_stage::BodyApplied>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     capture_processing: Option<crate::capture_processing::CaptureChildOrigin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_capture: Option<crate::local_capture_intents::LocalCaptureChildOrigin>,
 }
 
 #[derive(Clone, Copy)]
@@ -87,6 +89,14 @@ pub enum JobCompletion {
 }
 
 impl JobJournal {
+    pub(crate) async fn local_capture_origin(
+        &self,
+        id: String,
+    ) -> Result<Option<crate::local_capture_intents::LocalCaptureChildOrigin>, ApplicationError>
+    {
+        self.run(move |state, _| Ok(state.record(&id)?.local_capture.clone()))
+            .await
+    }
     pub(crate) async fn capture_request_id(
         &self,
         id: String,
@@ -207,6 +217,23 @@ impl JobJournal {
         request: SummaryJobRequest,
         origin: Option<crate::capture_processing::CaptureChildOrigin>,
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        self.submit_with_origins(namespace, request_id, request, origin, None)
+            .await
+    }
+    pub(crate) async fn submit_with_origins(
+        &self,
+        namespace: String,
+        request_id: String,
+        request: SummaryJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+        local: Option<crate::local_capture_intents::LocalCaptureChildOrigin>,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        if let Some(local) = &local {
+            local.validate_request(&request)?;
+            if origin.is_some() || namespace != crate::local_capture_intents::SUMMARY_OWNER {
+                return Err(storage());
+            }
+        }
         validate_namespace(&namespace)?;
         validate_request(&request)?;
         let request_id = parse_uuid(&request_id)?;
@@ -217,6 +244,9 @@ impl JobJournal {
             let key = key(&namespace, &request_id);
             if let Some(record) = state.records.get(&key) {
                 return if record.request == request
+                    && local
+                        .as_ref()
+                        .is_none_or(|local| record.local_capture.as_ref() == Some(local))
                     && origin
                         .as_ref()
                         .is_none_or(|origin| record.capture_processing.as_ref() == Some(origin))
@@ -241,7 +271,9 @@ impl JobJournal {
             }
             let timestamp = now();
             let record = Record {
-                schema_version: if request.only_if_empty {
+                schema_version: if local.is_some() {
+                    4
+                } else if request.only_if_empty {
                     3
                 } else if request.title_policy == TitlePolicy::Preserve {
                     1
@@ -264,6 +296,7 @@ impl JobJournal {
                 request,
                 body_applied: None,
                 capture_processing: origin,
+                local_capture: local,
             };
             state.persist(&record)?;
             state.ids.insert(record.snapshot.id.clone(), key.clone());
@@ -578,7 +611,17 @@ fn validate_record(
     if let Some(origin) = &record.capture_processing {
         origin.validate_request(&record.request)?;
     }
-    let expected_version = if record.request.only_if_empty {
+    if let Some(local) = &record.local_capture {
+        local.validate_request(&record.request)?;
+        if record.capture_processing.is_some()
+            || record.namespace != crate::local_capture_intents::SUMMARY_OWNER
+        {
+            return Err(storage());
+        }
+    }
+    let expected_version = if record.local_capture.is_some() {
+        4
+    } else if record.request.only_if_empty {
         3
     } else if record.request.title_policy == TitlePolicy::Preserve {
         1

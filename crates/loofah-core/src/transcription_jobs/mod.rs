@@ -14,7 +14,9 @@ use tokio_util::sync::CancellationToken;
 use crate::{VaultContext, VaultRuntime, vault::error};
 
 mod append;
+mod local;
 pub(crate) use append::CaptureSuffixInput;
+pub(crate) use local::LocalInferenceInput;
 pub(crate) mod ledger;
 mod source;
 #[cfg(test)]

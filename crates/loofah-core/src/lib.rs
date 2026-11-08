@@ -5,6 +5,7 @@ pub mod capture_live;
 pub mod capture_processing;
 pub mod events;
 pub mod jobs;
+pub mod local_capture_intents;
 pub mod local_cli;
 pub mod local_session_work;
 pub mod processing_settings;
