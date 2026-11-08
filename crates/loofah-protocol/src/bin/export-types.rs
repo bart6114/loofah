@@ -41,6 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<ListProcessingJobsInput>()
         .register::<ProcessingJobPage>()
         .register::<ProcessingJobResult>()
+        .register::<LocalMediaSourceSnapshot>()
+        .register::<LocalMediaStatus>()
         .register::<TranscriptionJobRequest>()
         .register::<TranscriptionPolicy>()
         .register::<TranscriptionJobSnapshot>()

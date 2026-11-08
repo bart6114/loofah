@@ -199,7 +199,10 @@ impl LocalCliOperation {
     pub fn has_blob(&self) -> bool {
         matches!(
             self,
-            Self::Attach { .. } | Self::Import { .. } | Self::ImportIntoChecked { .. } | Self::ImportSubtitles { .. }
+            Self::Attach { .. }
+                | Self::Import { .. }
+                | Self::ImportIntoChecked { .. }
+                | Self::ImportSubtitles { .. }
         )
     }
 

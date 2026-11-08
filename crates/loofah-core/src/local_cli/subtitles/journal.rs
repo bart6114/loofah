@@ -108,7 +108,7 @@ pub(super) fn prepare(
     let subtitle = TimedSubtitleFile::new(&source_path).map_err(|cause| {
         error(
             ErrorCode::Validation,
-            format!("Cannot parse subtitles: {cause}"),
+            &format!("Cannot parse subtitles: {cause}"),
         )
     })?;
     if digest(&ledger::read(&source_path, SOURCE_LIMIT)?) != intent.source_sha256 {
