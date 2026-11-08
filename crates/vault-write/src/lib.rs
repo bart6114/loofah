@@ -111,7 +111,7 @@ pub struct SessionStore {
     attachment_publications: Arc<tokio::sync::Mutex<()>>,
     deleted_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     startup_pending: Arc<std::sync::atomic::AtomicBool>,
-    append_pending: Arc<std::sync::Mutex<HashMap<String, uuid::Uuid>>>,
+    append_pending: Arc<std::sync::Mutex<HashMap<String, recording_append::AppendIdentity>>>,
     storage_stats: Arc<tokio::sync::Mutex<Option<(std::time::Instant, VaultStorageStats)>>>,
 }
 

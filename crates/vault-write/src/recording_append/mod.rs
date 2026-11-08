@@ -108,14 +108,11 @@ impl SessionStore {
             .lock()
             .map_err(|_| io::invalid("Append recovery inventory is unavailable"))?;
         if pending {
-            if entries
-                .get(id)
-                .is_some_and(|owner| *owner != identity.admission_id)
-            {
+            if entries.get(id).is_some_and(|owner| owner != identity) {
                 return Err(io::invalid("Another append requires recovery"));
             }
-            entries.insert(id.into(), identity.admission_id);
-        } else if entries.get(id) == Some(&identity.admission_id) {
+            entries.insert(id.into(), identity.clone());
+        } else if entries.get(id) == Some(identity) {
             entries.remove(id);
         }
         Ok(())
@@ -317,13 +314,13 @@ impl RecordingAppendPlan {
     fn stage(&self) -> PathBuf {
         self.directory.join(format!(
             ".recording-append-{}.wav.tmp",
-            self.result.source.identity.admission_id
+            self.result.source.identity.artifact_key()
         ))
     }
     fn retired(&self) -> PathBuf {
         self.directory.join(format!(
             ".recording-append-{}.original",
-            self.result.source.identity.admission_id
+            self.result.source.identity.artifact_key()
         ))
     }
     fn original(&self) -> PathBuf {

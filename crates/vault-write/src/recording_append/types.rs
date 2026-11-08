@@ -16,6 +16,12 @@ pub struct AppendIdentity {
 }
 
 impl AppendIdentity {
+    pub(super) fn artifact_key(&self) -> String {
+        crate::operation_io::operation_key(
+            &serde_json::to_string(self).expect("Append identity serialization"),
+            self.admission_id,
+        )
+    }
     pub(super) fn validate(&self) -> Result<(), StoreError> {
         if [&self.server, &self.vault_id, &self.member_id]
             .into_iter()

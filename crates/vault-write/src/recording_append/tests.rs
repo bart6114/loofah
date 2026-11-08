@@ -597,3 +597,40 @@ async fn invalid_merged_transcript_is_rejected_before_any_canonical_intent() {
             .exists()
     );
 }
+
+#[tokio::test]
+async fn equal_admission_ids_cannot_clear_or_share_another_scope_transaction() {
+    let fixture = Fixture::new("audio.mp3", None).await;
+    let original = fixture.identity.clone();
+    fixture
+        .store
+        .set_append_pending(&original, "note", true)
+        .unwrap();
+    for changed in 0..5 {
+        let mut other = original.clone();
+        match changed {
+            0 => other.server.push_str("/other"),
+            1 => other.vault_id.push_str("other"),
+            2 => other.member_id.push_str("other"),
+            3 => other.capture_id = uuid::Uuid::new_v4(),
+            _ => other.request_id = uuid::Uuid::new_v4(),
+        }
+        assert_ne!(original.artifact_key(), other.artifact_key());
+        assert!(
+            fixture
+                .store
+                .set_append_pending(&other, "note", true)
+                .is_err()
+        );
+        fixture
+            .store
+            .set_append_pending(&other, "note", false)
+            .unwrap();
+        assert!(fixture.store.ensure_append_ready("note").is_err());
+    }
+    fixture
+        .store
+        .set_append_pending(&original, "note", false)
+        .unwrap();
+    assert!(fixture.store.ensure_append_ready("note").is_ok());
+}
