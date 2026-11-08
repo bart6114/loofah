@@ -111,6 +111,10 @@ impl LocalCli {
             phase: "preparing media".into(),
             processed: 0,
             total: None,
+            added: 0,
+            updated: 0,
+            deleted: 0,
+            elapsed_ms: 0,
         });
         let result = match operation {
             LocalCliOperation::Import {

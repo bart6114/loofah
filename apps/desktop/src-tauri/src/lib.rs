@@ -18,6 +18,7 @@ mod job_submissions;
 mod legacy_db;
 mod legacy_llm;
 mod local_capture;
+mod local_media;
 mod local_owner;
 mod local_transcription;
 mod processing;
@@ -233,6 +234,7 @@ pub async fn main() {
         .manage(std::sync::Arc::new(
             local_capture::LocalCaptureState::default(),
         ))
+        .manage(local_media::LocalMediaState::default())
         .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
         .manage(transcription_submissions::TranscriptionSubmissionState::default())
@@ -688,6 +690,16 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             draft_cache::draft_cache_remove::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
             application::application_processing_available::<tauri::Wry>,
+            local_media::commands::application_local_media_available::<tauri::Wry>,
+            local_media::commands::application_local_media_source::<tauri::Wry>,
+            local_media::commands::application_local_media_import_audio::<tauri::Wry>,
+            local_media::commands::application_local_media_transcribe::<tauri::Wry>,
+            local_media::commands::application_local_media_import_subtitles::<tauri::Wry>,
+            local_media::commands::application_local_media_list::<tauri::Wry>,
+            local_media::commands::application_local_media_status::<tauri::Wry>,
+            local_media::commands::application_local_media_cancel::<tauri::Wry>,
+            local_media::commands::application_local_media_recover::<tauri::Wry>,
+            local_media::commands::application_local_media_summary_status::<tauri::Wry>,
             application_recording_processing::application_recording_processing_available::<tauri::Wry>,
             application_recording_processing::application_recording_processing_list::<tauri::Wry>,
             application_recording_processing::application_recording_processing_status::<tauri::Wry>,

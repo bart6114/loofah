@@ -499,3 +499,15 @@ not yet remove the remaining legacy manual import path.
 
 Local subtitle imports now have dedicated `ImportSubtitles` / `RecoverSubtitles` operations. Core retains the original SRT/VTT source and parsed result under the original request UUID, requires exclusive lifecycle and the Native physical/persistence admission proof, and publishes through a new explicit Store transcript-only receipt mode. Note-only sessions need no audio/model; append preserves unknown existing transcript JSON fields and uses raw presence/revision plus session-created-at CAS. Completed receipts report history without reseeding canonical data. Inputs are bounded to 32 MiB / 250,000 cues and retained parsed output to 64 MiB. Existing audio-bound publication receipts cannot acquire transcript-only authority. Source-only regressions cover parsing, original-request recovery, physical guards, CAS, and crash boundaries; integration validation remains in the sole shared build lane.
 Manual Local media summaries use a separate pre-dispatch parent declaration, never fabricated capture completion. The original media request, child request UUID, automatic preference, summary target revision and title policy are durable before import/transcription. Core completion verifies the original media journal and completed Store transcript receipt; only that exact canonical source can admit a shared summary job. Subtitle children use a transcript-only raw revision/session-generation guard; audio children also bind the recording SHA. The same five-word/160-character automatic eligibility rule applies. Explicit retry returns the original child status and never resumes a historical generation; shared job schema 5 adds an explicit manual-media origin while legacy/origin-free serialized bytes remain unchanged. Native adapter wiring and shared-lane compilation/tests are pending.
+
+The Native manual-media service now owns Local imports and checked retranscription
+through the same Core CLI media journal and initialized device engine. It retains
+verified path/browser inputs, freezes the manual summary parent before dispatch,
+and tracks the actual worker independently of the invoking webview. Cancellation
+signals the original worker and remains running until it drains; explicit recovery
+publishes only retained output and never replays a model. Imported raw audio remains
+available when transcription fails. Native inventory is read-only, uses the original
+Context pointer, and is absent when no Local owner was initialized. Managed CLI
+media now receives that same Native host; standalone CLI media remains independent.
+The adapter and regression sources still require the coordinated Native build;
+legacy manual frontend callers are not yet removed in this checkpoint.

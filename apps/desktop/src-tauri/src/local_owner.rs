@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Default)]
 pub struct LocalOwnerState {
     server: Mutex<Option<OwnerServer>>,
+    media: std::sync::OnceLock<Arc<dyn hypr_loofah_core::local_cli::LocalMediaHost>>,
     stop: CancellationToken,
     started: std::sync::atomic::AtomicBool,
     #[cfg(test)]
@@ -24,6 +25,15 @@ pub struct LocalOwnerState {
 }
 
 impl LocalOwnerState {
+    pub(crate) fn configure_media(
+        &self,
+        host: Arc<dyn hypr_loofah_core::local_cli::LocalMediaHost>,
+    ) -> Result<(), String> {
+        self.media
+            .set(host)
+            .map_err(|_| "Local owner media host was already configured".into())
+    }
+
     pub fn initialized(&self) -> bool {
         self.started.load(std::sync::atomic::Ordering::Acquire)
     }
@@ -42,11 +52,11 @@ impl LocalOwnerState {
             .store
             .ensure_ready()
             .map_err(|error| error.to_string())?;
-        let dispatcher = Arc::new(
-            LocalCli::new(context)
-                .map_err(|error| error.to_string())?
-                .with_media_host(Arc::new(hypr_loofah_local_media::LocalMediaEngine::new())),
-        );
+        let mut dispatcher = LocalCli::new(context).map_err(|error| error.to_string())?;
+        if let Some(media) = self.media.get() {
+            dispatcher = dispatcher.with_media_host(media.clone());
+        }
+        let dispatcher = Arc::new(dispatcher);
         let handler = Arc::new(CoreOwner::new(dispatcher, endpoints.path().to_owned()));
         self.started
             .store(true, std::sync::atomic::Ordering::Release);

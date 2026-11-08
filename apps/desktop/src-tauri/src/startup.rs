@@ -85,6 +85,23 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
             });
             return;
         }
+        if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {
+            let media = app.state::<crate::local_media::LocalMediaState>();
+            let configured = media
+                .initialize(context.inner().clone())
+                .and_then(|_| media.media_host(&context));
+            match configured {
+                Ok(host) => {
+                    if let Err(error) = app
+                        .state::<crate::local_owner::LocalOwnerState>()
+                        .configure_media(host)
+                    {
+                        tracing::error!(%error, "Local owner media startup failed");
+                    }
+                }
+                Err(error) => tracing::error!(%error, "Local manual media startup failed"),
+            }
+        }
         state.set_phase(StartupPhase::Ready);
         if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {
             let lease = app
