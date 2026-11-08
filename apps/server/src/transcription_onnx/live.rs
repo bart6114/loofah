@@ -234,14 +234,16 @@ fn run(
             match receiver.blocking_recv() {
                 Some(Command::Audio(samples)) => {
                     let end = consumed + (samples.len() / control.channels) as u64;
-                    for physical in 0..control.channels {
+                    for (physical, session) in
+                        sessions.iter_mut().enumerate().take(control.channels)
+                    {
                         let mono = samples
                             .iter()
                             .skip(physical)
                             .step_by(control.channels)
                             .copied()
                             .collect::<Vec<_>>();
-                        for partial in sessions[physical]
+                        for partial in session
                             .append(&mono)
                             .map_err(|_| CaptureLiveFailure::EngineFailed)?
                         {
@@ -254,8 +256,8 @@ fn run(
                 _ => return Err(CaptureLiveFailure::Interrupted),
             }
         }
-        for physical in 0..control.channels {
-            for partial in sessions[physical]
+        for (physical, session) in sessions.iter_mut().enumerate().take(control.channels) {
+            for partial in session
                 .finalize()
                 .map_err(|_| CaptureLiveFailure::EngineFailed)?
             {

@@ -29,11 +29,11 @@ pub struct Diarizer {
 }
 
 fn cpu_model(path: impl AsRef<std::path::Path>) -> ort::Result<Session> {
-    Ok(Session::builder()?
+    Session::builder()?
         .with_intra_threads(1)?
         .with_inter_threads(1)?
         .with_execution_providers([ort::ep::CPU::default().build().error_on_failure()])?
-        .commit_from_file(path)?)
+        .commit_from_file(path)
 }
 
 impl Diarizer {
@@ -148,7 +148,7 @@ impl Diarizer {
                     .collect::<Vec<_>>()
             };
             let mut identities = [None; 3];
-            for speaker in 0..3 {
+            for (speaker, identity) in identities.iter_mut().enumerate() {
                 ensure!(!cancelled(), "Speaker detection cancelled");
                 let collect = |exclude_overlap: bool| {
                     let mut selected = Vec::new();
@@ -170,7 +170,7 @@ impl Diarizer {
                 if selected.len() < RATE / 5 {
                     continue;
                 }
-                identities[speaker] = Some(embeddings.len());
+                *identity = Some(embeddings.len());
                 embeddings.push(self.embed(&selected)?);
             }
             windows.push((offset, labels, identities));
@@ -189,10 +189,10 @@ impl Diarizer {
                 counts[frame].0 += mask.count_ones() as u16;
                 counts[frame].1 += 1;
                 for (speaker, identity) in identities.iter().enumerate() {
-                    if mask & (1 << speaker) != 0 {
-                        if let Some(identity) = identity {
-                            *votes[frame].entry(assignments[*identity]).or_default() += 1;
-                        }
+                    if mask & (1 << speaker) != 0
+                        && let Some(identity) = identity
+                    {
+                        *votes[frame].entry(assignments[*identity]).or_default() += 1;
                     }
                 }
             }
