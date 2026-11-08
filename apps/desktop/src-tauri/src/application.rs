@@ -650,6 +650,21 @@ mod tests {
     use hypr_loofah_protocol::{SessionSummaryOrder, SessionSummaryQuery};
 
     #[tokio::test]
+    async fn processing_preview_without_managed_context_never_opens_local_storage() {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let error = application_processing_job_preview(
+            app.handle().clone(),
+            uuid::Uuid::new_v4().to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Unavailable);
+        assert!(app.try_state::<Arc<VaultContext>>().is_none());
+    }
+
+    #[tokio::test]
     async fn local_checked_document_delete_is_offline_and_same_request_never_deletes_a_restored_copy()
      {
         use hypr_loofah_protocol::{DeleteDocumentOutcome, DeleteDocumentRequest, DocumentTarget};

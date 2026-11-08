@@ -95,6 +95,7 @@ import type {
   ProcessingJobSnapshot,
   ProcessingJobPage,
   ProcessingJobResult,
+  ProcessingJobPreview,
   ProcessingPolicy,
   ProcessingSettingsSnapshot,
   ProcessingSettingsSaveOutcome,
@@ -292,6 +293,10 @@ export type VaultClient = {
     jobId: string,
     options?: RequestOptions,
   ) => Promise<ProcessingJobSnapshot>;
+  processingJobPreview?: (
+    jobId: string,
+    options?: RequestOptions,
+  ) => Promise<ProcessingJobPreview>;
   processingJobResult: (
     jobId: string,
     options?: RequestOptions,
@@ -837,6 +842,10 @@ export async function connectLocalVault({
       ipc(() => commands.applicationProcessingJobs(input), options),
     processingJob: (jobId, options) =>
       ipc(() => commands.applicationProcessingJob(jobId), options),
+    processingJobPreview: processingAvailable
+      ? (jobId, options) =>
+          ipc(() => commands.applicationProcessingJobPreview(jobId), options)
+      : undefined,
     processingJobResult: (jobId, options) =>
       ipc(() => commands.applicationProcessingJobResult(jobId), options),
     cancelProcessingJob: (jobId, options) =>
@@ -1273,6 +1282,20 @@ export function connectRemoteVault(
         "processing_job",
         options,
       ),
+    processingJobPreview: connection.info.capabilities.features.includes(
+      "processing_previews",
+    )
+      ? (jobId, options) =>
+          connection.request(
+            {
+              kind: "processing_job_preview",
+              vault_id: vaultId,
+              job_id: jobId,
+            },
+            "processing_job_preview",
+            options,
+          )
+      : undefined,
     processingJobResult: (jobId, options) =>
       connection.request(
         { kind: "processing_job_result", vault_id: vaultId, job_id: jobId },

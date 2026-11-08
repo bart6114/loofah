@@ -37,6 +37,8 @@ export class VaultScope {
   private startPromise?: Promise<void>;
   private unsubscribe?: () => void;
   private disposed = false;
+  private previewTimer?: ReturnType<typeof setTimeout>;
+  private readonly previewJobs = new Set<string>();
   private readonly uploadSources = new Set<PreparedAttachmentUpload>();
   private readonly uploadCaches = new Set<QueryClient>();
   private readonly resources = new Map<
@@ -594,6 +596,26 @@ export class VaultScope {
         this.run(() => this.client.processingJob(jobId, { signal })),
     });
   }
+  processingJobPreviewOptions(jobId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "processing_job_preview", jobId],
+      queryFn: ({ signal }) =>
+        this.run(async () => {
+          const read = this.client.processingJobPreview;
+          if (!read) return null;
+          const value = await read(jobId, { signal });
+          if (
+            signal.aborted ||
+            this.disposed ||
+            this.snapshot.state !== "connected"
+          )
+            throw connectionClosed();
+          return value;
+        }),
+      retry: false,
+      gcTime: 30_000,
+    });
+  }
   processingJobResultOptions(jobId: string) {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "processing_job_result", jobId],
@@ -770,6 +792,7 @@ export class VaultScope {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearPreviewUpdates();
     this.closeUploadSources();
     this.unsubscribe?.();
     window.removeEventListener("focus", this.focus);
@@ -784,6 +807,12 @@ export class VaultScope {
     this.changeListeners.clear();
   }
 
+  private clearPreviewUpdates() {
+    if (this.previewTimer) clearTimeout(this.previewTimer);
+    this.previewTimer = undefined;
+    this.previewJobs.clear();
+  }
+
   private focus = () => {
     if (["connected", "reconnecting"].includes(this.snapshot.state))
       this.resync();
@@ -795,6 +824,7 @@ export class VaultScope {
   private receive = (event: VaultClientEvent) => {
     if (this.disposed) return;
     if (event.kind === "connection") {
+      if (event.state !== "connected") this.clearPreviewUpdates();
       const previous = this.snapshot.state;
       this.snapshot = { state: event.state, error: event.error };
       if (
@@ -818,6 +848,31 @@ export class VaultScope {
       void this.queryClient.invalidateQueries({
         queryKey: ["vault", this.client.scope, "processing_settings"],
       });
+    } else if (change.kind === "job_preview_changed") {
+      if (
+        this.snapshot.state !== "connected" ||
+        !this.client.processingJobPreview
+      )
+        return;
+      if (this.previewJobs.size < 32) this.previewJobs.add(change.job_id);
+      if (!this.previewTimer)
+        this.previewTimer = setTimeout(() => {
+          this.previewTimer = undefined;
+          const jobs = new Set(this.previewJobs);
+          this.previewJobs.clear();
+          if (this.disposed || this.snapshot.state !== "connected") return;
+          void this.queryClient.invalidateQueries({
+            predicate: (query) => {
+              const [prefix, scope, kind, id] = query.queryKey;
+              return (
+                prefix === "vault" &&
+                scope === this.client.scope &&
+                kind === "processing_job_preview" &&
+                jobs.has(String(id))
+              );
+            },
+          });
+        }, 500);
     } else if (change.kind === "job_changed") {
       void this.queryClient.invalidateQueries({
         predicate: (query) => {
@@ -826,9 +881,11 @@ export class VaultScope {
             prefix === "vault" &&
             scope === this.client.scope &&
             (kind === "processing_jobs" ||
-              (["processing_job", "processing_job_result"].includes(
-                String(kind),
-              ) &&
+              ([
+                "processing_job",
+                "processing_job_result",
+                "processing_job_preview",
+              ].includes(String(kind)) &&
                 jobId === change.job_id))
           );
         },

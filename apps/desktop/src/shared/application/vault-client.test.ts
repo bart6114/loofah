@@ -34,6 +34,7 @@ const native = vi.hoisted(() => ({
     applicationProcessingJobs: vi.fn(),
     applicationProcessingJob: vi.fn(),
     applicationProcessingJobResult: vi.fn(),
+    applicationProcessingJobPreview: vi.fn(),
     applicationCancelProcessingJob: vi.fn(),
     applicationAgentList: vi.fn(),
     applicationAgentSearch: vi.fn(),
@@ -2078,4 +2079,42 @@ it("keeps Local checked deletion gated and forwards the frozen request to its se
     "document_delete",
     options,
   );
+});
+
+it("uses only the negotiated original preview transport and never falls back to Local", async () => {
+  const value = { vault_id: "first", job: { id: "job" }, preview: null };
+  native.commands.applicationProcessingJobPreview.mockResolvedValue({
+    status: "ok",
+    data: value,
+  });
+  const local = await connectLocalVault();
+  expect(await local.processingJobPreview?.("job")).toEqual(value);
+  expect(native.commands.applicationProcessingJobPreview).toHaveBeenCalledWith(
+    "job",
+  );
+  native.commands.applicationProcessingAvailable.mockResolvedValue(false);
+  expect((await connectLocalVault()).processingJobPreview).toBeUndefined();
+  const request = vi.fn().mockResolvedValue(value);
+  const connection = {
+    info: {
+      server: "https://example.test/",
+      capabilities: { features: [] as string[] },
+    },
+    request,
+  } as unknown as NativeRemoteConnection;
+  expect(
+    connectRemoteVault(connection, "member", vault).processingJobPreview,
+  ).toBeUndefined();
+  connection.info.capabilities.features.push("processing_previews");
+  const remote = connectRemoteVault(connection, "member", vault);
+  const options = { signal: new AbortController().signal };
+  expect(await remote.processingJobPreview?.("job", options)).toEqual(value);
+  expect(request).toHaveBeenCalledExactlyOnceWith(
+    { kind: "processing_job_preview", vault_id: "first", job_id: "job" },
+    "processing_job_preview",
+    options,
+  );
+  expect(
+    native.commands.applicationProcessingJobPreview,
+  ).toHaveBeenCalledOnce();
 });

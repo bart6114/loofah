@@ -26,6 +26,7 @@ import type {
   ProcessingTitleResult,
   TitlePolicy,
 } from "./protocol.gen";
+import { VaultProcessingPreview } from "./vault-processing-preview";
 import { VaultProcessingSettings } from "./vault-processing-settings";
 import type { VaultScope } from "./vault-scope";
 
@@ -653,6 +654,7 @@ function JobRow({
           connected={connected}
         />
       )}
+      <VaultProcessingPreview scope={controller.scope} job={job} />
       {job.state === "conflict" && (
         <p className="w-full">
           <Trans>

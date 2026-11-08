@@ -545,6 +545,31 @@ does not stop an admitted server job; membership removal/downgrade does. Arbitra
 custom summary templates are disabled by default. Enabling them explicitly trusts
 the vault's custom template code; the check uses the exact snapshot rendered.
 
+Private streamed summary previews are under qualification; `processing_previews`
+remains unadvertised until the desktop adapters and platform checks are complete.
+`GET /api/v1/vaults/{vault}/jobs/{job}/preview` reads only the submitting member's
+original job and optional retained partial body. It never starts or resumes a
+model, changes the target baseline, or writes canonical summary content. Thinking
+and tag metadata are filtered before previewing. Interrupted, failed and cancelled
+previews remain explicitly incomplete; the existing result route remains the
+source for complete generated output.
+
+Preview snapshots are coalesced at two updates per second, capped at 64 KiB, and
+retained in at most 32 private sidecars under the existing job journal. The 64 KiB
+encoded-file limit also bounds these sidecars to 2 MiB per vault; encoding may
+shorten text further. Backups retain them with private runtime state. Missing,
+evicted or invalid sidecars report unavailable preview rather than regenerating.
+A retry within the existing generation policy resets its opaque preview cursor;
+restart only reads retained text and leaves interrupted inference stopped.
+
+Clients negotiate text-free private notifications on the existing event stream
+with `X-Loofah-Job-Previews: 1`. These use `event: processing_preview` without an
+SSE ID, with fresh access checks before delivery. They do not advance normal
+change cursors or consume the normal replay buffer. Reconnect and notification
+loss recover by reading the bounded snapshot. Older clients receive no preview
+notifications. Desktop queries stay bound to the original vault scope and job,
+refresh only the preview cache, and hide partial text when access is lost.
+
 ## API boundary
 
 `GET /health`, `GET /ready`, `GET /api/v1/capabilities` and `GET /api/v1/auth/config` are public. Protected requests require `Authorization: Bearer …` and `X-Loofah-Api-Major: 1`. Creates also require a client-generated UUID in `X-Request-Id` so a lost response can be retried safely.
