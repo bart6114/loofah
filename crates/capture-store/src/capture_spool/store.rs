@@ -338,11 +338,17 @@ pub(super) fn begin(
     state: &mut State,
     id: CaptureIdentity,
     format: CaptureFormat,
+    observation: Option<u64>,
 ) -> Result<()> {
     if state.entries.contains_key(&key(&id)) {
         return with_entry(spool, state, &id, |_, entry| {
             if entry.manifest.snapshot.format != format {
                 return Err(conflict("Capture audio format cannot change"));
+            }
+            if let Some(observation) = observation
+                && entry.manifest.snapshot.first_admitted_audio_observed_at_ms != Some(observation)
+            {
+                return Err(conflict("Capture first audio observation cannot change"));
             }
             confirm(&spool.root, entry)
         });
@@ -375,7 +381,7 @@ pub(super) fn begin(
         .map_err(|_| damaged())?;
     let mut entry = Entry {
         manifest: Manifest {
-            schema_version: 1,
+            schema_version: if observation.is_some() { 2 } else { 1 },
             snapshot: CaptureSnapshot {
                 identity: id.clone(),
                 format,
@@ -389,7 +395,7 @@ pub(super) fn begin(
                 acknowledged: None,
                 seal: None,
                 publication: None,
-                first_admitted_audio_observed_at_ms: None,
+                first_admitted_audio_observed_at_ms: observation,
             },
         },
         serialized: vec![],
@@ -713,6 +719,7 @@ pub(super) fn seal(
     spool: &CaptureSpool,
     state: &mut State,
     id: &CaptureIdentity,
+    expected: Option<CaptureSeal>,
 ) -> Result<CaptureSeal> {
     with_entry(spool, state, id, |state, entry| {
         // Immutable chunks are hashed on append and verified on read/reopen.
@@ -726,6 +733,9 @@ pub(super) fn seal(
             chain_digest: snapshot.chain_digest.clone(),
             source_sha256: source_digest(&entry.source),
         };
+        if expected.as_ref().is_some_and(|expected| expected != &seal) {
+            return Err(conflict("Capture seal does not match its admitted audio"));
+        }
         if let Some(existing) = &snapshot.seal {
             if *existing != seal {
                 return Err(damaged());

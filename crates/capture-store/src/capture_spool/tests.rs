@@ -2032,3 +2032,112 @@ async fn killed_observation_processes_recover_only_committed_v2_or_unchanged_v1(
         assert_eq!(writer.seal().await.unwrap().source_sha256, hash(pcm(8)));
     }
 }
+
+#[tokio::test]
+async fn admitted_observation_is_in_the_first_manifest_and_replay_cannot_change_it() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+        .unwrap();
+    let manifest = dir(&root, &id).join("manifest.json");
+    let initial = std::fs::read(&manifest).unwrap();
+    let raw: Value = serde_json::from_slice(&initial).unwrap();
+    assert_eq!(raw["schema_version"], 2);
+    assert_eq!(
+        raw["snapshot"]["first_admitted_audio_observed_at_ms"],
+        OBSERVATION_MS
+    );
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    drop(writer);
+    drop(spool);
+    let spool = open(&root).await;
+    let resumed = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+        .unwrap();
+    assert_eq!(resumed.read_chunk(0).await.unwrap().bytes, pcm(8));
+    let before = std::fs::read(&manifest).unwrap();
+    for ms in [OBSERVATION_MS + 1, MAX_JS_SAFE_MS + 1] {
+        let cause = match spool
+            .begin_with_observation(id.clone(), CaptureFormat::stereo(), ms)
+            .await
+        {
+            Ok(_) => panic!("changed observation admitted"),
+            Err(cause) => cause,
+        };
+        assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+        assert_eq!(std::fs::read(&manifest).unwrap(), before);
+    }
+    assert!(spool.begin(id, CaptureFormat::stereo()).await.is_ok());
+}
+
+#[tokio::test]
+async fn observation_admission_refuses_to_fill_an_existing_undeclared_v1_capture() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let manifest = dir(&root, &id).join("manifest.json");
+    let before = std::fs::read(&manifest).unwrap();
+    let cause = match spool
+        .begin_with_observation(id, CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+    {
+        Ok(_) => panic!("undeclared observation replaced"),
+        Err(cause) => cause,
+    };
+    assert_eq!(cause.code, ErrorCode::Conflict);
+    assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+}
+
+#[tokio::test]
+async fn rejected_declared_seal_does_not_freeze_or_replace_the_admitted_prefix() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), OBSERVATION_MS)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    let snapshot = writer.snapshot().await.unwrap();
+    let correct = CaptureSeal {
+        capture_fingerprint: snapshot.capture_fingerprint.clone(),
+        chunk_count: 1,
+        frames: 8,
+        pcm_bytes: pcm(8).len() as u64,
+        chain_digest: snapshot.chain_digest,
+        source_sha256: hash(pcm(8)),
+    };
+    let manifest = dir(&root, &id).join("manifest.json");
+    let before = std::fs::read(&manifest).unwrap();
+    let mut wrong = correct.clone();
+    wrong.source_sha256 = hash(b"wrong declaration");
+    let cause = writer.seal_if_matches(wrong.clone()).await.unwrap_err();
+    assert_eq!(cause.code, ErrorCode::Conflict);
+    assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+    assert!(writer.snapshot().await.unwrap().seal.is_none());
+    assert_eq!(
+        writer.seal_if_matches(correct.clone()).await.unwrap(),
+        correct
+    );
+    assert_eq!(
+        writer.seal_if_matches(correct.clone()).await.unwrap(),
+        correct
+    );
+    let sealed = std::fs::read(&manifest).unwrap();
+    assert!(writer.seal_if_matches(wrong).await.is_err());
+    assert_eq!(std::fs::read(&manifest).unwrap(), sealed);
+    assert!(writer.append_chunk(1, 8, pcm(8)).await.is_err());
+}

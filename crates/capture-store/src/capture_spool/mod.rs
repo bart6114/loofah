@@ -73,10 +73,30 @@ impl CaptureSpool {
         identity: CaptureIdentity,
         format: CaptureFormat,
     ) -> Result<CaptureWriter> {
+        self.begin_inner(identity, format, None).await
+    }
+
+    pub async fn begin_with_observation(
+        self: &Arc<Self>,
+        identity: CaptureIdentity,
+        format: CaptureFormat,
+        first_admitted_audio_observed_at_ms: u64,
+    ) -> Result<CaptureWriter> {
+        validate_observation(first_admitted_audio_observed_at_ms)?;
+        self.begin_inner(identity, format, Some(first_admitted_audio_observed_at_ms))
+            .await
+    }
+
+    async fn begin_inner(
+        self: &Arc<Self>,
+        identity: CaptureIdentity,
+        format: CaptureFormat,
+        observation: Option<u64>,
+    ) -> Result<CaptureWriter> {
         validate_identity(&identity)?;
         validate_format(&format)?;
         let coordinate = identity.clone();
-        self.run(move |spool, state| store::begin(spool, state, coordinate, format))
+        self.run(move |spool, state| store::begin(spool, state, coordinate, format, observation))
             .await?;
         Ok(CaptureWriter {
             spool: self.clone(),
@@ -142,11 +162,7 @@ impl CaptureWriter {
     }
 
     pub async fn record_first_audio_observation(&self, ms: u64) -> Result<CaptureSnapshot> {
-        if ms > MAX_JS_SAFE_MS {
-            return Err(invalid(
-                "Capture observation must be a JavaScript-safe UTC millisecond integer",
-            ));
-        }
+        validate_observation(ms)?;
         let id = self.identity.clone();
         self.spool
             .run(move |spool, state| store::record_first_audio_observation(spool, state, &id, ms))
@@ -195,7 +211,14 @@ impl CaptureWriter {
     pub async fn seal(&self) -> Result<CaptureSeal> {
         let id = self.identity.clone();
         self.spool
-            .run(move |spool, state| store::seal(spool, state, &id))
+            .run(move |spool, state| store::seal(spool, state, &id, None))
+            .await
+    }
+
+    pub async fn seal_if_matches(&self, expected: CaptureSeal) -> Result<CaptureSeal> {
+        let id = self.identity.clone();
+        self.spool
+            .run(move |spool, state| store::seal(spool, state, &id, Some(expected)))
             .await
     }
 
@@ -227,6 +250,15 @@ impl CaptureWriter {
             .run(move |spool, state| store::publication(spool, state, &id, publication))
             .await
     }
+}
+
+fn validate_observation(ms: u64) -> Result<()> {
+    if ms > MAX_JS_SAFE_MS {
+        return Err(invalid(
+            "Capture observation must be a JavaScript-safe UTC millisecond integer",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_root(root: &std::path::Path) -> Result<()> {
