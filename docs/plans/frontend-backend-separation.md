@@ -310,8 +310,8 @@ Work is isolated on `refactor/frontend-backend-separation` in the `loofah-backen
 - [ ] **Phase 2: frontend client.** Session, people, tags, timeline, transcript queries, and index subscriptions use a local `ApplicationClient` adapter. The default local note editor now uses the shared checked note/task contract and scoped draft controller. Remaining: cover all requests, assets, settings, jobs and capture; full main-shell connection selection and cache lifecycle; the remaining typed error and revision UX.
 - [ ] **Phase 3: first remote slice.** `apps/server` now provides the headless executable, OIDC JWT validation, a file-backed company catalog, private-vault provisioning, explicit authenticated HTTP operations behind HTTPS termination, and SSE replay/resync. Shared note creation has durable retry receipts. Native browser PKCE login, OS credential storage, typed HTTPS requests and authenticated SSE now have a desktop bridge. An opt-in notes preview mounts scoped client caches, vault selection, checked saves, conflict review and device draft recovery. Real native-client HTTPS tests cover 50/150/500 ms round trips and reconnects. Native window destruction cancels its owned work and prevents late discovery registration. Remaining: main-shell/profile migration, remote-only startup, the wider feature matrix and release gates.
 - [ ] **Phase 4: vault sharing and content.** Shared-vault membership/roles, revision checks, rename/delete and existing-member directory APIs are implemented, with opt-in desktop controls for existing company members. Checked summary/output bodies now have shared operations, compound-write recovery and preview editing. Authenticated recording ranges, verified waveforms, native media URLs, a common local/remote player and checked recording deletion are implemented, with native macOS latency/restart checks. Attachment backend leases, lightweight info, typed SDK reads, native scoped preview/copy operations and asynchronous shared-note editor resources are implemented; the shared attachment list/action panel and checked removal are implemented. Checked upload publication, HTTP receiving, typed native streaming/status and local/remote path adapters are implemented; shared upload controls, bounded browser-file staging and opt-in editor clipboard/drop integration are implemented. Incoming-stage crash cleanup, durable upload recovery and remaining local-host migration remain open. Remaining remote content operations, import/export, CLI ownership IPC and remote CLI mutations remain to implement. Explicit remote CLI/MCP profiles now support the existing agent reads. The new headless runtime takes a lifetime vault lock; the desktop/CLI ownership change has not yet been enabled.
-- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Shared processing settings/model selection are implemented. Existing-template body/task/tag generation and shared portable title/model-resource helpers are implemented. Optional title-stage implementation is under worker validation and is not exposed. Remaining summary/title/tag/template policy, previews and the main frontend AI migration, owner-managed provider secrets, server model management and authenticated transcription remain open.
-- [ ] **Phase 6: resilient remote capture.** Neutral durable capture storage, first-audio timing, an internal managed native host and authenticated chunk/status/seal staging APIs are implemented. Native timing and real lost-reply/latency tests pass. Canonical publication is under storage-worker validation; trusted device source admission, durable uploader orchestration, public controls/lifecycle, live transcription, append/repair and end-to-end finalization remain open.
+- [ ] **Phase 5: processing.** Typed contracts, the durable journal, vault-owned worker, canonical summary source and shared HTTP model adapters are implemented. Optional server configuration wires allowed providers, host credentials and current member authorization into bounded processing. Member-private summary-body HTTP job APIs, the Rust SDK and scoped job invalidations are implemented. Native IPC/jobs, local Keychain/ChatGPT adapters and shared frontend job requests/cache invalidation are implemented. Durable device submission recovery and summary job controls are implemented in the opt-in notes workspace. Shared processing settings/model selection are implemented. Existing-template body/task/tag generation and shared portable title/model-resource helpers are implemented. Optional title-stage orchestration, capability gates, scoped opt-in/results and exact-policy device recovery are implemented. Remaining main frontend AI migration, streaming previews and any uncovered existing summary/tag/template policy, owner-managed provider secrets, server model management and authenticated transcription remain open.
+- [ ] **Phase 6: resilient remote capture.** Neutral durable capture storage, first-audio timing, an internal managed native host and authenticated chunk/status/seal staging APIs are implemented. Native timing and real lost-reply/latency tests pass. Absent-only canonical WAV publication storage and verified bounded streaming WAV sources are implemented; Core publication/recovery gates are being integrated. Trusted device source admission, durable uploader orchestration, public controls/lifecycle, live transcription, append/repair and end-to-end finalization remain open.
 - [ ] **Phase 7: release hardening.** Linux backend and native Windows CI include shared backend coverage. Linux container, systemd and Caddy recipes now exist, with container/proxy checks added to CI. Restore/upgrade, full compatibility, network/disconnect, two-hour recording, production performance and native desktop release QA remain required.
 
 Local remains the default and no authentication or account provisioning has been added to local startup. Remote deployment is available only through the opt-in experimental notes preview. This implementation must remain experimental until every acceptance criterion above is verified.
@@ -3215,3 +3215,80 @@ Verification includes 31 neutral-storage cases, 28 native capture cases, login-f
 Canonical recording publication, pending-note reservation, existing-recording append/offsets, portable live/batch STT, source-bound native upload/recovery, quit/UI integration, main-shell/remote-only startup, provider secrets, imports and remaining platform/deployment acceptance remain open. Recording uploads are a device-owned recovery queue; they do not introduce general offline remote-vault editing. Optional generated titles are not enabled by the portable helper/resource bridge alone.
 
 Shared-target validation now uses explicit worker ownership and exact executable/source/test-list evidence. One wrong-cache run selected zero publication tests and was excluded; no zero-match result is acceptance. See the handoff for current worker commits, proof files and sequencing.
+
+## Optional title jobs and recording publication foundations
+
+Source checkpoint `0818a893e` (locale checkpoint `3306a0988`) enables optional title
+jobs through the shared worker, IPC and HTTPS, while keeping default local use
+standalone, offline and login-free. The earlier checkpoint sections are historical;
+this section and the handoff describe the newer state.
+
+`TitlePolicy::Preserve` remains the default and is omitted from serialized requests,
+so existing request bytes and recovery identities stay unchanged. The additive
+`generated_titles` capability gates explicit `generate_if_empty` requests before
+credentials or dispatch. Both summary and existing-template jobs support it. Actual
+protocol/native exports expose an optional TypeScript policy field; a golden test
+guards both the omitted Rust wire bytes and the generated optional field.
+
+The worker confirms the body first, then uses the same prepared settings/model
+for a bounded optional title stage. Retained body results stay immutable. Empty,
+failed, cancelled, conflicting or unconfirmed title work cannot erase confirmed
+body success. The existing title policy stamps canonical leading headings with
+checked output baselines and independently skips a changed raw note. Title-only
+metadata changes preserve unknown nested and legacy fields and preflight the
+complete actual raw file before any intent, document, body or task write.
+
+The scoped UI captures the initiating client, target and draft state, persists the
+exact original title policy in its device receipt, and preserves newer title
+editing during canonical events. It offers lazy result viewing during title work,
+separate body/title statuses and explicit candidate copying; viewing a result does
+not apply a historical title. This is the opt-in notes workspace. Legacy main AI
+and recording have not yet migrated.
+
+Validation at this checkpoint:
+
+- Raw title metadata: 101 focused storage tests, including nine new regressions,
+  actual crash recovery, deleted-path protection, default all-target check and
+  verified source/executable provenance.
+- Title orchestration: worker Core full suite 277 passed/two helpers ignored;
+  final focused jobs 128 passed with eight actual crash subprocesses, protocol
+  compatibility and default checks/Clippy. See the handoff's exact proof files.
+- Integrated adapters: four protocol contract tests; SDK capability rejection
+  before credential access; native receipts for both targets/policies without a
+  login or vault session; normal desktop check and actual binding exports.
+- Real SDK requests at 50/150/500 ms RTT lose a submission reply and replay the
+  original UUID without repeating either model call. Invalid multiline title
+  output at 150 ms leaves the saved body successful and unchanged.
+- Root's combined frontend selection: 165 passed, actual-binding typecheck,
+  changed-source format, all 109 locale catalogs extracted/strictly compiled and
+  committed catalog drift check passed. No full suite was repeated unnecessarily.
+
+`vault-write::recording_publish` now supplies absent-only, receipt-bound WAV
+publication with metadata/index recovery, fresh raw metadata checks, bounded
+streaming, audio/transcript reservations and retained source/stages on ambiguity.
+Its worker verified 479 tests/five intentionally ignored helpers, including 26
+publication cases and six actual crash subprocesses. Committed replay never
+implies device cleanup permission.
+
+The Core WAV source verifies the complete sealed PCM prefix and checksum, produces
+a deterministic bounded header, then streams through a one-slot channel into
+publication. Four integrated tests cover exact mono/stereo float bits and channel
+order, source corruption, retained ownership after reader cancellation and
+two-hour header geometry. This is not a real two-hour capture acceptance test.
+Core/client/server all-target checks pass; the helper currently remains unwired
+until Core publication and startup/same-process recording gates are ready.
+
+The previously pushed `aade2e309` passed backend/CLI/general/security/frontend CI.
+macOS and Windows x64 exposed the same capture-fixture reopen race: stop safety
+completed just before the last observer released its spool lease. Test-only fix
+`67e4e06f3` retries only the specific retryable ownership error with a bounded
+deadline. Root's 28 native capture tests pass under default parallel scheduling.
+The previous Windows ARM64 run is still active at this checkpoint; no new push,
+merge, release or full-platform completion is claimed.
+
+Remaining critical work includes main-shell/profile and remote-only startup,
+remaining content mutations/imports/CLI ownership, trusted device capture and
+uploader lifecycle, canonical publication transport, live/batch transcription and
+server model resources, deployment/restore/downgrade acceptance and production
+macOS/Windows recording/UX validation. Recording recovery remains separate from
+general offline editing of remote vaults.

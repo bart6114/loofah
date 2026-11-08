@@ -122,8 +122,35 @@ If two tracks need to change the same transaction/lifecycle invariant, sequence 
 
 ## Current integration checkpoint
 
-Root source `67ea69e50` integrates scoped tag APIs/UI, lossless metadata patches, durable native timing, the prepared title resource bridge and authenticated capture staging. Local still starts offline without login. The preceding pushed batch `93dada10bb` is fully green, including Windows x64/ARM64 installers. The next validated batch may now be pushed.
+Root source `0818a893e`, catalogs `3306a0988`: scoped optional title jobs and exact
+request recovery are integrated, along with raw metadata preservation, the
+absent-only recording publication primitive and verified bounded WAV sources.
+Root's 165 combined frontend cases, actual binding typecheck, native receipts,
+28 capture cases, default checks and catalog drift checks pass. Local remains
+offline and login-free. The full implementation goal is still active.
 
-A is auditing the next actual main-shell/profile frontend slice after its tag UI passed 2,078 tests. B has a separate title-policy contract commit and a Core title-stage implementation awaiting validation; Root owns capability/SDK/native/UI pairing. C is finishing absent-only WAV publication storage; Root owns independent source encoding, Core/server integration and startup/read recovery gating. Pending-session creation and existing-recording append remain explicit follow-up work.
+- A: main session-summary/linked-note slim reads through captured `VaultScope`;
+  fresh base `3306a0988`, existing bounded ID-query contract. No profile activation.
+- B: Core absent-only capture publication, repeatable authorization, owned source
+  drain, bootstrap recovery and same-process recording read/delete gates. Tree
+  `/Volumes/T7/src/loofah-capture-publication`, base `9fa1fa50f`. No public endpoint
+  or capability before integration tests.
+- C: bounded store-owned pending publication inventory and opaque recovery plans,
+  strict receipt validation, inherited timestamp bounds and known transcript
+  absence guards. Tree `/Volumes/T7/src/loofah-separation-publication-recovery`,
+  base `b7af0fe3c`. C currently owns the exclusive Cargo target-root window.
+- Root: integration, HTTPS/SDK publication adapters after B/C validation, native
+  junctions, generated contracts/catalogs, requested docs and hosted gates.
 
-Use an **exclusive shared-target validation window**, not just individual Cargo locks. Interleaved same-package worktrees once selected a baseline test binary with zero publication tests; that result was rejected. Require matching compiler-artifact source paths, a nonzero exact new-test inventory and executable SHA. C completed its verified window, B now holds it for title-stage checks, and Root holds Cargo while doing frontend/docs or unreferenced drafts. Per-package test debug-profile overrides can force only affected workspace artifacts in the existing cache; do not wipe or bypass shared targets. Actual production/default-profile checks remain required after integration.
+Use an exclusive shared-target validation window, not just Cargo locks. Pin
+compiler-artifact source paths, `fresh=false`, exact nonzero new-test inventories
+and executable hashes. Do not cancel healthy builds or wipe/bypass shared caches.
+Root has no running Cargo pipeline; all local artifacts remain physically on T7.
+
+Last pushed `aade2e309` is not fully green: macOS and Windows x64 hit the same
+capture-test lease-release timing race; bounded test-only fix `67e4e06f3` is
+integrated and its 28 native capture tests pass. Windows ARM64 is still active.
+Wait for that run to finish before pushing the validated corrective batch; an
+unresolved actual source failure must be fixed, rather than perpetually waiting
+for the old failed SHA to become healthy. Draft PR #123 remains unmerged. The
+last fully green platform head remains `93dada10bb`.
