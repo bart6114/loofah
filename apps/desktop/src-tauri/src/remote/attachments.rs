@@ -792,8 +792,9 @@ pub async fn remote_attachment_copy<R: tauri::Runtime>(
 pub(crate) fn download_root<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, ApplicationError> {
-    #[cfg(feature = "dev")]
-    if app.config().identifier == "io.loofah.remote-qa" {
+    if app.config().identifier == "io.loofah.separation-qa"
+        || (cfg!(feature = "dev") && app.config().identifier == "io.loofah.remote-qa")
+    {
         return std::env::var_os("LOOFAH_QA_DOWNLOADS_ROOT")
             .map(PathBuf::from)
             .filter(|path| path.is_absolute())

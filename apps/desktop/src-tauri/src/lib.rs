@@ -346,7 +346,7 @@ pub async fn main() {
         builder = builder.plugin(plugin);
     }
 
-    let specta_builder = make_specta_builder::<tauri::Wry>();
+    let specta_builder = make_specta_builder();
 
     let root_supervisor_ctx_for_run = root_supervisor_ctx.clone();
 
@@ -556,6 +556,8 @@ pub async fn main() {
                 .request_shutdown();
             app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
                 .request_shutdown();
+            let remote = app.state::<remote::RemoteState>();
+            remote.stop_note_windows();
             let device = app.state::<device_recordings::DeviceRecordingState>();
             device.request_shutdown();
             let owner = app.state::<local_owner::LocalOwnerState>();
@@ -564,6 +566,7 @@ pub async fn main() {
                 .state::<std::sync::Arc<local_capture::LocalCaptureState>>()
                 .initialized()
                 || device.initialized()
+                || remote.note_windows_initialized()
                 || owner.initialized()
                 || app.state::<local_media::LocalMediaState>().initialized()
                 || app
@@ -704,8 +707,8 @@ fn get_onboarding_flag() -> Option<bool> {
         })
 }
 
-fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
-    tauri_specta::Builder::<R>::new()
+fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             draft_cache::draft_cache_get::<tauri::Wry>,
             draft_cache::draft_cache_inventory::<tauri::Wry>,
@@ -1009,7 +1012,7 @@ mod test {
     fn export_types() {
         const OUTPUT_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/types/tauri.gen.ts");
 
-        make_specta_builder::<tauri::Wry>()
+        make_specta_builder()
             .export(
                 specta_typescript::Typescript::default()
                     .formatter(specta_typescript::formatter::prettier)

@@ -911,6 +911,9 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         return;
     }
     state.request_shutdown();
+    if let Some(remote) = app.try_state::<crate::remote::RemoteState>() {
+        remote.stop_note_windows();
+    }
     if let Some(exports) = app.try_state::<crate::application_export::SessionExportState>() {
         exports.request_shutdown();
     }
@@ -932,6 +935,14 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         transcription.request_shutdown();
     }
     tauri::async_runtime::spawn(async move {
+        if let Some(remote) = app.try_state::<crate::remote::RemoteState>() {
+            while tokio::time::timeout(Duration::from_secs(5), remote.drain_note_windows())
+                .await
+                .is_err()
+            {
+                let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
+            }
+        }
         while !app
             .state::<DeviceRecordingState>()
             .drain(Duration::from_secs(5))

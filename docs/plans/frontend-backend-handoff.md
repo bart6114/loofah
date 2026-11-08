@@ -968,3 +968,23 @@ shared application/client/protocol, owner/media, capture, vault and storage crat
 so later shared-only edits cannot silently skip CLI validation. Formatting and
 workflow checks passed, including 26 Python helper tests and the configured
 zizmor threshold.
+
+
+Remote standalone windows now enter through their one-shot claimed workspace
+without the normal startup wrapper, login/discovery or Local bootstrap. Their
+creator admission begins before async preparation; app exit closes further
+admission and waits actual child IO/window creation to drain. The first combined
+Native run passed the desktop cohort (185 passed, 2 ignored), then stopped at one
+new SDK fixture missing `recording_leases`; this is not a full-suite pass. The
+localized actual-entry/caption cohort passed 13 cases and strict locale compilation
+passed.
+
+The old optimized QA build's GUI PDF export stalled in the system directory-open
+call while staging Downloads output. Rendering had completed, but publication was
+not qualified. Modal cancellation restored the note UI; normal Quit still waited
+for that physical IO, so only the verified disposable QA process was terminated.
+The separate CLI PDF proof remains passed. The dedicated separation QA bundle now
+requires an explicit absolute `LOOFAH_QA_DOWNLOADS_ROOT` to keep future GUI exports
+in the task artifact tree; ordinary application bundles keep their Downloads
+behavior. No new OS access grant was accepted. The final production build still
+requires regression.
