@@ -37,7 +37,7 @@ impl Drop for MembershipWatch {
 }
 
 impl CatalogTranscriptionAuthorizer {
-    fn observe_member<'a>(
+    pub(crate) fn observe_member<'a>(
         &'a self,
         member: &'a str,
     ) -> TranscriptionFuture<'a, Result<TranscriptionAccess, TranscriptionFailure>> {
@@ -94,7 +94,7 @@ impl CatalogTranscriptionAuthorizer {
         })
     }
 
-    fn authorize_member<'a>(
+    pub(crate) fn authorize_member<'a>(
         &'a self,
         member: &'a str,
     ) -> TranscriptionFuture<'a, Result<Box<dyn Send>, TranscriptionFailure>> {

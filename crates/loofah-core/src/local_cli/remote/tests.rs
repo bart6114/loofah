@@ -119,7 +119,12 @@ const SUBTITLE: &[u8] = b"1\n00:00:00,000 --> 00:00:01,000\nOriginal source word
 async fn done(media: &MediaDispatcher, request: &str) -> MediaRequestStatus {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
-            let status = media.status(request).await.unwrap();
+            let status = media.status(request).await.unwrap_or_else(|cause| {
+                panic!(
+                    "Media status failed for {request} under {}: {cause:?}",
+                    media.root.display()
+                )
+            });
             if status.phase != MediaPhase::Running {
                 return status;
             }

@@ -1,0 +1,191 @@
+use super::*;
+use sha2::{Digest, Sha256};
+
+const SUBTITLE: &str = "1\n00:00:00,000 --> 00:00:01,000\nRetained server subtitle\n";
+async fn declare_subtitle(fixture: &Fixture, vault: &str, request: &str) -> Value {
+    let context = fixture.service.vault(vault).await.unwrap();
+    context.store.write_meta(&serde_json::from_value(json!({"id":"note","title":"Media note","created_at":"2026-11-08T10:00:00Z","tags":[]})).unwrap()).await.unwrap();
+    let (status, source) = fixture
+        .call(
+            "alice",
+            "GET",
+            &format!("/api/v1/vaults/{vault}/media/source/note"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{source}");
+    assert!(source["recording"].is_null());
+    let sha: String = Sha256::digest(SUBTITLE.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let declaration = json!({"request_id":request,"operation":{"kind":"import_subtitles","session_id":"note","filename":"captions.srt","expected":source,"source":{"sha256":sha,"size_bytes":SUBTITLE.len()}},"transcription":null,"summary":null});
+    let (status, admission) = fixture
+        .call_token(
+            &fixture.token("alice"),
+            "POST",
+            &format!("/api/v1/vaults/{vault}/media/requests"),
+            Some(declaration),
+            Some(request),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{admission}");
+    admission
+}
+async fn upload(
+    fixture: &Fixture,
+    subject: &str,
+    vault: &str,
+    request: &str,
+    revision: &str,
+    bytes: &'static str,
+) -> (StatusCode, Value) {
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/v1/vaults/{vault}/media/requests/{request}/source"
+                ))
+                .header(
+                    "authorization",
+                    format!("Bearer {}", fixture.token(subject)),
+                )
+                .header("x-loofah-api-major", "1")
+                .header("x-request-id", request)
+                .header("x-loofah-media-revision", revision)
+                .header("content-type", "application/octet-stream")
+                .header("content-length", bytes.len())
+                .body(Body::from(bytes))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+        .unwrap();
+    (status, body)
+}
+#[tokio::test]
+async fn media_wire_uses_member_private_declaration_and_verified_subtitle_publication() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.login("alice").await;
+    let bob = fixture.login("bob").await;
+    let (_, shared) = fixture
+        .call(
+            "alice",
+            "POST",
+            "/api/v1/vaults",
+            Some(json!({"name":"Media"})),
+        )
+        .await;
+    let vault = shared["id"].as_str().unwrap();
+    fixture
+        .call(
+            "alice",
+            "PUT",
+            &format!("/api/v1/vaults/{vault}/members/{}", bob.member.id),
+            Some(json!({"role":"editor","expected_revision":shared["revision"]})),
+        )
+        .await;
+    let request = uuid::Uuid::new_v4().to_string();
+    let admission = declare_subtitle(&fixture, vault, &request).await;
+    let path = format!("/api/v1/vaults/{vault}/media/requests/{request}");
+    assert_eq!(
+        fixture.call("bob", "GET", &path, None).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        upload(
+            &fixture,
+            "bob",
+            vault,
+            &request,
+            admission["revision"].as_str().unwrap(),
+            SUBTITLE
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let (code, status) = upload(
+        &fixture,
+        "alice",
+        vault,
+        &request,
+        admission["revision"].as_str().unwrap(),
+        SUBTITLE,
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK, "{status}");
+    let status = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let (code, status) = fixture.call("alice", "GET", &path, None).await;
+            assert_eq!(code, StatusCode::OK);
+            if status["phase"] != "running" {
+                break status;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(status["phase"], "succeeded", "{status}");
+    let (code, result) = fixture
+        .call("alice", "GET", &format!("{path}/result"), None)
+        .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(result["user_id"], alice.member.id);
+    assert_eq!(result["session_id"], "note");
+    assert_eq!(
+        fixture
+            .call("bob", "GET", &format!("{path}/result"), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    fixture.service.shutdown().await.unwrap();
+}
+#[tokio::test]
+async fn media_source_revision_and_payload_mismatch_never_enter_publication() {
+    let fixture = Fixture::new().await;
+    let me = fixture.login("alice").await;
+    let vault = &me.personal_vault_id;
+    let request = uuid::Uuid::new_v4().to_string();
+    let admission = declare_subtitle(&fixture, vault, &request).await;
+    assert_eq!(
+        upload(
+            &fixture,
+            "alice",
+            vault,
+            &request,
+            &uuid::Uuid::new_v4().to_string(),
+            SUBTITLE
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let context = fixture.service.vault(vault).await.unwrap();
+    assert!(
+        !context
+            .store
+            .vault_base()
+            .join("sessions/note/transcript.json")
+            .exists()
+    );
+    let (code, status) = fixture
+        .call(
+            "alice",
+            "GET",
+            &format!("/api/v1/vaults/{vault}/media/requests/{request}"),
+            None,
+        )
+        .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(status["revision"], admission["revision"]);
+    assert_eq!(status["phase"], "receiving");
+    fixture.service.shutdown().await.unwrap();
+}

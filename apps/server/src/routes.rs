@@ -25,6 +25,7 @@ mod capture_live;
 mod capture_processing;
 mod document_editor;
 mod jobs;
+mod media_jobs;
 mod processing_settings;
 mod provider_credentials;
 mod session_cleanup;
@@ -43,6 +44,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(capture_processing::router())
         .merge(document_editor::router())
         .merge(jobs::router())
+        .merge(media_jobs::router())
         .merge(processing_settings::router())
         .merge(provider_credentials::router())
         .merge(session_cleanup::router())
@@ -160,7 +162,9 @@ pub fn router(service: Arc<Service>) -> Router {
         .route("/api/v1/auth/config", get(auth_config))
         .nest(
             "/api/v1",
-            protected.merge(crate::uploads::router(service.clone())),
+            protected
+                .merge(crate::uploads::router(service.clone()))
+                .merge(media_jobs::upload_router(service.clone())),
         )
         .fallback(|| async { ApiError::new(ErrorCode::NotFound, "API route not found") })
         .method_not_allowed_fallback(|| async {

@@ -11,6 +11,7 @@ pub mod routes;
 pub mod service;
 mod uploads;
 
+mod media_jobs;
 mod transcription_authorization;
 
 #[cfg(feature = "cpu-transcription")]

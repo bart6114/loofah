@@ -46,6 +46,8 @@ pub struct Service {
     #[cfg(feature = "cpu-transcription")]
     transcription: Option<Arc<crate::transcription_host::TranscriptionHost>>,
     runtimes: Mutex<BTreeMap<String, Arc<OnceCell<VaultRuntime>>>>,
+    pub(crate) media_dispatchers:
+        Mutex<BTreeMap<(String, String), Arc<hypr_loofah_core::local_cli::MediaDispatcher>>>,
     catalog_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
     shutdown: OnceCell<tokio::sync::watch::Receiver<ShutdownResult>>,
 }
@@ -101,6 +103,7 @@ impl Service {
             #[cfg(feature = "cpu-transcription")]
             transcription,
             runtimes: Mutex::new(BTreeMap::new()),
+            media_dispatchers: Mutex::new(BTreeMap::new()),
             catalog_worker: Mutex::new(None),
             shutdown: OnceCell::new(),
         });
@@ -419,6 +422,13 @@ impl Service {
         let _reads = drain_slots(self.content_reads.clone(), 4).await;
         let _media_reads = drain_slots(self.media_reads.clone(), 2).await;
         self.media_leases.shutdown().await;
+        let media = std::mem::take(&mut *self.media_dispatchers.lock().await);
+        for dispatcher in media.values() {
+            dispatcher.request_shutdown();
+        }
+        for (_, dispatcher) in media {
+            dispatcher.shutdown().await;
+        }
         let runtimes = std::mem::take(&mut *self.runtimes.lock().await);
         for (_, mut cell) in runtimes {
             let cell = loop {
