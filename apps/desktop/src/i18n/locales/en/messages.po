@@ -568,6 +568,10 @@ msgstr "Copying…"
 msgid "Could not complete file action. Check your connection and try again."
 msgstr "Could not complete file action. Check your connection and try again."
 
+#: src/session/components/session-date.tsx
+msgid "Could not confirm the date change. Review the saved date before trying again."
+msgstr "Could not confirm the date change. Review the saved date before trying again."
+
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
 msgstr "Could not confirm the file action. A copy may already be in Downloads/Loofah."
@@ -675,6 +679,10 @@ msgstr "Creating note..."
 #: src/settings/ai/llm/select.tsx
 msgid "Current connection"
 msgstr "Current connection"
+
+#: src/session/components/session-date.tsx
+msgid "Current saved date:"
+msgstr "Current saved date:"
 
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Custom summary template"
@@ -1397,6 +1405,10 @@ msgstr "Not downloaded"
 msgid "Note"
 msgstr "Note"
 
+#: src/session/components/session-date.tsx
+msgid "Note date and time"
+msgstr "Note date and time"
+
 #: src/shared/application/notes-workspace.tsx
 msgid "Note views"
 msgstr "Note views"
@@ -1707,6 +1719,10 @@ msgstr "Reload access"
 msgid "Reload drafts"
 msgstr "Reload drafts"
 
+#: src/session/components/session-date.tsx
+msgid "Reload saved date"
+msgstr "Reload saved date"
+
 #: src/session/components/session-tags.tsx
 msgid "Reload tags"
 msgstr "Reload tags"
@@ -1853,6 +1869,10 @@ msgstr "Retry {0}"
 msgid "Retry creation"
 msgstr "Retry creation"
 
+#: src/session/components/session-date.tsx
+msgid "Review saved date"
+msgstr "Review saved date"
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Role"
 msgstr "Role"
@@ -1915,6 +1935,10 @@ msgstr "Saved original copy."
 #: src/shared/application/vault-processing.tsx
 msgid "Saves pending edits before using the saved notes and transcript."
 msgstr "Saves pending edits before using the saved notes and transcript."
+
+#: src/session/components/session-date.tsx
+msgid "Saving date…"
+msgstr "Saving date…"
 
 #: src/shared/application/vault-processing.tsx
 msgid "Saving summary"
@@ -2394,6 +2418,10 @@ msgstr "The attachment changed. Close this dialog and review it again."
 msgid "The attachment was not removed. Close this dialog and review it again."
 msgstr "The attachment was not removed. Close this dialog and review it again."
 
+#: src/session/components/session-date.tsx
+msgid "The date was saved, but its current value could not be confirmed."
+msgstr "The date was saved, but its current value could not be confirmed."
+
 #: src/shared/useNewNote.ts
 msgid "The note may already exist. Retry the same request before creating another."
 msgstr "The note may already exist. Retry the same request before creating another."
@@ -2405,6 +2433,10 @@ msgstr "The preview is shortened. Copy to recover the complete text."
 #: src/shared/application/vault-processing.tsx
 msgid "The provider returned an unusable summary."
 msgstr "The provider returned an unusable summary."
+
+#: src/session/components/session-date.tsx
+msgid "The saved date changed. Review it before saving your picked date."
+msgstr "The saved date changed. Review it before saving your picked date."
 
 #: src/settings/ai/llm/configure.tsx
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
