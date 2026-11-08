@@ -2043,6 +2043,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "winapi-util",
 ]
 
 [[package]]
@@ -7702,6 +7703,7 @@ version = "0.1.0"
 dependencies = [
  "agent-access",
  "async-stream",
+ "audio-utils",
  "axum",
  "base64 0.22.1",
  "capture-store",
@@ -16106,6 +16108,7 @@ dependencies = [
  "chrono",
  "fs-format",
  "fs-sync-core",
+ "hound",
  "loofah-protocol",
  "regex",
  "same-file",

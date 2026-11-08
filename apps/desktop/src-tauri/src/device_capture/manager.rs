@@ -205,6 +205,7 @@ impl DeviceCaptureHost {
                         .as_ref()
                         .is_none_or(|hash| hash.len() == 64)
             }
+            hypr_loofah_client::capture_spool::CaptureTarget::AppendSession { .. } => false,
             hypr_loofah_client::capture_spool::CaptureTarget::PendingSession {
                 create_request_id,
             } => create_request_id.len() == 36,

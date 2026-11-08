@@ -134,7 +134,14 @@ pub(super) fn hash(file: &File, limit: u64) -> Result<(String, u64), StoreError>
         return Err(invalid("Append audio changed while hashing"));
     }
     reader.rewind().map_err(error)?;
-    Ok((format!("{:x}", digest.finalize()), length))
+    Ok((
+        digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>(),
+        length,
+    ))
 }
 pub(super) fn copy(
     path: &Path,
@@ -174,7 +181,14 @@ pub(super) fn copy(
             output.write_all(&buffer[..count]).map_err(error)?;
             digest.update(&buffer[..count]);
         }
-        if total != length || format!("{:x}", digest.finalize()) != expected {
+        if total != length
+            || digest
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+                != expected
+        {
             return Err(invalid("Append source does not match declared bytes"));
         }
         output.sync_all().map_err(error)

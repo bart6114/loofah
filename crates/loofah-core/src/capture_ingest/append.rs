@@ -1,5 +1,7 @@
+#[path = "append/publication.rs"]
 pub(super) mod publication;
 #[cfg(test)]
+#[path = "append/tests.rs"]
 mod tests;
 use std::{
     fs::{File, OpenOptions},
