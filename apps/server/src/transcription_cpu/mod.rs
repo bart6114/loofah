@@ -202,7 +202,7 @@ impl PreparedTranscription for PreparedCpu {
 }
 
 struct NativeSource {
-    _capacity: SpeechPermit,
+    _capacity: Arc<SpeechPermit>,
     _prepared: Arc<PreparedAudio>,
     _source: SourceOwner,
 }
@@ -270,10 +270,11 @@ async fn run(
         .try_into()
         .map_err(|_| TranscriptionFailure::InvalidOutput)?;
     params.sample_rate = audio.pcm.sample_rate;
+    let capacity = Arc::new(capacity);
     let source = TrustedBatchSource::new(
         audio.path.clone(),
         NativeSource {
-            _capacity: capacity,
+            _capacity: capacity.clone(),
             _prepared: audio.clone(),
             _source: owner.clone(),
         },
@@ -288,7 +289,10 @@ async fn run(
     };
     let observer = batch.observer();
     complete(
-        NativeBatch { batch, observer },
+        AdmittedBatch {
+            driver: NativeBatch { batch, observer },
+            _capacity: capacity,
+        },
         owner,
         failed,
         cancel,
@@ -320,6 +324,24 @@ trait BatchDriver: Send {
     fn changed(&mut self) -> TranscriptionFuture<'_, Option<BatchSnapshot>>;
     fn cancel(&mut self);
 }
+// Native source destruction precedes release of Whisper's native admission.
+// Keep the scheduler permit until Finished confirms that entire worker retired.
+struct AdmittedBatch<D> {
+    driver: D,
+    _capacity: Arc<SpeechPermit>,
+}
+impl<D: BatchDriver> BatchDriver for AdmittedBatch<D> {
+    fn snapshot(&self) -> BatchSnapshot {
+        self.driver.snapshot()
+    }
+    fn changed(&mut self) -> TranscriptionFuture<'_, Option<BatchSnapshot>> {
+        self.driver.changed()
+    }
+    fn cancel(&mut self) {
+        self.driver.cancel();
+    }
+}
+
 struct NativeBatch {
     batch: OwnedBatch,
     observer: BatchObserver,

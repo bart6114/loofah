@@ -443,3 +443,48 @@ async fn scratch_destruction_precedes_core_release_on_success_cancel_and_both_pa
         );
     }
 }
+
+#[tokio::test]
+async fn queued_batch_waits_past_native_source_drop_until_original_admission_retires() {
+    use std::task::Poll;
+    let admission = SpeechAdmission::new(1, 0, 2).unwrap();
+    let capacity = Arc::new(admission.batch(&CancellationToken::new()).await.unwrap());
+    let native_source_capacity = capacity.clone();
+    let native_slots = Arc::new(tokio::sync::Semaphore::new(1));
+    let native_admission = native_slots.clone().try_acquire_owned().unwrap();
+    let (source_released, source_release) = oneshot::channel();
+    let (retire, retirement) = oneshot::channel();
+    let (status, receiver) = watch::channel(BatchSnapshot::Running);
+    let (owner, _) = owner();
+    let operation = tokio::spawn(complete(
+        AdmittedBatch {
+            driver: driver(receiver),
+            _capacity: capacity,
+        },
+        owner,
+        Arc::new(AtomicBool::new(false)),
+        CancellationToken::new(),
+        |_| Ok(transcript()),
+    ));
+    let native = tokio::spawn(async move {
+        drop(native_source_capacity);
+        source_released.send(()).unwrap();
+        retirement.await.unwrap();
+        drop(native_admission);
+        status.send_replace(finished());
+    });
+    source_release.await.unwrap();
+    let cancel = CancellationToken::new();
+    let mut next = Box::pin(admission.batch(&cancel));
+    assert!(std::future::poll_fn(|cx| Poll::Ready(next.as_mut().poll(cx).is_pending())).await);
+    assert!(native_slots.clone().try_acquire_owned().is_err());
+    retire.send(()).unwrap();
+    native.await.unwrap();
+    operation.await.unwrap().unwrap();
+    let next_capacity = next.await.unwrap();
+    let next_native = native_slots
+        .try_acquire_owned()
+        .expect("scheduler handoff must follow physical native admission release");
+    drop(next_native);
+    drop(next_capacity);
+}
