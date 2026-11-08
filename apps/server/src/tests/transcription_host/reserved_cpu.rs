@@ -92,7 +92,8 @@ async fn real_reserved_cpu_delivers_live_caption_while_batch_owns_model_and_http
         tokio::time::timeout(Duration::from_secs(180), async {
             loop {
                 let caption = live.captions.recv().await.expect("live owner ended without speech");
-                if !caption.new_words.is_empty() || !caption.partials.is_empty() { break; }
+                if caption.new_words.iter().any(|word| !word.text.trim().is_empty())
+                    || caption.partials.iter().any(|word| !word.text.trim().is_empty()) { break; }
             }
         }).await.unwrap();
         let caption_elapsed = started.elapsed();
