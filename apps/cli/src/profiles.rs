@@ -223,6 +223,10 @@ impl RemoteTarget {
 impl RemoteSession {
     pub(super) async fn guard(&self) -> Result<ProfileCommitGuard> {
         let guard = self.lease.guard_generation(&self.generation).await?;
+        self.verify_member().await?;
+        Ok(guard)
+    }
+    pub(super) async fn verify_member(&self) -> Result<()> {
         let RemoteReply::Me(me) = request(&self.client, RemoteOperation::Me).await? else {
             return Err(unexpected());
         };
@@ -233,7 +237,7 @@ impl RemoteSession {
             )
             .into());
         }
-        Ok(guard)
+        Ok(())
     }
     pub async fn execute(
         &self,

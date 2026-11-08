@@ -456,6 +456,7 @@ impl CommandGateway {
                 .map_err(|cause| Error::operation("read attachment", cause.to_string()))?
                 .map_err(|cause| Error::operation("read attachment", cause.to_string()))?;
                 let (metadata, source) = metadata;
+                session.verify_member().await?;
                 let input = UploadAttachmentRequest {
                     filename: metadata.filename,
                     size_bytes: metadata.size_bytes,
