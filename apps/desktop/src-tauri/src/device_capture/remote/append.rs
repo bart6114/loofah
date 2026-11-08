@@ -89,6 +89,26 @@ impl RemoteCaptureCoordinator {
                 original.clone()
             } else {
                 if state.append.len() >= 64 {
+                    let retired = state.append.iter().find_map(|(key, original)| {
+                        let capture = (key.0.clone(), original.request.capture_id.clone());
+                        state
+                            .uploads
+                            .get(&capture)
+                            .filter(|upload| {
+                                upload.ticket.is_finished()
+                                    && upload.ticket.current().publication.is_some()
+                                    && state
+                                        .captures
+                                        .get(&capture)
+                                        .is_none_or(|entry| terminal(entry.device.current().phase))
+                            })
+                            .map(|_| key.clone())
+                    });
+                    if let Some(retired) = retired {
+                        state.append.remove(&retired);
+                    }
+                }
+                if state.append.len() >= 64 {
                     return Err(error(
                         ErrorCode::ResourceLimit,
                         "Too many retained append preparations",
@@ -139,7 +159,9 @@ impl RemoteCaptureCoordinator {
                 result = &mut work => result,
                 _ = this.inner.retirement_stop.cancelled() => {
                     intent.lifetime.cancel();
-                    Err(error(ErrorCode::Unavailable, "Device capture is stopping; the original append request was retained"))
+                    // A filesystem receipt may already be executing on a blocking worker.
+                    // Cancel network work, but retain shutdown ownership until that write joins.
+                    (&mut work).await
                 }
             }
         }).await.map_err(|_| error(ErrorCode::Unavailable, "Append preparation stopped; retain its original request"))?
