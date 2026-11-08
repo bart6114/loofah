@@ -19,6 +19,7 @@ mod processing;
 mod recording_meta;
 mod remote;
 mod search_index;
+mod session_lifecycle;
 mod session_store;
 mod startup;
 mod store;
@@ -671,6 +672,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_timeline_facets::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
             application::application_delete_empty_session::<tauri::Wry>,
+            session_lifecycle::application_session_lifecycle::<tauri::Wry>,
+            session_lifecycle::application_delete_session::<tauri::Wry>,
+            session_lifecycle::application_restore_session::<tauri::Wry>,
             application::application_session_summaries::<tauri::Wry>,
             application::application_transcript_overview::<tauri::Wry>,
             application::application_documents::<tauri::Wry>,
@@ -755,6 +759,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             device_recordings::device_recording_start::<tauri::Wry>,
             device_recordings::device_recording_inventory::<tauri::Wry>,
             device_recordings::device_recording_recovery_inventory::<tauri::Wry>,
+            device_recordings::device_recording_finish_recovery::<tauri::Wry>,
+            device_recordings::device_recording_export::<tauri::Wry>,
             device_recordings::device_recording_status::<tauri::Wry>,
             device_recordings::device_recording_stop::<tauri::Wry>,
             device_recordings::device_recording_resume_upload::<tauri::Wry>,

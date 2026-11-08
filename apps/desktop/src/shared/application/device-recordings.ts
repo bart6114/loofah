@@ -95,6 +95,16 @@ function createMonitor() {
     async stop(identity: CaptureIdentity) {
       return applicationResult(await commands.deviceRecordingStop(identity));
     },
+    async finishRecovery(identity: CaptureIdentity) {
+      assertOpen();
+      return applicationResult(
+        await commands.deviceRecordingFinishRecovery(identity),
+      );
+    },
+    async exportAudio(identity: CaptureIdentity) {
+      assertOpen();
+      return applicationResult(await commands.deviceRecordingExport(identity));
+    },
     async subscribe(
       changed: () => void,
       { signal }: { signal?: AbortSignal } = {},

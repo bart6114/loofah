@@ -192,6 +192,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "transcript_overview".into(),
             "tag_editing".into(),
             "session_cleanup".into(),
+            "session_lifecycle".into(),
             "note_editor_read".into(),
             "note_editor_write".into(),
             "document_editor_read".into(),

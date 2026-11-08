@@ -2031,10 +2031,12 @@ dependencies = [
 name = "capture-store"
 version = "0.1.0"
 dependencies = [
+ "hound",
  "loofah-protocol",
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "specta",
  "storage",
  "tempfile",
  "tokio",
@@ -3442,6 +3444,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "camino",
+ "capture-store",
  "chrono",
  "dirs 6.0.0",
  "fs-format",

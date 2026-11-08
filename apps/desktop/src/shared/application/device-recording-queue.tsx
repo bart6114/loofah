@@ -139,6 +139,18 @@ function DeviceRecordingRow({
       cache.invalidateQueries({ queryKey: ["device", "recordings"] }),
     networkMode: "always",
   });
+  const finish = useMutation({
+    mutationFn: () => client.finishRecovery(recording.identity),
+    onSuccess: () =>
+      cache.invalidateQueries({ queryKey: ["device", "recordings"] }),
+    networkMode: "always",
+    retry: false,
+  });
+  const exportAudio = useMutation({
+    mutationFn: () => client.exportAudio(recording.identity),
+    networkMode: "always",
+    retry: false,
+  });
   const active = [
     "preparing",
     "starting",
@@ -180,6 +192,35 @@ function DeviceRecordingRow({
       <p className="text-muted-foreground break-all">
         {recording.identity.scope.server} · {recording.identity.scope.vault_id}
       </p>
+      {!active && recording.frames > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {!recording.sealed && recording.observation_durable && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={finish.isPending}
+              onClick={() => finish.mutate()}
+            >
+              <Trans>Prepare saved audio for upload</Trans>
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exportAudio.isPending}
+            onClick={() => exportAudio.mutate()}
+          >
+            <Trans>Export saved audio</Trans>
+          </Button>
+        </div>
+      )}
+      {exportAudio.data && (
+        <p role="status">
+          <Trans>
+            Audio exported. The original recording is retained on this device.
+          </Trans>
+        </p>
+      )}
       <p role="status">
         {verified && !active ? (
           <Trans>Verified on the server. The device copy is retained.</Trans>
@@ -203,9 +244,13 @@ function DeviceRecordingRow({
       {(recording.failure ||
         recording.upload?.error ||
         stop.error ||
+        finish.error ||
+        exportAudio.error ||
         resume.error) && (
         <p role="alert" className="text-destructive">
           {stop.error?.message ??
+            finish.error?.message ??
+            exportAudio.error?.message ??
             resume.error?.message ??
             recording.failure ??
             recording.upload?.error?.message}

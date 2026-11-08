@@ -50,6 +50,7 @@ struct Inner {
     observer: Arc<dyn DeviceCaptureObserver>,
     state: Mutex<State>,
     starts: Arc<Semaphore>,
+    exports: Arc<Semaphore>,
     start_serial: tokio::sync::Mutex<()>,
     upload_updates: watch::Sender<u64>,
     uploads: Arc<CaptureUploader>,
@@ -150,6 +151,7 @@ impl RemoteCaptureCoordinator {
                     uploads: HashMap::new(),
                 }),
                 starts: Arc::new(Semaphore::new(8)),
+                exports: Arc::new(Semaphore::new(2)),
                 start_serial: tokio::sync::Mutex::new(()),
                 upload_updates: watch::channel(0).0,
                 uploads: CaptureUploader::new(2)?,
@@ -471,6 +473,86 @@ impl RemoteCaptureCoordinator {
         })?
     }
 
+    pub async fn finish_recovery(
+        &self,
+        profile: Arc<ProfileLease>,
+        identity: CaptureIdentity,
+    ) -> Result<CaptureSnapshot, ApplicationError> {
+        let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
+            error(
+                ErrorCode::ResourceLimit,
+                "Too many device capture operations",
+            )
+        })?;
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            let _permit = permit;
+            let writer = inner.recovery_writer(profile, identity).await?;
+            let snapshot = writer.snapshot().await?;
+            if snapshot.frames == 0 || snapshot.first_admitted_audio_observed_at_ms.is_none() {
+                return Err(error(ErrorCode::Conflict, "Saved capture requires audio and its original producer timestamp. Export the retained audio for local recovery."));
+            }
+            use sha2::{Digest, Sha256};
+            let mut prefix = hypr_capture_store::wave::WavePrefix::new(&snapshot);
+            let mut source = Sha256::new();
+            for sequence in 0..snapshot.chunk_count {
+                let chunk = writer.read_chunk(sequence).await?;
+                prefix.admit(&chunk, &snapshot)?;
+                source.update(&chunk.bytes);
+            }
+            prefix.finish_snapshot(&snapshot)?;
+            writer.seal_if_matches(hypr_loofah_protocol::CaptureSeal {
+                capture_fingerprint: snapshot.capture_fingerprint,
+                chunk_count: snapshot.chunk_count,
+                frames: snapshot.frames,
+                pcm_bytes: snapshot.pcm_bytes,
+                chain_digest: snapshot.chain_digest,
+                source_sha256: source.finalize().iter().map(|byte|format!("{byte:02x}")).collect(),
+            }).await?;
+            inner.upload_updates.send_modify(|revision| *revision = revision.wrapping_add(1));
+            writer.snapshot().await
+        }).await.map_err(|_| error(ErrorCode::Unavailable, "Device recovery stopped; refresh its original capture status"))?
+    }
+
+    pub async fn export_recovery(
+        &self,
+        profile: Arc<ProfileLease>,
+        identity: CaptureIdentity,
+        destination: PathBuf,
+    ) -> Result<hypr_capture_store::wave::WaveExportReceipt, ApplicationError> {
+        let export = self
+            .inner
+            .exports
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                error(
+                    ErrorCode::ResourceLimit,
+                    "Two audio exports are already running",
+                )
+            })?;
+        let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
+            error(
+                ErrorCode::ResourceLimit,
+                "Too many device capture operations",
+            )
+        })?;
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            let _export = export;
+            let _permit = permit;
+            let writer = inner.recovery_writer(profile, identity).await?;
+            hypr_capture_store::wave::export_wave(writer, destination).await
+        })
+        .await
+        .map_err(|_| {
+            error(
+                ErrorCode::Unavailable,
+                "Audio export stopped; the original capture was retained",
+            )
+        })?
+    }
+
     pub async fn resume_upload(
         &self,
         profile: Arc<ProfileLease>,
@@ -565,6 +647,42 @@ impl RemoteCaptureCoordinator {
 }
 
 impl Inner {
+    async fn recovery_writer(
+        self: &Arc<Self>,
+        profile: Arc<ProfileLease>,
+        identity: CaptureIdentity,
+    ) -> Result<hypr_loofah_client::capture_spool::CaptureWriter, ApplicationError> {
+        let _serial = self.start_serial.lock().await;
+        let id = profile.profile().await.id;
+        {
+            let state = self
+                .state
+                .lock()
+                .expect("device capture coordinator poisoned");
+            if state.closing {
+                return Err(error(ErrorCode::Unavailable, "Device capture is stopping"));
+            }
+            if let Some(entry) = state
+                .captures
+                .get(&(id.clone(), identity.capture_id.clone()))
+            {
+                if entry.identity != identity {
+                    return Err(error(
+                        ErrorCode::Conflict,
+                        "The original capture identity changed",
+                    ));
+                }
+                if !terminal(entry.device.current().phase) {
+                    return Err(error(
+                        ErrorCode::Conflict,
+                        "Stop recording and wait for device audio to finish saving before recovery",
+                    ));
+                }
+            }
+        }
+        self.host(&id).await?.spool.resume(identity).await
+    }
+
     async fn host(self: &Arc<Self>, id: &str) -> Result<Arc<ProfileHost>, ApplicationError> {
         let cell = {
             let mut state = self

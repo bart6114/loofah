@@ -16,6 +16,209 @@ async fn profile(root: &std::path::Path) -> Arc<ProfileLease> {
     lease
 }
 
+fn recovery_identity() -> CaptureIdentity {
+    CaptureIdentity {
+        scope: CaptureScope {
+            server: "https://capture.example/".into(),
+            member_id: "member".into(),
+            vault_id: "remote".into(),
+        },
+        capture_id: uuid::Uuid::new_v4().to_string(),
+        request_id: uuid::Uuid::new_v4().to_string(),
+        target: CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::new_v4().to_string(),
+        },
+    }
+}
+
+#[tokio::test]
+async fn signed_out_recovery_finishes_and_exports_original_audio_without_creating_a_vault_note() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let profile = profile(&root).await;
+    let original = profile.profile().await;
+    let capture_root = root.join("captures");
+    let spool = CaptureSpool::open(
+        capture_root.join(&original.id),
+        CaptureSpoolLimits::default(),
+    )
+    .await
+    .unwrap();
+    let identity = recovery_identity();
+    let writer = spool
+        .begin_with_observation(identity.clone(), CaptureFormat::stereo(), 1_794_000_000_001)
+        .await
+        .unwrap();
+    let pcm = [0.25_f32.to_le_bytes(), (-0.5_f32).to_le_bytes()].concat();
+    writer.append_chunk(0, 1, pcm.clone()).await.unwrap();
+    let before = writer.snapshot().await.unwrap();
+    drop(writer);
+    drop(spool);
+    let mut signed_out = original.clone();
+    signed_out.member_id = None;
+    signed_out.vault_id = None;
+    profile.save(signed_out).await.unwrap();
+    let coordinator =
+        RemoteCaptureCoordinator::new(capture_root, Arc::new(Observer::default())).unwrap();
+    let finished = coordinator
+        .finish_recovery(profile.clone(), identity.clone())
+        .await
+        .unwrap();
+    assert_eq!(finished.identity, before.identity);
+    assert_eq!(
+        finished.first_admitted_audio_observed_at_ms,
+        before.first_admitted_audio_observed_at_ms
+    );
+    assert_eq!(finished.pcm_bytes, before.pcm_bytes);
+    assert!(finished.seal.is_some());
+    assert!(finished.session_id.is_none());
+    assert!(finished.publication.is_none());
+    let destination = root.join("recovered.wav");
+    let exported = coordinator
+        .export_recovery(profile.clone(), identity.clone(), destination.clone())
+        .await
+        .unwrap();
+    assert!(exported.sealed);
+    let bytes = std::fs::read(&destination).unwrap();
+    assert_eq!(&bytes[bytes.len() - pcm.len()..], pcm);
+    assert_eq!(
+        coordinator
+            .finish_recovery(profile.clone(), identity)
+            .await
+            .unwrap(),
+        finished
+    );
+    assert_eq!(
+        coordinator
+            .recovery_inventory(profile.clone())
+            .await
+            .unwrap(),
+        vec![finished]
+    );
+    assert!(!root.join("sessions").exists());
+    assert!(profile.profile().await.member_id.is_none());
+    assert!(
+        coordinator
+            .wait_shutdown(Duration::from_secs(5))
+            .await
+            .safe_to_exit
+    );
+}
+
+#[tokio::test]
+async fn untimed_saved_prefix_can_export_without_inventing_a_recording_timestamp_or_seal() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let profile = profile(&root).await;
+    let profile_id = profile.profile().await.id;
+    let capture_root = root.join("captures");
+    let spool = CaptureSpool::open(
+        capture_root.join(&profile_id),
+        CaptureSpoolLimits::default(),
+    )
+    .await
+    .unwrap();
+    let identity = recovery_identity();
+    let writer = spool
+        .begin(identity.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    writer.append_chunk(0, 1, vec![0; 8]).await.unwrap();
+    let before = writer.snapshot().await.unwrap();
+    drop(writer);
+    drop(spool);
+    let coordinator =
+        RemoteCaptureCoordinator::new(capture_root, Arc::new(Observer::default())).unwrap();
+    assert!(
+        matches!(coordinator.finish_recovery(profile.clone(),identity.clone()).await,Err(error) if error.code==ErrorCode::Conflict)
+    );
+    let receipt = coordinator
+        .export_recovery(profile.clone(), identity, root.join("untimed.wav"))
+        .await
+        .unwrap();
+    assert!(!receipt.sealed);
+    assert_eq!(
+        coordinator.recovery_inventory(profile).await.unwrap(),
+        vec![before]
+    );
+    assert!(
+        coordinator
+            .wait_shutdown(Duration::from_secs(5))
+            .await
+            .safe_to_exit
+    );
+}
+
+#[tokio::test]
+async fn recovery_refuses_active_capture_without_sealing_or_exporting_a_live_prefix() {
+    let _capture_test_guard = super::super::super::CAPTURE_TEST_LOCK.lock().await;
+    let (temp, spool) = spool().await;
+    let profile = profile(temp.path()).await;
+    let profile_id = profile.profile().await.id;
+    let observer = Arc::new(Observer::default());
+    let (host, input, gate, root, handle) = root_host(
+        spool.clone(),
+        observer.clone(),
+        Config {
+            resource_gate: Some(Arc::new(Semaphore::new(0))),
+            ..Default::default()
+        },
+    )
+    .await;
+    let coordinator =
+        RemoteCaptureCoordinator::new(temp.path().join("captures"), observer).unwrap();
+    coordinator.install_test_host(profile_id.clone(), spool.clone(), host);
+    let capture = coordinator
+        .start(
+            profile.clone(),
+            None,
+            uuid::Uuid::new_v4().to_string(),
+            CaptureTarget::PendingSession {
+                create_request_id: uuid::Uuid::new_v4().to_string(),
+            },
+            CaptureFormat::stereo(),
+        )
+        .await
+        .unwrap();
+    input.send(frame()).await.unwrap();
+    let mut ticket = capture.device.clone();
+    until(&mut ticket, |state| {
+        state.completion.first_admitted_audio_observed_at.is_some()
+    })
+    .await;
+    assert!(
+        matches!(coordinator.finish_recovery(profile.clone(),capture.identity.clone()).await,Err(error) if error.code==ErrorCode::Conflict)
+    );
+    let output = temp.path().join("active.wav");
+    assert!(
+        matches!(coordinator.export_recovery(profile,capture.identity.clone(),output.clone()).await,Err(error) if error.code==ErrorCode::Conflict)
+    );
+    assert!(!output.exists());
+    assert!(
+        spool
+            .resume(capture.identity.clone())
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .seal
+            .is_none()
+    );
+    coordinator
+        .request_stop(&profile_id, &capture.identity.scope, &ticket.key)
+        .unwrap();
+    gate.add_permits(1);
+    assert!(
+        coordinator
+            .wait_shutdown(Duration::from_secs(5))
+            .await
+            .safe_to_exit
+    );
+    root.stop(None);
+    handle.await.unwrap();
+}
+
 #[tokio::test]
 async fn offline_coordinator_pins_original_profile_scope_and_joins_real_source_before_shutdown() {
     let _capture_test_guard = super::super::super::CAPTURE_TEST_LOCK.lock().await;

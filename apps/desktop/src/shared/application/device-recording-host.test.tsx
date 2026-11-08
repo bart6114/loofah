@@ -18,6 +18,8 @@ const native = vi.hoisted(() => ({
   }[],
   start: vi.fn(),
   resume: vi.fn(),
+  finish: vi.fn(),
+  exportAudio: vi.fn(),
   updates: new Set<() => void>(),
   destinations: [] as unknown[],
 }));
@@ -32,6 +34,8 @@ vi.mock("./device-recordings", () => ({
         };
       }),
       stop: vi.fn(async () => true),
+      finishRecovery: native.finish,
+      exportAudio: native.exportAudio,
       dispose: vi.fn(),
     };
     native.monitors.push(monitor);
@@ -93,6 +97,8 @@ const caches: QueryClient[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
   native.start.mockReset().mockResolvedValue(record());
+  native.finish.mockReset();
+  native.exportAudio.mockReset();
   native.records = [];
   native.monitors.length = 0;
   native.updates.clear();
@@ -304,4 +310,98 @@ it("keeps pending capture disabled while this profile still owns an active recor
   expect((button as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(button);
   expect(native.start).not.toHaveBeenCalled();
+});
+
+it("prepares only the original stopped prefix while signed out and leaves upload explicit", async () => {
+  native.records = [{ ...record(), phase: "finished", sealed: false }];
+  native.finish.mockImplementation(async () => {
+    native.records = [{ ...native.records[0], sealed: true }];
+    return native.records[0];
+  });
+  const original = native.records[0].identity;
+  await mount({ bound: false });
+  const finish = await screen.findByRole("button", {
+    name: "Prepare saved audio for upload",
+  });
+  fireEvent.click(finish);
+  await waitFor(() =>
+    expect(native.finish).toHaveBeenCalledExactlyOnceWith(original),
+  );
+  const resume = await screen.findByRole("button", { name: "Resume upload" });
+  expect((resume as HTMLButtonElement).disabled).toBe(true);
+  expect(native.resume).not.toHaveBeenCalled();
+  expect(native.start).not.toHaveBeenCalled();
+});
+
+it("exports untimed audio without login, a new recording, or an invented seal", async () => {
+  native.records = [
+    {
+      ...record(),
+      phase: null,
+      first_audio_ms: null,
+      observation_durable: false,
+    },
+  ];
+  native.exportAudio.mockResolvedValue({
+    frames: 16000,
+    pcm_bytes: 128000,
+    file_bytes: 128068,
+    sha256: "a".repeat(64),
+    sealed: false,
+  });
+  await mount({ bound: false });
+  const exportButton = await screen.findByRole("button", {
+    name: "Export saved audio",
+  });
+  expect(
+    screen.queryByRole("button", { name: "Prepare saved audio for upload" }),
+  ).toBeNull();
+  fireEvent.click(exportButton);
+  await screen.findByText(
+    "Audio exported. The original recording is retained on this device.",
+  );
+  expect(native.exportAudio).toHaveBeenCalledExactlyOnceWith(
+    native.records[0].identity,
+  );
+  expect(native.finish).not.toHaveBeenCalled();
+  expect(native.resume).not.toHaveBeenCalled();
+  expect(native.start).not.toHaveBeenCalled();
+  expect(native.records[0].sealed).toBe(false);
+});
+
+it("treats a closed export picker as cancellation and keeps the original item recoverable", async () => {
+  native.records = [{ ...record(), phase: "finished", sealed: true }];
+  native.exportAudio.mockResolvedValue(null);
+  await mount({ bound: false });
+  const exportButton = await screen.findByRole("button", {
+    name: "Export saved audio",
+  });
+  fireEvent.click(exportButton);
+  await waitFor(() => expect(native.exportAudio).toHaveBeenCalledOnce());
+  expect(
+    screen.queryByText(
+      "Audio exported. The original recording is retained on this device.",
+    ),
+  ).toBeNull();
+  await waitFor(() =>
+    expect((exportButton as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(exportButton);
+  await waitFor(() => expect(native.exportAudio).toHaveBeenCalledTimes(2));
+  expect(native.exportAudio.mock.calls[1][0]).toEqual(
+    native.exportAudio.mock.calls[0][0],
+  );
+});
+
+it("keeps recovery and export unavailable until active capture has finished saving", async () => {
+  await mount({ bound: false, active: true });
+  await screen.findByRole("button", { name: "Stop recording" });
+  expect(
+    screen.queryByRole("button", { name: "Prepare saved audio for upload" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Export saved audio" }),
+  ).toBeNull();
+  expect(native.finish).not.toHaveBeenCalled();
+  expect(native.exportAudio).not.toHaveBeenCalled();
 });

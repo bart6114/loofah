@@ -83,6 +83,10 @@ export type DeleteEmptySessionRequest = { session_id: string }
 
 export type DeleteRecordingRequest = { expected_sha256: string }
 
+export type DeleteSessionOutcome = { kind: "trashed"; trash_token: string; revision: string } | { kind: "conflict"; snapshot: SessionLifecycleSnapshot } | { kind: "not_found" }
+
+export type DeleteSessionRequest = { session_id: string; expected_revision: string }
+
 export type Document = { id: string; kind: string; template_id: string; title: string; markdown: string; sort_order: number; updated_at: string }
 
 export type DocumentEditorSaveOutcome = { kind: "saved"; snapshot: DocumentEditorSnapshot } | { kind: "conflict"; snapshot: DocumentEditorSnapshot }
@@ -228,6 +232,12 @@ export type RenderedTranscriptSegment = { is_current_user?: boolean | null; id: 
 
 export type ReplaceTasksRequest = { source: TaskSource; tasks: TaskInput[]; expected_revision: string }
 
+export type RestoreSessionConflictReason = "destination_occupied" | "trash_changed"
+
+export type RestoreSessionOutcome = { kind: "restored"; session_id: string; revision: string } | { kind: "conflict"; reason: RestoreSessionConflictReason; current_revision: string | null } | { kind: "not_found" }
+
+export type RestoreSessionRequest = { trash_token: string; expected_revision: string }
+
 export type SaveDocumentEditorRequest = { markdown: string; title: string | null; tasks: TaskInput[]; expected_revision: string; expected_metadata_revision: string; expected_tasks_revision: string }
 
 export type SaveDocumentRequest = { markdown: string; expected_revision: string }
@@ -249,6 +259,8 @@ export type SegmentKey = { channel: ChannelProfile; speaker_index?: number | nul
 export type SegmentWord = { text: string; start_ms: number; end_ms: number; channel: ChannelProfile; is_final: boolean; id?: string | null }
 
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot }
+
+export type SessionLifecycleSnapshot = { session_id: string; revision: string }
 
 export type SessionListHeader = { id: string; title: string; created_at: string; folder: string | null; tags: string[]; author: string | null; has_transcript_words: boolean }
 

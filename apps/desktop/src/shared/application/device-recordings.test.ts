@@ -7,6 +7,8 @@ const native = vi.hoisted(() => ({
     deviceRecordingRecoveryInventory: vi.fn(),
     deviceRecordingStatus: vi.fn(),
     deviceRecordingStop: vi.fn(),
+    deviceRecordingFinishRecovery: vi.fn(),
+    deviceRecordingExport: vi.fn(),
     deviceRecordingResumeUpload: vi.fn(),
     deviceRecordingSubscribe: vi.fn(),
     deviceRecordingUnsubscribe: vi.fn(),
@@ -61,6 +63,31 @@ beforeEach(() => {
     status: "ok",
     data: true,
   });
+});
+
+it("recovers and exports an original device identity without a server connection", async () => {
+  const monitor = createDeviceRecordingMonitor();
+  native.commands.deviceRecordingFinishRecovery.mockResolvedValue({
+    status: "ok",
+    data: { identity, sealed: true },
+  });
+  native.commands.deviceRecordingExport.mockResolvedValue({
+    status: "ok",
+    data: null,
+  });
+  await expect(monitor.finishRecovery(identity)).resolves.toMatchObject({
+    identity,
+    sealed: true,
+  });
+  await expect(monitor.exportAudio(identity)).resolves.toBeNull();
+  expect(
+    native.commands.deviceRecordingFinishRecovery,
+  ).toHaveBeenCalledExactlyOnceWith(identity);
+  expect(native.commands.deviceRecordingExport).toHaveBeenCalledExactlyOnceWith(
+    identity,
+  );
+  expect(native.commands.deviceRecordingStart).not.toHaveBeenCalled();
+  expect(native.commands.deviceRecordingResumeUpload).not.toHaveBeenCalled();
 });
 
 it("does no startup work and refuses an aborted start before native admission", async () => {

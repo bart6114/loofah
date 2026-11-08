@@ -247,6 +247,10 @@ msgid "Audio"
 msgstr "Audio"
 
 #: src/shared/application/device-recording-queue.tsx
+msgid "Audio exported. The original recording is retained on this device."
+msgstr "Audio exported. The original recording is retained on this device."
+
+#: src/shared/application/device-recording-queue.tsx
 msgid "Audio is saved on this device and awaiting upload."
 msgstr "Audio is saved on this device and awaiting upload."
 
@@ -936,6 +940,10 @@ msgstr "Export"
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Export failed. Please try again."
 msgstr "Export failed. Please try again."
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Export saved audio"
+msgstr "Export saved audio"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Exporting..."
@@ -1631,6 +1639,10 @@ msgstr "Permissions"
 #: src/onboarding/index.tsx
 msgid "Permissions granted"
 msgstr "Permissions granted"
+
+#: src/shared/application/device-recording-queue.tsx
+msgid "Prepare saved audio for upload"
+msgstr "Prepare saved audio for upload"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Preparing export..."

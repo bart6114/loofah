@@ -3,6 +3,7 @@
 use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 
 pub mod capture_spool;
+pub mod wave;
 pub use capture_spool::*;
 
 pub type Result<T> = std::result::Result<T, ApplicationError>;

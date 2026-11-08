@@ -411,6 +411,55 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationSessionLifecycle(
+    sessionId: string,
+  ): Promise<Result<SessionLifecycleSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_session_lifecycle", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDeleteSession(
+    requestId: string,
+    input: DeleteSessionRequest,
+  ): Promise<Result<DeleteSessionOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRestoreSession(
+    requestId: string,
+    input: RestoreSessionRequest,
+  ): Promise<Result<RestoreSessionOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_restore_session", {
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessionSummaries(
     input: SessionSummaryQuery,
   ): Promise<Result<SessionSummary[], ApplicationError>> {
@@ -1565,6 +1614,34 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async deviceRecordingFinishRecovery(
+    identity: CaptureIdentity,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_finish_recovery", {
+          identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingExport(
+    identity: CaptureIdentity,
+  ): Promise<Result<WaveExportReceipt | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_export", { identity }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async deviceRecordingStatus(): Promise<
     Result<DeviceRecordingInventory | null, ApplicationError>
   > {
@@ -2711,6 +2788,14 @@ export type DeleteEmptySessionOutcome =
   | { kind: "not_found" };
 export type DeleteEmptySessionRequest = { session_id: string };
 export type DeleteRecordingRequest = { expected_sha256: string };
+export type DeleteSessionOutcome =
+  | { kind: "trashed"; trash_token: string; revision: string }
+  | { kind: "conflict"; snapshot: SessionLifecycleSnapshot }
+  | { kind: "not_found" };
+export type DeleteSessionRequest = {
+  session_id: string;
+  expected_revision: string;
+};
 export type DesktopBootstrapInfo = {
   startup: DesktopStartupSnapshot;
   connection: DesktopConnectionProfile | null;
@@ -3175,6 +3260,9 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "session_lifecycle"; vault_id: string; session_id: string }
+  | { kind: "delete_session"; vault_id: string; input: DeleteSessionRequest }
+  | { kind: "restore_session"; vault_id: string; input: RestoreSessionRequest }
   | { kind: "transcription_policy"; vault_id: string }
   | {
       kind: "start_capture_live";
@@ -3382,6 +3470,9 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "session_lifecycle"; value: SessionLifecycleSnapshot }
+  | { kind: "session_delete"; value: DeleteSessionOutcome }
+  | { kind: "session_restore"; value: RestoreSessionOutcome }
   | { kind: "transcription_policy"; value: TranscriptionPolicy }
   | { kind: "capture_live_snapshot"; value: CaptureLiveSnapshot }
   | { kind: "capture_live_captions"; value: CaptureLiveCaptionPage }
@@ -3455,6 +3546,21 @@ export type RenderedTranscriptSegment = {
 export type ReplaceTasksRequest = {
   source: TaskSource;
   tasks: TaskInput[];
+  expected_revision: string;
+};
+export type RestoreSessionConflictReason =
+  | "destination_occupied"
+  | "trash_changed";
+export type RestoreSessionOutcome =
+  | { kind: "restored"; session_id: string; revision: string }
+  | {
+      kind: "conflict";
+      reason: RestoreSessionConflictReason;
+      current_revision: string | null;
+    }
+  | { kind: "not_found" };
+export type RestoreSessionRequest = {
+  trash_token: string;
   expected_revision: string;
 };
 export type SaveDesktopStartupRequest = {
@@ -3549,6 +3655,7 @@ export type SegmentWord = {
   id?: string | null;
 };
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot };
+export type SessionLifecycleSnapshot = { session_id: string; revision: string };
 export type SessionListHeader = {
   id: string;
   title: string;
@@ -3999,6 +4106,13 @@ export type VaultYearStats = {
   transcript_words: number;
   enhanced_docs: number;
   duration_seconds: number;
+};
+export type WaveExportReceipt = {
+  frames: number;
+  pcm_bytes: number;
+  file_bytes: number;
+  sha256: string;
+  sealed: boolean;
 };
 /**
  * Whether a finalized word is stable or awaiting correction.

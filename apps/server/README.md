@@ -21,9 +21,18 @@ the same request UUID; closing a view does not stop recording. Reconnect to the
 original account/vault to resume a retained upload. Device audio is retained after
 independent canonical hash verification; automatic deletion is not enabled.
 
+The device queue also supports **Export saved audio** without sign-in. Export
+verifies the exact saved PCM prefix and preserves channel order/float bits in a
+WAV, using bounded chunks and an atomic publish that never overwrites an existing
+file. It retains the original capture. An interrupted timed capture can explicitly
+**Prepare saved audio for upload** after its device producer has stopped; this
+verifies and seals only the durable prefix, without restarting the microphone,
+inventing timestamps or creating a vault note. Untimed older captures can export
+but cannot invent the producer observation needed for upload. Resume remains an
+explicit action against the original authorized destination.
+
 This is not complete recording parity: automated live transcription/repair and
-summaries, append, local audio export/recovery and
-long-duration/platform acceptance remain release gates. The shared main workspace
+summaries, append and long-duration/platform acceptance remain release gates. The shared main workspace
 adapter is implemented and tested but is not yet the selected remote startup UI.
 
 ## Desktop startup and server profiles
@@ -720,3 +729,21 @@ Before upgrading, stop the service, take a backup, replace the executable and ch
 ## Isolated native UI tests
 
 The native client has an explicit `dev-fixtures` feature for loopback HTTPS fixtures with a supplied CA. Certificate and hostname checks remain enabled. The desktop hook is available only with `--features dev`, bundle identifier `io.loofah.remote-qa`, and a native `LOOFAH_QA_ROOT_CA` file (at most 128 KiB). It is excluded from normal, staging and devtools builds. Keep its disposable debug profile and all fixture/build artifacts on T7; use synthetic identities and data. No OS trust-store change is needed. This hook is for native UI validation, not a server deployment option.
+
+## Checked session lifecycle
+
+The `session_lifecycle` capability exposes `GET /vaults/{vault}/sessions/{session}/lifecycle`,
+`POST /vaults/{vault}/session-deletions` and `POST /vaults/{vault}/session-restorations`.
+Reads return an opaque revision. Mutations require current editor/owner access,
+a caller UUID and the expected revision; restore also requires the opaque Trash
+token returned by deletion. Changed content returns a conflict, never a forced
+overwrite. A completed replay returns the historical decision without deleting
+or recreating a later session. Cross-vault tokens are rejected. Private receipts
+and captures/jobs prevent lifecycle changes while work or its outcome is unknown.
+The complete directory, including unknown user attachments, moves intact. No
+local paths are exposed by these remote contracts.
+
+These operations are also thin Native IPC wrappers over the same Core. The Local
+frontend capability remains disabled until the legacy recording/batch persistence
+barrier is installed; existing Local deletion and undo remain available during
+that migration. Shared frontend lifecycle actions are being integrated.

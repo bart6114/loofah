@@ -180,6 +180,10 @@ impl DeviceRecordingState {
                 .collect()
         });
         for item in self.live(&profile_id) {
+            let item = match items.get(&item.identity.capture_id) {
+                Some(saved) => overlay_live(saved, item),
+                None => item,
+            };
             items.insert(item.identity.capture_id.clone(), item);
         }
         let mut recordings = items.into_values().collect::<Vec<_>>();
@@ -269,6 +273,87 @@ fn saved(profile_id: &str, snapshot: CaptureSnapshot) -> DeviceRecordingInfo {
         upload: None,
         failure: None,
     }
+}
+
+fn overlay_live(saved: &DeviceRecordingInfo, mut live: DeviceRecordingInfo) -> DeviceRecordingInfo {
+    if live.identity == saved.identity
+        && live.frames == saved.frames
+        && live.pcm_bytes == saved.pcm_bytes
+        && matches!(
+            live.phase,
+            Some(
+                DeviceHostPhase::Finished | DeviceHostPhase::Failed | DeviceHostPhase::NeverStarted
+            )
+        )
+    {
+        // Explicit recovery can seal a stopped producer's exact durable prefix.
+        live.sealed |= saved.sealed;
+        live.publication = live.publication.or_else(|| saved.publication.clone());
+    }
+    live
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_recording_finish_recovery<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    identity: CaptureIdentity,
+) -> Result<DeviceRecordingInfo, ApplicationError> {
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let snapshot = state
+        .host(&app)
+        .await?
+        .finish_recovery(profile, identity)
+        .await?;
+    *state.recovery.lock().unwrap() = None;
+    *state.inventory.lock().unwrap() = None;
+    state
+        .events
+        .wake
+        .send_modify(|revision| *revision = revision.wrapping_add(1));
+    Ok(saved(&profile_id, snapshot))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_recording_export<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    identity: CaptureIdentity,
+) -> Result<Option<hypr_capture_store::wave::WaveExportReceipt>, ApplicationError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let host = state.host(&app).await?;
+    let (selected, destination) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(format!(
+            "Loofah-{}.wav",
+            uuid::Uuid::parse_str(&identity.capture_id)
+                .map_err(|_| failure(ErrorCode::Validation, "Invalid capture identifier"))?
+        ))
+        .add_filter("WAV audio", &["wav"])
+        .save_file(move |path| {
+            let _ = selected.send(path);
+        });
+    let Some(destination) = destination
+        .await
+        .map_err(|_| failure(ErrorCode::Cancelled, "Audio export selection was closed"))?
+    else {
+        return Ok(None);
+    };
+    let destination = destination
+        .into_path()
+        .map_err(|_| failure(ErrorCode::Validation, "Choose a file on this device"))?;
+    host.export_recovery(profile, identity, destination)
+        .await
+        .map(Some)
 }
 
 #[tauri::command]
@@ -371,7 +456,7 @@ pub async fn device_recording_recovery_inventory<R: tauri::Runtime>(
             .iter_mut()
             .find(|item| item.identity == capture.identity)
         {
-            *existing = capture;
+            *existing = overlay_live(existing, capture);
         } else {
             recordings.push(capture);
         }
@@ -634,6 +719,46 @@ pub fn allow_frontend_exit_flush<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_inventory_preserves_only_the_exact_explicitly_recovered_prefix() {
+        let mut stored = DeviceRecordingInfo {
+            profile_id: "profile".into(),
+            identity: CaptureIdentity {
+                scope: CaptureScope {
+                    server: "https://capture.example/".into(),
+                    member_id: "member".into(),
+                    vault_id: "vault".into(),
+                },
+                capture_id: uuid::Uuid::new_v4().to_string(),
+                request_id: uuid::Uuid::new_v4().to_string(),
+                target: hypr_loofah_protocol::CaptureTarget::PendingSession {
+                    create_request_id: uuid::Uuid::new_v4().to_string(),
+                },
+            },
+            phase: None,
+            first_audio_ms: Some(1_794_000_000_001),
+            observation_durable: true,
+            frames: 1,
+            pcm_bytes: 8,
+            sealed: true,
+            publication: None,
+            upload: None,
+            failure: None,
+        };
+        let mut live = stored.clone();
+        live.phase = Some(DeviceHostPhase::Finished);
+        live.sealed = false;
+        assert!(overlay_live(&stored, live.clone()).sealed);
+        live.phase = Some(DeviceHostPhase::Pending);
+        assert!(!overlay_live(&stored, live.clone()).sealed);
+        live.phase = Some(DeviceHostPhase::Finished);
+        live.frames = 2;
+        assert!(!overlay_live(&stored, live.clone()).sealed);
+        live.frames = 1;
+        stored.identity.scope.vault_id = "other-vault".into();
+        assert!(!overlay_live(&stored, live).sealed);
+    }
 
     #[tokio::test]
     async fn uninitialized_recording_state_drains_without_opening_storage_or_credentials() {
