@@ -129,6 +129,16 @@ impl TranscriptionAuthorizer for CatalogTranscriptionAuthorizer {
         self.authorize_member(&work.principal)
     }
 }
+impl hypr_loofah_core::capture_processing::CaptureProcessingAuthorizer
+    for CatalogTranscriptionAuthorizer
+{
+    fn authorize<'a>(
+        &'a self,
+        member: &'a str,
+    ) -> TranscriptionFuture<'a, Result<Box<dyn Send>, TranscriptionFailure>> {
+        self.authorize_member(member)
+    }
+}
 impl hypr_loofah_core::capture_live::CaptureLiveAuthorizer for CatalogTranscriptionAuthorizer {
     fn observe<'a>(
         &'a self,

@@ -94,22 +94,22 @@ async fn real_configured_cpu_live_captions_precede_seal_and_promote_matching_cap
         .begin_capture_authorized(me.member.id.clone(), input.clone(), || async { Ok(()) })
         .await
         .unwrap();
-    let generation = uuid::Uuid::new_v4().to_string();
+    let generation = input.identity.request_id.clone();
     let catalog = fixture.service.catalog.clone();
     let member = me.member.id.clone();
     let vault = me.personal_vault_id.clone();
     let live_started = std::time::Instant::now();
     context
-        .start_capture_live_authorized(
+        .submit_capture_processing_authorized(
             me.member.id.clone(),
             capture.clone(),
             generation.clone(),
-            CaptureLiveRequest {
+            CaptureProcessingRequest {
                 capture_fingerprint: begun.prefix.capture_fingerprint.clone(),
-                expected_transcript: AbsentTranscriptExpectation::Absent,
-                model: "operator-base".into(),
+                model: None,
                 languages: vec!["en".into()],
                 keywords: vec![],
+                summary: None,
             },
             move || async move {
                 catalog
@@ -120,6 +120,30 @@ async fn real_configured_cpu_live_captions_precede_seal_and_promote_matching_cap
         )
         .await
         .unwrap();
+    tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            match context
+                .capture_live_status_authorized(
+                    me.member.id.clone(),
+                    capture.clone(),
+                    generation.clone(),
+                    || async { Ok(()) },
+                )
+                .await
+            {
+                Ok(snapshot) => {
+                    assert!(!snapshot.state.is_terminal(), "{snapshot:?}");
+                    break;
+                }
+                Err(cause) if cause.code == ErrorCode::NotFound => {
+                    tokio::time::sleep(Duration::from_millis(25)).await
+                }
+                Err(cause) => panic!("live admission failed: {cause:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
     let wav = speech_wav();
     let mut reader = hound::WavReader::new(std::io::Cursor::new(wav)).unwrap();
     assert_eq!(reader.spec().sample_rate, 16000);
@@ -231,6 +255,38 @@ async fn real_configured_cpu_live_captions_precede_seal_and_promote_matching_cap
     .await
     .unwrap();
     assert_eq!(done.state, CaptureLiveState::Completed, "{done:?}");
+    let processing = tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            let state = context
+                .capture_processing_status_authorized(
+                    me.member.id.clone(),
+                    capture.clone(),
+                    || async { Ok(()) },
+                )
+                .await
+                .unwrap();
+            if state.state.is_terminal() {
+                break state;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        processing.state,
+        CaptureProcessingState::Succeeded,
+        "{processing:?}"
+    );
+    assert_eq!(
+        processing.live_generation_id.as_deref(),
+        Some(generation.as_str())
+    );
+    assert!(processing.repair_job_id.is_none());
+    assert!(processing.summary_job_id.is_none());
+    assert_eq!(processing.transcript_publication, done.publication);
+    println!("CPU_CAPTURE_PROCESSING_SUCCEEDED=true");
+
     assert_eq!(done.completed_through_frame, Some((pcm.len() / 8) as u64));
     let journal_path = fixture
         .service

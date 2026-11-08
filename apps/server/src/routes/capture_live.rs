@@ -179,7 +179,7 @@ async fn owned_read<T: Send + 'static>(
     .map_err(ApiError::internal)?
 }
 
-async fn read_response<T: serde::Serialize + Send + 'static>(
+pub(super) async fn read_response<T: serde::Serialize + Send + 'static>(
     service: &Service,
     limit: usize,
     operation: impl Future<Output = std::result::Result<T, ApplicationError>> + Send + 'static,

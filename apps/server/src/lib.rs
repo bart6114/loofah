@@ -10,7 +10,6 @@ pub mod routes;
 pub mod service;
 mod uploads;
 
-#[cfg(any(test, feature = "cpu-transcription"))]
 mod transcription_authorization;
 
 #[cfg(feature = "cpu-transcription")]

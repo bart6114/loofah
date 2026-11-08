@@ -145,6 +145,14 @@ async fn execute(
     id: &str,
 ) -> Result<JobCompletion, ApplicationError> {
     let work = journal.work(id.into()).await?;
+    let (request_id, origin) = journal.capture_request_id(id.into()).await?;
+    if context
+        .capture_child_admission(&work.principal, &request_id, origin.as_ref())
+        .await
+        .is_err()
+    {
+        return Ok(JobCompletion::Interrupted);
+    }
     let grant = match authorizer.authorize(&work).await {
         Ok(grant) => grant,
         Err(failure) => return Ok(failure_completion(failure)),
@@ -265,6 +273,13 @@ async fn execute(
     if !journal.begin_apply(id.into()).await? {
         return Ok(JobCompletion::Cancelled);
     }
+    let source_guard = match context
+        .guard_capture_summary_source(&work.principal, &request_id, origin.as_ref())
+        .await
+    {
+        Ok(guard) => guard,
+        Err(_) => return Ok(JobCompletion::Conflict),
+    };
     let input = hypr_loofah_protocol::SaveDocumentRequest {
         markdown: output.markdown,
         expected_revision: work.request.expected_revision.clone(),
@@ -286,6 +301,7 @@ async fn execute(
                 .await
         }
     };
+    drop(source_guard);
     if work.request.title_policy == TitlePolicy::GenerateIfEmpty
         && let Ok(hypr_loofah_protocol::DocumentSaveOutcome::Saved(snapshot)) = &applied
     {

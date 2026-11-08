@@ -16,7 +16,7 @@ use crate::{VaultContext, VaultRuntime, vault::error};
 mod engine;
 mod ledger;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod worker;
 pub use engine::*;
 
@@ -100,6 +100,27 @@ impl CaptureLiveService {
 }
 
 impl VaultContext {
+    pub(crate) async fn capture_live_processing_outcome(
+        &self,
+        member: String,
+        generation: String,
+    ) -> Result<(CaptureLiveSnapshot, bool, bool), ApplicationError> {
+        let service = self
+            .capture_live
+            .get()
+            .ok_or_else(|| unavailable("Live processing is not configured"))?;
+        let record = service.journal.get(member, generation.clone()).await?;
+        let drained = service
+            .tasks
+            .lock()
+            .unwrap()
+            .get(&generation)
+            .is_none_or(|task| task.handle.is_finished());
+        let safe = !record.commit_pending
+            && record.snapshot.state != CaptureLiveState::Uncertain
+            && !service.failed.load(std::sync::atomic::Ordering::Acquire);
+        Ok((record.snapshot, drained, safe))
+    }
     pub(crate) async fn ensure_capture_live_lifecycle_idle(
         &self,
         session: &str,

@@ -29,6 +29,8 @@ pub struct VaultContext {
     pub(crate) processing_policy: std::sync::OnceLock<hypr_loofah_protocol::ProcessingPolicy>,
     pub(crate) transcription: std::sync::OnceLock<crate::transcription_jobs::TranscriptionService>,
     pub(crate) capture_live: std::sync::OnceLock<Arc<crate::capture_live::CaptureLiveService>>,
+    pub(crate) capture_processing:
+        std::sync::OnceLock<Arc<crate::capture_processing::CaptureProcessingService>>,
 }
 
 impl VaultContext {
@@ -56,6 +58,7 @@ impl VaultContext {
             processing_policy: std::sync::OnceLock::new(),
             transcription: std::sync::OnceLock::new(),
             capture_live: std::sync::OnceLock::new(),
+            capture_processing: std::sync::OnceLock::new(),
         }
     }
 

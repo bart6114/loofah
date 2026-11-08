@@ -194,6 +194,24 @@ async fn execute_observed(
     signals: &Signals,
 ) -> Result<(), ApplicationError> {
     let id = record.snapshot.id.clone();
+    if context
+        .capture_child_admission(
+            &record.member,
+            &record.identity().request_id.to_string(),
+            record.capture_processing.as_ref(),
+        )
+        .await
+        .is_err()
+    {
+        return journal
+            .finish(
+                id,
+                TranscriptionJobState::Interrupted,
+                Some(TranscriptionFailure::Interrupted),
+                None,
+            )
+            .await;
+    }
     let mut baseline = None;
     if signals.cancelled() {
         let (s, f) = cancellation(signals);
@@ -471,6 +489,26 @@ async fn publish(
         drop(plan);
         drop(grant);
         return fail(journal, record, &cause, signals).await;
+    }
+    if context
+        .capture_child_admission(
+            &record.member,
+            &record.identity().request_id.to_string(),
+            record.capture_processing.as_ref(),
+        )
+        .await
+        .is_err()
+    {
+        drop(plan);
+        drop(grant);
+        return journal
+            .finish(
+                id,
+                TranscriptionJobState::Interrupted,
+                Some(TranscriptionFailure::Interrupted),
+                None,
+            )
+            .await;
     }
     // Persist uncertainty before crossing the Store commit boundary. If the host
     // disappears here, only identical receipt reconciliation may resolve it.

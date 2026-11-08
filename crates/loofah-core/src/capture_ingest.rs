@@ -27,6 +27,11 @@ pub(super) struct CaptureIngestion {
 }
 
 impl VaultContext {
+    pub(crate) fn capture_target_session_id(
+        identity: &hypr_loofah_protocol::CaptureIdentity,
+    ) -> Result<String, ApplicationError> {
+        target_session_id(identity)
+    }
     pub(crate) fn capture_changes(&self) -> Option<Arc<tokio::sync::Notify>> {
         self.capture_ingestion
             .get()

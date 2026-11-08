@@ -181,8 +181,30 @@ impl Service {
         let transcription = self.transcription_engine();
         #[cfg(any(test, feature = "cpu-transcription"))]
         let capture_live = self.capture_live_engine();
-        #[cfg(any(test, feature = "cpu-transcription"))]
         let transcription_stop = self.stop.clone();
+        let capture_processing_model = self.config.transcription.as_ref().map(|config| {
+            hypr_loofah_core::capture_processing::CaptureProcessingModel {
+                alias: config.model.clone(),
+                sha256: config.model_sha256.clone(),
+            }
+        });
+        #[cfg(feature = "cpu-transcription")]
+        let capture_processing_availability: Arc<
+            dyn Fn() -> hypr_loofah_protocol::TranscriptionAvailability + Send + Sync,
+        > = {
+            let host = self.transcription.clone();
+            let model = capture_processing_model
+                .as_ref()
+                .map(|model| model.alias.clone());
+            Arc::new(move || match (&host, &model) {
+                (Some(host), Some(model)) => host.policy(model).availability,
+                _ => hypr_loofah_protocol::TranscriptionAvailability::Disabled,
+            })
+        };
+        #[cfg(not(feature = "cpu-transcription"))]
+        let capture_processing_availability: Arc<
+            dyn Fn() -> hypr_loofah_protocol::TranscriptionAvailability + Send + Sync,
+        > = Arc::new(|| hypr_loofah_protocol::TranscriptionAvailability::Disabled);
         let capture_origin = format!("{}/", self.config.public_url.origin().ascii_serialization());
         #[cfg(test)]
         let pause = self.startup_pause.lock().unwrap().take();
@@ -228,6 +250,11 @@ impl Service {
                         opened
                             .context
                             .enable_capture_ingestion(capture_origin, Default::default())?;
+                        opened.prepare_capture_processing(
+                            hypr_loofah_core::capture_processing::CaptureProcessingPolicy {
+                                model:capture_processing_model,summary_enabled:processing.is_some(),availability:capture_processing_availability,
+                            },Arc::new(crate::transcription_authorization::CatalogTranscriptionAuthorizer::new(catalog.clone(),opened.context.events.vault_id(),transcription_stop.clone())),
+                        ).await?;
                         #[cfg(any(test, feature = "cpu-transcription"))]
                         if let Some((engine, limits)) = transcription {
                             opened
@@ -254,6 +281,7 @@ impl Service {
                         if let Some(processing) = processing {
                             processing.attach(&mut opened, catalog.clone()).await?;
                         }
+                        opened.start_capture_processing();
                         Ok::<_, ApiError>(())
                     }
                     .await;

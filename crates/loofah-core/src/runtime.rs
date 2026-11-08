@@ -25,6 +25,7 @@ pub struct VaultRuntime {
     watcher: Option<watch::FileWatcher>,
     processing: Option<crate::jobs::JobWorker>,
     pub(crate) transcription: Option<crate::transcription_jobs::TranscriptionWorker>,
+    pub(crate) capture_processing: Option<crate::capture_processing::CaptureProcessingWorker>,
     host: tokio::runtime::Handle,
     draining: bool,
 }
@@ -262,6 +263,7 @@ impl VaultRuntime {
             watcher,
             processing: None,
             transcription: None,
+            capture_processing: None,
             host: tokio::runtime::Handle::current(),
             draining: false,
         })
@@ -293,6 +295,7 @@ impl VaultRuntime {
         let workers = std::mem::take(&mut self.workers);
         let processing = self.processing.take();
         let transcription = self.transcription.take();
+        let capture_processing = self.capture_processing.take();
         if let Some(watcher) = self.watcher.take() {
             // Native cleanup only owns the closed event input, never Store or vault data.
             self.host.spawn_blocking(move || drop(watcher));
@@ -314,6 +317,13 @@ impl VaultRuntime {
                 }
             }
             let mut failure = None;
+            if let Some(worker)=capture_processing {
+                phase.send_replace("capture processing coordinator exceeded shutdown deadline");
+                if let Err(cause)=worker.shutdown().await {
+                    tracing::error!(%cause,"capture processing intent needs review");
+                    failure=Some(StoreError::Io("capture processing intent needs review".into()));
+                }
+            }
             if let Some(service) = context.capture_live.get() {
                 phase.send_replace("live capture processing exceeded shutdown deadline");
                 if let Err(cause) = service.shutdown().await {
@@ -356,6 +366,9 @@ impl VaultRuntime {
             self.context.startup.set_phase(StartupPhase::Stopping);
         }
         self.stop.cancel();
+        if let Some(service) = self.context.capture_processing.get() {
+            service.request_shutdown();
+        }
         if let Some(service) = self.context.capture_live.get() {
             service.request_shutdown();
         }

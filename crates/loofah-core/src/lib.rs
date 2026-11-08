@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod capture_live;
+pub mod capture_processing;
 pub mod events;
 pub mod jobs;
 pub mod local_cli;

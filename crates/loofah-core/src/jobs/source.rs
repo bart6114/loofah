@@ -98,6 +98,10 @@ impl SummarySource for VaultSummarySource {
                     .ensure_capture_processing_ready(&id)
                     .map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
                 context
+                    .ensure_capture_intent_idle(&id, true)
+                    .await
+                    .map_err(|_| ProcessingJobFailure::SourceUnavailable)?;
+                context
                     .store
                     .flush_transcript(&id)
                     .await
@@ -265,7 +269,7 @@ fn prepare_user(
     })
 }
 
-fn has_note_text(note: &str) -> bool {
+pub(crate) fn has_note_text(note: &str) -> bool {
     let note = note.trim();
     if note.is_empty() {
         return false;

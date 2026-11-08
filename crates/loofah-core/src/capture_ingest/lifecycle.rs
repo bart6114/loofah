@@ -31,6 +31,9 @@ impl VaultContext {
                 .map_err(super::not_committed)?;
         }
         self.ensure_recording_publication_ready(session)?;
+        self.ensure_capture_intent_idle(session, false)
+            .await
+            .map_err(super::not_committed)?;
         self.ensure_capture_live_lifecycle_idle(session)
             .await
             .map_err(super::not_committed)?;

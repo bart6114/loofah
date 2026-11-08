@@ -20,6 +20,8 @@ const MAX_JOBS: usize = 10_000;
 const MAX_PENDING: usize = 32;
 
 mod access;
+#[cfg(test)]
+mod capture_origin_tests;
 pub mod configured;
 pub mod generation;
 pub(crate) mod lifecycle;
@@ -71,6 +73,8 @@ struct Record {
     snapshot: ProcessingJobSnapshot,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     body_applied: Option<title_stage::BodyApplied>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    capture_processing: Option<crate::capture_processing::CaptureChildOrigin>,
 }
 
 #[derive(Clone, Copy)]
@@ -83,6 +87,40 @@ pub enum JobCompletion {
 }
 
 impl JobJournal {
+    pub(crate) async fn capture_request_id(
+        &self,
+        id: String,
+    ) -> Result<
+        (
+            String,
+            Option<crate::capture_processing::CaptureChildOrigin>,
+        ),
+        ApplicationError,
+    > {
+        self.run(move |state, _| {
+            let record = state.record(&id)?;
+            Ok((record.request_id.clone(), record.capture_processing.clone()))
+        })
+        .await
+    }
+    pub(crate) async fn cancel_capture_summary_request(
+        &self,
+        namespace: String,
+        request_id: String,
+        request: SummaryJobRequest,
+    ) -> Result<bool, ApplicationError> {
+        if let Some(snapshot) = self
+            .replay_submission(namespace.clone(), request_id, request)
+            .await?
+        {
+            return Ok(self
+                .cancel_owned(namespace, snapshot.id)
+                .await?
+                .state
+                .is_terminal());
+        }
+        Ok(true)
+    }
     pub async fn open(root: PathBuf, events: EventHub) -> Result<Self, ApplicationError> {
         tokio::task::spawn_blocking(move || {
             let root = std::path::absolute(root).map_err(|_| storage())?;
@@ -159,13 +197,30 @@ impl JobJournal {
         request_id: String,
         request: SummaryJobRequest,
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        self.submit_with_origin(namespace, request_id, request, None)
+            .await
+    }
+    pub(crate) async fn submit_with_origin(
+        &self,
+        namespace: String,
+        request_id: String,
+        request: SummaryJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
         validate_namespace(&namespace)?;
         validate_request(&request)?;
         let request_id = parse_uuid(&request_id)?;
+        if let Some(origin) = &origin {
+            origin.validate_request(&request)?;
+        }
         self.run(move |state, events| {
             let key = key(&namespace, &request_id);
             if let Some(record) = state.records.get(&key) {
-                return if record.request == request {
+                return if record.request == request
+                    && origin
+                        .as_ref()
+                        .is_none_or(|origin| record.capture_processing.as_ref() == Some(origin))
+                {
                     Ok(record.snapshot.clone())
                 } else {
                     Err(rejected(
@@ -206,6 +261,7 @@ impl JobJournal {
                 },
                 request,
                 body_applied: None,
+                capture_processing: origin,
             };
             state.persist(&record)?;
             state.ids.insert(record.snapshot.id.clone(), key.clone());
@@ -506,6 +562,9 @@ fn validate_record(
     filename_key: &str,
     record: &Record,
 ) -> Result<(), ApplicationError> {
+    if let Some(origin) = &record.capture_processing {
+        origin.validate_request(&record.request)?;
+    }
     if !matches!(
         (record.schema_version, record.request.title_policy),
         (1, TitlePolicy::Preserve) | (2, TitlePolicy::GenerateIfEmpty)

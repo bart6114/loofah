@@ -28,6 +28,8 @@ use crate::{
 };
 
 mod io;
+mod source_guard;
+pub use source_guard::{ProcessingSourceBinding, ProcessingSourceGuard};
 #[cfg(test)]
 mod tests;
 

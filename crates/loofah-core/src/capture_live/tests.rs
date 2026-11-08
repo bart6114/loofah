@@ -11,7 +11,7 @@ use tokio::sync::{Notify, Semaphore, mpsc, watch};
 const MEMBER: &str = "6114bd31-62da-4d90-9a0d-41b9a8872201";
 
 #[derive(Clone)]
-struct Fake {
+pub(crate) struct Fake {
     slots: Arc<Semaphore>,
     calls: Arc<AtomicUsize>,
     frames: Arc<Mutex<Vec<u32>>>,
@@ -20,7 +20,7 @@ struct Fake {
     bad_receipt: bool,
 }
 impl Fake {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             slots: Arc::new(Semaphore::new(1)),
             calls: Arc::new(AtomicUsize::new(0)),
@@ -29,6 +29,9 @@ impl Fake {
             joined: Default::default(),
             bad_receipt: false,
         }
+    }
+    pub(crate) fn release_processing_fixture(&self) {
+        self.released.add_permits(1);
     }
 }
 struct Control {

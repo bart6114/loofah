@@ -13,6 +13,9 @@ use tokio::sync::{Notify, watch};
 
 const RECORD_LIMIT: u64 = 64 * 1024;
 const ENTRY_LIMIT: usize = 4096;
+#[cfg(test)]
+#[path = "origin_tests.rs"]
+mod origin_tests;
 
 #[derive(Clone)]
 pub(super) struct Journal(Arc<Inner>);
@@ -65,6 +68,8 @@ pub(super) struct Record {
     pub uncertain: bool,
     pub source: Option<source::Binding>,
     pub result: Option<ResultRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture_processing: Option<crate::capture_processing::CaptureChildOrigin>,
 }
 impl Record {
     pub fn work(&self) -> TranscriptionWork {
@@ -86,6 +91,47 @@ impl Record {
 }
 
 impl Journal {
+    pub(super) async fn retry_unstarted(
+        &self,
+        member: String,
+        id: String,
+    ) -> Result<(), ApplicationError> {
+        self.run(move |state| {
+            let mut record = state
+                .records
+                .get(&id)
+                .filter(|r| r.member == member)
+                .cloned()
+                .ok_or_else(unavailable)?;
+            if state.active.contains_key(&id) {
+                return Err(unavailable());
+            }
+            if record.snapshot.state != TranscriptionJobState::Failed
+                || record.action != Action::Generate
+                || record.source.is_some()
+                || record.result.is_some()
+                || record.uncertain
+                || record.snapshot.result_available
+                || !matches!(
+                    record.snapshot.failure,
+                    Some(
+                        TranscriptionFailure::EngineUnavailable
+                            | TranscriptionFailure::ResourceLimit
+                    )
+                )
+            {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Inference attempt is not safely retryable",
+                ));
+            }
+            record.snapshot.state = TranscriptionJobState::Queued;
+            record.snapshot.failure = None;
+            record.snapshot.phase = None;
+            state.update(record)
+        })
+        .await
+    }
     pub async fn open(
         root: PathBuf,
         events: crate::events::EventHub,
@@ -231,15 +277,32 @@ impl Journal {
         request_id: String,
         request: TranscriptionJobRequest,
     ) -> Result<TranscriptionJobSnapshot, ApplicationError> {
+        self.submit_with_origin(member, request_id, request, None)
+            .await
+    }
+    pub(super) async fn submit_with_origin(
+        &self,
+        member: String,
+        request_id: String,
+        request: TranscriptionJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+    ) -> Result<TranscriptionJobSnapshot, ApplicationError> {
         let member = uuid(&member)?;
         let request_id = uuid(&request_id)?;
+        if let Some(origin) = &origin {
+            origin.validate_request(&request)?;
+        }
         self.run(move |s| {
             if let Some(existing) = s
                 .records
                 .values()
                 .find(|r| r.member == member && r.request_id == request_id)
             {
-                return if existing.request == request {
+                return if existing.request == request
+                    && origin
+                        .as_ref()
+                        .is_none_or(|origin| existing.capture_processing.as_ref() == Some(origin))
+                {
                     Ok(existing.snapshot.clone())
                 } else {
                     Err(error(ErrorCode::Conflict, "Transcription request changed"))
@@ -278,6 +341,7 @@ impl Journal {
                 uncertain: false,
                 source: None,
                 result: None,
+                capture_processing: origin,
             })?;
             Ok(snapshot)
         })
@@ -612,6 +676,9 @@ impl State {
 }
 
 fn validate(r: &Record, vault: &str, id: &str) -> Result<(), ApplicationError> {
+    if let Some(origin) = &r.capture_processing {
+        origin.validate_request(&r.request)?;
+    }
     if r.schema_version != 1
         || r.vault_id != vault
         || r.snapshot.id != id
@@ -864,6 +931,16 @@ impl Journal {
         request_id: String,
         request: TranscriptionJobRequest,
     ) -> Result<Option<TranscriptionJobSnapshot>, ApplicationError> {
+        self.replay_with_origin(member, request_id, request, None)
+            .await
+    }
+    pub(super) async fn replay_with_origin(
+        &self,
+        member: String,
+        request_id: String,
+        request: TranscriptionJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+    ) -> Result<Option<TranscriptionJobSnapshot>, ApplicationError> {
         let member = uuid(&member)?;
         let request_id = uuid(&request_id)?;
         self.run(move |state| {
@@ -874,7 +951,11 @@ impl Journal {
             else {
                 return Ok(None);
             };
-            if record.request != request {
+            if record.request != request
+                || origin
+                    .as_ref()
+                    .is_some_and(|origin| record.capture_processing.as_ref() != Some(origin))
+            {
                 return Err(error(ErrorCode::Conflict, "Transcription request changed"));
             }
             Ok(Some(record.snapshot.clone()))

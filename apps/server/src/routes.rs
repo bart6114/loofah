@@ -22,6 +22,7 @@ use crate::{
 
 mod capture;
 mod capture_live;
+mod capture_processing;
 mod document_editor;
 mod jobs;
 mod processing_settings;
@@ -38,6 +39,7 @@ pub fn router(service: Arc<Service>) -> Router {
         .merge(crate::media::router())
         .merge(capture::router())
         .merge(capture_live::router())
+        .merge(capture_processing::router())
         .merge(document_editor::router())
         .merge(jobs::router())
         .merge(processing_settings::router())

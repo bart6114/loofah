@@ -8,6 +8,16 @@ impl JobJournal {
         request_id: String,
         request: SummaryJobRequest,
     ) -> Result<Option<ProcessingJobSnapshot>, ApplicationError> {
+        self.replay_with_origin(namespace, request_id, request, None)
+            .await
+    }
+    pub(super) async fn replay_with_origin(
+        &self,
+        namespace: String,
+        request_id: String,
+        request: SummaryJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+    ) -> Result<Option<ProcessingJobSnapshot>, ApplicationError> {
         validate_namespace(&namespace)?;
         validate_request(&request)?;
         let request_id = parse_uuid(&request_id)?;
@@ -15,7 +25,11 @@ impl JobJournal {
             let Some(record) = state.records.get(&key(&namespace, &request_id)) else {
                 return Ok(None);
             };
-            if record.request != request {
+            if record.request != request
+                || origin
+                    .as_ref()
+                    .is_some_and(|origin| record.capture_processing.as_ref() != Some(origin))
+            {
                 return Err(rejected(
                     ErrorCode::Conflict,
                     "The job request ID was already used for different input",

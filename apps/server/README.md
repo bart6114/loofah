@@ -76,6 +76,38 @@ The experimental `capture_ingestion` capability exposes authenticated staging AP
 | GET    | `/captures/{capture}`                   | Recover the durable prefix and seal after reconnect or an unknown reply.                                      |
 | POST   | `/captures/{capture}/seal`              | Finalize only if the full declared seal matches the admitted audio.                                           |
 | POST   | `/captures/{capture}/publish`           | Verify the sealed source and publish absent-only canonical WAV; return its bound checksum/size observation.   |
+| PUT / GET | `/captures/{capture}/processing`     | Declare or recover explicit processing intent over the original capture identity. |
+| POST | `/captures/{capture}/processing/cancel` | Request processing cancellation without stopping capture, uploads or recording publication. |
+
+Processing declarations use the original capture request UUID in `X-Request-ID`.
+They pin the first admitted operator model alias and model checksum; an omitted
+model chooses the operator default once. Optional languages/keywords and summary
+target/title policy are immutable on replay. An omitted summary never requests
+one. The server owns live processing while an existing capture is open, then uses
+one stable batch repair job when coverage is missing or incomplete after verified
+recording publication. Pending captures wait for their published session binding
+before batch processing. A matching complete transcript can start one checked
+summary job; changing its recording, transcript or target retains the generated
+result for review instead of overwriting newer data. Verified complete empty STT
+can summarize saved notes only when requested, binding the absent transcript
+alongside the recording checksum; no note input fails before any provider call.
+`Empty` may therefore include a completed summary job without inventing a
+transcript publication. No client principal, model
+path or provider credentials enter this declaration.
+
+Private `capture-processing/` intents and existing child-job journals belong in
+backups. Only explicit declarations are reconciled after restart. Interrupted or
+uncertain native/provider attempts are never silently rerun; a model checksum
+change requires review. Cancellation requests retain child ownership until actual
+drain and may leave admitted commits or retained results. Raw capture/upload progress is
+independent of processing availability and cancellation. The new orchestration
+capability remains unadvertised until its paired device acceptance is complete.
+Pipeline children carry an atomic private origin marker binding the capture,
+intent, exact request and resolved model checksum. A missing parent or coordinator
+cannot turn one into a manual job. Older binaries reject marked child records;
+rollback requires a complete pre-upgrade vault and operation-state backup, not
+removing the new intents. Ordinary manual job encodings and canonical files are
+unchanged.
 
 Publication accepts the original `CaptureSeal` and a UUID trace header. Its durable
 operation identity stays the original capture declaration UUID. It checks current

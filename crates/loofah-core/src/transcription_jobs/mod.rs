@@ -190,6 +190,35 @@ impl VaultRuntime {
 }
 
 impl VaultContext {
+    pub(crate) async fn retry_unstarted_capture_repair(
+        &self,
+        member: &str,
+        id: &str,
+    ) -> Result<(), ApplicationError> {
+        self.transcription_service()?
+            .journal
+            .retry_unstarted(member.to_owned(), id.to_owned())
+            .await
+    }
+    pub(crate) async fn cancel_capture_repair_request(
+        &self,
+        member: String,
+        request_id: String,
+        request: TranscriptionJobRequest,
+    ) -> Result<bool, ApplicationError> {
+        let service = self.transcription_service()?;
+        if let Some(snapshot) = service
+            .journal
+            .replay_submission(member.clone(), request_id, request)
+            .await?
+        {
+            let snapshot = service.journal.cancel(member, snapshot.id).await?;
+            return Ok(
+                snapshot.state.is_terminal() && snapshot.state != TranscriptionJobState::Uncertain
+            );
+        }
+        Ok(true)
+    }
     fn transcription_service(&self) -> Result<&TranscriptionService, ApplicationError> {
         self.store.ensure_ready().map_err(storage)?;
         self.transcription.get().ok_or_else(unavailable)
@@ -223,6 +252,26 @@ impl VaultContext {
         request_id: String,
         input: TranscriptionJobRequest,
     ) -> Result<TranscriptionJobSnapshot, ApplicationError> {
+        self.submit_transcription_inner(member, request_id, input, None)
+            .await
+    }
+    pub(crate) async fn submit_capture_repair_job(
+        self: &Arc<Self>,
+        member: String,
+        request_id: String,
+        input: TranscriptionJobRequest,
+        origin: crate::capture_processing::CaptureChildOrigin,
+    ) -> Result<TranscriptionJobSnapshot, ApplicationError> {
+        self.submit_transcription_inner(member, request_id, input, Some(origin))
+            .await
+    }
+    async fn submit_transcription_inner(
+        self: &Arc<Self>,
+        member: String,
+        request_id: String,
+        input: TranscriptionJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+    ) -> Result<TranscriptionJobSnapshot, ApplicationError> {
         validate_transcription_job_request(&input)
             .map_err(|message| error(ErrorCode::Validation, message))?;
         let context = self.clone();
@@ -233,7 +282,12 @@ impl VaultContext {
             }
             if let Some(snapshot) = service
                 .journal
-                .replay_submission(member.clone(), request_id.clone(), input.clone())
+                .replay_with_origin(
+                    member.clone(),
+                    request_id.clone(),
+                    input.clone(),
+                    origin.clone(),
+                )
                 .await?
             {
                 return Ok(snapshot);
@@ -248,7 +302,10 @@ impl VaultContext {
             if !exists {
                 return Err(error(ErrorCode::NotFound, "Session not found"));
             }
-            service.journal.submit(member, request_id, input).await
+            service
+                .journal
+                .submit_with_origin(member, request_id, input, origin)
+                .await
         })
         .await
         .map_err(|_| unavailable())?

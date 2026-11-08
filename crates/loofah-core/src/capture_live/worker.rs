@@ -39,6 +39,25 @@ pub(super) async fn run(
     mut record: ledger::Record,
     cancel: CancellationToken,
 ) {
+    if context
+        .capture_live_intent_admission(
+            &record.identity.scope.member_id,
+            &record.identity.capture_id,
+            &record.snapshot.generation_id,
+        )
+        .await
+        .is_err()
+    {
+        finish(
+            &context,
+            &service,
+            &record,
+            CaptureLiveState::Interrupted,
+            Some(CaptureLiveFailure::Interrupted),
+        )
+        .await;
+        return;
+    }
     let work = record.work();
     let access = match service.authorizer.observe(&work).await {
         Ok(access) => access,
@@ -574,6 +593,14 @@ async fn promote(
     if access.cancelled.is_cancelled() {
         return Err(CaptureLiveFailure::AccessDenied);
     }
+    context
+        .capture_live_intent_admission(
+            &record.identity.scope.member_id,
+            &record.identity.capture_id,
+            &record.snapshot.generation_id,
+        )
+        .await
+        .map_err(|_| CaptureLiveFailure::Interrupted)?;
     *record = service
         .journal
         .change(record.snapshot.generation_id.clone(), |r| {

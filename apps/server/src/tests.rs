@@ -4,6 +4,7 @@ mod attachments;
 mod audio_metadata;
 mod capture;
 mod capture_live;
+mod capture_processing;
 mod document_editor;
 mod lifecycle;
 mod metadata;

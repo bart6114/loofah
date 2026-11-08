@@ -159,11 +159,36 @@ impl VaultContext {
         request_id: String,
         input: SummaryJobRequest,
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        self.submit_summary_inner(namespace, request_id, input, None)
+            .await
+    }
+    pub(crate) async fn submit_capture_summary_job(
+        self: &std::sync::Arc<Self>,
+        namespace: String,
+        request_id: String,
+        input: SummaryJobRequest,
+        origin: crate::capture_processing::CaptureChildOrigin,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        self.submit_summary_inner(namespace, request_id, input, Some(origin))
+            .await
+    }
+    async fn submit_summary_inner(
+        self: &std::sync::Arc<Self>,
+        namespace: String,
+        request_id: String,
+        input: SummaryJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
         let context = self.clone();
         tokio::spawn(async move {
             let journal = context.processing_jobs()?;
             if let Some(snapshot) = journal
-                .replay_submission(namespace.clone(), request_id.clone(), input.clone())
+                .replay_with_origin(
+                    namespace.clone(),
+                    request_id.clone(),
+                    input.clone(),
+                    origin.clone(),
+                )
                 .await?
             {
                 return Ok(snapshot);
@@ -178,7 +203,9 @@ impl VaultContext {
             if !exists {
                 return Err(rejected(ErrorCode::NotFound, "Session not found"));
             }
-            journal.submit(namespace, request_id, input).await
+            journal
+                .submit_with_origin(namespace, request_id, input, origin)
+                .await
         })
         .await
         .map_err(|_| {
