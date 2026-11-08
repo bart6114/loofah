@@ -184,13 +184,15 @@ impl SessionStore {
             let initial = store
                 .spawn_blocking(move || -> Result<_, StoreError> {
                     let _snapshot = snapshot;
-                    let (present, revision) = io::transcript_binding(
-                        &directory.join("transcript.json"),
-                        result_limit(replacement),
-                    )?;
-                    if !replacement && present {
-                        return Ok(Err(TranscriptSourcePreparation::Conflict));
-                    }
+                    let transcript_path = directory.join("transcript.json");
+                    let (present, revision) = if replacement {
+                        io::transcript_binding(&transcript_path, result_limit(true))?
+                    } else {
+                        if !io::absent(&transcript_path)? {
+                            return Ok(Err(TranscriptSourcePreparation::Conflict));
+                        }
+                        (false, io::absent_revision())
+                    };
                     let source = io::select_with_limit(&directory, source_limit(replacement))?;
                     Ok(source
                         .map(|(selection, recording)| (selection, recording, present, revision))
