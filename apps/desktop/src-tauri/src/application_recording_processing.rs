@@ -232,8 +232,11 @@ mod tests {
                 .is_err()
         );
         let (_other_root, replacement) = fixture().await;
-        app.unmanage::<Arc<VaultContext>>();
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
         app.manage(replacement);
+        app.manage(state.clone());
         assert!(!application_recording_processing_available(
             app.handle().clone()
         ));
