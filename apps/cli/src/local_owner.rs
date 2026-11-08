@@ -167,7 +167,7 @@ impl LocalGateway {
             Some(owner) => owner.finish().await,
             None => Ok(()),
         };
-        match (output, stopped) {
+        let response = match (output, stopped) {
             (Err(cause), stopped) => {
                 if let Err(stopping) = stopped {
                     eprintln!("error: {stopping}");
@@ -190,10 +190,14 @@ impl LocalGateway {
                 if mutation {
                     failure.mutation_outcome = Some(MutationOutcome::Persisted);
                 }
-                Err(failure.into())
+                Err(Error::local(failure))
             }
             (Ok(response), Ok(())) => Ok(response),
+        }?;
+        if let Err(cause) = &response.response.result {
+            return Err(Error::local(cause.clone()));
         }
+        Ok(response)
     }
 
     fn cache_base(&self) -> Result<PathBuf> {
@@ -380,7 +384,7 @@ fn application_owner_error(cause: hypr_loofah_local_owner::Error) -> Application
     error
 }
 fn owner_error(cause: hypr_loofah_local_owner::Error) -> Error {
-    Error::Remote(application_owner_error(cause))
+    Error::local(application_owner_error(cause))
 }
 
 #[cfg(test)]

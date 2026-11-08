@@ -163,6 +163,22 @@ async fn held_owner_without_endpoint_never_returns_an_independent_lease() {
 }
 
 #[tokio::test]
+async fn client_waits_for_the_original_owner_to_finish_startup() {
+    let fixture = Fixture::new();
+    let lease = fixture.lease();
+    let resolve = OwnerClient::resolve(&fixture.vault, &fixture.endpoints, &fixture.temporary);
+    let start = async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        OwnerServer::bind(lease, &fixture.endpoints, &fixture.temporary, Echo::new())
+            .await
+            .unwrap()
+    };
+    let (resolved, server) = tokio::join!(resolve, start);
+    assert!(matches!(resolved, Ok(OwnerResolution::Connected(_))));
+    server.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn current_user_connection_binds_vault_and_delivers_a_typed_reply() {
     let fixture = Fixture::new();
     let handler = Echo::new();

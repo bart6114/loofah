@@ -3,6 +3,8 @@ pub enum Error {
     #[error(transparent)]
     Remote(#[from] hypr_loofah_protocol::ApplicationError),
     #[error(transparent)]
+    Local(hypr_loofah_protocol::ApplicationError),
+    #[error(transparent)]
     Cache(#[from] hypr_search_cache::Error),
     #[error(
         "Vault write persisted, but command completion failed: {reason}. Do not repeat the write; run loof init to refresh the cache"
@@ -40,6 +42,10 @@ impl From<hypr_agent_access::Error> for Error {
 }
 
 impl Error {
+    pub fn local(error: hypr_loofah_protocol::ApplicationError) -> Self {
+        Self::Local(error)
+    }
+
     pub fn operation(action: &'static str, reason: impl Into<String>) -> Self {
         Self::Operation {
             action,
@@ -49,8 +55,12 @@ impl Error {
 
     pub fn exit_code(&self) -> u8 {
         match self {
-            Self::Remote(error) if error.code == hypr_loofah_protocol::ErrorCode::NotFound => 2,
-            Self::Remote(_) => 1,
+            Self::Remote(error) | Self::Local(error)
+                if error.code == hypr_loofah_protocol::ErrorCode::NotFound =>
+            {
+                2
+            }
+            Self::Remote(_) | Self::Local(_) => 1,
             Self::NotFound(_) => 2,
             Self::VaultNotFound(_) => 3,
             Self::OutputExists(_) => 4,
@@ -60,7 +70,16 @@ impl Error {
 
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Remote(error) => match error.code {
+            Self::Local(error)
+                if matches!(
+                    error.code,
+                    hypr_loofah_protocol::ErrorCode::Validation
+                        | hypr_loofah_protocol::ErrorCode::Internal
+                ) =>
+            {
+                "operation_failed"
+            }
+            Self::Remote(error) | Self::Local(error) => match error.code {
                 hypr_loofah_protocol::ErrorCode::Validation => "validation",
                 hypr_loofah_protocol::ErrorCode::NotFound => "not_found",
                 hypr_loofah_protocol::ErrorCode::Unauthenticated => "unauthenticated",
@@ -93,7 +112,7 @@ impl Error {
                 "exit_code": self.exit_code(),
             }
         });
-        if let Self::Remote(error) = self {
+        if let Self::Remote(error) | Self::Local(error) = self {
             response["error"]["request_id"] = serde_json::json!(error.request_id);
             response["error"]["retryable"] = serde_json::json!(error.retryable);
             response["error"]["current_revision"] = serde_json::json!(error.current_revision);
@@ -125,6 +144,22 @@ mod tests {
         assert_eq!(response["error"]["exit_code"], 2);
         assert_eq!(response["error"]["request_id"], "request-123");
         assert_eq!(response["error"]["retryable"], false);
+    }
+
+    #[test]
+    fn local_validation_preserves_cli_code_and_checked_outcome() {
+        let mut cause = hypr_loofah_client::failure(
+            hypr_loofah_protocol::ErrorCode::Validation,
+            "Invalid session identifier",
+        );
+        cause.request_id = Some("request-local".into());
+        cause.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::NotCommitted);
+        assert_eq!(Error::Remote(cause.clone()).code(), "validation");
+        let error = Error::local(cause);
+        let response: serde_json::Value = serde_json::from_str(&error.to_json()).unwrap();
+        assert_eq!(response["error"]["code"], "operation_failed");
+        assert_eq!(response["error"]["request_id"], "request-local");
+        assert_eq!(response["error"]["mutation_outcome"], "not_committed");
     }
 
     #[test]

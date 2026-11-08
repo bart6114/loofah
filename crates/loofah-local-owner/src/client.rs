@@ -36,7 +36,12 @@ impl OwnerClient {
             LeaseAttempt::Busy => {
                 let endpoint = endpoints.endpoint(&vault)?;
                 let result = tokio::time::timeout(Duration::from_secs(2), async {
-                    let mut io = endpoint.connect().await?;
+                    let mut io = loop {
+                        match endpoint.connect().await {
+                            Ok(io) => break io,
+                            Err(_) => tokio::time::sleep(Duration::from_millis(25)).await,
+                        }
+                    };
                     wire::send_control(
                         &mut io,
                         &Control::Hello {

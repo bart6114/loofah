@@ -861,7 +861,8 @@ mod tests {
         let error = attach_file(vault.path(), "no-such-meeting", &file, None)
             .await
             .unwrap_err();
-        assert!(matches!(error, crate::Error::NotFound(_)));
+        assert_eq!(error.code(), "not_found");
+        assert_eq!(error.exit_code(), 2);
         assert!(!vault.path().join("sessions").exists());
 
         let store = SessionStore::new(vault.path().to_path_buf());
@@ -882,7 +883,8 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(matches!(error, crate::Error::NotFound(_)));
+        assert_eq!(error.code(), "not_found");
+        assert_eq!(error.exit_code(), 2);
         let session_dir = vault
             .path()
             .join(store.session_dir(&meta.id).await.unwrap());
