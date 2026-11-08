@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
 mod capture_live;
+mod capture_processing;
 mod document_editor;
 mod session_lifecycle;
 mod timeline;
@@ -28,6 +29,18 @@ pub enum RemoteOperation {
     RestoreSession {
         vault_id: String,
         input: RestoreSessionRequest,
+    },
+    DeclareCaptureProcessing {
+        identity: CaptureIdentity,
+        input: CaptureProcessingRequest,
+    },
+    CaptureProcessingStatus {
+        identity: CaptureIdentity,
+        input: CaptureProcessingRequest,
+    },
+    CancelCaptureProcessing {
+        identity: CaptureIdentity,
+        input: CaptureProcessingRequest,
     },
     TranscriptionPolicy {
         vault_id: String,
@@ -338,6 +351,7 @@ pub enum RemoteReply {
     SessionDelete(DeleteSessionOutcome),
     SessionRestore(RestoreSessionOutcome),
     TranscriptionPolicy(TranscriptionPolicy),
+    CaptureProcessing(CaptureProcessingSnapshot),
     CaptureLiveSnapshot(CaptureLiveSnapshot),
     CaptureLiveCaptions(CaptureLiveCaptionPage),
     CaptureLiveResult(Option<TranscriptionJobResult>),
@@ -412,6 +426,7 @@ impl RemoteClient {
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || capture_processing::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
@@ -425,6 +440,7 @@ impl RemoteClient {
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || capture_processing::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
@@ -433,6 +449,7 @@ impl RemoteClient {
         }
         let required_feature = match &operation {
             operation if session_lifecycle::is_operation(operation) => Some("session_lifecycle"),
+            operation if capture_processing::is_operation(operation) => Some("capture_processing"),
             RemoteOperation::TranscriptionPolicy { .. } => Some("transcription_policy"),
             operation if capture_live::is_operation(operation) => {
                 Some("capture_live_transcription")
@@ -480,6 +497,9 @@ impl RemoteClient {
                 ref operation if session_lifecycle::is_operation(operation) => {
                     "checked note deletion and restoration"
                 }
+                ref operation if capture_processing::is_operation(operation) => {
+                    "declared capture processing"
+                }
                 RemoteOperation::TranscriptionPolicy { .. } => "transcription policy",
                 ref operation if capture_live::is_operation(operation) => {
                     "live capture transcription"
@@ -522,6 +542,7 @@ impl RemoteClient {
             error.request_id = Some(request_id.to_owned());
             if session_lifecycle::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || capture_processing::is_write(&operation)
                 || matches!(
                     operation,
                     RemoteOperation::SaveNoteEditor { .. }
@@ -690,6 +711,15 @@ impl RemoteClient {
             }
             error
         })?;
+        capture_processing::validate_operation(self, &operation, request_id).map_err(
+            |mut error| {
+                error.request_id = Some(request_id.to_owned());
+                if capture_processing::is_write(&operation) {
+                    error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+                }
+                error
+            },
+        )?;
         let mut body = None;
         let (method, segments) = match &operation {
             RemoteOperation::SessionLifecycle {
@@ -710,6 +740,40 @@ impl RemoteClient {
                     vec!["vaults", vault_id, "session-restorations"],
                 )
             }
+            RemoteOperation::DeclareCaptureProcessing { identity, input } => {
+                body = Some(value(input)?);
+                (
+                    Method::PUT,
+                    vec![
+                        "vaults",
+                        &identity.scope.vault_id,
+                        "captures",
+                        &identity.capture_id,
+                        "processing",
+                    ],
+                )
+            }
+            RemoteOperation::CaptureProcessingStatus { identity, .. } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    &identity.scope.vault_id,
+                    "captures",
+                    &identity.capture_id,
+                    "processing",
+                ],
+            ),
+            RemoteOperation::CancelCaptureProcessing { identity, .. } => (
+                Method::POST,
+                vec![
+                    "vaults",
+                    &identity.scope.vault_id,
+                    "captures",
+                    &identity.capture_id,
+                    "processing",
+                    "cancel",
+                ],
+            ),
             RemoteOperation::TranscriptionPolicy { vault_id } => (
                 Method::GET,
                 vec!["vaults", vault_id, "transcription", "policy"],
@@ -1377,6 +1441,7 @@ impl RemoteClient {
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
+                || capture_processing::is_write(&operation)
                 || session_lifecycle::is_write(&operation)
             {
                 error.request_id.get_or_insert_with(|| request_id.into());
@@ -1485,6 +1550,11 @@ impl RemoteClient {
                         )
                     })?;
                     RemoteReply::TranscriptionPolicy(policy)
+                }
+                operation @ (RemoteOperation::DeclareCaptureProcessing { .. }
+                | RemoteOperation::CaptureProcessingStatus { .. }
+                | RemoteOperation::CancelCaptureProcessing { .. }) => {
+                    capture_processing::decode(response, &operation).await?
                 }
                 operation @ (RemoteOperation::StartCaptureLive { .. }
                 | RemoteOperation::CaptureLiveStatus { .. }

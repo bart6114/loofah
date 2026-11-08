@@ -1,6 +1,7 @@
 mod attachments;
 mod capture;
 mod capture_live;
+mod capture_processing;
 mod capture_upload;
 mod document_editor;
 mod downloads;
