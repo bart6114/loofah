@@ -2,6 +2,10 @@ use super::*;
 
 pub(super) fn router() -> Router<Arc<Service>> {
     Router::new()
+        .route(
+            "/vaults/{vault}/capture-append-admissions",
+            axum::routing::post(prepare_append),
+        )
         .route("/vaults/{vault}/captures", axum::routing::post(begin))
         .route("/vaults/{vault}/captures/{capture}", get(status))
         .route(
@@ -222,4 +226,29 @@ fn rejected(code: ErrorCode, message: &str) -> ApiError {
     let mut cause = ApiError::new(code, message);
     cause.0.mutation_outcome = Some(MutationOutcome::NotCommitted);
     cause
+}
+
+async fn prepare_append(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(vault): ApiPath<String>,
+    headers: HeaderMap,
+    ApiJson(input): ApiJson<CaptureAppendRequest>,
+) -> Result<Json<CaptureAppendAdmission>> {
+    if request_id(&headers)? != input.request_id || input.scope.vault_id != vault {
+        return Err(rejected(
+            ErrorCode::Validation,
+            "Append request does not match this request scope",
+        ));
+    }
+    let (context, member) = context(&service, &identity, &vault, true).await?;
+    let authorize = authorization(service.clone(), identity, vault, true);
+    admitted_write(&service, async move {
+        Ok(Json(
+            context
+                .prepare_capture_append_authorized(member, input, authorize)
+                .await?,
+        ))
+    })
+    .await
 }

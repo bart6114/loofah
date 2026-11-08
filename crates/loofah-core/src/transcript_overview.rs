@@ -14,6 +14,7 @@ impl VaultContext {
         budget: Option<(usize, usize)>,
     ) -> Result<TranscriptOverview, ApplicationError> {
         self.validate(session_id)?;
+        self.ensure_recording_publication_ready(session_id)?;
         let context = self.clone();
         let session_id = session_id.to_owned();
         tokio::task::spawn_blocking(move || {

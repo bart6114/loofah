@@ -12,6 +12,8 @@ pub struct CaptureAppendRequest {
     pub capture_id: String,
     pub request_id: String,
     pub admission_id: String,
+    #[serde(default)]
+    pub processing: Option<crate::CaptureProcessingOptions>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -56,6 +58,9 @@ pub fn validate_capture_append_request(value: &CaptureAppendRequest) -> Result<(
         .any(|value| !canonical_uuid(value))
     {
         return Err("Append requires original canonical capture, request and admission UUIDs");
+    }
+    if let Some(options) = &value.processing {
+        crate::validate_capture_processing_request(&options.request("0".repeat(64)))?;
     }
     Ok(())
 }
@@ -136,6 +141,7 @@ mod tests {
                 capture_id: "11111111-1111-4111-8111-111111111111".into(),
                 request_id: "22222222-2222-4222-8222-222222222222".into(),
                 admission_id: "33333333-3333-4333-8333-333333333333".into(),
+                processing: None,
             },
             baseline: CaptureAppendBaseline {
                 recording_selection: "audio/audio.mp3".into(),

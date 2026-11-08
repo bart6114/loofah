@@ -43,14 +43,18 @@ pub fn normalize_baseline(
             "Append source does not match its authoritative channel layout",
         ));
     }
+    File::create_new(decoded_path).map_err(io)?;
     let descriptor = decode_to_pcm(decoder, decoded_path, || false, |_| {}).map_err(io)?;
     let output_channels = if layout == AudioLayout::MicSystem {
         2
     } else {
         1
     };
-    let mut output =
-        hound::WavWriter::create(normalized_path, pcm_spec(output_channels)).map_err(io)?;
+    let mut output = hound::WavWriter::new(
+        File::create_new(normalized_path).map_err(io)?,
+        pcm_spec(output_channels),
+    )
+    .map_err(io)?;
     let mut input = descriptor.reader().map_err(io)?;
     for start in (0..descriptor.frames).step_by(PCM_BLOCK_FRAMES) {
         let end = (start + PCM_BLOCK_FRAMES).min(descriptor.frames);
@@ -114,8 +118,11 @@ pub fn concatenate(
     if pcm_bytes > u32::MAX as u64 - 128 {
         return Err(conflict("Append recording exceeds the WAV format limit"));
     }
-    let mut output = hound::WavWriter::create(output_path, pcm_spec(prefix.format.channels.len()))
-        .map_err(io)?;
+    let mut output = hound::WavWriter::new(
+        File::create_new(output_path).map_err(io)?,
+        pcm_spec(prefix.format.channels.len()),
+    )
+    .map_err(io)?;
     for (path, expected) in [(prefix_path, prefix), (suffix_path, suffix)] {
         let actual = describe(path, expected.format.clone())?;
         if actual.frames != expected.frames

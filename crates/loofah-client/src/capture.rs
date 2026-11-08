@@ -11,6 +11,42 @@ use tokio_util::sync::CancellationToken;
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
 impl RemoteClient {
+    pub async fn prepare_capture_append(
+        self: &Arc<Self>,
+        prepared: &crate::CaptureAppendPreparation,
+        cancel: CancellationToken,
+    ) -> Result<hypr_loofah_protocol::CaptureAppendAdmission> {
+        self.capture_capability(&cancel)?;
+        if !self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "capture_append")
+        {
+            return Err(not_committed(failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support checked recording append",
+            )));
+        }
+        let input = prepared.request();
+        if input.scope.server != self.address.as_str() {
+            return Err(not_committed(invalid(
+                "Append scope belongs to another server",
+            )));
+        }
+        if let Some(value) = prepared.admission().await.map_err(not_committed)? {
+            return Ok(value);
+        }
+        let request = self
+            .http
+            .post(self.endpoint(&["vaults", &input.scope.vault_id, "capture-append-admissions"])?)
+            .json(input);
+        let value = self
+            .capture_request(request, &input.request_id, true, cancel)
+            .await?;
+        prepared.observe(value).await.map_err(unknown)
+    }
+
     pub async fn begin_capture(
         self: &Arc<Self>,
         input: &CaptureIngestRequest,

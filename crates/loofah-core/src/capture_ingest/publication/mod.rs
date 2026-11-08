@@ -15,7 +15,7 @@ use hypr_vault_write::recording_publish::{
 
 use super::{CaptureScope, CaptureSpool, find, hash, not_committed, rejected, status, wav};
 
-mod bootstrap;
+pub(super) mod bootstrap;
 mod gates;
 pub(crate) use gates::PublicationGates;
 
@@ -104,6 +104,19 @@ impl crate::VaultContext {
             let grant = authorize().await.map_err(not_committed)?;
             let writer = find(&spool, scope, &capture_id).await?;
             let snapshot = writer.snapshot().await?;
+            if matches!(
+                snapshot.identity.target,
+                CaptureTarget::AppendSession { .. }
+            ) {
+                drop(grant);
+                return super::append::publication::publish(
+                    context.clone(),
+                    writer,
+                    expected,
+                    authorize,
+                )
+                .await;
+            }
             let session = target_session(&snapshot)?;
             let _admission = context.admit_session_work(&session).await?;
             if snapshot.seal.as_ref() != Some(&expected) {

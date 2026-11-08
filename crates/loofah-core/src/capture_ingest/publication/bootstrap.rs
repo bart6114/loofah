@@ -2,6 +2,7 @@ use std::{fs::File, path::PathBuf, sync::Arc};
 
 use hypr_vault_write::{
     SessionStore, StoreError,
+    recording_append::{RecordingAppendOutcome, RecordingAppendRecovery},
     recording_publish::{
         RecordingPublication, RecordingPublicationDiscoveryLimits, RecordingPublicationInventory,
         RecordingPublicationRecovery, RecordingPublicationRecoveryPreparation,
@@ -47,8 +48,13 @@ impl crate::VaultContext {
                 .store
                 .recording_publication_startup_recovery(&_pin)
                 .map_err(|cause| storage_error(cause, false))?;
+            let append = context
+                .store
+                .recording_append_startup_recovery(&_pin)
+                .map_err(|cause| storage_error(cause, false))?;
             recover(
                 &recovery,
+                &append,
                 &context.events.vault_id(),
                 &operations,
                 &context.recording_publications,
@@ -74,7 +80,8 @@ impl crate::VaultContext {
         tokio::spawn(async move {
             let gates = PublicationGates::default();
             let recovery = store.recording_publication_recovery()?;
-            recover(&recovery, &vault, &operations, &gates).await;
+            let append = store.recording_append_recovery()?;
+            recover(&recovery, &append, &vault, &operations, &gates).await;
             Ok((lease, gates))
         })
         .await
@@ -101,6 +108,7 @@ pub(super) fn retain_inventory(
 
 async fn recover(
     store: &RecordingPublicationRecovery,
+    append: &RecordingAppendRecovery,
     vault: &str,
     operations: &std::path::Path,
     gates: &PublicationGates,
@@ -144,6 +152,39 @@ async fn recover(
                 }
             }
         }
+    }
+    if let Some(parent) = operations.parent() {
+        let root = parent.join("recording-appends");
+        match append.discover(&root, vault).await {
+            Err(_) => gates.block_all(),
+            Ok(pending) => {
+                for receipt in &pending {
+                    gates.retain(receipt.session_id(), &append_key(receipt.identity()));
+                    if receipt.requires_review() {
+                        gates.review(receipt.session_id());
+                    }
+                }
+                for receipt in pending {
+                    if receipt.requires_review() {
+                        continue;
+                    }
+                    let session = receipt.session_id().to_owned();
+                    let key = append_key(receipt.identity());
+                    if let Ok(plan) = append.prepare(&root, receipt).await
+                        && let Ok(plan) = plan.recheck().await
+                        && matches!(
+                            plan.commit().await,
+                            Ok(RecordingAppendOutcome::Published { .. }
+                                | RecordingAppendOutcome::AlreadyCommitted { .. })
+                        )
+                    {
+                        gates.resolve(&session, &key);
+                    }
+                }
+            }
+        }
+    } else {
+        gates.block_all();
     }
     gates.finish_bootstrap();
 }
@@ -287,4 +328,13 @@ mod native_tests {
         assert!(context.recover_recording_publications().await.is_err());
         assert!(!context.recording_publications.initialized());
     }
+}
+
+pub(in crate::vault::capture_ingest) fn append_key(
+    identity: &hypr_vault_write::recording_append::AppendIdentity,
+) -> String {
+    format!(
+        "append:{}:{}:{}",
+        identity.member_id, identity.capture_id, identity.admission_id
+    )
 }

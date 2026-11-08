@@ -111,6 +111,31 @@ pub fn validate_capture_processing_request(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureProcessingOptions {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub languages: Vec<String>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub summary: Option<crate::CaptureProcessingSummary>,
+}
+
+impl CaptureProcessingOptions {
+    pub fn request(&self, capture_fingerprint: String) -> crate::CaptureProcessingRequest {
+        crate::CaptureProcessingRequest {
+            capture_fingerprint,
+            model: self.model.clone(),
+            languages: self.languages.clone(),
+            keywords: self.keywords.clone(),
+            summary: self.summary.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

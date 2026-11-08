@@ -282,6 +282,7 @@ impl VaultContext {
         session_id: &str,
     ) -> Result<Vec<TranscriptWithData>, ApplicationError> {
         self.require_session(session_id).await?;
+        self.ensure_recording_publication_ready(session_id)?;
         self.store
             .session_transcripts(session_id)
             .await

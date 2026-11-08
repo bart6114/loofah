@@ -2,6 +2,8 @@
 
 mod auth;
 mod capture;
+mod capture_append;
+pub use capture_append::CaptureAppendPreparation;
 pub mod capture_upload;
 pub use hypr_capture_store::capture_spool;
 mod drafts;

@@ -12,6 +12,9 @@ use tokio::sync::{OnceCell, Semaphore};
 
 use super::{VaultContext, error};
 
+#[path = "capture_ingest/append.rs"]
+mod append;
+
 #[path = "capture_ingest/lifecycle.rs"]
 mod lifecycle;
 #[path = "capture_ingest/publication/mod.rs"]
@@ -124,18 +127,15 @@ impl VaultContext {
                     "Capture identity does not match the authenticated vault scope",
                 ));
             }
+            let _admission = context
+                .admit_session_work(&target_session_id(&input.identity)?)
+                .await?;
             if matches!(
                 input.identity.target,
                 hypr_loofah_protocol::CaptureTarget::AppendSession { .. }
             ) {
-                return Err(rejected(
-                    ErrorCode::Unavailable,
-                    "Append publication is not yet configured",
-                ));
+                append::checked_source(&context, &input.identity, true).await?;
             }
-            let _admission = context
-                .admit_session_work(&target_session_id(&input.identity)?)
-                .await?;
             let writer = spool
                 .begin_with_observation(
                     input.identity,
