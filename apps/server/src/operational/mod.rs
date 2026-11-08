@@ -236,7 +236,7 @@ impl VaultMetrics {
 pub(crate) async fn ready(State(service): State<Arc<Service>>) -> StatusCode {
     if !service.stop.is_cancelled()
         && service.observability.is_ready(service.catalog.generation())
-        && service.catalog.ready().await
+        && service.catalog.ready_now()
     {
         StatusCode::NO_CONTENT
     } else {

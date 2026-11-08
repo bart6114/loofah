@@ -156,6 +156,10 @@ impl Catalog {
         self.state.lock().await.healthy
     }
 
+    pub(crate) fn ready_now(&self) -> bool {
+        self.state.try_lock().is_ok_and(|state| state.healthy)
+    }
+
     pub(crate) fn generation(&self) -> u64 {
         *self.changes.borrow()
     }
@@ -670,6 +674,18 @@ mod tests {
             name: subject.into(),
             expires_at: crate::auth::now() + 3600,
         }
+    }
+
+    #[tokio::test]
+    async fn readiness_does_not_wait_for_a_catalog_writer_and_observes_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let catalog = Catalog::open(root.path()).await.unwrap();
+        assert!(catalog.ready_now());
+        let mut state = catalog.state.lock().await;
+        assert!(!catalog.ready_now());
+        state.healthy = false;
+        drop(state);
+        assert!(!catalog.ready_now());
     }
 
     #[tokio::test]
