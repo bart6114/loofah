@@ -1,4 +1,5 @@
 use hypr_loofah_protocol::{MetadataSaveOutcome, MetadataSnapshot};
+use serde::Deserialize;
 
 use crate::{SessionMetaPatch, SessionStore, StoreError, WriteGuard, paths};
 
@@ -57,19 +58,62 @@ impl SessionStore {
         expected_revision: &str,
     ) -> Result<Option<MetadataSaveOutcome>, StoreError> {
         self.ensure_ready()?;
-        let Some(current) = self.metadata_snapshot_locked(guard, id).await? else {
+        let Some((current, mut raw)) = self.metadata_with_raw_locked(guard, id).await? else {
             return Ok(None);
         };
         if current.revision != expected_revision {
             return Ok(Some(MetadataSaveOutcome::Conflict(current)));
         }
+        let fields = [
+            ("title", patch.title.is_some()),
+            ("started_at", patch.started_at.is_some()),
+            ("ended_at", patch.ended_at.is_some()),
+            ("created_at", patch.created_at.is_some()),
+            ("tags", patch.tags.is_some()),
+            ("tracking_id", patch.tracking_id.is_some()),
+            ("folder", patch.folder.is_some()),
+            ("author", patch.author.is_some()),
+        ];
+        let changes_tags = patch.tags.is_some();
         let mut meta = current.meta;
         crate::content::apply_meta_patch(&mut meta, patch);
-        validate_metadata_size(&meta, self.content_limits.metadata_bytes)?;
-        self.write_meta_locked(guard, &meta).await?;
+        let owned = serde_json::to_value(&meta)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
+        let object = raw
+            .as_object_mut()
+            .ok_or_else(|| StoreError::Serialize("Session metadata must be an object".into()))?;
+        for (key, changed) in fields {
+            if changed {
+                object.insert(key.into(), owned[key].clone());
+            }
+        }
+        if changes_tags
+            && let Some(state) = object
+                .get_mut("tag_suggestions")
+                .and_then(serde_json::Value::as_object_mut)
+            && let Some(suggestions) = &meta.tag_suggestions
+        {
+            state.insert("items".into(), serde_json::json!(suggestions.items));
+        }
+        let bytes = serde_json::to_vec_pretty(&raw)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
+        if bytes.len() > self.content_limits.metadata_bytes {
+            return Err(StoreError::ResourceLimit(
+                "Session metadata exceeds its size limit".into(),
+            ));
+        }
+        self.write_file_locked(
+            guard,
+            paths::meta_path_in(&paths::validated_session_dir(id)?),
+            bytes,
+        )
+        .await?;
+        self.index_upsert_meta(&meta);
+        self.notify_index_changed(crate::IndexEntity::Sessions, vec![id.to_owned()]);
         let snapshot = self
             .metadata_snapshot_locked(guard, id)
-            .await?
+            .await
+            .map_err(StoreError::after_commit)?
             .ok_or_else(|| {
                 StoreError::Io("Session disappeared after metadata replacement".into())
             })?;
@@ -81,6 +125,16 @@ impl SessionStore {
         _guard: &WriteGuard<'_>,
         id: &str,
     ) -> Result<Option<MetadataSnapshot>, StoreError> {
+        self.metadata_with_raw_locked(_guard, id)
+            .await
+            .map(|value| value.map(|(snapshot, _)| snapshot))
+    }
+
+    async fn metadata_with_raw_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        id: &str,
+    ) -> Result<Option<(MetadataSnapshot, serde_json::Value)>, StoreError> {
         let vault = self.vault_base.clone();
         let directory = paths::validated_session_dir(id)?;
         let id = id.to_owned();
@@ -127,7 +181,10 @@ impl SessionStore {
                     "Session metadata exceeds its size limit".into(),
                 ));
             }
-            let meta: hypr_vault_read::SessionMeta = serde_json::from_slice(&raw)
+            let value = serde_json::from_slice::<UniqueValue>(&raw)
+                .map_err(|cause| StoreError::Serialize(cause.to_string()))?
+                .0;
+            let meta: hypr_vault_read::SessionMeta = serde_json::from_value(value.clone())
                 .map_err(|cause| StoreError::Serialize(cause.to_string()))?;
             if meta.id != id {
                 return Err(StoreError::Serialize(
@@ -138,10 +195,13 @@ impl SessionStore {
             bytes.extend_from_slice(&(id.len() as u64).to_be_bytes());
             bytes.extend_from_slice(id.as_bytes());
             bytes.extend_from_slice(&raw);
-            Ok(Some(MetadataSnapshot {
-                meta,
-                revision: crate::sha256(&bytes),
-            }))
+            Ok(Some((
+                MetadataSnapshot {
+                    meta,
+                    revision: crate::sha256(&bytes),
+                },
+                value,
+            )))
         })
         .await
         .map_err(|cause| StoreError::Io(cause.to_string()))?
@@ -163,6 +223,64 @@ pub(super) fn validate_metadata_size(
         ));
     }
     Ok(())
+}
+
+pub(super) struct UniqueValue(pub(super) serde_json::Value);
+
+impl<'de> Deserialize<'de> for UniqueValue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = UniqueValue;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("JSON without duplicate object keys")
+            }
+            fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Self::Value, E> {
+                Ok(UniqueValue(value.into()))
+            }
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                Ok(UniqueValue(value.into()))
+            }
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(UniqueValue(value.into()))
+            }
+            fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                serde_json::Number::from_f64(value)
+                    .map(|n| UniqueValue(n.into()))
+                    .ok_or_else(|| E::custom("Invalid JSON number"))
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(UniqueValue(value.into()))
+            }
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                Ok(UniqueValue(serde_json::Value::Null))
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut values = Vec::new();
+                while let Some(value) = seq.next_element::<UniqueValue>()? {
+                    values.push(value.0);
+                }
+                Ok(UniqueValue(values.into()))
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut values = serde_json::Map::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if values.contains_key(&key) {
+                        return Err(serde::de::Error::custom("Duplicate JSON object key"));
+                    }
+                    values.insert(key, map.next_value::<UniqueValue>()?.0);
+                }
+                Ok(UniqueValue(values.into()))
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 #[cfg(test)]
@@ -231,6 +349,119 @@ mod tests {
         legacy.update_meta("note", patch).await.unwrap();
         assert_eq!(legacy.read_meta("note").await.unwrap().unwrap(), saved.meta);
         assert_eq!(store.session_get("note").unwrap().meta, saved.meta);
+    }
+
+    #[tokio::test]
+    async fn checked_patch_preserves_nested_unknowns_and_only_changes_requested_fields() {
+        let (root, store) = fixture().await;
+        let path = root.path().join("sessions/note/_meta.json");
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        raw["tag_suggestions"]["future"] = json!({"source": [1, null, true]});
+        raw["tag_suggestions"]["status"] = json!("legacy");
+        std::fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+        let before = store.read_metadata_snapshot("note").await.unwrap().unwrap();
+        assert!(
+            before
+                .meta
+                .tag_suggestions
+                .as_ref()
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        let MetadataSaveOutcome::Saved(saved) = store
+            .update_metadata_if_revision(
+                "note",
+                SessionMetaPatch {
+                    title: Some("New title".into()),
+                    ..Default::default()
+                },
+                &before.revision,
+            )
+            .await
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("save failed")
+        };
+        let mut expected = raw.clone();
+        expected["title"] = json!("New title");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            expected
+        );
+        raw = expected;
+        raw["tag_suggestions"]
+            .as_object_mut()
+            .unwrap()
+            .remove("status");
+        std::fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+        let before = store.read_metadata_snapshot("note").await.unwrap().unwrap();
+        let MetadataSaveOutcome::Saved(_) = store
+            .update_metadata_if_revision(
+                "note",
+                SessionMetaPatch {
+                    tags: Some(vec!["project".into()]),
+                    ..Default::default()
+                },
+                &before.revision,
+            )
+            .await
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("save failed")
+        };
+        raw["tags"] = json!(["project"]);
+        raw["tag_suggestions"]["items"] = json!(["other"]);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            raw
+        );
+        assert_ne!(before.revision, saved.revision);
+    }
+
+    #[tokio::test]
+    async fn nested_unknown_size_and_duplicate_keys_are_checked_before_any_write() {
+        let (root, store) = fixture().await;
+        let path = root.path().join("sessions/note/_meta.json");
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        raw["tag_suggestions"]["future"] = json!("x".repeat(4096));
+        let bytes = serde_json::to_vec(&raw).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let mut bounded = store.clone();
+        bounded.content_limits.metadata_bytes = bytes.len() + 32;
+        let before = bounded
+            .read_metadata_snapshot("note")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            bounded
+                .update_metadata_if_revision(
+                    "note",
+                    SessionMetaPatch {
+                        title: Some("longer title".repeat(16)),
+                        ..Default::default()
+                    },
+                    &before.revision
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        for value in [
+            br#"{"id":"note","title":"one","title":"two","created_at":"","tags":[]}"#.as_slice(),
+            br#"{"id":"note","title":"one","created_at":"","tags":[],"future":{"key":1,"key":2}}"#.as_slice(),
+            br#"{"id":"note","title":"one","created_at":"","tags":[],"tag_suggestions":{"items":[],"items":["lost"]}}"#.as_slice(),
+        ] {
+            std::fs::write(&path, value).unwrap();
+            assert!(store.read_metadata_snapshot("note").await.is_err());
+            assert!(store.update_metadata_if_revision("note", Default::default(), &before.revision).await.is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), value);
+        }
     }
 
     #[tokio::test]
