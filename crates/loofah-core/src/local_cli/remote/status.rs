@@ -60,6 +60,7 @@ impl MediaDispatcher {
                 transcript_id: None,
                 word_count: None,
                 error: None,
+                imported: None,
             },
             Some(Err(cause)) => return Err(cause),
         };

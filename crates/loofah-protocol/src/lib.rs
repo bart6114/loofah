@@ -217,6 +217,33 @@ pub struct CreateSessionRequest {
     pub markdown: String,
 }
 
+pub fn validate_initial_session_metadata(
+    input: &LocalInitialSessionMetadata,
+) -> Result<(), &'static str> {
+    if input.tags.len() > 64
+        || input.tags.iter().any(|tag| tag.len() > 4096)
+        || [&input.author, &input.skill]
+            .into_iter()
+            .any(|field| field.as_ref().is_some_and(|value| value.len() > 4096))
+        || [&input.created_at, &input.started_at, &input.ended_at]
+            .into_iter()
+            .any(|field| field.as_ref().is_some_and(|value| value.len() > 128))
+    {
+        return Err("Initial session metadata exceeds the request size limit");
+    }
+    if input.skill.is_some() && input.author.is_none() {
+        return Err("A creation skill requires an author");
+    }
+    if input
+        .tags
+        .iter()
+        .any(|tag| hypr_vault_read::normalize_tag_name(tag).is_none())
+    {
+        return Err("Initial tag names cannot be empty");
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct CreateSessionWithMetadataRequest {
