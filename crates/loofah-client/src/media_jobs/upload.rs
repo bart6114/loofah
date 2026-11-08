@@ -21,6 +21,7 @@ impl MediaAuthority {
         admission: &MediaAdmission,
         source: impl Read + Send + 'static,
     ) -> Result<MediaRequestStatus> {
+        let _window_work = self.client.begin_window_work()?;
         let request = &submission.declaration.request_id;
         let prepared=async {
             self.validate_submission(submission)?;
@@ -66,7 +67,9 @@ impl MediaAuthority {
         let source_pin = self.pin_source();
         let producer_guard = source_pin.clone();
         let producer_permit = permit.clone();
+        let source_work = self.client.begin_window_work()?;
         tokio::task::spawn_blocking(move || {
+            let _source_work = source_work;
             let _permit = producer_permit;
             produce(
                 OwnedSource {
@@ -80,7 +83,7 @@ impl MediaAuthority {
             );
         });
         // No Content-Length: failed or changed source cannot look like a completed upload.
-        let send = self
+        let request = self
             .client
             .http
             .put(url)
@@ -89,14 +92,16 @@ impl MediaAuthority {
             .header("x-request-id", request)
             .header("x-loofah-media-revision", &admission.revision)
             .header("content-type", "application/octet-stream")
-            .body(body)
-            .send();
+            .body(body);
         let client = self.client.clone();
         let lifetime = self.lifetime.clone();
-        let request_id = request.to_owned();
+        let request_id = submission.declaration.request_id.clone();
         let declaration = submission.declaration.clone();
         let revision = admission.revision.clone();
+        let transfer_work = self.client.begin_window_work()?;
         let transfer = tokio::spawn(async move {
+            let _transfer_work = transfer_work;
+            let send = guard.send(request);
             let _permit = permit;
             let _source_pin = source_pin;
             tokio::pin!(send);
@@ -106,7 +111,7 @@ impl MediaAuthority {
                 let response = loop {
                     let deadline = *progressed.borrow_and_update() + idle;
                     tokio::select! {
-                        response = &mut send => break response.map_err(|_|crate::unavailable())?,
+                        response = &mut send => break response?,
                         _ = tokio::time::sleep_until(deadline) => return Err(crate::unavailable()),
                         changed = progressed.changed(), if progress_open => { progress_open = changed.is_ok(); },
                     }
@@ -140,11 +145,13 @@ impl MediaAuthority {
             }
             .map_err(|e| outcome(e, &request_id, true, true))
         });
-        // The owned transfer is admitted with its immutable bearer and source before
-        // releasing account locks. Its physical reader keeps the original lease pinned.
-        drop(guard);
-        transfer
-            .await
-            .map_err(|_| outcome(crate::unavailable(), request, true, true))?
+        transfer.await.map_err(|_| {
+            outcome(
+                crate::unavailable(),
+                &submission.declaration.request_id,
+                true,
+                true,
+            )
+        })?
     }
 }

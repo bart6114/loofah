@@ -310,111 +310,152 @@ async fn media_upload_uses_original_admission_and_lost_reply_never_replays() {
 
 #[tokio::test]
 async fn cancelled_media_upload_keeps_original_profile_until_actual_source_read_drains() {
-    struct BlockedSource {
-        entered: Option<tokio::sync::oneshot::Sender<()>>,
-        release: std::sync::mpsc::Receiver<()>,
-        dropped: Option<tokio::sync::oneshot::Sender<()>>,
-    }
-    impl std::io::Read for BlockedSource {
-        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-            if let Some(entered) = self.entered.take() {
-                let _ = entered.send(());
-                let _ = self.release.recv();
-            }
-            Ok(0)
+    for scoped_window in [false, true] {
+        struct BlockedSource {
+            entered: Option<tokio::sync::oneshot::Sender<()>>,
+            release: std::sync::mpsc::Receiver<()>,
+            dropped: Option<tokio::sync::oneshot::Sender<()>>,
         }
-    }
-    impl Drop for BlockedSource {
-        fn drop(&mut self) {
-            if let Some(dropped) = self.dropped.take() {
-                let _ = dropped.send(());
+        impl std::io::Read for BlockedSource {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                if let Some(entered) = self.entered.take() {
+                    let _ = entered.send(());
+                    let _ = self.release.recv();
+                }
+                Ok(0)
             }
         }
-    }
-    let extra = Router::new()
-        .route(
-            "/api/v1/vaults/vault/media/requests",
-            post(|Json(input): Json<MediaDeclaration>| async move {
-                let status = MediaRequestStatus {
-                    declaration: input.clone(),
-                    revision: uuid::Uuid::new_v4().to_string(),
-                    phase: MediaPhase::Receiving,
-                    media: None,
-                };
-                Json(MediaAdmission {
-                    declaration: input,
-                    revision: status.revision.clone(),
-                    status,
-                })
-            }),
-        )
-        .route(
-            "/api/v1/vaults/vault/media/requests/{request}/source",
-            axum::routing::put(|_: axum::body::Bytes| async { StatusCode::NO_CONTENT }),
-        );
-    let fixture = Fixture::with_extra_routes(Some(Duration::ZERO), extra).await;
-    let mut client = fixture.client().await;
-    Arc::get_mut(&mut client)
-        .unwrap()
-        .capabilities
-        .features
-        .push("media_jobs".into());
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().canonicalize().unwrap();
-    let (bound, profile) = authority(&fixture, &client, &path, CancellationToken::new()).await;
-    let store = MediaSubmissions::new(path.join("receipts")).unwrap();
-    let (submission, _) = store
-        .prepare(bound.scope().clone(), declaration())
-        .await
-        .unwrap();
-    let admission = bound.declare(&submission).await.unwrap();
-    let submission = store
-        .observe_admission(&submission, &admission)
-        .await
-        .unwrap();
-    let (entered_send, entered) = tokio::sync::oneshot::channel();
-    let (release, receive) = std::sync::mpsc::channel();
-    let (dropped_send, dropped) = tokio::sync::oneshot::channel();
-    let source = BlockedSource {
-        entered: Some(entered_send),
-        release: receive,
-        dropped: Some(dropped_send),
-    };
-    let call = bound.for_request(CancellationToken::new());
-    let pending =
-        tokio::spawn(async move { call.upload_source(&submission, &admission, source).await });
-    let started = tokio::time::timeout(Duration::from_secs(10), entered).await;
-    if !matches!(started, Ok(Ok(()))) {
+        impl Drop for BlockedSource {
+            fn drop(&mut self) {
+                if let Some(dropped) = self.dropped.take() {
+                    let _ = dropped.send(());
+                }
+            }
+        }
+        let extra = Router::new()
+            .route(
+                "/api/v1/vaults/vault/media/requests",
+                post(|Json(input): Json<MediaDeclaration>| async move {
+                    let status = MediaRequestStatus {
+                        declaration: input.clone(),
+                        revision: uuid::Uuid::new_v4().to_string(),
+                        phase: MediaPhase::Receiving,
+                        media: None,
+                    };
+                    Json(MediaAdmission {
+                        declaration: input,
+                        revision: status.revision.clone(),
+                        status,
+                    })
+                }),
+            )
+            .route(
+                "/api/v1/vaults/vault/media/requests/{request}/source",
+                axum::routing::put(|_: axum::body::Bytes| async { StatusCode::NO_CONTENT }),
+            );
+        let fixture = Fixture::with_extra_routes(Some(Duration::ZERO), extra).await;
+        let mut client = fixture.client().await;
+        Arc::get_mut(&mut client)
+            .unwrap()
+            .capabilities
+            .features
+            .push("media_jobs".into());
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().canonicalize().unwrap();
+        let (mut bound, profile) =
+            authority(&fixture, &client, &path, CancellationToken::new()).await;
+        let view = if scoped_window {
+            let view = client
+                .window_view(
+                    profile.clone(),
+                    CaptureScope {
+                        server: client.address().into(),
+                        member_id: "member".into(),
+                        vault_id: "vault".into(),
+                    },
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+            bound = view
+                .bind_media(
+                    profile.clone(),
+                    bound.scope().clone(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+            Some(view)
+        } else {
+            None
+        };
+        let store = MediaSubmissions::new(path.join("receipts")).unwrap();
+        let (submission, _) = store
+            .prepare(bound.scope().clone(), declaration())
+            .await
+            .unwrap();
+        let admission = bound.declare(&submission).await.unwrap();
+        let submission = store
+            .observe_admission(&submission, &admission)
+            .await
+            .unwrap();
+        let (entered_send, entered) = tokio::sync::oneshot::channel();
+        let (release, receive) = std::sync::mpsc::channel();
+        let (dropped_send, dropped) = tokio::sync::oneshot::channel();
+        let source = BlockedSource {
+            entered: Some(entered_send),
+            release: receive,
+            dropped: Some(dropped_send),
+        };
+        let call = bound.for_request(CancellationToken::new());
+        let pending =
+            tokio::spawn(async move { call.upload_source(&submission, &admission, source).await });
+        let started = tokio::time::timeout(Duration::from_secs(10), entered).await;
+        if !matches!(started, Ok(Ok(()))) {
+            let _ = release.send(());
+            panic!("source reader did not start");
+        }
+        pending.abort();
+        let _ = pending.await;
+        let waits_for_source = if let Some(view) = &view {
+            view.disconnect();
+            tokio::time::timeout(Duration::from_millis(20), view.drain_window())
+                .await
+                .is_err()
+        } else {
+            true
+        };
+        drop(view);
+        drop(bound);
+        drop(profile);
+        drop(client);
+        let profiles = ConnectionProfiles::new(path.join("profiles")).unwrap();
+        let retained = profiles.open("media").await.is_err();
         let _ = release.send(());
-        panic!("source reader did not start");
-    }
-    pending.abort();
-    let _ = pending.await;
-    drop(bound);
-    drop(profile);
-    drop(client);
-    let profiles = ConnectionProfiles::new(path.join("profiles")).unwrap();
-    let retained = profiles.open("media").await.is_err();
-    let _ = release.send(());
-    assert!(
-        retained,
-        "cancelled caller released original profile while source read remained active"
-    );
-    tokio::time::timeout(Duration::from_secs(10), dropped)
-        .await
-        .unwrap()
-        .unwrap();
-    let reopened = tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if let Ok(profile) = profiles.open("media").await {
-                break profile;
+        assert!(
+            waits_for_source,
+            "child drain released a physical source reader"
+        );
+        assert!(
+            retained,
+            "cancelled caller released original profile while source read remained active"
+        );
+        tokio::time::timeout(Duration::from_secs(10), dropped)
+            .await
+            .unwrap()
+            .unwrap();
+        let reopened = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Ok(profile) = profiles.open("media").await {
+                    break profile;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(reopened.profile().await.name, "media");
+        })
+        .await
+        .unwrap();
+        assert_eq!(reopened.profile().await.name, "media");
+    }
 }
 
 mod source_export;
@@ -531,4 +572,40 @@ async fn queued_media_dispatch_rejects_original_profile_and_login_aba_before_htt
         }
         assert_eq!(requests.load(Ordering::SeqCst), 0);
     }
+}
+
+#[tokio::test]
+async fn media_guard_refresh_does_not_hold_profile_and_rechecks_original_generation_after_http() {
+    let fixture = Fixture::with_tls(Some(Duration::ZERO)).await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("media_jobs".into());
+    let root = tempfile::tempdir().unwrap();
+    let (bound, profile) =
+        authority(&fixture, &client, root.path(), CancellationToken::new()).await;
+    let original = profile.profile().await;
+    let access = client.access_token().await.unwrap();
+    client.expire_access(&access).await;
+    fixture.state.delay.store(500, Ordering::SeqCst);
+    let waiting = tokio::spawn(async move { bound.guard().await });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while client.tokens.try_lock().is_ok() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_millis(200), profile.save(original))
+        .await
+        .unwrap()
+        .unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(2), waiting)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.err().unwrap().code, ErrorCode::Conflict);
+    assert_eq!(fixture.state.refreshes.load(Ordering::SeqCst), 1);
 }

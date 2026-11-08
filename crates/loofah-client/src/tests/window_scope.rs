@@ -167,7 +167,7 @@ async fn window_view_assets_streams_and_media_authorities_cannot_leave_original_
         .capabilities
         .features
         .extend([
-            "audio_playback".into(),
+            "recording_leases".into(),
             "attachment_leases".into(),
             "media_jobs".into(),
         ]);

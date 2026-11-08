@@ -43,6 +43,7 @@ impl RemoteClient {
         cancel: CancellationToken,
         idle: Duration,
     ) -> Result<FileMetadata> {
+        let _window_work = self.begin_window_work()?;
         let request_id = upload.request_id.clone();
         let prepared = async {
             if self.stop.is_cancelled() || cancel.is_cancelled() { return Err(cancelled()); }
