@@ -250,7 +250,8 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
             format!("# {}\n\n{}", meta.title.trim(), result.markdown.trim_start()).trim().to_owned()
         };
         assert_eq!(published_summary, expected_summary, "title publication must preserve the complete generated summary body");
-        assert_eq!(std::fs::read(session.join("notes.md")).unwrap(), original_note);
+        let expected_note = format!("# {}\n\n{}", meta.title.trim(), std::str::from_utf8(&original_note).unwrap().trim_start()).trim().to_owned();
+        assert_eq!(std::fs::read(session.join("notes.md")).unwrap(), expected_note.as_bytes(), "the generated title may stamp the note, but must preserve all original user prose");
         assert_eq!(std::fs::read(session.join("transcript.json")).unwrap(), original_transcript);
         let replay = context.complete_manual_media_summary(request.clone()).await.unwrap();
         assert_eq!(replay.child_request_id, child);
@@ -264,7 +265,7 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
         assert!(context.read_document("short", &DocumentTarget::Summary).await.unwrap().document.is_none());
         let jobs = application::application_processing_jobs(app.handle().clone(), ListProcessingJobsInput::default()).await.unwrap();
         assert_eq!(jobs.items.len(), 1, "same parent replay and ineligible input must create no extra model job");
-        assert_eq!(std::fs::read(session.join("notes.md")).unwrap(), original_note);
+        assert_eq!(std::fs::read(session.join("notes.md")).unwrap(), expected_note.as_bytes());
         assert_eq!(std::fs::read(session.join("transcript.json")).unwrap(), original_transcript);
         eprintln!("Native Ollama acceptance passed: model={}, summary_bytes={}, title={:?}, original parent={request}, original child={child}", model.model_id, normalized.len(), meta.title);
     }).catch_unwind().await;

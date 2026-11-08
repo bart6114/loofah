@@ -679,8 +679,9 @@ Windows architectures still need integration qualification for this checkpoint.
 An opt-in Native acceptance case now covers configured Local Ollama through the
 production `ProcessingState` / `LocalModels` / `DeviceSecrets` constructor and
 shared Core jobs. It declares the existing automatic manual-media parent before
-a checked SRT import, verifies generated summary/title publication and exact
-original note/transcript bytes, replays one original child, and verifies that a
+a checked SRT import, verifies generated summary/title publication, exact original
+transcript bytes, and all original note prose beneath the existing generated-title
+heading stamp, replays one original child, and verifies that a
 short transcript is skipped. No account, credential-store plugin, download or
 provider substitute is installed by the test. Set `LOOFAH_TEST_OLLAMA_BASE_URL`
 to an explicit loopback `http://.../v1` endpoint and `LOOFAH_TEST_OLLAMA_MODEL` to
@@ -688,8 +689,10 @@ an already downloaded model, then select the ignored
 `processing::ollama_acceptance::configured_local_ollama_publishes_automatic_summary_and_title_without_login`
 case on the existing stable Native test graph. Both successful and failed
 assertions drain real summary/title work before releasing the disposable vault.
-This source checkpoint has formatting validation only; root-lane execution is
-pending and does not replace physical microphone or platform GUI acceptance.
+Native execution has reached actual local summary/title inference; fixture checks
+now follow the existing canonical title-heading stamp on summary and notes.
+Complete root-lane acceptance is pending and does not replace physical microphone
+or platform GUI acceptance.
 
 Windows x64 checkpoint `0d` exposed two append durability bugs: SDK receipt
 replay and Core PCM description called `sync_all` on read-only handles, which
