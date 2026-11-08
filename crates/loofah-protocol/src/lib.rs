@@ -19,6 +19,8 @@ mod processing_settings;
 pub use processing_settings::*;
 mod transcript_overview;
 pub use transcript_overview::*;
+mod transcription;
+pub use transcription::*;
 mod session_summaries;
 pub use session_summaries::*;
 mod session_cleanup;
