@@ -347,7 +347,7 @@ async fn open_source(
     authority: Arc<MediaAuthority>,
 ) -> Result<(String, MediaUploadSource, File)> {
     authority.check_current().await?;
-    let result = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let _owner = authority;
         let filename = path
             .file_name()
@@ -386,8 +386,7 @@ async fn open_source(
         ))
     })
     .await
-    .map_err(|cause| Error::operation("read media source", cause.to_string()))?;
-    result
+    .map_err(|cause| Error::operation("read media source", cause.to_string()))?
 }
 async fn wait(
     authority: &MediaAuthority,
