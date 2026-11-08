@@ -102,6 +102,7 @@ struct TrackedCapture {
     runtime: Arc<dyn ListenerRuntime>,
     recording: RecordingDestination,
     supervisor: ActorCell,
+    supervisor_join: Option<tokio::task::JoinHandle<()>>,
     resources_stopped: bool,
     supervisor_done: bool,
     completion: Option<DeviceCaptureReporter>,
@@ -336,10 +337,10 @@ impl Actor for RootActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             SupervisionEvent::ActorTerminated(cell, _, reason) => {
-                handle_supervisor_completion(state, cell, reason)
+                handle_supervisor_completion(state, cell, reason).await
             }
             SupervisionEvent::ActorFailed(cell, error) => {
-                handle_supervisor_completion(state, cell, Some(format!("{error:?}")))
+                handle_supervisor_completion(state, cell, Some(format!("{error:?}"))).await
             }
             _ => {}
         }
@@ -412,7 +413,8 @@ async fn start_session_impl(
             state,
             cell,
             Some("Capture stopped before its completion event".into()),
-        );
+        )
+        .await;
     }
     let key = device
         .as_ref()
@@ -477,7 +479,7 @@ async fn start_session_impl(
         started_at_instant: Instant::now(),
         started_at_system: SystemTime::now(),
     };
-    let (supervisor, _) = spawn_session_supervisor(ctx).await.map_err(|_| {
+    let (supervisor, supervisor_join) = spawn_session_supervisor(ctx).await.map_err(|_| {
         if !recording.is_device() {
             clear_sentry_session_context();
         }
@@ -495,6 +497,7 @@ async fn start_session_impl(
         completion,
         recording,
         supervisor,
+        supervisor_join: Some(supervisor_join),
     };
     if stopped {
         if let Some(completion) = &tracked.completion {
@@ -538,7 +541,11 @@ fn stop_session_impl(state: &mut RootState) {
     }
 }
 
-fn handle_supervisor_completion(state: &mut RootState, cell: ActorCell, reason: Option<String>) {
+async fn handle_supervisor_completion(
+    state: &mut RootState,
+    cell: ActorCell,
+    mut reason: Option<String>,
+) {
     let capture = if state
         .active
         .as_ref()
@@ -556,6 +563,13 @@ fn handle_supervisor_completion(state: &mut RootState, cell: ActorCell, reason: 
     let Some(mut capture) = capture else {
         return;
     };
+    // ractor sends supervision before unregistering the actor name. Keep the
+    // original physical admission until the task actually retires.
+    if let Some(join) = capture.supervisor_join.take() {
+        if join.await.is_err() && reason.is_none() {
+            reason = Some("Original capture supervisor did not confirm retirement".into());
+        }
+    }
     if let Some(completion) = &capture.completion {
         completion.supervisor_ended(reason.clone());
     }
@@ -1213,6 +1227,12 @@ mod tests {
             .await
             .unwrap();
             admitted(&root).await;
+            assert!(
+                ractor::registry::where_is(crate::actors::session::session_supervisor_name(
+                    "same-session"
+                ))
+                .is_none()
+            );
         }
         assert!(global.events.lock().unwrap().is_empty());
         root.stop(None);
