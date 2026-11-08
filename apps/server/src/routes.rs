@@ -188,6 +188,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         features: vec![
             "capture_ingestion".into(),
             "capture_publication".into(),
+            "capture_retirement".into(),
             "capture_pending_publication".into(),
             "notes".into(),
             "session_summaries".into(),

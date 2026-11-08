@@ -14,6 +14,7 @@ pub(super) async fn run(
             if service.stop.is_cancelled() {
                 return Ok(());
             }
+            let _work = context.admit_session_work(&previous.target_session).await?;
             // Terminal cancellation still reconciles exact child cancellations;
             // startup never requeues an interrupted/unknown native or paid job.
             let mut next = previous.clone();

@@ -122,6 +122,9 @@ async fn execute(
     cancel: CancellationToken,
     stop: &CancellationToken,
 ) -> Result<(), ApplicationError> {
+    let _work = context
+        .admit_session_work(&record.request.session_id)
+        .await?;
     let work = record.work();
     let access = match authorizer.observe(&work).await {
         Ok(access) => access,
@@ -263,7 +266,7 @@ async fn execute_observed(
             released,
             ..
         } = source;
-        journal.track_source(released.clone());
+        journal.track_source(record.request.session_id.clone(), released.clone());
         // This future owns the host reservation. Even if its adapter panics, the
         // actual source owner must exit before we terminalize or finish shutdown.
         let generated = AssertUnwindSafe(prepared.transcribe(input, signals.cancel.clone()))

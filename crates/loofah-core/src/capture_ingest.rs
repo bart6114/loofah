@@ -19,6 +19,8 @@ mod append;
 mod lifecycle;
 #[path = "capture_ingest/publication/mod.rs"]
 pub(crate) mod publication;
+#[path = "capture_ingest/retirement.rs"]
+mod retirement;
 use lifecycle::target_session_id;
 
 pub(super) struct CaptureIngestion {
@@ -160,8 +162,13 @@ impl VaultContext {
     {
         validate_id(&capture_id)?;
         self.capture_action(member_id, authorize, move |spool, scope| async move {
-            let writer = find(&spool, scope, &capture_id).await?;
-            status(writer.snapshot().await?)
+            let snapshot = spool
+                .inventory(scope)
+                .await?
+                .into_iter()
+                .find(|snapshot| snapshot.identity.capture_id == capture_id)
+                .ok_or_else(|| rejected(ErrorCode::NotFound, "Capture not found"))?;
+            status(snapshot)
         })
         .await
     }

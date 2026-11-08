@@ -505,6 +505,27 @@ impl Journal {
         .await
     }
 
+    pub(super) fn retirement_generations(
+        &self,
+        session: &str,
+    ) -> Result<Vec<String>, ApplicationError> {
+        if self.0.failed.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(storage("Live ledger needs review"));
+        }
+        let records = self.0.records.lock().map_err(storage)?;
+        if records
+            .values()
+            .any(|record| record_blocks(record, session))
+        {
+            return Err(unavailable("Live capture must finish or be reviewed"));
+        }
+        Ok(records
+            .values()
+            .filter(|record| record.snapshot.session_id == session)
+            .map(|record| record.snapshot.generation_id.clone())
+            .collect())
+    }
+
     pub fn blocks(&self, session: &str) -> bool {
         self.0.failed.load(std::sync::atomic::Ordering::Acquire)
             || self.0.records.lock().map_or(true, |records| {

@@ -325,6 +325,19 @@ impl VaultContext {
         .map_err(|_| unavailable())?
     }
 
+    pub(crate) async fn ensure_transcription_retirement_idle(
+        &self,
+        session: &str,
+    ) -> Result<(), ApplicationError> {
+        if let Some(service) = self.transcription.get() {
+            if service.stop.is_cancelled() && !service.finished.is_cancelled() {
+                return Err(crate::session_lifecycle_gate::session_lifecycle_busy());
+            }
+            service.journal.ensure_sources_released(session)?;
+        }
+        self.ensure_transcription_session_idle(session).await
+    }
+
     pub(crate) async fn ensure_transcription_session_idle(
         &self,
         id: &str,

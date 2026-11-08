@@ -9,6 +9,10 @@ pub(super) fn router() -> Router<Arc<Service>> {
         .route("/vaults/{vault}/captures", axum::routing::post(begin))
         .route("/vaults/{vault}/captures/{capture}", get(status))
         .route(
+            "/vaults/{vault}/captures/{capture}/retirement",
+            axum::routing::post(retire),
+        )
+        .route(
             "/vaults/{vault}/captures/{capture}/chunks/{sequence}",
             axum::routing::put(append),
         )
@@ -247,6 +251,31 @@ async fn prepare_append(
         Ok(Json(
             context
                 .prepare_capture_append_authorized(member, input, authorize)
+                .await?,
+        ))
+    })
+    .await
+}
+
+async fn retire(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, capture)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+    ApiJson(input): ApiJson<CaptureRetirementRequest>,
+) -> Result<Json<CaptureIngestStatus>> {
+    if request_id(&headers)? != input.cleanup_request_id {
+        return Err(rejected(
+            ErrorCode::Validation,
+            "Request ID must match the cleanup declaration",
+        ));
+    }
+    let (context, member) = context(&service, &identity, &vault, true).await?;
+    let authorize = authorization(service.clone(), identity, vault, true);
+    admitted_write(&service, async move {
+        Ok(Json(
+            context
+                .retire_capture_authorized(member, capture, input, authorize)
                 .await?,
         ))
     })

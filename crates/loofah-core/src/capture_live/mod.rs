@@ -121,6 +121,43 @@ impl VaultContext {
             && !service.failed.load(std::sync::atomic::Ordering::Acquire);
         Ok((record.snapshot, drained, safe))
     }
+    pub(crate) async fn join_capture_live_retirement(
+        &self,
+        session: &str,
+    ) -> Result<(), ApplicationError> {
+        let Some(service) = self.capture_live.get() else {
+            return self.ensure_capture_live_lifecycle_idle(session).await;
+        };
+        if service.stop.is_cancelled() || service.failed.load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(unavailable("Live source ownership requires review"));
+        }
+        let generations = service.journal.retirement_generations(session)?;
+        let tasks = {
+            let mut tasks = service.tasks.lock().map_err(storage)?;
+            if generations.iter().any(|generation| {
+                tasks
+                    .get(generation)
+                    .is_some_and(|task| !task.handle.is_finished())
+            }) {
+                return Err(unavailable("Live source is still draining"));
+            }
+            generations
+                .into_iter()
+                .filter_map(|generation| tasks.remove(&generation))
+                .collect::<Vec<_>>()
+        };
+        for task in tasks {
+            if task.handle.await.is_err() {
+                service
+                    .failed
+                    .store(true, std::sync::atomic::Ordering::Release);
+                return Err(storage("Live source completion is unconfirmed"));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) async fn ensure_capture_live_lifecycle_idle(
         &self,
         session: &str,
@@ -226,7 +263,6 @@ impl VaultContext {
             if service.stop.is_cancelled() { return Err(unavailable("Live processing is stopping")); }
             let record = ledger::Record::new(source.identity, source.format, request, request_id.clone(), session, observation, &memo);
             let (record, fresh) = service.journal.admit(record, memo).await?;
-            drop(session_admission);
             if fresh {
                 let cancel = service.stop.child_token();
                 let task_cancel = cancel.clone();
@@ -234,6 +270,7 @@ impl VaultContext {
                 let task_context = context.clone();
                 let snapshot = record.snapshot.clone();
                 let handle = tokio::spawn(async move {
+                    let _session_admission = session_admission;
                     worker::run(task_context, task_service, writer, record, task_cancel).await;
                 });
                 service.tasks.lock().unwrap().insert(request_id, Task {cancel, handle});

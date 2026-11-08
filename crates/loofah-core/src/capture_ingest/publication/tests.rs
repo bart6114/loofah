@@ -1570,3 +1570,170 @@ async fn dropped_note_creation_waiter_retains_shared_lifecycle_guard_through_rea
     );
     fixture.stop().await;
 }
+
+async fn retirement_request(fixture: &Fixture) -> hypr_loofah_protocol::CaptureRetirementRequest {
+    let published = fixture.publish().await.unwrap();
+    hypr_loofah_protocol::CaptureRetirementRequest {
+        cleanup_request_id: uuid::Uuid::new_v4().to_string(),
+        identity: fixture.input.identity.clone(),
+        format: fixture.input.format.clone(),
+        source: fixture.seal.clone(),
+        publication: published.publication.unwrap(),
+        processing: None,
+    }
+}
+
+#[tokio::test]
+async fn verified_server_retirement_preserves_canonical_and_original_status_and_never_reopens_raw()
+{
+    let fixture = Fixture::new().await;
+    let request = retirement_request(&fixture).await;
+    let canonical = std::fs::read(fixture.vault.join("sessions/note/audio.wav")).unwrap();
+    let context = fixture.context();
+    let retired = context
+        .retire_capture_authorized(
+            "member".into(),
+            request.identity.capture_id.clone(),
+            request.clone(),
+            || async { Ok(()) },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        retired.retirement.as_ref().unwrap().state,
+        hypr_loofah_protocol::CaptureRetirementState::Retired
+    );
+    assert_eq!(
+        std::fs::read(fixture.vault.join("sessions/note/audio.wav")).unwrap(),
+        canonical
+    );
+    assert_eq!(
+        context
+            .capture_status_authorized(
+                "member".into(),
+                request.identity.capture_id.clone(),
+                || async { Ok(()) }
+            )
+            .await
+            .unwrap(),
+        retired
+    );
+    assert!(
+        context
+            .capture_writer("member".into(), request.identity.capture_id.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        context
+            .retire_capture_authorized(
+                "member".into(),
+                request.identity.capture_id.clone(),
+                request,
+                || async { Ok(()) }
+            )
+            .await
+            .unwrap(),
+        retired
+    );
+}
+
+#[tokio::test]
+async fn server_retirement_requires_original_source_declaration_scope_and_final_authorization() {
+    let fixture = Fixture::new().await;
+    let request = retirement_request(&fixture).await;
+    let context = fixture.context();
+    let initial = fixture.writer().await.read_chunk(0).await.unwrap().bytes;
+    for variant in ["member", "publication", "processing"] {
+        let mut wrong = request.clone();
+        match variant {
+            "member" => wrong.identity.scope.member_id = "other".into(),
+            "publication" => wrong.publication.canonical_audio_sha256 = "0".repeat(64),
+            _ => {
+                wrong.processing = Some(hypr_loofah_protocol::CaptureProcessingRequest {
+                    capture_fingerprint: wrong.source.capture_fingerprint.clone(),
+                    model: None,
+                    languages: vec![],
+                    keywords: vec![],
+                    summary: None,
+                })
+            }
+        }
+        assert!(
+            context
+                .retire_capture_authorized(
+                    "member".into(),
+                    request.identity.capture_id.clone(),
+                    wrong,
+                    || async { Ok(()) }
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            fixture.writer().await.read_chunk(0).await.unwrap().bytes,
+            initial
+        );
+    }
+    let authorizations = Arc::new(AtomicUsize::new(0));
+    let error = context
+        .retire_capture_authorized(
+            "member".into(),
+            request.identity.capture_id.clone(),
+            request.clone(),
+            {
+                let calls = authorizations.clone();
+                move || {
+                    let allowed = calls.fetch_add(1, Ordering::SeqCst) == 0;
+                    async move {
+                        if allowed {
+                            Ok(())
+                        } else {
+                            Err(rejected(ErrorCode::Forbidden, "Access revoked"))
+                        }
+                    }
+                }
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Forbidden);
+    assert_eq!(authorizations.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        fixture.writer().await.read_chunk(0).await.unwrap().bytes,
+        initial
+    );
+    let lifetime = context.admit_session_work("note").await.unwrap();
+    assert!(
+        context
+            .retire_capture_authorized(
+                "member".into(),
+                request.identity.capture_id.clone(),
+                request.clone(),
+                || async { Ok(()) }
+            )
+            .await
+            .is_err()
+    );
+    drop(lifetime);
+    std::fs::write(
+        fixture.vault.join("sessions/note/audio.wav"),
+        b"newer canonical recording",
+    )
+    .unwrap();
+    assert!(
+        context
+            .retire_capture_authorized(
+                "member".into(),
+                request.identity.capture_id.clone(),
+                request,
+                || async { Ok(()) }
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        fixture.writer().await.read_chunk(0).await.unwrap().bytes,
+        initial
+    );
+}

@@ -145,6 +145,7 @@ async fn execute(
     id: &str,
 ) -> Result<JobCompletion, ApplicationError> {
     let work = journal.work(id.into()).await?;
+    let _work = context.admit_session_work(&work.request.session_id).await?;
     let (request_id, origin) = journal.capture_request_id(id.into()).await?;
     if context
         .capture_child_admission(&work.principal, &request_id, origin.as_ref())

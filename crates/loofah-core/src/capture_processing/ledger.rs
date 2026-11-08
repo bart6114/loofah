@@ -511,3 +511,44 @@ pub(super) async fn reject_stored_child(
     .await
     .map_err(storage)?
 }
+
+pub(super) async fn verify_retirement_declaration(
+    root: PathBuf,
+    vault: String,
+    request: CaptureRetirementRequest,
+    lease: Option<Arc<File>>,
+) -> Result<(), ApplicationError> {
+    tokio::task::spawn_blocking(move || {
+        let _lease =
+            lease.ok_or_else(|| unavailable("Vault lease required for source retirement"))?;
+        let record = match root.symlink_metadata() {
+            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => None,
+            Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {
+                for ancestor in root.ancestors() {
+                    let metadata = ancestor.symlink_metadata().map_err(storage)?;
+                    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                        return Err(storage("Unsafe processing inventory"));
+                    }
+                }
+                read_records(&root, &vault)?.remove(&request.identity.capture_id)
+            }
+            _ => return Err(storage("Unsafe processing inventory")),
+        };
+        match (record, request.processing.as_ref()) {
+            (None, None) => Ok(()),
+            (Some(record), Some(expected))
+                if record.identity == request.identity
+                    && record.format == request.format
+                    && record.snapshot.request == *expected
+                    && !record.blocks() =>
+            {
+                Ok(())
+            }
+            _ => Err(conflict(
+                "Cleanup does not match the settled original processing declaration",
+            )),
+        }
+    })
+    .await
+    .map_err(storage)?
+}

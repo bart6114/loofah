@@ -22,7 +22,7 @@ pub(super) struct Journal(Arc<Inner>);
 struct Inner {
     state: Mutex<State>,
     pub(super) notify: Notify,
-    sources: Mutex<Vec<watch::Receiver<bool>>>,
+    sources: Mutex<Vec<(String, watch::Receiver<bool>)>>,
     _lease: File,
     #[cfg(test)]
     fault: Mutex<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
@@ -632,14 +632,24 @@ impl Journal {
     pub fn set_fault(&self, hook: Arc<dyn Fn(&str) + Send + Sync>) {
         *self.0.fault.lock().unwrap() = Some(hook);
     }
-    pub fn track_source(&self, receipt: watch::Receiver<bool>) {
+    pub fn track_source(&self, session: String, receipt: watch::Receiver<bool>) {
         let mut sources = self.0.sources.lock().unwrap();
-        sources.retain(|s| !*s.borrow());
-        sources.push(receipt);
+        sources.retain(|(_, source)| !*source.borrow());
+        sources.push((session, receipt));
+    }
+    pub(super) fn ensure_sources_released(&self, session: &str) -> Result<(), ApplicationError> {
+        let sources = self.0.sources.lock().map_err(storage)?;
+        if sources
+            .iter()
+            .any(|(id, released)| id == session && !*released.borrow())
+        {
+            return Err(crate::session_lifecycle_gate::session_lifecycle_busy());
+        }
+        Ok(())
     }
     pub async fn drain_sources(&self) {
         let sources = std::mem::take(&mut *self.0.sources.lock().unwrap());
-        for mut source in sources {
+        for (_, mut source) in sources {
             loop {
                 if *source.borrow_and_update() {
                     break;
@@ -1085,5 +1095,33 @@ mod lifecycle_tests {
                 .await
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod retirement_source_tests {
+    use super::*;
+    #[tokio::test]
+    async fn closed_or_retained_native_source_cannot_be_mistaken_for_terminal_drain() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::open(
+            root.path().canonicalize().unwrap().join("jobs"),
+            crate::events::EventHub::new("vault".into(), 16),
+            TranscriptionLimits::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let (release, receipt) = watch::channel(false);
+        journal.track_source("note".into(), receipt);
+        assert!(journal.ensure_sources_released("note").is_err());
+        assert!(journal.ensure_sources_released("other").is_ok());
+        drop(release);
+        assert!(journal.ensure_sources_released("note").is_err());
+        let (release, receipt) = watch::channel(false);
+        journal.track_source("other".into(), receipt);
+        release.send_replace(true);
+        assert!(journal.ensure_sources_released("other").is_ok());
+        assert!(journal.ensure_sources_released("note").is_err());
     }
 }

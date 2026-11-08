@@ -296,6 +296,25 @@ impl VaultContext {
             .cloned()
             .ok_or_else(|| unavailable("Capture processing is not configured or requires review"))
     }
+    pub(crate) async fn verify_capture_retirement_declaration(
+        &self,
+        request: &CaptureRetirementRequest,
+    ) -> Result<(), ApplicationError> {
+        self.ensure_capture_intent_idle(&request.publication.session_id, false)
+            .await?;
+        let operations = self
+            .operations
+            .as_ref()
+            .ok_or_else(|| unavailable("Operation storage required"))?;
+        ledger::verify_retirement_declaration(
+            operations.root.join("capture-processing"),
+            self.events.vault_id(),
+            request.clone(),
+            self.lease_pin(),
+        )
+        .await
+    }
+
     pub(crate) async fn ensure_capture_intent_idle(
         &self,
         session: &str,

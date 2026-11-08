@@ -34,7 +34,10 @@ fn validate_request(entry: &Entry, request: &CaptureRetirementRequest) -> Result
         || snapshot.format != request.format
         || snapshot.seal.as_ref() != Some(&request.source)
         || snapshot.publication.as_ref() != Some(&request.publication)
-        || snapshot.processing.as_ref().map(|value| &value.request) != request.processing.as_ref()
+        || snapshot
+            .processing
+            .as_ref()
+            .is_some_and(|value| Some(&value.request) != request.processing.as_ref())
     {
         return Err(conflict(
             "Retirement requires the original immutable capture declaration and publication",
@@ -289,6 +292,17 @@ pub(in crate::capture_spool) fn retire(
     request: CaptureRetirementRequest,
     authority: impl CaptureRetirementAuthority,
 ) -> Result<CaptureSnapshot> {
+    if state.entries.values().any(|entry| {
+        entry.retirement.as_ref().is_some_and(|journal| {
+            journal.request.cleanup_request_id == request.cleanup_request_id
+                && journal.request.identity.scope == request.identity.scope
+                && journal.request != request
+        })
+    }) {
+        return Err(conflict(
+            "Cleanup request already belongs to another immutable capture",
+        ));
+    }
     let coordinate = key(&request.identity);
     let mut entry = state
         .entries
@@ -319,6 +333,15 @@ fn retire_entry(
     authority.check_current()?;
     guard(&spool.root, entry)?;
     validate_request(entry, &request)?;
+    if entry.manifest.snapshot.processing.is_none()
+        && request.processing.is_some()
+        && !authority.permits_external_processing(&request)
+    {
+        return Err(conflict(
+            "Cleanup processing declaration requires its original durable owner",
+        ));
+    }
+
     let dir = directory(&spool.root, &request.identity);
     if let Some(journal) = &entry.retirement {
         if journal.request != request {

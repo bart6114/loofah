@@ -53,6 +53,14 @@ pub struct CaptureRetirementAdmission {
 /// Storage admission alone must never be used as this authorization.
 pub trait CaptureRetirementAuthority: Send + 'static {
     fn check_current(&self) -> Result<()>;
+    /// Only Core may supply an original declaration from its durable coordinator
+    /// ledger when a server raw manifest predates processing admission.
+    fn permits_external_processing(
+        &self,
+        _: &hypr_loofah_protocol::CaptureRetirementRequest,
+    ) -> bool {
+        false
+    }
 }
 
 impl CaptureRetirementAdmission {

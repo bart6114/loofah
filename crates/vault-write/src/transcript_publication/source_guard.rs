@@ -133,6 +133,7 @@ mod tests {
 /// Hold only across the checked generated-document apply, after fresh auth.
 pub struct ProcessingSourceGuard {
     binding: ProcessingSourceBinding,
+    directory: std::path::PathBuf,
     _recording: FileSnapshot,
     _transcript_file: Option<FileSnapshot>,
     _audio: tokio::sync::OwnedMutexGuard<()>,
@@ -142,6 +143,25 @@ pub struct ProcessingSourceGuard {
 impl ProcessingSourceGuard {
     pub fn binding(&self) -> &ProcessingSourceBinding {
         &self.binding
+    }
+    pub fn recording_bytes(&self) -> Result<u64, StoreError> {
+        self._recording
+            .file()
+            .metadata()
+            .map(|meta| meta.len())
+            .map_err(io::error)
+    }
+    pub fn recheck_recording(&self) -> Result<(), StoreError> {
+        self._store.ensure_ready()?;
+        let Some((_, current)) = io::select(&self.directory)? else {
+            return Err(StoreError::Conflict(
+                "Verified recording disappeared".into(),
+            ));
+        };
+        if !self._recording.unchanged(&current)? {
+            return Err(StoreError::Conflict("Verified recording changed".into()));
+        }
+        Ok(())
     }
 }
 
@@ -218,6 +238,7 @@ impl SessionStore {
                     }
                     Ok(Some(ProcessingSourceGuard {
                         binding,
+                        directory,
                         _recording: recording,
                         _transcript_file: transcript_file,
                         _audio: audio,
