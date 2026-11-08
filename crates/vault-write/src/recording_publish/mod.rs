@@ -6,7 +6,8 @@
 //!
 //! Core must verify the WAV's format/layout against the sealed source and supply an actual
 //! first-audio producer wall-clock observation, not a staging or server-arrival time.
-//! Artifacts are capped at the classic WAV byte limit, metadata at 8 MiB, and streaming
+//! Capture WAV artifacts are capped at the classic WAV byte limit; imports use MP3
+//! without that format-specific cap. Metadata is capped at 8 MiB, and streaming
 //! buffers at 64 KiB. The host owns request admission and exclusive vault ownership.
 //! After restart the host must recover/gate pending publication before exposing that
 //! session's recording or starting transcription. Recovery never replaces divergent data.
@@ -161,7 +162,7 @@ async fn prepare(
         let metadata = if deleted {
             None
         } else {
-            read_current(&store, &directory, &request.session_id).await?
+            read_current(&store, &directory, &request).await?
         };
         let busy = metadata
             .as_ref()
@@ -208,7 +209,7 @@ async fn prepare(
                 if let Some(receipt) = plan.receipt.as_ref() {
                     let stage = io::Stage::from_receipt(&plan.directory, receipt)?;
                     let staged = io::open_snapshot(stage.path())?;
-                    let target = io::open_snapshot(&plan.directory.join("audio.wav"))?;
+                    let target = io::open_snapshot(&plan.directory.join(plan.request.filename()))?;
                     let pending = receipt.state == State::Pending;
                     plan.stage = Some(stage);
                     match (staged, target) {
@@ -261,7 +262,10 @@ impl RecordingPublicationPlan {
             return Ok(self);
         }
         if !io::matches(file, &self.request)?
-            || !io::absent(&self.directory, self.target.then_some("audio.wav"))?
+            || !io::absent(
+                &self.directory,
+                self.target.then_some(self.request.filename()),
+            )?
         {
             self.finished = Some(if self.receipt.is_some() {
                 RecordingPublication::Uncertain
@@ -294,8 +298,7 @@ impl RecordingPublicationPlan {
             }
             let snapshot = plan.store.lock_snapshot().await;
             plan.store.ensure_ready()?;
-            let current =
-                read_current(&plan.store, &plan.directory, &plan.request.session_id).await?;
+            let current = read_current(&plan.store, &plan.directory, &plan.request).await?;
             let Some(raw) = current else {
                 return Ok(if plan.receipt.is_some() {
                     RecordingPublication::Uncertain
@@ -306,11 +309,7 @@ impl RecordingPublicationPlan {
             if io::busy(&plan.store, &plan.request.session_id, &raw) {
                 return Ok(RecordingPublication::Busy);
             }
-            let limit = plan
-                .store
-                .content_limits
-                .metadata_bytes
-                .min(8 * 1024 * 1024);
+            let limit = plan.request.metadata_limit(&plan.store);
             let result = plan
                 .store
                 .clone()
@@ -390,10 +389,13 @@ impl RecordingPublicationPlan {
             .ok_or_else(|| StoreError::Io("Missing recording stage ownership".into()))?
             .path()
             .to_path_buf();
-        let canonical = self.directory.join("audio.wav");
+        let canonical = self.directory.join(self.request.filename());
         let current = io::open_snapshot(if self.target { &canonical } else { &stage })?;
         if !matches!((&self.artifact,&current),(Some(before),Some(after)) if before.unchanged(after)?)
-            || !io::absent(&self.directory, self.target.then_some("audio.wav"))?
+            || !io::absent(
+                &self.directory,
+                self.target.then_some(self.request.filename()),
+            )?
         {
             return Ok(CommitStep::Finished(if self.receipt.is_some() {
                 RecordingPublication::Uncertain
@@ -444,12 +446,10 @@ impl RecordingPublicationPlan {
                 stage_name: self.stage.as_ref().unwrap().name()?.into(),
                 before_metadata_sha256: before.clone(),
                 after_metadata_sha256: after,
-                published_started_at: planned["started_at"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        StoreError::Serialize("Recording start is not a timestamp".into())
-                    })?
-                    .into(),
+                published_started_at: planned
+                    .get("started_at")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
                 published_ended_at: planned
                     .get("ended_at")
                     .and_then(serde_json::Value::as_str)
@@ -514,21 +514,16 @@ impl RecordingPublicationPlan {
         if !io::transcript_absent(&self.directory)? {
             return Ok(RecordingPublication::Uncertain);
         }
-        let canonical = self.directory.join("audio.wav");
+        let canonical = self.directory.join(self.request.filename());
         let current = io::open_snapshot(&canonical)?;
         if !matches!((&self.artifact,&current),(Some(before),Some(after)) if before.unchanged(after)?)
-            || !io::absent(&self.directory, Some("audio.wav"))?
+            || !io::absent(&self.directory, Some(self.request.filename()))?
         {
             return Ok(RecordingPublication::Uncertain);
         }
-        let confirmed = io::read_metadata(
-            &self.directory,
-            self.store
-                .content_limits
-                .metadata_bytes
-                .min(8 * 1024 * 1024),
-        )?
-        .ok_or_else(|| StoreError::Io("Recording metadata disappeared".into()))?;
+        let confirmed =
+            io::read_metadata(&self.directory, self.request.metadata_limit(&self.store))?
+                .ok_or_else(|| StoreError::Io("Recording metadata disappeared".into()))?;
         let receipt = self.receipt.as_mut().unwrap();
         if io::busy(&self.store, &self.request.session_id, &confirmed)
             || !io::owned_metadata_matches(&confirmed, receipt)?
@@ -546,9 +541,11 @@ impl RecordingPublicationPlan {
         Ok(self.request.published())
     }
     fn requires_transcript_absence(&self) -> bool {
-        self.receipt
-            .as_ref()
-            .is_none_or(|receipt| receipt.state != State::Committed)
+        self.request.expected == RecordingExpectation::Absent
+            && self
+                .receipt
+                .as_ref()
+                .is_none_or(|receipt| receipt.state != State::Committed)
     }
 
     fn publish_index(&self, raw: &serde_json::Value) -> Result<(), StoreError> {
@@ -570,11 +567,11 @@ enum CommitStep {
 async fn read_current(
     store: &SessionStore,
     directory: &Path,
-    id: &str,
+    request: &RecordingPublicationRequest,
 ) -> Result<Option<serde_json::Value>, StoreError> {
     let path = directory.to_path_buf();
-    let limit = store.content_limits.metadata_bytes.min(8 * 1024 * 1024);
-    let id = id.to_owned();
+    let limit = request.metadata_limit(store);
+    let id = request.session_id.clone();
     store
         .spawn_blocking(move || {
             let Some(raw) = io::read_metadata(&path, limit)? else {

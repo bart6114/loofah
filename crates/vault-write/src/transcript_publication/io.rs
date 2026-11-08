@@ -13,14 +13,18 @@ use super::{TranscriptPublicationIdentity, valid_text};
 pub(super) const RESULT_LIMIT: usize = 64 * 1024 * 1024;
 const RECEIPT_LIMIT: usize = 64 * 1024;
 
-pub(super) fn encode_result(file: &hypr_fs_format::TranscriptJson) -> Result<Vec<u8>, StoreError> {
+pub(super) fn encode_result(
+    file: &hypr_fs_format::TranscriptJson,
+    limit: usize,
+) -> Result<Vec<u8>, StoreError> {
     struct Output {
         bytes: Vec<u8>,
         exceeded: bool,
+        limit: usize,
     }
     impl Write for Output {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            if bytes.len() > RESULT_LIMIT.saturating_sub(self.bytes.len()) {
+            if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
                 self.exceeded = true;
                 return Err(std::io::Error::other(
                     "Transcript result exceeds its size limit",
@@ -36,6 +40,7 @@ pub(super) fn encode_result(file: &hypr_fs_format::TranscriptJson) -> Result<Vec
     let mut output = Output {
         bytes: Vec::new(),
         exceeded: false,
+        limit,
     };
     let result = serde_json::to_writer_pretty(&mut output, file);
     if output.exceeded {
@@ -54,6 +59,10 @@ pub(super) struct Binding {
     pub recording_selection: String,
     pub recording_sha256: String,
     pub transcript_revision: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replacement: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub transcript_present: bool,
     pub audio: hypr_vault_read::SessionAudio,
 }
 
@@ -88,7 +97,10 @@ impl Receipt {
             || &self.identity != expected
             || !valid_hash(&self.result_sha256)
             || !valid_hash(&self.binding.recording_sha256)
-            || self.binding.transcript_revision != absent_revision()
+            || !valid_hash(&self.binding.transcript_revision)
+            || (!self.binding.replacement
+                && (self.binding.transcript_present
+                    || self.binding.transcript_revision != absent_revision()))
             || !valid_text(&self.transcript_id, 512)
             || !matches!(
                 self.binding.recording_selection.as_str(),
@@ -155,7 +167,7 @@ pub(super) fn read(path: &Path, limit: usize) -> Result<Option<Vec<u8>>, StoreEr
         ));
     }
     let mut bytes = Vec::new();
-    file.take(limit as u64 + 1)
+    file.take((limit as u64).saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(error)?;
     if bytes.len() > limit {
@@ -192,8 +204,8 @@ pub(super) fn persist(path: &Path, receipt: &Receipt) -> Result<(), StoreError> 
     crate::operation_io::persist(path, receipt)
 }
 
-pub(super) fn save_result(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
-    if let Some(existing) = read(path, RESULT_LIMIT).map_err(StoreError::after_commit)? {
+pub(super) fn save_result(path: &Path, bytes: &[u8], limit: usize) -> Result<(), StoreError> {
+    if let Some(existing) = read(path, limit).map_err(StoreError::after_commit)? {
         if existing != bytes {
             return Err(StoreError::Conflict(
                 "Transcript publication result changed".into(),
@@ -256,8 +268,8 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
     crate::operation_io::sync_parent(path)
 }
 
-pub(super) fn sync_stage(path: &Path) -> Result<(), StoreError> {
-    let before = snapshot(path)?
+pub(super) fn sync_stage(path: &Path, limit: usize) -> Result<(), StoreError> {
+    let before = snapshot_with_limit(path, limit)?
         .ok_or_else(|| StoreError::Conflict("Transcript stage disappeared".into()))?;
     let file = OpenOptions::new()
         .read(true)
@@ -293,6 +305,13 @@ pub(super) fn hash_bounded(file: &File, limit: u64) -> Result<String, StoreError
 }
 
 pub(super) fn select(directory: &Path) -> Result<Option<(String, FileSnapshot)>, StoreError> {
+    select_with_limit(directory, u32::MAX as u64)
+}
+
+pub(super) fn select_with_limit(
+    directory: &Path,
+    limit: u64,
+) -> Result<Option<(String, FileSnapshot)>, StoreError> {
     check_parents(&directory.join("transcript.json"))?;
     for (base, prefix) in [
         (directory.to_owned(), ""),
@@ -307,7 +326,7 @@ pub(super) fn select(directory: &Path) -> Result<Option<(String, FileSnapshot)>,
             Ok(_) => {}
         }
         if let Some(opened) = crate::media::open_recording_in(&base)? {
-            check_source_size(&opened.file, u32::MAX as u64)?;
+            check_source_size(&opened.file, limit)?;
             return Ok(Some((
                 format!("{prefix}{}", opened.filename),
                 FileSnapshot::new(opened.file)?,
@@ -318,10 +337,17 @@ pub(super) fn select(directory: &Path) -> Result<Option<(String, FileSnapshot)>,
 }
 
 pub(super) fn snapshot(path: &Path) -> Result<Option<FileSnapshot>, StoreError> {
+    snapshot_with_limit(path, RESULT_LIMIT)
+}
+
+pub(super) fn snapshot_with_limit(
+    path: &Path,
+    limit: usize,
+) -> Result<Option<FileSnapshot>, StoreError> {
     let Some(file) = open_regular_file(path)? else {
         return Ok(None);
     };
-    if file.metadata().map_err(error)?.len() > RESULT_LIMIT as u64 {
+    if file.metadata().map_err(error)?.len() > limit as u64 {
         return Err(StoreError::ResourceLimit(
             "Transcript stage exceeds its size limit".into(),
         ));
@@ -383,5 +409,16 @@ mod tests {
             Err(StoreError::ResourceLimit(_))
         ));
         assert_eq!(std::fs::read(&path).unwrap(), b"12345");
+    }
+}
+
+pub(super) fn replacement_backup(root: &Path, identity: &TranscriptPublicationIdentity) -> PathBuf {
+    paths(root, identity).0.with_extension("before.json")
+}
+
+pub(super) fn transcript_binding(path: &Path, limit: usize) -> Result<(bool, String), StoreError> {
+    match read(path, limit)? {
+        Some(bytes) => Ok((true, crate::sha256(&bytes))),
+        None => Ok((false, absent_revision())),
     }
 }

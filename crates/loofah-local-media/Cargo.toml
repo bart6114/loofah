@@ -1,0 +1,17 @@
+[package]
+name = "loofah-local-media"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+hypr-fs-sync-core = { workspace = true }
+hypr-listener2-core = { workspace = true }
+hypr-loofah-core = { workspace = true }
+hypr-loofah-protocol = { workspace = true }
+hypr-transcribe-soniqo = { workspace = true }
+hypr-vault-read = { workspace = true }
+owhisper-interface = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+uuid = { workspace = true, features = ["v4"] }

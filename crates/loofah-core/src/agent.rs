@@ -14,17 +14,33 @@ impl VaultContext {
         &self,
         input: ListMeetingsInput,
     ) -> Result<AgentPage, ApplicationError> {
+        self.agent_list_with_limits(input, true).await
+    }
+
+    pub(crate) async fn agent_list_local(
+        &self,
+        input: ListMeetingsInput,
+    ) -> Result<AgentPage, ApplicationError> {
+        self.agent_list_with_limits(input, false).await
+    }
+
+    async fn agent_list_with_limits(
+        &self,
+        input: ListMeetingsInput,
+        remote_limits: bool,
+    ) -> Result<AgentPage, ApplicationError> {
         self.agent_ready()?;
-        if input.query.as_ref().is_some_and(|query| query.len() > 8192)
-            || input
-                .tags
-                .as_ref()
-                .is_some_and(|tags| tags.len() > 64 || tags.iter().any(|tag| tag.len() > 4096))
-            || (input
-                .query
-                .as_ref()
-                .is_some_and(|query| !query.trim().is_empty())
-                && input.offset.unwrap_or(0) > 10_000)
+        if remote_limits
+            && (input.query.as_ref().is_some_and(|query| query.len() > 8192)
+                || input
+                    .tags
+                    .as_ref()
+                    .is_some_and(|tags| tags.len() > 64 || tags.iter().any(|tag| tag.len() > 4096))
+                || (input
+                    .query
+                    .as_ref()
+                    .is_some_and(|query| !query.trim().is_empty())
+                    && input.offset.unwrap_or(0) > 10_000))
         {
             return Err(error(
                 ErrorCode::ResourceLimit,
@@ -43,8 +59,23 @@ impl VaultContext {
         &self,
         input: SearchMeetingsInput,
     ) -> Result<AgentSearchPage, ApplicationError> {
+        self.agent_search_with_limits(input, true).await
+    }
+
+    pub(crate) async fn agent_search_local(
+        &self,
+        input: SearchMeetingsInput,
+    ) -> Result<AgentSearchPage, ApplicationError> {
+        self.agent_search_with_limits(input, false).await
+    }
+
+    async fn agent_search_with_limits(
+        &self,
+        input: SearchMeetingsInput,
+        remote_limits: bool,
+    ) -> Result<AgentSearchPage, ApplicationError> {
         self.agent_ready()?;
-        if input.query.len() > 8192 || input.offset.unwrap_or(0) > 10_000 {
+        if remote_limits && (input.query.len() > 8192 || input.offset.unwrap_or(0) > 10_000) {
             return Err(error(
                 ErrorCode::ResourceLimit,
                 "Agent query exceeds the request cost limit",

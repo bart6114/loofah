@@ -137,50 +137,13 @@ async fn dispatch(
                 author,
                 skill,
             };
-            let filename = file
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .ok_or_else(|| {
-                    Error::operation("import recording", "Cannot derive source filename")
-                })?;
-            let source = std::fs::File::open(&file).map_err(|cause| {
-                Error::operation("read recording", format!("{}: {cause}", file.display()))
-            })?;
-            let response = local_owner::LocalGateway::new(vault.to_owned(), cache.clone())
-                .execute_with_upload(
-                    hypr_loofah_protocol::LocalCliOperation::Import {
-                        filename,
-                        title,
-                        into,
-                        transcribe,
-                        metadata: hypr_loofah_protocol::LocalInitialSessionMetadata {
-                            created_at: timestamps.created_at,
-                            started_at: timestamps.started_at,
-                            ended_at: timestamps.ended_at,
-                            tags: timestamps.tags,
-                            author: timestamps.author,
-                            skill: timestamps.skill,
-                        },
-                    },
-                    Some(source),
-                    std::sync::Arc::new(|_| {}),
-                )
-                .await?;
-            response.response.result?;
-            return Err(Error::operation(
-                "import recording",
-                "The local owner did not provide a complete import result",
-            ));
+            return commands::import::run(
+                vault, file, title, into, transcribe, timestamps, args.json,
+            )
+            .await;
         }
         cli::Command::Transcribe { id } => {
-            let response = local_owner::LocalGateway::new(vault.to_owned(), cache.clone())
-                .execute(hypr_loofah_protocol::LocalCliOperation::Transcribe { session_id: id })
-                .await?;
-            response.response.result?;
-            return Err(Error::operation(
-                "transcribe recording",
-                "The local owner did not provide a complete transcription result",
-            ));
+            commands::transcribe::run(vault, &id, args.json).await?;
         }
         cli::Command::Mcp => mcp::serve(vault.to_path_buf(), cache.clone()).await?,
         cli::Command::Tags { command } => commands::tags::run(cache, command, args.json).await?,

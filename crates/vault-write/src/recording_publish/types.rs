@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum RecordingExpectation {
     Absent,
+    AbsentImport,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,12 +49,24 @@ impl RecordingPublicationRequest {
             value.is_empty() || value.len() > limit || value.chars().any(char::is_control)
         }) || !super::io::valid_hash(&self.artifact_sha256)
             || self.artifact_size_bytes == 0
-            || self.artifact_size_bytes > u32::MAX as u64
+            || (self.expected == RecordingExpectation::Absent
+                && self.artifact_size_bytes > u32::MAX as u64)
             || self.request_id.is_nil()
         {
             return Err(StoreError::Serialize(
                 "Invalid recording publication request".into(),
             ));
+        }
+        if self.expected == RecordingExpectation::AbsentImport {
+            if self.layout != hypr_vault_read::AudioLayout::Mixed
+                || self.first_audio_observed_at_ms != 0
+                || self.capture_ended_at_ms.is_some()
+            {
+                return Err(StoreError::Serialize(
+                    "Imported recording cannot declare capture timing".into(),
+                ));
+            }
+            return Ok(());
         }
         super::io::timestamp(self.first_audio_observed_at_ms)?;
         if let Some(end) = self.capture_ended_at_ms {
@@ -66,9 +79,22 @@ impl RecordingPublicationRequest {
         }
         Ok(())
     }
+    pub(super) fn metadata_limit(&self, store: &crate::SessionStore) -> usize {
+        if self.expected == RecordingExpectation::AbsentImport {
+            store.content_limits.metadata_bytes
+        } else {
+            store.content_limits.metadata_bytes.min(8 * 1024 * 1024)
+        }
+    }
+    pub(super) fn filename(&self) -> &'static str {
+        match self.expected {
+            RecordingExpectation::Absent => "audio.wav",
+            RecordingExpectation::AbsentImport => "audio.mp3",
+        }
+    }
     pub(super) fn published(&self) -> RecordingPublication {
         RecordingPublication::Published {
-            filename: "audio.wav".into(),
+            filename: self.filename().into(),
             sha256: self.artifact_sha256.clone(),
             size_bytes: self.artifact_size_bytes,
         }

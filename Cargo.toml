@@ -63,6 +63,7 @@ hypr-local-model = { path = "crates/local-model", package = "local-model" }
 hypr-local-stt-core = { path = "crates/local-stt-core", package = "local-stt-core" }
 hypr-loofah-client = { path = "crates/loofah-client", package = "loofah-client" }
 hypr-loofah-core = { path = "crates/loofah-core", package = "loofah-core" }
+hypr-loofah-local-media = { path = "./crates/loofah-local-media", package = "loofah-local-media" }
 hypr-loofah-local-owner = { path = "crates/loofah-local-owner", package = "loofah-local-owner" }
 hypr-loofah-protocol = { path = "crates/loofah-protocol", package = "loofah-protocol" }
 hypr-model-downloader = { path = "crates/model-downloader", package = "model-downloader" }

@@ -17,7 +17,7 @@ pub(super) struct Receipt {
     pub stage_name: String,
     pub before_metadata_sha256: String,
     pub after_metadata_sha256: String,
-    pub published_started_at: String,
+    pub published_started_at: Option<String>,
     pub published_ended_at: Option<String>,
     pub state: State,
 }
@@ -33,8 +33,12 @@ impl Receipt {
     pub fn validate(&self, request: &RecordingPublicationRequest) -> Result<(), StoreError> {
         if self.schema_version != 1
             || &self.request != request
-            || self.published_started_at.is_empty()
-            || self.published_started_at.len() > 128
+            || self
+                .published_started_at
+                .as_ref()
+                .is_some_and(|value| value.is_empty() || value.len() > 128)
+            || (request.expected == super::RecordingExpectation::Absent
+                && self.published_started_at.is_none())
             || self
                 .published_ended_at
                 .as_ref()
@@ -255,7 +259,7 @@ fn write_source(
     source: Box<dyn Read + Send>,
     request: &RecordingPublicationRequest,
 ) -> Result<(), StoreError> {
-    let mut input = source.take(request.artifact_size_bytes + 1);
+    let mut input = source.take(request.artifact_size_bytes.saturating_add(1));
     let mut hash = Sha256::new();
     let mut total = 0;
     let mut buffer = [0u8; 64 * 1024];
@@ -316,11 +320,23 @@ pub(super) fn patch_metadata(
         .or_insert_with(|| serde_json::json!({}))
         .as_object_mut()
         .ok_or_else(|| StoreError::Conflict("Session audio metadata is not an object".into()))?;
-    audio.insert("source".into(), serde_json::json!("recording"));
+    audio.insert(
+        "source".into(),
+        serde_json::json!(
+            if request.expected == super::RecordingExpectation::AbsentImport {
+                "import"
+            } else {
+                "recording"
+            }
+        ),
+    );
     audio.insert(
         "layout".into(),
         serde_json::to_value(request.layout).map_err(serialize_error)?,
     );
+    if request.expected == super::RecordingExpectation::AbsentImport {
+        return Ok(raw);
+    }
     if object.get("started_at").is_none_or(Value::is_null) {
         object.insert(
             "started_at".into(),
@@ -334,8 +350,7 @@ pub(super) fn patch_metadata(
 }
 pub(super) fn owned_metadata_matches(raw: &Value, receipt: &Receipt) -> Result<bool, StoreError> {
     Ok(
-        raw.get("started_at").and_then(Value::as_str)
-            == Some(receipt.published_started_at.as_str())
+        raw.get("started_at").and_then(Value::as_str) == receipt.published_started_at.as_deref()
             && raw.get("ended_at").and_then(Value::as_str) == receipt.published_ended_at.as_deref()
             && patch_metadata(raw.clone(), &receipt.request)? == *raw,
     )

@@ -1,4 +1,6 @@
-//! Absent-only publication of an already-generated transcript. The host keeps its
+//! Checked publication of an already-generated transcript. Ordinary server work
+//! requires absence; explicit Local replacement binds the raw transcript revision
+//! and retains previous bytes before atomic replacement. The host keeps its
 //! immutable inference input and result, reauthorizes after `recheck`, and retains
 //! Context/admission ownership through actual commit. No operation lock is held
 //! by a source snapshot during inference. Provisional captions are not canonical.
@@ -9,8 +11,8 @@
 //! Confirmation errors and busy recovery retain the original uncertainty: hosts
 //! must keep source/results and reconcile the identical identity, never infer a
 //! failed prior commit from a failed status read.
-//! This new primitive caps recording sources at the canonical WAV publisher’s
-//! u32::MAX byte ceiling; generic local readers keep their existing limits.
+//! The server absent-only primitive retains its WAV source and output budgets;
+//! trusted Local replacement does not inherit those format/request limits.
 //! Directory durability uses existing Unix-only synchronization helpers.
 
 use std::{
@@ -135,6 +137,21 @@ impl SessionStore {
         &self,
         id: &str,
     ) -> Result<Option<TranscriptSourcePreparation>, StoreError> {
+        self.prepare_transcript_source_mode(id, false).await
+    }
+
+    pub async fn prepare_transcript_replacement_source(
+        &self,
+        id: &str,
+    ) -> Result<Option<TranscriptSourcePreparation>, StoreError> {
+        self.prepare_transcript_source_mode(id, true).await
+    }
+
+    async fn prepare_transcript_source_mode(
+        &self,
+        id: &str,
+        replacement: bool,
+    ) -> Result<Option<TranscriptSourcePreparation>, StoreError> {
         crate::validate_session_id(id)?;
         let store = self.clone();
         let id = id.to_owned();
@@ -167,14 +184,21 @@ impl SessionStore {
             let initial = store
                 .spawn_blocking(move || -> Result<_, StoreError> {
                     let _snapshot = snapshot;
-                    if !io::absent(&directory.join("transcript.json"))? {
+                    let (present, revision) = io::transcript_binding(
+                        &directory.join("transcript.json"),
+                        result_limit(replacement),
+                    )?;
+                    if !replacement && present {
                         return Ok(Err(TranscriptSourcePreparation::Conflict));
                     }
-                    Ok(io::select(&directory)?.ok_or(TranscriptSourcePreparation::NoRecording))
+                    let source = io::select_with_limit(&directory, source_limit(replacement))?;
+                    Ok(source
+                        .map(|(selection, recording)| (selection, recording, present, revision))
+                        .ok_or(TranscriptSourcePreparation::NoRecording))
                 })
                 .await
                 .map_err(io::error)??;
-            let (selection, recording) = match initial {
+            let (selection, recording, transcript_present, transcript_revision) = match initial {
                 Ok(source) => source,
                 Err(outcome) => return Ok(Some(outcome)),
             };
@@ -186,7 +210,7 @@ impl SessionStore {
                     if !recording.lock_for_recheck()? {
                         return Ok(None);
                     }
-                    let sha256 = io::hash_bounded(recording.file(), u32::MAX as u64)?;
+                    let sha256 = io::hash_bounded(recording.file(), source_limit(replacement))?;
                     let mut reader = recording.file();
                     std::io::Seek::rewind(&mut reader).map_err(io::error)?;
                     let current = FileSnapshot::new(io::clone_file(recording.file())?)?;
@@ -199,7 +223,9 @@ impl SessionStore {
                             session_id: id,
                             recording_selection: selection,
                             recording_sha256: sha256,
-                            transcript_revision: io::absent_revision(),
+                            transcript_revision,
+                            replacement,
+                            transcript_present,
                             audio: audio_metadata,
                         },
                         recording,
@@ -240,17 +266,21 @@ impl SessionStore {
                 "Transcript operation path must be absolute".into(),
             ));
         }
-        validate_generated(&generated)?;
+        validate_generated(&generated, !baseline.0.binding.replacement)?;
         let transcript_id = generated.id.clone();
         let store = self.clone();
         let root = operations.to_path_buf();
+        let limit = result_limit(baseline.0.binding.replacement);
         tokio::spawn(async move {
             let result = store
                 .spawn_blocking(move || {
-                    let bytes = io::encode_result(&TranscriptJson {
-                        transcripts: vec![generated],
-                    })?;
-                    if bytes.len() > io::RESULT_LIMIT {
+                    let bytes = io::encode_result(
+                        &TranscriptJson {
+                            transcripts: vec![generated],
+                        },
+                        limit,
+                    )?;
+                    if bytes.len() > limit {
                         return Err(StoreError::ResourceLimit(
                             "Generated transcript exceeds its size limit".into(),
                         ));
@@ -287,7 +317,7 @@ impl SessionStore {
                         }
                         return Ok(existing);
                     }
-                    io::save_result(&result_path, &result)?;
+                    io::save_result(&result_path, &result, limit)?;
                     io::persist(&receipt_path, &wanted)?;
                     Ok(wanted)
                 })
@@ -388,9 +418,10 @@ async fn prepare_plan(
     let result_sha256 = plan.receipt.result_sha256.clone();
     let transcript_id = plan.receipt.transcript_id.clone();
     let session_id = plan.receipt.binding.session_id.clone();
+    let limit = result_limit(plan.receipt.binding.replacement);
     let (result, empty, summary) = store
         .spawn_blocking(move || {
-            let bytes = io::read(&path, io::RESULT_LIMIT)?.ok_or_else(|| {
+            let bytes = io::read(&path, limit)?.ok_or_else(|| {
                 StoreError::Conflict("Retained transcript result disappeared".into())
             })?;
             if crate::sha256(&bytes) != result_sha256 {
@@ -407,7 +438,7 @@ async fn prepare_plan(
                     "Invalid retained transcript result".into(),
                 ));
             }
-            validate_generated(&file.transcripts[0])?;
+            validate_generated(&file.transcripts[0], limit != usize::MAX)?;
             if file.transcripts[0].id != transcript_id
                 || file.transcripts[0].session_id != session_id
             {
@@ -465,7 +496,10 @@ impl TranscriptPublicationPlan {
             .spawn_blocking(move || {
                 let snapshot = snapshot;
                 let mut plan = self;
-                let current = io::select(&plan.directory)?;
+                let current = io::select_with_limit(
+                    &plan.directory,
+                    source_limit(plan.receipt.binding.replacement),
+                )?;
                 drop(snapshot);
                 let Some((selection, recording)) = current else {
                     return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
@@ -480,7 +514,10 @@ impl TranscriptPublicationPlan {
                 {
                     return Ok(plan.finish(TranscriptPublicationOutcome::Conflict));
                 }
-                let sha256 = io::hash_bounded(recording.file(), u32::MAX as u64)?;
+                let sha256 = io::hash_bounded(
+                    recording.file(),
+                    source_limit(plan.receipt.binding.replacement),
+                )?;
                 let after = FileSnapshot::new(io::clone_file(recording.file())?)?;
                 if sha256 != plan.receipt.binding.recording_sha256
                     || !recording.unchanged(&after)?
@@ -616,6 +653,7 @@ impl TranscriptPublicationPlan {
         mut self,
         fault: impl Fn(u8) -> Result<(), StoreError>,
     ) -> Result<TranscriptPublicationOutcome, StoreError> {
+        let limit = result_limit(self.receipt.binding.replacement);
         let receipt_path = io::paths(&self.root, &self.receipt.identity).0;
         if io::read_receipt(&receipt_path, &self.receipt.identity)?.as_ref() != Some(&self.receipt)
         {
@@ -630,7 +668,10 @@ impl TranscriptPublicationPlan {
         {
             return self.refuse_sync(&receipt_path);
         }
-        let current = io::select(&self.directory)?;
+        let current = io::select_with_limit(
+            &self.directory,
+            source_limit(self.receipt.binding.replacement),
+        )?;
         if !matches!((&self.source,&current),(Some(before),Some((selection,after))) if selection == &self.receipt.binding.recording_selection && before.unchanged(after)?)
         {
             return self.refuse_sync(&receipt_path);
@@ -638,7 +679,12 @@ impl TranscriptPublicationPlan {
         let canonical = self.directory.join("transcript.json");
         let stage = self.directory.join(&self.receipt.stage_name);
         if self.receipt.state == State::Prepared {
-            if !io::absent(&canonical)? {
+            if io::transcript_binding(&canonical, limit)?
+                != (
+                    self.receipt.binding.transcript_present,
+                    self.receipt.binding.transcript_revision.clone(),
+                )
+            {
                 self.receipt.state = State::Conflict;
                 io::persist(&receipt_path, &self.receipt)?;
                 return Ok(TranscriptPublicationOutcome::Conflict);
@@ -651,31 +697,64 @@ impl TranscriptPublicationPlan {
             if io::absent(&stage)? {
                 io::write_stage(&stage, &self.result)?;
             }
-            if io::read(&stage, io::RESULT_LIMIT)?.as_deref() != Some(self.result.as_slice()) {
+            if io::read(&stage, limit)?.as_deref() != Some(self.result.as_slice()) {
                 return self.review_sync(&receipt_path);
             }
-            io::sync_stage(&stage)?;
+            io::sync_stage(&stage, limit)?;
+            if self.receipt.binding.replacement && self.receipt.binding.transcript_present {
+                let original = io::read(&canonical, limit)?.ok_or_else(|| {
+                    StoreError::Conflict("Original transcript disappeared".into())
+                })?;
+                if crate::sha256(&original) != self.receipt.binding.transcript_revision {
+                    return self.refuse_sync(&receipt_path);
+                }
+                io::save_result(
+                    &io::replacement_backup(&self.root, &self.receipt.identity),
+                    &original,
+                    limit,
+                )?;
+            }
             fault(0)?;
             self.receipt.state = State::Pending;
             io::persist(&receipt_path, &self.receipt)?;
         }
         fault(1)?;
-        let staged = io::snapshot(&stage)?;
-        let target = io::snapshot(&canonical)?;
+        let staged = io::snapshot_with_limit(&stage, limit)?;
+        let target = io::snapshot_with_limit(&canonical, limit)?;
         match (staged, target) {
-            (Some(staged), None) => {
-                if io::hash_bounded(staged.file(), io::RESULT_LIMIT as u64)?
-                    != self.receipt.result_sha256
+            (Some(staged), Some(target))
+                if self.receipt.binding.replacement && self.receipt.binding.transcript_present =>
+            {
+                if io::hash_bounded(staged.file(), limit as u64)? != self.receipt.result_sha256
+                    || io::hash_bounded(target.file(), limit as u64)?
+                        != self.receipt.binding.transcript_revision
+                    || io::read(
+                        &io::replacement_backup(&self.root, &self.receipt.identity),
+                        limit,
+                    )?
+                    .is_none_or(|bytes| {
+                        crate::sha256(&bytes) != self.receipt.binding.transcript_revision
+                    })
                 {
+                    return self.review_sync(&receipt_path);
+                }
+                // Original bytes are durable before replacing the checked canonical file.
+                drop(staged);
+                drop(target);
+                hypr_storage::fs::rename_with_retry(&stage, &canonical).map_err(io::error)?;
+            }
+            (Some(staged), None) => {
+                if self.receipt.binding.transcript_present {
+                    return self.review_sync(&receipt_path);
+                }
+                if io::hash_bounded(staged.file(), limit as u64)? != self.receipt.result_sha256 {
                     return self.review_sync(&receipt_path);
                 }
                 drop(staged);
                 hypr_storage::fs::rename_no_replace(&stage, &canonical).map_err(io::error)?;
             }
             (None, Some(target)) => {
-                if io::hash_bounded(target.file(), io::RESULT_LIMIT as u64)?
-                    != self.receipt.result_sha256
-                {
+                if io::hash_bounded(target.file(), limit as u64)? != self.receipt.result_sha256 {
                     return self.review_sync(&receipt_path);
                 }
             }
@@ -683,7 +762,7 @@ impl TranscriptPublicationPlan {
         }
         crate::operation_io::sync_parent(&canonical)?;
         fault(2)?;
-        let Some(confirmed) = io::read(&canonical, io::RESULT_LIMIT)? else {
+        let Some(confirmed) = io::read(&canonical, limit)? else {
             return self.review_sync(&receipt_path);
         };
         if crate::sha256(&confirmed) != self.receipt.result_sha256 {
@@ -738,11 +817,14 @@ fn valid_text(value: &str, limit: usize) -> bool {
     !value.is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
 }
 
-fn validate_generated(transcript: &TranscriptWithData) -> Result<(), StoreError> {
+fn validate_generated(
+    transcript: &TranscriptWithData,
+    remote_limits: bool,
+) -> Result<(), StoreError> {
     crate::validate_session_id(&transcript.session_id)?;
     if !valid_text(&transcript.id, 512)
-        || transcript.words.len() > 250_000
-        || transcript.speaker_hints.len() > 500_000
+        || (remote_limits && transcript.words.len() > 250_000)
+        || (remote_limits && transcript.speaker_hints.len() > 500_000)
         || !transcript.started_at.is_finite()
         || transcript.started_at < 0.0
         || transcript
@@ -762,7 +844,7 @@ fn validate_generated(transcript: &TranscriptWithData) -> Result<(), StoreError>
         };
         if !valid_text(id, 512)
             || !words.insert(id)
-            || word.text.len() > 64 * 1024
+            || (remote_limits && word.text.len() > 64 * 1024)
             || !word.start_ms.is_finite()
             || word.start_ms < 0.0
             || !word.end_ms.is_finite()
@@ -792,4 +874,20 @@ fn validate_generated(transcript: &TranscriptWithData) -> Result<(), StoreError>
         }
     }
     Ok(())
+}
+
+fn source_limit(replacement: bool) -> u64 {
+    if replacement {
+        u64::MAX
+    } else {
+        u32::MAX as u64
+    }
+}
+
+fn result_limit(replacement: bool) -> usize {
+    if replacement {
+        usize::MAX
+    } else {
+        io::RESULT_LIMIT
+    }
 }

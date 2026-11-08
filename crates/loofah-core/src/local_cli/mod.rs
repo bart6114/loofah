@@ -7,6 +7,8 @@ use std::{io::Seek, sync::Arc};
 
 mod artifact;
 mod maintenance;
+mod media;
+pub use media::{LocalMediaFuture, LocalMediaHost};
 mod mutations;
 mod read_owner;
 #[cfg(test)]
@@ -19,6 +21,7 @@ pub const LOCAL_CLI_NAMESPACE: &str = "local-cli";
 pub struct LocalCli {
     context: Arc<VaultContext>,
     read_only: bool,
+    media: Option<Arc<dyn LocalMediaHost>>,
 }
 pub struct LocalCliOutput {
     pub reply: LocalCliReply,
@@ -36,7 +39,13 @@ impl LocalCli {
         Ok(Self {
             context,
             read_only: false,
+            media: None,
         })
+    }
+
+    pub fn with_media_host(mut self, media: Arc<dyn LocalMediaHost>) -> Self {
+        self.media = Some(media);
+        self
     }
 
     pub fn operations(&self) -> Vec<LocalCliOperationKind> {
@@ -44,7 +53,7 @@ impl LocalCli {
         if self.read_only {
             return read_owner::operations();
         }
-        vec![
+        let mut operations = vec![
             AgentList,
             AgentSearch,
             AgentMeeting,
@@ -67,7 +76,11 @@ impl LocalCli {
             AttachmentPage,
             Doctor,
             Initialize,
-        ]
+        ];
+        if self.media.is_some() {
+            operations.extend([Import, Transcribe]);
+        }
+        operations
     }
 
     pub async fn execute(
@@ -144,10 +157,10 @@ impl LocalCli {
         let context = &self.context;
         let reply = match operation {
             LocalCliOperation::AgentList { input } => LocalCliReply::AgentList {
-                page: context.agent_list(input).await?,
+                page: context.agent_list_local(input).await?,
             },
             LocalCliOperation::AgentSearch { input } => LocalCliReply::AgentSearch {
-                page: context.agent_search(input).await?,
+                page: context.agent_search_local(input).await?,
             },
             LocalCliOperation::AgentMeeting { session_id } => LocalCliReply::AgentMeeting {
                 meeting: context.agent_meeting(&session_id).await?,
@@ -174,7 +187,7 @@ impl LocalCli {
                 snapshot: context.read_metadata(&session_id).await?,
             },
             LocalCliOperation::SaveMetadata { session_id, input } => LocalCliReply::MetadataSaved {
-                outcome: context.save_metadata(&session_id, input).await?,
+                outcome: context.save_metadata_local(&session_id, input).await?,
             },
             LocalCliOperation::Note { session_id } => LocalCliReply::Note {
                 snapshot: context.read_note(&session_id).await?,
@@ -378,11 +391,11 @@ impl LocalCli {
             }
             LocalCliOperation::Initialize {} => return self.initialize(progress).await,
             LocalCliOperation::Doctor {} => return self.doctor().await,
-            LocalCliOperation::Import { .. } | LocalCliOperation::Transcribe { .. } => {
-                return Err(error(
-                    ErrorCode::Unavailable,
-                    "Local import and transcription require the checked device host",
-                ));
+            operation @ (LocalCliOperation::Import { .. }
+            | LocalCliOperation::Transcribe { .. }) => {
+                return self
+                    .execute_media(request_id, operation, artifact, progress)
+                    .await;
             }
         };
         Ok(LocalCliOutput {

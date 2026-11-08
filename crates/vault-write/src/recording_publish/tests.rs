@@ -1004,3 +1004,68 @@ async fn symlinked_session_stage_receipt_and_peaks_are_never_followed() {
 
 #[path = "recovery_tests.rs"]
 mod recovery;
+
+#[tokio::test]
+async fn imported_mp3_preserves_timestamps_transcript_and_recovers_without_reencoding() {
+    let mut f = Fixture::new().await;
+    f.request.expected = RecordingExpectation::AbsentImport;
+    f.request.first_audio_observed_at_ms = 0;
+    f.request.capture_ended_at_ms = None;
+    let transcript = br#"{"transcripts":[],"future":"preserve"}"#;
+    std::fs::write(f.directory.join("transcript.json"), transcript).unwrap();
+    let before: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.directory.join("_meta.json")).unwrap()).unwrap();
+    let plan = f
+        .store
+        .prepare_recording_publication(
+            &f.operations,
+            f.request.clone(),
+            Cursor::new(f.bytes.clone()),
+        )
+        .await
+        .unwrap();
+    assert!(
+        plan.commit_with(|step| if step == 2 {
+            Err(StoreError::Io("interrupted".into()))
+        } else {
+            Ok(())
+        })
+        .await
+        .is_err()
+    );
+    let status = f
+        .store
+        .prepare_recording_publication_status(&f.operations, f.request.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(status.commit().await.unwrap(), RecordingPublication::Published { filename, .. } if filename == "audio.mp3")
+    );
+    let after: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.directory.join("_meta.json")).unwrap()).unwrap();
+    assert_eq!(before["started_at"], after["started_at"]);
+    assert_eq!(before["ended_at"], after["ended_at"]);
+    assert_eq!(after["audio"]["source"], "import");
+    assert_eq!(after["audio"]["layout"], "mixed");
+    assert_eq!(
+        std::fs::read(f.directory.join("transcript.json")).unwrap(),
+        transcript
+    );
+    assert_eq!(
+        std::fs::read(f.directory.join("audio.mp3")).unwrap(),
+        f.bytes
+    );
+    assert!(!f.directory.join("audio.wav").exists());
+}
+
+#[test]
+fn import_length_is_not_limited_by_classic_wav() {
+    let mut input = request(b"mp3");
+    input.artifact_size_bytes = u32::MAX as u64 + 1;
+    assert!(input.validate().is_err());
+    input.expected = RecordingExpectation::AbsentImport;
+    input.first_audio_observed_at_ms = 0;
+    input.capture_ended_at_ms = None;
+    input.validate().unwrap();
+}

@@ -23,7 +23,7 @@ struct Operation {
     unresolved: bool,
 }
 
-pub(super) struct Ticket {
+pub(crate) struct Ticket {
     gates: PublicationGates,
     session: String,
     key: String,
@@ -94,7 +94,7 @@ impl PublicationGates {
         }
     }
 
-    pub(super) fn begin(&self, session: &str, key: &str) -> Result<Ticket, ApplicationError> {
+    pub(crate) fn begin(&self, session: &str, key: &str) -> Result<Ticket, ApplicationError> {
         let mut state = self.0.lock().map_err(|_| blocked())?;
         if !state.initialized || state.global || state.review.contains(session) {
             return Err(blocked());
@@ -115,16 +115,16 @@ impl PublicationGates {
 }
 
 impl Ticket {
-    pub(super) fn with_events(mut self, events: EventHub) -> Self {
+    pub(crate) fn with_events(mut self, events: EventHub) -> Self {
         self.events = Some(events);
         self
     }
 
-    pub(super) fn committing(&mut self) {
+    pub(crate) fn committing(&mut self) {
         self.committing = true;
     }
 
-    pub(super) fn resolved(mut self) {
+    pub(crate) fn resolved(mut self) {
         self.gates.resolve(&self.session, &self.key);
         self.committing = false;
     }

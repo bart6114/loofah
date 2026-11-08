@@ -103,9 +103,11 @@ impl LocalGateway {
                             .await
                             .map_err(|cause| Error::operation("prepare local search", cause))?;
                         (
-                            Dispatcher::Application(Arc::new(LocalCli::new(
-                                runtime.context.clone(),
-                            )?)),
+                            Dispatcher::Application(Arc::new(
+                                LocalCli::new(runtime.context.clone())?.with_media_host(Arc::new(
+                                    hypr_loofah_local_media::LocalMediaEngine::new(),
+                                )),
+                            )),
                             Some(runtime),
                         )
                     }

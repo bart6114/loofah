@@ -70,6 +70,7 @@ impl LocalCli {
             Ok(Arc::new(Self {
                 context,
                 read_only: true,
+                media: None,
             }))
         })
         .await

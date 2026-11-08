@@ -26,8 +26,27 @@ impl VaultContext {
         session_id: &str,
         input: SaveMetadataRequest,
     ) -> Result<MetadataSaveOutcome, ApplicationError> {
+        self.save_metadata_with_limits(session_id, input, true)
+            .await
+    }
+
+    pub(crate) async fn save_metadata_local(
+        &self,
+        session_id: &str,
+        input: SaveMetadataRequest,
+    ) -> Result<MetadataSaveOutcome, ApplicationError> {
+        self.save_metadata_with_limits(session_id, input, false)
+            .await
+    }
+
+    async fn save_metadata_with_limits(
+        &self,
+        session_id: &str,
+        input: SaveMetadataRequest,
+        remote_limits: bool,
+    ) -> Result<MetadataSaveOutcome, ApplicationError> {
         self.validate(session_id)?;
-        validate_patch(&input)?;
+        validate_patch_with_limits(&input, remote_limits)?;
         self.store
             .update_metadata_with_recovery(
                 self.document_operation_root().as_deref(),
@@ -41,7 +60,10 @@ impl VaultContext {
     }
 }
 
-fn validate_patch(input: &SaveMetadataRequest) -> Result<(), ApplicationError> {
+fn validate_patch_with_limits(
+    input: &SaveMetadataRequest,
+    remote_limits: bool,
+) -> Result<(), ApplicationError> {
     if input.expected_revision.is_empty() || input.expected_revision.len() > 128 {
         return Err(error(
             ErrorCode::Validation,
@@ -55,18 +77,19 @@ fn validate_patch(input: &SaveMetadataRequest) -> Result<(), ApplicationError> {
         ));
     }
     let patch = &input.patch;
-    if [
-        &patch.title,
-        &patch.author,
-        &patch.tracking_id,
-        &patch.folder,
-    ]
-    .iter()
-    .any(|field| field.as_ref().is_some_and(|value| value.len() > 4096))
-        || patch
-            .tags
-            .as_ref()
-            .is_some_and(|tags| tags.len() > 64 || tags.iter().any(|tag| tag.len() > 4096))
+    if remote_limits
+        && ([
+            &patch.title,
+            &patch.author,
+            &patch.tracking_id,
+            &patch.folder,
+        ]
+        .iter()
+        .any(|field| field.as_ref().is_some_and(|value| value.len() > 4096))
+            || patch
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.len() > 64 || tags.iter().any(|tag| tag.len() > 4096)))
     {
         return Err(error(
             ErrorCode::ResourceLimit,

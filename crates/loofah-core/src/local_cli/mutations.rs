@@ -98,7 +98,7 @@ pub(super) async fn tags(
         MetadataSaveOutcome::Saved(current)
     } else {
         context
-            .save_metadata(
+            .save_metadata_local(
                 id,
                 SaveMetadataRequest {
                     patch: SessionMetaPatch {

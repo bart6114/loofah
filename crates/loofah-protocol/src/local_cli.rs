@@ -256,7 +256,9 @@ pub enum LocalCliReply {
         page: crate::AttachmentPage,
     },
     Imported {
-        session_id: String,
+        meta: hypr_vault_read::SessionMeta,
+        audio_path: PathBuf,
+        transcription: Option<Result<LocalTranscriptionOutcome, ApplicationError>>,
     },
     Transcribed {
         session_id: String,
@@ -279,6 +281,13 @@ pub enum LocalCliReply {
         deleted: usize,
         sessions: usize,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalTranscriptionOutcome {
+    pub transcript_id: String,
+    pub words: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

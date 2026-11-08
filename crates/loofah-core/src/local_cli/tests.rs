@@ -509,3 +509,252 @@ async fn local_tag_list_keeps_strict_registry_errors_instead_of_silent_empty_suc
     assert_eq!(std::fs::read(&path).unwrap(), b"{unreadable registry");
     fixture.stop().await;
 }
+
+struct TestMedia {
+    normalizations: Arc<std::sync::atomic::AtomicUsize>,
+    transcriptions: Arc<std::sync::atomic::AtomicUsize>,
+    edit: Option<std::path::PathBuf>,
+}
+impl LocalMediaHost for TestMedia {
+    fn normalize(
+        &self,
+        source: LocalCliArtifact,
+        _: String,
+        _: std::path::PathBuf,
+        _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
+    ) -> LocalMediaFuture<LocalCliArtifact> {
+        self.normalizations
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async move { Ok(source) })
+    }
+    fn transcribe(
+        &self,
+        _: LocalCliArtifact,
+        _: String,
+        session_id: String,
+        _: hypr_vault_read::SessionAudio,
+        _: crate::settings::AppConfig,
+        _: std::path::PathBuf,
+        _: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
+    ) -> LocalMediaFuture<TranscriptWithData> {
+        self.transcriptions
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let edit = self.edit.clone();
+        Box::pin(async move {
+            if let Some(path) = edit {
+                std::fs::write(path, br#"{"transcripts":[],"speaker_edit":"preserved"}"#).unwrap();
+            }
+            Ok(serde_json::from_value(serde_json::json!({
+                "id":"generated", "user_id":"owner", "created_at":"2026-11-08T10:00:00Z", "session_id":session_id,
+                "started_at":0, "ended_at":1000, "memo_md":"", "words":[{"id":"word", "text":"Hello", "start_ms":0, "end_ms":1000, "channel":0}], "speaker_hints":[]
+            })).unwrap())
+        })
+    }
+}
+fn input_artifact(root: &std::path::Path) -> LocalCliArtifact {
+    use sha2::{Digest, Sha256};
+    let path = root.join(format!("input-{}.mp3", uuid::Uuid::new_v4()));
+    std::fs::write(&path, b"test normalized MP3").unwrap();
+    LocalCliArtifact::new(
+        std::fs::File::open(path).unwrap(),
+        19,
+        format!("{:x}", Sha256::digest(b"test normalized MP3")),
+        None,
+        Box::new(()),
+    )
+}
+
+#[tokio::test]
+async fn owned_import_and_transcription_replay_the_original_reply_without_duplicate_engines() {
+    let mut fixture = Fixture::new().await;
+    let normalizations = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let transcriptions = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    fixture.cli = Arc::new(
+        LocalCli::new(fixture.cli.context.clone())
+            .unwrap()
+            .with_media_host(Arc::new(TestMedia {
+                normalizations: normalizations.clone(),
+                transcriptions: transcriptions.clone(),
+                edit: None,
+            })),
+    );
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let operation = LocalCliOperation::Import {
+        filename: "Meeting.mp3".into(),
+        title: None,
+        into: None,
+        transcribe: true,
+        metadata: LocalInitialSessionMetadata::default(),
+    };
+    let first = fixture
+        .cli
+        .execute(
+            request_id.clone(),
+            operation.clone(),
+            Some(input_artifact(fixture._root.path())),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap();
+    let again = fixture
+        .cli
+        .execute(
+            request_id.clone(),
+            operation,
+            Some(input_artifact(fixture._root.path())),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&first.reply).unwrap(),
+        serde_json::to_value(&again.reply).unwrap()
+    );
+    assert_eq!(normalizations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(transcriptions.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let LocalCliReply::Imported {
+        meta,
+        audio_path,
+        transcription: Some(Ok(outcome)),
+    } = first.reply
+    else {
+        panic!("expected import with transcription")
+    };
+    assert_eq!(std::fs::read(audio_path).unwrap(), b"test normalized MP3");
+    assert_eq!(meta.title, "Meeting");
+    assert_eq!(outcome.words, 1);
+    let transcript = fixture
+        .cli
+        .context
+        .store
+        .vault_base()
+        .join("sessions")
+        .join(meta.id)
+        .join("transcript.json");
+    assert!(
+        std::fs::read_to_string(transcript)
+            .unwrap()
+            .contains("Hello")
+    );
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn owned_transcription_preserves_concurrent_speaker_edit_and_retains_generated_result() {
+    let mut fixture = Fixture::new().await;
+    let session = fixture.create().await;
+    let directory = fixture
+        .cli
+        .context
+        .store
+        .vault_base()
+        .join("sessions")
+        .join(&session);
+    std::fs::write(directory.join("audio.mp3"), b"recording").unwrap();
+    std::fs::write(directory.join("transcript.json"), br#"{"transcripts":[]}"#).unwrap();
+    fixture.cli = Arc::new(
+        LocalCli::new(fixture.cli.context.clone())
+            .unwrap()
+            .with_media_host(Arc::new(TestMedia {
+                normalizations: Default::default(),
+                transcriptions: Default::default(),
+                edit: Some(directory.join("transcript.json")),
+            })),
+    );
+    let error = fixture
+        .cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::Transcribe {
+                session_id: session,
+            },
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.code, ErrorCode::Conflict);
+    assert_eq!(
+        std::fs::read(directory.join("transcript.json")).unwrap(),
+        br#"{"transcripts":[],"speaker_edit":"preserved"}"#
+    );
+    let root = fixture
+        .cli
+        .context
+        .operations
+        .as_ref()
+        .unwrap()
+        .root
+        .join("transcript-publications");
+    assert!(std::fs::read_dir(root).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("transcript-result-")
+    }));
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn trusted_local_metadata_and_agent_queries_do_not_inherit_remote_budgets() {
+    let fixture = Fixture::new().await;
+    fixture
+        .cli
+        .context
+        .search
+        .wait_until_initialized()
+        .await
+        .unwrap();
+    let session = fixture.create().await;
+    let current = fixture.cli.context.read_metadata(&session).await.unwrap();
+    let input = SaveMetadataRequest {
+        expected_revision: current.revision,
+        patch: SessionMetaPatch {
+            title: Some("t".repeat(4097)),
+            tags: Some((0..65).map(|n| format!("tag{n}")).collect()),
+            ..Default::default()
+        },
+    };
+    assert_eq!(
+        fixture
+            .cli
+            .context
+            .save_metadata(&session, input.clone())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    let result = fixture
+        .execute(LocalCliOperation::SaveMetadata {
+            session_id: session,
+            input,
+        })
+        .await;
+    assert!(matches!(
+        result.reply,
+        LocalCliReply::MetadataSaved {
+            outcome: MetadataSaveOutcome::Saved(_)
+        }
+    ));
+    let input: SearchMeetingsInput = serde_json::from_value(
+        serde_json::json!({"query":"x".repeat(8193), "offset":10001, "limit":1}),
+    )
+    .unwrap();
+    assert_eq!(
+        fixture
+            .cli
+            .context
+            .agent_search(input.clone())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    fixture
+        .execute(LocalCliOperation::AgentSearch { input })
+        .await;
+    fixture.stop().await;
+}

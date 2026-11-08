@@ -805,3 +805,93 @@ async fn killed_process_recovers_original_staged_result_at_each_real_write_bound
         );
     }
 }
+
+#[tokio::test]
+async fn replacement_rechecks_raw_speaker_edits_and_preserves_retained_result() {
+    let f = Fixture::new().await;
+    let original = serde_json::to_vec(&TranscriptJson {
+        transcripts: vec![generated()],
+    })
+    .unwrap();
+    std::fs::write(f.canonical(), &original).unwrap();
+    let Some(TranscriptSourcePreparation::Ready(source)) = f
+        .store
+        .prepare_transcript_replacement_source("note")
+        .await
+        .unwrap()
+    else {
+        panic!("missing replacement source")
+    };
+    let mut replacement = generated();
+    replacement.id = "replacement".into();
+    let plan = f
+        .store
+        .prepare_transcript_publication(
+            &f.operations,
+            f.identity.clone(),
+            source.baseline(),
+            replacement,
+        )
+        .await
+        .unwrap();
+    let mut edited: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    edited["transcripts"][0]["words"][0]["speaker"] = serde_json::json!("User correction");
+    let edited = serde_json::to_vec(&edited).unwrap();
+    std::fs::write(f.canonical(), &edited).unwrap();
+    assert_eq!(
+        plan.commit().await.unwrap(),
+        TranscriptPublicationOutcome::Conflict
+    );
+    assert_eq!(std::fs::read(f.canonical()).unwrap(), edited);
+    assert!(f.paths().1.exists());
+}
+
+#[tokio::test]
+async fn replacement_recovers_after_canonical_rename_without_replaying_inference() {
+    let f = Fixture::new().await;
+    let original = serde_json::to_vec(&TranscriptJson {
+        transcripts: vec![generated()],
+    })
+    .unwrap();
+    std::fs::write(f.canonical(), &original).unwrap();
+    let Some(TranscriptSourcePreparation::Ready(source)) = f
+        .store
+        .prepare_transcript_replacement_source("note")
+        .await
+        .unwrap()
+    else {
+        panic!("missing replacement source")
+    };
+    let mut replacement = generated();
+    replacement.id = "replacement".into();
+    let plan = f
+        .store
+        .prepare_transcript_publication(
+            &f.operations,
+            f.identity.clone(),
+            source.baseline(),
+            replacement,
+        )
+        .await
+        .unwrap();
+    assert!(
+        plan.commit_with(|step| if step == 2 {
+            Err(StoreError::Io("interrupted".into()))
+        } else {
+            Ok(())
+        })
+        .await
+        .is_err()
+    );
+    assert!(
+        matches!(f.status().await.commit().await.unwrap(), TranscriptPublicationOutcome::Published { transcript_id, .. } if transcript_id == "replacement")
+    );
+    assert_eq!(
+        std::fs::read(io::replacement_backup(&f.operations, &f.identity)).unwrap(),
+        original
+    );
+    let canonical: TranscriptJson =
+        serde_json::from_slice(&std::fs::read(f.canonical()).unwrap()).unwrap();
+    assert_eq!(canonical.transcripts.len(), 1);
+    assert_eq!(canonical.transcripts[0].id, "replacement");
+}
