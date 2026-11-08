@@ -3,8 +3,19 @@ pub(super) async fn load(
     context: &Arc<VaultContext>,
     request: &str,
 ) -> Result<Option<Record>, ApplicationError> {
+    load_scoped(context, request, None).await
+}
+pub(super) async fn load_scoped(
+    context: &Arc<VaultContext>,
+    request: &str,
+    principal: Option<&str>,
+) -> Result<Option<Record>, ApplicationError> {
+    if let Some(principal) = principal {
+        crate::jobs::validate_namespace(principal)?;
+    }
     uuid(request)?;
-    let root = root(context)?;
+    let root = root(context, principal)?;
+    let principal = principal.map(str::to_owned);
     let request = request.to_owned();
     let owner = context.clone();
     tokio::task::spawn_blocking(move || {
@@ -19,7 +30,10 @@ pub(super) async fn load(
         let record: Record =
             serde_json::from_slice(&ledger::read(&path, 128 * 1024)?).map_err(review)?;
         validate(&record)?;
-        if record.declaration.request_id != request || record.vault_id != owner.events.vault_id() {
+        if record.principal != principal
+            || record.declaration.request_id != request
+            || record.vault_id != owner.events.vault_id()
+        {
             return Err(review("Manual summary original identity changed"));
         }
         Ok(Some(record))
@@ -33,7 +47,7 @@ pub(super) async fn persist(
     create: bool,
 ) -> Result<(), ApplicationError> {
     validate(record)?;
-    let root = root(context)?;
+    let root = root(context, record.principal.as_deref())?;
     let record = record.clone();
     let owner = context.clone();
     tokio::task::spawn_blocking(move || {
@@ -56,6 +70,7 @@ pub(super) async fn persist(
 }
 fn validate(record: &Record) -> Result<(), ApplicationError> {
     validate_declaration(&record.declaration)?;
+    crate::jobs::validate_namespace(record.principal.as_deref().unwrap_or(OWNER))?;
     uuid(&record.status.child_request_id)?;
     if record.version != 1
         || record.status.request_id != record.declaration.request_id
@@ -83,6 +98,7 @@ fn validate(record: &Record) -> Result<(), ApplicationError> {
         ManualMediaSummaryState::SourceBound | ManualMediaSummaryState::Child
     ) {
         let origin = ManualMediaChildOrigin {
+            principal: record.principal.clone(),
             parent_request_id: record.declaration.request_id.clone(),
             child_request_id: record.status.child_request_id.clone(),
             session_id: record.declaration.session_id.clone(),

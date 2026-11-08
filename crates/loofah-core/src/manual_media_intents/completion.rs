@@ -4,16 +4,36 @@ impl VaultContext {
         self: &Arc<Self>,
         request_id: String,
     ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
+        self.complete_manual_summary_request(request_id, None).await
+    }
+    pub(crate) async fn complete_remote_media_summary(
+        self: &Arc<Self>,
+        principal: String,
+        request_id: String,
+    ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
+        crate::jobs::validate_namespace(&principal)?;
+        self.complete_manual_summary_request(request_id, Some(principal))
+            .await
+    }
+    async fn complete_manual_summary_request(
+        self: &Arc<Self>,
+        request_id: String,
+        principal: Option<String>,
+    ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
         let owner = self.clone();
         tokio::spawn(async move {
             let _request = owner.admit_session_lifecycle_request(
                 "manual-media-summary",
-                OWNER,
+                principal.as_deref().unwrap_or(OWNER),
                 uuid(&request_id)?,
             )?;
-            let result = owner.complete_manual_summary_owned(&request_id).await;
+            let result = owner
+                .complete_manual_summary_owned(&request_id, principal.as_deref())
+                .await;
             if let Err(cause) = &result {
-                if let Some(mut record) = journal::load(&owner, &request_id).await? {
+                if let Some(mut record) =
+                    journal::load_scoped(&owner, &request_id, principal.as_deref()).await?
+                {
                     // A child may already own work after a lost completion receipt. Preserve
                     // its source authority; the reason reports refusal without inventing a terminal state.
                     record.status.reason = Some(format!(
@@ -31,13 +51,16 @@ impl VaultContext {
     async fn complete_manual_summary_owned(
         self: &Arc<Self>,
         request_id: &str,
+        principal: Option<&str>,
     ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
-        let mut record = journal::load(self, request_id).await?.ok_or_else(|| {
-            error(
-                ErrorCode::NotFound,
-                "Original manual media summary declaration missing",
-            )
-        })?;
+        let mut record = journal::load_scoped(self, request_id, principal)
+            .await?
+            .ok_or_else(|| {
+                error(
+                    ErrorCode::NotFound,
+                    "Original manual media summary declaration missing",
+                )
+            })?;
         if matches!(
             record.status.state,
             ManualMediaSummaryState::Child | ManualMediaSummaryState::Skipped
@@ -61,7 +84,7 @@ impl VaultContext {
                     .clone()
                     .ok_or_else(|| review("Original subtitle session generation missing"))?,
                 ManualMediaKind::AudioImport | ManualMediaKind::Transcription => {
-                    let cli = LocalCli::new(self.clone())?;
+                    let cli = media_reader(self, principal)?;
                     let status = cli.media_status(request_id).await?;
                     if status.state == LocalMediaState::Succeeded && status.transcript_id.is_none()
                     {
@@ -96,16 +119,22 @@ impl VaultContext {
                 .operations
                 .as_ref()
                 .ok_or_else(|| review("Local operations unavailable"))?;
+            let cli = media_reader(self, principal)?;
             let (publication_root, namespace) =
                 if record.declaration.kind == ManualMediaKind::Subtitles {
                     (
-                        operations.root.join("local-subtitles/publications"),
-                        "local-subtitles",
+                        operations
+                            .root
+                            .join(cli.media_directory("local-subtitles"))
+                            .join("publications"),
+                        cli.media_namespace("local-subtitles"),
                     )
                 } else {
                     (
-                        operations.root.join("transcript-publications"),
-                        "local-cli-transcribe",
+                        operations
+                            .root
+                            .join(cli.media_directory("transcript-publications")),
+                        cli.media_namespace("local-cli-transcribe"),
                     )
                 };
             let publication = self
@@ -114,7 +143,7 @@ impl VaultContext {
                     &publication_root,
                     TranscriptPublicationIdentity {
                         vault_id: self.events.vault_id(),
-                        namespace: namespace.into(),
+                        namespace,
                         request_id: uuid(request_id)?,
                     },
                 )
@@ -151,6 +180,7 @@ impl VaultContext {
             journal::persist(self, &record, false).await?;
         }
         let origin = ManualMediaChildOrigin {
+            principal: record.principal.clone(),
             parent_request_id: request_id.into(),
             child_request_id: record.status.child_request_id.clone(),
             session_id: session.clone(),
@@ -179,8 +209,12 @@ impl VaultContext {
             return Ok(record.status);
         }
         drop(
-            self.guard_manual_media_summary(OWNER, &origin.child_request_id, Some(&origin))
-                .await?,
+            self.guard_manual_media_summary(
+                origin.owner(),
+                &origin.child_request_id,
+                Some(&origin),
+            )
+            .await?,
         );
         let transcripts = self.session_transcripts(&session).await?;
         if !crate::local_capture_intents::automatic_eligible(&transcripts) {
@@ -192,8 +226,12 @@ impl VaultContext {
             .await;
         }
         drop(
-            self.guard_manual_media_summary(OWNER, &origin.child_request_id, Some(&origin))
-                .await?,
+            self.guard_manual_media_summary(
+                origin.owner(),
+                &origin.child_request_id,
+                Some(&origin),
+            )
+            .await?,
         );
         let target = self.read_document(&session, &request.target).await?;
         if target.revision != request.expected_revision
@@ -206,7 +244,7 @@ impl VaultContext {
         }
         let job = jobs
             .submit_with_all_origins(
-                OWNER.into(),
+                origin.owner().into(),
                 origin.child_request_id.clone(),
                 request,
                 None,

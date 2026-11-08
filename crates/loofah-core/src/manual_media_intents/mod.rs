@@ -58,6 +58,8 @@ pub struct ManualMediaSummaryStatus {
 struct Record {
     version: u32,
     vault_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    principal: Option<String>,
     declaration: ManualMediaSummaryDeclaration,
     session_created_at: Option<String>,
     request: Option<SummaryJobRequest>,
@@ -73,18 +75,23 @@ pub(crate) struct ManualMediaSource {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ManualMediaChildOrigin {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    principal: Option<String>,
     parent_request_id: String,
     child_request_id: String,
     session_id: String,
     source: ManualMediaSource,
 }
 impl ManualMediaChildOrigin {
+    pub(crate) fn owner(&self) -> &str {
+        self.principal.as_deref().unwrap_or(OWNER)
+    }
     pub(crate) fn validate_identity(
         &self,
         owner: &str,
         child: &str,
     ) -> Result<(), ApplicationError> {
-        if owner != OWNER || child != self.child_request_id {
+        if owner != self.owner() || child != self.child_request_id {
             return Err(review("Original manual summary child request changed"));
         }
         Ok(())
@@ -93,6 +100,7 @@ impl ManualMediaChildOrigin {
         &self,
         request: &SummaryJobRequest,
     ) -> Result<(), ApplicationError> {
+        crate::jobs::validate_namespace(self.owner())?;
         uuid(&self.parent_request_id)?;
         uuid(&self.child_request_id)?;
         if request.session_id != self.session_id
@@ -125,21 +133,39 @@ impl VaultContext {
         declaration: ManualMediaSummaryDeclaration,
     ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
         let owner = self.clone();
-        tokio::spawn(async move { owner.declare_manual_summary_owned(declaration).await })
+        tokio::spawn(async move { owner.declare_manual_summary_owned(declaration, None).await })
             .await
             .map_err(review)?
+    }
+    pub(crate) async fn declare_remote_media_summary(
+        self: &Arc<Self>,
+        principal: String,
+        declaration: ManualMediaSummaryDeclaration,
+    ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
+        crate::jobs::validate_namespace(&principal)?;
+        let owner = self.clone();
+        tokio::spawn(async move {
+            owner
+                .declare_manual_summary_owned(declaration, Some(principal))
+                .await
+        })
+        .await
+        .map_err(review)?
     }
     async fn declare_manual_summary_owned(
         self: &Arc<Self>,
         declaration: ManualMediaSummaryDeclaration,
+        principal: Option<String>,
     ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
         validate_declaration(&declaration)?;
         let _request = self.admit_session_lifecycle_request(
             "manual-media-summary",
-            OWNER,
+            principal.as_deref().unwrap_or(OWNER),
             uuid(&declaration.request_id)?,
         )?;
-        if let Some(record) = journal::load(self, &declaration.request_id).await? {
+        if let Some(record) =
+            journal::load_scoped(self, &declaration.request_id, principal.as_deref()).await?
+        {
             if record.declaration != declaration {
                 return Err(error(
                     ErrorCode::Conflict,
@@ -151,8 +177,10 @@ impl VaultContext {
         let _admission = self.admit_session_work(&declaration.session_id).await?;
         let created = if declaration.fresh_session {
             if declaration.kind != ManualMediaKind::AudioImport
-                || self.created_session_id("local-cli-import", &declaration.request_id)?
-                    != declaration.session_id
+                || self.created_session_id(
+                    &media_reader(self, principal.as_deref())?.media_namespace("local-cli-import"),
+                    &declaration.request_id,
+                )? != declaration.session_id
             {
                 return Err(error(
                     ErrorCode::Validation,
@@ -205,6 +233,7 @@ impl VaultContext {
         let record = Record {
             version: 1,
             vault_id: self.events.vault_id(),
+            principal,
             session_created_at: created,
             request,
             source: None,
@@ -232,6 +261,24 @@ impl VaultContext {
         )
         .await
     }
+    pub(crate) async fn remote_media_summary_status(
+        self: &Arc<Self>,
+        principal: &str,
+        request: &str,
+    ) -> Result<ManualMediaSummaryStatus, ApplicationError> {
+        crate::jobs::validate_namespace(principal)?;
+        self.manual_summary_status_owned(
+            journal::load_scoped(self, request, Some(principal))
+                .await?
+                .ok_or_else(|| {
+                    error(
+                        ErrorCode::NotFound,
+                        "Original member media summary intent not found",
+                    )
+                })?,
+        )
+        .await
+    }
     async fn manual_summary_status_owned(
         &self,
         mut record: Record,
@@ -239,7 +286,10 @@ impl VaultContext {
         if let Some(job) = &record.status.job {
             record.status.job = Some(
                 self.processing_jobs()?
-                    .owned_job(OWNER.into(), job.id.clone())
+                    .owned_job(
+                        record.principal.as_deref().unwrap_or(OWNER).into(),
+                        job.id.clone(),
+                    )
                     .await?,
             );
         }
@@ -254,16 +304,18 @@ impl VaultContext {
         let Some(origin) = origin else {
             return Ok(None);
         };
-        if owner != OWNER || child != origin.child_request_id {
+        if owner != origin.owner() || child != origin.child_request_id {
             return Err(review("Manual summary child identity changed"));
         }
-        let record = journal::load(self, &origin.parent_request_id)
-            .await?
-            .ok_or_else(|| review("Manual summary parent missing"))?;
+        let record =
+            journal::load_scoped(self, &origin.parent_request_id, origin.principal.as_deref())
+                .await?
+                .ok_or_else(|| review("Manual summary parent missing"))?;
         if !matches!(
             record.status.state,
             ManualMediaSummaryState::SourceBound | ManualMediaSummaryState::Child
-        ) || record.status.child_request_id != child
+        ) || record.principal != origin.principal
+            || record.status.child_request_id != child
             || record.declaration.session_id != origin.session_id
             || record.source.as_ref() != Some(&origin.source)
         {
@@ -337,7 +389,16 @@ fn validate_declaration(
     }
     Ok(())
 }
-fn root(context: &VaultContext) -> Result<PathBuf, ApplicationError> {
+fn media_reader(
+    context: &Arc<VaultContext>,
+    principal: Option<&str>,
+) -> Result<LocalCli, ApplicationError> {
+    match principal {
+        Some(principal) => LocalCli::scoped_media_reader(context.clone(), principal.into()),
+        None => LocalCli::new(context.clone()),
+    }
+}
+fn root(context: &Arc<VaultContext>, principal: Option<&str>) -> Result<PathBuf, ApplicationError> {
     if context.lease_pin().is_none() {
         return Err(review("Original Local vault ownership required"));
     }
@@ -346,7 +407,7 @@ fn root(context: &VaultContext) -> Result<PathBuf, ApplicationError> {
         .as_ref()
         .ok_or_else(|| review("Local operation storage unavailable"))?
         .root
-        .join("manual-media-summary"))
+        .join(media_reader(context, principal)?.media_directory("manual-media-summary")))
 }
 fn uuid(value: &str) -> Result<uuid::Uuid, ApplicationError> {
     uuid::Uuid::parse_str(value)

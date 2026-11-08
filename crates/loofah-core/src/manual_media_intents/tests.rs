@@ -47,6 +47,7 @@ fn declaration() -> ManualMediaSummaryDeclaration {
 }
 #[derive(Default)]
 struct Summary {
+    expected_owner: Option<String>,
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
@@ -58,7 +59,10 @@ impl JobGenerator for Summary {
         _: CancellationToken,
     ) -> JobFuture<'_, Result<GeneratedDocument, ProcessingJobFailure>> {
         Box::pin(async move {
-            assert_eq!(work.principal, OWNER);
+            assert_eq!(
+                work.principal,
+                self.expected_owner.as_deref().unwrap_or(OWNER)
+            );
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.entered.notify_one();
             self.release.notified().await;
@@ -82,7 +86,16 @@ impl JobAuthorizer for Auth {
     }
 }
 async fn publish(context: &Arc<VaultContext>, request: &str, word_count: usize) {
+    publish_scoped(context, request, word_count, None).await
+}
+async fn publish_scoped(
+    context: &Arc<VaultContext>,
+    request: &str,
+    word_count: usize,
+    principal: Option<&str>,
+) {
     use hypr_vault_write::transcript_publication::*;
+    let cli = media_reader(context, principal).unwrap();
     let Some(SubtitleSourcePreparation::Ready(source)) = context
         .store
         .prepare_subtitle_source("note", ledger::hash(b"original SRT bytes"))
@@ -101,10 +114,11 @@ async fn publish(context: &Arc<VaultContext>, request: &str, word_count: usize) 
                 .as_ref()
                 .unwrap()
                 .root
-                .join("local-subtitles/publications"),
+                .join(cli.media_directory("local-subtitles"))
+                .join("publications"),
             TranscriptPublicationIdentity {
                 vault_id: context.events.vault_id(),
-                namespace: "local-subtitles".into(),
+                namespace: cli.media_namespace("local-subtitles"),
                 request_id: uuid(request).unwrap(),
             },
             source,
@@ -371,4 +385,150 @@ async fn manual_summary_status_never_initializes_parent_storage() {
         ErrorCode::NotFound
     );
     assert!(!operation.exists());
+}
+
+struct MemberAuth;
+impl JobAuthorizer for MemberAuth {
+    fn authorize<'a>(
+        &'a self,
+        work: &'a JobWork,
+    ) -> JobFuture<'a, Result<Box<dyn Send>, ProcessingJobFailure>> {
+        Box::pin(async move {
+            assert_eq!(work.principal, "alice");
+            Ok(Box::new(()) as Box<dyn Send>)
+        })
+    }
+}
+#[tokio::test]
+async fn trusted_member_summary_parent_and_child_never_adopt_another_member_or_local_receipt() {
+    let root_dir = tempfile::tempdir().unwrap();
+    let path = root_dir.path().canonicalize().unwrap();
+    let context = context(&path).await;
+    let summary = Arc::new(Summary {
+        expected_owner: Some("alice".into()),
+        ..Default::default()
+    });
+    let worker = context
+        .start_processing(summary.clone(), Arc::new(MemberAuth))
+        .await
+        .unwrap();
+    let declaration = declaration();
+    context
+        .declare_manual_media_summary(declaration.clone())
+        .await
+        .unwrap();
+    context
+        .declare_remote_media_summary("alice".into(), declaration.clone())
+        .await
+        .unwrap();
+    context
+        .declare_remote_media_summary("bob".into(), declaration.clone())
+        .await
+        .unwrap();
+    let local = journal::load(&context, &declaration.request_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        serde_json::to_value(&local)
+            .unwrap()
+            .get("principal")
+            .is_none()
+    );
+    let alice = journal::load_scoped(&context, &declaration.request_id, Some("alice"))
+        .await
+        .unwrap()
+        .unwrap();
+    let bob = journal::load_scoped(&context, &declaration.request_id, Some("bob"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(alice.status.child_request_id, bob.status.child_request_id);
+    assert_ne!(
+        root(&context, Some("alice")).unwrap(),
+        root(&context, None).unwrap()
+    );
+    assert_eq!(
+        context
+            .remote_media_summary_status("charlie", &declaration.request_id)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NotFound
+    );
+    publish_scoped(&context, &declaration.request_id, 5, Some("alice")).await;
+    assert!(
+        context
+            .complete_remote_media_summary("bob".into(), declaration.request_id.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        context
+            .complete_manual_media_summary(declaration.request_id.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 0);
+    let queued = context
+        .complete_remote_media_summary("alice".into(), declaration.request_id.clone())
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        summary.entered.notified(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        context
+            .processing_jobs()
+            .unwrap()
+            .owned_job("bob".into(), queued.job.as_ref().unwrap().id.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        context
+            .processing_jobs()
+            .unwrap()
+            .owned_job(OWNER.into(), queued.job.as_ref().unwrap().id.clone())
+            .await
+            .is_err()
+    );
+    summary.release.notify_one();
+    let done = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let status = context
+                .remote_media_summary_status("alice", &declaration.request_id)
+                .await
+                .unwrap();
+            if status
+                .job
+                .as_ref()
+                .is_some_and(|job| job.state.is_terminal())
+            {
+                break status;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        done.job.as_ref().unwrap().state,
+        ProcessingJobState::Succeeded
+    );
+    std::fs::remove_file(path.join("vault/sessions/note/transcript.json")).unwrap();
+    let historical = context
+        .complete_remote_media_summary("alice".into(), declaration.request_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        historical.job.as_ref().unwrap().id,
+        done.job.as_ref().unwrap().id
+    );
+    assert_eq!(summary.calls.load(Ordering::SeqCst), 1);
+    assert!(!path.join("vault/sessions/note/transcript.json").exists());
+    worker.shutdown().await.unwrap();
 }

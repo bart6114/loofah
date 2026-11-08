@@ -105,10 +105,11 @@ impl JobJournal {
         origin: crate::manual_media_intents::ManualMediaChildOrigin,
     ) -> Result<Option<ProcessingJobSnapshot>, ApplicationError> {
         origin.validate_request(&request)?;
-        origin.validate_identity("desktop", &request_id)?;
+        let namespace = origin.owner().to_owned();
+        origin.validate_identity(&namespace, &request_id)?;
         let request_id = parse_uuid(&request_id)?;
         self.run(move |state, _| {
-            let Some(record) = state.records.get(&key("desktop", &request_id)) else {
+            let Some(record) = state.records.get(&key(&namespace, &request_id)) else {
                 return Ok(None);
             };
             if record.request != request
@@ -308,7 +309,7 @@ impl JobJournal {
         if let Some(manual) = &manual {
             manual.validate_request(&request)?;
             manual.validate_identity(&namespace, &request_id)?;
-            if origin.is_some() || local.is_some() || namespace != "desktop" {
+            if origin.is_some() || local.is_some() || namespace != manual.owner() {
                 return Err(storage());
             }
         }
@@ -670,7 +671,7 @@ pub(crate) fn validate_request(request: &SummaryJobRequest) -> Result<(), Applic
     }
     Ok(())
 }
-fn validate_namespace(namespace: &str) -> Result<(), ApplicationError> {
+pub(crate) fn validate_namespace(namespace: &str) -> Result<(), ApplicationError> {
     if namespace.trim().is_empty()
         || namespace.len() > 256
         || namespace.chars().any(char::is_control)

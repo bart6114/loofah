@@ -602,3 +602,5 @@ cases and actual Native/plugin exporters. The earlier full lane had 2,279 passin
 tests, 26 ignored tests and three failing CLI HTTP fixtures; those three now pass
 with the fixture correction. This does not substitute for a new full integrated
 run after the pending Remote Core/server and CLI media source lands.
+
+Remote manual-media summary parents now use a trusted server member principal and the same member-private media namespace as their original publication receipts. Local parents omit the new optional scope field and retain `desktop` ownership and prior serialized bytes. Summary children freeze that original member and source; parent/status/result lookup cannot adopt another member's or Local receipt with the same request UUID. A focused shared-session regression covers two members plus Local declarations, original-member-only inference/child access, and historical replay after canonical transcript deletion. Root/server integration must call the crate-only scoped declaration/completion/status entry points; these are not renderer-selected filesystem paths or principals.
