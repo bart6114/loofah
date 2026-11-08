@@ -24,6 +24,12 @@ pub struct MediaTranscriptionOptions {
     pub languages: Vec<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct MediaImportInitialMetadata {
+    pub title: Option<String>,
+    pub metadata: crate::LocalInitialSessionMetadata,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MediaOperation {
     ImportAudio {
@@ -32,6 +38,8 @@ pub enum MediaOperation {
         filename: String,
         content_type: Option<String>,
         created_at: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        initial: Option<MediaImportInitialMetadata>,
         transcribe: bool,
         source: MediaUploadSource,
     },
@@ -110,6 +118,7 @@ pub fn validate_media_declaration(input: &MediaDeclaration) -> Result<(), &'stat
             filename,
             content_type,
             created_at,
+            initial,
             transcribe,
             source,
         } => {
@@ -119,6 +128,22 @@ pub fn validate_media_declaration(input: &MediaDeclaration) -> Result<(), &'stat
                     validate_media_session_snapshot(expected)?
                 }
                 _ => return Err("Original import session baseline required"),
+            }
+            if let Some(initial) = initial {
+                if session_id.is_some() {
+                    return Err("Initial media metadata requires a new session");
+                }
+                crate::validate_initial_session_metadata(&initial.metadata)?;
+                if initial
+                    .title
+                    .as_ref()
+                    .is_some_and(|value| value.len() > 16_384)
+                    || (created_at.is_some()
+                        && initial.metadata.created_at.is_some()
+                        && created_at != &initial.metadata.created_at)
+                {
+                    return Err("Initial media metadata disagrees with its declaration");
+                }
             }
             validate_upload(filename, source)?;
             if content_type.as_ref().is_some_and(|s| !bounded(s, 256))
@@ -253,4 +278,50 @@ pub struct MediaSummaryStatus {
     pub child_request_id: String,
     pub job: Option<crate::ProcessingJobSnapshot>,
     pub reason: Option<String>,
+}
+
+#[cfg(test)]
+mod initial_tests {
+    use super::*;
+    #[test]
+    fn legacy_media_declaration_bytes_remain_unchanged_and_initial_metadata_is_fresh_only() {
+        let value = serde_json::json!({
+            "request_id":"3ee6ab27-391d-47cb-ad40-5c61b57f4181",
+            "operation":{"kind":"import_audio","session_id":null,"expected":null,
+                "filename":"a.wav","content_type":null,"created_at":null,
+                "transcribe":false,"source":{"sha256":"a".repeat(64),"size_bytes":1}},
+            "transcription":null,"summary":null
+        });
+        let mut declaration: MediaDeclaration = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&declaration).unwrap(), value);
+        let MediaOperation::ImportAudio { initial, .. } = &mut declaration.operation else {
+            unreachable!()
+        };
+        *initial = Some(MediaImportInitialMetadata {
+            title: Some("Original title".into()),
+            metadata: crate::LocalInitialSessionMetadata {
+                author: Some("agent".into()),
+                skill: Some("notes".into()),
+                ..Default::default()
+            },
+        });
+        validate_media_declaration(&declaration).unwrap();
+        let MediaOperation::ImportAudio {
+            initial,
+            created_at,
+            ..
+        } = &mut declaration.operation
+        else {
+            unreachable!()
+        };
+        *created_at = Some("2026-11-08T10:00:00Z".into());
+        initial.as_mut().unwrap().metadata.created_at = Some("2026-11-09T10:00:00Z".into());
+        assert!(validate_media_declaration(&declaration).is_err());
+        let MediaOperation::ImportAudio { initial, .. } = &mut declaration.operation else {
+            unreachable!()
+        };
+        initial.as_mut().unwrap().metadata.created_at = None;
+        initial.as_mut().unwrap().metadata.author = None;
+        assert!(validate_media_declaration(&declaration).is_err());
+    }
 }

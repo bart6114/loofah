@@ -10,6 +10,7 @@ fn declaration() -> MediaDeclaration {
             filename: "original.wav".into(),
             content_type: Some("audio/wav".into()),
             created_at: Some("2026-11-08T10:00:00Z".into()),
+            initial: None,
             transcribe: false,
             source: MediaUploadSource {
                 sha256: Sha256::digest(b"original bytes")
