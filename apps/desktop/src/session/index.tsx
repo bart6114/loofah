@@ -27,6 +27,7 @@ import {
   useEnhancedNoteRecords,
   useSession,
   useSessionRawMd,
+  useSessionMetadata,
 } from "~/session/queries";
 import { useVaultHost } from "~/shared/application/vault-provider";
 import { listenerStore } from "~/store/zustand/listener/instance";
@@ -310,7 +311,7 @@ function useAutoFocusTitle({
   noteInputRef: React.RefObject<NoteInputHandle | null>;
 }) {
   const autoFocusedSessionRef = useRef<string | null>(null);
-  const title = useSession(sessionId)?.title;
+  const title = useSessionMetadata(sessionId)?.meta.title;
 
   useEffect(() => {
     if (autoFocusedSessionRef.current === sessionId) return;

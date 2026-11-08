@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskConfig } from ".";
 import { enhanceSuccess } from "./enhance-success";
 
+import { createSessionSourceHost } from "~/session/session-source.test-support";
 import { useLiveTitle } from "~/store/zustand/live-title";
 
 const mocks = vi.hoisted(() => ({
@@ -263,7 +264,20 @@ describe("enhanceSuccess.onSuccess", () => {
   });
 
   it("does not generate a title while a live title edit exists", async () => {
-    useLiveTitle.getState().setTitle("session-1", "Draft title");
+    const local = createSessionSourceHost("always", {
+      features: ["legacy_desktop_enhance"],
+    });
+    useLiveTitle.getState().setTitle({
+      scope: local.scope,
+      sessionId: "session-1",
+      owner: {},
+      title: "Draft title",
+      revision: "m0",
+      baselineTitle: "",
+      uncertain: false,
+      legacy: true,
+    });
+    local.dispose();
     const params = createParams();
 
     await enhanceSuccess.onSuccess?.(params);

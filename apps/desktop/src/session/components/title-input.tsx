@@ -1,4 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
+import { useForm, useStore } from "@tanstack/react-form";
+import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { usePrevious } from "@uidotdev/usehooks";
 import {
   type CSSProperties,
@@ -10,14 +12,26 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
 import { cn } from "@hypr/utils";
 
 import { useTitleGenerating } from "~/ai/hooks";
-import { useSession, useUpdateSession } from "~/session/queries";
-import { useLiveTitle } from "~/store/zustand/live-title";
+import {
+  ApplicationRequestError,
+  connectionClosed,
+} from "~/shared/application/errors";
+import { captureSessionTitleGuard } from "~/shared/application/session-title-guard";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import type { VaultScope } from "~/shared/application/vault-scope";
+import {
+  liveSessionTitleDraft,
+  useLiveSessionTitleDraft,
+  useLiveTitle,
+  type LiveTitleDraft,
+} from "~/store/zustand/live-title";
 import { type Tab } from "~/store/zustand/tabs";
 
 export interface TitleInputHandle {
@@ -50,102 +64,62 @@ export const TitleInput = forwardRef<
       id: sessionId,
       state: { view },
     } = tab;
-    const isGenerating = useTitleGenerating(sessionId);
-    const wasGenerating = usePrevious(isGenerating);
-    const [showRevealAnimation, setShowRevealAnimation] = useState(false);
-    const [generatedTitle, setGeneratedTitle] = useState<string | null>(null);
-    const storeTitle = useSession(sessionId)?.title;
-
-    const editorId = view ? "active" : "inactive";
-    const inputRef = useRef<TitleInputHandle>(null);
-
-    useImperativeHandle(ref, () => inputRef.current!, []);
-
-    useEffect(() => {
-      if (wasGenerating && !isGenerating) {
-        setGeneratedTitle(storeTitle ?? null);
-        setShowRevealAnimation(true);
-        const timer = setTimeout(() => {
-          setShowRevealAnimation(false);
-        }, 1000);
-        return () => clearTimeout(timer);
-      }
-    }, [wasGenerating, isGenerating, storeTitle]);
-
-    if (isGenerating) {
-      return (
-        <div
-          data-tauri-drag-region="false"
-          className={cn([
-            "flex w-full items-center justify-start",
-            variant === "breadcrumb" ? "h-5" : "h-[1.75rem]",
-          ])}
-        >
-          <span
-            className={cn([
-              "text-muted-foreground animate-pulse",
-              variant === "breadcrumb"
-                ? "text-sm leading-5"
-                : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
-            ])}
-          >
-            <Trans>Generating title...</Trans>
-          </span>
-        </div>
-      );
-    }
-
-    if (showRevealAnimation && generatedTitle) {
-      return (
-        <div
-          data-tauri-drag-region="false"
-          className={cn([
-            "flex w-full items-center justify-start overflow-hidden",
-            variant === "breadcrumb" ? "h-5" : "h-[1.75rem]",
-          ])}
-        >
-          <span
-            className={cn([
-              "animate-reveal-left whitespace-nowrap",
-              variant === "breadcrumb"
-                ? "text-sm leading-5"
-                : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
-            ])}
-          >
-            {generatedTitle}
-          </span>
-        </div>
-      );
-    }
-
-    return (
+    const owner = useVaultReadScope();
+    const local = owner.scope.client.features.includes(
+      "legacy_desktop_enhance",
+    );
+    if (!owner.current()) return null;
+    const props = {
+      sessionId,
+      editorId: view ? "active" : "inactive",
+      onTransferContentToEditor,
+      onFocusEditorAtStart,
+      onFocusEditorAtPixelWidth,
+      variant,
+      scope: owner.scope,
+      current: owner.current,
+    };
+    return local ? (
+      <LegacyTitleInput
+        key={`${sessionId}:${tab.slotId}`}
+        {...props}
+        ref={ref}
+      />
+    ) : (
       <TitleInputInner
-        ref={inputRef}
-        sessionId={sessionId}
-        editorId={editorId}
-        onTransferContentToEditor={onTransferContentToEditor}
-        onFocusEditorAtStart={onFocusEditorAtStart}
-        onFocusEditorAtPixelWidth={onFocusEditorAtPixelWidth}
-        variant={variant}
+        key={`${sessionId}:${tab.slotId}`}
+        {...props}
+        ref={ref}
+        isGenerating={false}
       />
     );
   },
 );
 
+type TitleFieldsProps = {
+  scope: VaultScope;
+  current: () => boolean;
+  sessionId: string;
+  editorId: string;
+  onTransferContentToEditor?: (content: string) => void;
+  onFocusEditorAtStart?: () => void;
+  onFocusEditorAtPixelWidth?: (pixelWidth: number) => void;
+  variant: "title" | "breadcrumb";
+};
+const LegacyTitleInput = forwardRef<TitleInputHandle, TitleFieldsProps>(
+  (props, ref) => {
+    const isGenerating = useTitleGenerating(props.sessionId);
+    return <TitleInputInner {...props} ref={ref} isGenerating={isGenerating} />;
+  },
+);
+
 const TitleInputInner = memo(
-  forwardRef<
-    TitleInputHandle,
-    {
-      sessionId: string;
-      editorId: string;
-      onTransferContentToEditor?: (content: string) => void;
-      onFocusEditorAtStart?: () => void;
-      onFocusEditorAtPixelWidth?: (pixelWidth: number) => void;
-      variant: "title" | "breadcrumb";
-    }
-  >(
+  forwardRef<TitleInputHandle, TitleFieldsProps & { isGenerating: boolean }>(
     (
       {
+        scope,
+        current,
+        isGenerating,
         sessionId,
         editorId,
         onTransferContentToEditor,
@@ -156,18 +130,285 @@ const TitleInputInner = memo(
       ref,
     ) => {
       const { t } = useLingui();
-      const storeTitle = useSession(sessionId)?.title;
-      const updateSession = useUpdateSession(sessionId);
-      const [draftTitle, setDraftTitle] = useState<string | null>(null);
+      const mounted = useRef(false);
+      const token = useRef(
+        liveSessionTitleDraft(scope, sessionId)?.owner ?? {},
+      ).current;
+      const initial = useRef(liveSessionTitleDraft(scope, sessionId)).current;
+      useLayoutEffect(() => {
+        mounted.current = true;
+        return () => {
+          mounted.current = false;
+        };
+      }, []);
+      const online = useSyncExternalStore(
+        (changed) => onlineManager.subscribe(changed),
+        () => onlineManager.isOnline(),
+      );
+      const active = () => mounted.current && current();
+      const available = () =>
+        active() &&
+        scope.getSnapshot().state === "connected" &&
+        scope.client.canEdit &&
+        scope.client.features.includes("metadata_edit") &&
+        (scope.client.networkMode === "always" || onlineManager.isOnline());
+      const options = scope.metadataOptions(sessionId);
+      const metadata = useQuery(
+        {
+          ...options,
+          enabled:
+            !!sessionId &&
+            current() &&
+            scope.client.features.includes("content_read"),
+          notifyOnChangeProps: "all",
+        },
+        scope.queryClient,
+      );
+      const storeTitle =
+        metadata.data?.meta.id === sessionId
+          ? metadata.data.meta.title
+          : undefined;
+      const readFresh = async () => {
+        if (!available()) throw connectionClosed();
+        await scope.queryClient.cancelQueries({
+          queryKey: options.queryKey,
+          exact: true,
+        });
+        if (!available()) throw connectionClosed();
+        const value = await scope.queryClient.fetchQuery({
+          ...options,
+          staleTime: 0,
+          retry: false,
+        });
+        if (!available() || value.meta.id !== sessionId)
+          throw connectionClosed();
+        return scope.queryClient.getQueryData(options.queryKey) ?? value;
+      };
+      const write = useMutation(
+        {
+          networkMode: "always",
+          retry: false,
+          mutationKey: ["vault", scope.client.scope, "title_write", sessionId],
+          mutationFn: async (draft: LiveTitleDraft) => {
+            if (!available()) throw connectionClosed();
+            const guard = captureSessionTitleGuard(scope, sessionId, active);
+            let sent = false;
+            try {
+              await guard.prepare();
+              guard.assertReady();
+              if (!available()) throw connectionClosed();
+              sent = true;
+              const outcome = await scope.run(() =>
+                scope.client.saveMetadata(sessionId, {
+                  patch: { title: draft.title },
+                  expected_revision: draft.revision,
+                }),
+              );
+              if (!available()) throw connectionClosed();
+              for (const kind of [
+                "session",
+                "note",
+                "note_editor",
+                "document_editor",
+                "docs",
+              ])
+                void scope.queryClient.invalidateQueries({
+                  queryKey: ["vault", scope.client.scope, kind, sessionId],
+                });
+              for (const kind of ["session_summaries", "session_page"])
+                void scope.queryClient.invalidateQueries({
+                  queryKey: ["vault", scope.client.scope, kind],
+                });
+              const canonical = await readFresh().catch(() => undefined);
+              if (!available()) throw connectionClosed();
+              return { outcome, canonical };
+            } catch (error) {
+              const uncertain =
+                sent &&
+                (!(error instanceof ApplicationRequestError) ||
+                  error.detail.mutation_outcome !== "not_committed");
+              const latest = liveSessionTitleDraft(scope, sessionId);
+              if (uncertain && latest?.owner === draft.owner)
+                useLiveTitle
+                  .getState()
+                  .replaceTitle(latest, { ...latest, uncertain: true });
+              throw error;
+            } finally {
+              guard.dispose();
+            }
+          },
+          onSuccess: ({ outcome, canonical }, draft) => {
+            if (!active()) return;
+            const latest = liveSessionTitleDraft(scope, sessionId);
+            if (outcome.kind !== "saved" || !canonical) {
+              if (latest?.owner === draft.owner)
+                useLiveTitle
+                  .getState()
+                  .replaceTitle(latest, { ...latest, uncertain: true });
+              return;
+            }
+            if (canonical.meta.title !== draft.title || latest !== draft)
+              return;
+            useLiveTitle.getState().clearTitle(draft);
+            form.reset({
+              title: canonical.meta.title,
+              revision: canonical.revision,
+              baselineTitle: canonical.meta.title,
+            });
+          },
+        },
+        scope.queryClient,
+      );
+      const review = useMutation(
+        { networkMode: "always", retry: false, mutationFn: readFresh },
+        scope.queryClient,
+      );
+      const form = useForm({
+        defaultValues: {
+          title: initial?.title ?? "",
+          revision: initial?.revision ?? "",
+          baselineTitle: initial?.baselineTitle ?? "",
+        },
+        onSubmit: async ({ value }) => {
+          if (
+            !available() ||
+            write.isPending ||
+            review.isPending ||
+            needsReview
+          )
+            return;
+          const draft = liveSessionTitleDraft(scope, sessionId);
+          if (
+            !draft ||
+            draft.owner !== token ||
+            draft.title !== value.title ||
+            draft.title === draft.baselineTitle
+          )
+            return;
+          await write.mutateAsync(draft).catch(() => {});
+        },
+      });
+      const values = useStore(form.store, (state) => state.values);
+      const submitting = useStore(form.store, (state) => state.isSubmitting);
+      const entry = useLiveSessionTitleDraft(scope, sessionId);
+      const ownDraft = entry?.owner === token ? entry : undefined;
+      const pendingWrite = useRef(false);
+      pendingWrite.current = write.isPending || submitting;
+      useEffect(
+        () => () => {
+          const draft = liveSessionTitleDraft(scope, sessionId);
+          const saved = scope.queryClient.getQueryData(
+            scope.metadataOptions(sessionId).queryKey,
+          );
+          if (
+            draft?.owner === token &&
+            draft.title === draft.baselineTitle &&
+            saved?.revision === draft.revision &&
+            saved.meta.title === draft.title &&
+            !draft.uncertain &&
+            !pendingWrite.current
+          )
+            useLiveTitle.getState().clearTitle(draft);
+        },
+        [scope, sessionId, token],
+      );
+      const stale =
+        !!ownDraft &&
+        !!metadata.data &&
+        values.revision !== metadata.data.revision;
+      const needsReview =
+        !!write.error ||
+        !!review.error ||
+        write.data?.outcome.kind === "conflict" ||
+        !!ownDraft?.uncertain ||
+        stale ||
+        (!!write.data && !write.data.canonical);
+      const disabled =
+        !current() ||
+        scope.getSnapshot().state !== "connected" ||
+        !scope.client.canEdit ||
+        !scope.client.features.includes("metadata_edit") ||
+        (!online && scope.client.networkMode !== "always") ||
+        storeTitle === undefined;
       const [isOverflowing, setIsOverflowing] = useState(false);
       const [overflowDistance, setOverflowDistance] = useState(0);
       const [showStartFade, setShowStartFade] = useState(false);
       const [showEndFade, setShowEndFade] = useState(false);
       const [isTitleFocused, setIsTitleFocused] = useState(false);
       const internalRef = useRef<HTMLInputElement>(null);
-      const setLiveTitle = useLiveTitle((s) => s.setTitle);
-      const clearLiveTitle = useLiveTitle((s) => s.clearTitle);
-      const title = draftTitle ?? storeTitle ?? "";
+      const wasGenerating = usePrevious(isGenerating);
+      const [showRevealAnimation, setShowRevealAnimation] = useState(false);
+      useEffect(() => {
+        if (wasGenerating && !isGenerating && !ownDraft) {
+          setShowRevealAnimation(true);
+          const timer = setTimeout(() => setShowRevealAnimation(false), 1000);
+          return () => clearTimeout(timer);
+        }
+      }, [wasGenerating, isGenerating, ownDraft]);
+      const title = ownDraft ? values.title : (storeTitle ?? "");
+      const capture = (value: string) => {
+        if (!available() || !metadata.data) return;
+        if (!ownDraft) {
+          form.setFieldValue("revision", metadata.data.revision);
+          form.setFieldValue("baselineTitle", metadata.data.meta.title);
+        }
+        form.setFieldValue("title", value);
+        const baseline = form.state.values;
+        useLiveTitle.getState().setTitle({
+          scope,
+          sessionId,
+          owner: token,
+          title: value,
+          revision: baseline.revision,
+          baselineTitle: baseline.baselineTitle,
+          uncertain: ownDraft?.uncertain ?? false,
+          legacy: scope.client.features.includes("legacy_desktop_enhance"),
+        });
+      };
+      const submit = () => {
+        if (
+          available() &&
+          !write.isPending &&
+          !review.isPending &&
+          !form.state.isSubmitting &&
+          !needsReview
+        )
+          void form.handleSubmit().catch(() => {});
+      };
+      const reviewSaved = () => {
+        if (!available() || write.isPending || review.isPending) return;
+        const draft = liveSessionTitleDraft(scope, sessionId);
+        void review
+          .mutateAsync()
+          .then((snapshot) => {
+            if (
+              !available() ||
+              liveSessionTitleDraft(scope, sessionId) !== draft ||
+              !draft ||
+              draft.owner !== token
+            )
+              return;
+            form.setFieldValue("revision", snapshot.revision);
+            form.setFieldValue("baselineTitle", snapshot.meta.title);
+            write.reset();
+            review.reset();
+            if (form.state.values.title === snapshot.meta.title) {
+              useLiveTitle.getState().clearTitle(draft);
+              form.reset({
+                title: snapshot.meta.title,
+                revision: snapshot.revision,
+                baselineTitle: snapshot.meta.title,
+              });
+            } else
+              useLiveTitle.getState().replaceTitle(draft, {
+                ...draft,
+                revision: snapshot.revision,
+                baselineTitle: snapshot.meta.title,
+                uncertain: false,
+              });
+          })
+          .catch(() => {});
+      };
 
       const updateOverflowState = useCallback(
         (node?: HTMLInputElement | null) => {
@@ -291,15 +532,8 @@ const TitleInputInner = memo(
         requestAnimationFrame(() => updateOverflowState());
       }, [title, updateOverflowState]);
 
-      const setStoreTitle = useCallback(
-        (title: string) =>
-          updateSession({ title }).catch((error) => {
-            console.error("[title-input] failed to persist title", error);
-          }),
-        [updateSession],
-      );
-
       const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (disabled || !active()) return;
         if (isComposingKeyEvent(e)) {
           return;
         }
@@ -323,18 +557,23 @@ const TitleInputInner = memo(
           const beforeCursor = input.value.slice(0, cursorPos);
           const afterCursor = input.value.slice(cursorPos);
 
-          setDraftTitle(beforeCursor);
-          void setStoreTitle(beforeCursor);
-          clearLiveTitle(sessionId);
+          capture(beforeCursor);
+          submit();
 
           if (afterCursor) {
-            setTimeout(() => onTransferContentToEditor?.(afterCursor), 0);
+            setTimeout(() => {
+              if (available()) onTransferContentToEditor?.(afterCursor);
+            }, 0);
           } else {
-            setTimeout(() => onFocusEditorAtStart?.(), 0);
+            setTimeout(() => {
+              if (available()) onFocusEditorAtStart?.();
+            }, 0);
           }
         } else if (e.key === "Tab") {
           e.preventDefault();
-          setTimeout(() => onFocusEditorAtStart?.(), 0);
+          setTimeout(() => {
+            if (available()) onFocusEditorAtStart?.();
+          }, 0);
         } else if (e.key === "ArrowRight") {
           const input = internalRef.current;
           if (!input) return;
@@ -344,7 +583,9 @@ const TitleInputInner = memo(
             input.selectionEnd === cursorPos
           ) {
             e.preventDefault();
-            setTimeout(() => onFocusEditorAtStart?.(), 0);
+            setTimeout(() => {
+              if (available()) onFocusEditorAtStart?.();
+            }, 0);
           }
         } else if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -360,87 +601,135 @@ const TitleInputInner = memo(
             const titleStyle = window.getComputedStyle(input);
             ctx.font = `${titleStyle.fontWeight} ${titleStyle.fontSize} ${titleStyle.fontFamily}`;
             const titleWidth = ctx.measureText(textBeforeCursor).width;
-            setTimeout(() => onFocusEditorAtPixelWidth?.(titleWidth), 0);
+            setTimeout(() => {
+              if (available()) onFocusEditorAtPixelWidth?.(titleWidth);
+            }, 0);
           }
         }
       };
 
+      if (!current()) return null;
       return (
-        <div
-          data-tauri-drag-region="false"
-          style={titleShellStyle}
-          className={cn([
-            "group/title-input relative flex max-w-full items-center overflow-hidden",
-            variant === "breadcrumb"
-              ? "h-5 text-sm leading-5"
-              : "session-title-heading h-[34px] text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
-          ])}
-        >
-          <input
+        <div className="flex max-w-full flex-col gap-1">
+          <div
             data-tauri-drag-region="false"
-            data-session-title-input
-            aria-label={t`Session title`}
-            ref={setInputRef}
-            id={`title-input-${sessionId}-${editorId}`}
-            placeholder={t`Untitled`}
-            type="text"
-            onChange={(e) => {
-              const value = e.target.value;
-              setDraftTitle(value);
-              setLiveTitle(sessionId, value);
-              updateOverflowState(e.target);
-            }}
-            onClick={(e) => updateOverflowState(e.currentTarget)}
-            onKeyDown={handleKeyDown}
-            onKeyUp={(e) => updateOverflowState(e.currentTarget)}
-            onFocus={() => {
-              setDraftTitle(title);
-              setIsTitleFocused(true);
-              updateOverflowState();
-            }}
-            onBlur={(e) => {
-              setIsTitleFocused(false);
-              void setStoreTitle(e.target.value).finally(() => {
-                setDraftTitle(null);
-              });
-              clearLiveTitle(sessionId);
-              updateOverflowState(e.target);
-            }}
-            onScroll={(e) => updateOverflowState(e.currentTarget)}
-            onSelect={(e) => updateOverflowState(e.currentTarget)}
-            value={title}
-            size={visibleTitleLength}
+            style={titleShellStyle}
             className={cn([
-              "w-full min-w-0 transition-opacity duration-200",
-              "border-none bg-transparent focus:outline-hidden",
-              "placeholder:text-muted-foreground text-left",
+              "group/title-input relative flex max-w-full items-center overflow-hidden",
               variant === "breadcrumb"
-                ? "text-muted-foreground h-5 appearance-none p-0 text-sm leading-5 focus:underline"
-                : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
-              variant === "breadcrumb" &&
-                (isTitleFocused
-                  ? "overflow-x-auto whitespace-nowrap"
-                  : "truncate"),
-              showHoverReveal && "text-transparent caret-transparent",
+                ? "h-5 text-sm leading-5"
+                : "session-title-heading h-[34px] text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
             ])}
-          />
-          {showHoverReveal ? (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 flex items-center justify-start overflow-hidden"
-            >
-              <span
-                style={titleHoverScrollStyle}
-                className={cn([
-                  "group-hover/title-input:animate-title-hover-scroll whitespace-nowrap group-hover/title-input:will-change-transform",
-                  variant === "breadcrumb"
-                    ? "text-sm leading-5"
-                    : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
-                ])}
-              >
-                {title}
+          >
+            <input
+              data-tauri-drag-region="false"
+              data-session-title-input
+              aria-label={t`Session title`}
+              ref={setInputRef}
+              id={`title-input-${sessionId}-${editorId}`}
+              placeholder={t`Untitled`}
+              type="text"
+              readOnly={disabled}
+              aria-busy={write.isPending || submitting}
+              onChange={(e) => {
+                const value = e.target.value;
+                capture(value);
+                updateOverflowState(e.target);
+              }}
+              onClick={(e) => updateOverflowState(e.currentTarget)}
+              onKeyDown={handleKeyDown}
+              onKeyUp={(e) => updateOverflowState(e.currentTarget)}
+              onFocus={() => {
+                capture(title);
+                setIsTitleFocused(true);
+                updateOverflowState();
+              }}
+              onBlur={(e) => {
+                setIsTitleFocused(false);
+                const draft = liveSessionTitleDraft(scope, sessionId);
+                if (
+                  draft?.owner === token &&
+                  draft.title === draft.baselineTitle &&
+                  !draft.uncertain &&
+                  !needsReview &&
+                  !write.isPending
+                )
+                  useLiveTitle.getState().clearTitle(draft);
+                else submit();
+                updateOverflowState(e.target);
+              }}
+              onScroll={(e) => updateOverflowState(e.currentTarget)}
+              onSelect={(e) => updateOverflowState(e.currentTarget)}
+              value={title}
+              size={visibleTitleLength}
+              className={cn([
+                "w-full min-w-0 transition-opacity duration-200",
+                "border-none bg-transparent focus:outline-hidden",
+                "placeholder:text-muted-foreground text-left",
+                variant === "breadcrumb"
+                  ? "text-muted-foreground h-5 appearance-none p-0 text-sm leading-5 focus:underline"
+                  : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
+                variant === "breadcrumb" &&
+                  (isTitleFocused
+                    ? "overflow-x-auto whitespace-nowrap"
+                    : "truncate"),
+                showHoverReveal && "text-transparent caret-transparent",
+                isGenerating && !ownDraft && "hidden",
+                showRevealAnimation && !ownDraft && "animate-reveal-left",
+              ])}
+            />
+            {isGenerating && !ownDraft ? (
+              <span className="text-muted-foreground animate-pulse">
+                <Trans>Generating title...</Trans>
               </span>
+            ) : null}
+            {showHoverReveal ? (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 flex items-center justify-start overflow-hidden"
+              >
+                <span
+                  style={titleHoverScrollStyle}
+                  className={cn([
+                    "group-hover/title-input:animate-title-hover-scroll whitespace-nowrap group-hover/title-input:will-change-transform",
+                    variant === "breadcrumb"
+                      ? "text-sm leading-5"
+                      : "text-[26px] leading-[34px] font-semibold tracking-[-0.025em]",
+                  ])}
+                >
+                  {title}
+                </span>
+              </div>
+            ) : null}
+          </div>
+          {needsReview ? (
+            <div role="alert" className="text-muted-foreground text-xs">
+              <p>
+                {write.error?.message ??
+                  review.error?.message ??
+                  t`This title changed or its save could not be confirmed. Your draft is kept.`}
+              </p>
+              <p>
+                <Trans>Saved title: {storeTitle ?? ""}</Trans>
+              </p>
+              <button
+                type="button"
+                disabled={disabled || write.isPending || review.isPending}
+                onClick={reviewSaved}
+              >
+                <Trans>Review saved title</Trans>
+              </button>
             </div>
+          ) : ownDraft &&
+            ownDraft.title !== ownDraft.baselineTitle &&
+            !isTitleFocused ? (
+            <button
+              type="button"
+              disabled={disabled || write.isPending || review.isPending}
+              onClick={submit}
+            >
+              <Trans>Save title</Trans>
+            </button>
           ) : null}
         </div>
       );

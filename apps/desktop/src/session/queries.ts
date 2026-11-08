@@ -13,7 +13,6 @@ import {
   md2json,
   parseJsonContent,
 } from "@hypr/editor/markdown";
-import { useTaskStorageOptional } from "@hypr/editor/task-storage";
 import { hydrateTaskContent } from "@hypr/editor/tasks";
 
 import { taskItemToRecord } from "~/editor-bridge/task-records";
@@ -22,9 +21,13 @@ import { useSessionSummaries } from "~/session/summary-queries";
 import { ensureFirstLineTitle } from "~/session/title-content";
 import { getApplicationClient } from "~/shared/application/client";
 import { documentEditorBaseline } from "~/shared/application/document-editor-draft";
-import type { DocumentTarget } from "~/shared/application/protocol.gen";
+import type {
+  DocumentTarget,
+  MetadataSnapshot,
+  NoteEditorSnapshot,
+} from "~/shared/application/protocol.gen";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { useVaultHost } from "~/shared/application/vault-provider";
-import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import type { DeletedSessionData } from "~/store/zustand/undo-delete";
@@ -32,7 +35,6 @@ import { useTranscriptOverview } from "~/stt/transcript-overview";
 import {
   type EnhancedDoc,
   type SessionMetaPatch,
-  type SessionRecord as StoreSessionRecord,
   type TagSuggestionState,
 } from "~/types/tauri.gen";
 
@@ -70,61 +72,99 @@ export type EnhancedNoteRecord = {
 
 const EMPTY_ENHANCED_NOTES: EnhancedNoteRecord[] = [];
 
-export function useSession(sessionId: string): SessionRecord | null {
-  const taskStorage = useTaskStorageOptional();
-  const { data = null } = useIndexQuery({
-    // Editable content revalidates on mount in case a write or watcher event is
-    // still in flight when the user switches back to the note.
-    refetchOnMount: "always",
-    entity: ["sessions", "tasks"],
-    ids: [sessionId],
-    queryKey: ["session", sessionId],
-    queryFn: async () => {
-      const result = await getApplicationClient().store.sessionGet(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      if (!result.data) return null;
-      const note = mapSessionRecord(result.data);
-      if (taskStorage && note.raw_md) {
-        const source = { type: "session_raw_note", id: sessionId };
-        const loadedTasks = await taskStorage.loadSource?.(source);
-        note.raw_md = JSON.stringify(
-          hydrateTaskContent({
-            content: JSON.parse(note.raw_md),
-            sourceTasks: loadedTasks ?? taskStorage.getTasksForSource(source),
-            getTask: (id) =>
-              loadedTasks?.find((task) => task.taskId === id) ??
-              taskStorage.getTask(id),
-          }),
-        );
-      }
-      return note;
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : null;
+function projectRawNote(
+  sessionId: string,
+  snapshot: NoteEditorSnapshot,
+): string | null {
+  const source = { type: "session_raw_note", id: sessionId };
+  if (
+    snapshot.tasks.tasks.some(
+      (task) => task.body !== null && !Array.isArray(task.body),
+    )
+  )
+    return null;
+  const tasks = snapshot.tasks.tasks.map(taskItemToRecord);
+  if (
+    tasks.some(
+      (task) =>
+        !task || task.sourceType !== source.type || task.sourceId !== source.id,
+    )
+  )
+    return null;
+  if (!snapshot.note.markdown) return "";
+  const owned = tasks.filter((task) => task !== null);
+  const byId = new Map(owned.map((task) => [task.taskId, task]));
+  return JSON.stringify(
+    hydrateTaskContent({
+      content: md2json(snapshot.note.markdown),
+      sourceTasks: owned,
+      getTask: (id) => byId.get(id) ?? null,
+    }),
+  );
 }
 
-/**
- * Note content for the editor, as the stringified prosemirror doc consumers expect.
- * Returns `null` while the session itself hasn't loaded -- callers should keep showing a
- * loading state for that, same as `useSession` returning `null`.
- *
- * This is `useSession`'s `raw_md` and nothing else, deliberately: the index entry's
- * `note_markdown` *is* `sessions/<id>/notes.md` (seeded by the rescan's own `read_note`,
- * kept current by `session_write_note`'s write-through and by the vault watcher's
- * `refresh_session` on external edits), and it rides the `sessions` half of the
- * `index-changed` bus. A second, separately-cached `session_read_note` here used to shadow
- * it; nothing ever invalidated that cache, so a remount inside the cache window (tab switch,
- * second window, an Obsidian edit) handed the editor pre-edit content that the next
- * keystroke's `persistChange` then wrote back over `notes.md`.
- *
- * NoteEditor preserves local edits until saving and reloading confirms their persistence,
- * and defers external changes while the editor is focused.
- */
+export function useSessionMetadata(sessionId: string): MetadataSnapshot | null {
+  const owner = useVaultReadScope();
+  const query = useQuery(
+    {
+      ...owner.scope.metadataOptions(sessionId),
+      enabled:
+        !!sessionId &&
+        owner.readable &&
+        owner.scope.client.features.includes("content_read"),
+    },
+    owner.scope.queryClient,
+  );
+  return sessionId && owner.readable && query.data?.meta.id === sessionId
+    ? query.data
+    : null;
+}
+
+function useRawNoteSource(sessionId: string) {
+  const owner = useVaultReadScope();
+  const select = useCallback(
+    (snapshot: NoteEditorSnapshot) => projectRawNote(sessionId, snapshot),
+    [sessionId],
+  );
+  const query = useQuery(
+    {
+      ...owner.scope.noteEditorOptions(sessionId),
+      enabled:
+        !!sessionId &&
+        owner.readable &&
+        owner.scope.client.features.includes("note_editor_read"),
+      refetchOnMount: "always",
+      select,
+    },
+    owner.scope.queryClient,
+  );
+  return sessionId && owner.readable ? (query.data ?? null) : null;
+}
+
+export function useSession(sessionId: string): SessionRecord | null {
+  const metadata = useSessionMetadata(sessionId);
+  const rawMd = useRawNoteSource(sessionId);
+  return useMemo(
+    () =>
+      metadata && rawMd !== null
+        ? {
+            id: metadata.meta.id,
+            user_id: DEFAULT_USER_ID,
+            created_at: metadata.meta.created_at,
+            folder_id: metadata.meta.folder ?? "",
+            title: metadata.meta.title,
+            raw_md: rawMd,
+            tags: metadata.meta.tags,
+            author: metadata.meta.author ?? null,
+            tag_suggestions: metadata.meta.tag_suggestions ?? null,
+          }
+        : null,
+    [metadata, rawMd],
+  );
+}
+
 export function useSessionRawMd(sessionId: string): string | null {
-  return useSession(sessionId)?.raw_md ?? null;
+  return useRawNoteSource(sessionId);
 }
 
 export function useSessionSummary(
@@ -619,32 +659,6 @@ export async function restoreDeletedSession(
 // path inside that window (a sync client pulling the folder back from another device, a
 // late transcript flush) was destroyed irrecoverably. Hard-deleting on a synced vault is
 // not something this app does.
-
-function mapSessionRecord(record: StoreSessionRecord): SessionRecord {
-  // `note_markdown` is always markdown (the file-canonical `notes.md`); consumers
-  // still expect the stringified prosemirror doc the SQL era handed them.
-  let rawMd = record.note_markdown ?? "";
-  if (rawMd) {
-    try {
-      rawMd = JSON.stringify(md2json(rawMd));
-    } catch (error) {
-      console.error("[session] failed to decode note Markdown", error);
-    }
-  }
-
-  return {
-    id: record.meta.id,
-    // The owner concept died with the workspaces removal (D10).
-    user_id: DEFAULT_USER_ID,
-    created_at: record.meta.created_at,
-    folder_id: record.meta.folder ?? "",
-    title: record.meta.title,
-    raw_md: rawMd,
-    tags: record.meta.tags,
-    author: record.meta.author ?? null,
-    tag_suggestions: record.meta.tag_suggestions ?? null,
-  };
-}
 
 function mapEnhancedDoc(doc: EnhancedDoc): EnhancedNoteRecord {
   // `markdown` is the file body; consumers expect the stringified prosemirror doc.

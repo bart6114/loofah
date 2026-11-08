@@ -1,93 +1,184 @@
-import { renderHook } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
 
-import { createInMemoryTaskStorage } from "@hypr/editor/task-storage";
 import { extractTasksFromContent } from "@hypr/editor/tasks";
 
-const mocks = vi.hoisted(() => ({
-  useIndexQuery: vi.fn((_options: unknown) => ({ data: null })),
-  useTaskStorageOptional: vi.fn(),
-  enhancedDocGet: vi.fn(),
-  sessionSummaryGet: vi.fn(),
-  sessionGet: vi.fn(),
-}));
-vi.mock("~/shared/index-query", () => ({ useIndexQuery: mocks.useIndexQuery }));
-vi.mock("~/types/tauri.gen", () => ({
-  commands: {
-    enhancedDocGet: mocks.enhancedDocGet,
-    sessionSummaryGet: mocks.sessionSummaryGet,
-    sessionGet: mocks.sessionGet,
-  },
-}));
-vi.mock("@hypr/editor/task-storage", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hypr/editor/task-storage")>()),
-  useTaskStorageOptional: mocks.useTaskStorageOptional,
-}));
-
 import { useSession } from "./queries";
+import {
+  createSessionSourceHost,
+  sessionNote,
+} from "./session-source.test-support";
 
-it("hydrates raw notes from uncached canonical tasks on every reopened source", async () => {
-  const source = { type: "session_raw_note", id: "session" };
-  const storage = createInMemoryTaskStorage();
-  const saved = [
+import { taskItemToRecord } from "~/editor-bridge/task-records";
+
+const hosts: ReturnType<typeof createSessionSourceHost>[] = [];
+afterEach(() => {
+  cleanup();
+  hosts.forEach((host) => host.dispose());
+  hosts.length = 0;
+});
+it("hydrates raw rich tasks only from the captured compound snapshot on reopening and task updates", async () => {
+  const host = createSessionSourceHost();
+  hosts.push(host);
+  const snapshot = sessionNote("# Tasks\n- [ ] Send **proposal**");
+  snapshot.tasks.tasks = [
     {
-      taskId: "saved-task",
-      sourceType: source.type,
-      sourceId: source.id,
-      sourceOrder: 0,
-      status: "done" as const,
-      textPreview: "Send proposal",
-      dueDate: "2026-10-01",
+      id: "saved-task",
+      source_type: "session_raw_note",
+      source_id: "session-1",
+      source_order: 0,
+      created_at: "",
+      updated_at: "",
+      status: "done",
+      text: "Send proposal",
       body: [
         {
           type: "paragraph",
-          content: [{ type: "text", text: "Send proposal" }],
+          content: [
+            { type: "text", text: "Send " },
+            { type: "text", text: "proposal", marks: [{ type: "bold" }] },
+          ],
         },
       ],
+      due_at: "2026-11-09",
     },
   ];
-  mocks.useTaskStorageOptional.mockReturnValue(storage);
-  mocks.sessionGet.mockResolvedValue({
-    status: "ok",
-    data: {
-      meta: {
-        id: source.id,
-        title: "Tasks",
-        created_at: "2026-09-20",
-        tags: [],
-      },
-      note_markdown: "# Tasks\n- [ ] Send proposal",
-    },
-  });
+  host.setNote(snapshot);
   for (let cycle = 0; cycle < 3; cycle++) {
-    mocks.useIndexQuery.mockClear();
-    let finish!: () => void;
-    const pending = new Promise<void>((resolve) => {
-      finish = resolve;
+    const view = renderHook(() => useSession("session-1"), {
+      wrapper: host.Host,
     });
-    storage.loadSource = vi.fn(async () => {
-      await pending;
-      return saved;
-    });
-    const hook = renderHook(() => useSession(source.id));
-    const options = mocks.useIndexQuery.mock.calls[0][0] as unknown as {
-      queryFn: () => Promise<{ raw_md: string }>;
-    };
-    let settled = false;
-    const loading = options.queryFn().then((value) => {
-      settled = true;
-      return value;
-    });
-    await vi.waitFor(() =>
-      expect(storage.loadSource).toHaveBeenCalledWith(source),
+    await waitFor(() =>
+      expect(view.result.current?.raw_md).toContain("saved-task"),
     );
-    expect(settled).toBe(false);
-    finish();
-    const note = await loading;
-    expect(
-      extractTasksFromContent(JSON.parse(note.raw_md), source),
-    ).toMatchObject([{ taskId: "saved-task", status: "done" }]);
-    expect(storage.getTasksForSource(source)).toEqual([]);
-    hook.unmount();
+    await waitFor(() => {
+      const current = extractTasksFromContent(
+        JSON.parse(view.result.current!.raw_md),
+        { type: "session_raw_note", id: "session-1" },
+      );
+      expect(current[0].status).toBe(cycle === 0 ? "done" : "in_progress");
+    });
+    const tasks = extractTasksFromContent(
+      JSON.parse(view.result.current!.raw_md),
+      { type: "session_raw_note", id: "session-1" },
+      new Map(
+        snapshot.tasks.tasks.map((item) => {
+          const task = taskItemToRecord(item)!;
+          return [task.taskId, task];
+        }),
+      ),
+    );
+    expect(tasks).toMatchObject([
+      {
+        taskId: "saved-task",
+        status: cycle === 0 ? "done" : "in_progress",
+        dueDate: "2026-11-09",
+        body: [
+          {
+            content: [
+              { text: "Send " },
+              { text: "proposal", marks: [{ type: "bold" }] },
+            ],
+          },
+        ],
+      },
+    ]);
+    view.unmount();
+    snapshot.tasks.tasks[0].status = "in_progress";
+    snapshot.tasks.revision = `tasks-${cycle}`;
+    host.setNote(structuredClone(snapshot));
   }
+});
+it("refuses foreign source tasks rather than loading a global source", async () => {
+  const host = createSessionSourceHost();
+  hosts.push(host);
+  const snapshot = sessionNote("- [ ] foreign");
+  snapshot.tasks.tasks = [
+    {
+      id: "foreign",
+      source_type: "enhanced_note",
+      source_id: "other",
+      source_order: 0,
+      created_at: "",
+      updated_at: "",
+      status: "todo",
+      text: "foreign",
+      body: null,
+      due_at: "",
+    },
+  ];
+  host.setNote(snapshot);
+  const view = renderHook(() => useSession("session-1"), {
+    wrapper: host.Host,
+  });
+  await waitFor(() => expect(host.readNoteEditor).toHaveBeenCalledOnce());
+  expect(view.result.current).toBeNull();
+});
+
+it.each(["", "Body"])(
+  "keeps opaque future task bodies untouched and refuses projection for %s notes",
+  async (markdown) => {
+    const host = createSessionSourceHost();
+    hosts.push(host);
+    const snapshot = sessionNote(markdown);
+    snapshot.tasks.tasks = [
+      {
+        id: "future",
+        source_type: "session_raw_note",
+        source_id: "session-1",
+        source_order: 0,
+        status: "todo",
+        text: "Keep opaque",
+        body: { future: ["payload"] },
+        due_at: "",
+        created_at: "",
+        updated_at: "",
+      },
+    ];
+    host.setNote(snapshot);
+    const view = renderHook(() => useSession("session-1"), {
+      wrapper: host.Host,
+    });
+    await waitFor(() => expect(host.readNoteEditor).toHaveBeenCalledOnce());
+    expect(view.result.current).toBeNull();
+    expect(
+      host.scope.queryClient.getQueryData(
+        host.scope.noteEditorOptions("session-1").queryKey,
+      ),
+    ).toEqual(snapshot);
+  },
+);
+
+it("withdraws an old valid projection when a later snapshot contains opaque task data", async () => {
+  const host = createSessionSourceHost();
+  hosts.push(host);
+  const view = renderHook(() => useSession("session-1"), {
+    wrapper: host.Host,
+  });
+  await waitFor(() =>
+    expect(view.result.current?.raw_md).toContain("Original body"),
+  );
+  const snapshot = sessionNote("Keep original bytes");
+  snapshot.tasks.tasks = [
+    {
+      id: "future",
+      source_type: "session_raw_note",
+      source_id: "session-1",
+      source_order: 0,
+      status: "todo",
+      text: "Future",
+      body: { unknown: true },
+      due_at: "",
+      created_at: "",
+      updated_at: "",
+    },
+  ];
+  host.setNote(snapshot);
+  act(() =>
+    host.emit({
+      kind: "change",
+      change: { kind: "index_changed", entity: "tasks", ids: ["session-1"] },
+    }),
+  );
+  await waitFor(() => expect(view.result.current).toBeNull());
 });
