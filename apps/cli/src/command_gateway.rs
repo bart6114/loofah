@@ -438,7 +438,7 @@ impl CommandGateway {
             },
             Self::Remote(session) => {
                 validate_attachment_basename(&filename)
-                    .map_err(|message| Error::operation("attach file", message))?;
+                    .map_err(|message| Error::operation("attach file", message.to_string()))?;
                 let guard = Arc::new(session.guard().await?);
                 let original = guard.clone();
                 let metadata = tokio::task::spawn_blocking(move || {

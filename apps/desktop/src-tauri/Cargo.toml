@@ -72,11 +72,11 @@ hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
 hypr-export-core = { workspace = true }
 hypr-fs-format = { workspace = true }
+hypr-fs-sync-core = { workspace = true }
 hypr-host = { workspace = true }
 hypr-language = { workspace = true }
 hypr-listener2-core = { workspace = true }
 hypr-loofah-client = { workspace = true, features = ["os-credentials"] }
-hypr-fs-sync-core = { workspace = true }
 hypr-loofah-core = { workspace = true }
 hypr-loofah-local-media = { workspace = true }
 hypr-loofah-local-owner = { workspace = true, features = ["core"] }

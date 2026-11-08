@@ -111,6 +111,9 @@ import {
   events,
   type ConnectionState,
   type LocalCaptureStatus,
+  type ManualMediaSummaryStatus,
+  type SessionExportInput,
+  type SessionExportResult,
   type SearchRequest,
   type SearchResult,
 } from "~/types/tauri.gen";
@@ -135,6 +138,10 @@ export type VaultClient = {
     options?: RequestOptions,
   ) => Promise<void>;
   readonly features: readonly string[];
+  exportSession?: (
+    input: SessionExportInput,
+    options?: RequestOptions,
+  ) => Promise<SessionExportResult>;
   providerCredentials?: {
     status: (
       providerId: string,
@@ -177,7 +184,10 @@ export type VaultClient = {
       requestId: string,
       options?: RequestOptions,
     ) => Promise<LocalMediaStatus>;
-    result: (requestId: string, options?: RequestOptions) => Promise<TranscriptWithData | null>;
+    result: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<TranscriptWithData | null>;
     cancel: (
       requestId: string,
       options?: RequestOptions,
@@ -506,6 +516,32 @@ async function ipc<T>(
   return result;
 }
 
+async function nativeSessionExport(
+  operation: (
+    ownerId: string,
+    requestId: string,
+  ) => ReturnType<typeof commands.applicationExportSession>,
+  options?: RequestOptions,
+) {
+  options?.signal?.throwIfAborted();
+  const owner = applicationResult(await commands.sessionExportOwner());
+  options?.signal?.throwIfAborted();
+  const requestId = options?.requestId ?? crypto.randomUUID();
+  const cancel = () => {
+    void commands.sessionExportCancel(owner, requestId).catch(() => {});
+  };
+  options?.signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    return await ipc(
+      () => operation(owner, requestId),
+      { ...options, requestId },
+      true,
+    );
+  } finally {
+    options?.signal?.removeEventListener("abort", cancel);
+  }
+}
+
 export async function connectLocalVault({
   sessionLifecycleAvailable = false,
 }: { sessionLifecycleAvailable?: boolean } = {}): Promise<VaultClient> {
@@ -588,7 +624,14 @@ export async function connectLocalVault({
       "metadata_edit",
       "tasks_edit",
       "agent_read",
+      "session_export",
     ],
+    exportSession: (input, options) =>
+      nativeSessionExport(
+        (owner, requestId) =>
+          commands.applicationExportSession(owner, requestId, input),
+        options,
+      ),
     media: mediaAvailable
       ? {
           source: (sessionId, options) =>
@@ -633,7 +676,8 @@ export async function connectLocalVault({
             ipc(() => commands.applicationLocalMediaList(sessionId), options),
           status: (requestId, options) =>
             ipc(() => commands.applicationLocalMediaStatus(requestId), options),
-          result: (requestId, options) => ipc(() => commands.applicationLocalMediaResult(requestId), options),
+          result: (requestId, options) =>
+            ipc(() => commands.applicationLocalMediaResult(requestId), options),
           cancel: (requestId, options) =>
             ipc(
               () => commands.applicationLocalMediaCancel(requestId),
@@ -1023,6 +1067,24 @@ export function connectRemoteVault(
           "legacy_desktop_session_controls",
         ].includes(feature),
     ),
+    exportSession: connection.info.capabilities.features.includes("agent_read")
+      ? (input, options) =>
+          nativeSessionExport(
+            (owner, requestId) =>
+              commands.remoteExportSession(
+                connection.info.connection_id,
+                {
+                  server: connection.info.server,
+                  member_id: memberId,
+                  vault_id: vaultId,
+                },
+                owner,
+                requestId,
+                input,
+              ),
+            options,
+          )
+      : undefined,
     transcriptionJobs:
       connection.info.capabilities.features.includes(
         "batch_transcription_jobs",

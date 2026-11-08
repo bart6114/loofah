@@ -862,6 +862,9 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         return;
     }
     state.request_shutdown();
+    if let Some(exports) = app.try_state::<crate::application_export::SessionExportState>() {
+        exports.request_shutdown();
+    }
     if let Some(media) = app.try_state::<crate::local_media::LocalMediaState>() {
         media.request_shutdown();
     }
@@ -910,6 +913,12 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         }
         if let Some(media) = app.try_state::<crate::local_media::LocalMediaState>() {
             while !media.drain(Duration::from_secs(5)).await {
+                let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        }
+        if let Some(exports) = app.try_state::<crate::application_export::SessionExportState>() {
+            while !exports.drain(Duration::from_secs(5)).await {
                 let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
                 tokio::time::sleep(Duration::from_millis(250)).await;
             }

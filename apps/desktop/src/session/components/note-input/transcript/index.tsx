@@ -26,6 +26,7 @@ import {
   mediaControlsAvailable,
   useVaultReadScope,
 } from "~/shared/application/use-vault-read-scope";
+import { VaultMediaProcessing } from "~/shared/application/vault-media-processing";
 import { VaultRecordingProcessing } from "~/shared/application/vault-recording-processing";
 import { VaultTranscription } from "~/shared/application/vault-transcription";
 import { useListener, useListenerStore } from "~/stt/contexts";
@@ -110,12 +111,20 @@ export function TranscriptContent(props: TranscriptContentProps) {
           sessionId={props.sessionId}
         />
       )}
+      {owner.current() && owner.scope.client.media && (
+        <VaultMediaProcessing
+          key={`media:${props.sessionId}`}
+          scope={owner.scope}
+          sessionId={props.sessionId}
+        />
+      )}
       {shared && (
         <VaultTranscription
           key={props.sessionId}
           scope={owner.scope}
           sessionId={props.sessionId}
           hasTranscript={props.transcripts.length > 0}
+          allowStart={!owner.scope.client.media}
         />
       )}
     </>

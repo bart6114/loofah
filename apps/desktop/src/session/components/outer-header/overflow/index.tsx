@@ -51,18 +51,53 @@ export function OverflowButton(props: {
   const deletion = useSessionDeletionAccess();
   if (isAvailable("legacy_desktop_session_controls"))
     return <LegacyOverflowButton {...props} />;
-  if (!deletion.shared) return null;
+  if (!deletion.shared && !legacy.scope.client.exportSession) return null;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Note actions">
-          <MoreHorizontalIcon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DeleteNote sessionId={props.sessionId} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <SharedOverflowButton
+      {...props}
+      canDelete={deletion.shared}
+      canExport={!!legacy.scope.client.exportSession}
+    />
+  );
+}
+
+function SharedOverflowButton({
+  sessionId,
+  currentView,
+  canDelete,
+  canExport,
+}: {
+  sessionId: string;
+  currentView: EditorView;
+  canDelete: boolean;
+  canExport: boolean;
+}) {
+  const [exportOpen, setExportOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Note actions">
+            <MoreHorizontalIcon />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {canExport && (
+            <DropdownMenuItem onSelect={() => setExportOpen(true)}>
+              <FileDownIcon />
+              <Trans>Export</Trans>
+            </DropdownMenuItem>
+          )}
+          {canDelete && <DeleteNote sessionId={sessionId} />}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ExportModal
+        sessionId={sessionId}
+        currentView={currentView}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+      />
+    </>
   );
 }
 

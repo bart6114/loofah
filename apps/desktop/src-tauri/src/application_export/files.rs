@@ -85,7 +85,13 @@ pub(super) async fn local_attachment(
                 file.write_all(&chunk).await.map_err(io_error)?;
                 offset += chunk.len() as u64;
             }
-            if format!("{:x}", hash.finalize()) != descriptor.metadata.sha256 {
+            if hash
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+                != descriptor.metadata.sha256
+            {
                 return Err(error(
                     ErrorCode::Conflict,
                     "Embedded image bytes changed during export",

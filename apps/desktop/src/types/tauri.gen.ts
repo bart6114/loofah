@@ -86,6 +86,59 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationExportSession(
+    ownerId: string,
+    requestId: string,
+    input: SessionExportInput,
+  ): Promise<Result<SessionExportResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_export_session", {
+          ownerId,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteExportSession(
+    connectionId: string,
+    scope: CaptureScope,
+    ownerId: string,
+    requestId: string,
+    input: SessionExportInput,
+  ): Promise<Result<SessionExportResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_export_session", {
+          connectionId,
+          scope,
+          ownerId,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionExportCancel(ownerId: string, requestId: string): Promise<void> {
+    await TAURI_INVOKE("session_export_cancel", { ownerId, requestId });
+  },
+  async sessionExportOwner(): Promise<Result<string, ApplicationError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("session_export_owner") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationScope(): Promise<Result<string, ApplicationError>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("application_scope") };
@@ -96,6 +149,327 @@ export const commands = {
   },
   async applicationProcessingAvailable(): Promise<boolean> {
     return await TAURI_INVOKE("application_processing_available");
+  },
+  async applicationLocalMediaAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_local_media_available");
+  },
+  async applicationLocalMediaSource(
+    sessionId: string,
+  ): Promise<Result<LocalMediaSourceSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_source", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaImportAudio(
+    requestId: string,
+    sessionId: string | null,
+    input: UploadAttachmentRequest,
+    source: DeviceAttachmentSource,
+    createdAt: string | null,
+    contentType: string | null,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_import_audio", {
+          requestId,
+          sessionId,
+          input,
+          source,
+          createdAt,
+          contentType,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaTranscribe(
+    requestId: string,
+    expected: LocalMediaSourceSnapshot,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_transcribe", {
+          requestId,
+          expected,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaImportSubtitles(
+    requestId: string,
+    sessionId: string,
+    input: UploadAttachmentRequest,
+    source: DeviceAttachmentSource,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_import_subtitles", {
+          requestId,
+          sessionId,
+          input,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaList(
+    sessionId: string | null,
+  ): Promise<Result<LocalMediaStatus[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_list", { sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaStatus(
+    requestId: string,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_status", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaResult(
+    requestId: string,
+  ): Promise<Result<TranscriptWithData | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_result", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaCancel(
+    requestId: string,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_cancel", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaRecover(
+    requestId: string,
+  ): Promise<Result<LocalMediaStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_recover", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationLocalMediaSummaryStatus(
+    requestId: string,
+  ): Promise<Result<ManualMediaSummaryStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_local_media_summary_status", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecordingProcessingAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_recording_processing_available");
+  },
+  async applicationRecordingProcessingList(
+    sessionId: string | null,
+  ): Promise<Result<LocalCaptureStatus[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_list", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecordingProcessingStatus(
+    requestId: string,
+  ): Promise<Result<LocalCaptureStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recording_processing_status", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRecoverRecordingProcessing(
+    requestId: string,
+  ): Promise<Result<LocalCaptureStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_recover_recording_processing", {
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionAvailable(): Promise<boolean> {
+    return await TAURI_INVOKE("application_transcription_available");
+  },
+  async applicationTranscriptionPolicy(): Promise<
+    Result<TranscriptionPolicy, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_policy"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSubmitTranscription(
+    input: TranscriptionJobRequest,
+    requestId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_submit_transcription", {
+          input,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionJobs(
+    input: ListTranscriptionJobsInput,
+  ): Promise<Result<TranscriptionJobPage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_jobs", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionJob(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_job", { jobId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTranscriptionJobResult(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobResult | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcription_job_result", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCancelTranscriptionJob(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_cancel_transcription_job", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationResumeTranscriptionResult(
+    jobId: string,
+  ): Promise<Result<TranscriptionJobSnapshot, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_resume_transcription_result", {
+          jobId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
   },
   async applicationProcessingPolicy(): Promise<
     Result<ProcessingPolicy, ApplicationError>
@@ -223,6 +597,93 @@ export const commands = {
           scope,
           input,
           createOnly,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionPrepare(
+    scope: string,
+    input: TranscriptionJobRequest,
+  ): Promise<Result<TranscriptionSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_prepare", {
+          scope,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionGet(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<TranscriptionSubmissionReceipt | null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_get", {
+          scope,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissions(
+    scope: string,
+    sessionId: string | null,
+  ): Promise<Result<TranscriptionSubmissionReceipt[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submissions", {
+          scope,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionObserve(
+    scope: string,
+    requestId: string,
+    snapshot: TranscriptionJobSnapshot,
+  ): Promise<Result<TranscriptionSubmissionReceipt, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_observe", {
+          scope,
+          requestId,
+          snapshot,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceTranscriptionSubmissionForget(
+    scope: string,
+    requestId: string,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_transcription_submission_forget", {
+          scope,
+          requestId,
         }),
       };
     } catch (e) {
@@ -1603,6 +2064,40 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async deviceRecordingAppend(
+    connectionId: string,
+    input: CaptureAppendRequest,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_append", {
+          connectionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingAppendPending(
+    connectionId: string,
+    scope: CaptureScope,
+  ): Promise<Result<CaptureAppendRequest[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_append_pending", {
+          connectionId,
+          scope,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async deviceRecordingCancelProcessing(
     identity: CaptureIdentity,
   ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
@@ -1611,6 +2106,25 @@ export const commands = {
         status: "ok",
         data: await TAURI_INVOKE("device_recording_cancel_processing", {
           identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingRetire(
+    connectionId: string,
+    identity: CaptureIdentity,
+    cleanupRequestId: string,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_retire", {
+          connectionId,
+          identity,
+          cleanupRequestId,
         }),
       };
     } catch (e) {
@@ -2609,14 +3123,46 @@ export type AttachmentUploadStatus =
   | { kind: "committed"; value: FileMetadata }
   | { kind: "rejected" }
   | { kind: "uncertain" };
+export type AudioLayout = "mixed" | "mic_system";
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
 export type AudioPeaks = { durationSec: number; channels: number[][] };
+export type AudioSource = "import" | "recording" | "unknown";
 export type Capabilities = {
   api_major: number;
   application_version: string;
   features: string[];
+};
+/**
+ * A declaration is not write authority. Core must resolve the exact durable
+ * admission under its original lease and compare the entire baseline.
+ */
+export type CaptureAppendAdmission = {
+  request: CaptureAppendRequest;
+  baseline: CaptureAppendBaseline;
+};
+export type CaptureAppendBaseline = {
+  recording_selection: string;
+  recording_sha256: string;
+  transcript_present: boolean;
+  transcript_revision: string;
+  normalized_sha256: string;
+  normalized_bytes: number;
+  frames: number;
+  format: CaptureFormat;
+};
+/**
+ * Persist this identity before dispatch. Retrying preparation must use every
+ * original field, even when its first response was lost.
+ */
+export type CaptureAppendRequest = {
+  scope: CaptureScope;
+  session_id: string;
+  capture_id: string;
+  request_id: string;
+  admission_id: string;
+  processing?: CaptureProcessingOptions | null;
 };
 export type CaptureChannel = "microphone" | "system_audio" | "mixed";
 export type CaptureEncoding = "pcm_f32_le";
@@ -2776,6 +3322,20 @@ export type CapturePublication = {
   canonical_audio_sha256: string;
   canonical_audio_bytes: number;
 };
+export type CaptureRetirementRequest = {
+  cleanup_request_id: string;
+  identity: CaptureIdentity;
+  format: CaptureFormat;
+  source: CaptureSeal;
+  publication: CapturePublication;
+  processing: CaptureProcessingRequest | null;
+};
+export type CaptureRetirementSnapshot = {
+  request: CaptureRetirementRequest;
+  state: CaptureRetirementState;
+  remaining_chunks: number;
+};
+export type CaptureRetirementState = "declared" | "pending" | "retired";
 export type CaptureScope = {
   server: string;
   member_id: string;
@@ -2794,6 +3354,11 @@ export type CaptureTarget =
       kind: "existing_session";
       session_id: string;
       expected_audio_sha256: string | null;
+    }
+  | {
+      kind: "append_session";
+      session_id: string;
+      admission: CaptureAppendAdmission;
     }
   | { kind: "pending_session"; create_request_id: string };
 export type CaptureUploadPhase =
@@ -2865,6 +3430,11 @@ export type ConnectionState =
   | "incompatible"
   | "closed";
 export type CreateSessionRequest = { title: string; markdown: string };
+export type CreateSessionWithMetadataRequest = {
+  title: string;
+  markdown: string;
+  metadata: LocalInitialSessionMetadata;
+};
 export type CreateVaultRequest = { name: string };
 export type CreatedAtFilter = {
   gte: number | null;
@@ -2960,6 +3530,7 @@ export type DeviceRecordingInfo = {
   pcm_bytes: number;
   sealed: boolean;
   publication: CapturePublication | null;
+  retirement: CaptureRetirementSnapshot | null;
   upload: CaptureUploadProgress | null;
   processing: DeviceProcessingProgress | null;
   failure: string | null;
@@ -3072,6 +3643,16 @@ export type ErrorCode =
   | "resource_limit"
   | "cancelled"
   | "internal";
+export type ExportLabels = {
+  untitled: string;
+  created: string;
+  participants: string;
+  duration: string;
+  metadata: string;
+  note: string;
+  summary: string;
+  transcript: string;
+};
 export type FileInfo = {
   filename: string;
   contentType: string;
@@ -3151,6 +3732,84 @@ export type ListProcessingJobsInput = {
 export type ListTranscriptionJobsInput = {
   limit: number | null;
   after: string | null;
+};
+export type LocalCaptureDeclaration = {
+  request_id: string;
+  session_id: string;
+  append: boolean;
+  batch_requested: boolean;
+  transcription: LocalTranscriptionOptions | null;
+  summary: CaptureProcessingSummary | null;
+};
+export type LocalCaptureState =
+  | "capturing"
+  | "waiting_for_persistence"
+  | "transcribing"
+  | "summarizing"
+  | "succeeded"
+  | "skipped"
+  | "not_started"
+  | "review"
+  | "conflict";
+export type LocalCaptureStatus = {
+  declaration: LocalCaptureDeclaration;
+  state: LocalCaptureState;
+  transcription_owner: string;
+  summary_owner: string;
+  transcript_id: string | null;
+  summary_job_id: string | null;
+  message: string | null;
+};
+export type LocalInitialSessionMetadata = {
+  created_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  tags: string[];
+  author: string | null;
+  skill: string | null;
+};
+export type LocalMediaKind = "import_audio" | "transcribe" | "import_subtitles";
+export type LocalMediaSourceSnapshot = {
+  session_id: string;
+  session_created_at: string;
+  recording_selection: string;
+  recording_sha256: string;
+  transcript_revision: string;
+  transcript_present: boolean;
+  audio: SessionAudio;
+};
+export type LocalMediaState =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "review"
+  | "cancelled";
+export type LocalMediaStatus = {
+  request_id: string;
+  session_id: string;
+  kind: LocalMediaKind;
+  state: LocalMediaState;
+  transcript_id: string | null;
+  word_count: number | null;
+  error: ApplicationError | null;
+};
+export type LocalTranscriptionOptions = {
+  model: string;
+  languages: string[];
+  keywords: string[];
+};
+export type ManualMediaSummaryState =
+  | "pending_media"
+  | "source_bound"
+  | "skipped"
+  | "child";
+export type ManualMediaSummaryStatus = {
+  request_id: string;
+  session_id: string;
+  state: ManualMediaSummaryState;
+  child_request_id: string;
+  job: ProcessingJobSnapshot | null;
+  reason: string | null;
 };
 export type Me = { member: MemberInfo; personal_vault_id: string };
 export type Meeting = {
@@ -3586,6 +4245,11 @@ export type RemoteOperation =
       input: TagSuggestionActionRequest;
     }
   | { kind: "create_session"; vault_id: string; input: CreateSessionRequest }
+  | {
+      kind: "create_session_with_metadata";
+      vault_id: string;
+      input: CreateSessionWithMetadataRequest;
+    }
   | { kind: "note"; vault_id: string; session_id: string }
   | { kind: "note_editor"; vault_id: string; session_id: string }
   | {
@@ -3622,6 +4286,7 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "session_created"; value: SessionMeta }
   | { kind: "session_lifecycle"; value: SessionLifecycleSnapshot }
   | { kind: "session_delete"; value: DeleteSessionOutcome }
   | { kind: "session_restore"; value: RestoreSessionOutcome }
@@ -3813,7 +4478,19 @@ export type SegmentWord = {
   is_final: boolean;
   id?: string | null;
 };
+export type SessionAudio = { source: AudioSource; layout: AudioLayout };
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot };
+export type SessionExportFormat = "pdf" | "txt" | "md" | "org";
+export type SessionExportInput = {
+  session_id: string;
+  target: DocumentTarget;
+  format: SessionExportFormat;
+  include_note: boolean;
+  include_summary: boolean;
+  include_transcript: boolean;
+  labels: ExportLabels;
+};
+export type SessionExportResult = { path: string };
 export type SessionLifecycleSnapshot = { session_id: string; revision: string };
 export type SessionListHeader = {
   id: string;
@@ -4194,6 +4871,13 @@ export type TranscriptionPolicy = {
 export type TranscriptionPublication = {
   revision: string;
   transcript_id: string;
+};
+export type TranscriptionSubmissionReceipt = {
+  scope: string;
+  request_id: string;
+  input: TranscriptionJobRequest;
+  created_at_ms: number;
+  job: TranscriptionJobSnapshot | null;
 };
 export type UpdateVaultRequest = { name: string; expected_revision: string };
 export type UploadAttachmentRequest = {

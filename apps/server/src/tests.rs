@@ -1,4 +1,3 @@
-mod initial_metadata;
 mod attachment_remove;
 mod attachment_upload;
 mod attachments;
@@ -8,6 +7,7 @@ mod capture_live;
 mod capture_processing;
 mod compatibility;
 mod document_editor;
+mod initial_metadata;
 mod lifecycle;
 mod metadata;
 mod note_editor;

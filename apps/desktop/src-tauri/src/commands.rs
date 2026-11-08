@@ -73,6 +73,9 @@ pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         || app
             .try_state::<crate::local_media::LocalMediaState>()
             .is_some_and(|state| state.initialized())
+        || app
+            .try_state::<crate::application_export::SessionExportState>()
+            .is_some_and(|state| state.pending())
     {
         crate::device_recordings::begin_exit(app);
         return;

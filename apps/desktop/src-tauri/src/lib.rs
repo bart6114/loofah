@@ -549,6 +549,8 @@ pub async fn main() {
 
             app.state::<local_media::LocalMediaState>()
                 .request_shutdown();
+            app.state::<application_export::SessionExportState>()
+                .request_shutdown();
             app.state::<local_transcription::LocalTranscriptionState>()
                 .request_shutdown();
             app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
@@ -563,6 +565,9 @@ pub async fn main() {
                 || device.initialized()
                 || owner.initialized()
                 || app.state::<local_media::LocalMediaState>().initialized()
+                || app
+                    .state::<application_export::SessionExportState>()
+                    .pending()
                 || app
                     .state::<local_transcription::LocalTranscriptionState>()
                     .initialized()

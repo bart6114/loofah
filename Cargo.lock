@@ -3448,7 +3448,9 @@ dependencies = [
  "capture-store",
  "chrono",
  "dirs 6.0.0",
+ "export-core",
  "fs-format",
+ "fs-sync-core",
  "futures-util",
  "host",
  "intercept",
@@ -3459,8 +3461,10 @@ dependencies = [
  "loofah-local-media",
  "loofah-local-owner",
  "loofah-protocol",
+ "percent-encoding",
  "pico-args",
  "ractor",
+ "same-file",
  "search-cache",
  "serde",
  "serde_json",
@@ -7699,6 +7703,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "vault-read",
 ]
 
 [[package]]

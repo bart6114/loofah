@@ -19,12 +19,30 @@ export type AttachmentPage = { files: FileInfo[]; next_cursor: string | null }
 
 export type AttachmentUploadStatus = { kind: "missing" } | { kind: "committed"; value: FileMetadata } | { kind: "rejected" } | { kind: "uncertain" }
 
+export type AudioLayout = "mixed" | "mic_system"
+
 /**
  * Precomputed waveform channels keep playback from decoding a full recording in the renderer.
  */
 export type AudioPeaks = { durationSec: number; channels: number[][] }
 
+export type AudioSource = "import" | "recording" | "unknown"
+
 export type Capabilities = { api_major: number; application_version: string; features: string[] }
+
+/**
+ * A declaration is not write authority. Core must resolve the exact durable
+ * admission under its original lease and compare the entire baseline.
+ */
+export type CaptureAppendAdmission = { request: CaptureAppendRequest; baseline: CaptureAppendBaseline }
+
+export type CaptureAppendBaseline = { recording_selection: string; recording_sha256: string; transcript_present: boolean; transcript_revision: string; normalized_sha256: string; normalized_bytes: number; frames: number; format: CaptureFormat }
+
+/**
+ * Persist this identity before dispatch. Retrying preparation must use every
+ * original field, even when its first response was lost.
+ */
+export type CaptureAppendRequest = { scope: CaptureScope; session_id: string; capture_id: string; request_id: string; admission_id: string; processing?: CaptureProcessingOptions | null }
 
 export type CaptureChannel = "microphone" | "system_audio" | "mixed"
 
@@ -38,7 +56,7 @@ export type CaptureIdentity = { scope: CaptureScope; capture_id: string; request
 
 export type CaptureIngestRequest = { identity: CaptureIdentity; format: CaptureFormat; first_admitted_audio_observed_at_ms: number }
 
-export type CaptureIngestStatus = { identity: CaptureIdentity; format: CaptureFormat; prefix: CapturePrefixReceipt; seal: CaptureSeal | null; first_admitted_audio_observed_at_ms: number; session_id: string | null; publication: CapturePublication | null }
+export type CaptureIngestStatus = { identity: CaptureIdentity; format: CaptureFormat; prefix: CapturePrefixReceipt; seal: CaptureSeal | null; first_admitted_audio_observed_at_ms: number; session_id: string | null; publication: CapturePublication | null; retirement?: CaptureRetirementSnapshot | null }
 
 export type CaptureLiveCaption = { generation_id: string; sequence: number; physical_channel: number; role: CaptureChannel; new_words: FinalizedWord[]; partials?: PartialWord[]; replaced_ids: string[]; languages: string[] }
 
@@ -56,6 +74,8 @@ export type CapturePrefixReceipt = { capture_fingerprint: string; chunk_count: n
 
 export type CaptureProcessingFailure = "access_denied" | "model_unavailable" | "model_changed" | "source_changed" | "source_unavailable" | "child_failed" | "storage" | "interrupted"
 
+export type CaptureProcessingOptions = { model?: string | null; languages?: string[]; keywords?: string[]; summary?: CaptureProcessingSummary | null }
+
 export type CaptureProcessingRequest = { capture_fingerprint: string; model?: string | null; languages?: string[]; keywords?: string[]; summary?: CaptureProcessingSummary | null }
 
 export type CaptureProcessingSnapshot = { capture_id: string; capture_fingerprint: string; intent_id: string; session_id: string | null; model: string; request: CaptureProcessingRequest; state: CaptureProcessingState; live_generation_id: string | null; repair_job_id: string | null; summary_job_id: string | null; transcript_publication: TranscriptionPublication | null; failure: CaptureProcessingFailure | null; created_at: string; updated_at: string }
@@ -71,11 +91,17 @@ export type CaptureProcessingSummary = { target: DocumentTarget; title_policy?: 
  */
 export type CapturePublication = { source: CaptureSeal; session_id: string; canonical_audio_sha256: string; canonical_audio_bytes: number }
 
+export type CaptureRetirementRequest = { cleanup_request_id: string; identity: CaptureIdentity; format: CaptureFormat; source: CaptureSeal; publication: CapturePublication; processing: CaptureProcessingRequest | null }
+
+export type CaptureRetirementSnapshot = { request: CaptureRetirementRequest; state: CaptureRetirementState; remaining_chunks: number }
+
+export type CaptureRetirementState = "declared" | "pending" | "retired"
+
 export type CaptureScope = { server: string; member_id: string; vault_id: string }
 
 export type CaptureSeal = { capture_fingerprint: string; chunk_count: number; frames: number; pcm_bytes: number; chain_digest: string; source_sha256: string }
 
-export type CaptureTarget = { kind: "existing_session"; session_id: string; expected_audio_sha256: string | null } | { kind: "pending_session"; create_request_id: string }
+export type CaptureTarget = { kind: "existing_session"; session_id: string; expected_audio_sha256: string | null } | { kind: "append_session"; session_id: string; admission: CaptureAppendAdmission } | { kind: "pending_session"; create_request_id: string }
 
 export type Change = { kind: "index_changed"; entity: IndexEntity; ids: string[]; artifacts?: ArtifactChange[] | null } | { kind: "search_ready" } | { kind: "catalog_changed" } | { kind: "processing_settings_changed" } | { kind: "resync_required" } | { kind: "job_changed"; job_id: string } | { kind: "unknown" }
 
@@ -163,6 +189,14 @@ export type ListMeetingsInput = { query: string | null; limit: number | null; of
 export type ListProcessingJobsInput = { limit: number | null; after: string | null; session_id: string | null; active_only: boolean }
 
 export type ListTranscriptionJobsInput = { limit: number | null; after: string | null }
+
+export type LocalMediaKind = "import_audio" | "transcribe" | "import_subtitles"
+
+export type LocalMediaSourceSnapshot = { session_id: string; session_created_at: string; recording_selection: string; recording_sha256: string; transcript_revision: string; transcript_present: boolean; audio: SessionAudio }
+
+export type LocalMediaState = "running" | "succeeded" | "failed" | "review" | "cancelled"
+
+export type LocalMediaStatus = { request_id: string; session_id: string; kind: LocalMediaKind; state: LocalMediaState; transcript_id: string | null; word_count: number | null; error: ApplicationError | null }
 
 export type Me = { member: MemberInfo; personal_vault_id: string }
 
@@ -275,6 +309,8 @@ export type SearchPage = { hits: AgentSearchHit[]; pagination: Pagination }
 export type SegmentKey = { channel: ChannelProfile; speaker_index?: number | null; speaker_human_id?: string | null }
 
 export type SegmentWord = { text: string; start_ms: number; end_ms: number; channel: ChannelProfile; is_final: boolean; id?: string | null }
+
+export type SessionAudio = { source: AudioSource; layout: AudioLayout }
 
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot }
 

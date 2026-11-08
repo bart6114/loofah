@@ -16,10 +16,12 @@ export function VaultTranscription({
   scope,
   sessionId,
   hasTranscript,
+  allowStart = true,
 }: {
   scope: VaultScope;
   sessionId: string;
   hasTranscript: boolean;
+  allowStart?: boolean;
 }) {
   const { t } = useLingui();
   const controller = useMemo(
@@ -92,7 +94,7 @@ export function VaultTranscription({
   const recording = useQuery(
     {
       ...scope.audioMetadataOptions(sessionId),
-      enabled: connected && !hasTranscript,
+      enabled: connected && !hasTranscript && allowStart,
     },
     scope.queryClient,
   );
@@ -206,26 +208,28 @@ export function VaultTranscription({
       className="flex flex-col gap-2 border-t p-3"
       aria-label={t`Transcription jobs`}
     >
-      {!hasTranscript && (recording.isPending || !!recording.data) && (
-        <Button
-          size="sm"
-          disabled={
-            disabled ||
-            !recording.data ||
-            blocked ||
-            receipts.isPending ||
-            receipts.isError ||
-            history.isPending ||
-            history.isError ||
-            !policy.data?.batch_enabled ||
-            policy.data.availability !== "ready" ||
-            [...rows.values()].some(activeTranscription)
-          }
-          onClick={() => action.mutate({ kind: "start" })}
-        >
-          <Trans>Transcribe saved recording</Trans>
-        </Button>
-      )}
+      {allowStart &&
+        !hasTranscript &&
+        (recording.isPending || !!recording.data) && (
+          <Button
+            size="sm"
+            disabled={
+              disabled ||
+              !recording.data ||
+              blocked ||
+              receipts.isPending ||
+              receipts.isError ||
+              history.isPending ||
+              history.isError ||
+              !policy.data?.batch_enabled ||
+              policy.data.availability !== "ready" ||
+              [...rows.values()].some(activeTranscription)
+            }
+            onClick={() => action.mutate({ kind: "start" })}
+          >
+            <Trans>Transcribe saved recording</Trans>
+          </Button>
+        )}
       {!hasTranscript &&
         recording.data &&
         policy.data &&

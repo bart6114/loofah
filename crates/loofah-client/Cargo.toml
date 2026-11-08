@@ -15,6 +15,7 @@ hypr-capture-store = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
+hypr-vault-read = { workspace = true }
 keyring = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "form", "query"] }
 serde = { workspace = true, features = ["derive"] }

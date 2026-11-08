@@ -100,7 +100,10 @@ export function useUploadFile(
         ).includes(fileExtension(path))
       )
         return;
-      return submit({ kind, source: { kind: "path", path } });
+      return submit({
+        kind,
+        source: { kind: "path", path, name: deviceFileName(path) },
+      });
     },
     [check, submit],
   );

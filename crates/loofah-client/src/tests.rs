@@ -1,4 +1,3 @@
-mod initial_metadata;
 mod attachments;
 mod authenticated_scope;
 mod capture;
@@ -8,6 +7,7 @@ mod capture_processing;
 mod capture_upload;
 mod document_editor;
 mod downloads;
+mod initial_metadata;
 mod provider_credentials;
 mod session_lifecycle;
 mod tag_editing;
