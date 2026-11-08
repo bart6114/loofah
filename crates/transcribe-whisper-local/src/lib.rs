@@ -1,4 +1,5 @@
 mod error;
+pub mod resources;
 mod service;
 
 pub use error::*;
