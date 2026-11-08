@@ -171,6 +171,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
         application_version: env!("LOOFAH_VERSION").into(),
         features: vec![
             "capture_ingestion".into(),
+            "capture_publication".into(),
             "notes".into(),
             "session_summaries".into(),
             "tag_editing".into(),

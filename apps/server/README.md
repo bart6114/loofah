@@ -6,7 +6,7 @@ The existing Whisper implementation now exposes a cancellable Rust batch kernel 
 
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 
-The experimental `capture_ingestion` capability exposes authenticated staging APIs below. These endpoints retain private upload chunks; they do not publish a recording into a session, run transcription, expose remote recording controls, or authorize deletion of device audio. Local desktop capture remains login-free. The SDK publication operation requires a separate `capture_publication` capability, which awaits safe canonical publication and recovery integration. Staging support alone cannot dispatch publication or load its credentials.
+The experimental `capture_ingestion` capability exposes authenticated staging APIs below. These endpoints retain private upload chunks; they do not publish a recording into a session, run transcription, expose remote recording controls, or authorize deletion of device audio. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.
 
 | Method | Path below `/api/v1/vaults/{vault}`     | Result                                                                                                        |
 | ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -14,6 +14,38 @@ The experimental `capture_ingestion` capability exposes authenticated staging AP
 | PUT    | `/captures/{capture}/chunks/{sequence}` | Admit an octet-stream PCM chunk with its JSON `X-Capture-Chunk` descriptor; return the exact accepted prefix. |
 | GET    | `/captures/{capture}`                   | Recover the durable prefix and seal after reconnect or an unknown reply.                                      |
 | POST   | `/captures/{capture}/seal`              | Finalize only if the full declared seal matches the admitted audio.                                           |
+| POST   | `/captures/{capture}/publish`           | Verify the sealed source and publish absent-only canonical WAV; return its bound checksum/size observation.   |
+
+Publication accepts the original `CaptureSeal` and a UUID trace header. Its durable
+operation identity stays the original capture declaration UUID. It checks current
+membership again after expensive verification/preparation, then retains the grant
+and vault ownership through real commit and durable capture observation. It keeps
+an existing start time, otherwise using the producer's original first-audio time.
+No end time is invented. Pending-note creation, append/replacement and any existing
+`transcript.json` require a later explicit operation; they are refused unchanged.
+
+Private WAV/result stages and receipts recover exact admitted writes before vault
+readiness. Same-process gates prevent playback, recording metadata/waveform reads
+or deletion from observing an incomplete publication; gates recheck after awaited
+reads. Known uncertain sessions remain gated; an ambiguous directory scan gates
+recordings vault-wide while notes remain usable. Completed receipts do not recreate
+later-deleted recordings. Unknown attachments and unclaimed stages are preserved.
+
+A published response contains the exact source seal, session ID, canonical SHA-256
+and byte count. Verify a separate authenticated canonical artifact read before
+considering device cleanup. Neither upload acknowledgment nor this response alone
+authorizes deleting device audio; server raw source is retained. A lost reply is
+recovered through status and explicit identical retry without another file publish.
+These APIs are internal building blocks; remote recording controls, uploader
+lifecycle and server transcription remain in progress.
+
+Back up the recording-publications bookkeeping with its vault. Resolve pending
+intents with the current reader before rollback; older executables can ignore this
+new private directory and cannot safely finish those transactions. Restore a
+matching binary and complete storage backup rather than deleting uncertain
+receipts. Atomic exclusive moves preserve destinations on macOS, Linux and
+Windows; the inherited directory-sync helper is Unix-only, so Windows power-loss
+durability has not been established as equivalent.
 
 The service derives the server, member and vault scope from its configuration and current authorization. Staging is private to its contributing member, including in shared vaults. Editors and owners can upload; a demoted reader can inspect their own staged capture while they retain vault membership. Each operation checks access again after startup before admitting a read or mutation. Status polling supplies reconnect recovery; canonical change streams keep their existing event types.
 

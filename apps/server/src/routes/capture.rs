@@ -12,6 +12,10 @@ pub(super) fn router() -> Router<Arc<Service>> {
             "/vaults/{vault}/captures/{capture}/seal",
             axum::routing::post(seal),
         )
+        .route(
+            "/vaults/{vault}/captures/{capture}/publish",
+            axum::routing::post(publish),
+        )
 }
 
 async fn begin(
@@ -154,6 +158,26 @@ async fn seal(
     .await
 }
 
+async fn publish(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, capture)): ApiPath<(String, String)>,
+    headers: HeaderMap,
+    ApiJson(input): ApiJson<CaptureSeal>,
+) -> Result<Json<CaptureIngestStatus>> {
+    request_id(&headers)?;
+    let (context, member) = context(&service, &identity, &vault, true).await?;
+    let authorize = authorization(service.clone(), identity, vault, true);
+    admitted_write(&service, async move {
+        Ok(Json(
+            context
+                .publish_capture_authorized(member, capture, input, authorize)
+                .await?,
+        ))
+    })
+    .await
+}
+
 async fn context(
     service: &Service,
     identity: &Identity,
@@ -171,10 +195,13 @@ fn authorization(
     identity: Identity,
     vault: String,
     write: bool,
-) -> impl FnOnce() -> std::pin::Pin<
+) -> impl Fn() -> std::pin::Pin<
     Box<dyn Future<Output = std::result::Result<VaultAccess, ApplicationError>> + Send>,
 > + Send {
     move || {
+        let service = service.clone();
+        let identity = identity.clone();
+        let vault = vault.clone();
         Box::pin(async move {
             if service.stop.is_cancelled() {
                 return Err(rejected(ErrorCode::Unavailable, "Server is shutting down").0);
