@@ -212,8 +212,8 @@ async fn future_runtime_schema_keeps_liveness_but_fails_readiness_without_leakin
         .join("creates/document-saves");
     std::fs::create_dir_all(&pending).unwrap();
     let path = pending.join(format!("{}.json", "a".repeat(64)));
-    let bytes = br#"{"schema_version":999,"private":"PRIVATE-SOURCE-CANARY"}"#;
-    std::fs::write(&path, bytes).unwrap();
+    let bytes = serde_json::to_vec(&json!({"schema_version":999,"session_id":"PRIVATE-SOURCE-CANARY","target":{"kind":"summary"},"before_revision":"a".repeat(64),"after_revision":"b".repeat(64),"before_tasks_hash":"c".repeat(64),"tasks":[]})).unwrap();
+    std::fs::write(&path, &bytes).unwrap();
     let service = Service::open(config).await.unwrap();
     let app = crate::routes::router(service.clone());
     tokio::time::timeout(Duration::from_secs(10), async {

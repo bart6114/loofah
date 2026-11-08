@@ -15,10 +15,10 @@ use serde::Serialize;
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const MAX_VAULTS: usize = 4096;
@@ -61,6 +61,8 @@ pub(crate) struct VaultMetrics {
 struct Observation {
     readiness: Readiness,
     sampled_at_ms: u64,
+    #[serde(skip)]
+    sampled_at: Option<Instant>,
     durable: Option<OperationalSnapshot>,
 }
 #[derive(Serialize)]
@@ -93,6 +95,7 @@ impl Default for VaultMetrics {
             observation: Mutex::new(Observation {
                 readiness: Readiness::Opening,
                 sampled_at_ms: 0,
+                sampled_at: None,
                 durable: None,
             }),
             writes: AtomicU64::new(0),
@@ -109,6 +112,14 @@ fn increment(value: &AtomicU64) {
     let _ = value.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
         Some(value.saturating_add(1))
     });
+}
+fn elapsed_ms() -> u64 {
+    static STARTED: OnceLock<Instant> = OnceLock::new();
+    STARTED
+        .get_or_init(Instant::now)
+        .elapsed()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
 }
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -136,7 +147,7 @@ impl Observability {
     pub(crate) fn is_ready(&self, generation: u64) -> bool {
         self.ready.load(Ordering::Acquire)
             && self.catalog_generation.load(Ordering::Acquire) == generation
-            && now_ms().saturating_sub(self.ready_sample_ms.load(Ordering::Acquire)) <= 90_000
+            && elapsed_ms().saturating_sub(self.ready_sample_ms.load(Ordering::Acquire)) <= 90_000
     }
     pub(crate) fn request_scope(
         self: &Arc<Self>,
@@ -201,12 +212,15 @@ impl VaultMetrics {
             readiness,
             durable,
             sampled_at_ms: now_ms(),
+            sampled_at: Some(Instant::now()),
         };
     }
     fn snapshot(&self, pressure: StoragePressure) -> Snapshot {
         let observation = self.observation.lock().unwrap().clone();
         Snapshot {
-            sample_stale: now_ms().saturating_sub(observation.sampled_at_ms) > 90_000,
+            sample_stale: observation
+                .sampled_at
+                .is_none_or(|sampled| sampled.elapsed() > Duration::from_secs(90)),
             observation,
             storage_pressure: pressure,
             admitted_writes: self.writes.load(Ordering::Relaxed),
@@ -301,7 +315,7 @@ pub(crate) async fn run(service: std::sync::Weak<Service>) {
         service
             .observability
             .ready_sample_ms
-            .store(now_ms(), Ordering::Release);
+            .store(elapsed_ms(), Ordering::Release);
         service
             .observability
             .ready
