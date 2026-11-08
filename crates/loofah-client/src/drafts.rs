@@ -3,12 +3,17 @@ use std::{
     sync::Arc,
 };
 
-use hypr_loofah_protocol::{ApplicationError, ErrorCode, NoteSnapshot, TaskInput, TasksSnapshot};
+use hypr_loofah_protocol::{
+    ApplicationError, DocumentTarget, ErrorCode, MetadataSnapshot, NoteSnapshot, TaskInput,
+    TasksSnapshot,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 use crate::{Result, failure};
+
+mod document_editor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct DraftText {
@@ -24,6 +29,14 @@ pub struct EditorTaskRecovery {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
+pub struct DocumentEditorRecovery {
+    pub session_id: String,
+    pub target: DocumentTarget,
+    pub metadata: MetadataSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct NoteDraftRecovery {
     pub scope: String,
     pub session_id: String,
@@ -33,6 +46,9 @@ pub struct NoteDraftRecovery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub editor_tasks: Option<EditorTaskRecovery>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[specta(optional)]
+    pub document_editor: Option<DocumentEditorRecovery>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -240,12 +256,15 @@ impl DraftCache {
         recovery: NoteDraftRecovery,
     ) -> Result<()> {
         coordinate(&editor_id, &recovery.scope, &recovery.session_id)?;
+        document_editor::validate(&recovery)?;
         let cache = self.clone();
         let guard = self.gate.clone().lock_owned().await;
         tokio::task::spawn_blocking(move || {
             let _guard = guard;
             let bytes = serde_json::to_string(&StoredDraft {
-                schema_version: if recovery.editor_tasks.is_some() {
+                schema_version: if recovery.document_editor.is_some() {
+                    3
+                } else if recovery.editor_tasks.is_some() {
                     2
                 } else {
                     1
@@ -261,6 +280,16 @@ impl DraftCache {
             cache.prepare(&path)?;
             let previous_record =
                 cache.read(&path, &editor_id, &recovery.scope, &recovery.session_id)?;
+            if previous_record
+                .as_ref()
+                .is_some_and(|record| record.document_editor.is_some())
+                && recovery.document_editor.is_none()
+            {
+                return Err(failure(
+                    ErrorCode::IncompatibleVersion,
+                    "This recovery copy requires the document editor. Its file was kept.",
+                ));
+            }
             if previous_record.is_some_and(|record| record.editor_tasks.is_some())
                 && recovery.editor_tasks.is_none()
             {
@@ -434,16 +463,23 @@ impl DraftCache {
         let version = value
             .get("schema_version")
             .and_then(serde_json::Value::as_u64);
-        if !matches!(version, Some(1 | 2)) {
+        if !matches!(version, Some(1 | 2 | 3)) {
             return Err(failure(
                 ErrorCode::IncompatibleVersion,
                 "This saved draft requires a different Loofah version. The file was kept.",
             ));
         }
-        let stored: StoredDraft = serde_json::from_value(value).map_err(|_| damaged())?;
-        if (stored.schema_version == 2) != stored.recovery.editor_tasks.is_some() {
+        drop(value);
+        let stored: StoredDraft = serde_json::from_slice(&bytes).map_err(|_| damaged())?;
+        let tasks = stored.recovery.editor_tasks.is_some();
+        let document = stored.recovery.document_editor.is_some();
+        if !matches!(
+            (stored.schema_version, tasks, document),
+            (1, false, false) | (2, true, false) | (3, true, true)
+        ) {
             return Err(damaged());
         }
+        document_editor::validate(&stored.recovery).map_err(|_| damaged())?;
         Ok(Some(stored))
     }
 }
@@ -520,7 +556,7 @@ fn sync_parent(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn recovery(scope: &str, session_id: &str, body: &str) -> NoteDraftRecovery {
+    pub(super) fn recovery(scope: &str, session_id: &str, body: &str) -> NoteDraftRecovery {
         NoteDraftRecovery {
             scope: scope.into(),
             session_id: session_id.into(),
@@ -535,6 +571,7 @@ mod tests {
             },
             uncertain: true,
             editor_tasks: None,
+            document_editor: None,
         }
     }
 
@@ -739,14 +776,14 @@ mod tests {
             bounded.all_inventory().await.unwrap_err().code,
             ErrorCode::ResourceLimit
         );
-        std::fs::write(&alice, r#"{"schema_version":3}"#).unwrap();
+        std::fs::write(&alice, r#"{"schema_version":4}"#).unwrap();
         assert_eq!(
             cache.all_inventory().await.unwrap_err().code,
             ErrorCode::IncompatibleVersion
         );
         assert_eq!(
             std::fs::read_to_string(&alice).unwrap(),
-            r#"{"schema_version":3}"#
+            r#"{"schema_version":4}"#
         );
         std::fs::write(&alice, &alice_bytes).unwrap();
         std::fs::write(&bob, &alice_bytes).unwrap();
@@ -854,7 +891,7 @@ mod tests {
         for (content, code) in [
             ("invalid JSON".to_owned(), ErrorCode::Internal),
             (
-                serde_json::to_string(&serde_json::json!({"schema_version":3})).unwrap(),
+                serde_json::to_string(&serde_json::json!({"schema_version":4})).unwrap(),
                 ErrorCode::IncompatibleVersion,
             ),
         ] {
@@ -1048,7 +1085,7 @@ mod tests {
         assert!(path.starts_with(root.path().join("cache")));
         for bytes in [
             b"{broken".as_slice(),
-            b"{\"schema_version\":3,\"recovery\":{}}".as_slice(),
+            b"{\"schema_version\":4,\"recovery\":{}}".as_slice(),
         ] {
             std::fs::write(&path, bytes).unwrap();
             assert!(
