@@ -17,7 +17,9 @@ pub use output::JSON_SCHEMA_VERSION;
 
 pub async fn run(args: Args) -> Result<u8> {
     let json_progress = args.json || matches!(&args.command, cli::Command::Mcp);
-    output::with_progress_format(json_progress, run_inner(args)).await
+    // Keep the task-local wrapper and main runtime future small. The command
+    // remains on this task, so progress and cancellation behavior are unchanged.
+    output::with_progress_format(json_progress, Box::pin(run_inner(args))).await
 }
 
 async fn run_inner(args: Args) -> Result<u8> {
