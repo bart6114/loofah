@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
@@ -44,6 +44,8 @@ struct StoredProfile {
 struct LoadedProfile {
     stored: StoredProfile,
     raw: Vec<u8>,
+    generation: u64,
+    removed: bool,
 }
 
 pub struct ConnectionProfiles {
@@ -53,6 +55,25 @@ pub struct ProfileLease {
     store: Arc<ConnectionProfiles>,
     state: Arc<Mutex<LoadedProfile>>,
     _lock: File,
+}
+
+/// A cheap operation baseline; it does not prevent profile edits during verification.
+pub struct ProfileGeneration {
+    owner: Weak<Mutex<LoadedProfile>>,
+    generation: u64,
+    profile: ConnectionProfile,
+}
+
+impl ProfileGeneration {
+    pub fn profile(&self) -> &ConnectionProfile {
+        &self.profile
+    }
+}
+
+/// Hold only across the final owned commit, after slow verification has completed.
+pub struct ProfileCommitGuard {
+    _state: tokio::sync::OwnedMutexGuard<LoadedProfile>,
+    _lease: Arc<ProfileLease>,
 }
 
 impl ConnectionProfiles {
@@ -132,7 +153,12 @@ impl ConnectionProfiles {
             store.write(&stored.profile.name, &raw)?;
             Ok(Arc::new(ProfileLease {
                 store,
-                state: Arc::new(Mutex::new(LoadedProfile { stored, raw })),
+                state: Arc::new(Mutex::new(LoadedProfile {
+                    stored,
+                    raw,
+                    generation: 0,
+                    removed: false,
+                })),
                 _lock: lock,
             }))
         })
@@ -257,9 +283,54 @@ impl ProfileLease {
         self.state.lock().await.stored.profile.clone()
     }
 
+    pub async fn generation(&self) -> Result<ProfileGeneration> {
+        let state = self.state.lock().await;
+        if state.removed {
+            return Err(changed());
+        }
+        Ok(ProfileGeneration {
+            owner: Arc::downgrade(&self.state),
+            generation: state.generation,
+            profile: state.stored.profile.clone(),
+        })
+    }
+
+    pub async fn guard_generation(
+        self: &Arc<Self>,
+        baseline: &ProfileGeneration,
+    ) -> Result<ProfileCommitGuard> {
+        if !Weak::ptr_eq(&baseline.owner, &Arc::downgrade(&self.state)) {
+            return Err(changed());
+        }
+        let state = self.state.clone().lock_owned().await;
+        if state.removed || state.generation != baseline.generation {
+            return Err(changed());
+        }
+        let lease = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let current = lease
+                .store
+                .read(&state.stored.profile.name)?
+                .ok_or_else(changed)?;
+            if current.raw != state.raw {
+                return Err(changed());
+            }
+            Ok(ProfileCommitGuard {
+                _state: state,
+                _lease: lease,
+            })
+        })
+        .await
+        .map_err(|_| worker_error())?
+    }
+
     pub async fn save(self: &Arc<Self>, mut profile: ConnectionProfile) -> Result<()> {
         validate_profile(&profile)?;
         let mut state = self.state.clone().lock_owned().await;
+        if state.removed {
+            return Err(changed());
+        }
+        state.generation = state.generation.checked_add(1).ok_or_else(changed)?;
         let lease = self.clone();
         tokio::task::spawn_blocking(move || {
             let previous = &state.stored.profile;
@@ -289,7 +360,8 @@ impl ProfileLease {
             };
             let raw = serde_json::to_vec_pretty(&stored).map_err(|_| damaged())?;
             lease.store.write(&stored.profile.name, &raw)?;
-            *state = LoadedProfile { stored, raw };
+            state.stored = stored;
+            state.raw = raw;
             Ok(())
         })
         .await
@@ -297,7 +369,11 @@ impl ProfileLease {
     }
 
     pub async fn remove(self: &Arc<Self>) -> Result<()> {
-        let state = self.state.clone().lock_owned().await;
+        let mut state = self.state.clone().lock_owned().await;
+        if state.removed {
+            return Err(changed());
+        }
+        state.generation = state.generation.checked_add(1).ok_or_else(changed)?;
         let lease = self.clone();
         tokio::task::spawn_blocking(move || {
             let name = &state.stored.profile.name;
@@ -306,6 +382,7 @@ impl ProfileLease {
                 return Err(changed());
             }
             let path = lease.store.path(name);
+            state.removed = true;
             std::fs::remove_file(&path).map_err(io_error)?;
             sync_parent(&path)
         })
@@ -355,7 +432,12 @@ fn read_file(path: &Path) -> Result<Option<LoadedProfile>> {
     }
     let stored: StoredProfile = serde_json::from_slice(&raw).map_err(|_| damaged())?;
     validate_profile(&stored.profile).map_err(|_| damaged())?;
-    Ok(Some(LoadedProfile { stored, raw }))
+    Ok(Some(LoadedProfile {
+        stored,
+        raw,
+        generation: 0,
+        removed: false,
+    }))
 }
 
 fn read_record(path: &Path, limit: usize) -> Result<Option<Vec<u8>>> {
@@ -808,5 +890,105 @@ mod process_tests {
         assert!(probe("held").contains("PROFILE_LOCK_HELD_BY_OTHER_PROCESS"));
         drop(lease);
         assert!(probe("free").contains("PROFILE_LOCK_AVAILABLE"));
+    }
+}
+
+#[cfg(test)]
+mod generation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn snapshot_allows_edits_but_aba_and_failed_edits_invalidate_commit_admission() {
+        let root = tempfile::tempdir().unwrap();
+        let store = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+        let lease = store
+            .create("work", "https://company.example")
+            .await
+            .unwrap();
+        let mut original = lease.profile().await;
+        original.member_id = Some("member".into());
+        original.vault_id = Some("vault-a".into());
+        lease.save(original.clone()).await.unwrap();
+        let baseline = lease.generation().await.unwrap();
+        assert_eq!(baseline.profile(), &original);
+        let mut changed_profile = original.clone();
+        changed_profile.vault_id = Some("vault-b".into());
+        lease.save(changed_profile).await.unwrap();
+        lease.save(original.clone()).await.unwrap();
+        assert!(lease.guard_generation(&baseline).await.is_err());
+        let baseline = lease.generation().await.unwrap();
+        let mut invalid = original;
+        invalid.server = "https://other.example/".into();
+        assert!(lease.save(invalid).await.is_err());
+        assert!(lease.guard_generation(&baseline).await.is_err());
+        assert!(
+            lease
+                .guard_generation(&lease.generation().await.unwrap())
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn short_commit_guard_serializes_save_and_remove_and_rejects_other_owners() {
+        let root = tempfile::tempdir().unwrap();
+        let store = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+        let lease = store
+            .create("work", "https://company.example")
+            .await
+            .unwrap();
+        let other = store
+            .create("other", "https://company.example")
+            .await
+            .unwrap();
+        let baseline = lease.generation().await.unwrap();
+        assert!(other.guard_generation(&baseline).await.is_err());
+        let guard = lease.guard_generation(&baseline).await.unwrap();
+        let owner = lease.clone();
+        let mut profile = baseline.profile().clone();
+        profile.vault_id = Some("changed".into());
+        let mut saving = tokio::spawn(async move { owner.save(profile).await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut saving)
+                .await
+                .is_err()
+        );
+        drop(guard);
+        saving.await.unwrap().unwrap();
+        assert!(lease.guard_generation(&baseline).await.is_err());
+        let baseline = lease.generation().await.unwrap();
+        let guard = lease.guard_generation(&baseline).await.unwrap();
+        let owner = lease.clone();
+        let mut removing = tokio::spawn(async move { owner.remove().await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut removing)
+                .await
+                .is_err()
+        );
+        drop(guard);
+        removing.await.unwrap().unwrap();
+        assert!(lease.guard_generation(&baseline).await.is_err());
+        assert!(lease.generation().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn commit_guard_rechecks_disk_and_cannot_survive_profile_reopen() {
+        let root = tempfile::tempdir().unwrap();
+        let store = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+        let lease = store
+            .create("work", "https://company.example")
+            .await
+            .unwrap();
+        let baseline = lease.generation().await.unwrap();
+        let path = store.path("work");
+        let original = std::fs::read(&path).unwrap();
+        let mut edited: serde_json::Value = serde_json::from_slice(&original).unwrap();
+        edited["profile"]["vaultId"] = serde_json::json!("foreign");
+        std::fs::write(&path, serde_json::to_vec(&edited).unwrap()).unwrap();
+        assert!(lease.guard_generation(&baseline).await.is_err());
+        std::fs::write(&path, original).unwrap();
+        drop(lease);
+        let reopened = store.open("work").await.unwrap();
+        assert!(reopened.guard_generation(&baseline).await.is_err());
     }
 }

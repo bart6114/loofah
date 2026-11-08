@@ -2,9 +2,10 @@
 //! it never opens a vault, dispatches uploads, or removes captured audio.
 
 use std::{
+    collections::BTreeMap,
     fs::File,
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 
 use hypr_loofah_protocol::{ApplicationError, ErrorCode, MutationOutcome};
@@ -24,6 +25,7 @@ pub struct CaptureSpool {
     state: Mutex<store::State>,
     _lease: File,
     io: Arc<tokio::sync::Semaphore>,
+    uses: Mutex<BTreeMap<String, Weak<tokio::sync::RwLock<()>>>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -34,6 +36,21 @@ pub struct CaptureSpool {
 pub struct CaptureWriter {
     spool: Arc<CaptureSpool>,
     identity: CaptureIdentity,
+    usage: Arc<tokio::sync::OwnedRwLockReadGuard<()>>,
+}
+
+/// Exclusive source admission, not proof or permission to delete any audio.
+/// Retain this owner through the actual commit, including detached filesystem work.
+pub struct CaptureRetirementAdmission {
+    snapshot: CaptureSnapshot,
+    _spool: Arc<CaptureSpool>,
+    _usage: Arc<tokio::sync::OwnedRwLockWriteGuard<()>>,
+}
+
+impl CaptureRetirementAdmission {
+    pub fn snapshot(&self) -> &CaptureSnapshot {
+        &self.snapshot
+    }
 }
 
 impl CaptureSpool {
@@ -63,6 +80,7 @@ impl CaptureSpool {
                 state: Mutex::new(state),
                 _lease: lease,
                 io: Arc::new(tokio::sync::Semaphore::new(2)),
+                uses: Mutex::new(BTreeMap::new()),
                 #[cfg(test)]
                 fault: std::sync::atomic::AtomicU8::new(0),
                 #[cfg(test)]
@@ -138,25 +156,87 @@ impl CaptureSpool {
     ) -> Result<CaptureWriter> {
         validate_identity(&identity)?;
         validate_format(&format)?;
+        let usage = Arc::new(
+            self.use_gate(&identity)?
+                .try_read_owned()
+                .map_err(|_| busy())?,
+        );
+        let admitted = usage.clone();
         let coordinate = identity.clone();
         self.run(move |spool, state| {
+            let _admitted = admitted;
             store::begin(spool, state, coordinate, format, observation, processing)
         })
         .await?;
         Ok(CaptureWriter {
             spool: self.clone(),
             identity,
+            usage,
         })
     }
 
     pub async fn resume(self: &Arc<Self>, identity: CaptureIdentity) -> Result<CaptureWriter> {
         validate_identity(&identity)?;
+        let usage = Arc::new(
+            self.use_gate(&identity)?
+                .try_read_owned()
+                .map_err(|_| busy())?,
+        );
+        let admitted = usage.clone();
         let coordinate = identity.clone();
-        self.run(move |spool, state| store::resume(spool, state, &coordinate))
-            .await?;
+        self.run(move |spool, state| {
+            let _admitted = admitted;
+            store::resume(spool, state, &coordinate)
+        })
+        .await?;
         Ok(CaptureWriter {
             spool: self.clone(),
             identity,
+            usage,
+        })
+    }
+
+    fn use_gate(&self, identity: &CaptureIdentity) -> Result<Arc<tokio::sync::RwLock<()>>> {
+        let key = hash(
+            serde_json::to_vec(&(&identity.scope, &identity.capture_id)).map_err(|_| damaged())?,
+        );
+        let mut uses = self.uses.lock().map_err(|_| damaged())?;
+        uses.retain(|_, gate| gate.strong_count() != 0);
+        if let Some(gate) = uses.get(&key).and_then(Weak::upgrade) {
+            return Ok(gate);
+        }
+        let gate = Arc::new(tokio::sync::RwLock::new(()));
+        uses.insert(key, Arc::downgrade(&gate));
+        Ok(gate)
+    }
+
+    pub async fn admit_retirement(
+        self: &Arc<Self>,
+        identity: CaptureIdentity,
+    ) -> Result<CaptureRetirementAdmission> {
+        validate_identity(&identity)?;
+        let usage = Arc::new(
+            self.use_gate(&identity)?
+                .try_write_owned()
+                .map_err(|_| busy())?,
+        );
+        let admitted = usage.clone();
+        let snapshot = self
+            .run(move |spool, state| {
+                let _admitted = admitted;
+                let snapshot = store::snapshot(spool, state, &identity)?;
+                if snapshot.seal.is_none() || snapshot.publication.is_none() {
+                    return Err(invalid(
+                        "Source retirement requires a sealed published capture",
+                    ));
+                }
+                Ok(snapshot)
+            })
+            .await?;
+        Ok(CaptureRetirementAdmission {
+            snapshot,
+            _spool: self.clone(),
+            _usage: usage,
         })
     }
 
@@ -211,6 +291,19 @@ impl CaptureSpool {
 }
 
 impl CaptureWriter {
+    async fn run<T: Send + 'static>(
+        &self,
+        action: impl FnOnce(&CaptureSpool, &mut store::State) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let usage = self.usage.clone();
+        self.spool
+            .run(move |spool, state| {
+                let _usage = usage;
+                action(spool, state)
+            })
+            .await
+    }
+
     /// Join already admitted blocking spool I/O, including a dropped async waiter.
     pub async fn wait_for_io(&self) {
         self.spool.wait_for_io().await;
@@ -222,23 +315,20 @@ impl CaptureWriter {
 
     pub async fn snapshot(&self) -> Result<CaptureSnapshot> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::snapshot(spool, state, &id))
+        self.run(move |spool, state| store::snapshot(spool, state, &id))
             .await
     }
 
     pub async fn cancel_processing(&self) -> Result<CaptureSnapshot> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::cancel_processing(spool, state, &id))
+        self.run(move |spool, state| store::cancel_processing(spool, state, &id))
             .await
     }
 
     pub async fn record_first_audio_observation(&self, ms: u64) -> Result<CaptureSnapshot> {
         validate_observation(ms)?;
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::record_first_audio_observation(spool, state, &id, ms))
+        self.run(move |spool, state| store::record_first_audio_observation(spool, state, &id, ms))
             .await
     }
 
@@ -255,8 +345,7 @@ impl CaptureWriter {
             return Err(invalid("Invalid capture chunk size"));
         }
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::append(spool, state, &id, sequence, frames, bytes))
+        self.run(move |spool, state| store::append(spool, state, &id, sequence, frames, bytes))
             .await
     }
 
@@ -269,37 +358,32 @@ impl CaptureWriter {
             return Err(invalid("Invalid capture chunk page size"));
         }
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::chunks(spool, state, &id, after, limit))
+        self.run(move |spool, state| store::chunks(spool, state, &id, after, limit))
             .await
     }
 
     pub async fn read_chunk(&self, sequence: u64) -> Result<CaptureChunk> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::read_chunk(spool, state, &id, sequence))
+        self.run(move |spool, state| store::read_chunk(spool, state, &id, sequence))
             .await
     }
 
     pub async fn seal(&self) -> Result<CaptureSeal> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::seal(spool, state, &id, None))
+        self.run(move |spool, state| store::seal(spool, state, &id, None))
             .await
     }
 
     pub async fn seal_if_matches(&self, expected: CaptureSeal) -> Result<CaptureSeal> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::seal(spool, state, &id, Some(expected)))
+        self.run(move |spool, state| store::seal(spool, state, &id, Some(expected)))
             .await
     }
 
     pub async fn bind_session(&self, session_id: String) -> Result<CaptureSnapshot> {
         validate_session(&session_id)?;
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::bind_session(spool, state, &id, session_id))
+        self.run(move |spool, state| store::bind_session(spool, state, &id, session_id))
             .await
     }
 
@@ -308,8 +392,7 @@ impl CaptureWriter {
         receipt: CapturePrefixReceipt,
     ) -> Result<CaptureSnapshot> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::acknowledge(spool, state, &id, receipt))
+        self.run(move |spool, state| store::acknowledge(spool, state, &id, receipt))
             .await
     }
 
@@ -319,8 +402,7 @@ impl CaptureWriter {
         publication: CapturePublication,
     ) -> Result<CaptureSnapshot> {
         let id = self.identity.clone();
-        self.spool
-            .run(move |spool, state| store::publication(spool, state, &id, publication))
+        self.run(move |spool, state| store::publication(spool, state, &id, publication))
             .await
     }
 }

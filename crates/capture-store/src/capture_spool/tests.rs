@@ -1673,6 +1673,7 @@ async fn timing_is_write_once_js_safe_and_bound_to_the_exact_existing_identity()
         let foreign = CaptureWriter {
             spool: spool.clone(),
             identity: foreign,
+            usage: writer.usage.clone(),
         };
         assert_eq!(
             foreign
@@ -2513,4 +2514,155 @@ async fn processing_cancel_unknown_commit_keeps_exact_declaration_and_pcm_withou
                 .cancel_requested
         );
     }
+}
+
+#[tokio::test]
+async fn retirement_admission_waits_for_whole_source_users_and_excludes_new_users() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), 100)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer.seal().await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    writer
+        .observe_publication(publication(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let reader = writer.clone();
+    drop(writer);
+    spool.wait_for_io().await;
+    assert_eq!(
+        spool.admit_retirement(id.clone()).await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(reader.read_chunk(0).await.unwrap().bytes, pcm(8));
+    drop(reader);
+    let admission = spool.admit_retirement(id.clone()).await.unwrap();
+    assert_eq!(admission.snapshot().identity, id);
+    assert_eq!(
+        spool.resume(id.clone()).await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        spool
+            .begin(id.clone(), CaptureFormat::stereo())
+            .await
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Unavailable
+    );
+    let mut other = id.clone();
+    other.capture_id = uuid::Uuid::new_v4().to_string();
+    other.request_id = uuid::Uuid::new_v4().to_string();
+    let independent = spool.begin(other, CaptureFormat::stereo()).await.unwrap();
+    independent.append_chunk(0, 2, pcm(2)).await.unwrap();
+    assert_eq!(spool.inventory(scope()).await.unwrap().len(), 2);
+    assert!(
+        dir(&root, &id)
+            .join("chunks/00000000000000000000.chunk")
+            .exists()
+    );
+    drop(admission);
+    assert_eq!(
+        spool
+            .resume(id)
+            .await
+            .unwrap()
+            .read_chunk(0)
+            .await
+            .unwrap()
+            .bytes,
+        pcm(8)
+    );
+}
+
+#[tokio::test]
+async fn cancelled_writer_waiter_keeps_retirement_blocked_until_actual_io_finishes() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let id = identity();
+    let writer = spool
+        .begin_with_observation(id.clone(), CaptureFormat::stereo(), 100)
+        .await
+        .unwrap();
+    writer.append_chunk(0, 8, pcm(8)).await.unwrap();
+    writer.seal().await.unwrap();
+    writer
+        .acknowledge_prefix(receipt(&writer.snapshot().await.unwrap()))
+        .await
+        .unwrap();
+    let observed = publication(&writer.snapshot().await.unwrap());
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::AfterManifestRename as u8,
+        entered,
+        release: release.clone(),
+    });
+    let task = tokio::spawn(async move { writer.observe_publication(observed).await });
+    waiting.await.unwrap();
+    task.abort();
+    let _ = task.await;
+    assert_eq!(
+        spool.admit_retirement(id.clone()).await.err().unwrap().code,
+        ErrorCode::Unavailable
+    );
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    spool.wait_for_io().await;
+    let admission = spool.admit_retirement(id.clone()).await.unwrap();
+    assert!(admission.snapshot().publication.is_some());
+    drop(admission);
+    assert_eq!(
+        spool
+            .resume(id)
+            .await
+            .unwrap()
+            .read_chunk(0)
+            .await
+            .unwrap()
+            .bytes,
+        pcm(8)
+    );
+}
+
+#[tokio::test]
+async fn retirement_admission_requires_original_published_identity_but_never_deletes() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let id = identity();
+    let writer = spool
+        .begin(id.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    drop(writer);
+    assert_eq!(
+        spool.admit_retirement(id.clone()).await.err().unwrap().code,
+        ErrorCode::Validation
+    );
+    let mut foreign = id.clone();
+    foreign.request_id = uuid::Uuid::new_v4().to_string();
+    assert!(spool.admit_retirement(foreign).await.is_err());
+    assert_eq!(
+        spool
+            .resume(id)
+            .await
+            .unwrap()
+            .snapshot()
+            .await
+            .unwrap()
+            .chunk_count,
+        0
+    );
 }
