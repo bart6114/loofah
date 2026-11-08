@@ -611,7 +611,7 @@ member-private status/cancellation/recovery/results and summary parents reuse th
 shared journals and publications. Raw-only imports work without a transcription
 model. Remote CLI import/transcription, immutable initial metadata, partial-import
 output and explicit original-request/source recovery now use these APIs. The
-combined Native lane passed 32 focused media/CLI/Core/HTTP/export cases plus the
+combined Native lane passed 31 focused media/CLI/Core/HTTP/export cases plus the
 three capture/append fixture cases; the separate paired-capability case and
 20-package all-target check also passed. Linux qualification passed seven Core
 media, six scoped/manual summary, three HTTP and one actual configured CPU
