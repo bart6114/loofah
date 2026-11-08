@@ -8,14 +8,17 @@ use std::{io::Seek, sync::Arc};
 mod artifact;
 mod maintenance;
 mod mutations;
+mod read_owner;
 #[cfg(test)]
 mod tests;
 pub use artifact::LocalCliArtifact;
+pub use maintenance::execute_local_maintenance;
 
 pub const LOCAL_CLI_NAMESPACE: &str = "local-cli";
 
 pub struct LocalCli {
     context: Arc<VaultContext>,
+    read_only: bool,
 }
 pub struct LocalCliOutput {
     pub reply: LocalCliReply,
@@ -30,11 +33,17 @@ impl LocalCli {
                 "Local CLI operations require an owned vault",
             ));
         }
-        Ok(Self { context })
+        Ok(Self {
+            context,
+            read_only: false,
+        })
     }
 
     pub fn operations(&self) -> Vec<LocalCliOperationKind> {
         use LocalCliOperationKind::*;
+        if self.read_only {
+            return read_owner::operations();
+        }
         vec![
             AgentList,
             AgentSearch,
@@ -55,6 +64,7 @@ impl LocalCli {
             Tags,
             Attach,
             Attachment,
+            AttachmentPage,
             Doctor,
             Initialize,
         ]
@@ -150,6 +160,15 @@ impl LocalCli {
             },
             LocalCliOperation::AgentSegments { session_id } => LocalCliReply::AgentSegments {
                 segments: context.agent_segments(&session_id).await?,
+            },
+            LocalCliOperation::AttachmentPage {
+                session_id,
+                limit,
+                after,
+            } => LocalCliReply::AttachmentPage {
+                page: context
+                    .attachment_page(&session_id, limit, after.as_deref())
+                    .await?,
             },
             LocalCliOperation::Metadata { session_id } => LocalCliReply::Metadata {
                 snapshot: context.read_metadata(&session_id).await?,
@@ -268,9 +287,23 @@ impl LocalCli {
                     ),
                 }
             }
-            LocalCliOperation::Tags {} => LocalCliReply::Tags {
-                tags: context.tags().await?,
-            },
+            LocalCliOperation::Tags {} => {
+                let cache = context
+                    .search
+                    .cache()
+                    .await
+                    .map_err(|_| error(ErrorCode::Unavailable, "Search is not ready"))?;
+                let context = context.clone();
+                let tags = tokio::task::spawn_blocking(move || {
+                    let _context = context;
+                    cache.tags_fresh().map_err(|_| {
+                        error(ErrorCode::Internal, "Vault tag registry could not be read")
+                    })
+                })
+                .await
+                .map_err(|_| error(ErrorCode::Internal, "Tag reader stopped"))??;
+                LocalCliReply::Tags { tags }
+            }
             LocalCliOperation::Attach {
                 session_id,
                 filename,

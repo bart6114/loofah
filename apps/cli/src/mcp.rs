@@ -308,7 +308,7 @@ mod tests {
     use serde_json::Value;
 
     fn test_server(vault: &std::path::Path) -> LoofahMcpServer {
-        let cache = hypr_search_cache::Cache::for_vault(vault).unwrap();
+        let cache = crate::vault::cache_for_vault(vault).unwrap();
         cache.initialize(&mut |_| {}).unwrap();
         LoofahMcpServer::new(vault.to_path_buf(), cache)
     }

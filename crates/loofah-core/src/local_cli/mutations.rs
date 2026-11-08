@@ -110,14 +110,21 @@ pub(super) async fn tags(
             )
             .await?
     };
-    if let MetadataSaveOutcome::Saved(_) = &outcome {
+    if let MetadataSaveOutcome::Saved(snapshot) = &outcome {
         if !remove {
             for tag in &changed {
                 context
                     .store
                     .ensure_tag_checked(tag)
                     .await
-                    .map_err(|cause| storage_error(cause, true))?;
+                    .map_err(|cause| {
+                        let mut failure = storage_error(cause, false);
+                        failure.message = format!("Tags for session {id} were saved, but updating the tag registry failed; do not repeat the edit");
+                        failure.mutation_outcome = Some(hypr_loofah_protocol::MutationOutcome::Persisted);
+                        failure.current_revision = Some(snapshot.revision.clone());
+                        failure.retryable = false;
+                        failure
+                    })?;
             }
         }
     } else {

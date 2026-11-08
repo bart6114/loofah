@@ -7,6 +7,9 @@ use hypr_agent_access::{
     Document, GetMeetingInput, GetMeetingTranscriptInput, ListMeetingsInput, MeetingListItem,
     SearchHit, SearchMeetingsInput,
 };
+use hypr_loofah_protocol::{
+    LocalCliOperation as Operation, LocalCliReply as Reply, MetadataSaveOutcome, NoteSaveOutcome,
+};
 #[cfg(test)]
 use hypr_vault_write::SessionStore;
 
@@ -100,49 +103,27 @@ pub(crate) async fn run_with_reader(
             let vault = reader.vault()?;
             // Read the body before touching the vault, so a bad --note path creates nothing.
             let body = note.as_deref().map(read_body).transpose()?;
-            let store = crate::vault::local_store(vault);
-            let meta = super::create_session(
-                vault,
-                &store,
-                "create meeting",
-                title,
-                super::NewSessionOptions {
-                    created_at,
-                    started_at,
-                    ended_at,
-                    tags: tag,
-                    author,
-                    skill,
-                },
-            )
-            .await?;
+            let meta = match local(vault)?
+                .execute(Operation::CreateSession {
+                    title,
+                    markdown: body,
+                    metadata: hypr_loofah_protocol::LocalInitialSessionMetadata {
+                        created_at,
+                        started_at,
+                        ended_at,
+                        tags: tag,
+                        author,
+                        skill,
+                    },
+                })
+                .await?
+                .response
+                .result?
+            {
+                Reply::SessionCreated { meta } => meta,
+                _ => return Err(crate::profiles::unexpected()),
+            };
             let session_id = meta.id.clone();
-            if let Some(body) = body {
-                // The meta write above already created the session; name it in the
-                // error so a partial failure leaves an identifiable meeting instead
-                // of an anonymous orphan (recover with `meetings note ID --set`).
-                store.write_note(&session_id, &body).await.map_err(|error| {
-                    Error::operation(
-                        "write note",
-                        format!(
-                            "meeting {session_id} was created, but writing its note failed: {error}"
-                        ),
-                    )
-                })?;
-            }
-            // The tags already sit in the session's `_meta.json`; registering
-            // them in the vault-root `tags.json` is a separate write, so a
-            // failure here must also name the meeting it leaves behind.
-            for tag in &meta.tags {
-                store.ensure_tag(tag).await.map_err(|error| {
-                    Error::operation(
-                        "register tag",
-                        format!(
-                            "meeting {session_id} was created, but registering tag '{tag}' failed: {error}"
-                        ),
-                    )
-                })?;
-            }
 
             let rendered = if json {
                 output::json(
@@ -277,31 +258,60 @@ pub(crate) async fn run_with_reader(
             output::emit(&rendered);
             Ok(())
         }
-        command @ MeetingCommand::Export { .. } => {
-            super::export::run(reader.vault()?, command, json).await
-        }
+        command @ MeetingCommand::Export { .. } => super::export::run(reader, command, json).await,
     }
 }
 
-async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Result<()> {
-    let store = crate::vault::local_store(vault);
-    store
-        .read_meta(id)
-        .await
-        .map_err(|error| Error::operation("rename session", error.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("session '{id}'")))?;
+fn local(vault: &Path) -> Result<crate::local_owner::LocalGateway> {
+    Ok(crate::local_owner::LocalGateway::new(
+        vault.to_owned(),
+        crate::vault::cache_for_vault(vault)?,
+    ))
+}
 
-    output::track_write(id)?;
-    store
-        .update_meta(
-            id,
-            hypr_vault_write::SessionMetaPatch {
-                title: Some(title.clone()),
-                ..Default::default()
+fn conflict(action: &'static str) -> Error {
+    Error::operation(
+        action,
+        "The session changed concurrently; nothing was overwritten. Read it again before retrying.",
+    )
+}
+
+async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Result<()> {
+    let gateway = local(vault)?;
+    let snapshot = match gateway
+        .execute(Operation::Metadata {
+            session_id: id.to_owned(),
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::Metadata { snapshot } => snapshot,
+        _ => return Err(crate::profiles::unexpected()),
+    };
+    match gateway
+        .execute(Operation::SaveMetadata {
+            session_id: id.to_owned(),
+            input: hypr_loofah_protocol::SaveMetadataRequest {
+                expected_revision: snapshot.revision,
+                patch: hypr_loofah_protocol::SessionMetaPatch {
+                    title: Some(title.clone()),
+                    ..Default::default()
+                },
             },
-        )
-        .await
-        .map_err(|error| Error::operation("rename session", error.to_string()))?;
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::MetadataSaved {
+            outcome: MetadataSaveOutcome::Saved(_),
+        } => {}
+        Reply::MetadataSaved {
+            outcome: MetadataSaveOutcome::Conflict(_),
+        } => return Err(conflict("rename session")),
+        _ => return Err(crate::profiles::unexpected()),
+    }
 
     let rendered = if json {
         output::json(
@@ -323,47 +333,49 @@ async fn edit_note(
     append: Option<&Path>,
     json: bool,
 ) -> Result<()> {
-    let store = crate::vault::local_store(vault);
-    let exists = store
-        .read_meta(id)
-        .await
-        .map_err(|error| Error::operation("edit note", error.to_string()))?
-        .is_some();
-    if !exists {
-        return Err(Error::NotFound(format!("meeting '{id}'")));
-    }
-
     let (action, source) = match (set, append) {
         (Some(path), None) => ("set", path),
         (None, Some(path)) => ("append", path),
         _ => unreachable!("clap enforces exactly one of --set/--append"),
     };
     let body = read_body(source)?;
-
-    let markdown = if action == "append" {
-        match store
-            .read_note(id)
-            .await
-            .map_err(|error| Error::operation("edit note", error.to_string()))?
-        {
-            Some(existing) if !existing.is_empty() => {
-                if existing.ends_with('\n') {
-                    format!("{existing}{body}")
-                } else {
-                    format!("{existing}\n{body}")
-                }
-            }
-            _ => body,
+    let gateway = local(vault)?;
+    let snapshot = match gateway
+        .execute(Operation::Note {
+            session_id: id.to_owned(),
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::Note { snapshot } => snapshot,
+        _ => return Err(crate::profiles::unexpected()),
+    };
+    let operation = if action == "append" {
+        Operation::AppendNote {
+            session_id: id.to_owned(),
+            markdown: body,
+            expected_revision: snapshot.revision,
         }
     } else {
-        body
+        Operation::SaveNote {
+            session_id: id.to_owned(),
+            input: hypr_loofah_protocol::SaveNoteRequest {
+                markdown: body,
+                title: None,
+                expected_revision: snapshot.revision,
+            },
+        }
     };
-
-    output::track_write(id)?;
-    store
-        .write_note(id, &markdown)
-        .await
-        .map_err(|error| Error::operation("edit note", error.to_string()))?;
+    match gateway.execute(operation).await?.response.result? {
+        Reply::NoteSaved {
+            outcome: NoteSaveOutcome::Saved(_),
+        } => {}
+        Reply::NoteSaved {
+            outcome: NoteSaveOutcome::Conflict(_),
+        } => return Err(conflict("edit note")),
+        _ => return Err(crate::profiles::unexpected()),
+    }
 
     let rendered = if json {
         output::json(
@@ -384,88 +396,46 @@ async fn edit_note(
 /// absent one is a no-op; `remove` never touches the append-only `tags.json`
 /// registry, while `add` registers each newly added tag there.
 async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: bool) -> Result<()> {
-    let requested = tags
+    if tags
         .iter()
-        .map(|tag| {
-            hypr_vault_read::normalize_tag_name(tag)
-                .ok_or_else(|| Error::operation("edit tags", "tag name cannot be empty"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    let store = crate::vault::local_store(vault);
-    let meta = store
-        .read_meta(id)
-        .await
-        .map_err(|error| Error::operation("edit tags", error.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("meeting '{id}'")))?;
-
-    let current = {
-        let mut current = meta
-            .tags
-            .iter()
-            .filter_map(|tag| hypr_vault_read::normalize_tag_name(tag))
-            .collect::<Vec<_>>();
-        current.sort();
-        current.dedup();
-        current
-    };
-
-    let (changed, finalized) = if add {
-        let mut changed = requested
-            .iter()
-            .filter(|tag| !current.contains(tag))
-            .cloned()
-            .collect::<Vec<_>>();
-        changed.sort();
-        changed.dedup();
-        let mut finalized = current.clone();
-        finalized.extend(changed.iter().cloned());
-        finalized.sort();
-        (changed, finalized)
-    } else {
-        let mut changed = requested
-            .iter()
-            .filter(|tag| current.contains(tag))
-            .cloned()
-            .collect::<Vec<_>>();
-        changed.sort();
-        changed.dedup();
-        let finalized = current
-            .iter()
-            .filter(|tag| !requested.contains(tag))
-            .cloned()
-            .collect::<Vec<_>>();
-        (changed, finalized)
-    };
-
-    if !changed.is_empty() {
-        output::track_write(id)?;
-        store
-            .update_meta(
-                id,
-                hypr_vault_write::SessionMetaPatch {
-                    tags: Some(finalized.clone()),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|error| Error::operation("edit tags", error.to_string()))?;
-        if add {
-            // The tags already sit in the session's `_meta.json`; registering
-            // them in the vault-root `tags.json` is a separate write, so a
-            // failure here must name the meeting the edit leaves behind.
-            for tag in &changed {
-                store.ensure_tag(tag).await.map_err(|error| {
-                    Error::operation(
-                        "register tag",
-                        format!(
-                            "tags for meeting {id} were updated, but registering tag '{tag}' failed: {error}"
-                        ),
-                    )
-                })?;
-            }
-        }
+        .any(|tag| hypr_vault_read::normalize_tag_name(tag).is_none())
+    {
+        return Err(Error::operation("edit tags", "tag name cannot be empty"));
     }
+    let gateway = local(vault)?;
+    let snapshot = match gateway
+        .execute(Operation::Metadata {
+            session_id: id.to_owned(),
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::Metadata { snapshot } => snapshot,
+        _ => return Err(crate::profiles::unexpected()),
+    };
+    let (changed, finalized) = match gateway
+        .execute(Operation::TagDelta {
+            session_id: id.to_owned(),
+            tags,
+            remove: !add,
+            expected_revision: snapshot.revision,
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::TagDelta {
+            outcome: MetadataSaveOutcome::Saved(_),
+            changed,
+            tags,
+        } => (changed, tags),
+        Reply::TagDelta {
+            outcome: MetadataSaveOutcome::Conflict(_),
+            ..
+        } => return Err(conflict("edit tags")),
+        _ => return Err(crate::profiles::unexpected()),
+    };
 
     let rendered = if json {
         let (command, changed_key) = if add {
@@ -492,18 +462,36 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
 }
 
 async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
-    let relative = hypr_vault_read::paths::validated_session_dir(id)
-        .map_err(|error| Error::operation("delete session", error.to_string()))?;
-    let vault = std::fs::canonicalize(vault)
-        .map_err(|error| Error::operation("resolve vault path", error.to_string()))?;
-    let path = vault.join(relative);
-    output::track_write(id)?;
-    let trash_path = crate::vault::local_store(&vault)
-        .delete_session(id)
-        .await
-        .map_err(|error| Error::operation("delete session", error.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("session '{id}' (missing or already deleted)")))?;
-    let deleted_at = chrono::Utc::now().to_rfc3339();
+    let gateway = local(vault)?;
+    let revision = match gateway
+        .execute(Operation::SessionLifecycle {
+            session_id: id.to_owned(),
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::SessionLifecycle { revision, .. } => revision,
+        _ => return Err(crate::profiles::unexpected()),
+    };
+    let (path, trash_path, deleted_at) = match gateway
+        .execute(Operation::DeleteSession {
+            session_id: id.to_owned(),
+            expected_revision: revision,
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::SessionDeleted {
+            path,
+            trash_path,
+            deleted_at,
+            ..
+        } => (path, trash_path, deleted_at),
+        _ => return Err(crate::profiles::unexpected()),
+    };
+
     let rendered = if json {
         output::json(
             "sessions.delete",
@@ -529,18 +517,17 @@ async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
 
 /// Resolve only `sessions/<id>`, verifying its metadata without discovery.
 pub(super) async fn session_path(vault: &Path, id: &str) -> Result<std::path::PathBuf> {
-    let scan_vault = vault.to_path_buf();
-    let scan_id = id.to_string();
-    let location =
-        tokio::task::spawn_blocking(move || hypr_vault_read::find_session(&scan_vault, &scan_id))
-            .await
-            .map_err(|error| Error::operation("resolve meeting path", error.to_string()))?
-            .map_err(|error| Error::operation("resolve meeting path", error.to_string()))?
-            .ok_or_else(|| Error::NotFound(format!("meeting '{id}'")))?
-            .0;
-
-    std::path::absolute(vault.join(&location.relative_dir))
-        .map_err(|error| Error::operation("resolve meeting path", error.to_string()))
+    match local(vault)?
+        .execute(Operation::SessionPath {
+            session_id: id.to_owned(),
+        })
+        .await?
+        .response
+        .result?
+    {
+        Reply::SessionPath { path } => Ok(path),
+        _ => Err(crate::profiles::unexpected()),
+    }
 }
 
 async fn attach_file(
@@ -553,7 +540,7 @@ async fn attach_file(
     if !file.is_file() {
         return Err(Error::NotFound(format!("file {}", file.display())));
     }
-    let bytes = std::fs::read(file).map_err(|error| {
+    let source = std::fs::File::open(file).map_err(|error| {
         Error::operation("read attachment", format!("{}: {error}", file.display()))
     })?;
 
@@ -570,18 +557,28 @@ async fn attach_file(
             })?,
     };
 
-    let store = crate::vault::local_store(vault);
-    store
-        .read_meta(id)
-        .await
-        .map_err(|error| Error::operation("attach file", error.to_string()))?
-        .ok_or_else(|| Error::NotFound(format!("meeting '{id}'")))?;
-
-    output::track_write(id)?;
-    store
-        .save_attachment(id, &filename, bytes)
-        .await
-        .map_err(|error| Error::operation("attach file", error.to_string()))
+    match local(vault)?
+        .execute_with_upload(
+            Operation::Attach {
+                session_id: id.to_owned(),
+                filename,
+            },
+            Some(source),
+            std::sync::Arc::new(|_| {}),
+        )
+        .await?
+        .response
+        .result?
+    {
+        Reply::Attached {
+            attachment_id,
+            relative_path,
+        } => Ok(hypr_vault_write::SavedAttachment {
+            attachment_id,
+            relative_path,
+        }),
+        _ => Err(crate::profiles::unexpected()),
+    }
 }
 
 /// Byte-matches the desktop editor's `toPortableAttachmentSrc`

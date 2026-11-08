@@ -84,4 +84,8 @@ LOOFAH_VAULT_PATH=/path/to/vault loof --json sessions list
 
 `--base /path/to/vault` is an older equivalent, but `--vault-path` is clearer and takes precedence when both are present.
 
+Local commands use the running vault owner's same-user IPC connection. If no owner is running, a command acquires the vault lease and runs the shared backend temporarily. Local use stays offline and requires no login. An idle MCP server does not hold the vault lease.
+
+Close every older desktop app and CLI process before upgrading to this ownership model: older versions do not honor its lease. If an owner holds the vault but its endpoint is still starting or unavailable, the CLI reports that condition rather than opening an independent writer.
+
 The CLI reads and writes the vault: `loof sessions new`, `loof import`, and `loof sessions note --set` create and edit meeting data in the same format the desktop app writes, and `loof transcribe` replaces a meeting's transcript. The MCP server stays read-only. See the [CLI reference](/reference/cli) for every command.

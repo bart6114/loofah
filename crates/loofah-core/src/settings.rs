@@ -195,7 +195,11 @@ impl ConfigState {
         Self::from_config(path, config, lease)
     }
 
-    fn from_config(path: PathBuf, config: AppConfig, lease: Option<Arc<std::fs::File>>) -> Self {
+    pub(crate) fn from_config(
+        path: PathBuf,
+        config: AppConfig,
+        lease: Option<Arc<std::fs::File>>,
+    ) -> Self {
         Self {
             path,
             inner: Arc::new(ConfigInner {

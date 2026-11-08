@@ -320,3 +320,192 @@ async fn cancelling_cli_waiter_keeps_owned_append_until_the_actual_store_transac
     .unwrap();
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn local_tag_registry_failure_reports_the_confirmed_metadata_write() {
+    let fixture = Fixture::new().await;
+    let id = fixture.create().await;
+    let context = &fixture.cli.context;
+    let before = context.read_metadata(&id).await.unwrap();
+    std::fs::write(
+        context.store.vault_base().join("tags.json"),
+        b"{invalid registry",
+    )
+    .unwrap();
+    let error = fixture
+        .cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::TagDelta {
+                session_id: id.clone(),
+                tags: vec!["new-tag".into()],
+                remove: false,
+                expected_revision: before.revision,
+            },
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .err()
+        .expect("registry failure");
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::Persisted));
+    assert!(!error.retryable);
+    let after = context.read_metadata(&id).await.unwrap();
+    assert_eq!(after.meta.tags, ["new-tag"]);
+    assert_eq!(error.current_revision, Some(after.revision));
+    assert!(error.message.contains(&id));
+    assert_eq!(
+        std::fs::read(context.store.vault_base().join("tags.json")).unwrap(),
+        b"{invalid registry"
+    );
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn local_read_owner_recovers_recording_gates_without_config_or_global_startup() {
+    let root = tempfile::tempdir().unwrap();
+    let vault = root.path().join("vault");
+    let session = vault.join("sessions/readable");
+    std::fs::create_dir_all(&session).unwrap();
+    let meta = br#"{"id":"readable","title":"Original","created_at":"2026-11-05T00:00:00Z","tags":[],"custom":{"retained":true}}"#;
+    std::fs::write(session.join("_meta.json"), meta).unwrap();
+    std::fs::write(session.join("notes.md"), "Canonical note").unwrap();
+    std::fs::write(session.join("unknown-user-file"), "User bytes").unwrap();
+    std::fs::write(
+        vault.join("config.json"),
+        br#"{"current_stt_provider":"parakeet","current_stt_model":"retired"}"#,
+    )
+    .unwrap();
+    let config = std::fs::read(vault.join("config.json")).unwrap();
+    let mut wav = hound::WavWriter::create(
+        session.join("audio.wav"),
+        hound::WavSpec {
+            channels: 1,
+            sample_rate: 16000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        },
+    )
+    .unwrap();
+    wav.write_sample(0i16).unwrap();
+    wav.finalize().unwrap();
+    let LeaseAttempt::Acquired(lease) = VaultLease::try_acquire_existing(&vault).unwrap() else {
+        panic!("owner");
+    };
+    let reader = LocalCli::open_read_owner(lease, root.path().join("operations"))
+        .await
+        .unwrap();
+    assert!(
+        reader
+            .context
+            .audio_metadata("readable")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let output = reader
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::Note {
+                session_id: "readable".into(),
+            },
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(output.reply, LocalCliReply::Note { snapshot: NoteSnapshot { markdown:Some(ref body), .. } } if body == "Canonical note")
+    );
+    assert!(
+        !reader
+            .operations()
+            .contains(&LocalCliOperationKind::SaveNote)
+    );
+    assert!(reader.context.search.cache().await.is_err());
+    assert_eq!(std::fs::read(vault.join("config.json")).unwrap(), config);
+    assert_eq!(std::fs::read(session.join("_meta.json")).unwrap(), meta);
+    assert_eq!(
+        std::fs::read_to_string(session.join("unknown-user-file")).unwrap(),
+        "User bytes"
+    );
+    drop(reader);
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&vault).unwrap(),
+        LeaseAttempt::Acquired(_)
+    ));
+}
+
+#[tokio::test]
+async fn local_read_owner_preserves_uncertain_recording_gate_while_text_remains_readable() {
+    let root = tempfile::tempdir().unwrap();
+    let vault = root.path().join("vault");
+    let session = vault.join("sessions/readable");
+    std::fs::create_dir_all(&session).unwrap();
+    std::fs::write(
+        session.join("_meta.json"),
+        br#"{"id":"readable","title":"Original","created_at":"2026-11-05T00:00:00Z","tags":[]}"#,
+    )
+    .unwrap();
+    std::fs::write(session.join("notes.md"), "Text survives").unwrap();
+    let operations = root.path().join("operations");
+    let publications = operations.join("recording-publications");
+    std::fs::create_dir_all(&publications).unwrap();
+    let issue = publications.join("recording-publication-invalid.json");
+    std::fs::write(&issue, b"unrecognized receipt must survive").unwrap();
+    let LeaseAttempt::Acquired(lease) = VaultLease::try_acquire_existing(&vault).unwrap() else {
+        panic!("owner");
+    };
+    let reader = LocalCli::open_read_owner(lease, operations).await.unwrap();
+    assert_eq!(
+        reader
+            .context
+            .audio_metadata("readable")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Unavailable
+    );
+    assert_eq!(
+        reader
+            .context
+            .read_note("readable")
+            .await
+            .unwrap()
+            .markdown
+            .as_deref(),
+        Some("Text survives")
+    );
+    assert_eq!(
+        std::fs::read(&issue).unwrap(),
+        b"unrecognized receipt must survive"
+    );
+}
+
+#[tokio::test]
+async fn local_tag_list_keeps_strict_registry_errors_instead_of_silent_empty_success() {
+    let fixture = Fixture::new().await;
+    fixture
+        .cli
+        .context
+        .search
+        .wait_until_initialized()
+        .await
+        .unwrap();
+    let path = fixture.cli.context.store.vault_base().join("tags.json");
+    std::fs::write(&path, b"{unreadable registry").unwrap();
+    let error = fixture
+        .cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::Tags {},
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .err()
+        .expect("corrupt registry must fail");
+    assert_eq!(error.code, ErrorCode::Internal);
+    assert_eq!(std::fs::read(&path).unwrap(), b"{unreadable registry");
+    fixture.stop().await;
+}

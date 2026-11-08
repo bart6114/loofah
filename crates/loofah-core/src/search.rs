@@ -20,18 +20,43 @@ pub enum SearchError {
     NotInitialized,
 }
 
-#[derive(Default)]
 pub struct SearchService {
     cache: RwLock<Option<Cache>>,
+    initialization: tokio::sync::watch::Sender<Option<Result<(), String>>>,
+}
+impl Default for SearchService {
+    fn default() -> Self {
+        Self {
+            cache: RwLock::new(None),
+            initialization: tokio::sync::watch::channel(None).0,
+        }
+    }
 }
 
 impl SearchService {
     pub async fn initialize(&self, global: &Path, vault: &Path) -> Result<(), SearchError> {
-        let cache = Cache::new(global, vault)?;
-        let worker = cache.clone();
-        tokio::task::spawn_blocking(move || worker.initialize(&mut |_| {})).await??;
-        *self.cache.write().await = Some(cache);
-        Ok(())
+        let result = async {
+            let cache = Cache::new(global, vault)?;
+            let worker = cache.clone();
+            tokio::task::spawn_blocking(move || worker.initialize(&mut |_| {})).await??;
+            *self.cache.write().await = Some(cache);
+            Ok::<_, SearchError>(())
+        }
+        .await;
+        self.initialization.send_replace(Some(
+            result.as_ref().map(|_| ()).map_err(ToString::to_string),
+        ));
+        result
+    }
+
+    pub async fn wait_until_initialized(&self) -> Result<(), String> {
+        let mut state = self.initialization.subscribe();
+        loop {
+            if let Some(result) = state.borrow_and_update().as_ref() {
+                return result.clone();
+            }
+            state.changed().await.map_err(|cause| cause.to_string())?;
+        }
     }
 
     pub(crate) async fn cache(&self) -> Result<Cache, SearchError> {

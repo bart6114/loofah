@@ -567,3 +567,81 @@ async fn application_worker_panic_is_unknown_and_cannot_claim_clean_owner_shutdo
         LeaseAttempt::Busy
     ));
 }
+
+#[test]
+fn cancelled_blob_copy_retains_original_owner_until_actual_queued_copy_finishes() {
+    use std::future::Future;
+    let fixture = Fixture::new();
+    let source = fixture._root.path().join("source.bin");
+    std::fs::write(&source, vec![17u8; 1024 * 1024]).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .max_blocking_threads(1)
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let (entered_send, entered_receive) = std::sync::mpsc::channel();
+        let (release_send, release_receive) = std::sync::mpsc::channel();
+        let blocker = tokio::task::spawn_blocking(move || {
+            entered_send.send(()).unwrap();
+            release_receive.recv().unwrap();
+        });
+        entered_receive
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        struct Owner {
+            lease: Option<VaultLease>,
+            dropped: std::sync::mpsc::Sender<()>,
+        }
+        impl Drop for Owner {
+            fn drop(&mut self) {
+                drop(self.lease.take());
+                let _ = self.dropped.send(());
+            }
+        }
+        let (dropped_send, dropped_receive) = std::sync::mpsc::channel();
+        let owner = Owner {
+            lease: Some(fixture.lease()),
+            dropped: dropped_send,
+        };
+        let temporary = fixture.temporary.clone();
+        let (queued_send, queued_receive) = tokio::sync::oneshot::channel();
+        let copy = tokio::spawn(async move {
+            let operation = Blob::copy_from_owned(
+                std::fs::File::open(source).unwrap(),
+                &temporary,
+                Box::new(owner),
+            );
+            tokio::pin!(operation);
+            std::future::poll_fn(|cx| match operation.as_mut().poll(cx) {
+                std::task::Poll::Pending => std::task::Poll::Ready(()),
+                std::task::Poll::Ready(_) => {
+                    panic!("copy bypassed the blocked actual I/O executor")
+                }
+            })
+            .await;
+            queued_send.send(()).unwrap();
+            operation.await
+        });
+        queued_receive.await.unwrap();
+        copy.abort();
+        match copy.await {
+            Err(cause) => assert!(cause.is_cancelled()),
+            Ok(_) => panic!("copy waiter was not cancelled"),
+        }
+        assert!(dropped_receive.try_recv().is_err());
+        assert!(matches!(
+            VaultLease::try_acquire_existing(&fixture.vault).unwrap(),
+            LeaseAttempt::Busy
+        ));
+        release_send.send(()).unwrap();
+        blocker.await.unwrap();
+        dropped_receive
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert!(matches!(
+            VaultLease::try_acquire_existing(&fixture.vault).unwrap(),
+            LeaseAttempt::Acquired(_)
+        ));
+    });
+}

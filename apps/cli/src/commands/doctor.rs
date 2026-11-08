@@ -22,8 +22,54 @@ struct VaultReport {
     error: Option<String>,
 }
 
-pub fn run(args: &Args, json: bool) -> Result<bool> {
-    let report = inspect(args)?;
+pub async fn run(args: &Args, json: bool) -> Result<bool> {
+    let path = vault::resolve_path(args)?;
+    let report = if !path.is_dir() {
+        inspect(args)?
+    } else {
+        let cache = crate::vault::cache_for_vault(&path)?;
+        let gateway = crate::local_owner::LocalGateway::new(path.clone(), cache);
+        let response = gateway
+            .execute(hypr_loofah_protocol::LocalCliOperation::Doctor {})
+            .await?;
+        let hypr_loofah_protocol::LocalCliReply::Doctor {
+            session_count,
+            agents_updated,
+            agents_error,
+            error,
+            cache_path,
+            cache_ready,
+            cache_error,
+        } = response.response.result?
+        else {
+            return Err(crate::profiles::unexpected());
+        };
+        DoctorReport {
+            cli_version: env!("LOOFAH_VERSION"),
+            ready: session_count.is_some() && cache_ready,
+            vault: VaultReport {
+                path,
+                exists: true,
+                is_directory: true,
+                sessions: session_count,
+                agents_md: agents_error.or_else(|| {
+                    agents_updated.map(|updated| {
+                        if updated {
+                            "written".into()
+                        } else {
+                            "up-to-date".into()
+                        }
+                    })
+                }),
+                error,
+            },
+            cache: cache_path.map(|path| hypr_search_cache::CacheStatus {
+                path,
+                ready: cache_ready,
+                error: cache_error,
+            }),
+        }
+    };
     let rendered = if json {
         output::json("doctor", &report, None)?
     } else {
@@ -82,7 +128,7 @@ fn inspect(args: &Args) -> Result<DoctorReport> {
     }
 
     let cache = if report.is_directory {
-        Some(hypr_search_cache::Cache::for_vault(&path)?.status())
+        Some(crate::vault::cache_for_vault(&path)?.status())
     } else {
         None
     };
@@ -192,7 +238,7 @@ mod tests {
 
         assert!(!report.ready);
         assert!(!report.cache.unwrap().ready);
-        hypr_search_cache::Cache::for_vault(dir.path())
+        crate::vault::cache_for_vault(dir.path())
             .unwrap()
             .initialize(&mut |_| {})
             .unwrap();

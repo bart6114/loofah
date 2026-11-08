@@ -4,6 +4,7 @@ mod agent_reader;
 mod cli;
 mod commands;
 mod error;
+mod local_owner;
 mod mcp;
 mod output;
 mod profiles;
@@ -45,137 +46,64 @@ pub async fn run(args: Args) -> Result<u8> {
         return Ok(0);
     }
     if matches!(&args.command, cli::Command::Doctor) {
-        let ready = commands::doctor::run(&args, args.json)?;
+        let ready = commands::doctor::run(&args, args.json).await?;
         return Ok(if ready { 0 } else { 1 });
     }
     let vault = vault::open(&args)?;
-    let cache = hypr_search_cache::Cache::for_vault(&vault)?;
-    let explicit_init = matches!(&args.command, cli::Command::Init);
-    let worker = cache.clone();
-    let json = args.json;
-    let report = tokio::task::spawn_blocking(move || {
-        if !explicit_init {
-            match worker.check() {
-                Ok(()) => return Ok(None),
-                Err(hypr_search_cache::Error::NotReady) => {}
-                Err(error) => return Err(error),
+    let cache = crate::vault::cache_for_vault(&vault)?;
+    if matches!(&args.command, cli::Command::Init) {
+        let progress = std::sync::Arc::new(move |event: hypr_loofah_protocol::LocalCliProgress| {
+            use std::io::Write;
+            let mut stderr = std::io::stderr().lock();
+            if args.json {
+                let _ = writeln!(stderr, "{}", serde_json::to_string(&event).unwrap());
+            } else {
+                let _ = writeln!(
+                    stderr,
+                    "{}: {} / {}",
+                    event.phase,
+                    event.processed,
+                    event
+                        .total
+                        .map(|total| total.to_string())
+                        .unwrap_or_else(|| "?".into())
+                );
             }
-        }
-        worker
-            .initialize(&mut |event| {
-                use std::io::Write;
-                let mut stderr = std::io::stderr().lock();
-                if json {
-                    let _ = writeln!(stderr, "{}", serde_json::to_string(&event).unwrap());
-                } else {
-                    let _ = writeln!(
-                        stderr,
-                        "{}: {} / {}",
-                        event.phase,
-                        event.processed,
-                        event
-                            .total
-                            .map(|total| total.to_string())
-                            .unwrap_or_else(|| "?".into())
-                    );
-                }
-                let _ = stderr.flush();
-            })
-            .map(Some)
-    })
-    .await
-    .map_err(|error| Error::operation("prepare cache", error.to_string()))??;
-    if explicit_init {
-        let report = report.expect("explicit init always initializes the cache");
+            let _ = stderr.flush();
+        });
+        let response = local_owner::LocalGateway::new(vault, cache)
+            .execute_with_upload(
+                hypr_loofah_protocol::LocalCliOperation::Initialize {},
+                None,
+                progress,
+            )
+            .await?;
+        let hypr_loofah_protocol::LocalCliReply::Initialized {
+            cache_path,
+            added,
+            updated,
+            deleted,
+            sessions,
+        } = response.response.result?
+        else {
+            return Err(profiles::unexpected());
+        };
         if args.json {
             output::emit(&output::json(
                 "init",
-                &serde_json::json!({ "cache_path": cache.path(), "ready": true, "added": report.added, "updated": report.updated, "deleted": report.deleted, "sessions": report.sessions }),
+                &serde_json::json!({ "cache_path": cache_path, "ready": true, "added": added, "updated": updated, "deleted": deleted, "sessions": sessions }),
                 None,
             )?);
         } else {
             output::emit(&format!(
                 "Search cache ready: {} ({} sessions)",
-                cache.path().display(),
-                report.sessions
+                cache_path.display(),
+                sessions
             ));
         }
         return Ok(0);
     }
-    let mutation = match &args.command {
-        cli::Command::Sessions { command } => {
-            matches!(
-                command,
-                cli::MeetingCommand::New { .. }
-                    | cli::MeetingCommand::Rename { .. }
-                    | cli::MeetingCommand::Delete { .. }
-                    | cli::MeetingCommand::Tag { .. }
-                    | cli::MeetingCommand::Attach { .. }
-            ) || matches!(command, cli::MeetingCommand::Note { set, append, .. } if set.is_some() || append.is_some())
-        }
-        cli::Command::Import { .. } | cli::Command::Transcribe { .. } => true,
-        _ => false,
-    };
-    if !mutation {
-        return dispatch(args, &vault, &cache).await;
-    }
-    let (result, pending_output, before) =
-        output::capture(cache.clone(), dispatch(args, &vault, &cache)).await;
-    let worker = cache.clone();
-    let (changed, persisted, reconciliation) = tokio::task::spawn_blocking(move || {
-        let mut changed = Vec::new();
-        let mut persisted = false;
-        for (id, prior) in &before {
-            match worker.sources_for(std::slice::from_ref(id)) {
-                Ok(after) if prior != &after => {
-                    persisted = true;
-                    changed.push(id.clone());
-                }
-                Err(_) => {
-                    persisted = true;
-                    changed.push(id.clone());
-                }
-                _ => {}
-            }
-        }
-        let ids: Vec<_> = before.into_keys().collect();
-        let reconciliation = if ids.is_empty() {
-            Ok(Default::default())
-        } else {
-            worker.reconcile_sessions(&ids)
-        };
-        (changed, persisted, reconciliation)
-    })
-    .await
-    .map_err(|error| Error::operation("reconcile write", error.to_string()))?;
-    match (result, reconciliation) {
-        (Ok(status), Ok(_)) => {
-            for text in pending_output {
-                output::emit(&text);
-            }
-            Ok(status)
-        }
-        (Err(error), Ok(_)) if !persisted => Err(error),
-        (Ok(_), Err(error)) if !persisted => Err(error.into()),
-        (result, reconciliation) => {
-            let reason = [
-                result.err().map(|error| error.to_string()),
-                reconciliation.err().map(|error| error.to_string()),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join("; ");
-            if persisted {
-                Err(Error::WritePersisted {
-                    reason,
-                    session_ids: changed,
-                })
-            } else {
-                Err(Error::operation("complete command", reason))
-            }
-        }
-    }
+    dispatch(args, &vault, &cache).await
 }
 
 async fn dispatch(
@@ -209,12 +137,51 @@ async fn dispatch(
                 author,
                 skill,
             };
-            return commands::import::run(
-                vault, file, title, into, transcribe, timestamps, args.json,
-            )
-            .await;
+            let filename = file
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .ok_or_else(|| {
+                    Error::operation("import recording", "Cannot derive source filename")
+                })?;
+            let source = std::fs::File::open(&file).map_err(|cause| {
+                Error::operation("read recording", format!("{}: {cause}", file.display()))
+            })?;
+            let response = local_owner::LocalGateway::new(vault.to_owned(), cache.clone())
+                .execute_with_upload(
+                    hypr_loofah_protocol::LocalCliOperation::Import {
+                        filename,
+                        title,
+                        into,
+                        transcribe,
+                        metadata: hypr_loofah_protocol::LocalInitialSessionMetadata {
+                            created_at: timestamps.created_at,
+                            started_at: timestamps.started_at,
+                            ended_at: timestamps.ended_at,
+                            tags: timestamps.tags,
+                            author: timestamps.author,
+                            skill: timestamps.skill,
+                        },
+                    },
+                    Some(source),
+                    std::sync::Arc::new(|_| {}),
+                )
+                .await?;
+            response.response.result?;
+            return Err(Error::operation(
+                "import recording",
+                "The local owner did not provide a complete import result",
+            ));
         }
-        cli::Command::Transcribe { id } => commands::transcribe::run(vault, &id, args.json).await?,
+        cli::Command::Transcribe { id } => {
+            let response = local_owner::LocalGateway::new(vault.to_owned(), cache.clone())
+                .execute(hypr_loofah_protocol::LocalCliOperation::Transcribe { session_id: id })
+                .await?;
+            response.response.result?;
+            return Err(Error::operation(
+                "transcribe recording",
+                "The local owner did not provide a complete transcription result",
+            ));
+        }
         cli::Command::Mcp => mcp::serve(vault.to_path_buf(), cache.clone()).await?,
         cli::Command::Tags { command } => commands::tags::run(cache, command, args.json).await?,
     }
@@ -1107,7 +1074,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault = dir.path().join("vault");
         write_session(&vault, "target", Some("bounded lookup"));
-        hypr_search_cache::Cache::for_vault(&vault)
+        crate::vault::cache_for_vault(&vault)
             .unwrap()
             .initialize(&mut |_| {})
             .unwrap();

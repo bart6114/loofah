@@ -41,6 +41,7 @@ pub enum LocalCliOperationKind {
     Tags,
     Attach,
     Attachment,
+    AttachmentPage,
     Import,
     Transcribe,
     Doctor,
@@ -117,6 +118,11 @@ pub enum LocalCliOperation {
         session_id: String,
         attachment_id: String,
     },
+    AttachmentPage {
+        session_id: String,
+        limit: usize,
+        after: Option<String>,
+    },
     Import {
         filename: String,
         title: Option<String>,
@@ -153,6 +159,7 @@ impl LocalCliOperation {
             Self::Tags {} => LocalCliOperationKind::Tags,
             Self::Attach { .. } => LocalCliOperationKind::Attach,
             Self::Attachment { .. } => LocalCliOperationKind::Attachment,
+            Self::AttachmentPage { .. } => LocalCliOperationKind::AttachmentPage,
             Self::Import { .. } => LocalCliOperationKind::Import,
             Self::Transcribe { .. } => LocalCliOperationKind::Transcribe,
             Self::Doctor {} => LocalCliOperationKind::Doctor,
@@ -245,6 +252,9 @@ pub enum LocalCliReply {
     Attachment {
         filename: String,
     },
+    AttachmentPage {
+        page: crate::AttachmentPage,
+    },
     Imported {
         session_id: String,
     },
@@ -256,6 +266,7 @@ pub enum LocalCliReply {
     Doctor {
         session_count: Option<usize>,
         agents_updated: Option<bool>,
+        agents_error: Option<String>,
         error: Option<String>,
         cache_path: Option<PathBuf>,
         cache_ready: bool,
@@ -336,6 +347,7 @@ impl LocalCliOperationKind {
                 | (Self::Tags, LocalCliReply::Tags { .. })
                 | (Self::Attach, LocalCliReply::Attached { .. })
                 | (Self::Attachment, LocalCliReply::Attachment { .. })
+                | (Self::AttachmentPage, LocalCliReply::AttachmentPage { .. })
                 | (Self::Import, LocalCliReply::Imported { .. })
                 | (Self::Transcribe, LocalCliReply::Transcribed { .. })
                 | (Self::Doctor, LocalCliReply::Doctor { .. })

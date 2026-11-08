@@ -24,10 +24,19 @@ struct Inner {
 }
 
 impl Blob {
-    pub async fn copy_from(mut source: File, directory: &Path) -> Result<Self> {
+    pub async fn copy_from(source: File, directory: &Path) -> Result<Self> {
+        Self::copy_from_owned(source, directory, Box::new(())).await
+    }
+
+    pub async fn copy_from_owned(
+        mut source: File,
+        directory: &Path,
+        owner: Box<dyn Send + 'static>,
+    ) -> Result<Self> {
         crate::validate_temporary_root(directory)?;
         let directory = directory.to_owned();
         blocking(move || {
+            let _owner = owner;
             source.seek(SeekFrom::Start(0))?;
             let mut output = tempfile::NamedTempFile::new_in(directory)?;
             let mut digest = Sha256::new();
@@ -102,6 +111,10 @@ impl Blob {
             Ok(value)
         })
         .await
+    }
+
+    pub fn sha256(&self) -> &str {
+        &self.descriptor.sha256
     }
 
     pub fn len(&self) -> u64 {
