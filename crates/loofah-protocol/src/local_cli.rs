@@ -8,7 +8,7 @@ use crate::{
     RenderedTranscriptSegment, SaveMetadataRequest, SaveNoteRequest, SearchMeetingsInput, TagItem,
 };
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
 pub struct LocalInitialSessionMetadata {
     pub created_at: Option<String>,

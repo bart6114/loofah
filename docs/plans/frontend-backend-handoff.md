@@ -537,3 +537,4 @@ receipt identity/digest; subtitle reads use the existing bounded parsed receipt.
 Source regressions cover final source ownership, cancellation/revocation, and
 historical result reads after canonical deletion. Shared Native validation remains
 required for this follow-up.
+Remote CLI creation now has an additive `session_initial_metadata` capability and checked `/vaults/{vault}/session-creations` request. It delegates initial note and metadata publication to the existing Core rich-creation receipt, preserving the older title/markdown DTO and serialized receipts. The separate route does not shadow a valid session ID. Unknown fields, metadata budgets, reader/private-vault access, same-request replay and changed-request refusal have source regressions; shared-lane validation is pending. Remote CLI mutation command wiring remains in progress.

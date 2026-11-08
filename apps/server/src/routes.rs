@@ -68,6 +68,10 @@ pub fn router(service: Arc<Service>) -> Router {
             "/vaults/{vault}/sessions",
             get(sessions).post(create_session),
         )
+        .route(
+            "/vaults/{vault}/session-creations",
+            axum::routing::post(create_session_with_metadata),
+        )
         .route("/vaults/{vault}/sessions/{session}", get(session))
         .route(
             "/vaults/{vault}/sessions/{session}/attachments",
@@ -191,6 +195,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "capture_retirement".into(),
             "capture_pending_publication".into(),
             "notes".into(),
+            "session_initial_metadata".into(),
             "session_summaries".into(),
             "timeline_read".into(),
             "transcription_policy".into(),
@@ -560,6 +565,52 @@ async fn create_session(
         Ok(Json(
             context
                 .create_session(namespace, request_id, request)
+                .await?,
+        ))
+    })
+    .await
+}
+async fn create_session_with_metadata(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(id): ApiPath<String>,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<CreateSessionWithMetadataRequest>,
+) -> Result<Json<hypr_vault_read::SessionMeta>> {
+    let access = service.catalog.access(&identity, &id, true).await?;
+    validate_initial_session_metadata(&request.metadata).map_err(|message| {
+        ApiError::from(hypr_loofah_protocol::ApplicationError {
+            code: ErrorCode::Validation,
+            message: message.into(),
+            request_id: None,
+            retryable: false,
+            current_revision: None,
+            mutation_outcome: Some(MutationOutcome::NotCommitted),
+        })
+    })?;
+    let context = service.vault(&id).await?;
+    let namespace = access.member_id.clone();
+    let request_id = request_id(&headers)?.to_owned();
+    let metadata = hypr_loofah_core::InitialSessionMetadata {
+        created_at: request.metadata.created_at,
+        started_at: request.metadata.started_at,
+        ended_at: request.metadata.ended_at,
+        tags: request.metadata.tags,
+        author: request.metadata.author,
+        skill: request.metadata.skill,
+    };
+    write(&service, access, async move {
+        Ok(Json(
+            context
+                .create_session_with_metadata(
+                    namespace,
+                    request_id,
+                    CreateSessionRequest {
+                        title: request.title,
+                        markdown: request.markdown,
+                    },
+                    metadata,
+                )
                 .await?,
         ))
     })

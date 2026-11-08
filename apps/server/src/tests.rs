@@ -1,3 +1,4 @@
+mod initial_metadata;
 mod attachment_remove;
 mod attachment_upload;
 mod attachments;

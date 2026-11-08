@@ -1,3 +1,4 @@
+mod initial_metadata;
 mod attachments;
 mod capture;
 mod capture_append_authority;

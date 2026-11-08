@@ -288,6 +288,10 @@ pub enum RemoteOperation {
         vault_id: String,
         input: CreateSessionRequest,
     },
+    CreateSessionWithMetadata {
+        vault_id: String,
+        input: CreateSessionWithMetadataRequest,
+    },
     Note {
         vault_id: String,
         session_id: String,
@@ -357,6 +361,7 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    SessionCreated(hypr_vault_read::SessionMeta),
     SessionLifecycle(SessionLifecycleSnapshot),
     SessionDelete(DeleteSessionOutcome),
     SessionRestore(RestoreSessionOutcome),
@@ -433,8 +438,11 @@ impl RemoteClient {
     ) -> Result<RemoteReply> {
         if uuid::Uuid::parse_str(request_id).is_err() {
             let mut error = invalid("A UUID request ID is required");
-            if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
-                || tag_write(&operation)
+            if matches!(
+                operation,
+                RemoteOperation::DeleteEmptySession { .. }
+                    | RemoteOperation::CreateSessionWithMetadata { .. }
+            ) || tag_write(&operation)
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
@@ -462,6 +470,7 @@ impl RemoteClient {
             return Err(error);
         }
         let required_feature = match &operation {
+            RemoteOperation::CreateSessionWithMetadata { .. } => Some("session_initial_metadata"),
             operation if provider_credentials::is_operation(operation) => {
                 Some("provider_credentials")
             }
@@ -566,7 +575,8 @@ impl RemoteClient {
                 || capture_processing::is_write(&operation)
                 || matches!(
                     operation,
-                    RemoteOperation::SaveNoteEditor { .. }
+                    RemoteOperation::CreateSessionWithMetadata { .. }
+                        | RemoteOperation::SaveNoteEditor { .. }
                         | RemoteOperation::SaveDocumentEditor { .. }
                         | RemoteOperation::DeleteEmptySession { .. }
                         | RemoteOperation::SaveProcessingSettings { .. }
@@ -707,6 +717,14 @@ impl RemoteClient {
             return Err(error);
         }
         let mut query: Vec<(&str, String)> = Vec::new();
+        if let RemoteOperation::CreateSessionWithMetadata { input, .. } = &operation {
+            validate_initial_session_metadata(&input.metadata).map_err(|message| {
+                let mut error = invalid(message);
+                error.request_id = Some(request_id.into());
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+                error
+            })?;
+        }
         let tag_validation = match &operation {
             RemoteOperation::TagSuggestions { input, .. } => {
                 validate_tag_suggestions_request(input)
@@ -1156,6 +1174,10 @@ impl RemoteClient {
                     Method::GET,
                     vec!["vaults", vault_id, "sessions", session_id, "attachments"],
                 )
+            }
+            RemoteOperation::CreateSessionWithMetadata { vault_id, input } => {
+                body = Some(value(input)?);
+                (Method::POST, vec!["vaults", vault_id, "session-creations"])
             }
             RemoteOperation::CreateSession { vault_id, input } => {
                 body = Some(value(input)?);
@@ -1747,6 +1769,9 @@ impl RemoteClient {
                 }
                 RemoteOperation::Sessions { .. } => {
                     RemoteReply::Sessions(json_body(response, 8 * 1024 * 1024).await?)
+                }
+                RemoteOperation::CreateSessionWithMetadata { .. } => {
+                    RemoteReply::SessionCreated(json_body(response, 8 * 1024 * 1024).await?)
                 }
                 RemoteOperation::CreateSession { .. } | RemoteOperation::Session { .. } => {
                     RemoteReply::Session(json_body(response, 8 * 1024 * 1024).await?)
