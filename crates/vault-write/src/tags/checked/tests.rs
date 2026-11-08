@@ -406,6 +406,7 @@ async fn prospective_unknown_nested_metadata_bytes_are_budgeted_before_registry_
 #[tokio::test]
 async fn duplicate_unknown_metadata_keys_are_not_normalized_away() {
     let (root, store) = fixture().await;
+    let before = baseline(&store).await;
     let path = root.path().join("sessions/note/_meta.json");
     let raw = std::fs::read_to_string(&path).unwrap().replacen(
         '{',
@@ -413,7 +414,7 @@ async fn duplicate_unknown_metadata_keys_are_not_normalized_away() {
         1,
     );
     std::fs::write(&path, &raw).unwrap();
-    let before = baseline(&store).await;
+    assert!(store.read_metadata_snapshot("note").await.is_err());
     let registry = std::fs::read(root.path().join("tags.json")).unwrap();
     assert!(
         store
