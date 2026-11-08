@@ -558,7 +558,10 @@ fn input_artifact(root: &std::path::Path) -> LocalCliArtifact {
     LocalCliArtifact::new(
         std::fs::File::open(path).unwrap(),
         19,
-        format!("{:x}", Sha256::digest(b"test normalized MP3")),
+        Sha256::digest(b"test normalized MP3")
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
         None,
         Box::new(()),
     )

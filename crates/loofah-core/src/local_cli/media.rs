@@ -63,18 +63,18 @@ impl LocalCli {
             .root
             .clone();
         use sha2::{Digest, Sha256};
-        let fingerprint = format!(
-            "{:x}",
-            Sha256::digest(
-                serde_json::to_vec(&(
-                    &operation,
-                    artifact
-                        .as_ref()
-                        .map(|value| (&value.sha256, value.size_bytes))
-                ))
-                .map_err(|_| error(ErrorCode::Validation, "Invalid local media declaration"))?
-            )
-        );
+        let fingerprint = Sha256::digest(
+            serde_json::to_vec(&(
+                &operation,
+                artifact
+                    .as_ref()
+                    .map(|value| (&value.sha256, value.size_bytes)),
+            ))
+            .map_err(|_| error(ErrorCode::Validation, "Invalid local media declaration"))?,
+        )
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
         let claim = journal::Claim::open(
             self.context.clone(),
             root.join("local-media"),
