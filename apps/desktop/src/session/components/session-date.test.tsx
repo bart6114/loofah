@@ -350,41 +350,51 @@ describe("scoped SessionDate", () => {
     expect(backend.save).not.toHaveBeenCalled();
   });
 
-  it("retains the picked value and baseline through a background refresh until explicit review", async () => {
-    const backend = fixture();
-    render(<Host backend={backend} />);
-    const input = await edit();
-    pick(input);
-    backend.set(snapshot("2026-07-10T12:00:00Z", "external"));
-    backend.emit({
-      kind: "change",
-      change: {
-        kind: "index_changed",
-        entity: "session_headers",
-        ids: ["same"],
-      },
-    });
-    await screen.findByText(
-      "The saved date changed. Review it before saving your picked date.",
-    );
-    expect(input.value).toBe(PICKED);
-    expect(screen.getByRole("button", { name: "Save date" })).toHaveProperty(
-      "disabled",
-      true,
-    );
-    expect(backend.save).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Review saved date" }));
-    await waitFor(() =>
+  it.each([
+    ["date", "2026-07-10T12:00:00Z", ["keep"]],
+    ["tags", ORIGINAL, ["new tag"]],
+  ])(
+    "retains the picked date through a background %s change until explicit review",
+    async (_field, createdAt, tags) => {
+      const backend = fixture();
+      render(<Host backend={backend} />);
+      const input = await edit();
+      pick(input);
+      const external = snapshot(createdAt as string, "external");
+      external.meta.tags = tags as string[];
+      backend.set(external);
+      backend.emit({
+        kind: "change",
+        change: {
+          kind: "index_changed",
+          entity: "session_headers",
+          ids: ["same"],
+        },
+      });
+      await screen.findByText(
+        "The note changed. Review its saved date before saving your picked date.",
+      );
+      expect(input.value).toBe(PICKED);
       expect(screen.getByRole("button", { name: "Save date" })).toHaveProperty(
         "disabled",
-        false,
-      ),
-    );
-    expect(input.value).toBe(PICKED);
-    clickSave();
-    await waitFor(() => expect(backend.save).toHaveBeenCalledOnce());
-    expect(backend.save.mock.calls[0][1].expected_revision).toBe("external");
-  });
+        true,
+      );
+      expect(backend.save).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Review saved date" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save date" }),
+        ).toHaveProperty("disabled", false),
+      );
+      expect(input.value).toBe(PICKED);
+      clickSave();
+      await waitFor(() => expect(backend.save).toHaveBeenCalledOnce());
+      expect(backend.save.mock.calls[0][1].expected_revision).toBe("external");
+      expect(backend.get().meta.tags).toEqual(tags);
+    },
+  );
 
   it("shows a typed conflict and requires fresh review before an explicit CAS retry", async () => {
     const backend = fixture();
@@ -394,7 +404,7 @@ describe("scoped SessionDate", () => {
     backend.set(snapshot("2026-07-10T12:00:00Z", "external"));
     clickSave();
     await screen.findByText(
-      "The saved date changed. Review it before saving your picked date.",
+      "The note changed. Review its saved date before saving your picked date.",
     );
     expect(
       screen.getByLabelText<HTMLInputElement>("Note date and time").value,

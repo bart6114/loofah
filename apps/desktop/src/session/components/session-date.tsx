@@ -305,7 +305,7 @@ function ScopedSessionDate({
             <div className="flex flex-col gap-1 text-xs">
               <p role="alert">
                 {conflict || stale
-                  ? t`The saved date changed. Review it before saving your picked date.`
+                  ? t`The note changed. Review its saved date before saving your picked date.`
                   : awaitingCanonical
                     ? t`The date was saved, but its current value could not be confirmed.`
                     : t`Could not confirm the date change. Review the saved date before trying again.`}

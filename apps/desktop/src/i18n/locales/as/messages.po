@@ -2422,6 +2422,10 @@ msgstr ""
 msgid "The date was saved, but its current value could not be confirmed."
 msgstr ""
 
+#: src/session/components/session-date.tsx
+msgid "The note changed. Review its saved date before saving your picked date."
+msgstr ""
+
 #: src/shared/useNewNote.ts
 msgid "The note may already exist. Retry the same request before creating another."
 msgstr ""
@@ -2432,10 +2436,6 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "The provider returned an unusable summary."
-msgstr ""
-
-#: src/session/components/session-date.tsx
-msgid "The saved date changed. Review it before saving your picked date."
 msgstr ""
 
 #: src/settings/ai/llm/configure.tsx
