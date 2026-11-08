@@ -131,6 +131,7 @@ async fn attachment_removal_checks_roles_revision_receipts_and_exact_resource_in
             .is_err()
     );
     assert!(held.read_chunk(0, 1).await.is_err());
+    drop(held);
     assert!(
         fixture
             .service
