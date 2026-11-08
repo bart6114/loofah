@@ -32,6 +32,8 @@ pub struct TranscriptionConfig {
     pub onnx: Option<OnnxConfig>,
     #[serde(default = "one_workload")]
     pub workload_groups: usize,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub live_reserved_groups: usize,
     #[serde(default = "default_transcription_jobs")]
     pub max_jobs: usize,
     #[serde(default = "default_transcription_queue")]
@@ -46,6 +48,10 @@ pub struct OnnxConfig {
     pub streaming_model_path: PathBuf,
     pub diarizer_model_path: PathBuf,
     pub snapshot_root: PathBuf,
+}
+
+fn is_zero(value: &usize) -> bool {
+    *value == 0
 }
 
 fn one_workload() -> usize {
@@ -93,10 +99,14 @@ impl TranscriptionConfig {
                         ]
                         .iter()
                         .any(|path| !path.is_absolute() || path.to_str().is_none())
-                        || self.workload_groups != 1
+                        || !matches!(
+                            (self.workload_groups, self.live_reserved_groups),
+                            (1, 0) | (2, 1)
+                        )
                 }
             }
             || !(1..=8).contains(&self.workload_groups)
+            || self.live_reserved_groups >= self.workload_groups
             || !(1..=256).contains(&self.max_jobs)
             || !(1..=16).contains(&self.max_queued)
             || self.private_audio_bytes == 0
@@ -241,6 +251,13 @@ mod tests {
         let config: TranscriptionConfig = serde_json::from_value(valid.clone()).unwrap();
         config.validate().unwrap();
         assert_eq!(config.workload_groups, 1);
+        assert_eq!(config.live_reserved_groups, 0);
+        assert!(
+            serde_json::to_value(&config)
+                .unwrap()
+                .get("live_reserved_groups")
+                .is_none()
+        );
         assert_eq!(config.max_jobs, 256);
         assert_eq!(config.max_queued, 16);
         assert_eq!(config.private_audio_bytes, 8 * 1024 * 1024 * 1024);
@@ -254,6 +271,7 @@ mod tests {
             ("model_sha256", json!("A".repeat(64))),
             ("workload_groups", json!(0)),
             ("workload_groups", json!(9)),
+            ("live_reserved_groups", json!(1)),
             ("max_jobs", json!(0)),
             ("max_jobs", json!(257)),
             ("max_queued", json!(0)),
@@ -271,6 +289,13 @@ mod tests {
                 "{key}"
             );
         }
+        let mut reserved = valid.clone();
+        reserved["workload_groups"] = json!(2);
+        reserved["live_reserved_groups"] = json!(1);
+        serde_json::from_value::<TranscriptionConfig>(reserved)
+            .unwrap()
+            .validate()
+            .unwrap();
         for key in ["url", "api_key", "download", "future"] {
             let mut candidate = valid.clone();
             candidate[key] = json!("unsupported");
@@ -288,6 +313,20 @@ mod tests {
             .unwrap()
             .validate()
             .unwrap();
+        let mut reserved = value.clone();
+        reserved["workload_groups"] = json!(2);
+        reserved["live_reserved_groups"] = json!(1);
+        serde_json::from_value::<TranscriptionConfig>(reserved.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        reserved["workload_groups"] = json!(3);
+        assert!(
+            serde_json::from_value::<TranscriptionConfig>(reserved)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
         for (field, changed) in [
             ("workload_groups", json!(2)),
             ("model_size_bytes", json!(3)),

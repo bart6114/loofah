@@ -3,6 +3,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
+use crate::speech_admission::{AdmissionError, SpeechAdmission, SpeechPermit};
 use hypr_loofah_core::transcription_jobs::{
     PreparedTranscription, TranscriptionEngine, TranscriptionFuture, TranscriptionInput,
 };
@@ -14,7 +15,6 @@ use hypr_transcribe_onnx::{
     diarize::Diarizer,
     models::{Model, VerifiedModel},
 };
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 mod batch;
@@ -42,9 +42,12 @@ pub(crate) fn model_fingerprint() -> String {
         .collect()
 }
 
-struct Models {
+struct BatchModels {
     batch: BatchSession,
     diarizer: Diarizer,
+}
+struct Models {
+    batch: Arc<Mutex<BatchModels>>,
     streaming: Arc<VerifiedModel>,
 }
 
@@ -52,7 +55,7 @@ struct Resources {
     phase: AtomicU8,
     shutdown: CancellationToken,
     stopping: AtomicBool,
-    slot: Arc<Semaphore>,
+    admission: Arc<SpeechAdmission>,
     models: Mutex<Option<Models>>,
 }
 
@@ -67,7 +70,12 @@ impl OnnxHost {
             shutdown: CancellationToken::new(),
             phase: AtomicU8::new(LOADING),
             stopping: AtomicBool::new(false),
-            slot: Arc::new(Semaphore::new(1)),
+            admission: SpeechAdmission::new(
+                config.workload_groups,
+                config.live_reserved_groups,
+                config.max_queued,
+            )
+            .expect("validated CPU admission"),
             models: Mutex::new(None),
         });
         let host = Arc::new(Self {
@@ -75,11 +83,7 @@ impl OnnxHost {
             resources: resources.clone(),
         });
         let config = config.clone();
-        let permit = resources
-            .slot
-            .clone()
-            .try_acquire_owned()
-            .expect("new model slot");
+        let permit = resources.admission.reserve_loading();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let loaded = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
@@ -99,8 +103,7 @@ impl OnnxHost {
                     // Validate the live graphs at startup, but do not reuse a previous stream's decoder state.
                     drop(LiveSession::load_verified_pair(streaming.clone())?);
                     Ok(Models {
-                        batch,
-                        diarizer,
+                        batch: Arc::new(Mutex::new(BatchModels { batch, diarizer })),
                         streaming,
                     })
                 },
@@ -123,21 +126,37 @@ impl OnnxHost {
         host
     }
 
-    fn admit(&self) -> Result<OwnedSemaphorePermit, TranscriptionFailure> {
+    fn ready(&self) -> Result<(), TranscriptionFailure> {
         if self.resources.stopping.load(Ordering::Acquire)
+            || self.resources.admission.is_stopped()
             || self.resources.phase.load(Ordering::Acquire) != READY
         {
             return Err(TranscriptionFailure::EngineUnavailable);
         }
+        Ok(())
+    }
+    fn admit_live(&self) -> Result<SpeechPermit, TranscriptionFailure> {
+        self.ready()?;
         let permit = self
             .resources
-            .slot
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| TranscriptionFailure::ResourceLimit)?;
-        if self.resources.stopping.load(Ordering::Acquire) {
-            return Err(TranscriptionFailure::EngineUnavailable);
-        }
+            .admission
+            .try_live()
+            .map_err(admission_failure)?;
+        self.ready()?;
+        Ok(permit)
+    }
+    async fn admit_batch(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<SpeechPermit, TranscriptionFailure> {
+        self.ready()?;
+        let permit = self
+            .resources
+            .admission
+            .batch(cancel)
+            .await
+            .map_err(admission_failure)?;
+        self.ready()?;
         Ok(permit)
     }
 
@@ -149,9 +168,10 @@ impl OnnxHost {
         };
         let availability = match phase {
             LOADING => TranscriptionAvailability::Loading,
-            READY if self.resources.slot.available_permits() == 0 => {
-                TranscriptionAvailability::InUse
+            READY if self.resources.admission.is_stopped() => {
+                TranscriptionAvailability::Unavailable
             }
+            READY if self.resources.admission.is_busy() => TranscriptionAvailability::InUse,
             READY => TranscriptionAvailability::Ready,
             STOPPING | STOPPED => TranscriptionAvailability::Stopping,
             _ => TranscriptionAvailability::Unavailable,
@@ -166,6 +186,7 @@ impl OnnxHost {
 
     pub(crate) fn stop_admission(&self) {
         self.resources.stopping.store(true, Ordering::Release);
+        self.resources.admission.stop();
         self.resources.shutdown.cancel();
         self.resources.phase.store(STOPPING, Ordering::Release);
     }
@@ -173,12 +194,7 @@ impl OnnxHost {
     pub(crate) async fn shutdown(&self) {
         self.stop_admission();
         let resources = self.resources.clone();
-        let permit = resources
-            .slot
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("owned model slot");
+        let permit = resources.admission.drain().await;
         let task = tokio::task::spawn_blocking(move || {
             let models = resources
                 .models
@@ -227,7 +243,7 @@ fn options(
 
 struct Prepared {
     resources: Arc<Resources>,
-    permit: OwnedSemaphorePermit,
+    permit: SpeechPermit,
     request: TranscriptionJobRequest,
 }
 impl TranscriptionEngine for OnnxHost {
@@ -249,7 +265,7 @@ impl TranscriptionEngine for OnnxHost {
                 &request.keywords,
                 false,
             )?;
-            let permit = self.admit()?;
+            let permit = self.admit_batch(&cancel).await?;
             Ok(Box::new(Prepared {
                 resources: self.resources.clone(),
                 permit,
@@ -280,5 +296,13 @@ impl PreparedTranscription for Prepared {
                 .await
                 .unwrap_or(Err(TranscriptionFailure::EngineFailed))
         })
+    }
+}
+
+fn admission_failure(cause: AdmissionError) -> TranscriptionFailure {
+    match cause {
+        AdmissionError::Busy => TranscriptionFailure::ResourceLimit,
+        AdmissionError::Cancelled => TranscriptionFailure::Interrupted,
+        AdmissionError::Stopped => TranscriptionFailure::EngineUnavailable,
     }
 }

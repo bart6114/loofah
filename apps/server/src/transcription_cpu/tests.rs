@@ -257,6 +257,7 @@ async fn missing_completion_receipt_retains_owner_and_disables_further_host_admi
             size_bytes: 1,
         },
         Limits::default(),
+        SpeechAdmission::new(1, 0, 16).unwrap(),
     )
     .unwrap();
     let observed = host.failed.clone();

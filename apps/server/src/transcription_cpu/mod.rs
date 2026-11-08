@@ -26,6 +26,8 @@ use hypr_vault_read::TranscriptWithData;
 use owhisper_interface::{ListenParams, batch};
 use tokio_util::sync::CancellationToken;
 
+use crate::speech_admission::{AdmissionError, SpeechAdmission, SpeechPermit};
+
 mod live;
 #[cfg(test)]
 mod tests;
@@ -36,6 +38,7 @@ type BatchResult = Arc<Result<batch::Response, ResourceError>>;
 pub(crate) struct CpuTranscriptionHost {
     model: String,
     resources: Arc<WhisperResources>,
+    admission: Arc<SpeechAdmission>,
     failed: Arc<AtomicBool>,
 }
 
@@ -44,8 +47,10 @@ impl CpuTranscriptionHost {
         model: String,
         spec: ModelSpec,
         limits: Limits,
+        admission: Arc<SpeechAdmission>,
     ) -> Result<Arc<Self>, ResourceError> {
-        if model.is_empty()
+        if admission.total() != limits.workload_groups
+            || model.is_empty()
             || model.len() > 512
             || model.trim() != model
             || model.chars().any(char::is_control)
@@ -55,12 +60,13 @@ impl CpuTranscriptionHost {
         Ok(Arc::new(Self {
             model,
             resources: Arc::new(WhisperResources::start_cpu(spec, limits)?),
+            admission,
             failed: Arc::new(AtomicBool::new(false)),
         }))
     }
 
     pub(crate) fn accepting(&self) -> bool {
-        !self.failed.load(Ordering::Acquire)
+        !self.failed.load(Ordering::Acquire) && !self.admission.is_stopped()
     }
 
     pub(crate) fn observer(&self) -> ResourceObserver {
@@ -74,6 +80,7 @@ impl CpuTranscriptionHost {
 
     pub(crate) fn stop_admission(&self) {
         self.failed.store(true, Ordering::Release);
+        self.admission.stop();
     }
 }
 
@@ -91,6 +98,16 @@ impl TranscriptionEngine for CpuTranscriptionHost {
                 return Err(TranscriptionFailure::EngineUnavailable);
             }
             let params = parameters(&self.model, request)?;
+            if self.resources.observer().snapshot().phase
+                != hypr_transcribe_whisper_local::resources::ResourcePhase::Ready
+            {
+                return Err(TranscriptionFailure::EngineUnavailable);
+            }
+            let capacity = self
+                .admission
+                .batch(&cancel)
+                .await
+                .map_err(admission_failure)?;
             let admission = self.resources.try_batch().map_err(resource_failure)?;
             if cancel.is_cancelled() {
                 return Err(TranscriptionFailure::Interrupted);
@@ -101,6 +118,7 @@ impl TranscriptionEngine for CpuTranscriptionHost {
             Ok(Box::new(PreparedCpu {
                 resources: self.resources.clone(),
                 admission,
+                capacity,
                 params,
                 request: request.clone(),
                 failed: self.failed.clone(),
@@ -149,6 +167,7 @@ fn parameters_for_options(
 struct PreparedCpu {
     resources: Arc<WhisperResources>,
     admission: BatchAdmission,
+    capacity: SpeechPermit,
     params: ListenParams,
     request: TranscriptionJobRequest,
     failed: Arc<AtomicBool>,
@@ -179,6 +198,7 @@ impl PreparedTranscription for PreparedCpu {
 }
 
 struct NativeSource {
+    _capacity: SpeechPermit,
     _prepared: Arc<PreparedAudio>,
     _source: SourceOwner,
 }
@@ -194,6 +214,7 @@ async fn run(
     let PreparedCpu {
         resources,
         admission,
+        capacity,
         mut params,
         failed,
         ..
@@ -220,12 +241,12 @@ async fn run(
     let worker = tokio::task::spawn_blocking(move || {
         let _owner = decode_owner;
         let audio = PreparedAudio::from_path(&path, audio, &decode_cancel);
-        (audio, admission)
+        (audio, admission, capacity)
     })
     .await;
     decoded.cancel();
     let _ = bridge.await;
-    let (audio, admission) = worker.map_err(|_| TranscriptionFailure::EngineFailed)?;
+    let (audio, admission, capacity) = worker.map_err(|_| TranscriptionFailure::EngineFailed)?;
     let audio = Arc::new(audio.map_err(|_| {
         if cancel.is_cancelled() {
             TranscriptionFailure::Interrupted
@@ -248,6 +269,7 @@ async fn run(
     let source = TrustedBatchSource::new(
         audio.path.clone(),
         NativeSource {
+            _capacity: capacity,
             _prepared: audio.clone(),
             _source: owner.clone(),
         },
@@ -421,5 +443,13 @@ fn resource_failure(error: ResourceError) -> TranscriptionFailure {
         ResourceError::WorkerPanicked | ResourceError::Failed(_) => {
             TranscriptionFailure::EngineFailed
         }
+    }
+}
+
+fn admission_failure(cause: AdmissionError) -> TranscriptionFailure {
+    match cause {
+        AdmissionError::Busy => TranscriptionFailure::ResourceLimit,
+        AdmissionError::Cancelled => TranscriptionFailure::Interrupted,
+        AdmissionError::Stopped => TranscriptionFailure::EngineUnavailable,
     }
 }

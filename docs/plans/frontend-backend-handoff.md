@@ -836,7 +836,7 @@ package set (21 packages; same feature graph and absolute Native build path).
 Desktop typecheck passed. The complete frontend cohort passed 2,586 cases in 292
 files; a subsequent 109-case focused cohort covers the final confirmation guards,
 source saver and vault restart changes. Locale extraction/strict compilation and
-lint passed (114 existing warnings, zero errors). Workflow helpers passed 26
+lint passed (114 warnings, zero errors). Workflow helpers passed 26
 cases and zizmor reported no high-severity findings.
 
 The Native 21-library cohort at source `905af7f40f` plus the paired capability
@@ -870,3 +870,5 @@ QA fixture sets `ONBOARDING=false` without altering OS permission checks; physic
 capture waits for the pending confirmation. Evidence is under the local task cache
 `qa/production-ui-baseline-6e-evidence.json` and named validation logs. No user vault
 was used. No merge, release, version bump or deployment has occurred.
+
+Server CPU admission now has an explicit opt-in reserved live partition within the existing operator total. `live_reserved_groups` defaults to zero; one-group legacy hosts still report live busy during batch work. Batch admission waits in a bounded FIFO host queue before source decoding/inference and honours cancellation or shutdown without dispatch/replay. ONNX accepts only legacy `(total=1,reserved=0)` or explicit `(2,1)`, separates its streaming-model snapshot from the mutable batch/diarizer mutex, and drains every group before destroying models. Whisper keeps its existing native total cap and carries the server permit inside the trusted native source owner; Local Metal/GPU/resource behavior is untouched. Source regressions cover total/partition bounds, FIFO/overflow/cancelled waiters, abandoned caller physical drain, panic admission closure, startup ownership, ONNX two-lane shutdown and strict configuration. Unit/platform and real CPU concurrency qualification are pending the coordinated Linux lane; no default capacity or memory increase is implied.

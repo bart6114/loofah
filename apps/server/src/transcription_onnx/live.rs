@@ -118,7 +118,7 @@ impl CaptureLiveEngine for OnnxHost {
             if !(1..=2).contains(&channels) {
                 return Err(CaptureLiveFailure::SourceChanged);
             }
-            let permit = self.admit().map_err(|error| match error {
+            let permit = self.admit_live().map_err(|error| match error {
                 TranscriptionFailure::ResourceLimit => CaptureLiveFailure::ResourceLimit,
                 _ => CaptureLiveFailure::EngineUnavailable,
             })?;

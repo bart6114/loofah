@@ -42,6 +42,12 @@ impl TranscriptionHost {
                 workload_groups: config.workload_groups,
                 ..Default::default()
             },
+            crate::speech_admission::SpeechAdmission::new(
+                config.workload_groups,
+                config.live_reserved_groups,
+                config.max_queued,
+            )
+            .map_err(|message| ApiError::new(ErrorCode::Validation, message))?,
         )
         .map_err(|_| {
             ApiError::new(

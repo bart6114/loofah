@@ -180,11 +180,11 @@ async fn onnx_shutdown_retains_original_model_admission_until_release() {
             phase: AtomicU8::new(READY),
             shutdown: CancellationToken::new(),
             stopping: AtomicBool::new(false),
-            slot: Arc::new(Semaphore::new(1)),
+            admission: SpeechAdmission::new(1, 0, 16).unwrap(),
             models: Mutex::new(None),
         }),
     });
-    let admission = host.admit().unwrap();
+    let admission = host.admit_live().unwrap();
     let closing_host = host.clone();
     let closing = tokio::spawn(async move {
         closing_host.shutdown().await;
@@ -192,7 +192,7 @@ async fn onnx_shutdown_retains_original_model_admission_until_release() {
     host.resources.shutdown.cancelled().await;
     assert!(!closing.is_finished());
     assert!(matches!(
-        host.admit(),
+        host.admit_live(),
         Err(TranscriptionFailure::EngineUnavailable)
     ));
     assert_eq!(
@@ -226,9 +226,46 @@ async fn failed_onnx_verification_is_redacted_and_never_admits_work() {
             .contains(models.path().to_str().unwrap())
     );
     assert!(matches!(
-        host.admit(),
+        host.admit_live(),
         Err(TranscriptionFailure::EngineUnavailable)
     ));
     host.shutdown().await;
     assert_eq!(std::fs::read_dir(scratch.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn reserved_onnx_live_and_batch_remain_independent_until_both_actually_drain() {
+    let host = Arc::new(OnnxHost {
+        model: "public-alias".into(),
+        resources: Arc::new(Resources {
+            phase: AtomicU8::new(READY),
+            shutdown: CancellationToken::new(),
+            stopping: AtomicBool::new(false),
+            admission: SpeechAdmission::new(2, 1, 2).unwrap(),
+            models: Mutex::new(None),
+        }),
+    });
+    let batch = host.admit_batch(&CancellationToken::new()).await.unwrap();
+    let live = host.admit_live().unwrap();
+    assert_eq!(host.policy().availability, TranscriptionAvailability::InUse);
+    assert!(matches!(
+        host.admit_live(),
+        Err(TranscriptionFailure::ResourceLimit)
+    ));
+    let closing_host = host.clone();
+    let closing = tokio::spawn(async move { closing_host.shutdown().await });
+    host.resources.shutdown.cancelled().await;
+    drop(batch);
+    tokio::task::yield_now().await;
+    assert!(!closing.is_finished());
+    assert_eq!(
+        host.policy().availability,
+        TranscriptionAvailability::Stopping
+    );
+    drop(live);
+    tokio::time::timeout(std::time::Duration::from_secs(2), closing)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(host.resources.phase.load(Ordering::Acquire), STOPPED);
 }

@@ -48,10 +48,16 @@ pub(super) async fn run(
         }
         let operation = || -> anyhow::Result<hypr_vault_read::TranscriptWithData> {
             anyhow::ensure!(!stopped(), "Stopped");
-            let mut models = resources.models.lock().unwrap_or_else(|e| e.into_inner());
-            let models = models
-                .as_mut()
+            let batch = resources
+                .models
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .map(|models| models.batch.clone())
                 .ok_or_else(|| anyhow::anyhow!("Models unavailable"))?;
+            // Live admission only clones the independent streaming model. It must
+            // never block an async executor on this long mutable batch session.
+            let mut models = batch.lock().unwrap_or_else(|e| e.into_inner());
             let mut channels = Vec::new();
             for channel in 0..audio.pcm.channels {
                 anyhow::ensure!(!stopped(), "Stopped");

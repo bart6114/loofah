@@ -15,6 +15,8 @@ mod media_jobs;
 mod transcription_authorization;
 
 #[cfg(feature = "cpu-transcription")]
+mod speech_admission;
+#[cfg(feature = "cpu-transcription")]
 mod transcription_cpu;
 #[cfg(feature = "cpu-transcription")]
 mod transcription_onnx;

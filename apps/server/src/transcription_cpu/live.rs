@@ -76,6 +76,10 @@ impl CaptureLiveEngine for CpuTranscriptionHost {
             };
             params.channels = channels.count() as u8;
             params.sample_rate = 16000;
+            let capacity = self.admission.try_live().map_err(|cause| match cause {
+                AdmissionError::Busy => CaptureLiveFailure::ResourceLimit,
+                _ => CaptureLiveFailure::EngineUnavailable,
+            })?;
             let admission =
                 self.resources
                     .try_live(params.channels)
@@ -86,7 +90,7 @@ impl CaptureLiveEngine for CpuTranscriptionHost {
             if self.failed.load(Ordering::Acquire) {
                 return Err(CaptureLiveFailure::EngineUnavailable);
             }
-            let owner = Arc::new(Mutex::new(source_owner));
+            let owner: SourceOwner = Arc::new(Mutex::new(Box::new((source_owner, capacity))));
             let live = self
                 .resources
                 .start_live(
