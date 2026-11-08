@@ -286,10 +286,6 @@ async fn run(
     progress: &watch::Sender<CaptureUploadProgress>,
 ) -> Result<()> {
     match &writer.identity().target {
-        CaptureTarget::PendingSession { .. } => {
-            set(progress, CaptureUploadPhase::PendingSession, None);
-            return Ok(());
-        }
         CaptureTarget::ExistingSession {
             expected_audio_sha256: Some(_),
             ..
@@ -406,6 +402,7 @@ async fn cycle(
         )
         .await?;
     validate_status(&remote, &snapshot)?;
+    observe_session(writer, &remote).await?;
     if snapshot.acknowledged.as_ref() != Some(&remote.prefix) {
         writer.acknowledge_prefix(remote.prefix.clone()).await?;
     }
@@ -442,10 +439,19 @@ async fn cycle(
         }
         remote = client.seal_capture(vault, id, &seal, stop.clone()).await?;
         validate_status(&remote, &current)?;
+        observe_session(writer, &remote).await?;
+        if matches!(
+            current.identity.target,
+            CaptureTarget::PendingSession { .. }
+        ) && remote.session_id.is_none()
+        {
+            set(progress, CaptureUploadPhase::PendingSession, None);
+        }
         remote = client
             .publish_capture(vault, id, &seal, stop.clone())
             .await?;
         validate_status(&remote, &current)?;
+        observe_session(writer, &remote).await?;
     }
     let publication = remote
         .publication
@@ -465,12 +471,41 @@ fn validate_status(remote: &CaptureIngestStatus, local: &CaptureSnapshot) -> Res
         || remote.format != local.format
         || Some(remote.first_admitted_audio_observed_at_ms)
             != local.first_admitted_audio_observed_at_ms
-        || remote.session_id != local.session_id
         || (remote.seal.is_some() && remote.seal != local.seal)
     {
         return Err(review(
             "Server capture does not match this device's immutable declaration",
         ));
+    }
+    if let Some(session) = &remote.session_id {
+        validate_session_id(session)
+            .map_err(|_| review("Server capture returned an invalid session binding"))?;
+        if local
+            .session_id
+            .as_ref()
+            .is_some_and(|bound| bound != session)
+        {
+            return Err(review(
+                "Server capture attempted to change its immutable session binding",
+            ));
+        }
+    }
+    if matches!(&local.identity.target,CaptureTarget::ExistingSession{session_id,..} if remote.session_id.as_ref() != Some(session_id))
+    {
+        return Err(review("Server capture changed its existing session target"));
+    }
+    Ok(())
+}
+
+async fn observe_session(writer: &CaptureWriter, remote: &CaptureIngestStatus) -> Result<()> {
+    if !matches!(
+        &writer.identity().target,
+        CaptureTarget::PendingSession { .. }
+    ) {
+        return Ok(());
+    }
+    if let Some(session) = &remote.session_id {
+        writer.bind_session(session.clone()).await?;
     }
     Ok(())
 }

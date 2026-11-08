@@ -52,7 +52,7 @@ preferences use revision checks and apply only at the next process start.
 
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 
-The experimental `capture_ingestion` capability exposes authenticated staging APIs below. Staging retains private upload chunks. Canonical publication uses the separate capability below; transcription, remote recording controls and device cleanup remain distinct operations. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.
+The experimental `capture_ingestion` capability exposes authenticated staging APIs below. Staging retains private upload chunks. Canonical publication uses the separate capability below; transcription, remote recording controls and device cleanup remain distinct operations. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript, or a new note bound to a pending capture. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.
 
 | Method | Path below `/api/v1/vaults/{vault}`     | Result                                                                                                        |
 | ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -67,8 +67,17 @@ operation identity stays the original capture declaration UUID. It checks curren
 membership again after expensive verification/preparation, then retains the grant
 and vault ownership through real commit and durable capture observation. It keeps
 an existing start time, otherwise using the producer's original first-audio time.
-No end time is invented. Pending-note creation, append/replacement and any existing
-`transcript.json` require a later explicit operation; they are refused unchanged.
+No end time is invented. A pending capture creates its note only after current
+authentication and verification of sealed, nonempty audio. Its immutable creation
+UUID resolves one checked note identity, and the original producer observation
+sets the note's creation time even if uploading happens later. The separate
+one-time session binding survives retry and restart without rewriting raw capture
+identity or audio. A lost publication response resumes through the same binding;
+the SDK verifies canonical bytes independently before confirming publication.
+This raw recording queue does not permit offline remote-note editing. Pending
+live transcription and automatic summaries remain separate work; explicit batch
+transcription can process published audio. Append/replacement and any existing
+`transcript.json` remain refused unchanged.
 
 Private WAV/result stages and receipts recover exact admitted writes before vault
 readiness. Same-process gates prevent playback, recording metadata/waveform reads
@@ -191,7 +200,7 @@ Authenticated batch APIs are below `/api/v1/vaults/{vault}`:
 | POST   | `/transcription/jobs/{job}/cancel` | Request cancellation; actual source/native work still drains.                                                                                                           |
 | POST   | `/transcription/jobs/{job}/resume` | Recheck and apply an existing retained result without rerunning inference.                                                                                              |
 
-Editors/owners submit and resume; reads remain private to the submitting member while they retain vault access. Accepted work survives the original login token's expiry/logout. Membership changes are checked during work and again before publication; membership loss cancels, and service stop interrupts. Publication requires the original recording and an absent canonical transcript. Existing transcripts, append/replacement, diarization configuration, pending-note creation and authenticated live captions require later explicit operations. Recording files, note content, metadata and attachments are preserved. Confirmed results can be retained without publication; output discarded by native cancellation is not guaranteed recoverable.
+Editors/owners submit and resume; reads remain private to the submitting member while they retain vault access. Accepted work survives the original login token's expiry/logout. Membership changes are checked during work and again before publication; membership loss cancels, and service stop interrupts. Publication requires the original recording and an absent canonical transcript. A pending capture must first bind and publish its recording through the capture publication operation above. Existing transcripts, append/replacement, diarization configuration and authenticated live captions require later explicit operations. Recording files, note content, metadata and attachments are preserved. Confirmed results can be retained without publication; output discarded by native cancellation is not guaranteed recoverable.
 
 Shutdown stops admission and requests cancellation early, retains vault/source ownership until actual Core/native/mapping work drains, then destroys the model. A response deadline reports pending work; it does not authorize process exit or resource reuse.
 

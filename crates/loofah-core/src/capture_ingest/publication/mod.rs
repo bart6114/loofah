@@ -80,7 +80,10 @@ impl crate::VaultContext {
             .root
             .clone();
         let context = self.clone();
-        tokio::spawn(async move {
+        // A pending note can persist before its recording commit is admitted.
+        let creation = Arc::new(std::sync::atomic::AtomicU8::new(0));
+        let attempted_creation = creation.clone();
+        let result = tokio::spawn(async move {
             let _permit = permit;
             let settings = context
                 .capture_ingestion
@@ -101,20 +104,63 @@ impl crate::VaultContext {
             let grant = authorize().await.map_err(not_committed)?;
             let writer = find(&spool, scope, &capture_id).await?;
             let snapshot = writer.snapshot().await?;
-            let session = existing_target(&snapshot)?;
+            let session = target_session(&snapshot)?;
             if snapshot.seal.as_ref() != Some(&expected) {
                 return Err(rejected(ErrorCode::Conflict, "Capture seal changed"));
             }
-            context
-                .store
-                .read_metadata_snapshot(&session)
-                .await
-                .map_err(|cause| crate::vault::storage_error(cause, false))?
-                .ok_or_else(|| rejected(ErrorCode::NotFound, "Session not found"))?;
+            if snapshot.session_id.is_some() {
+                context
+                    .store
+                    .read_metadata_snapshot(&session)
+                    .await
+                    .map_err(|cause| crate::vault::storage_error(cause, false))?
+                    .ok_or_else(|| rejected(ErrorCode::NotFound, "Session not found"))?;
+            }
             drop(grant);
-            let verified = wav::verify(&writer, &expected)
+            let mut verified = wav::verify(&writer, &expected)
                 .await
                 .map_err(not_committed)?;
+            if let CaptureTarget::PendingSession { create_request_id } =
+                &verified.snapshot.identity.target
+            {
+                let grant = authorize().await.map_err(not_committed)?;
+                attempted_creation.store(1, std::sync::atomic::Ordering::Release);
+                let created = context
+                    .create_capture_session(
+                        verified.snapshot.identity.scope.member_id.clone(),
+                        uuid::Uuid::parse_str(create_request_id).map_err(|_| {
+                            rejected(ErrorCode::Validation, "Invalid capture creation identifier")
+                        })?,
+                        verified
+                            .snapshot
+                            .first_admitted_audio_observed_at_ms
+                            .ok_or_else(|| {
+                                rejected(ErrorCode::Conflict, "Capture has no producer observation")
+                            })?,
+                    )
+                    .await?;
+                attempted_creation.store(2, std::sync::atomic::Ordering::Release);
+                if created.meta.id != session {
+                    return Err(unconfirmed(
+                        ErrorCode::Conflict,
+                        "Capture creation resolved to another session",
+                    ));
+                }
+                let bound = writer.bind_session(session.clone()).await?;
+                if bound.identity != verified.snapshot.identity
+                    || bound.format != verified.snapshot.format
+                    || bound.seal != verified.snapshot.seal
+                    || bound.first_admitted_audio_observed_at_ms
+                        != verified.snapshot.first_admitted_audio_observed_at_ms
+                {
+                    return Err(unconfirmed(
+                        ErrorCode::Conflict,
+                        "Capture declaration changed during session binding",
+                    ));
+                }
+                verified.snapshot = bound;
+                drop(grant);
+            }
             let request = publication_request(&verified)?;
             let key = operation_key(&request);
             let root = operations.join("recording-publications");
@@ -273,11 +319,27 @@ impl crate::VaultContext {
                 ErrorCode::Internal,
                 "Capture publication outcome could not be confirmed",
             )
-        })?
+        })?;
+        result.map_err(|mut cause| {
+            let creation = creation.load(std::sync::atomic::Ordering::Acquire);
+            if creation > 0
+                && matches!(
+                    cause.mutation_outcome,
+                    None | Some(MutationOutcome::NotCommitted)
+                )
+            {
+                cause.mutation_outcome = Some(if creation == 2 {
+                    MutationOutcome::Persisted
+                } else {
+                    MutationOutcome::Unknown
+                });
+            }
+            cause
+        })
     }
 }
 
-fn existing_target(snapshot: &super::CaptureSnapshot) -> Result<String, ApplicationError> {
+fn target_session(snapshot: &super::CaptureSnapshot) -> Result<String, ApplicationError> {
     match &snapshot.identity.target {
         CaptureTarget::ExistingSession {
             session_id,
@@ -287,10 +349,29 @@ fn existing_target(snapshot: &super::CaptureSnapshot) -> Result<String, Applicat
             ErrorCode::Validation,
             "Capture publication only supports an absent recording target",
         )),
-        CaptureTarget::PendingSession { .. } => Err(rejected(
-            ErrorCode::Validation,
-            "Pending-session capture publication is not available",
-        )),
+        CaptureTarget::PendingSession { create_request_id } => {
+            let request_id = uuid::Uuid::parse_str(create_request_id)
+                .ok()
+                .filter(|id| !id.is_nil())
+                .ok_or_else(|| {
+                    rejected(ErrorCode::Validation, "Invalid capture creation identifier")
+                })?;
+            let (_, expected) = crate::operations::creation_identity(
+                &snapshot.identity.scope.member_id,
+                request_id,
+            );
+            if snapshot
+                .session_id
+                .as_ref()
+                .is_some_and(|bound| bound != &expected)
+            {
+                return Err(rejected(
+                    ErrorCode::Conflict,
+                    "Pending capture is bound to another session",
+                ));
+            }
+            Ok(expected)
+        }
     }
 }
 
@@ -313,7 +394,7 @@ fn publication_request(
         namespace: snapshot.identity.scope.member_id.clone(),
         request_id: uuid::Uuid::parse_str(&snapshot.identity.request_id)
             .map_err(|_| rejected(ErrorCode::Validation, "Invalid capture request identifier"))?,
-        session_id: existing_target(snapshot)?,
+        session_id: target_session(snapshot)?,
         source_binding,
         expected: RecordingExpectation::Absent,
         artifact_sha256: verified.artifact_sha256.clone(),

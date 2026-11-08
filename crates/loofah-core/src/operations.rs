@@ -108,7 +108,7 @@ impl VaultContext {
                 )
             })?;
             operations
-                .create(&context.store, &namespace, request_id, request)
+                .create(&context.store, &namespace, request_id, request, None)
                 .await
         })
         .await
@@ -117,6 +117,67 @@ impl VaultContext {
             error(ErrorCode::Internal, "Session creation worker failed")
         })?
     }
+
+    pub(crate) async fn create_capture_session(
+        self: &Arc<Self>,
+        namespace: String,
+        request_id: uuid::Uuid,
+        observed_at_ms: u64,
+    ) -> Result<SessionDocument, ApplicationError> {
+        self.store
+            .ensure_ready()
+            .map_err(|cause| storage_error(cause, false))?;
+        let observed_at_ms = i64::try_from(observed_at_ms)
+            .ok()
+            .filter(|value| *value <= 9_007_199_254_740_991)
+            .and_then(chrono::DateTime::<chrono::Utc>::from_timestamp_millis)
+            .ok_or_else(|| {
+                error(
+                    ErrorCode::Validation,
+                    "Capture producer observation cannot create a session",
+                )
+            })?;
+        let created_at = observed_at_ms.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let context = self.clone();
+        tokio::spawn(async move {
+            let operations = context.operations.as_ref().ok_or_else(|| {
+                error(
+                    ErrorCode::Unavailable,
+                    "Operation storage is not configured",
+                )
+            })?;
+            operations
+                .create(
+                    &context.store,
+                    &namespace,
+                    request_id,
+                    CreateSessionRequest {
+                        title: String::new(),
+                        markdown: String::new(),
+                    },
+                    Some(created_at),
+                )
+                .await
+        })
+        .await
+        .map_err(|_| {
+            let mut cause = error(
+                ErrorCode::Internal,
+                "Capture session creation outcome is unknown",
+            );
+            cause.mutation_outcome = Some(MutationOutcome::Unknown);
+            cause
+        })?
+    }
+}
+
+pub(crate) fn creation_identity(namespace: &str, request_id: uuid::Uuid) -> (String, String) {
+    let hash = Sha256::digest(serde_json::to_vec(&(namespace, request_id.to_string())).unwrap());
+    let key: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+    let mut id: [u8; 16] = hash[..16].try_into().unwrap();
+    id[6] = (id[6] & 15) | 64;
+    id[8] = (id[8] & 63) | 128;
+    (key, uuid::Uuid::from_bytes(id).to_string())
 }
 
 impl SessionOperations {
@@ -126,11 +187,10 @@ impl SessionOperations {
         namespace: &str,
         request_id: uuid::Uuid,
         request: CreateSessionRequest,
+        created_at: Option<String>,
     ) -> Result<SessionDocument, ApplicationError> {
         let _guard = self.lock.lock().await;
-        let hash =
-            Sha256::digest(serde_json::to_vec(&(namespace, request_id.to_string())).unwrap());
-        let key: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+        let (key, session_id) = creation_identity(namespace, request_id);
         let path = self.root.join(format!("{key}.json"));
         let read_path = path.clone();
         let stored = tokio::task::spawn_blocking(move || match std::fs::read(read_path) {
@@ -146,7 +206,13 @@ impl SessionOperations {
         .await
         .map_err(|_| error(ErrorCode::Internal, "Operation receipt read failed"))??;
         let mut creation = if let Some(stored) = stored {
-            if stored.schema_version != 1 || stored.request != request {
+            if stored.schema_version != 1
+                || stored.request != request
+                || stored.session_id != session_id
+                || created_at
+                    .as_ref()
+                    .is_some_and(|expected| expected != &stored.created_at)
+            {
                 return Err(error(
                     ErrorCode::Conflict,
                     "Request ID was used with different input or an unsupported receipt",
@@ -166,10 +232,6 @@ impl SessionOperations {
             }
             stored
         } else {
-            let mut id: [u8; 16] = hash[..16].try_into().unwrap();
-            id[6] = (id[6] & 15) | 64;
-            id[8] = (id[8] & 63) | 128;
-            let session_id = uuid::Uuid::from_bytes(id).to_string();
             if store
                 .read_meta(&session_id)
                 .await
@@ -185,7 +247,7 @@ impl SessionOperations {
                 schema_version: 1,
                 request,
                 session_id,
-                created_at: chrono::Utc::now().to_rfc3339(),
+                created_at: created_at.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
                 response: None,
             };
             persist(&path, &creation).await?;

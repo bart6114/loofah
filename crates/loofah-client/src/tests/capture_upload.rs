@@ -12,6 +12,8 @@ struct Server {
     declaration: Mutex<Option<CaptureIngestRequest>>,
     offline: AtomicBool,
     lost_ack: AtomicBool,
+    lost_publish_ack: AtomicBool,
+    creates: AtomicUsize,
     corrupt: AtomicBool,
     missing: AtomicBool,
     accepted: Semaphore,
@@ -30,6 +32,8 @@ impl Server {
             declaration: Mutex::new(None),
             offline: AtomicBool::new(false),
             lost_ack: AtomicBool::new(false),
+            lost_publish_ack: AtomicBool::new(false),
+            creates: AtomicUsize::new(0),
             corrupt: AtomicBool::new(false),
             missing: AtomicBool::new(false),
             accepted: Semaphore::new(0),
@@ -201,13 +205,40 @@ async fn publish(
     Path(_capture): Path<String>,
     headers: HeaderMap,
     Json(seal): Json<CaptureSeal>,
-) -> Json<CaptureIngestStatus> {
+) -> axum::response::Response {
     authenticated(&headers);
-    state.publishes.fetch_add(1, Ordering::SeqCst);
+    let published = state.publication.lock().await.is_some();
+    if published {
+        return Json(state.status().await).into_response();
+    }
     assert_eq!(
         state.writer().await.snapshot().await.unwrap().seal,
         Some(seal.clone())
     );
+    if matches!(
+        &state.writer().await.identity().target,
+        CaptureTarget::PendingSession { .. }
+    ) {
+        assert!(seal.frames > 0);
+        if state
+            .writer()
+            .await
+            .snapshot()
+            .await
+            .unwrap()
+            .session_id
+            .is_none()
+        {
+            state.creates.fetch_add(1, Ordering::SeqCst);
+            state
+                .writer()
+                .await
+                .bind_session("note".into())
+                .await
+                .unwrap();
+        }
+    }
+    state.publishes.fetch_add(1, Ordering::SeqCst);
     let mut canonical = b"RIFF-synthetic-canonical-WAV".to_vec();
     for descriptor in state.writer().await.chunks(None, 200).await.unwrap() {
         canonical.extend(
@@ -228,7 +259,18 @@ async fn publish(
     };
     *state.canonical.lock().await = canonical;
     *state.publication.lock().await = Some(publication);
-    Json(state.status().await)
+    if state.lost_publish_ack.swap(false, Ordering::SeqCst) {
+        state.offline.store(true, Ordering::SeqCst);
+        return axum::response::Response::new(axum::body::Body::from_stream(
+            futures_util::stream::once(async {
+                Err::<Bytes, std::io::Error>(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    "lost publication acknowledgement",
+                ))
+            }),
+        ));
+    }
+    Json(state.status().await).into_response()
 }
 async fn open(
     Extension(state): Extension<Arc<Server>>,
@@ -335,11 +377,20 @@ async fn source(
     root: &std::path::Path,
     client: &RemoteClient,
 ) -> (Arc<CaptureSpool>, CaptureWriter) {
+    source_for_target(root, client, identity(client).target).await
+}
+async fn source_for_target(
+    root: &std::path::Path,
+    client: &RemoteClient,
+    target: CaptureTarget,
+) -> (Arc<CaptureSpool>, CaptureWriter) {
     let spool = CaptureSpool::open(root.join("device"), CaptureSpoolLimits::default())
         .await
         .unwrap();
+    let mut id = identity(client);
+    id.target = target;
     let writer = spool
-        .begin_with_observation(identity(client), CaptureFormat::stereo(), 1_799_999_000_123)
+        .begin_with_observation(id, CaptureFormat::stereo(), 1_799_999_000_123)
         .await
         .unwrap();
     (spool, writer)
@@ -360,6 +411,136 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.0.store(true, Ordering::SeqCst);
     }
+}
+
+#[tokio::test]
+async fn pending_publication_lost_ack_reauth_and_device_restart_bind_one_note_without_reuploading()
+{
+    let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let state = Server::new(root.path()).await;
+    state.lost_publish_ack.store(true, Ordering::SeqCst);
+    let (fixture, client) = fixture(&state, Some(Duration::from_millis(50))).await;
+    let (spool, writer) = source_for_target(
+        root.path(),
+        &client,
+        CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::new_v4().to_string(),
+        },
+    )
+    .await;
+    append_source(&writer, 0).await;
+    let seal = writer.seal().await.unwrap();
+    let original = writer.snapshot().await.unwrap();
+    let uploader = CaptureUploader::new(1).unwrap();
+    let ticket = uploader
+        .start(
+            client.clone(),
+            writer.clone(),
+            binding(&client, &writer),
+            Box::new(()),
+        )
+        .unwrap();
+    ticket.source_finished();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            if state.publication.lock().await.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    ticket.request_stop();
+    assert_ne!(done(&ticket).await.phase, CaptureUploadPhase::Verified);
+    assert!(writer.snapshot().await.unwrap().publication.is_none());
+    assert!(writer.snapshot().await.unwrap().session_id.is_none());
+    uploader.wait_shutdown().await;
+    drop(ticket);
+    drop(uploader);
+    drop(writer);
+    drop(spool);
+    client.disconnect();
+    let mut authenticated = fixture.client().await;
+    Arc::get_mut(&mut authenticated)
+        .unwrap()
+        .capabilities
+        .features = client.capabilities().features.clone();
+    fixture.login(&authenticated).await;
+    let spool = CaptureSpool::open(root.path().join("device"), CaptureSpoolLimits::default())
+        .await
+        .unwrap();
+    let writer = spool.resume(original.identity.clone()).await.unwrap();
+    state.offline.store(false, Ordering::SeqCst);
+    let uploader = CaptureUploader::new(1).unwrap();
+    let ticket = uploader
+        .start(
+            authenticated.clone(),
+            writer.clone(),
+            binding(&authenticated, &writer),
+            Box::new(()),
+        )
+        .unwrap();
+    ticket.source_finished();
+    let progress = done(&ticket).await;
+    assert_eq!(
+        progress.phase,
+        CaptureUploadPhase::Verified,
+        "{:?}",
+        progress.error
+    );
+    let saved = writer.snapshot().await.unwrap();
+    assert_eq!(saved.identity, original.identity);
+    assert_eq!(saved.capture_fingerprint, original.capture_fingerprint);
+    assert_eq!(
+        saved.first_admitted_audio_observed_at_ms,
+        original.first_admitted_audio_observed_at_ms
+    );
+    assert_eq!(saved.seal, Some(seal));
+    assert_eq!(saved.session_id.as_deref(), Some("note"));
+    assert!(saved.publication.is_some());
+    assert_eq!(state.creates.load(Ordering::SeqCst), 1);
+    assert_eq!(state.publishes.load(Ordering::SeqCst), 1);
+    assert_eq!(state.reads.load(Ordering::SeqCst), 1);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, vec![0; 128]);
+    uploader.wait_shutdown().await;
+}
+
+#[tokio::test]
+async fn pending_remote_binding_never_retargets_a_previously_bound_device_capture() {
+    let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let state = Server::new(root.path()).await;
+    let (_fixture, client) = fixture(&state, None).await;
+    let (_spool, writer) = source_for_target(
+        root.path(),
+        &client,
+        CaptureTarget::PendingSession {
+            create_request_id: uuid::Uuid::new_v4().to_string(),
+        },
+    )
+    .await;
+    append_source(&writer, 0).await;
+    writer.seal().await.unwrap();
+    writer.bind_session("other".into()).await.unwrap();
+    let identity = writer.identity().clone();
+    let uploader = CaptureUploader::new(1).unwrap();
+    let ticket = uploader
+        .start(
+            client.clone(),
+            writer.clone(),
+            binding(&client, &writer),
+            Box::new(()),
+        )
+        .unwrap();
+    ticket.source_finished();
+    assert_eq!(done(&ticket).await.phase, CaptureUploadPhase::NeedsReview);
+    let saved = writer.snapshot().await.unwrap();
+    assert_eq!(saved.identity, identity);
+    assert_eq!(saved.session_id.as_deref(), Some("other"));
+    assert!(saved.publication.is_none());
+    assert_eq!(state.reads.load(Ordering::SeqCst), 0);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, vec![0; 128]);
+    uploader.wait_shutdown().await;
 }
 
 #[tokio::test]
@@ -571,7 +752,7 @@ async fn pending_append_and_interrupted_sources_stay_explicit_without_canonical_
             CaptureTarget::PendingSession {
                 create_request_id: uuid::Uuid::new_v4().to_string(),
             },
-            CaptureUploadPhase::PendingSession,
+            CaptureUploadPhase::NeedsReview,
         ),
         (
             CaptureTarget::ExistingSession {

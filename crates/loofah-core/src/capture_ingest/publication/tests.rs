@@ -180,6 +180,69 @@ impl Fixture {
             .await
     }
 
+    async fn pending(&mut self) -> (uuid::Uuid, String) {
+        let request_id = uuid::Uuid::new_v4();
+        let mut input = self.input.clone();
+        input.identity.capture_id = uuid::Uuid::new_v4().to_string();
+        input.identity.request_id = uuid::Uuid::new_v4().to_string();
+        input.identity.target = CaptureTarget::PendingSession {
+            create_request_id: request_id.to_string(),
+        };
+        let mut status = self
+            .context()
+            .begin_capture_authorized("member".into(), input.clone(), || async { Ok(()) })
+            .await
+            .unwrap();
+        for (sequence, bytes) in self.bytes.chunks(32).enumerate() {
+            let mut descriptor = CaptureChunkDescriptor {
+                capture_fingerprint: status.prefix.capture_fingerprint.clone(),
+                sequence: sequence as u64,
+                first_frame: status.prefix.frames,
+                frames: (bytes.len() / 8) as u32,
+                pcm_offset: status.prefix.pcm_bytes,
+                bytes: bytes.len() as u32,
+                sha256: hash(bytes),
+                previous_digest: status.prefix.chain_digest.clone(),
+                digest: String::new(),
+            };
+            descriptor.digest = hypr_loofah_protocol::capture_chunk_digest(&descriptor);
+            status.prefix = self
+                .context()
+                .append_capture_authorized(
+                    "member".into(),
+                    input.identity.capture_id.clone(),
+                    descriptor,
+                    bytes.to_vec(),
+                    || async { Ok(()) },
+                )
+                .await
+                .unwrap();
+        }
+        let seal = CaptureSeal {
+            capture_fingerprint: status.prefix.capture_fingerprint,
+            chunk_count: status.prefix.chunk_count,
+            frames: status.prefix.frames,
+            pcm_bytes: status.prefix.pcm_bytes,
+            chain_digest: status.prefix.chain_digest,
+            source_sha256: hash(&self.bytes),
+        };
+        self.context()
+            .seal_capture_authorized(
+                "member".into(),
+                input.identity.capture_id.clone(),
+                seal.clone(),
+                || async { Ok(()) },
+            )
+            .await
+            .unwrap();
+        self.input = input;
+        self.seal = seal;
+        (
+            request_id,
+            crate::operations::creation_identity("member", request_id).1,
+        )
+    }
+
     async fn stop(&mut self) {
         self.context().store.set_startup_pending(true);
         drop(self.context.take());
@@ -341,14 +404,7 @@ async fn authorization_is_rechecked_after_staging_and_denial_never_publishes_or_
 
 #[tokio::test]
 async fn publication_rejects_conflicting_audio_transcripts_missing_targets_and_changed_seals() {
-    for kind in [
-        "audio",
-        "transcript",
-        "missing",
-        "seal",
-        "append",
-        "pending",
-    ] {
+    for kind in ["audio", "transcript", "missing", "seal", "append"] {
         let mut fixture = Fixture::new().await;
         let directory = fixture.vault.join("sessions/note");
         match kind {
@@ -361,19 +417,13 @@ async fn publication_rejects_conflicting_audio_transcripts_missing_targets_and_c
                 std::fs::rename(&directory, fixture.vault.join("sessions/moved-by-user")).unwrap()
             }
             "seal" => fixture.seal.source_sha256 = "0".repeat(64),
-            "append" | "pending" => {
+            "append" => {
                 let mut input = fixture.input.clone();
                 input.identity.capture_id = uuid::Uuid::new_v4().to_string();
                 input.identity.request_id = uuid::Uuid::new_v4().to_string();
-                input.identity.target = if kind == "append" {
-                    CaptureTarget::ExistingSession {
-                        session_id: "note".into(),
-                        expected_audio_sha256: Some("0".repeat(64)),
-                    }
-                } else {
-                    CaptureTarget::PendingSession {
-                        create_request_id: uuid::Uuid::new_v4().to_string(),
-                    }
+                input.identity.target = CaptureTarget::ExistingSession {
+                    session_id: "note".into(),
+                    expected_audio_sha256: Some("0".repeat(64)),
                 };
                 fixture
                     .context()
@@ -827,5 +877,438 @@ async fn dropped_bootstrap_waiter_retains_the_real_vault_lease_through_admitted_
     Arc::get_mut(fixture.context.as_mut().unwrap())
         .unwrap()
         .lease = Some(contender);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn pending_capture_creates_one_online_note_at_producer_time_without_retargeting_raw_identity()
+{
+    let mut fixture = Fixture::new().await;
+    let (_, session) = fixture.pending().await;
+    assert!(!fixture.vault.join("sessions").join(&session).exists());
+    let identity = fixture.input.identity.clone();
+    let original = fixture.writer().await.snapshot().await.unwrap();
+    assert!(original.session_id.is_none());
+    let published = fixture.publish().await.unwrap();
+    assert_eq!(published.identity, identity);
+    assert_eq!(published.session_id.as_deref(), Some(session.as_str()));
+    let meta = fixture
+        .context()
+        .read_metadata(&session)
+        .await
+        .unwrap()
+        .meta;
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(&meta.created_at)
+            .unwrap()
+            .timestamp_millis() as u64,
+        fixture.input.first_admitted_audio_observed_at_ms
+    );
+    assert_eq!(meta.started_at.as_deref(), Some(meta.created_at.as_str()));
+    let publication = published.publication.unwrap();
+    assert_eq!(publication.session_id, session);
+    assert_eq!(publication.source, fixture.seal);
+    let audio = fixture
+        .vault
+        .join("sessions")
+        .join(&session)
+        .join("audio.wav");
+    let bytes = std::fs::read(&audio).unwrap();
+    assert_eq!(hash(&bytes), publication.canonical_audio_sha256);
+    assert_eq!(
+        hound::WavReader::new(std::io::Cursor::new(bytes.clone()))
+            .unwrap()
+            .samples::<f32>()
+            .flat_map(|sample| sample.unwrap().to_le_bytes())
+            .collect::<Vec<_>>(),
+        fixture.bytes
+    );
+    let modified = std::fs::metadata(&audio).unwrap().modified().unwrap();
+    let replay = fixture.publish().await.unwrap();
+    assert_eq!(replay.session_id.as_deref(), Some(session.as_str()));
+    assert_eq!(std::fs::read(&audio).unwrap(), bytes);
+    assert_eq!(
+        std::fs::metadata(audio).unwrap().modified().unwrap(),
+        modified
+    );
+    let raw = fixture.writer().await.snapshot().await.unwrap();
+    assert_eq!(raw.identity, identity);
+    assert_eq!(raw.capture_fingerprint, original.capture_fingerprint);
+    assert_eq!(raw.seal, original.seal);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn pending_creation_and_binding_recover_after_restart_without_recreating_or_overwriting_note()
+{
+    for bound in [false, true] {
+        let mut fixture = Fixture::new().await;
+        let (request, session) = fixture.pending().await;
+        let created = fixture
+            .context()
+            .create_capture_session(
+                "member".into(),
+                request,
+                fixture.input.first_admitted_audio_observed_at_ms,
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.meta.id, session);
+        if bound {
+            fixture
+                .writer()
+                .await
+                .bind_session(session.clone())
+                .await
+                .unwrap();
+        }
+        let directory = fixture.vault.join("sessions").join(&session);
+        let metadata = directory.join("_meta.json");
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&metadata).unwrap()).unwrap();
+        raw["title"] = serde_json::json!("User renamed pending capture");
+        raw["future"] = serde_json::json!({"preserve":true});
+        std::fs::write(&metadata, serde_json::to_vec_pretty(&raw).unwrap()).unwrap();
+        std::fs::write(directory.join("unknown-user.txt"), b"keep user attachment").unwrap();
+        let note = std::fs::read(directory.join("notes.md")).unwrap();
+        fixture.stop().await;
+        fixture.context = Some(leased_context(&fixture.vault, &fixture.operations).await);
+        let result = fixture.publish().await.unwrap();
+        assert_eq!(result.session_id.as_deref(), Some(session.as_str()));
+        assert_eq!(result.identity, fixture.input.identity);
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(metadata).unwrap()).unwrap();
+        assert_eq!(saved["title"], raw["title"]);
+        assert_eq!(saved["future"], raw["future"]);
+        assert_eq!(saved["created_at"], raw["created_at"]);
+        assert_eq!(std::fs::read(directory.join("notes.md")).unwrap(), note);
+        assert_eq!(
+            std::fs::read(directory.join("unknown-user.txt")).unwrap(),
+            b"keep user attachment"
+        );
+        let mut ids = std::fs::read_dir(fixture.vault.join("sessions"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        ids.sort();
+        let mut expected = vec!["note".to_owned(), "other".to_owned(), session];
+        expected.sort();
+        assert_eq!(ids, expected);
+        fixture.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn pending_bound_mismatch_and_creation_request_collision_fail_without_new_note_or_recording()
+{
+    for collision in [false, true] {
+        let mut fixture = Fixture::new().await;
+        let (request, session) = fixture.pending().await;
+        if collision {
+            fixture
+                .context()
+                .create_session(
+                    "member".into(),
+                    request.to_string(),
+                    hypr_loofah_protocol::CreateSessionRequest {
+                        title: "Previously accepted note".into(),
+                        markdown: "Keep prior request data".into(),
+                    },
+                )
+                .await
+                .unwrap();
+        } else {
+            fixture
+                .writer()
+                .await
+                .bind_session("other".into())
+                .await
+                .unwrap();
+        }
+        let before = fixture
+            .context()
+            .read_note(if collision { &session } else { "other" })
+            .await
+            .unwrap();
+        let error = fixture.publish().await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::Conflict);
+        if !collision {
+            assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+            assert!(!fixture.vault.join("sessions").join(&session).exists());
+            let (key, _) = crate::operations::creation_identity("member", request);
+            assert!(!fixture.operations.join(format!("{key}.json")).exists());
+        }
+        assert_eq!(
+            fixture
+                .context()
+                .read_note(if collision { &session } else { "other" })
+                .await
+                .unwrap(),
+            before
+        );
+        assert!(
+            !fixture
+                .vault
+                .join("sessions")
+                .join(&session)
+                .join("audio.wav")
+                .exists()
+        );
+        assert!(
+            fixture
+                .writer()
+                .await
+                .snapshot()
+                .await
+                .unwrap()
+                .publication
+                .is_none()
+        );
+        fixture.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn pending_commit_denial_reports_partial_persistence_and_retry_preserves_created_note() {
+    let mut fixture = Fixture::new().await;
+    let (_, session) = fixture.pending().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let error = fixture
+        .context()
+        .publish_capture_authorized(
+            "member".into(),
+            fixture.input.identity.capture_id.clone(),
+            fixture.seal.clone(),
+            move || {
+                let call = counted.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if call == 2 {
+                        Err::<(), _>(rejected(
+                            ErrorCode::Forbidden,
+                            "Membership removed before publication",
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    assert_eq!(error.code, ErrorCode::Forbidden);
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::Persisted));
+    assert!(
+        fixture
+            .vault
+            .join("sessions")
+            .join(&session)
+            .join("_meta.json")
+            .exists()
+    );
+    assert!(
+        !fixture
+            .vault
+            .join("sessions")
+            .join(&session)
+            .join("audio.wav")
+            .exists()
+    );
+    assert_eq!(
+        fixture
+            .writer()
+            .await
+            .snapshot()
+            .await
+            .unwrap()
+            .session_id
+            .as_deref(),
+        Some(session.as_str())
+    );
+    assert!(
+        fixture
+            .writer()
+            .await
+            .snapshot()
+            .await
+            .unwrap()
+            .publication
+            .is_none()
+    );
+    let result = fixture.publish().await.unwrap();
+    assert_eq!(result.publication.unwrap().session_id, session);
+    assert_eq!(
+        fixture.writer().await.snapshot().await.unwrap().identity,
+        fixture.input.identity
+    );
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn pending_creation_requires_nonzero_sealed_audio_and_fresh_creation_authority() {
+    for kind in ["zero", "changed_seal", "denied_creation"] {
+        let mut fixture = Fixture::new().await;
+        let (request, session) = fixture.pending().await;
+        if kind == "zero" {
+            let mut input = fixture.input.clone();
+            input.identity.capture_id = uuid::Uuid::new_v4().to_string();
+            input.identity.request_id = uuid::Uuid::new_v4().to_string();
+            fixture
+                .context()
+                .begin_capture_authorized("member".into(), input.clone(), || async { Ok(()) })
+                .await
+                .unwrap();
+            fixture.input = input;
+            fixture.seal = fixture.writer().await.seal().await.unwrap();
+        }
+        if kind == "changed_seal" {
+            fixture.seal.source_sha256 = "0".repeat(64);
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counted = calls.clone();
+        let denied = kind == "denied_creation";
+        assert!(
+            fixture
+                .context()
+                .publish_capture_authorized(
+                    "member".into(),
+                    fixture.input.identity.capture_id.clone(),
+                    fixture.seal.clone(),
+                    move || {
+                        let call = counted.fetch_add(1, Ordering::SeqCst);
+                        async move {
+                            if denied && call == 1 {
+                                Err::<(), _>(rejected(ErrorCode::Forbidden, "Creation denied"))
+                            } else {
+                                Ok(())
+                            }
+                        }
+                    }
+                )
+                .await
+                .is_err()
+        );
+        assert!(!fixture.vault.join("sessions").join(&session).exists());
+        let (key, _) = crate::operations::creation_identity("member", request);
+        assert!(!fixture.operations.join(format!("{key}.json")).exists());
+        assert!(
+            fixture
+                .writer()
+                .await
+                .snapshot()
+                .await
+                .unwrap()
+                .session_id
+                .is_none()
+        );
+        fixture.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn pending_completed_creation_and_publication_never_resurrect_a_deleted_note() {
+    for published in [false, true] {
+        let mut fixture = Fixture::new().await;
+        let (request, session) = fixture.pending().await;
+        if published {
+            fixture.publish().await.unwrap();
+        } else {
+            fixture
+                .context()
+                .create_capture_session(
+                    "member".into(),
+                    request,
+                    fixture.input.first_admitted_audio_observed_at_ms,
+                )
+                .await
+                .unwrap();
+        }
+        let directory = fixture.vault.join("sessions").join(&session);
+        let deleted = fixture.vault.join("user-removed-session");
+        std::fs::rename(&directory, &deleted).unwrap();
+        let prior = std::fs::read(deleted.join("notes.md")).unwrap();
+        fixture.stop().await;
+        fixture.context = Some(leased_context(&fixture.vault, &fixture.operations).await);
+        assert_eq!(
+            fixture.publish().await.unwrap_err().code,
+            ErrorCode::NotFound
+        );
+        assert!(!directory.exists());
+        assert_eq!(std::fs::read(deleted.join("notes.md")).unwrap(), prior);
+        assert_eq!(
+            fixture.writer().await.read_chunk(0).await.unwrap().bytes,
+            fixture.bytes[..32]
+        );
+        fixture.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn dropping_pending_creation_waiter_keeps_owned_creation_binding_and_publication_alive() {
+    let mut fixture = Fixture::new().await;
+    let (_, session) = fixture.pending().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let context = fixture.context().clone();
+    let capture = fixture.input.identity.capture_id.clone();
+    let seal = fixture.seal.clone();
+    let caller = tokio::spawn({
+        let entered = entered.clone();
+        let release = release.clone();
+        async move {
+            context
+                .publish_capture_authorized("member".into(), capture, seal, move || {
+                    let creation = calls.fetch_add(1, Ordering::SeqCst) == 1;
+                    let entered = entered.clone();
+                    let release = release.clone();
+                    async move {
+                        if creation {
+                            entered.notify_one();
+                            release.notified().await;
+                        }
+                        Ok(())
+                    }
+                })
+                .await
+        }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), entered.notified())
+        .await
+        .unwrap();
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    release.notify_one();
+    let writer = fixture.writer().await;
+    let publication = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Some(publication) = writer.snapshot().await.unwrap().publication {
+                break publication;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(publication.session_id, session);
+    assert_eq!(
+        writer.snapshot().await.unwrap().identity,
+        fixture.input.identity
+    );
+    assert_eq!(
+        hash(
+            &std::fs::read(
+                fixture
+                    .vault
+                    .join("sessions")
+                    .join(&session)
+                    .join("audio.wav")
+            )
+            .unwrap()
+        ),
+        publication.canonical_audio_sha256
+    );
+    drop(writer);
     fixture.stop().await;
 }
