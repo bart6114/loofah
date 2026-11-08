@@ -34,13 +34,13 @@ impl VaultContext {
         let id = id.to_owned();
         let target = target.clone();
         tokio::spawn(async move {
+            let _grant = authorize().await?;
             let snapshot = context
                 .store
                 .read_document_editor(context.document_operation_root().as_deref(), &id, &target)
                 .await
                 .map_err(|cause| storage_error(cause, false))?
                 .ok_or_else(|| error(ErrorCode::NotFound, "Document editor target not found"))?;
-            let _grant = authorize().await?;
             Ok(snapshot)
         })
         .await
@@ -141,6 +141,9 @@ impl VaultContext {
                     "Operation storage is not configured",
                 ))
             })?;
+            // Match other HTTP writers: catalog admission precedes the store lock.
+            // A queued catalog writer must never be waited on while holding that lock.
+            let _grant = authorize().await.map_err(before)?;
             let preparation = context
                 .store
                 .prepare_document_editor(&root, &id, &target, input)
@@ -152,9 +155,6 @@ impl VaultContext {
                         "Document editor target not found",
                     ))
                 })?;
-            // No catalog read grant is held while preparation/recovery waits for the store.
-            // This fresh grant remains in this owned task through actual commit/readback.
-            let _grant = authorize().await.map_err(before)?;
             match preparation {
                 hypr_vault_write::DocumentEditorPreparation::Conflict(snapshot) => {
                     Ok(DocumentEditorSaveOutcome::Conflict(*snapshot))
