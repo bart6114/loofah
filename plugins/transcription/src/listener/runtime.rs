@@ -7,12 +7,12 @@ use crate::{CaptureDataEvent, CaptureLifecycleEvent, CaptureStatusEvent, Session
 use hypr_transcription_core::listener::State as RootState;
 use hypr_transcription_core::listener::actors::{RootActor, RootMsg};
 
-pub struct TauriRuntime {
-    pub app: tauri::AppHandle,
+pub struct TauriRuntime<R: tauri::Runtime = tauri::Wry> {
+    pub app: tauri::AppHandle<R>,
     pub session_state_cache: SessionStateCache,
 }
 
-impl hypr_storage::StorageRuntime for TauriRuntime {
+impl<R: tauri::Runtime> hypr_storage::StorageRuntime for TauriRuntime<R> {
     fn global_base(&self) -> Result<std::path::PathBuf, hypr_storage::Error> {
         self.app
             .settings()
@@ -30,7 +30,7 @@ impl hypr_storage::StorageRuntime for TauriRuntime {
     }
 }
 
-impl ListenerRuntime for TauriRuntime {
+impl<R: tauri::Runtime> ListenerRuntime for TauriRuntime<R> {
     fn emit_lifecycle(&self, event: hypr_transcription_core::listener::SessionLifecycleEvent) {
         use tauri_plugin_tray::TrayPluginExt;
         match &event {

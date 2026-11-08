@@ -11,13 +11,15 @@ mod api;
 mod error;
 mod listener;
 mod listener2;
+mod local_capture;
 mod maintenance;
+pub use local_capture::*;
 
 pub use api::*;
 pub use error::{Error, Result};
 pub use hypr_transcription_core::listener::{
     DegradedError, ListenerRuntime, LiveTranscriptDelta, LiveTranscriptEngine,
-    LiveTranscriptSegment, LiveTranscriptSegmentDelta, LiveTranscriptUpdate,
+    LiveTranscriptSegment, LiveTranscriptSegmentDelta, LiveTranscriptUpdate, TranscriptionMode,
 };
 pub use hypr_transcription_core::listener::{
     ListenerRuntime as DeviceListenerRuntime, SessionDataEvent as DeviceSessionDataEvent,
@@ -29,8 +31,8 @@ pub use hypr_transcription_core::listener::{
         ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs,
         DeviceCaptureCompletion, DeviceCaptureCompletionSnapshot, DeviceCaptureKey,
         DeviceCaptureReporter, DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink,
-        DeviceSinkError, RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
-        RootMsg as DeviceCaptureRootMsg,
+        DeviceSinkError, OwnedLocalCaptureArgs, RootActor as DeviceCaptureRoot,
+        RootArgs as DeviceCaptureRootArgs, RootMsg as DeviceCaptureRootMsg,
     },
 };
 pub use hypr_transcription_core::listener2::{

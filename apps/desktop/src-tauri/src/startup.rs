@@ -56,7 +56,6 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
             return;
         }
         crate::vault_watch::spawn(app.clone());
-        crate::recording_meta::spawn(app.clone());
         store.set_startup_pending(false);
         if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>()
             && let Err(error) = app
@@ -73,6 +72,18 @@ pub fn spawn(app: AppHandle, store: Arc<SessionStore>) {
                 .await
         {
             tracing::error!(%error, "local transcription startup failed; vault notes remain available");
+        }
+        if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>()
+            && let Err(error) = app
+                .state::<Arc<crate::local_capture::LocalCaptureState>>()
+                .initialize(context.inner().clone())
+                .await
+        {
+            tracing::error!(%error, "Local capture intent recovery failed");
+            state.set_phase(StartupPhase::Failed {
+                message: error.to_string(),
+            });
+            return;
         }
         state.set_phase(StartupPhase::Ready);
         if let Some(context) = app.try_state::<Arc<hypr_loofah_core::VaultContext>>() {

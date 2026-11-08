@@ -16,10 +16,10 @@ mod identifier_migration;
 mod job_submissions;
 mod legacy_db;
 mod legacy_llm;
+mod local_capture;
 mod local_owner;
 mod local_transcription;
 mod processing;
-mod recording_meta;
 mod remote;
 mod search_index;
 mod session_lifecycle;
@@ -229,6 +229,9 @@ pub async fn main() {
         .manage(chatgpt::ChatgptState::default())
         .manage(processing::ProcessingState::default())
         .manage(local_transcription::LocalTranscriptionState::default())
+        .manage(std::sync::Arc::new(
+            local_capture::LocalCaptureState::default(),
+        ))
         .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
         .manage(transcription_submissions::TranscriptionSubmissionState::default())
@@ -432,6 +435,9 @@ pub async fn main() {
                                 if let Err(error) = local_owner::configure_lifecycle(&app_handle, &context) {
                                     tracing::error!(%error, "Local session lifecycle remains unavailable");
                                 }
+                                if let Err(error) = local_capture::configure(&app_handle, &context) {
+                                    tracing::error!(%error, "Local capture persistence remains unavailable");
+                                }
                                 app_handle.manage(context);
                                 search_index::spawn(app_handle.clone(), store.clone());
                                 session_store::spawn_dispatcher(app_handle.clone());
@@ -526,11 +532,16 @@ pub async fn main() {
 
             app.state::<local_transcription::LocalTranscriptionState>()
                 .request_shutdown();
+            app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .request_shutdown();
             let device = app.state::<device_recordings::DeviceRecordingState>();
             device.request_shutdown();
             let owner = app.state::<local_owner::LocalOwnerState>();
             owner.request_shutdown();
-            if device.initialized()
+            if app
+                .state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .initialized()
+                || device.initialized()
                 || owner.initialized()
                 || app
                     .state::<local_transcription::LocalTranscriptionState>()
@@ -572,6 +583,8 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .request_shutdown();
             app.state::<local_transcription::LocalTranscriptionState>()
                 .request_shutdown();
             app.state::<local_owner::LocalOwnerState>()

@@ -436,3 +436,15 @@ Its durable child keeps the original recording/transcript source binding and
 summary target revision through generation and apply; fresh captures use
 `only_if_empty`. Manual note-only summaries retain their existing API. This Core
 slice awaits Native adapter integration and shared-lane validation.
+Local capture now declares its automatic-processing intent in the managed Rust
+owner before starting the native producer. The tracked actor receives a
+per-request runtime pinned to that vault; ordered live deltas, transcript
+finalization, recording timestamps and final audio cataloging run without a
+renderer acknowledgment. A bounded persistence queue fails closed and stops only
+the original request if it cannot keep up. Unknown native completion or failed
+canonical persistence leaves a durable review state and does not admit inference.
+The old global timestamp listener and recording-specific TypeScript persistence,
+batch and summary callbacks are removed. Native exit must drain this owner before
+shutting down its transcription and summary workers. Focused scope handoff tests
+pass; native physical-drain/persistence tests require the coordinated native build
+lane, including Windows qualification.
