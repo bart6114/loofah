@@ -108,6 +108,7 @@ import {
   commands,
   events,
   type ConnectionState,
+  type LocalCaptureStatus,
   type SearchRequest,
   type SearchResult,
 } from "~/types/tauri.gen";
@@ -142,6 +143,16 @@ export type VaultClient = {
       input: SaveProviderCredentialRequest,
       options: RequestOptions & { requestId: string },
     ) => Promise<ProviderCredentialSaveOutcome>;
+  };
+  recordingProcessing?: {
+    list: (
+      sessionId: string | null,
+      options?: RequestOptions,
+    ) => Promise<LocalCaptureStatus[]>;
+    recover: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<LocalCaptureStatus>;
   };
   transcriptionJobs?: {
     policy: (options?: RequestOptions) => Promise<TranscriptionPolicy>;
@@ -451,12 +462,17 @@ async function ipc<T>(
 export async function connectLocalVault({
   sessionLifecycleAvailable = false,
 }: { sessionLifecycleAvailable?: boolean } = {}): Promise<VaultClient> {
-  const [scope, processingAvailable, transcriptionAvailable] =
-    await Promise.all([
-      commands.applicationScope().then(applicationResult),
-      commands.applicationProcessingAvailable(),
-      commands.applicationTranscriptionAvailable(),
-    ]);
+  const [
+    scope,
+    processingAvailable,
+    transcriptionAvailable,
+    recordingProcessingAvailable,
+  ] = await Promise.all([
+    commands.applicationScope().then(applicationResult),
+    commands.applicationProcessingAvailable(),
+    commands.applicationTranscriptionAvailable(),
+    commands.applicationRecordingProcessingAvailable(),
+  ]);
   const requireLifecycle = (mutation: boolean) => {
     if (!sessionLifecycleAvailable)
       throw new ApplicationRequestError({
@@ -481,6 +497,7 @@ export async function connectLocalVault({
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
+      ...(recordingProcessingAvailable ? ["local_recording_processing"] : []),
       ...(transcriptionAvailable
         ? ["batch_transcription_jobs", "transcription_policy"]
         : []),
@@ -522,6 +539,21 @@ export async function connectLocalVault({
       "tasks_edit",
       "agent_read",
     ],
+    recordingProcessing: recordingProcessingAvailable
+      ? {
+          list: (sessionId, options) =>
+            ipc(
+              () => commands.applicationRecordingProcessingList(sessionId),
+              options,
+            ),
+          recover: (requestId, options) =>
+            ipc(
+              () => commands.applicationRecoverRecordingProcessing(requestId),
+              { ...options, requestId },
+              true,
+            ),
+        }
+      : undefined,
     transcriptionJobs: transcriptionAvailable
       ? {
           policy: (options) =>

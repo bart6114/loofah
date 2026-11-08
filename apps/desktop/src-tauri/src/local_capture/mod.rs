@@ -41,11 +41,22 @@ struct Task {
 #[derive(Default)]
 pub struct LocalCaptureState {
     service: OnceCell<Arc<LocalCaptureIntents>>,
+    owner: OnceCell<Weak<VaultContext>>,
     tasks: Mutex<HashMap<String, Arc<Task>>>,
     closing: Mutex<bool>,
 }
 impl LocalCaptureState {
     pub async fn initialize(&self, context: Arc<VaultContext>) -> Result<(), ApplicationError> {
+        let owner = self
+            .owner
+            .get_or_init(|| async { Arc::downgrade(&context) })
+            .await;
+        if !owner
+            .upgrade()
+            .is_some_and(|original| Arc::ptr_eq(&original, &context))
+        {
+            return Err(unavailable());
+        }
         self.service
             .get_or_try_init(|| LocalCaptureIntents::open(context))
             .await?;
@@ -54,6 +65,22 @@ impl LocalCaptureState {
     pub fn initialized(&self) -> bool {
         self.service.get().is_some()
     }
+    pub(crate) fn service_for(
+        &self,
+        context: &Arc<VaultContext>,
+    ) -> Result<Arc<LocalCaptureIntents>, ApplicationError> {
+        if *self.closing.lock().map_err(|_| unavailable())?
+            || !self
+                .owner
+                .get()
+                .and_then(Weak::upgrade)
+                .is_some_and(|original| Arc::ptr_eq(&original, context))
+        {
+            return Err(unavailable());
+        }
+        self.service.get().cloned().ok_or_else(unavailable)
+    }
+
     pub fn request_shutdown(&self) {
         if let Ok(mut closing) = self.closing.lock() {
             *closing = true;

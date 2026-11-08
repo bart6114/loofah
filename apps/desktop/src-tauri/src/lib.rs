@@ -1,5 +1,6 @@
 mod appearance;
 mod application;
+mod application_recording_processing;
 mod application_transcription;
 mod attachment_upload;
 mod autostart;
@@ -687,6 +688,10 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             draft_cache::draft_cache_remove::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
             application::application_processing_available::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_available::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_list::<tauri::Wry>,
+            application_recording_processing::application_recording_processing_status::<tauri::Wry>,
+            application_recording_processing::application_recover_recording_processing::<tauri::Wry>,
             application_transcription::application_transcription_available::<tauri::Wry>,
             application_transcription::application_transcription_policy::<tauri::Wry>,
             application_transcription::application_submit_transcription::<tauri::Wry>,

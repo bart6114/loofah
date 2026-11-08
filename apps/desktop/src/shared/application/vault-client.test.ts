@@ -5,6 +5,9 @@ const native = vi.hoisted(() => ({
     applicationScope: vi.fn(),
     applicationProcessingAvailable: vi.fn(),
     applicationTranscriptionAvailable: vi.fn(),
+    applicationRecordingProcessingAvailable: vi.fn(),
+    applicationRecordingProcessingList: vi.fn(),
+    applicationRecoverRecordingProcessing: vi.fn(),
     applicationTranscriptionPolicy: vi.fn(),
     applicationTranscriptionJobs: vi.fn(),
     applicationTranscriptionJob: vi.fn(),
@@ -125,6 +128,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   native.commands.applicationProcessingAvailable.mockResolvedValue(true);
   native.commands.applicationTranscriptionAvailable.mockResolvedValue(false);
+  native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+    false,
+  );
   native.commands.applicationScope.mockResolvedValue({
     status: "ok",
     data: "local:canonical-vault",
@@ -1837,4 +1843,106 @@ it("pins all Remote transcription operations to the captured connection and vaul
     native.commands.applicationTranscriptionAvailable,
   ).not.toHaveBeenCalled();
   expect(native.commands.applicationTranscriptionPolicy).not.toHaveBeenCalled();
+});
+
+it("exposes only the initialized Local recording parent owner without dispatching during inventory", async () => {
+  expect((await connectLocalVault()).recordingProcessing).toBeUndefined();
+  native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+    true,
+  );
+  const client = await connectLocalVault();
+  expect(client.features).toContain("local_recording_processing");
+  const status = {
+    declaration: {
+      request_id: crypto.randomUUID(),
+      session_id: "note",
+      append: false,
+      batch_requested: false,
+      transcription: null,
+      summary: null,
+    },
+    state: "review",
+    transcription_owner: "00000000-0000-0000-0000-000000000000",
+    summary_owner: "desktop",
+    transcript_id: null,
+    summary_job_id: null,
+    message: "Original completion requires review",
+  };
+  native.commands.applicationRecordingProcessingList.mockResolvedValue({
+    status: "ok",
+    data: [status],
+  });
+  expect(await client.recordingProcessing!.list("note")).toEqual([status]);
+  expect(
+    native.commands.applicationRecordingProcessingList,
+  ).toHaveBeenCalledExactlyOnceWith("note");
+  expect(
+    native.commands.applicationRecoverRecordingProcessing,
+  ).not.toHaveBeenCalled();
+  native.commands.applicationRecoverRecordingProcessing.mockResolvedValue({
+    status: "ok",
+    data: status,
+  });
+  expect(
+    await client.recordingProcessing!.recover(status.declaration.request_id),
+  ).toEqual(status);
+  expect(
+    native.commands.applicationRecoverRecordingProcessing,
+  ).toHaveBeenCalledExactlyOnceWith(status.declaration.request_id);
+});
+it("recording recovery obeys cancellation before dispatch and preserves unknown mutation outcome after dispatch", async () => {
+  native.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+    true,
+  );
+  const client = await connectLocalVault();
+  const request = crypto.randomUUID();
+  const before = new AbortController();
+  before.abort();
+  await expect(
+    client.recordingProcessing!.recover(request, { signal: before.signal }),
+  ).rejects.toBeDefined();
+  expect(
+    native.commands.applicationRecoverRecordingProcessing,
+  ).not.toHaveBeenCalled();
+  const after = new AbortController();
+  native.commands.applicationRecoverRecordingProcessing.mockImplementation(
+    async () => {
+      after.abort();
+      return { status: "ok", data: null };
+    },
+  );
+  await expect(
+    client.recordingProcessing!.recover(request, { signal: after.signal }),
+  ).rejects.toMatchObject({
+    detail: {
+      code: "cancelled",
+      retryable: false,
+      mutation_outcome: "unknown",
+    },
+  });
+  expect(
+    native.commands.applicationRecoverRecordingProcessing,
+  ).toHaveBeenCalledTimes(1);
+});
+it("Remote clients never expose or probe Local recording parents even if a server advertises the local feature", () => {
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["local_recording_processing"] },
+      },
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  expect(remote.recordingProcessing).toBeUndefined();
+  expect(
+    native.commands.applicationRecordingProcessingAvailable,
+  ).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationRecordingProcessingList,
+  ).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationRecoverRecordingProcessing,
+  ).not.toHaveBeenCalled();
 });

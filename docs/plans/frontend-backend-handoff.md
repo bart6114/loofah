@@ -448,3 +448,10 @@ batch and summary callbacks are removed. Native exit must drain this owner befor
 shutting down its transcription and summary workers. Focused scope handoff tests
 pass; native physical-drain/persistence tests require the coordinated native build
 lane, including Windows qualification.
+
+The Local client also exposes initialized recording-parent inventory and explicit
+recovery. These IPC calls require the already managed capture service and its
+pointer-equal original vault Context; querying them never opens a vault, starts a
+worker or dispatches inference. Remote clients do not expose or probe this API.
+Recovery uses the original request UUID and Core's retained-result policy; it does
+not create a new request or retry automatically after an uncertain outcome.
