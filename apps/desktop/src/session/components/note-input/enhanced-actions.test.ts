@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   model: null as unknown,
+  available: true,
+  load: vi.fn(async () => ({ rawMarkdown: "Useful source", transcripts: [] })),
   start: vi.fn(),
   cancel: vi.fn(),
   toastError: vi.fn(),
@@ -12,6 +14,12 @@ const mocks = vi.hoisted(() => ({
   dispose: vi.fn(),
 }));
 
+vi.mock("~/main/use-legacy-activity", () => ({
+  useLegacySessionActivity: () => ({
+    isAvailable: (feature: string) =>
+      mocks.available && !!mocks.scope?.client.features.includes(feature),
+  }),
+}));
 vi.mock("@hypr/ui/components/ui/toast", () => ({
   sonnerToast: { error: mocks.toastError },
 }));
@@ -52,10 +60,7 @@ vi.mock("~/shared/application/session-generation-guard", () => ({
   }),
 }));
 vi.mock("~/session/content-queries", () => ({
-  loadSessionContentSnapshot: async () => ({
-    rawMarkdown: "Useful source",
-    transcripts: [],
-  }),
+  loadSessionContentSnapshot: mocks.load,
 }));
 
 import { useEnhancedNoteActions } from "./enhanced-actions";
@@ -63,6 +68,8 @@ import { useEnhancedNoteActions } from "./enhanced-actions";
 describe("useEnhancedNoteActions", () => {
   beforeEach(() => {
     mocks.model = null;
+    mocks.available = true;
+    mocks.load.mockClear();
     mocks.scope = {
       client: {
         canEdit: true,
@@ -135,4 +142,40 @@ describe("useEnhancedNoteActions", () => {
       "This connection does not support desktop summary generation.",
     );
   });
+});
+
+it("stops remaining Local work if captured availability is lost while editor flushing", async () => {
+  mocks.model = {};
+  mocks.available = true;
+  mocks.scope = {
+    client: {
+      canEdit: true,
+      features: ["document_editor_write", "legacy_desktop_enhance"],
+    },
+  };
+  mocks.start.mockClear();
+  mocks.dispose.mockClear();
+  mocks.load.mockClear();
+  let done!: () => void;
+  mocks.prepare.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      done = resolve;
+    }),
+  );
+  const hook = renderHook(() =>
+    useEnhancedNoteActions({
+      enhancedNoteId: "summary-1",
+      sessionId: "session-1",
+    }),
+  );
+  let saving!: Promise<void>;
+  act(() => {
+    saving = hook.result.current.onRegenerate();
+  });
+  mocks.available = false;
+  done();
+  await act(() => saving);
+  expect(mocks.load).not.toHaveBeenCalled();
+  expect(mocks.start).not.toHaveBeenCalled();
+  expect(mocks.dispose).toHaveBeenCalledOnce();
 });

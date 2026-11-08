@@ -55,8 +55,8 @@ type LLMConnectionResult = {
   status: LLMConnectionStatus;
 };
 
-export const useLanguageModel = (): LanguageModelV3 | null => {
-  const { conn } = useLLMConnection();
+export const useLanguageModel = (enabled = true): LanguageModelV3 | null => {
+  const { conn } = useLLMConnection(enabled);
 
   return useMemo(() => {
     if (!conn) return null;
@@ -65,25 +65,33 @@ export const useLanguageModel = (): LanguageModelV3 | null => {
   }, [conn]);
 };
 
-export const useLLMConnection = (): LLMConnectionResult => {
+export const useLLMConnection = (enabled = true): LLMConnectionResult => {
   const { current_llm_provider, current_llm_model } = useConfigValues([
     "current_llm_provider",
     "current_llm_model",
   ] as const);
-  const providerConfig = useAiProvider("llm", current_llm_provider) as
+  const providerConfig = useAiProvider("llm", current_llm_provider, enabled) as
     | AIProviderStorage
     | undefined;
 
-  const account = useChatgptAccount(current_llm_provider === CHATGPT_PROVIDER);
+  const account = useChatgptAccount(
+    enabled && current_llm_provider === CHATGPT_PROVIDER,
+  );
   const models = useQuery({
     queryKey: ["models", CHATGPT_PROVIDER],
     queryFn: listChatgptModels,
-    enabled: current_llm_provider === CHATGPT_PROVIDER && !!account.data,
+    enabled:
+      enabled && current_llm_provider === CHATGPT_PROVIDER && !!account.data,
     staleTime: 30_000,
     retry: false,
   });
 
   return useMemo<LLMConnectionResult>(() => {
+    if (!enabled)
+      return {
+        conn: null,
+        status: { status: "pending", reason: "missing_provider" },
+      };
     if (current_llm_provider === CHATGPT_PROVIDER) {
       if (account.isPending || (account.data && models.isPending))
         return {
@@ -119,6 +127,7 @@ export const useLLMConnection = (): LLMConnectionResult => {
       providerConfig,
     });
   }, [
+    enabled,
     current_llm_model,
     current_llm_provider,
     providerConfig,
@@ -131,8 +140,8 @@ export const useLLMConnection = (): LLMConnectionResult => {
   ]);
 };
 
-export const useLLMConnectionStatus = (): LLMConnectionStatus => {
-  const { status } = useLLMConnection();
+export const useLLMConnectionStatus = (enabled = true): LLMConnectionStatus => {
+  const { status } = useLLMConnection(enabled);
   return status;
 };
 

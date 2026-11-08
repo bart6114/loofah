@@ -9,6 +9,7 @@ import {
   requestMainAITaskCancel,
   requestMainEnhance,
 } from "~/ai/task-window-sync";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import {
   EMPTY_SUMMARY_SOURCE_MESSAGE,
   hasSummarySource,
@@ -27,7 +28,9 @@ export function useEnhancedNoteActions({
   enhancedNoteId: string | null;
   sessionId: string;
 }) {
-  const model = useLanguageModel();
+  const { isAvailable } = useLegacySessionActivity(sessionId);
+  const available = isAvailable("legacy_desktop_enhance");
+  const model = useLanguageModel(available);
   const { scope } = useVaultHost();
   const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId ?? "");
   const taskId = enhancedNoteId
@@ -35,13 +38,14 @@ export function useEnhancedNoteActions({
     : null;
 
   const enhanceTask = useAITaskTask(taskId, "enhance");
+  const { start, cancel } = enhanceTask;
 
   const onRegenerate = useCallback(async () => {
     if (!enhancedNoteId) {
       return;
     }
 
-    if (!scope?.client.features.includes("legacy_desktop_enhance")) {
+    if (!scope || !isAvailable("legacy_desktop_enhance")) {
       sonnerToast.error(
         "This connection does not support desktop summary generation.",
       );
@@ -66,6 +70,7 @@ export function useEnhancedNoteActions({
         throw new Error("This document is not available for generation.");
       await guard.prepare();
       await flushDatabaseWrites([`session:${sessionId}:note`]);
+      if (!isAvailable("legacy_desktop_enhance")) return;
       const snapshot = await loadSessionContentSnapshot(sessionId);
       if (
         !snapshot ||
@@ -76,6 +81,7 @@ export function useEnhancedNoteActions({
       }
 
       guard.assertReady();
+      if (!isAvailable("legacy_desktop_enhance")) return;
       if (!isMainAITaskHostWindow()) {
         const result = await requestMainEnhance(sessionId, {
           targetNoteId: enhancedNoteId,
@@ -87,7 +93,7 @@ export function useEnhancedNoteActions({
         return;
       }
 
-      await enhanceTask.start({
+      await start({
         model,
         args: {
           sessionId,
@@ -101,10 +107,10 @@ export function useEnhancedNoteActions({
     } finally {
       guard?.dispose();
     }
-  }, [enhancedNoteId, model, enhanceTask.start, sessionId, scope, target]);
+  }, [enhancedNoteId, model, start, sessionId, scope, target, isAvailable]);
 
   const onCancel = useCallback(() => {
-    if (!taskId || !scope?.client.features.includes("legacy_desktop_enhance")) {
+    if (!taskId || !isAvailable("legacy_desktop_enhance")) {
       return;
     }
 
@@ -113,28 +119,20 @@ export function useEnhancedNoteActions({
       return;
     }
 
-    enhanceTask.cancel();
-  }, [enhanceTask.cancel, taskId, scope]);
+    cancel();
+  }, [cancel, taskId, isAvailable]);
 
   return {
-    generationUnavailable: !scope?.client.features.includes(
-      "legacy_desktop_enhance",
-    ),
+    generationUnavailable: !available,
     canRegenerate:
       !!scope &&
       !!target &&
       scope.client.canEdit &&
       scope.client.features.includes("document_editor_write") &&
-      scope.client.features.includes("legacy_desktop_enhance"),
-    isGenerating:
-      !!scope?.client.features.includes("legacy_desktop_enhance") &&
-      enhanceTask.isGenerating,
-    isError:
-      !!scope?.client.features.includes("legacy_desktop_enhance") &&
-      enhanceTask.isError,
-    error: scope?.client.features.includes("legacy_desktop_enhance")
-      ? enhanceTask.error
-      : undefined,
+      available,
+    isGenerating: available && enhanceTask.isGenerating,
+    isError: available && enhanceTask.isError,
+    error: available ? enhanceTask.error : undefined,
     onRegenerate,
     onCancel,
   };

@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
   assertReady: vi.fn(),
   dispose: vi.fn(),
 }));
+vi.mock("~/main/use-legacy-activity", () => ({
+  useLegacySessionActivity: () => ({ isAvailable: () => true }),
+}));
 vi.mock("~/ai/hooks", () => ({
   useLLMConnectionStatus: () =>
     mocks.model

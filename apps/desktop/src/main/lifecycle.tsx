@@ -46,6 +46,10 @@ export function createLocalMainCaptureActivity(
 }
 
 export function useClassicMainLifecycle() {
+  useCapturedMainLifecycle();
+}
+
+export function useCapturedMainLifecycle() {
   const store = useTabsStore();
   const { scope } = useVaultHost();
   const host = useMainHost();

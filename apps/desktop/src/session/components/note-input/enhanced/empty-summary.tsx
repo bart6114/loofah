@@ -10,6 +10,7 @@ import {
   isMainAITaskHostWindow,
   requestMainEnhance,
 } from "~/ai/task-window-sync";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { getEnhancerService } from "~/services/enhancer";
 import { EMPTY_SUMMARY_SOURCE_MESSAGE } from "~/services/enhancer/source";
 import { useSummarySource } from "~/session/hooks/useSummarySource";
@@ -30,6 +31,7 @@ export function EmptySummary({
   enhancedNoteId?: string;
   titleTrailerElement?: HTMLElement;
 }) {
+  const { isAvailable } = useLegacySessionActivity(sessionId);
   const hasSource = useSummarySource(sessionId);
   const { scope } = useVaultHost();
   const selected = useEnhancedDocumentTarget(sessionId, enhancedNoteId ?? "");
@@ -40,14 +42,21 @@ export function EmptySummary({
     scope.client.canEdit &&
     scope.client.features.includes("document_editor_write") &&
     scope.client.features.includes("legacy_desktop_enhance");
-  const llmStatus = useLLMConnectionStatus();
+  const llmStatus = useLLMConnectionStatus(
+    isAvailable("legacy_desktop_enhance"),
+  );
   const modelReady = llmStatus.status === "success";
   const connecting =
     llmStatus.status === "pending" && llmStatus.reason === "connecting";
   const openSummaryPrompt = useOpenSummaryPrompt();
   const generate = useMutation({
     mutationFn: async () => {
-      if (!scope || !target || !allowed)
+      if (
+        !scope ||
+        !target ||
+        !allowed ||
+        !isAvailable("legacy_desktop_enhance")
+      )
         throw new Error("This document is not available for generation.");
       const guard = captureSessionGenerationGuard(scope, sessionId, target);
       try {
@@ -57,6 +66,7 @@ export function EmptySummary({
           targetNoteId: enhancedNoteId,
         };
         guard.assertReady();
+        if (!isAvailable("legacy_desktop_enhance")) return;
         if (!isMainAITaskHostWindow()) {
           const result = await requestMainEnhance(sessionId, opts);
           if (result.type === "no_model")
@@ -79,7 +89,7 @@ export function EmptySummary({
     },
   });
 
-  if (!scope?.client.features.includes("legacy_desktop_enhance"))
+  if (!isAvailable("legacy_desktop_enhance"))
     return (
       <p role="alert">
         This connection does not support desktop summary generation.
