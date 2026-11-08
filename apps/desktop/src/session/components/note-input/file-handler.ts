@@ -97,6 +97,7 @@ export function useNoteFileHandlerConfig(
   const { processAudioFile, processAudioPath } = useUploadFile(
     sessionId,
     assertAudio,
+    audioAvailable(),
   );
   const [fileDragKind, setFileDragKind] = useState<NoteFileDragKind | null>(
     null,

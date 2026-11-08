@@ -5,6 +5,8 @@ import { useCallback } from "react";
 import { Kbd } from "@hypr/ui/components/ui/kbd";
 import { cn } from "@hypr/utils";
 
+import { useLegacyDesktopAccess } from "./use-legacy-activity";
+
 import { StandardContentWrapper } from "~/shared/main";
 import { useNewNote, useNewNoteAndListen } from "~/shared/useNewNote";
 import { useAudioImport } from "~/store/zustand/audio-import";
@@ -23,6 +25,8 @@ export function TabContentEmpty({
 }
 
 function EmptyView() {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
   const newNote = useNewNote({ behavior: "current" });
   const newNoteAndListen = useNewNoteAndListen({ behavior: "current" });
   const openCurrent = useTabs((state) => state.openCurrent);
@@ -35,10 +39,9 @@ function EmptyView() {
     [openCurrent],
   );
 
-  const openAudioImport = useCallback(
-    () => setAudioImportDialogOpen(true),
-    [setAudioImportDialogOpen],
-  );
+  const openAudioImport = useCallback(() => {
+    if (isAvailable()) setAudioImportDialogOpen(true);
+  }, [setAudioImportDialogOpen, isAvailable]);
 
   return (
     <div
@@ -59,10 +62,12 @@ function EmptyView() {
             "N",
           ]}
           onClick={newNoteAndListen}
+          disabled={!isAvailable()}
         />
         <ActionItem
           label={<Trans>Import Audio</Trans>}
           onClick={openAudioImport}
+          disabled={!isAvailable()}
         />
         <div className="bg-accent my-1 h-px" />
         <ActionItem
@@ -80,15 +85,18 @@ function ActionItem({
   shortcut,
   icon,
   onClick,
+  disabled,
 }: {
   label: React.ReactNode;
   shortcut?: string[];
   icon?: React.ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       data-tauri-drag-region="false"
       className={cn([
         "group",

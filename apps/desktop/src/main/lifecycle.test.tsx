@@ -94,6 +94,7 @@ function Probe({
     <MainHostContext.Provider
       value={{
         scope,
+        listenerStore,
         activity:
           activity ??
           (generic

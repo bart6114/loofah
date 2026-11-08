@@ -22,6 +22,7 @@ import { useAutoEnhance } from "./hooks/useAutoEnhance";
 import { shouldShowSessionTopAudioPlayer } from "./top-audio-player";
 
 import * as AudioPlayer from "~/audio-player";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { deleteSessionAudio } from "~/session/attachments";
 import {
   useEnhancedNoteRecords,
@@ -30,9 +31,7 @@ import {
   useSessionMetadata,
 } from "~/session/queries";
 import { useVaultHost } from "~/shared/application/vault-provider";
-import { listenerStore } from "~/store/zustand/listener/instance";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
-import { useListener } from "~/stt/contexts";
 import { consumePendingUpload } from "~/stt/pending-upload";
 import { useStartListening } from "~/stt/useStartListening";
 import { useSTTConnection } from "~/stt/useSTTConnection";
@@ -45,7 +44,9 @@ export function TabContentNote({
   standaloneWindow?: boolean;
   tab: Extract<Tab, { type: "sessions" }>;
 }) {
-  const sessionMode = useListener((state) => state.getSessionMode(tab.id));
+  const legacy = useLegacySessionActivity(tab.id);
+  const { isAvailable } = legacy;
+  const sessionMode = legacy.mode;
   const { scope } = useVaultHost();
   const isCapturing = sessionMode === "active" || sessionMode === "finalizing";
   const deleteRecording = useCallback(
@@ -53,17 +54,16 @@ export function TabContentNote({
       const deleted = await deleteSessionAudio(
         tab.id,
         () => {
-          const state = listenerStore.getState();
           return (
-            state.getSessionMode(tab.id) === "inactive" &&
-            !(state.live.sessionId === tab.id && state.live.loading)
+            isAvailable("legacy_desktop_session_controls") &&
+            legacy.activity?.captureState(tab.id) === "idle"
           );
         },
         remove,
       );
       if (!deleted) throw new Error("audio_session_busy");
     },
-    [tab.id],
+    [tab.id, isAvailable, legacy.activity],
   );
   const wasCapturingRef = useRef(false);
   useEffect(() => {
@@ -79,7 +79,7 @@ export function TabContentNote({
 
   return (
     <>
-      {tab.state.autoStart && !standaloneWindow ? (
+      {isAvailable() && tab.state.autoStart && !standaloneWindow ? (
         <AutoStartListening tab={tab} />
       ) : null}
       <SearchProvider>
@@ -101,16 +101,17 @@ function AutoStartListening({
 }: {
   tab: Extract<Tab, { type: "sessions" }>;
 }) {
-  const canStartLiveSession = useListener((state) =>
-    state.canStartLiveSession(tab.id),
-  );
+  const legacy = useLegacySessionActivity(tab.id);
+  const { isAvailable } = legacy;
+  const canStartLiveSession =
+    isAvailable() && legacy.listener!.getState().canStartLiveSession(tab.id);
   const updateSessionTabState = useTabs((state) => state.updateSessionTabState);
   const { conn } = useSTTConnection();
-  const startListening = useStartListening(tab.id);
+  const startListening = useStartListening(tab.id, isAvailable);
   const hasAttemptedAutoStart = useRef(false);
 
   useEffect(() => {
-    if (hasAttemptedAutoStart.current) {
+    if (!isAvailable() || hasAttemptedAutoStart.current) {
       return;
     }
 
@@ -132,6 +133,7 @@ function AutoStartListening({
     conn,
     startListening,
     updateSessionTabState,
+    isAvailable,
   ]);
 
   return null;
@@ -149,15 +151,13 @@ function TabContentNoteInner({
     AudioPlayer.useAudioPlayer();
 
   const sessionId = tab.id;
-  usePendingUpload(sessionId);
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
 
   const hasTranscript = useHasTranscript(sessionId);
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
-  const batchError = useListener((state) => state.batch[sessionId]?.error);
-  const hasLiveSegments = useListener(
-    (state) =>
-      state.live.sessionId === sessionId && state.liveSegments.length > 0,
-  );
+  const sessionMode = legacy.mode;
+  const batchError = legacy.batchError;
+  const hasLiveSegments = legacy.hasLiveSegments;
   const canShowTranscript = getCanShowTranscript({
     audioExists,
     batchError: Boolean(batchError),
@@ -223,6 +223,7 @@ function TabContentNoteInner({
   );
   return (
     <>
+      {isAvailable() && <PendingUpload sessionId={sessionId} />}
       <SessionSurface
         header={
           <OuterHeader
@@ -290,17 +291,24 @@ function SessionContentLoading() {
   );
 }
 
-function usePendingUpload(sessionId: string) {
-  const { processFile } = useUploadFile(sessionId);
+function PendingUpload({ sessionId }: { sessionId: string }) {
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const assertCurrent = useCallback(() => {
+    if (!isAvailable()) throw new Error("Audio import is unavailable.");
+  }, [isAvailable]);
+  const { processFile } = useUploadFile(sessionId, assertCurrent);
   const processFileRef = useRef(processFile);
   processFileRef.current = processFile;
 
   useEffect(() => {
+    if (!isAvailable()) return;
     const pending = consumePendingUpload(sessionId);
     if (pending) {
       processFileRef.current(pending.filePath, pending.kind);
     }
-  }, [sessionId]);
+  }, [sessionId, isAvailable]);
+  return null;
 }
 
 function useAutoFocusTitle({

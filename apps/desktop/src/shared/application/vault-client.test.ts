@@ -1466,6 +1466,7 @@ it("routes compound document editing through the selected adapter and strips dev
       "document_editor_write",
       "legacy_desktop_enhance",
       "legacy_desktop_transcript_controls",
+      "legacy_desktop_session_controls",
     ]),
   );
   expect(await local.readDocumentEditor("same", target)).toEqual(snapshot);
@@ -1490,6 +1491,7 @@ it("routes compound document editing through the selected adapter and strips dev
             "document_editor_write",
             "legacy_desktop_enhance",
             "legacy_desktop_transcript_controls",
+            "legacy_desktop_session_controls",
           ],
         },
       },
@@ -1500,6 +1502,7 @@ it("routes compound document editing through the selected adapter and strips dev
   );
   expect(remote.features).not.toContain("legacy_desktop_enhance");
   expect(remote.features).not.toContain("legacy_desktop_transcript_controls");
+  expect(remote.features).not.toContain("legacy_desktop_session_controls");
   const options = { signal: new AbortController().signal };
   expect(await remote.readDocumentEditor("same", target, options)).toEqual(
     snapshot,

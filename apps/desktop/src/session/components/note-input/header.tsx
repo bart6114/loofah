@@ -11,6 +11,7 @@ import { cn } from "@hypr/utils";
 
 import { useAITaskTask } from "~/ai/hooks";
 import * as AudioPlayer from "~/audio-player";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useEnhancedNoteActions } from "~/session/components/note-input/enhanced-actions";
 import { useRegenerateTranscript } from "~/session/components/note-input/transcript/actions";
 import {
@@ -35,7 +36,6 @@ import {
 } from "~/shared/hooks/useNativeContextMenu";
 import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 import { type EditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 
 function getStoredNoteMarkdown(content: string | undefined) {
   const trimmed = content?.trim() ?? "";
@@ -618,20 +618,15 @@ function HeaderViewTranscriptLiveIcon({
 }
 
 function useTranscriptLiveViewState(sessionId: string) {
-  const { amplitude, degraded, mode } = useListener((state) => {
-    const mode = state.getSessionMode(sessionId);
-    return {
-      amplitude: state.live.amplitude,
-      degraded: state.live.degraded,
-      mode,
-    };
+  const { amplitude, degraded, mode } = useLegacySessionActivity(sessionId, {
+    includeAmplitude: true,
   });
   return {
     live:
       mode === "active"
         ? {
             amplitude: Math.min(
-              Math.hypot(amplitude.mic, amplitude.speaker),
+              Math.hypot(amplitude?.mic ?? 0, amplitude?.speaker ?? 0),
               1,
             ),
             degraded: Boolean(degraded),
@@ -640,13 +635,48 @@ function useTranscriptLiveViewState(sessionId: string) {
   };
 }
 
-function HeaderViewTranscriptActive({
+function HeaderViewTranscriptActive(props: {
+  isActive: boolean;
+  isTranscribing: boolean;
+  onClick?: () => void;
+  sessionId: string;
+  live?: { amplitude: number; degraded: boolean };
+}) {
+  const legacy = useLegacySessionActivity(props.sessionId);
+  const { isAvailable } = legacy;
+  return isAvailable() ? (
+    <LegacyHeaderViewTranscriptActive {...props} />
+  ) : (
+    <ScopedHeaderViewTranscriptActive {...props} />
+  );
+}
+function LegacyHeaderViewTranscriptActive(props: {
+  isActive: boolean;
+  isTranscribing: boolean;
+  onClick?: () => void;
+  sessionId: string;
+  live?: { amplitude: number; degraded: boolean };
+}) {
+  const legacy = useLegacySessionActivity(props.sessionId);
+  const { isAvailable } = legacy;
+  const assertCurrent = useCallback(() => {
+    if (!isAvailable()) throw new Error("Transcript controls are unavailable.");
+  }, [isAvailable]);
+  const regenerate = useRegenerateTranscript(props.sessionId, assertCurrent);
+  return (
+    <ScopedHeaderViewTranscriptActive {...props} regenerate={regenerate} />
+  );
+}
+
+function ScopedHeaderViewTranscriptActive({
   isActive,
   isTranscribing,
   onClick,
   sessionId,
   live,
+  regenerate,
 }: {
+  regenerate?: () => Promise<void>;
   isActive: boolean;
   isTranscribing: boolean;
   onClick?: () => void;
@@ -656,7 +686,6 @@ function HeaderViewTranscriptActive({
     degraded: boolean;
   };
 }) {
-  const regenerate = useRegenerateTranscript(sessionId);
   const { request: transcriptExportRequest } =
     useSessionTranscriptRenderData(sessionId);
   const {
@@ -665,7 +694,9 @@ function HeaderViewTranscriptActive({
     deleteRecording,
     isDeletingRecording,
   } = AudioPlayer.useAudioPlayer();
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
+  const sessionMode = legacy.mode;
   const canCopyTranscript = Boolean(transcriptExportRequest);
   const handleCopyTranscript = useCallback(async () => {
     if (!transcriptExportRequest) {
@@ -705,7 +736,12 @@ function HeaderViewTranscriptActive({
       },
     ];
 
-    if (audioExistsResolved && sessionMode === "inactive" && audioExists) {
+    if (
+      regenerate &&
+      audioExistsResolved &&
+      sessionMode === "inactive" &&
+      audioExists
+    ) {
       items.push({
         id: `regenerate-transcript-${sessionId}`,
         text: "Re-transcribe",
@@ -715,7 +751,11 @@ function HeaderViewTranscriptActive({
       });
     }
 
-    if (audioExists) {
+    if (
+      audioExists &&
+      isAvailable("legacy_desktop_session_controls") &&
+      legacy.activity?.captureState(sessionId) === "idle"
+    ) {
       items.push({
         id: `delete-recording-${sessionId}`,
         text: "Delete recording",
@@ -735,6 +775,8 @@ function HeaderViewTranscriptActive({
     regenerate,
     sessionMode,
     sessionId,
+    isAvailable,
+    legacy.activity,
   ]);
   const showContextMenu = useNativeContextMenu(contextMenu);
 
@@ -763,6 +805,8 @@ export function Header({
   isTranscribing?: boolean;
 }) {
   const { t } = useLingui();
+  const legacy = useLegacySessionActivity(sessionId);
+  const { isAvailable } = legacy;
   const primaryEnhancedTabId = editorTabs.find(
     (view): view is Extract<EditorView, { type: "enhanced" }> =>
       view.type === "enhanced",
@@ -799,6 +843,16 @@ export function Header({
                     onRemove={
                       view.id !== primaryEnhancedTabId
                         ? () => {
+                            if (!isAvailable("legacy_desktop_session_controls"))
+                              return;
+                            const assertCurrent = () => {
+                              if (
+                                !isAvailable("legacy_desktop_session_controls")
+                              )
+                                throw new Error(
+                                  "Session controls are unavailable.",
+                                );
+                            };
                             const previousView = editorTabs[index - 1];
                             if (
                               currentTab.type === "enhanced" &&
@@ -808,14 +862,16 @@ export function Header({
                               handleTabChange(previousView);
                             }
 
-                            void deleteEnhancedNote(view.id, sessionId).catch(
-                              (error) => {
-                                console.error(
-                                  "[session-header] failed to remove summary",
-                                  error,
-                                );
-                              },
-                            );
+                            void deleteEnhancedNote(
+                              view.id,
+                              sessionId,
+                              assertCurrent,
+                            ).catch((error) => {
+                              console.error(
+                                "[session-header] failed to remove summary",
+                                error,
+                              );
+                            });
                           }
                         : undefined
                     }

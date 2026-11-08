@@ -3,6 +3,7 @@ import { type CSSProperties, useCallback, useMemo } from "react";
 
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { restoreDeletedSession } from "~/session/queries";
 import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useTabs } from "~/store/zustand/tabs";
@@ -55,6 +56,8 @@ function useToastGroups(): ToastGroup[] {
 }
 
 function useRestoreGroup() {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
   const queryClient = useQueryClient();
   const pendingDeletions = useUndoDelete((state) => state.pendingDeletions);
   const addDeletion = useUndoDelete((state) => state.addDeletion);
@@ -65,6 +68,7 @@ function useRestoreGroup() {
 
   return useCallback(
     (group: ToastGroup) => {
+      if (!isAvailable("legacy_desktop_session_controls")) return;
       const entries = group.sessionIds
         .map((sessionId) => pendingDeletions[sessionId])
         .filter((pending) => pending !== undefined);
@@ -85,9 +89,12 @@ function useRestoreGroup() {
         try {
           while (remaining.length > 0) {
             const pending = remaining[0];
+            if (!isAvailable("legacy_desktop_session_controls"))
+              throw new Error("Session controls are unavailable.");
             await restoreDeletedSession(pending.data);
             remaining.shift();
             const sessionId = pending.data.session.id;
+            if (!isAvailable("legacy_desktop_session_controls")) continue;
             void queryClient.invalidateQueries({
               predicate: (query) =>
                 query.queryKey.length >= 2 &&
@@ -97,7 +104,8 @@ function useRestoreGroup() {
           }
         } catch (error) {
           console.error("[undo-delete] failed to restore session", error);
-          sonnerToast.error("Could not restore deleted note");
+          if (isAvailable("legacy_desktop_session_controls"))
+            sonnerToast.error("Could not restore deleted note");
           // Re-add the unrestored deletions so their undo toast (and the
           // finalize path) comes back instead of leaving them tombstoned,
           // and close the optimistically reopened tab — it still points at
@@ -121,11 +129,19 @@ function useRestoreGroup() {
       clearDeletion,
       clearBatch,
       queryClient,
+      isAvailable,
     ],
   );
 }
 
 export function UndoDeleteToast() {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
+  if (!isAvailable("legacy_desktop_session_controls")) return null;
+  return <LegacyUndoDeleteToast />;
+}
+
+function LegacyUndoDeleteToast() {
   const groups = useToastGroups();
 
   return groups.map((group) => (

@@ -284,6 +284,66 @@ describe("useStartListening", () => {
     });
   });
 
+  test("refuses capture before preflight when captured ownership has retired", async () => {
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => false),
+    );
+    await act(async () => {
+      await result.current();
+    });
+    expect(isSupportedLanguagesLiveMock).not.toHaveBeenCalled();
+    expect(startMock).not.toHaveBeenCalled();
+  });
+
+  test("keeps admitted recording persistence but skips later enhancement after ownership retires", async () => {
+    let available = true;
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => available),
+    );
+    await act(async () => {
+      await result.current();
+    });
+    const callbacks = startMock.mock.calls[0][1];
+    available = false;
+    callbacks.handlePersist({
+      new_words: [
+        {
+          id: "captured-word",
+          text: "saved after retirement",
+          start_ms: 0,
+          end_ms: 100,
+          channel: 0,
+        },
+      ],
+      replaced_ids: [],
+    });
+    await act(async () => {
+      await callbacks.onStopped("session-1", {
+        audioPath: "/original/audio.wav",
+        liveTranscriptionActive: true,
+        needsBatchRepair: false,
+      });
+    });
+    expect(catalogLocalSessionAudioMock).toHaveBeenCalledWith(
+      "session-1",
+      "/original/audio.wav",
+    );
+    expect(sessionAppendTranscriptMock).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        new_words: [expect.objectContaining({ id: "captured-word" })],
+      }),
+    );
+    expect(sessionFinishTranscriptMock).toHaveBeenCalledWith(
+      "session-1",
+      expect.any(String),
+    );
+    expect(runBatchMock).not.toHaveBeenCalled();
+    expect(queueAutoEnhanceMock).not.toHaveBeenCalled();
+    expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();
+    expect(requestMainAutoEnhanceMock).not.toHaveBeenCalled();
+  });
+
   test.each([undefined, "live", "batch"])(
     "preserves recording with an unavailable connection and timing %s",
     async (timing) => {
@@ -293,7 +353,9 @@ describe("useStartListening", () => {
         if (key === "meeting_languages") return ["en", "nl"];
         if (key === "transcription_timing") return timing;
       });
-      const { result } = renderHook(() => useStartListening("session-1"));
+      const { result } = renderHook(() =>
+        useStartListening("session-1", () => true),
+      );
       await act(async () => {
         await result.current();
       });
@@ -326,7 +388,7 @@ describe("useStartListening", () => {
     useSTTConnectionMock.mockReturnValue({ conn: null });
     canRunBatchTranscriptionMock.mockReturnValue(false);
     const { result, rerender } = renderHook(() =>
-      useStartListening("session-1"),
+      useStartListening("session-1", () => true),
     );
     await act(async () => {
       await result.current();
@@ -366,7 +428,9 @@ describe("useStartListening", () => {
           apiKey: "",
         },
       });
-      const { result } = renderHook(() => useStartListening("session-1"));
+      const { result } = renderHook(() =>
+        useStartListening("session-1", () => true),
+      );
       await act(async () => {
         await result.current();
       });
@@ -377,7 +441,9 @@ describe("useStartListening", () => {
   );
 
   test("collapses the left sidebar after listening starts", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -389,7 +455,9 @@ describe("useStartListening", () => {
   test("sets the left sidebar collapsed after listening starts even if render state is stale", async () => {
     leftSidebarExpanded.value = false;
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -408,7 +476,9 @@ describe("useStartListening", () => {
           : [],
     );
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -418,7 +488,9 @@ describe("useStartListening", () => {
   });
 
   test("runs batch transcription after record-only capture stops", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -459,7 +531,9 @@ describe("useStartListening", () => {
   test("skips post-capture batch when the connection cannot run batch transcription", async () => {
     canRunBatchTranscriptionMock.mockReturnValue(false);
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -492,7 +566,9 @@ describe("useStartListening", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -521,7 +597,9 @@ describe("useStartListening", () => {
   // transcription had succeeded and skipped the batch fallback, so the session ended up with
   // no transcript and no error anywhere.
   test("transcribes the recording when a live capture persists no words at all", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -548,7 +626,9 @@ describe("useStartListening", () => {
   });
 
   test("does not re-transcribe when a live capture already persisted words", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -582,7 +662,9 @@ describe("useStartListening", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -606,7 +688,9 @@ describe("useStartListening", () => {
   });
 
   test("skips audio cataloging when capture produces no final file", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -634,7 +718,9 @@ describe("useStartListening", () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -687,7 +773,9 @@ describe("useStartListening", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -721,7 +809,9 @@ describe("useStartListening", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -745,7 +835,9 @@ describe("useStartListening", () => {
   });
 
   test("stays quiet when a record-only stop leaves nothing to summarize", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -772,7 +864,9 @@ describe("useStartListening", () => {
     useSessionHasTranscriptMock.mockReturnValue(true);
     runBatchMock.mockRejectedValueOnce(new Error("Transcription stopped."));
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -798,7 +892,9 @@ describe("useStartListening", () => {
     getEnhancerServiceMock.mockReturnValue(null);
     useSessionHasTranscriptMock.mockReturnValue(true);
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -832,7 +928,9 @@ describe("useStartListening", () => {
           releaseBlocker = resolve;
         }),
     );
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -859,7 +957,9 @@ describe("useStartListening", () => {
   });
 
   test("cleans up processed audio after live capture stops", async () => {
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -897,7 +997,9 @@ describe("useStartListening", () => {
         resolveFirst = r;
       }),
     );
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
     await act(async () => {
       await result.current();
     });
@@ -948,7 +1050,9 @@ describe("useStartListening", () => {
     );
     useSessionHasTranscriptMock.mockReturnValue(true);
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -998,7 +1102,9 @@ describe("useStartListening", () => {
   test("regenerates the summary after resumed batch capture completes", async () => {
     useSessionHasTranscriptMock.mockReturnValue(true);
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -1035,7 +1141,9 @@ describe("useStartListening", () => {
       },
     });
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -1056,7 +1164,9 @@ describe("useStartListening", () => {
       },
     });
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -1082,7 +1192,9 @@ describe("useStartListening", () => {
         apiKey: "",
       },
     });
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
     await act(async () => {
       await result.current();
     });
@@ -1112,7 +1224,9 @@ describe("useStartListening", () => {
           apiKey: "",
         },
       });
-      const { result } = renderHook(() => useStartListening("session-1"));
+      const { result } = renderHook(() =>
+        useStartListening("session-1", () => true),
+      );
       await act(async () => {
         await result.current();
       });
@@ -1140,7 +1254,9 @@ describe("useStartListening", () => {
       },
     });
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -1169,7 +1285,9 @@ describe("useStartListening", () => {
       },
     });
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -1205,7 +1323,9 @@ describe("useStartListening", () => {
         }),
     );
 
-    const { result } = renderHook(() => useStartListening("session-1"));
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
 
     await act(async () => {
       await result.current();
@@ -1225,7 +1345,9 @@ describe("useStartListening", () => {
           releaseCatalog = resolve;
         }),
     );
-    const { result } = renderHook(() => useStartListening(sessionId));
+    const { result } = renderHook(() =>
+      useStartListening(sessionId, () => true),
+    );
     await act(async () => {
       await result.current();
     });
@@ -1257,7 +1379,9 @@ describe("useStartListening", () => {
       const sessionId = "summary-lock-failure";
       if (outcome instanceof Error) startMock.mockRejectedValueOnce(outcome);
       else startMock.mockResolvedValueOnce(outcome);
-      const { result } = renderHook(() => useStartListening(sessionId));
+      const { result } = renderHook(() =>
+        useStartListening(sessionId, () => true),
+      );
       await act(async () => {
         await result.current().catch(() => {});
       });

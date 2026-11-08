@@ -145,7 +145,7 @@ export function CapturedMainLayout({
         managePins={managePins}
       >
         <MainHostContext.Provider
-          value={{ scope, activity, takeInitialSession }}
+          value={{ scope, listenerStore, activity, takeInitialSession }}
         >
           <ListenerContextProvider store={listenerStore}>
             <SearchEngineProvider>

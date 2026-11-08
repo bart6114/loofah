@@ -91,11 +91,15 @@ export function getSessionSpeakerCount(
   return humanIds.size > 1 ? humanIds.size : undefined;
 }
 
-export const useRunBatch = (sessionId: string, assertCurrent?: () => void) => {
+export const useRunBatch = (
+  sessionId: string,
+  assertCurrent?: () => void,
+  enabled = true,
+) => {
   const session = useSession(sessionId);
 
   const startTranscription = useListener((state) => state.startTranscription);
-  const { conn } = useSTTConnection();
+  const { conn } = useSTTConnection(enabled);
   const meetingLanguages = useConfigValue("meeting_languages");
 
   return useCallback(

@@ -1084,3 +1084,18 @@ describe("always-accessible Summary tab", () => {
     },
   );
 });
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") =>
+    legacyActivityFixture(
+      useListener((state) => state),
+      id,
+    );
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});

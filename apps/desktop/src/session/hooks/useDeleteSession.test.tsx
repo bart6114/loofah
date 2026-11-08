@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    allowed: true,
+    capture: "idle",
     addDeletion: vi.fn(),
     clearDeletion: vi.fn(),
     pendingDeletions: {} as Record<string, { data: DeletedSessionData }>,
@@ -107,6 +109,8 @@ describe("useDeleteSession", () => {
   beforeEach(() => {
     cleanup();
     vi.clearAllMocks();
+    mocks.allowed = true;
+    mocks.capture = "idle";
     for (const key of Object.keys(mocks.pendingDeletions)) {
       delete mocks.pendingDeletions[key];
     }
@@ -151,6 +155,7 @@ describe("useDeleteSession", () => {
     expect(mocks.softDeleteSession).toHaveBeenCalledWith(
       "session-1",
       expect.any(String),
+      expect.any(Function),
     );
 
     // No confirm callback is registered, so `confirmDeletion` has nothing to run.
@@ -180,6 +185,7 @@ describe("useDeleteSession", () => {
     expect(mocks.softDeleteSession).toHaveBeenCalledWith(
       "session-1",
       expect.any(String),
+      expect.any(Function),
     );
     expect(mocks.invalidateResource).toHaveBeenCalledWith(
       "sessions",
@@ -264,6 +270,7 @@ describe("useDeleteSession", () => {
       expect(mocks.softDeleteSession).toHaveBeenCalledWith(
         "session-1",
         expect.any(String),
+        expect.any(Function),
       );
     });
     expect(mocks.listenerStop).toHaveBeenCalledTimes(1);
@@ -389,3 +396,30 @@ describe("useDeleteSession", () => {
     expect(mocks.softDeleteSession).not.toHaveBeenCalled();
   });
 });
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  return {
+    useLegacyDesktopAccess: () => ({
+      ...legacyActivityFixture(mocks.listenerGetState()),
+      isAvailable: () => mocks.allowed,
+      activity: { captureState: () => mocks.capture },
+    }),
+  };
+});
+
+it.each(["unsupported", "unknown"])(
+  "never deletes or stops capture with %s ownership",
+  (kind) => {
+    cleanup();
+    vi.clearAllMocks();
+    mocks.allowed = kind !== "unsupported";
+    mocks.capture = kind === "unknown" ? "unknown" : "idle";
+    const { result } = renderHook(() => useDeleteSession());
+    act(() => result.current("same-id"));
+    expect(mocks.softDeleteSession).not.toHaveBeenCalled();
+    expect(mocks.listenerStop).not.toHaveBeenCalled();
+    expect(mocks.invalidateResource).not.toHaveBeenCalled();
+  },
+);

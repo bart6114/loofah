@@ -196,3 +196,12 @@ describe("UndoDeleteToast", () => {
     );
   });
 });
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  return {
+    useLegacySessionActivity: () => legacyActivityFixture(),
+    useLegacyDesktopAccess: () => legacyActivityFixture(),
+  };
+});

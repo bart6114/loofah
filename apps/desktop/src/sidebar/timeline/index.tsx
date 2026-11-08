@@ -53,6 +53,7 @@ import {
 } from "./utils";
 
 import { useEnhancingSessionIds } from "~/ai/hooks/useEnhancingSessions";
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useDeleteSession } from "~/session/hooks/useDeleteSession";
 import { setSettingValue } from "~/settings/queries";
 import { useConfigValue } from "~/shared/config";
@@ -61,7 +62,6 @@ import { useMountEffect } from "~/shared/hooks/useMountEffect";
 import { useNativeContextMenu } from "~/shared/hooks/useNativeContextMenu";
 import { useTabs } from "~/store/zustand/tabs";
 import { useTimelineSelection } from "~/store/zustand/timeline-selection";
-import { useListener } from "~/stt/contexts";
 
 const EMPTY_BUCKETS: TimelineBucket[] = [];
 
@@ -150,11 +150,11 @@ export const TimelineView = memo(function TimelineView({
     groupBy === "date" ? buckets : EMPTY_BUCKETS,
     formatUpcomingMeetingLabel,
   );
-  const activeSessionId = useListener((state) =>
-    state.live.status === "active" || state.live.status === "finalizing"
-      ? state.live.sessionId
-      : null,
-  );
+  const legacy = useLegacySessionActivity("");
+  const activeSessionId =
+    legacy.liveStatus === "active" || legacy.liveStatus === "finalizing"
+      ? legacy.liveSessionId
+      : null;
   const enhancingSessionIds = useEnhancingSessionIds();
   const enhancingSessionIdSet = useMemo(
     () => new Set(enhancingSessionIds),

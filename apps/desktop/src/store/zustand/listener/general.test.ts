@@ -1262,6 +1262,65 @@ describe("General Listener Slice", () => {
       expect(nextOperation).toHaveBeenCalledOnce();
     });
 
+    test("checks capture ownership after waiting for the session audio lane", async () => {
+      let release!: () => void;
+      const blocked = enqueueSessionAudioOperation(
+        "session-guard",
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      let available = true;
+      const started = store.getState().start(
+        {
+          session_id: "session-guard",
+          languages: [],
+          onboarding: false,
+          model: "test",
+          base_url: "",
+          api_key: "",
+        },
+        { isAvailable: () => available },
+      );
+      available = false;
+      release();
+      await blocked;
+      expect(await started).toBe(false);
+      expect(startCaptureMock).not.toHaveBeenCalled();
+      expect(listMicUsingApplicationsMock).not.toHaveBeenCalled();
+    });
+
+    test("revokes capture before Native admission after delayed device preflight", async () => {
+      let release!: (value: { status: "ok"; data: [] }) => void;
+      listMicUsingApplicationsMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+      );
+      let available = true;
+      const persist = vi.fn();
+      const started = store.getState().start(
+        {
+          session_id: "session-preflight",
+          languages: [],
+          onboarding: false,
+          model: "test",
+          base_url: "",
+          api_key: "",
+        },
+        { isAvailable: () => available, handlePersist: persist },
+      );
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      available = false;
+      release({ status: "ok", data: [] });
+      expect(await started).toBe(false);
+      expect(startCaptureMock).not.toHaveBeenCalled();
+      expect(store.getState().live.eventUnlistenersBySession).toEqual({});
+      expect(store.getState().live.loading).toBe(false);
+    });
+
     test("getSessionMode returns finalizing for non-active finalizing sessions", () => {
       store.setState((state) =>
         mutate(state, (draft) => {

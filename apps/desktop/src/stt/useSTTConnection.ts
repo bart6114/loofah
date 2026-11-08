@@ -12,7 +12,7 @@ import { isFmtrLocalSttModel } from "~/stt/capabilities";
 // STT is on-device only: the connection is always a local server the
 // `local-stt` plugin spins up for the selected model. There is no cloud or
 // generic baseUrl+apiKey provider left to connect to.
-export const useSTTConnection = () => {
+export const useSTTConnection = (enabled = true) => {
   const { current_stt_provider, current_stt_model } = useConfigValues([
     "current_stt_provider",
     "current_stt_model",
@@ -21,12 +21,10 @@ export const useSTTConnection = () => {
     current_stt_model: string | undefined;
   };
 
-  const localModel = isFmtrLocalSttModel(
-    current_stt_provider,
-    current_stt_model,
-  )
-    ? current_stt_model
-    : null;
+  const localModel =
+    enabled && isFmtrLocalSttModel(current_stt_provider, current_stt_model)
+      ? current_stt_model
+      : null;
   const isLocalModel = !!localModel;
 
   const downloaded = useQuery({

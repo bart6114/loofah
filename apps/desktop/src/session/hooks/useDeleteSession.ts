@@ -5,9 +5,9 @@ import { useCallback, useEffect } from "react";
 import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { trackPendingSoftDelete } from "~/session/pending-soft-deletes";
 import { softDeleteSession } from "~/session/queries";
-import { listenerStore } from "~/store/zustand/listener/instance";
 import { useTabs, useTabsStore } from "~/store/zustand/tabs";
 import {
   type DeletedSessionData,
@@ -21,10 +21,15 @@ type SessionDeletedForUndoPayload = {
   data: DeletedSessionData;
 };
 
-async function closeSessionNoteWindows(sessionId: string) {
+async function closeSessionNoteWindows(
+  sessionId: string,
+  current: () => boolean,
+) {
   try {
     const noteWindowLabel = `note-${sessionId}`;
+    if (!current()) return;
     const windows = await getAllWebviewWindows();
+    if (!current()) return;
     await Promise.all(
       windows
         .filter((window) => window.label === noteWindowLabel)
@@ -50,6 +55,8 @@ function isSessionDeletedForUndoPayload(
 }
 
 export function useDeleteSession() {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
   const tabsStore = useTabsStore();
   const invalidateResource = useTabs((state) => state.invalidateResource);
   const addDeletion = useUndoDelete((state) => state.addDeletion);
@@ -63,6 +70,14 @@ export function useDeleteSession() {
         title?: string;
       },
     ) => {
+      const current = () => isAvailable("legacy_desktop_session_controls");
+      const captureState = legacy.activity?.captureState(sessionId);
+      if (!current() || !captureState || captureState === "unknown") return;
+      const assertCurrent = () => {
+        const state = legacy.activity?.captureState(sessionId);
+        if (!current() || !state || state === "unknown")
+          throw new Error("Session controls are unavailable.");
+      };
       const { batchId, title } = options ?? {};
       // A repeat delete would replace the pending tombstone and its finalize
       // callback, then no-op in softDeleteSession and clear the undo toast —
@@ -72,7 +87,7 @@ export function useDeleteSession() {
       }
       const windowLabel = getCurrentWebviewWindowLabel();
       const isMainWindow = windowLabel === "main";
-      const listenerState = listenerStore.getState();
+      const listenerState = legacy.listener!.getState();
       const live = listenerState.live;
 
       if (
@@ -90,7 +105,7 @@ export function useDeleteSession() {
         .tabs.some((tab) => tab.type === "sessions" && tab.id === sessionId);
       invalidateResource("sessions", sessionId);
 
-      const commit = softDeleteSession(sessionId, tombstone);
+      const commit = softDeleteSession(sessionId, tombstone, assertCurrent);
       trackPendingSoftDelete(sessionId, commit);
 
       const clearOptimisticDeletion = () => {
@@ -119,6 +134,7 @@ export function useDeleteSession() {
         let didDelete = false;
         try {
           const deletedData = await commit;
+          if (!current()) return;
           if (!deletedData) {
             // The session was already deleted; drop the optimistic toast.
             if (isMainWindow) clearOptimisticDeletion();
@@ -134,7 +150,7 @@ export function useDeleteSession() {
           }
         } catch (error) {
           console.error("[delete-session] failed to finish deletion", error);
-          if (!didDelete) {
+          if (!didDelete && current()) {
             if (isMainWindow) clearOptimisticDeletion();
             if (hadOpenTab) {
               tabsStore
@@ -146,28 +162,43 @@ export function useDeleteSession() {
           // The `didDelete` branch needs no cleanup: the folder is already in
           // `.trash/`, whether or not main ever heard about this delete.
         } finally {
-          if (didDelete) {
-            await closeSessionNoteWindows(sessionId);
+          if (didDelete && current()) {
+            await closeSessionNoteWindows(sessionId, current);
           }
         }
       })();
     },
-    [invalidateResource, addDeletion, clearDeletion, tabsStore],
+    [
+      invalidateResource,
+      addDeletion,
+      clearDeletion,
+      tabsStore,
+      isAvailable,
+      legacy.activity,
+      legacy.listener,
+    ],
   );
 }
 
 export function useRemoteSessionDeletionUndoListener(active: boolean) {
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
+  const available = isAvailable("legacy_desktop_session_controls");
   const invalidateResource = useTabs((state) => state.invalidateResource);
   const addDeletion = useUndoDelete((state) => state.addDeletion);
 
   useEffect(() => {
-    if (!active) {
+    if (!active || !available) {
       return;
     }
 
+    let disposed = false;
+    const current = () =>
+      !disposed && isAvailable("legacy_desktop_session_controls");
     let unlisten: (() => void) | undefined;
 
     void listen(SESSION_DELETED_FOR_UNDO_EVENT, (event) => {
+      if (!current()) return;
       const payload = event.payload;
       if (!isSessionDeletedForUndoPayload(payload)) {
         return;
@@ -175,13 +206,15 @@ export function useRemoteSessionDeletionUndoListener(active: boolean) {
 
       invalidateResource("sessions", payload.sessionId);
       addDeletion(payload.data);
-      void closeSessionNoteWindows(payload.sessionId);
+      void closeSessionNoteWindows(payload.sessionId, current);
     }).then((fn) => {
-      unlisten = fn;
+      if (!current()) fn();
+      else unlisten = fn;
     });
 
     return () => {
+      disposed = true;
       unlisten?.();
     };
-  }, [active, invalidateResource, addDeletion]);
+  }, [active, invalidateResource, addDeletion, isAvailable, available]);
 }

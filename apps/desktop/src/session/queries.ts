@@ -484,15 +484,16 @@ export function useRefreshEnhancedNote(
 export function deleteEnhancedNote(
   enhancedNoteId: string,
   sessionId: string,
+  assertCurrent?: () => void,
 ): Promise<void> {
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
   return enqueueDatabaseWrite(`enhanced-note:${enhancedNoteId}`, async () => {
+    assertCurrent?.();
     const result =
       enhancedNoteId === sessionId
-        ? await getApplicationClient().store.sessionDeleteSummary(sessionId)
-        : await getApplicationClient().store.sessionDeleteEnhancedDoc(
-            sessionId,
-            enhancedNoteId,
-          );
+        ? await backend.sessionDeleteSummary(sessionId)
+        : await backend.sessionDeleteEnhancedDoc(sessionId, enhancedNoteId);
     if (result.status === "error") {
       throw new Error(
         `Failed to delete summary ${enhancedNoteId}: ${result.error}`,
@@ -592,18 +593,22 @@ export async function createSession(
 export async function softDeleteSession(
   sessionId: string,
   tombstone = new Date().toISOString(),
+  assertCurrent?: () => void,
 ): Promise<DeletedSessionData | null> {
   // Read title before deleting: session_delete removes the index entry outright (nothing
   // left to read back from), so anything the undo toast needs to display has to be
   // captured up front.
-  const preRead = await getApplicationClient().store.sessionGet(sessionId);
+  assertCurrent?.();
+  const backend = getApplicationClient().store;
+  const preRead = await backend.sessionGet(sessionId);
+  assertCurrent?.();
   if (preRead.status === "error") {
     throw new Error(`session_get failed: ${preRead.error}`);
   }
   const session = preRead.data;
   if (!session) return null;
 
-  const result = await getApplicationClient().store.sessionDelete(sessionId);
+  const result = await backend.sessionDelete(sessionId);
   if (result.status === "error") {
     // Distinct from "already deleted" (the pre-read above finding no session, which is
     // benign and returns null): the session existed and the store call itself failed. Throw so

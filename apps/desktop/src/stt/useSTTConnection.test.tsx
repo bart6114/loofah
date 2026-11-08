@@ -21,11 +21,11 @@ const { config, commands } = vi.hoisted(() => ({
 vi.mock("@hypr/plugin-local-stt", () => ({ commands, events: {} }));
 vi.mock("~/shared/config", () => ({ useConfigValues: () => config }));
 
-function setup() {
+function setup(enabled = true) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return renderHook(useSTTConnection, {
+  return renderHook(() => useSTTConnection(enabled), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
@@ -88,3 +88,14 @@ test.each(["am-parakeet-v3", "soniqo-qwen3-small", "soniqo-qwen3-large"])(
     expect(commands.startServer).not.toHaveBeenCalled();
   },
 );
+
+test("an unsupported captured host performs no local model queries even with device model preferences", async () => {
+  const { result } = setup(false);
+  await Promise.resolve();
+  expect(result.current.conn).toBeNull();
+  expect(result.current.isLocalModel).toBe(false);
+  expect(commands.getServerForModel).not.toHaveBeenCalled();
+  expect(commands.isModelDownloaded).not.toHaveBeenCalled();
+  expect(commands.startServer).not.toHaveBeenCalled();
+  expect(commands.downloadModel).not.toHaveBeenCalled();
+});

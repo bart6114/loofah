@@ -550,3 +550,18 @@ it("navigates to the canonical image ID when the raw editor has a different runt
   await waitFor(() => expect(scroll).toHaveBeenCalledOnce());
   expect(descendants).toHaveBeenCalledOnce();
 });
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") =>
+    legacyActivityFixture(
+      useListener((state) => state),
+      id,
+    );
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});

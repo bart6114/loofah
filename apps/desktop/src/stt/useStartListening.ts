@@ -58,7 +58,10 @@ export function getPostCaptureAction(
   return "none" as const;
 }
 
-export function useStartListening(sessionId: string) {
+export function useStartListening(
+  sessionId: string,
+  isAvailable: () => boolean,
+) {
   const session = useSession(sessionId);
   const hadTranscriptBeforeStart = useSessionHasTranscript(sessionId);
 
@@ -77,6 +80,7 @@ export function useStartListening(sessionId: string) {
   canRunBatchRef.current = canRunBatchTranscription(conn);
 
   const startListening = useCallback(async () => {
+    if (!isAvailable()) return;
     const activity = beginSummaryActivity(sessionId, "recording");
     let started = false;
     try {
@@ -133,6 +137,8 @@ export function useStartListening(sessionId: string) {
             }
           }
 
+          if (!isAvailable()) return;
+
           // Restricted to sessions that came out of this capture with no transcript at all:
           // re-transcribing one that already has words would duplicate them over the same audio.
           const liveTranscriptEmpty =
@@ -166,7 +172,10 @@ export function useStartListening(sessionId: string) {
 
           const hasTranscriptEvidence =
             hadTranscriptBeforeStart || transcriptId !== null || batchCompleted;
-          if (postCaptureAction !== "none" || hasTranscriptEvidence) {
+          if (
+            isAvailable() &&
+            (postCaptureAction !== "none" || hasTranscriptEvidence)
+          ) {
             const shouldRegenerateExistingSummary =
               hadTranscriptBeforeStart &&
               (transcriptId !== null || batchCompleted);
@@ -178,7 +187,7 @@ export function useStartListening(sessionId: string) {
               );
             } else if (shouldRegenerateExistingSummary) {
               await service.resetEnhanceTasks(sessionId);
-              service.queueAutoEnhance(sessionId);
+              if (isAvailable()) service.queueAutoEnhance(sessionId);
             } else {
               await service.queueAutoEnhanceIfSummaryEmpty(sessionId);
             }
@@ -223,6 +232,7 @@ export function useStartListening(sessionId: string) {
         timing: transcriptionTiming,
       });
 
+      if (!isAvailable()) return;
       started = await start(
         {
           session_id: sessionId,
@@ -240,6 +250,7 @@ export function useStartListening(sessionId: string) {
         {
           handlePersist,
           onStopped,
+          isAvailable,
         },
       );
 
@@ -251,7 +262,7 @@ export function useStartListening(sessionId: string) {
         return;
       }
 
-      setLeftSidebarExpanded(false);
+      if (isAvailable()) setLeftSidebarExpanded(false);
     } finally {
       if (!started) activity.finish();
     }
@@ -264,6 +275,7 @@ export function useStartListening(sessionId: string) {
     meetingLanguages,
     transcriptionTiming,
     start,
+    isAvailable,
   ]);
 
   return startListening;

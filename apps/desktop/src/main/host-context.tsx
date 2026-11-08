@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 
 import type { VaultScope } from "~/shared/application/vault-scope";
+import type { ListenerStore } from "~/store/zustand/listener";
 
 export type MainCaptureActivity = {
   scope: VaultScope;
@@ -10,6 +11,7 @@ export type MainCaptureActivity = {
 
 export const MainHostContext = createContext<{
   scope: VaultScope;
+  listenerStore: ListenerStore;
   activity?: MainCaptureActivity;
   takeInitialSession?: () => string | null;
 } | null>(null);

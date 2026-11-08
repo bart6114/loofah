@@ -40,6 +40,7 @@ export type GeneralActions = {
     options?: {
       handlePersist?: LiveTranscriptPersistCallback;
       onStopped?: OnStoppedCallback;
+      isAvailable?: () => boolean;
     },
   ) => Promise<boolean>;
   stop: () => void;
@@ -81,6 +82,7 @@ export const createGeneralSlice = <
     }
 
     return enqueueSessionAudioOperation(targetSessionId, async () => {
+      if (options?.isAvailable && !options.isAvailable()) return false;
       const currentMode = get().getSessionMode(targetSessionId);
       if (currentMode === "running_batch") {
         console.warn(
@@ -106,7 +108,13 @@ export const createGeneralSlice = <
         get().setOnStopped(targetSessionId, options.onStopped);
       }
 
-      const started = await startLiveSession(set, get, targetSessionId, params);
+      const started = await startLiveSession(
+        set,
+        get,
+        targetSessionId,
+        params,
+        options?.isAvailable,
+      );
       if (!started) {
         if (options?.handlePersist) {
           get().setTranscriptPersist(targetSessionId, undefined);

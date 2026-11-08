@@ -9,6 +9,7 @@ import {
 } from "~/session/summary-activity";
 
 const mocks = vi.hoisted(() => ({
+  allowed: true,
   mode: "inactive",
   starting: false,
   status: "idle",
@@ -31,6 +32,7 @@ vi.mock("~/ai/contexts", () => ({
 
 beforeEach(() => {
   Object.assign(mocks, {
+    allowed: true,
     mode: "inactive",
     starting: false,
     status: "idle",
@@ -116,5 +118,37 @@ it("does not let a local operation release the main window's lock", () => {
   act(() => activity.finish());
   expect(result.current).toBe("processing");
   act(() => useSummaryActivity.setState({ remoteSessions: {} }));
+  expect(result.current).toBeNull();
+});
+
+vi.mock("~/main/use-legacy-activity", async () => {
+  const { useListener } = await import("~/stt/contexts");
+  const { legacyActivityFixture } =
+    await import("~/main/legacy-activity.test-support");
+  const source = (id = "") => {
+    const state = useListener((state) => state);
+    return {
+      ...legacyActivityFixture(mocks.allowed ? state : undefined, id),
+      isAvailable: () => mocks.allowed,
+    };
+  };
+  return {
+    useLegacySessionActivity: source,
+    useLegacyDesktopAccess: () => source(),
+  };
+});
+
+it("ignores identical-ID Local and cross-window locks for an unsupported captured host", () => {
+  mocks.allowed = false;
+  mocks.mode = "active";
+  mocks.starting = true;
+  mocks.status = "generating";
+  mocks.label = "note-window";
+  useSummaryActivity.setState({
+    sessions: { session: "recording" },
+    remoteSessions: { session: "processing" },
+    remoteReady: false,
+  });
+  const { result } = renderHook(() => useSummaryEditLock("session"));
   expect(result.current).toBeNull();
 });

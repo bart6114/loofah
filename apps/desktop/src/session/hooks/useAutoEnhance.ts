@@ -1,20 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
+import { useLegacyDesktopAccess } from "~/main/use-legacy-activity";
 import { getEnhancerService } from "~/services/enhancer";
 import { type Tab, useTabsStore } from "~/store/zustand/tabs";
 
 export function useAutoEnhance(tab: Extract<Tab, { type: "sessions" }>) {
   const sessionId = tab.id;
+  const selectedSession = useRef(sessionId);
+  selectedSession.current = sessionId;
+  const legacy = useLegacyDesktopAccess();
+  const { isAvailable } = legacy;
+  const available = isAvailable("legacy_desktop_enhance");
   const tabsStore = useTabsStore();
   const [skipReason, setSkipReason] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!available) return;
     const service = getEnhancerService();
     if (!service) return;
     return service.on((event) => {
-      if (event.sessionId !== sessionId) return;
+      if (
+        !isAvailable("legacy_desktop_enhance") ||
+        selectedSession.current !== sessionId ||
+        event.sessionId !== sessionId
+      )
+        return;
       if (event.type === "auto-enhance-skipped") {
         setSkipReason(event.reason);
         if (event.reasonCode === "transcript_too_short") {
@@ -41,7 +53,7 @@ export function useAutoEnhance(tab: Extract<Tab, { type: "sessions" }>) {
         setSkipReason("No AI model configured");
       }
     });
-  }, [sessionId, tabsStore]);
+  }, [sessionId, tabsStore, isAvailable, available]);
 
   useEffect(() => {
     if (skipReason) {

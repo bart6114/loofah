@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { computeCurrentNoteTab } from "./compute-note-tab";
 
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { extractPlainText } from "~/search/contexts/engine/utils";
 import {
   useEnhancedNote,
@@ -12,7 +13,6 @@ import {
 import type { SessionMode } from "~/store/zustand/listener/general";
 import type { Tab } from "~/store/zustand/tabs/schema";
 import { type EditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 
 export { computeCurrentNoteTab } from "./compute-note-tab";
 
@@ -54,7 +54,7 @@ export function useCurrentNoteTab(
   tab: Extract<Tab, { type: "sessions" }>,
   { audioExists = false }: { audioExists?: boolean } = {},
 ): EditorView {
-  const sessionMode = useListener((state) => state.getSessionMode(tab.id));
+  const sessionMode = useLegacySessionActivity(tab.id).mode;
   const isLiveSessionActive = sessionMode === "active";
   const canShowTranscript = useCanShowTranscript(tab.id, { audioExists });
 
@@ -81,12 +81,11 @@ export function useCanShowTranscript(
   { audioExists = false }: { audioExists?: boolean } = {},
 ): boolean {
   const hasTranscript = useHasTranscript(sessionId);
-  const sessionMode = useListener((state) => state.getSessionMode(sessionId));
-  const batchError = useListener((state) => state.batch[sessionId]?.error);
-  const hasLiveSegments = useListener(
-    (state) =>
-      state.live.sessionId === sessionId && state.liveSegments.length > 0,
-  );
+  const {
+    mode: sessionMode,
+    batchError,
+    hasLiveSegments,
+  } = useLegacySessionActivity(sessionId);
 
   return getCanShowTranscript({
     audioExists,

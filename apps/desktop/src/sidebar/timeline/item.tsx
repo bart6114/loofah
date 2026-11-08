@@ -15,6 +15,7 @@ import {
   TimelinePrecision,
 } from "./utils";
 
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useDeleteSession } from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
 import type { MenuItemDef } from "~/shared/hooks/useNativeContextMenu";
@@ -26,7 +27,6 @@ import {
   useTimelineSelection,
   useTimelineSelectionStore,
 } from "~/store/zustand/timeline-selection";
-import { useListener } from "~/stt/contexts";
 
 const EMPTY_TIMELINE_ITEM_KEYS: string[] = [];
 
@@ -298,14 +298,16 @@ const SessionItem = memo(
     const sessionId = item.id;
     const title = useSessionTitle(sessionId, item.data.title ?? undefined);
 
-    const { sessionMode, stop, amplitude } = useListener((state) => {
-      const sessionMode = state.getSessionMode(sessionId);
-      return {
-        sessionMode,
-        stop: state.stop,
-        amplitude: sessionMode === "active" ? state.live.amplitude : null,
-      };
+    const legacy = useLegacySessionActivity(sessionId, {
+      includeAmplitude: true,
     });
+
+    const { isAvailable } = legacy;
+    const sessionMode = legacy.mode;
+    const amplitude = legacy.amplitude;
+    const stop = () => {
+      if (isAvailable()) legacy.listener!.getState().stop();
+    };
     const isLive = sessionMode === "active";
     const isFinalizing = sessionMode === "finalizing";
     const isBatching = sessionMode === "running_batch";
@@ -334,8 +336,9 @@ const SessionItem = memo(
     }, [getFlatItemKeys, itemKey, selection]);
 
     const handleOpenStandaloneWindow = useCallback(() => {
-      void openStandaloneNoteWindow(sessionId);
-    }, [sessionId]);
+      if (isAvailable("legacy_desktop_session_controls"))
+        void openStandaloneNoteWindow(sessionId);
+    }, [sessionId, isAvailable]);
 
     const handleDragStart = useCallback(
       (event: DragEvent<HTMLElement>) => {
@@ -353,11 +356,15 @@ const SessionItem = memo(
     }, [deleteSession, sessionId, title]);
 
     const handleShowInFinder = useCallback(async () => {
+      if (!isAvailable("legacy_desktop_session_controls")) return;
       const result = await fsSyncCommands.sessionDir(sessionId);
-      if (result.status === "ok") {
+      if (
+        isAvailable("legacy_desktop_session_controls") &&
+        result.status === "ok"
+      ) {
         await openerCommands.openPath(result.data, null);
       }
-    }, [sessionId]);
+    }, [sessionId, isAvailable]);
 
     const contextMenu = useMemo(
       () => [
@@ -365,6 +372,7 @@ const SessionItem = memo(
           id: "open-new-window",
           text: t`Open in New Window`,
           action: handleOpenStandaloneWindow,
+          disabled: !isAvailable("legacy_desktop_session_controls"),
         },
         {
           id: "show",
@@ -373,15 +381,23 @@ const SessionItem = memo(
               ? t`Show in File Explorer`
               : t`Show in Finder`,
           action: handleShowInFinder,
+          disabled: !isAvailable("legacy_desktop_session_controls"),
         },
         { separator: true as const },
         {
           id: "delete",
           text: t`Delete Note`,
           action: handleDelete,
+          disabled: !isAvailable("legacy_desktop_session_controls"),
         },
       ],
-      [handleOpenStandaloneWindow, handleShowInFinder, handleDelete, t],
+      [
+        handleOpenStandaloneWindow,
+        handleShowInFinder,
+        handleDelete,
+        t,
+        isAvailable,
+      ],
     );
 
     return (

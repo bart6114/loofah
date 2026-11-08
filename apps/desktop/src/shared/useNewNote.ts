@@ -5,6 +5,7 @@ import { useShallow } from "zustand/shallow";
 
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { createSession } from "~/session/queries";
 import {
   captureNoteCreation,
@@ -13,7 +14,6 @@ import {
 } from "~/shared/application/note-creation";
 import { useVaultHost } from "~/shared/application/vault-provider";
 import { useTabs, useTabsStore } from "~/store/zustand/tabs";
-import { useListener } from "~/stt/contexts";
 
 export function useNewNote({
   behavior = "new",
@@ -184,12 +184,17 @@ export function useNewNoteAndListen({
       openCurrent: state.openCurrent,
     })),
   );
-  const { status, sessionId: liveSessionId } = useListener((state) => ({
-    status: state.live.status,
-    sessionId: state.live.sessionId,
-  }));
+  const legacy = useLegacySessionActivity("");
+  const { isAvailable } = legacy;
+  const store = useTabsStore();
+  const status = legacy.liveStatus,
+    liveSessionId = legacy.liveSessionId;
 
   const handler = useCallback(() => {
+    if (!isAvailable()) {
+      sonnerToast.error("Recording is not available for this connection.");
+      return;
+    }
     if (status === "active" && liveSessionId) {
       const ff = behavior === "new" ? openNew : openCurrent;
       ff({ type: "sessions", id: liveSessionId });
@@ -197,8 +202,15 @@ export function useNewNoteAndListen({
     }
 
     const ff = behavior === "new" ? openNew : openCurrent;
+    const slot = store.getState().currentTab?.slotId;
     void createSession()
       .then((sessionId) => {
+        if (
+          !isAvailable() ||
+          (behavior === "current" &&
+            store.getState().currentTab?.slotId !== slot)
+        )
+          return;
         ff({
           type: "sessions",
           id: sessionId,
@@ -208,7 +220,15 @@ export function useNewNoteAndListen({
       .catch((error) => {
         console.error("[session] failed to create listening note", error);
       });
-  }, [status, liveSessionId, openNew, openCurrent, behavior]);
+  }, [
+    status,
+    liveSessionId,
+    openNew,
+    openCurrent,
+    behavior,
+    isAvailable,
+    store,
+  ]);
 
   return handler;
 }

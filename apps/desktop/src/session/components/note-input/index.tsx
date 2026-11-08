@@ -25,6 +25,7 @@ import { SearchBar } from "./search/bar";
 import { useSearch } from "./search/context";
 import { Transcript } from "./transcript";
 
+import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { MemoImageStrip } from "~/session/components/memo-image-strip";
 import { SessionAuthorBadge } from "~/session/components/session-author-badge";
 import { SessionDate } from "~/session/components/session-date";
@@ -40,7 +41,6 @@ import { useScrollPreservation } from "~/shared/hooks/useScrollPreservation";
 import type { SessionMode } from "~/store/zustand/listener/general";
 import { type Tab, useTabs } from "~/store/zustand/tabs";
 import { type EditorView as TabEditorView } from "~/store/zustand/tabs/schema";
-import { useListener } from "~/stt/contexts";
 
 export interface NoteInputHandle {
   focus: () => void;
@@ -104,7 +104,7 @@ const NoteInputWithDerivedState = forwardRef<NoteInputHandle, NoteInputProps>(
     );
     const tabRef = useRef(tab);
     tabRef.current = tab;
-    const sessionMode = useListener((state) => state.getSessionMode(tab.id));
+    const sessionMode = useLegacySessionActivity(tab.id).mode;
 
     const commitTabChange = useCallback(
       (tabView: TabEditorView) => {

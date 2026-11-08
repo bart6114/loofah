@@ -342,6 +342,29 @@ describe("session store operations", () => {
     expect(mocks.sessionDelete).toHaveBeenCalledWith("session-1");
   });
 
+  it("does not dispatch a delete when ownership changes during its title read", async () => {
+    let release!: (value: {
+      status: "ok";
+      data: Record<string, unknown>;
+    }) => void;
+    mocks.sessionGet.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    let available = true;
+    const deletion = softDeleteSession("session-1", undefined, () => {
+      if (!available) throw new Error("retired");
+    });
+    available = false;
+    release({
+      status: "ok",
+      data: { meta: { id: "session-1", title: "Original" } },
+    });
+    await expect(deletion).rejects.toThrow("retired");
+    expect(mocks.sessionDelete).not.toHaveBeenCalled();
+  });
+
   it("does not call session_delete when the session no longer exists", async () => {
     mocks.sessionGet.mockResolvedValueOnce({ status: "ok", data: null });
 

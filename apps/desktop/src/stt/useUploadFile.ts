@@ -51,7 +51,11 @@ function isAudioUploadPath(path: string) {
   return AUDIO_EXTENSIONS.includes(fileExtension(path));
 }
 
-export function useUploadFile(sessionId: string, assertCurrent?: () => void) {
+export function useUploadFile(
+  sessionId: string,
+  assertCurrent?: () => void,
+  enabled = true,
+) {
   const check = useCallback(() => assertCurrent?.(), [assertCurrent]);
   const current = useCallback(() => {
     try {
@@ -61,7 +65,7 @@ export function useUploadFile(sessionId: string, assertCurrent?: () => void) {
       return false;
     }
   }, [check]);
-  const runBatch = useRunBatch(sessionId, assertCurrent);
+  const runBatch = useRunBatch(sessionId, assertCurrent, enabled);
   const queryClient = useQueryClient();
   const handleBatchStarted = useListener((state) => state.handleBatchStarted);
   const handleBatchFailed = useListener((state) => state.handleBatchFailed);
