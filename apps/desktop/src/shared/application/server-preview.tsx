@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@hypr/ui/components/ui/dialog";
 
+import { DesktopStartupPreferences } from "./desktop-startup-preferences";
 import { ApplicationRequestError } from "./errors";
 import { VaultNotesWorkspace } from "./notes-workspace";
 import type { Me, VaultInfo } from "./protocol.gen";
@@ -39,14 +40,33 @@ export default function ServerPreview() {
               </Trans>
             </DialogDescription>
           </DialogHeader>
-          {open && <Connection />}
+          <DesktopStartupPreferences />
+          {open && <ServerConnection />}
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-function Connection() {
+export function ServerConnection({
+  initialServer = "",
+  autoConnect = false,
+  preferredMemberId,
+  preferredVaultId,
+  onDestination,
+  connectToServer,
+}: {
+  initialServer?: string;
+  autoConnect?: boolean;
+  preferredMemberId?: string | null;
+  preferredVaultId?: string | null;
+  onDestination?: (
+    connection: NativeRemoteConnection,
+    memberId: string,
+    vaultId: string,
+  ) => void;
+  connectToServer?: () => Promise<NativeRemoteConnection>;
+} = {}) {
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -56,7 +76,8 @@ function Connection() {
   }, []);
   const connect = useMutation({
     mutationFn: async (server: string) => {
-      const connection = await NativeRemoteConnection.connect(server);
+      const connection = await (connectToServer?.() ??
+        NativeRemoteConnection.connect(server));
       if (
         !connection.info.capabilities.features.includes("notes") ||
         !connection.info.capabilities.features.includes("change_stream")
@@ -83,6 +104,20 @@ function Connection() {
     },
   });
   const connection = connect.data?.connection;
+  const started = useRef(false);
+  const connectAutomatically = connect.mutate;
+  useEffect(() => {
+    if (!autoConnect || started.current) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active || started.current) return;
+      started.current = true;
+      connectAutomatically(initialServer);
+    });
+    return () => {
+      active = false;
+    };
+  }, [autoConnect, initialServer, connectAutomatically]);
   useEffect(
     () => () => {
       if (connection) void connection.disconnect().catch(() => {});
@@ -108,7 +143,7 @@ function Connection() {
     },
   });
   const form = useForm({
-    defaultValues: { server: "" },
+    defaultValues: { server: initialServer },
     onSubmit: async ({ value }) => {
       await connect.mutateAsync(value.server);
     },
@@ -133,6 +168,7 @@ function Connection() {
                 type="url"
                 required
                 placeholder="https://notes.company.example"
+                readOnly={!!connectToServer}
                 value={field.state.value}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
@@ -184,7 +220,13 @@ function Connection() {
         </p>
       )}
       {me ? (
-        <ConnectedVaults connection={connection} me={me} />
+        <ConnectedVaults
+          connection={connection}
+          me={me}
+          preferredMemberId={preferredMemberId}
+          preferredVaultId={preferredVaultId}
+          onDestination={onDestination}
+        />
       ) : (
         <div className="flex flex-col gap-3">
           <p className="text-sm">
@@ -215,9 +257,19 @@ function Connection() {
 function ConnectedVaults({
   connection,
   me,
+  preferredMemberId,
+  preferredVaultId,
+  onDestination,
 }: {
   connection: NativeRemoteConnection;
   me: Me;
+  preferredMemberId?: string | null;
+  preferredVaultId?: string | null;
+  onDestination?: (
+    connection: NativeRemoteConnection,
+    memberId: string,
+    vaultId: string,
+  ) => void;
 }) {
   const queryClient = useQueryClient();
   const catalog = useQuery({
@@ -245,9 +297,24 @@ function ConnectedVaults({
     if (!catalog.data) return;
     const next = selected
       ? catalog.data.find((vault) => vault.id === selected.id)
-      : catalog.data.find((vault) => vault.id === me.personal_vault_id);
+      : preferredVaultId
+        ? preferredMemberId === me.member.id
+          ? catalog.data.find((vault) => vault.id === preferredVaultId)
+          : undefined
+        : catalog.data.find((vault) => vault.id === me.personal_vault_id);
     if (next && next !== selected) setSelected(next);
-  }, [catalog.data, me.personal_vault_id, selected]);
+  }, [
+    catalog.data,
+    me.personal_vault_id,
+    me.member.id,
+    selected,
+    preferredMemberId,
+    preferredVaultId,
+  ]);
+  useEffect(() => {
+    if (selected && catalog.data?.some((vault) => vault.id === selected.id))
+      onDestination?.(connection, me.member.id, selected.id);
+  }, [selected, catalog.data, connection, me.member.id, onDestination]);
   const changed = useCallback(() => {
     void queryClient.invalidateQueries({
       queryKey: [

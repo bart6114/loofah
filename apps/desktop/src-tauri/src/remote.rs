@@ -61,10 +61,12 @@ pub struct RemoteState {
     windows: Mutex<HashMap<String, CancellationToken>>,
     media: media::MediaRegistry,
     attachments: attachments::AttachmentRegistry,
+    active_profile: tokio::sync::OnceCell<Arc<hypr_loofah_client::ProfileLease>>,
 }
 type WorkId = (String, String);
 struct Connection {
     client: Arc<RemoteClient>,
+    profile: Option<(String, Arc<hypr_loofah_client::ProfileLease>)>,
     leases: HashMap<String, usize>,
     authenticated: bool,
     login: Option<(WorkId, CancellationToken)>,
@@ -120,6 +122,15 @@ impl RemoteState {
         owner: &str,
         lifetime: &CancellationToken,
     ) -> Result<RemoteConnectionInfo, ApplicationError> {
+        self.register_profile(client, None, owner, lifetime)
+    }
+    fn register_profile(
+        &self,
+        client: Arc<RemoteClient>,
+        profile: Option<(String, Arc<hypr_loofah_client::ProfileLease>)>,
+        owner: &str,
+        lifetime: &CancellationToken,
+    ) -> Result<RemoteConnectionInfo, ApplicationError> {
         let _windows = self.windows.lock().unwrap();
         if lifetime.is_cancelled() {
             return Err(missing());
@@ -127,6 +138,8 @@ impl RemoteState {
         let mut registry = self.registry.lock().unwrap();
         if let Some((id, existing)) = registry.iter_mut().find(|(_, existing)| {
             existing.client.credential_account() == client.credential_account()
+                && existing.profile.as_ref().map(|value| &value.0)
+                    == profile.as_ref().map(|value| &value.0)
         }) {
             if existing.client.is_closed() {
                 return Err(missing());
@@ -154,6 +167,7 @@ impl RemoteState {
             id,
             Connection {
                 client,
+                profile,
                 leases: HashMap::from([(owner.into(), 1)]),
                 authenticated: false,
                 login: None,
@@ -218,6 +232,63 @@ impl RemoteState {
             )
         };
         Ok((client, cancel, pending))
+    }
+    pub(crate) async fn active_profile<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+    ) -> Result<Arc<hypr_loofah_client::ProfileLease>, ApplicationError> {
+        let bootstrap = app.state::<tauri_plugin_settings::DesktopBootstrap>();
+        let startup = bootstrap.startup()?;
+        let profiles = bootstrap.profiles();
+        let selected = profiles.desktop_startup_profile(&startup)?.ok_or_else(|| {
+            failure(
+                ErrorCode::Validation,
+                "This desktop started in standalone mode",
+            )
+        })?;
+        let lease = self
+            .active_profile
+            .get_or_try_init(|| async {
+                let lease = profiles.open(&selected.name).await?;
+                let current = lease.profile().await;
+                if current.id != selected.id || current.server != selected.server {
+                    return Err(failure(
+                        ErrorCode::Conflict,
+                        "The active server profile changed",
+                    ));
+                }
+                Ok(lease)
+            })
+            .await?
+            .clone();
+        let current = lease.profile().await;
+        if current.id != selected.id || current.server != selected.server {
+            return Err(failure(
+                ErrorCode::Conflict,
+                "The active server profile changed",
+            ));
+        }
+        Ok(lease)
+    }
+    pub(crate) fn profile(
+        &self,
+        id: &str,
+        owner: &str,
+        profile_id: &str,
+    ) -> Result<(Arc<RemoteClient>, Arc<hypr_loofah_client::ProfileLease>), ApplicationError> {
+        let registry = self.registry.lock().unwrap();
+        let connection = registry
+            .get(id)
+            .filter(|value| value.leases.contains_key(owner))
+            .ok_or_else(missing)?;
+        if connection.client.is_closed() {
+            return Err(missing());
+        }
+        let (bound_id, lease) = connection.profile.as_ref().ok_or_else(missing)?;
+        if bound_id != profile_id {
+            return Err(missing());
+        }
+        Ok((connection.client.clone(), lease.clone()))
     }
     fn client(&self, id: &str, owner: &str) -> Result<Arc<RemoteClient>, ApplicationError> {
         self.registry
@@ -328,6 +399,83 @@ pub async fn remote_connect<R: tauri::Runtime>(
         result = discover(&app, &server, credentials) => result?,
     };
     state.register(client, window.label(), &lifetime)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_connect_desktop_profile<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+    name: String,
+    profile_id: String,
+) -> Result<RemoteConnectionInfo, ApplicationError> {
+    let bootstrap = app.state::<tauri_plugin_settings::DesktopBootstrap>();
+    let startup = bootstrap.startup()?;
+    let selected = bootstrap
+        .profiles()
+        .desktop_startup_profile(&startup)?
+        .ok_or_else(|| {
+            failure(
+                ErrorCode::Validation,
+                "This desktop started in standalone mode",
+            )
+        })?;
+    if selected.name != name || selected.id != profile_id {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "This is not the desktop's active server profile",
+        ));
+    }
+    let state = app.state::<RemoteState>();
+    let lifetime = state.window_lifetime(window.label());
+    let existing = {
+        let registry = state.registry.lock().unwrap();
+        registry.values().find_map(|connection| {
+            connection
+                .profile
+                .as_ref()
+                .filter(|(id, _)| id == &profile_id)
+                .map(|(_, lease)| (connection.client.clone(), lease.clone()))
+        })
+    };
+    if let Some((client, lease)) = existing {
+        return state.register_profile(
+            client,
+            Some((profile_id, lease)),
+            window.label(),
+            &lifetime,
+        );
+    }
+    let lease = state.active_profile(&app).await?;
+    let profile = lease.profile().await;
+    if profile.id != profile_id || profile.server != selected.server {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "The active server profile changed",
+        ));
+    }
+    let credentials = lease.credentials(Arc::new(OsCredentials::new(format!(
+        "{}.remote-auth.{}",
+        app.config().identifier,
+        profile.id
+    ))));
+    let client = tokio::select! {
+        _ = lifetime.cancelled() => return Err(missing()),
+        result = discover(&app, &profile.server, credentials) => result?,
+    };
+    let account = client.credential_account().to_owned();
+    let mut updated = profile;
+    if !updated.credential_accounts.contains(&account) {
+        if updated.credential_accounts.len() >= 8 {
+            return Err(failure(
+                ErrorCode::ResourceLimit,
+                "Too many saved identity configurations for this profile",
+            ));
+        }
+        updated.credential_accounts.push(account);
+        lease.save(updated).await?;
+    }
+    state.register_profile(client, Some((profile_id, lease)), window.label(), &lifetime)
 }
 
 struct PendingRequest {
@@ -707,6 +855,172 @@ mod tests {
             .await
             .unwrap();
         (first, second, task)
+    }
+
+    #[tokio::test]
+    async fn profile_connections_do_not_share_accounts_with_other_profiles_or_unbound_previews() {
+        let (first, second, task) = clients().await;
+        let third = RemoteClient::discover(first.address(), Arc::new(NoCredentials), true)
+            .await
+            .unwrap();
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let profiles =
+            hypr_loofah_client::ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+        let a = profiles
+            .create("first", "https://company.example")
+            .await
+            .unwrap();
+        let b = profiles
+            .create("second", "https://company.example")
+            .await
+            .unwrap();
+        let a_id = a.profile().await.id;
+        let b_id = b.profile().await.id;
+        let state = RemoteState::default();
+        let first_info = state
+            .register_profile(
+                first.clone(),
+                Some((a_id.clone(), a.clone())),
+                "first",
+                &state.window_lifetime("first"),
+            )
+            .unwrap();
+        let second_info = state
+            .register_profile(
+                second.clone(),
+                Some((b_id.clone(), b)),
+                "second",
+                &state.window_lifetime("second"),
+            )
+            .unwrap();
+        let preview = state
+            .register(third, "preview", &state.window_lifetime("preview"))
+            .unwrap();
+        assert_ne!(first_info.connection_id, second_info.connection_id);
+        assert_ne!(first_info.connection_id, preview.connection_id);
+        assert_ne!(second_info.connection_id, preview.connection_id);
+        let shared = state
+            .register_profile(
+                first.clone(),
+                Some((a_id.clone(), a)),
+                "another",
+                &state.window_lifetime("another"),
+            )
+            .unwrap();
+        assert_eq!(shared.connection_id, first_info.connection_id);
+        assert!(
+            state
+                .profile(&first_info.connection_id, "first", &a_id)
+                .is_ok()
+        );
+        assert!(
+            state
+                .profile(&first_info.connection_id, "first", &b_id)
+                .is_err()
+        );
+        assert!(
+            state
+                .profile(&first_info.connection_id, "second", &a_id)
+                .is_err()
+        );
+        state.release_window("first");
+        assert!(!first.is_closed());
+        state.release_window("another");
+        assert!(first.is_closed());
+        assert!(!second.is_closed());
+        state.shutdown();
+        assert!(second.is_closed());
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn active_profile_lease_survives_window_disconnect_and_next_start_preference_changes() {
+        use hypr_loofah_client::{
+            ConnectionProfiles, DesktopStartupSaveOutcome, DesktopStartupSelection,
+            SaveDesktopStartupRequest,
+        };
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let profiles = ConnectionProfiles::new(root.path().join("connections")).unwrap();
+        let created = profiles
+            .create("company", "https://company.example")
+            .await
+            .unwrap();
+        let profile = created.profile().await;
+        drop(created);
+        let DesktopStartupSaveOutcome::Saved(snapshot) = profiles
+            .save_desktop_startup(SaveDesktopStartupRequest {
+                selection: DesktopStartupSelection::Remote {
+                    profile_name: profile.name,
+                    profile_id: profile.id.clone(),
+                },
+                expected_revision: "missing".into(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("unexpected startup conflict");
+        };
+        let app = tauri::test::mock_builder()
+            .manage(RemoteState::default())
+            .manage(tauri_plugin_settings::DesktopBootstrap::load(root.path()).unwrap())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let state = app.state::<RemoteState>();
+        let lease = state.active_profile(app.handle()).await.unwrap();
+        let (client, _, task) = clients().await;
+        state
+            .register_profile(
+                client.clone(),
+                Some((profile.id.clone(), lease.clone())),
+                "first",
+                &state.window_lifetime("first"),
+            )
+            .unwrap();
+        state.release_window("first");
+        assert!(client.is_closed());
+        assert!(matches!(
+            profiles
+                .save_desktop_startup(SaveDesktopStartupRequest {
+                    selection: DesktopStartupSelection::Local {},
+                    expected_revision: snapshot.revision,
+                })
+                .await
+                .unwrap(),
+            DesktopStartupSaveOutcome::Saved(_)
+        ));
+        let resumed = state.active_profile(app.handle()).await.unwrap();
+        assert!(Arc::ptr_eq(&lease, &resumed));
+        assert_eq!(resumed.profile().await.id, profile.id);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn standalone_bootstrap_cannot_admit_a_profile_connection() {
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let app = tauri::test::mock_builder()
+            .manage(RemoteState::default())
+            .manage(tauri_plugin_settings::DesktopBootstrap::load(root.path()).unwrap())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let window = test_window(&app, "first");
+        let error = remote_connect_desktop_profile(
+            app.handle().clone(),
+            window,
+            "company".into(),
+            uuid::Uuid::new_v4().to_string(),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(!root.path().join("connections").exists());
+        assert!(
+            app.state::<RemoteState>()
+                .registry
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

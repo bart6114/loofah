@@ -4,6 +4,7 @@ mod attachment_upload;
 mod autostart;
 mod chatgpt;
 mod commands;
+mod desktop_profiles;
 mod device_capture;
 mod device_vault_state;
 mod draft_cache;
@@ -322,6 +323,9 @@ pub async fn main() {
 
             autostart::migrate(&app_handle);
 
+            if app_handle
+                .state::<tauri_plugin_settings::DesktopBootstrap>()
+                .is_local()
             {
                 use tauri_plugin_settings::SettingsPluginExt;
                 let global_base = app_handle.settings().global_base()?;
@@ -364,6 +368,9 @@ pub async fn main() {
                 });
             }
 
+            if app_handle
+                .state::<tauri_plugin_settings::DesktopBootstrap>()
+                .is_local()
             {
                 use tauri_plugin_settings::SettingsPluginExt;
                 match app_handle.settings().vault_base() {
@@ -422,6 +429,10 @@ pub async fn main() {
                         });
                     }
                 }
+            } else {
+                let startup = startup::state(&app_handle, None);
+                startup.set_phase(startup::StartupPhase::Ready);
+                app_handle.manage(startup);
             }
 
             if let (Some(ctx), Some(handle)) = (&root_supervisor_ctx, root_supervisor_handle) {
@@ -668,6 +679,12 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_session::<tauri::Wry>,
             application::application_create_session::<tauri::Wry>,
             application::application_read_note::<tauri::Wry>,
+            desktop_profiles::application_desktop_bootstrap::<tauri::Wry>,
+            desktop_profiles::application_desktop_startup::<tauri::Wry>,
+            desktop_profiles::application_desktop_connections::<tauri::Wry>,
+            desktop_profiles::application_create_desktop_connection::<tauri::Wry>,
+            desktop_profiles::application_save_desktop_startup::<tauri::Wry>,
+            desktop_profiles::application_remember_desktop_destination::<tauri::Wry>,
             application::application_read_note_editor::<tauri::Wry>,
             application::application_save_note_editor::<tauri::Wry>,
             application::application_read_document_editor::<tauri::Wry>,
@@ -677,6 +694,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_save_note::<tauri::Wry>,
             application::application_search::<tauri::Wry>,
             remote::remote_connect::<tauri::Wry>,
+            remote::remote_connect_desktop_profile::<tauri::Wry>,
             remote::remote_login::<tauri::Wry>,
             remote::remote_cancel_login::<tauri::Wry>,
             remote::remote_request::<tauri::Wry>,

@@ -930,6 +930,96 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationDesktopBootstrap(): Promise<
+    Result<DesktopBootstrapInfo, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_desktop_bootstrap"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDesktopStartup(): Promise<
+    Result<DesktopStartupSnapshot, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_desktop_startup"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationDesktopConnections(): Promise<
+    Result<DesktopConnectionProfile[], ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_desktop_connections"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationCreateDesktopConnection(
+    name: string,
+    server: string,
+  ): Promise<Result<DesktopConnectionProfile, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_create_desktop_connection", {
+          name,
+          server,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationSaveDesktopStartup(
+    input: SaveDesktopStartupRequest,
+  ): Promise<Result<DesktopStartupSaveOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_save_desktop_startup", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationRememberDesktopDestination(
+    connectionId: string,
+    profileId: string,
+    memberId: string,
+    vaultId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_remember_desktop_destination", {
+          connectionId,
+          profileId,
+          memberId,
+          vaultId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationReadNoteEditor(
     sessionId: string,
   ): Promise<Result<NoteEditorSnapshot, ApplicationError>> {
@@ -1060,6 +1150,23 @@ export const commands = {
       return {
         status: "ok",
         data: await TAURI_INVOKE("remote_connect", { server }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteConnectDesktopProfile(
+    name: string,
+    profileId: string,
+  ): Promise<Result<RemoteConnectionInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_connect_desktop_profile", {
+          name,
+          profileId,
+        }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -2184,6 +2291,7 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type AbsentTranscriptExpectation = "absent";
 export type ActionItem = {
   id: string;
   assignee_human_id: string;
@@ -2308,6 +2416,27 @@ export type DeleteEmptySessionOutcome =
   | { kind: "not_found" };
 export type DeleteEmptySessionRequest = { session_id: string };
 export type DeleteRecordingRequest = { expected_sha256: string };
+export type DesktopBootstrapInfo = {
+  startup: DesktopStartupSnapshot;
+  connection: DesktopConnectionProfile | null;
+};
+export type DesktopConnectionProfile = {
+  id: string;
+  name: string;
+  server: string;
+  member_id: string | null;
+  vault_id: string | null;
+};
+export type DesktopStartupSaveOutcome =
+  | { kind: "saved"; snapshot: DesktopStartupSnapshot }
+  | { kind: "conflict"; snapshot: DesktopStartupSnapshot };
+export type DesktopStartupSelection =
+  | { kind: "local" }
+  | { kind: "remote"; profile_name: string; profile_id: string };
+export type DesktopStartupSnapshot = {
+  selection: DesktopStartupSelection;
+  revision: string;
+};
 export type DeviceAttachmentSource =
   | { kind: "path"; path: string }
   | { kind: "staged"; id: string };
@@ -2479,6 +2608,10 @@ export type ListProcessingJobsInput = {
   after: string | null;
   session_id: string | null;
   active_only: boolean;
+};
+export type ListTranscriptionJobsInput = {
+  limit: number | null;
+  after: string | null;
 };
 export type Me = { member: MemberInfo; personal_vault_id: string };
 export type Meeting = {
@@ -2719,6 +2852,20 @@ export type RemoteOperation =
   | { kind: "processing_job"; vault_id: string; job_id: string }
   | { kind: "processing_job_result"; vault_id: string; job_id: string }
   | { kind: "cancel_processing_job"; vault_id: string; job_id: string }
+  | {
+      kind: "submit_transcription";
+      vault_id: string;
+      input: TranscriptionJobRequest;
+    }
+  | {
+      kind: "transcription_jobs";
+      vault_id: string;
+      input: ListTranscriptionJobsInput;
+    }
+  | { kind: "transcription_job"; vault_id: string; job_id: string }
+  | { kind: "transcription_job_result"; vault_id: string; job_id: string }
+  | { kind: "cancel_transcription_job"; vault_id: string; job_id: string }
+  | { kind: "resume_transcription_result"; vault_id: string; job_id: string }
   | { kind: "provision" }
   | { kind: "me" }
   | { kind: "vaults" }
@@ -2867,6 +3014,9 @@ export type RemoteReply =
   | { kind: "processing_job"; value: ProcessingJobSnapshot }
   | { kind: "processing_jobs"; value: ProcessingJobPage }
   | { kind: "processing_job_result"; value: ProcessingJobResult | null }
+  | { kind: "transcription_job"; value: TranscriptionJobSnapshot }
+  | { kind: "transcription_jobs"; value: TranscriptionJobPage }
+  | { kind: "transcription_result"; value: TranscriptionJobResult | null }
   | { kind: "me"; value: Me }
   | { kind: "vaults"; value: VaultInfo[] }
   | { kind: "directory"; value: MemberInfo[] }
@@ -2923,6 +3073,10 @@ export type RenderedTranscriptSegment = {
 export type ReplaceTasksRequest = {
   source: TaskSource;
   tasks: TaskInput[];
+  expected_revision: string;
+};
+export type SaveDesktopStartupRequest = {
+  selection: DesktopStartupSelection;
   expected_revision: string;
 };
 export type SaveDocumentEditorRequest = {
@@ -3262,6 +3416,62 @@ export type TranscriptWord = {
   channel: number;
   speaker?: string | null;
   metadata?: Partial<{ [key in string]: JsonValue }> | null;
+};
+export type TranscriptionFailure =
+  | "access_denied"
+  | "source_unavailable"
+  | "resource_limit"
+  | "engine_unavailable"
+  | "engine_failed"
+  | "invalid_output"
+  | "storage"
+  | "interrupted";
+export type TranscriptionJobPage = {
+  jobs: TranscriptionJobSnapshot[];
+  next_cursor: string | null;
+};
+export type TranscriptionJobRequest = {
+  session_id: string;
+  expected_recording_sha256: string;
+  expected_transcript: AbsentTranscriptExpectation;
+  model: string;
+  languages?: string[];
+  keywords?: string[];
+};
+export type TranscriptionJobResult = {
+  job_id: string;
+  session_id: string;
+  transcript: TranscriptWithData;
+};
+export type TranscriptionJobSnapshot = {
+  id: string;
+  session_id: string;
+  state: TranscriptionJobState;
+  phase: TranscriptionPhase | null;
+  created_at: string;
+  updated_at: string;
+  result_available: boolean;
+  failure: TranscriptionFailure | null;
+  publication: TranscriptionPublication | null;
+};
+export type TranscriptionJobState =
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "failed"
+  | "interrupted"
+  | "conflict"
+  | "empty"
+  | "uncertain";
+export type TranscriptionPhase = "preparing" | "transcribing" | "publishing";
+/**
+ * A durable historical decision, not confirmation that these bytes are still current.
+ */
+export type TranscriptionPublication = {
+  revision: string;
+  transcript_id: string;
 };
 export type UpdateVaultRequest = { name: string; expected_revision: string };
 export type UploadAttachmentRequest = {

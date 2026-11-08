@@ -144,6 +144,10 @@ msgstr "Add language"
 msgid "Add member"
 msgstr "Add member"
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Add server connection"
+msgstr "Add server connection"
+
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Add spoken language"
@@ -401,6 +405,10 @@ msgstr "Choose storage location"
 msgid "Choose the languages you expect to hear. Summary language is set separately."
 msgstr "Choose the languages you expect to hear. Summary language is set separately."
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Choose where Loofah connects the next time it starts."
+msgstr "Choose where Loofah connects the next time it starts."
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 msgid "Choosing…"
@@ -492,9 +500,17 @@ msgstr "Connected"
 msgid "Connecting…"
 msgstr "Connecting…"
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Connection added. Select it above to use it at startup."
+msgstr "Connection added. Select it above to use it at startup."
+
 #: src/settings/ai/llm/select.tsx
 msgid "Connection details"
 msgstr "Connection details"
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Connection name"
+msgstr "Connection name"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Connection unavailable"
@@ -511,6 +527,10 @@ msgstr "Context always provided"
 #: src/onboarding/llm-provider.tsx
 msgid "Continue"
 msgstr "Continue"
+
+#: src/session/components/title-input.tsx
+msgid "Continue editing draft"
+msgstr "Continue editing draft"
 
 #: src/main/about-debug.tsx
 msgid "Copied"
@@ -740,6 +760,10 @@ msgstr "Deleting removes everyone's access. Server files are retained for operat
 msgid "Design theme"
 msgstr "Design theme"
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Desktop startup"
+msgstr "Desktop startup"
+
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
 msgid "Device recovery copy:"
@@ -880,6 +904,10 @@ msgstr "Existing title kept."
 #: src/sidebar/timeline/index.tsx
 msgid "Expand all"
 msgstr "Expand all"
+
+#: src/shared/application/desktop-bootstrap.tsx
+msgid "Experimental server workspace"
+msgstr "Experimental server workspace"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 #: src/session/components/outer-header/overflow/index.tsx
@@ -1168,6 +1196,10 @@ msgstr "Loading models..."
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Loading preview…"
 msgstr "Loading preview…"
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Loading startup preferences…"
+msgstr "Loading startup preferences…"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Loading summary prompt..."
@@ -1483,6 +1515,10 @@ msgstr "Open in New Window"
 msgid "Open Loofah"
 msgstr "Open Loofah"
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Open Loofah with"
+msgstr "Open Loofah with"
+
 #: src/session/components/note-input/index.tsx
 msgid "Open Note"
 msgstr "Open Note"
@@ -1644,6 +1680,10 @@ msgstr "Record"
 msgid "Recording"
 msgstr "Recording"
 
+#: src/session/components/note-input/transcript/index.tsx
+msgid "Recording and transcription controls are unavailable for this connection."
+msgstr "Recording and transcription controls are unavailable for this connection."
+
 #: src/settings/ai/llm/select.tsx
 msgid "Recording and transcription still work. Connect an AI service or a local AI app when you want summaries."
 msgstr "Recording and transcription still work. Connect an AI service or a local AI app when you want summaries."
@@ -1719,6 +1759,10 @@ msgstr "Reload access"
 #: src/shared/application/device-recovery.tsx
 msgid "Reload drafts"
 msgstr "Reload drafts"
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Reload preferences"
+msgstr "Reload preferences"
 
 #: src/session/components/session-date.tsx
 msgid "Reload saved date"
@@ -1874,6 +1918,10 @@ msgstr "Retry creation"
 msgid "Review saved date"
 msgstr "Review saved date"
 
+#: src/session/components/title-input.tsx
+msgid "Review saved title"
+msgstr "Review saved title"
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Role"
 msgstr "Role"
@@ -1915,6 +1963,14 @@ msgstr "Save original copy"
 msgid "Save settings"
 msgstr "Save settings"
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Save startup choice"
+msgstr "Save startup choice"
+
+#: src/session/components/title-input.tsx
+msgid "Save title"
+msgstr "Save title"
+
 #: src/settings/ai/shared/index.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
@@ -1925,6 +1981,10 @@ msgstr "Saved"
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 msgstr "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Saved for the next app start."
+msgstr "Saved for the next app start."
+
 #: src/shared/application/vault-processing.tsx
 msgid "Saved notes or transcript could not be read."
 msgstr "Saved notes or transcript could not be read."
@@ -1932,6 +1992,11 @@ msgstr "Saved notes or transcript could not be read."
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Saved original copy."
 msgstr "Saved original copy."
+
+#. placeholder {0}: storeTitle ?? ""
+#: src/session/components/title-input.tsx
+msgid "Saved title: {0}"
+msgstr "Saved title: {0}"
 
 #: src/shared/application/vault-processing.tsx
 msgid "Saves pending edits before using the saved notes and transcript."
@@ -2028,6 +2093,7 @@ msgstr "Select..."
 msgid "Selected"
 msgstr "Selected"
 
+#: src/shared/application/desktop-startup-preferences.tsx
 #: src/shared/application/server-preview.tsx
 msgid "Server address"
 msgstr "Server address"
@@ -2188,6 +2254,14 @@ msgstr "Something went wrong while generating the summary."
 msgid "Speaker detection"
 msgstr "Speaker detection"
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Standalone on this device"
+msgstr "Standalone on this device"
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Standalone works offline and requires no login."
+msgstr "Standalone works offline and requires no login."
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Start a new empty vault here"
 msgstr "Start a new empty vault here"
@@ -2220,6 +2294,10 @@ msgstr "Starting summary…"
 #: src/settings/ai/stt/select.tsx
 msgid "Starting transcription…"
 msgstr "Starting transcription…"
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Startup options"
+msgstr "Startup options"
 
 #: src/session/components/outer-header/index.tsx
 msgid "Stop"
@@ -2508,6 +2586,10 @@ msgstr "This removes the saved request from this device. It does not stop proces
 msgid "This server does not support the document editor. Upgrade the server, then reconnect."
 msgstr "This server does not support the document editor. Upgrade the server, then reconnect."
 
+#: src/session/components/title-input.tsx
+msgid "This title changed or its save could not be confirmed. Your draft is kept."
+msgstr "This title changed or its save could not be confirmed. Your draft is kept."
+
 #. placeholder {0}: pending.speakerCount
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "This transcript has {0} assigned speakers. Re-transcribing replaces the transcript and removes those speaker assignments."
@@ -2624,9 +2706,17 @@ msgstr "Turn off summaries"
 msgid "Type"
 msgstr "Type"
 
+#: src/shared/application/desktop-bootstrap.tsx
+msgid "Unable to open the saved startup choice"
+msgstr "Unable to open the saved startup choice"
+
 #: src/shared/deferred-view.tsx
 msgid "Unable to open this view. Please try another view."
 msgstr "Unable to open this view. Please try another view."
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Unavailable saved server"
+msgstr "Unavailable saved server"
 
 #: src/shared/application/server-preview.tsx
 msgid "Unavailable vault"

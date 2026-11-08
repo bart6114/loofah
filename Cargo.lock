@@ -13809,6 +13809,7 @@ name = "tauri-plugin-settings"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "loofah-client",
  "loofah-core",
  "serde",
  "serde_json",

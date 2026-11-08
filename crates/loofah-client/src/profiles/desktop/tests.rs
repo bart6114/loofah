@@ -228,6 +228,40 @@ async fn startup_symlinks_do_not_redirect_reads_or_writes() {
 }
 
 #[tokio::test]
+async fn unchanged_startup_can_be_saved_while_its_profile_is_leased_by_a_live_connection() {
+    let (_root, store) = fixture();
+    let lease = store
+        .create("company", "https://company.example")
+        .await
+        .unwrap();
+    let profile = lease.profile().await;
+    drop(lease);
+    let DesktopStartupSaveOutcome::Saved(saved) = store
+        .save_desktop_startup(SaveDesktopStartupRequest {
+            selection: DesktopStartupSelection::Remote {
+                profile_name: profile.name,
+                profile_id: profile.id,
+            },
+            expected_revision: ABSENT.into(),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("new selection conflicted");
+    };
+    let lease = store.open("company").await.unwrap();
+    let outcome = store
+        .save_desktop_startup(SaveDesktopStartupRequest {
+            selection: saved.selection.clone(),
+            expected_revision: saved.revision.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(outcome, DesktopStartupSaveOutcome::Saved(saved));
+    assert_eq!(lease.profile().await.name, "company");
+}
+
+#[tokio::test]
 async fn caller_cancellation_does_not_release_an_admitted_selection_write() {
     let (_root, store) = fixture();
     let lease = store

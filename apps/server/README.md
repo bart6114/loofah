@@ -16,6 +16,32 @@ request fields.
 
 Canonical batch transcript conversion lives in `transcribe-core::transcript`; the existing `listener2_core::transcript` path re-exports it unchanged. Trusted hosts can reuse the same timing, spacing, IDs and speaker-hint mapping without importing listener orchestration. This extraction adds no public transcription endpoint.
 
+## Desktop startup and server profiles
+
+Existing installations start in standalone mode: the existing local vault opens,
+works offline and requires no Loofah login. Startup does not contact an identity
+provider or provision a server profile.
+
+Use **Startup options** in the server workspace settings to add an HTTPS origin
+and choose a saved server connection for the next app start. The same control is
+available when the local vault cannot open. Selection is device metadata; it does
+not change the vault format or move vault contents. Changing it does not reroute
+an open editor or recording. Restart Loofah to apply it.
+
+Remote startup opens the experimental server notes workspace directly. It does
+not open a local vault, build its search index or start its local speech model.
+Company sign-in uses the system browser only when saved credentials cannot be
+restored. Each saved profile has a separate OS credential namespace. The saved
+member and vault are restored only when they still match the authenticated
+account and available catalog; otherwise choose a vault explicitly. A removed,
+replaced or unsupported profile fails visibly rather than opening local data.
+
+The main desktop shell, complete recording/processing controls and remaining
+feature parity are still being migrated. This startup option is an experimental
+notes workspace, not completion of the full remote desktop release. Device draft
+recovery remains available when a startup profile cannot be opened. Startup
+preferences use revision checks and apply only at the next process start.
+
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 
 The experimental `capture_ingestion` capability exposes authenticated staging APIs below. Staging retains private upload chunks. Canonical publication uses the separate capability below; transcription, remote recording controls and device cleanup remain distinct operations. Local desktop capture remains login-free. The separate experimental `capture_publication` capability adds verified publication for an existing note with no recording or transcript. The SDK checks this capability before credentials; staging support alone cannot dispatch publication.

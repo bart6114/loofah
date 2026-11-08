@@ -144,6 +144,10 @@ msgstr "Přidat jazyk"
 msgid "Add member"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Add server connection"
+msgstr ""
+
 #: src/settings/general/spoken-languages.tsx
 msgid "Add spoken language"
 msgstr "Přidat mluvený jazyk"
@@ -401,6 +405,10 @@ msgstr ""
 msgid "Choose the languages you expect to hear. Summary language is set separately."
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Choose where Loofah connects the next time it starts."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 msgid "Choosing…"
@@ -492,8 +500,16 @@ msgstr ""
 msgid "Connecting…"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Connection added. Select it above to use it at startup."
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Connection details"
+msgstr ""
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Connection name"
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -510,6 +526,10 @@ msgstr ""
 
 #: src/onboarding/llm-provider.tsx
 msgid "Continue"
+msgstr ""
+
+#: src/session/components/title-input.tsx
+msgid "Continue editing draft"
 msgstr ""
 
 #: src/main/about-debug.tsx
@@ -740,6 +760,10 @@ msgstr ""
 msgid "Design theme"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Desktop startup"
+msgstr ""
+
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
 msgid "Device recovery copy:"
@@ -879,6 +903,10 @@ msgstr ""
 
 #: src/sidebar/timeline/index.tsx
 msgid "Expand all"
+msgstr ""
+
+#: src/shared/application/desktop-bootstrap.tsx
+msgid "Experimental server workspace"
 msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
@@ -1167,6 +1195,10 @@ msgstr ""
 
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Loading preview…"
+msgstr ""
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Loading startup preferences…"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -1483,6 +1515,10 @@ msgstr ""
 msgid "Open Loofah"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Open Loofah with"
+msgstr ""
+
 #: src/session/components/note-input/index.tsx
 msgid "Open Note"
 msgstr ""
@@ -1644,6 +1680,10 @@ msgstr ""
 msgid "Recording"
 msgstr ""
 
+#: src/session/components/note-input/transcript/index.tsx
+msgid "Recording and transcription controls are unavailable for this connection."
+msgstr ""
+
 #: src/settings/ai/llm/select.tsx
 msgid "Recording and transcription still work. Connect an AI service or a local AI app when you want summaries."
 msgstr ""
@@ -1718,6 +1758,10 @@ msgstr ""
 
 #: src/shared/application/device-recovery.tsx
 msgid "Reload drafts"
+msgstr ""
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Reload preferences"
 msgstr ""
 
 #: src/session/components/session-date.tsx
@@ -1874,6 +1918,10 @@ msgstr ""
 msgid "Review saved date"
 msgstr ""
 
+#: src/session/components/title-input.tsx
+msgid "Review saved title"
+msgstr ""
+
 #: src/shared/application/vault-sharing.tsx
 msgid "Role"
 msgstr ""
@@ -1915,6 +1963,14 @@ msgstr ""
 msgid "Save settings"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Save startup choice"
+msgstr ""
+
+#: src/session/components/title-input.tsx
+msgid "Save title"
+msgstr ""
+
 #: src/settings/ai/shared/index.tsx
 #: src/shared/application/notes-workspace.tsx
 #: src/shared/application/vault-note-editor.tsx
@@ -1925,12 +1981,21 @@ msgstr ""
 msgid "Saved changes apply to future summaries. Existing text changes only when you regenerate it."
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Saved for the next app start."
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "Saved notes or transcript could not be read."
 msgstr ""
 
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Saved original copy."
+msgstr ""
+
+#. placeholder {0}: storeTitle ?? ""
+#: src/session/components/title-input.tsx
+msgid "Saved title: {0}"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
@@ -2028,6 +2093,7 @@ msgstr ""
 msgid "Selected"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
 #: src/shared/application/server-preview.tsx
 msgid "Server address"
 msgstr ""
@@ -2188,6 +2254,14 @@ msgstr ""
 msgid "Speaker detection"
 msgstr ""
 
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Standalone on this device"
+msgstr ""
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Standalone works offline and requires no login."
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Start a new empty vault here"
 msgstr ""
@@ -2219,6 +2293,10 @@ msgstr ""
 
 #: src/settings/ai/stt/select.tsx
 msgid "Starting transcription…"
+msgstr ""
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Startup options"
 msgstr ""
 
 #: src/session/components/outer-header/index.tsx
@@ -2508,6 +2586,10 @@ msgstr ""
 msgid "This server does not support the document editor. Upgrade the server, then reconnect."
 msgstr ""
 
+#: src/session/components/title-input.tsx
+msgid "This title changed or its save could not be confirmed. Your draft is kept."
+msgstr ""
+
 #. placeholder {0}: pending.speakerCount
 #: src/session/components/note-input/transcript/regenerate-confirm.tsx
 msgid "This transcript has {0} assigned speakers. Re-transcribing replaces the transcript and removes those speaker assignments."
@@ -2624,8 +2706,16 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+#: src/shared/application/desktop-bootstrap.tsx
+msgid "Unable to open the saved startup choice"
+msgstr ""
+
 #: src/shared/deferred-view.tsx
 msgid "Unable to open this view. Please try another view."
+msgstr ""
+
+#: src/shared/application/desktop-startup-preferences.tsx
+msgid "Unavailable saved server"
 msgstr ""
 
 #: src/shared/application/server-preview.tsx

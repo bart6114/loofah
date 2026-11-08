@@ -49,6 +49,17 @@ export class NativeRemoteConnection {
     );
   }
 
+  static async connectDesktopProfile(
+    name: string,
+    profileId: string,
+  ): Promise<NativeRemoteConnection> {
+    return new NativeRemoteConnection(
+      applicationResult(
+        await commands.remoteConnectDesktopProfile(name, profileId),
+      ),
+    );
+  }
+
   async signIn(): Promise<Me> {
     this.assertOpen();
     return applicationResult(

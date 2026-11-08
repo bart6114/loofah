@@ -113,6 +113,17 @@ impl ConnectionProfiles {
             if current.revision != input.expected_revision {
                 return Ok(DesktopStartupSaveOutcome::Conflict(current));
             }
+            let selected = DesktopStartupSnapshot {
+                selection: input.selection.clone(),
+                revision: current.revision.clone(),
+            };
+            // A no-op may refer to this process's live, exclusively leased profile.
+            if current.selection == input.selection {
+                store
+                    .desktop_startup_profile(&selected)
+                    .map_err(not_committed)?;
+                return Ok(DesktopStartupSaveOutcome::Saved(current));
+            }
             let _profile_lock = match &input.selection {
                 DesktopStartupSelection::Local {} => None,
                 DesktopStartupSelection::Remote { profile_id, .. } => {
@@ -120,14 +131,8 @@ impl ConnectionProfiles {
                 }
             };
             store
-                .desktop_startup_profile(&DesktopStartupSnapshot {
-                    selection: input.selection.clone(),
-                    revision: current.revision.clone(),
-                })
+                .desktop_startup_profile(&selected)
                 .map_err(not_committed)?;
-            if current.selection == input.selection {
-                return Ok(DesktopStartupSaveOutcome::Saved(current));
-            }
             let raw = serde_json::to_string_pretty(&StoredStartup {
                 schema_version: 1,
                 selection: input.selection.clone(),

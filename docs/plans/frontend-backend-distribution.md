@@ -122,31 +122,39 @@ If two tracks need to change the same transaction/lifecycle invariant, sequence 
 
 ## Current integration checkpoint
 
-See [the handoff](./frontend-backend-handoff.md) for live SHAs, trees, test evidence
-and cache ownership. All seven phases remain open. Root interface checkpoint
-`0ee7b680e` contains actual compound document IPC/SDK contracts and scoped client
-queries. Default local use remains offline and login-free. No merge/release.
+See [the handoff](./frontend-backend-handoff.md) for current SHAs, fixed trees,
+verification and exclusive cache ownership. Default local use stays offline and
+login-free. The full objective remains active; no merge or release yet.
 
 The first-wave descriptions above are historical. Current allocation:
 
-- A: main Enhanced compound rich editor, tasks/recovery, scoped queries and guarded
-  legacy generation initiators; integrate against actual Root contracts. No main
-  remote activation while legacy source/generation paths remain.
-- B: durable Core batch transcription jobs with injected prepared engine, checked
-  source binding and absent-only transcript publication. Protocol worker checkpoint
-  `93e5f5071` passed 20 cases and awaits integration. No public capability yet.
-- C: independent review completed; extract existing recording preparation without
-  changing mono/multichannel/duplicate/inversion behavior, then concrete CPU host
-  against B's engine contract. No Core/device coupling or public route changes.
-- Root: shared junctions, HTTP/native/SDK adapters, actual generated contracts and
-  locales, configuration/deployment, CLI ownership, integration and platform gates.
+- A: main attachment presentation, canonical references, scoped upload/resource
+  lifecycle and local Finder/Explorer behavior through the client adapter.
+- B: bounded background capture uploader and native coordinator, using the existing
+  durable spool/recorder. Verify lost acknowledgments, offline capture, immutable
+  destination, reopen/resume, independently hashed publication and actual drains.
+- C: Ubuntu 24.04 CPU packaging/CI, single-source native setup and configured
+  capability checks. Preserve the default notes-only image; distinguish tested
+  runtime artifacts from the standalone Docker builder qualification.
+- Root: saved-profile/remote-only startup, contracts and generated bindings,
+  public recording commands/quit/UI integration, remaining workflows and acceptance.
 
-Both Windows jobs on pushed `66b88b660` passed checks/tests/installers. The macOS
-publication fixture alias failure has a validated canonical-temp-parent fix in
-Root. Backend/container/Linux CPU, CLI, formatting/security and desktop frontend
-passed. Batch the next validated corrective push and verify fresh CI for its exact
-SHA. The last fully green platform head remains `93dada10bb`.
+Durable Core batch jobs, the CPU adapter/activation and authenticated HTTP/SDK
+operations are integrated. The actual model-to-canonical path passed on macOS;
+Linux qualification remains required. The startup cohort passes 122 desktop,
+15 settings and 18 SDK profile tests, actual binding generation, desktop/CLI Rust
+checks, 2,367 frontend tests and typechecking. Keep the experimental remote notes
+workspace distinct from complete main-shell/feature parity.
 
-Use existing exclusive cache windows and keep dependent Rust sources frozen.
-Retain own artifact paths, fresh compilation, exact test inventory and hashes;
-never cancel healthy work or create new cold caches to bypass a lock.
+Both Windows jobs on pushed `09495af6f` finished successfully. Its macOS/headless
+fixture and Linux real-CPU drain-deadline failures have source corrections in Root;
+run fresh CI on the next validated batch. The last entirely green head remains
+`93dada10bb`. Do not wait for an old failed SHA to turn green before pushing its fix.
+
+Reuse these existing worktrees. In particular, use Root's fixed bootstrap tree for
+consolidated native builds instead of compiling identical integration source from
+another absolute path. Batch full builds, contract generation and pushes around
+coherent features. Use focused checks between them; do not repeat broad checks
+without new source, failures or unresolved concerns. Keep dependent Rust source
+frozen, caches exclusive and exact nonzero test inventories/source hashes. Never
+cancel healthy work or create a cold cache simply to bypass a lock.

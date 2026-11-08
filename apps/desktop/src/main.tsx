@@ -28,6 +28,10 @@ import { DeviceEventListeners } from "./services/event-listeners";
 import { RegenerateTranscriptConfirmDialog } from "./session/components/note-input/transcript/regenerate-confirm";
 import { initializeApplicationSettings } from "./settings/queries";
 import { initializeAppExitFlush } from "./shared/app-exit";
+import {
+  DesktopBootstrapRoot,
+  loadDesktopBootstrap,
+} from "./shared/application/desktop-bootstrap";
 import { useConfigValue } from "./shared/config";
 import { initConfigStore } from "./shared/config/store";
 import { ErrorComponent, NotFoundComponent } from "./shared/control";
@@ -73,7 +77,11 @@ function App() {
   );
 }
 
-function AppRoot() {
+function AppRoot({
+  bootstrap,
+}: {
+  bootstrap: Awaited<ReturnType<typeof loadDesktopBootstrap>>;
+}) {
   const theme = resolveThemeAppearance(
     getDesignTheme(useConfigValue("design_theme")),
     normalizeThemePreference(useConfigValue("theme")),
@@ -83,12 +91,14 @@ function AppRoot() {
     <QueryClientProvider client={queryClient}>
       <AppThemeProvider>
         <AppI18nProvider>
-          <StartupBoundary>
-            <App />
-            <ArtifactInvalidationSync />
-            {isMainWindow ? <FloatingMeetingWindowHost /> : null}
-            {isMainWindow ? <DeviceEventListeners /> : null}
-          </StartupBoundary>
+          <DesktopBootstrapRoot state={bootstrap}>
+            <StartupBoundary>
+              <App />
+              <ArtifactInvalidationSync />
+              {isMainWindow ? <FloatingMeetingWindowHost /> : null}
+              {isMainWindow ? <DeviceEventListeners /> : null}
+            </StartupBoundary>
+          </DesktopBootstrapRoot>
           <Toaster position="bottom-right" theme={theme} />
         </AppI18nProvider>
       </AppThemeProvider>
@@ -124,10 +134,11 @@ async function enableReactScanInDev() {
 
 async function renderApp() {
   startPerformanceDiagnostics();
+  const bootstrap = await loadDesktopBootstrap();
   void initConfigStore().catch((error) => {
     console.error("Failed to initialize the config store", error);
   });
-  if (isMainWindow) {
+  if (isMainWindow && bootstrap.info?.startup.selection.kind === "local") {
     await initializeApplicationSettings().catch((error) => {
       console.error("Failed to initialize application settings", error);
     });
@@ -136,7 +147,7 @@ async function renderApp() {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <AppRoot />
+      <AppRoot bootstrap={bootstrap} />
     </StrictMode>,
   );
 }

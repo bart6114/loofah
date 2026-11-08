@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+mod bootstrap;
 mod commands;
 mod config;
 mod config_events;
@@ -7,6 +8,7 @@ mod error;
 mod ext;
 mod state;
 
+pub use bootstrap::DesktopBootstrap;
 pub use config::*;
 pub use error::{Error, Result};
 pub use ext::*;
@@ -43,11 +45,14 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .setup(move |app, _api| {
             specta_builder.mount_events(app);
 
-            let startup_vault_base = app.settings().resolve_startup_vault_base().unwrap();
+            let global_base = app.settings().global_base()?;
+            let bootstrap = DesktopBootstrap::load(global_base.as_std_path())?;
+            let (config_base, snapshot) =
+                bootstrap.settings_location(|| app.settings().resolve_startup_vault_base())?;
             let config_state =
-                std::sync::Arc::new(config::ConfigState::load_or_default(&startup_vault_base));
+                std::sync::Arc::new(config::ConfigState::load_or_default(&config_base));
             let config_events = config_events::start(app, config_state.clone());
-            let snapshot = state::StartupSnapshot::new(startup_vault_base);
+            assert!(app.manage(bootstrap));
             assert!(app.manage(snapshot));
             assert!(app.manage(config_state));
             assert!(app.manage(config_events));

@@ -75,6 +75,13 @@ pub fn init<R: tauri::Runtime>(options: InitOptions) -> tauri::plugin::TauriPlug
 
             app.manage(state.clone());
 
+            if app
+                .try_state::<tauri_plugin_settings::DesktopBootstrap>()
+                .is_some_and(|bootstrap| !bootstrap.is_local())
+            {
+                return Ok(());
+            }
+
             ext::backfill_diarizer_download(app.app_handle().clone());
 
             let parent = options.parent_supervisor.clone();

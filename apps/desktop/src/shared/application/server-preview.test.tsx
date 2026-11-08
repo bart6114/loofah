@@ -31,7 +31,7 @@ vi.mock("./notes-workspace", () => ({
 }));
 
 import { ApplicationRequestError } from "./errors";
-import ServerPreview from "./server-preview";
+import ServerPreview, { ServerConnection } from "./server-preview";
 
 const me = {
   member: { id: "alice", name: "Alice" },
@@ -84,6 +84,74 @@ async function enterServer() {
   });
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 }
+
+function renderStartup(props: Parameters<typeof ServerConnection>[0]) {
+  return render(
+    <StrictMode>
+      <QueryClientProvider client={new QueryClient()}>
+        <ServerConnection {...props} />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}
+
+it("discovers the active startup profile once under StrictMode", async () => {
+  const native = connection();
+  const connectToServer = vi.fn().mockResolvedValue(native);
+  renderStartup({
+    initialServer: native.info.server,
+    autoConnect: true,
+    connectToServer,
+  });
+  await screen.findByTestId("workspace");
+  expect(connectToServer).toHaveBeenCalledOnce();
+  expect(mocks.connect).not.toHaveBeenCalled();
+  expect(native.signIn).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["alice", "missing"],
+  ["different-member", "private"],
+])(
+  "does not fall back from saved destination %s/%s",
+  async (preferredMemberId, preferredVaultId) => {
+    const native = connection();
+    mocks.connect.mockResolvedValue(native);
+    renderStartup({
+      initialServer: native.info.server,
+      autoConnect: true,
+      preferredMemberId,
+      preferredVaultId,
+    });
+    const select = await screen.findByRole("combobox", { name: "Vault" });
+    await waitFor(() => expect(native.request).toHaveBeenCalled());
+    expect(screen.queryByTestId("workspace")).toBeNull();
+    fireEvent.change(select, { target: { value: "private" } });
+    await screen.findByTestId("workspace");
+  },
+);
+
+it("restores the explicitly saved vault rather than selecting a different personal vault", async () => {
+  const native = connection();
+  native.request.mockResolvedValue([
+    vault,
+    { ...vault, id: "shared", kind: "shared", name: "Team" },
+  ]);
+  mocks.connect.mockResolvedValue(native);
+  const onDestination = vi.fn();
+  renderStartup({
+    initialServer: native.info.server,
+    autoConnect: true,
+    preferredMemberId: "alice",
+    preferredVaultId: "shared",
+    onDestination,
+  });
+  const workspace = await screen.findByTestId("workspace");
+  expect(workspace.dataset.scope).toBe(
+    JSON.stringify(["remote", native.info.server, "alice", "shared"]),
+  );
+  expect(onDestination).toHaveBeenCalledWith(native, "alice", "shared");
+});
 
 beforeEach(() => {
   vi.resetAllMocks();
