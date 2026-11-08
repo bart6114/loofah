@@ -8,7 +8,7 @@ Current implementation supports shared checked note/task and summary/template ed
 
 Desktop startup can select a saved server profile before opening any local vault. This opens the experimental server notes workspace; the full main desktop shell and remaining feature parity are still being migrated. A failed remote profile never falls back to a local vault. Profile credentials stay in the OS credential store, separately for each saved profile.
 
-Configured CPU batch transcription now has durable shared Core jobs, authenticated HTTPS/SDK operations, retained results and checked canonical publication. The actual model-to-canonical path has passed on macOS. Linux CPU packaging/validation is the next deployment gate. Native capture already has a durable spool and managed resource drain; its background uploader, public controls and full lifecycle are being connected.
+Configured CPU batch transcription now has durable shared Core jobs, authenticated HTTPS/SDK operations, retained results and checked canonical publication. The actual model-to-canonical path has passed on macOS. Hosted Linux CPU validation and the default server container pass; standalone CPU-image qualification remains a deployment gate. Native capture has a durable spool, background uploader, typed device controls and verified shutdown drain. Recording UI, live caption delivery and full recovery remain under implementation.
 
 Remaining release work: complete the main remote shell and content/AI/import/export workflows; owner-managed provider credentials; reliable capture upload and recovery, pending-note/append behavior, authenticated live transcription and repair; local CLI ownership and remote mutations; retention, upgrade/compatibility, production performance, long-recording and macOS/Windows acceptance. This is a broad migration, with no full-completion or release claim. Current source ownership, checks and continuation details are kept in [the handoff](./frontend-backend-handoff.md).
 
@@ -41,7 +41,7 @@ flowchart TB
     Device["Device services<br/>capture · durable spool · permissions · OS integration"]
 
     IPC["Thin Tauri IPC adapter"]
-    HTTP["Thin HTTPS adapter<br/>SSO · authorization · SSE · audio WebSocket"]
+    HTTP["Thin HTTPS adapter<br/>SSO · authorization · SSE · resumable audio chunks"]
     Core["Shared Rust application layer<br/>vault operations · search · settings · processing · jobs"]
     Files["Canonical vault files"]
     Runtime["Rebuildable indexes<br/>durable job/upload bookkeeping"]
@@ -123,7 +123,7 @@ Use a separate device-services interface for capture and OS actions. Mode select
 
 ### Notifications and cache invalidation
 
-Use authenticated **SSE for changes and job updates**, and a separate authenticated **WebSocket for live audio ingestion**. Axum already supports SSE and keepalives. [Axum SSE documentation](https://docs.rs/axum/latest/axum/response/sse/)
+Use authenticated **SSE for changes, job updates and live captions**. Feed remote live transcription from the same durable, bounded HTTPS capture chunks used for recording uploads; this preserves one source and recovery identity through outages. The existing low-level audio WebSocket adapter remains compatible, but a second desktop live-audio upload channel is unnecessary. Axum already supports SSE and keepalives. [Axum SSE documentation](https://docs.rs/axum/latest/axum/response/sse/)
 
 Extend existing entity/ID invalidations with vault identity, server epoch, and sequence cursor:
 

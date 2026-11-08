@@ -128,27 +128,30 @@ login-free. The full objective remains active; no merge or release yet.
 
 The first-wave descriptions above are historical. Current allocation:
 
-- A: extract the actual main host and its scoped activity/service boundaries; main
-  attachments are integrated. Do not activate Remote before the remaining gates.
-- B: finish stable start UUID/recovery in the existing uploader/coordinator, then
-  HTTP/SSE and SDK live support after C freezes its internal contract.
-- C: Core/CPU live transcription over existing durable chunks, a bounded caption
-  ledger and actual drain/promotion proof. CPU deployment is integrated; Linux
-  runtime and standalone Docker builder qualification remain pending.
-- Root: saved-profile/remote-only startup, contracts and generated bindings,
-  public recording commands/quit/UI integration, remaining workflows and acceptance.
+- A: actual generated timeline contracts are ready at integration `0e87fe212`.
+  Build bounded per-owner Date/Upcoming/Undated/tag paging and viewport restoration;
+  Local control guards and scoped undo/delete recovery are integrated. No Remote
+  main activation until remaining gates pass.
+- B: timeline Store/Core/HTTP/SDK source is integrated, with SDK fixture compile
+  corrections. Finish focused backend checks after C releases target-root; prepare
+  live HTTP/SSE and SDK against C's explicit internal API handoff in parallel.
+- C: finish exact consumed-source hash/seal proof and one real configured CPU live
+  case after the92-case fake/legacy cohort. Keep the configured model host shared;
+  no public live capability until the combined gate.
+- Root: native recording controls/owned shutdown/Local timeline IPC and real
+  exports are integrated (`516385f18`), with frontend adapters (`0e87fe212`). Next
+  recording UI/activity/recovery integration and remaining workflows/acceptance.
 
-Durable Core batch jobs, the CPU adapter/activation and authenticated HTTP/SDK
-operations are integrated. The actual model-to-canonical path passed on macOS;
-Linux qualification remains required. The startup cohort passes 122 desktop,
-15 settings and 18 SDK profile tests, actual binding generation, desktop/CLI Rust
-checks, 2,367 frontend tests and typechecking. Keep the experimental remote notes
-workspace distinct from complete main-shell/feature parity.
+Native tests pass131 (one ignored, two existing Codex executable-probe deadline
+failures explicitly excluded), actual binding export passes, and all-target Rust
+check passes. Frontend adapters pass81 tests and whole desktop typecheck. The
+standalone default remains offline and login-free.
 
-Both Windows jobs on pushed `09495af6f` finished successfully. Its macOS/headless
-fixture and Linux real-CPU drain-deadline failures have source corrections in Root;
-run fresh CI on the next validated batch. The last entirely green head remains
-`93dada10bb`. Do not wait for an old failed SHA to turn green before pushing its fix.
+Pushed `c32f8ae17`: frontend, CLI, headless, Linux CPU and default server-container
+jobs passed. macOS is blocked by an external SpeechCore dependency HTTP504,
+including one retry. Windows x64 checks/tests pass but packaging also hit HTTP504;
+ARM64 remains active. Do not cancel it or launch a replacement batch over it.
+Last entirely green head remains `93dada10bb`.
 
 Reuse these existing worktrees. In particular, use Root's fixed bootstrap tree for
 consolidated native builds instead of compiling identical integration source from
