@@ -1,64 +1,15 @@
-import { getApplicationClient } from "~/shared/application/client";
-import { useIndexQuery } from "~/shared/index-query";
-import { type Result } from "~/types/tauri.gen";
+import { useQuery } from "@tanstack/react-query";
 
-export type Tag = {
-  id: string;
-  name: string;
-};
+import type { TagSuggestionsRequest } from "~/shared/application/protocol.gen";
+import type { VaultScope } from "~/shared/application/vault-scope";
 
-const tagsQueryKey = ["tags"];
-
-function unwrap<T>(result: Result<T, string>): T {
-  if (result.status === "error") {
-    throw new Error(result.error);
-  }
-  return result.data;
+export function useTagSuggestions(
+  scope: VaultScope,
+  input: TagSuggestionsRequest,
+  enabled: boolean,
+) {
+  return useQuery(
+    { ...scope.tagSuggestionsOptions(input), enabled },
+    scope.queryClient,
+  );
 }
-
-export async function listTags(): Promise<Tag[]> {
-  const items = unwrap(await getApplicationClient().store.tagsList());
-  return items.map((item) => ({ id: item.id, name: item.name ?? item.id }));
-}
-
-export function useTags(): Tag[] {
-  const { data = EMPTY_TAGS } = useIndexQuery({
-    entity: "tags",
-    queryKey: tagsQueryKey,
-    queryFn: listTags,
-  });
-
-  return data;
-}
-
-export async function ensureTag(name: string): Promise<Tag> {
-  const item = unwrap(await getApplicationClient().store.tagsEnsure(name));
-  return { id: item.id, name: item.name ?? item.id };
-}
-
-// Tags attached to any session, whether or not they made it into the registry
-// (pre-registry sessions, hand-edited `_meta.json`). Unioned with `useTags()`
-// for typeahead so nothing in the vault is unsuggestable.
-export function useInUseTags(): string[] {
-  const { data = EMPTY_NAMES } = useIndexQuery({
-    entity: "session_headers",
-    queryKey: ["in-use-tags"],
-    queryFn: async () => {
-      const result = await getApplicationClient().store.sessionListHeaders();
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      const names = new Set<string>();
-      for (const entry of result.data) {
-        for (const tag of entry.tags) {
-          names.add(tag);
-        }
-      }
-      return [...names].sort();
-    },
-  });
-  return data;
-}
-
-const EMPTY_TAGS: Tag[] = [];
-const EMPTY_NAMES: string[] = [];

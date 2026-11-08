@@ -60,6 +60,9 @@ import type {
   SessionSummary,
   SessionSummaryQuery,
   TagItem,
+  TagSuggestionsRequest,
+  EnsureTagRequest,
+  TagSuggestionActionRequest,
   TaskItem,
   TasksSnapshot,
   TasksSaveOutcome,
@@ -256,6 +259,24 @@ export type VaultClient = {
   ) => Promise<TasksSaveOutcome>;
   people: (options?: RequestOptions) => Promise<PersonItem[]>;
   tags: (options?: RequestOptions) => Promise<TagItem[]>;
+  tagSuggestions: (
+    input: TagSuggestionsRequest,
+    options?: RequestOptions,
+  ) => Promise<string[]>;
+  ensureTag: (
+    input: EnsureTagRequest,
+    options?: RequestOptions,
+  ) => Promise<TagItem>;
+  acceptTagSuggestion: (
+    sessionId: string,
+    input: TagSuggestionActionRequest,
+    options?: RequestOptions,
+  ) => Promise<MetadataSaveOutcome>;
+  dismissTagSuggestion: (
+    sessionId: string,
+    input: TagSuggestionActionRequest,
+    options?: RequestOptions,
+  ) => Promise<MetadataSaveOutcome>;
   sessionSummaries: (
     input: SessionSummaryQuery,
     options?: RequestOptions,
@@ -346,6 +367,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "recording_delete",
       "notes",
       "session_summaries",
+      "tag_editing",
       "session_cleanup",
       "note_editor_read",
       "note_editor_write",
@@ -505,6 +527,22 @@ export async function connectLocalVault(): Promise<VaultClient> {
       ),
     people: (options) => ipc(() => commands.applicationPeople(), options),
     tags: (options) => ipc(() => commands.applicationTags(), options),
+    tagSuggestions: (input, options) =>
+      ipc(() => commands.applicationTagSuggestions(input), options),
+    ensureTag: (input, options) =>
+      ipc(() => commands.applicationEnsureTag(input), options, true),
+    acceptTagSuggestion: (sessionId, input, options) =>
+      ipc(
+        () => commands.applicationAcceptTagSuggestion(sessionId, input),
+        options,
+        true,
+      ),
+    dismissTagSuggestion: (sessionId, input, options) =>
+      ipc(
+        () => commands.applicationDismissTagSuggestion(sessionId, input),
+        options,
+        true,
+      ),
     sessionSummaries: (input, options) =>
       ipc(() => commands.applicationSessionSummaries(input), options),
     sessions: (limit, after, options) =>
@@ -839,6 +877,40 @@ export function connectRemoteVault(
       ),
     tags: (options) =>
       connection.request({ kind: "tags", vault_id: vaultId }, "tags", options),
+    tagSuggestions: (input, options) =>
+      connection.request(
+        { kind: "tag_suggestions", vault_id: vaultId, input },
+        "tag_suggestions",
+        options,
+      ),
+    ensureTag: (input, options) =>
+      connection.request(
+        { kind: "ensure_tag", vault_id: vaultId, input },
+        "tag",
+        options,
+      ),
+    acceptTagSuggestion: (sessionId, input, options) =>
+      connection.request(
+        {
+          kind: "accept_tag_suggestion",
+          vault_id: vaultId,
+          session_id: sessionId,
+          input,
+        },
+        "metadata_save",
+        options,
+      ),
+    dismissTagSuggestion: (sessionId, input, options) =>
+      connection.request(
+        {
+          kind: "dismiss_tag_suggestion",
+          vault_id: vaultId,
+          session_id: sessionId,
+          input,
+        },
+        "metadata_save",
+        options,
+      ),
     sessionSummaries: (input, options) =>
       connection.request(
         { kind: "session_summaries", vault_id: vaultId, input },

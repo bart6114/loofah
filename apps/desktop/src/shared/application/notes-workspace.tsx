@@ -37,6 +37,7 @@ import { VaultClientProvider, useVaultHost } from "./vault-provider";
 import type { VaultScope } from "./vault-scope";
 
 import { RecordingPlayer } from "~/audio-player/recording";
+import { SessionTags } from "~/session/components/session-tags";
 import type { NoteDraftRecovery, NoteSnapshot } from "~/types/tauri.gen";
 
 export function VaultNotesWorkspace({
@@ -311,6 +312,7 @@ function SessionPane({
   >("note");
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <SessionTags sessionId={sessionId} />
       {scope.client.features.includes("audio_playback") && (
         <RecordingPlayer scope={scope} sessionId={sessionId} />
       )}

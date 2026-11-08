@@ -20,6 +20,7 @@ import type {
   ListProcessingJobsInput,
   ProcessingSettingsSnapshot,
   SessionSummaryQuery,
+  TagSuggestionsRequest,
 } from "./protocol.gen";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
 
@@ -505,6 +506,13 @@ export class VaultScope {
         this.run(() => this.client.processingJobs(input, { signal })),
     });
   }
+  tagSuggestionsOptions(input: TagSuggestionsRequest) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "tag_suggestions", input],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.tagSuggestions(input, { signal })),
+    });
+  }
   processingPolicyOptions() {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "processing_policy"],
@@ -721,6 +729,8 @@ export class VaultScope {
         predicate: (query) => {
           const [prefix, scope, kind, id, attachmentId] = query.queryKey;
           if (prefix !== "vault" || scope !== this.client.scope) return false;
+          if (kind === "tag_suggestions")
+            return ["tags", "session_headers"].includes(change.entity);
           if (
             (change.entity === "people" || change.entity === "tags") &&
             kind === change.entity

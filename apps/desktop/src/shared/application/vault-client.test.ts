@@ -48,6 +48,10 @@ const native = vi.hoisted(() => ({
     applicationReplaceTasks: vi.fn(),
     applicationPeople: vi.fn(),
     applicationTags: vi.fn(),
+    applicationTagSuggestions: vi.fn(),
+    applicationEnsureTag: vi.fn(),
+    applicationAcceptTagSuggestion: vi.fn(),
+    applicationDismissTagSuggestion: vi.fn(),
   },
   listen: vi.fn(),
 }));
@@ -126,6 +130,7 @@ it("advertises local document jobs only when the native worker is available", as
   const local = await connectLocalVault();
   expect(local.features).not.toContain("summary_body_jobs");
   expect(local.features).not.toContain("template_output_jobs");
+  expect(local.features).toContain("tag_editing");
   expect(local.canEdit).toBe(true);
   expect(local.networkMode).toBe("always");
 });
@@ -162,6 +167,100 @@ it("uses matching bounded session-summary queries across both transports", async
     "session_summaries",
     options,
   );
+});
+
+it("uses the complete checked tag surface through captured IPC and HTTPS clients", async () => {
+  const query = { query: "# pro", excluded: ["attached"], limit: 8 };
+  const ensure = { name: "project" };
+  const action = { name: "project", expected_revision: "revision" };
+  const outcome = {
+    kind: "conflict" as const,
+    snapshot: { meta: { id: "same", tags: ["newer"] }, revision: "newer" },
+  };
+  native.commands.applicationTagSuggestions.mockResolvedValue({
+    status: "ok",
+    data: ["project"],
+  });
+  native.commands.applicationEnsureTag.mockResolvedValue({
+    status: "ok",
+    data: { id: "project", name: "project" },
+  });
+  native.commands.applicationAcceptTagSuggestion.mockResolvedValue({
+    status: "ok",
+    data: outcome,
+  });
+  native.commands.applicationDismissTagSuggestion.mockResolvedValue({
+    status: "ok",
+    data: outcome,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toContain("tag_editing");
+  expect(local.networkMode).toBe("always");
+  expect(await local.tagSuggestions(query)).toEqual(["project"]);
+  expect(await local.ensureTag(ensure)).toEqual({
+    id: "project",
+    name: "project",
+  });
+  expect(await local.acceptTagSuggestion("same", action)).toEqual(outcome);
+  expect(await local.dismissTagSuggestion("same", action)).toEqual(outcome);
+  expect(native.commands.applicationTagSuggestions).toHaveBeenCalledWith(query);
+  expect(native.commands.applicationEnsureTag).toHaveBeenCalledWith(ensure);
+  expect(native.commands.applicationAcceptTagSuggestion).toHaveBeenCalledWith(
+    "same",
+    action,
+  );
+  expect(native.commands.applicationDismissTagSuggestion).toHaveBeenCalledWith(
+    "same",
+    action,
+  );
+  const request = vi.fn().mockResolvedValue(outcome);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["tag_editing"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  const options = {
+    signal: new AbortController().signal,
+    requestId: crypto.randomUUID(),
+  };
+  await remote.tagSuggestions(query, options);
+  await remote.ensureTag(ensure, options);
+  await remote.acceptTagSuggestion("same", action, options);
+  await remote.dismissTagSuggestion("same", action, options);
+  expect(request.mock.calls).toEqual([
+    [
+      { kind: "tag_suggestions", vault_id: "first", input: query },
+      "tag_suggestions",
+      options,
+    ],
+    [{ kind: "ensure_tag", vault_id: "first", input: ensure }, "tag", options],
+    [
+      {
+        kind: "accept_tag_suggestion",
+        vault_id: "first",
+        session_id: "same",
+        input: action,
+      },
+      "metadata_save",
+      options,
+    ],
+    [
+      {
+        kind: "dismiss_tag_suggestion",
+        vault_id: "first",
+        session_id: "same",
+        input: action,
+      },
+      "metadata_save",
+      options,
+    ],
+  ]);
 });
 
 it("uses one typed cleanup request through IPC and HTTPS without a local login", async () => {

@@ -24,6 +24,7 @@ function fixture(scope: string) {
     session: vi.fn(),
     sessions: vi.fn(),
     sessionSummaries: vi.fn().mockResolvedValue([]),
+    tagSuggestions: vi.fn().mockResolvedValue([]),
     search: vi.fn(),
     subscribe: vi.fn(async (listener) => {
       event = listener;
@@ -31,6 +32,7 @@ function fixture(scope: string) {
       return unsubscribe;
     }),
   } as unknown as VaultClient & {
+    tagSuggestions: ReturnType<typeof vi.fn>;
     readNote: ReturnType<typeof vi.fn>;
     readNoteEditor: ReturnType<typeof vi.fn>;
     openRecording: ReturnType<typeof vi.fn>;
@@ -60,6 +62,62 @@ function watchCacheCleanup(scope: VaultScope) {
 }
 
 describe("vault-scoped query lifecycle", () => {
+  it("invalidates bounded tag queries on registry and all header changes without touching another vault", async () => {
+    const { active, backend, emit } = fixture("scope");
+    await active.start();
+    const input = { query: "project", excluded: ["attached"], limit: 8 };
+    const options = active.tagSuggestionsOptions(input);
+    expect(await active.queryClient.fetchQuery(options)).toEqual([]);
+    expect(backend.tagSuggestions).toHaveBeenCalledWith(input, {
+      signal: expect.any(AbortSignal),
+    });
+    const foreign = ["vault", "foreign", "tag_suggestions", input];
+    active.queryClient.setQueryData(foreign, ["private"]);
+    for (const entity of ["tags", "session_headers"] as const) {
+      active.queryClient.setQueryData(options.queryKey, []);
+      emit({
+        kind: "change",
+        change: { kind: "index_changed", entity, ids: ["another-session"] },
+      });
+      expect(
+        active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+      ).toBe(true);
+      expect(active.queryClient.getQueryState(foreign)?.isInvalidated).toBe(
+        false,
+      );
+    }
+    active.queryClient.setQueryData(options.queryKey, []);
+    emit({ kind: "connection", state: "reconnecting", error: null });
+    emit({ kind: "connection", state: "connected", error: null });
+    expect(
+      active.queryClient.getQueryState(options.queryKey)?.isInvalidated,
+    ).toBe(true);
+    active.dispose();
+  });
+  it("never admits a late tag lookup after access loss or retirement", async () => {
+    for (const state of ["access_denied", "closed"] as const) {
+      const { active, backend, emit } = fixture("same");
+      await active.start();
+      let resolve!: (names: string[]) => void;
+      backend.tagSuggestions.mockImplementation(
+        () =>
+          new Promise<string[]>((done) => {
+            resolve = done;
+          }),
+      );
+      const options = active.tagSuggestionsOptions({
+        query: "",
+        excluded: [],
+        limit: 8,
+      });
+      const pending = active.queryClient.fetchQuery(options).catch(() => {});
+      emit({ kind: "connection", state, error: null });
+      resolve(["private"]);
+      await pending;
+      expect(active.queryClient.getQueryData(options.queryKey)).toBeUndefined();
+      active.dispose();
+    }
+  });
   it("scopes summary queries and invalidates them on header changes and reconnect", async () => {
     const { active, backend, emit } = fixture("scope");
     await active.start();

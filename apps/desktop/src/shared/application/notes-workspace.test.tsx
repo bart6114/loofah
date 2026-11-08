@@ -74,9 +74,12 @@ import type {
   DocumentSnapshot,
   TasksSnapshot,
   SummaryJobRequest,
+  MetadataSnapshot,
 } from "./protocol.gen";
+import type { NativeRemoteConnection } from "./remote";
 import { sessionEditorFlushKey } from "./session-cleanup-guard";
 import type { VaultClient, VaultClientEvent } from "./vault-client";
+import { connectRemoteVault } from "./vault-client";
 
 import { flushDatabaseWrites } from "~/shared/write-queue";
 
@@ -88,6 +91,19 @@ const note = (markdown: string, revision: string): NoteSnapshot => ({
 function fixture(rich = false) {
   const listeners = new Set<(event: VaultClientEvent) => void>();
   let current = note("Original", "a");
+  let metadata: MetadataSnapshot = {
+    meta: {
+      id: "same",
+      title: "Seed",
+      created_at: "2026-11-05T10:00:00Z",
+      started_at: null,
+      ended_at: null,
+      tags: ["existing"],
+      tag_suggestions: { items: ["suggested", "dismissable"], dismissed: [] },
+    },
+    revision: "metadata-a",
+  };
+  let metadataSequence = 0;
   let currentTasks: TasksSnapshot = { tasks: [], revision: "tasks-a" };
   let editorSequence = 0;
   let currentDocument: DocumentSnapshot = {
@@ -220,6 +236,69 @@ function fixture(rich = false) {
     ]),
     search: vi.fn(async () => ({ hits: [], count: 0 })),
     readNote: vi.fn(async () => current),
+    readMetadata: vi.fn(async () => metadata),
+    saveMetadata: vi.fn<VaultClient["saveMetadata"]>(async (_id, input) => {
+      if (input.expected_revision !== metadata.revision)
+        return { kind: "conflict", snapshot: metadata };
+      metadata = {
+        meta: {
+          ...metadata.meta,
+          tags: input.patch.tags ?? metadata.meta.tags,
+        },
+        revision: `metadata-${++metadataSequence}`,
+      };
+      return { kind: "saved", snapshot: metadata };
+    }),
+    tagSuggestions: vi.fn<VaultClient["tagSuggestions"]>(async (input) =>
+      ["registry"]
+        .filter(
+          (name) =>
+            !input.excluded.includes(name) &&
+            name.includes(input.query.toLowerCase()),
+        )
+        .slice(0, input.limit),
+    ),
+    ensureTag: vi.fn<VaultClient["ensureTag"]>(async (input) => ({
+      id: input.name,
+      name: input.name,
+    })),
+    acceptTagSuggestion: vi.fn<VaultClient["acceptTagSuggestion"]>(
+      async (_id, input) => {
+        if (input.expected_revision !== metadata.revision)
+          return { kind: "conflict", snapshot: metadata };
+        const state = metadata.meta.tag_suggestions!;
+        metadata = {
+          meta: {
+            ...metadata.meta,
+            tags: [...metadata.meta.tags, input.name].sort(),
+            tag_suggestions: {
+              ...state,
+              items: state.items.filter((name) => name !== input.name),
+            },
+          },
+          revision: `metadata-${++metadataSequence}`,
+        };
+        return { kind: "saved", snapshot: metadata };
+      },
+    ),
+    dismissTagSuggestion: vi.fn<VaultClient["dismissTagSuggestion"]>(
+      async (_id, input) => {
+        if (input.expected_revision !== metadata.revision)
+          return { kind: "conflict", snapshot: metadata };
+        const state = metadata.meta.tag_suggestions!;
+        metadata = {
+          meta: {
+            ...metadata.meta,
+            tag_suggestions: {
+              items: state.items.filter((name) => name !== input.name),
+              dismissed: [...state.dismissed, input.name],
+            },
+          },
+          revision: `metadata-${++metadataSequence}`,
+        };
+        return { kind: "saved", snapshot: metadata };
+      },
+    ),
     sessions: vi.fn(async () => ({
       sessions: [
         {
@@ -279,7 +358,157 @@ async function open(client: VaultClient) {
   return screen.findByRole("textbox", { name: "Markdown" });
 }
 
+it("edits tags end to end in the existing workspace through its captured HTTPS adapter", async () => {
+  const backend = fixture();
+  const request = vi.fn(
+    async (operation: Parameters<NativeRemoteConnection["request"]>[0]) => {
+      switch (operation.kind) {
+        case "sessions":
+          return backend.client.sessions(operation.limit, operation.after);
+        case "note":
+          return backend.client.readNote(operation.session_id);
+        case "metadata":
+          return backend.client.readMetadata(operation.session_id);
+        case "save_metadata":
+          return backend.client.saveMetadata(
+            operation.session_id,
+            operation.input,
+          );
+        case "tag_suggestions":
+          return backend.client.tagSuggestions(operation.input);
+        case "ensure_tag":
+          return backend.client.ensureTag(operation.input);
+        case "accept_tag_suggestion":
+          return backend.client.acceptTagSuggestion(
+            operation.session_id,
+            operation.input,
+          );
+        case "dismiss_tag_suggestion":
+          return backend.client.dismissTagSuggestion(
+            operation.session_id,
+            operation.input,
+          );
+        default:
+          throw new Error(`Unexpected remote operation: ${operation.kind}`);
+      }
+    },
+  );
+  const connection = {
+    info: {
+      server: "https://example.com",
+      capabilities: { features: ["notes", "tag_editing"] },
+    },
+    request,
+    subscribe: vi.fn(
+      async (_vault: string, listener: (event: VaultClientEvent) => void) => {
+        listener({ kind: "connection", state: "connected", error: null });
+        return () => {};
+      },
+    ),
+  } as unknown as NativeRemoteConnection;
+  const client = connectRemoteVault(connection, "member", {
+    id: "remote-vault",
+    role: "editor",
+  });
+  await open(client);
+  const initialListRequests = request.mock.calls.filter(
+    ([operation]) => operation.kind === "sessions",
+  ).length;
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Remove tag existing" }),
+    ).toHaveProperty("disabled", false),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "+" }));
+  fireEvent.change(screen.getByPlaceholderText("Tag name"), {
+    target: { value: "registry" },
+  });
+  fireEvent.click(await screen.findByRole("option", { name: "#registry" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Remove tag registry" }),
+    ).toHaveProperty("disabled", false),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Remove tag existing" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Remove tag existing" }),
+    ).toBeNull(),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Accept suggested tag suggested" }),
+    ).toHaveProperty("disabled", false),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Accept suggested tag suggested" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Remove tag suggested" }),
+    ).toHaveProperty("disabled", false),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Dismiss suggested tag dismissable" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", {
+        name: "Dismiss suggested tag dismissable",
+      }),
+    ).toBeNull(),
+  );
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "ensure_tag",
+      vault_id: "remote-vault",
+      input: { name: "registry" },
+    },
+    "tag",
+    undefined,
+  );
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "accept_tag_suggestion",
+      vault_id: "remote-vault",
+      session_id: "same",
+      input: { name: "suggested", expected_revision: "metadata-2" },
+    },
+    "metadata_save",
+    undefined,
+  );
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "dismiss_tag_suggestion",
+      vault_id: "remote-vault",
+      session_id: "same",
+      input: { name: "dismissable", expected_revision: "metadata-3" },
+    },
+    "metadata_save",
+    undefined,
+  );
+  const lists = request.mock.calls.filter(
+    ([operation]) => operation.kind === "sessions",
+  );
+  expect(lists).toHaveLength(initialListRequests);
+  for (const [operation] of lists)
+    expect(operation).toEqual({
+      kind: "sessions",
+      vault_id: "remote-vault",
+      limit: 100,
+      after: null,
+    });
+});
+
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   vi.resetAllMocks();
   vi.mocked(editorMarkdown.json2mdStrict).mockImplementation(native.serialize!);
   native.views.length = 0;
@@ -328,6 +557,7 @@ beforeEach(() => {
 afterEach(async () => {
   cleanup();
   await flushDatabaseWrites();
+  vi.unstubAllGlobals();
 });
 
 it("keeps the selected note and mounted editor when only its catalog callback changes", async () => {
