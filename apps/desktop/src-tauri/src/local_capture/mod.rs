@@ -94,14 +94,14 @@ impl LocalCaptureState {
         Ok(())
     }
 }
-struct Host<R: tauri::Runtime> {
-    app: tauri::AppHandle<R>,
+struct Host {
+    app: tauri::AppHandle,
     context: Weak<VaultContext>,
     state: Arc<LocalCaptureState>,
     work: LocalSessionWorkRegistry,
 }
-pub fn configure<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+pub fn configure(
+    app: &tauri::AppHandle,
     context: &Arc<VaultContext>,
 ) -> Result<(), ApplicationError> {
     let state = app
@@ -123,7 +123,7 @@ pub fn configure<R: tauri::Runtime>(
     app.manage(host);
     Ok(())
 }
-impl<R: tauri::Runtime> LocalCaptureHost for Host<R> {
+impl LocalCaptureHost for Host {
     fn start(
         &self,
         params: CaptureParams,
@@ -141,8 +141,8 @@ impl<R: tauri::Runtime> LocalCaptureHost for Host<R> {
         })
     }
 }
-async fn start<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
+async fn start(
+    app: tauri::AppHandle,
     context: Arc<VaultContext>,
     state: Arc<LocalCaptureState>,
     registry: LocalSessionWorkRegistry,

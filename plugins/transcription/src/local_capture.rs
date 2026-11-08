@@ -15,8 +15,8 @@ pub trait LocalCaptureHost: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
 }
 
-pub fn local_capture_display_runtime<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
+pub fn local_capture_display_runtime(
+    app: tauri::AppHandle,
 ) -> Result<Arc<dyn ListenerRuntime>, crate::Error> {
     let session_state_cache = app
         .try_state::<SessionStateCache>()
