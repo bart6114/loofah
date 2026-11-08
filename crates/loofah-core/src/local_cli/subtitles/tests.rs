@@ -364,6 +364,12 @@ async fn subtitle_inventory_is_read_only_and_retains_original_history_after_cano
     assert_eq!(statuses[0].request_id, request);
     assert_eq!(statuses[0].state, LocalMediaState::Succeeded);
     assert_eq!(statuses[0].word_count, Some(1));
+    let retained = f.cli.subtitle_result(&request).await.unwrap().unwrap();
+    assert_eq!(retained.session_id, f.session);
+    assert_eq!(retained.words.len(), 1);
+    assert_eq!(Some(retained.id), statuses[0].transcript_id);
+    std::fs::write(root.join(&request).join("parsed.json"), b"{}").unwrap();
+    assert!(f.cli.subtitle_result(&request).await.is_err());
     assert!(!f.canonical().exists());
     let path = root.join(&request).join("intent.json");
     let mut value: serde_json::Value =

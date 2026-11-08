@@ -1,5 +1,37 @@
 use super::*;
 impl LocalCli {
+    pub async fn subtitle_result(
+        &self,
+        request: &str,
+    ) -> Result<Option<TranscriptWithData>, ApplicationError> {
+        canonical_uuid(request)?;
+        let directory = self
+            .context
+            .operations
+            .as_ref()
+            .ok_or_else(|| unknown("Local operation storage unavailable"))?
+            .root
+            .join("local-subtitles")
+            .join(request);
+        let request = request.to_owned();
+        let owner = self.context.clone();
+        tokio::task::spawn_blocking(move || {
+            let intent = journal::load(&directory)?
+                .ok_or_else(|| error(ErrorCode::NotFound, "Subtitle request not found"))?;
+            if intent.request_id != request || intent.vault_id != owner.events.vault_id() {
+                return Err(unknown("Original subtitle identity changed"));
+            }
+            validate_session_id(&intent.session_id)
+                .map_err(|_| unknown("Original subtitle session changed"))?;
+            if !ledger::check_file(&directory.join("parsed.json"))? {
+                return Ok(None);
+            }
+            Ok(Some(journal::read_parsed(&directory, &intent)?.transcript))
+        })
+        .await
+        .map_err(unknown)?
+    }
+
     pub async fn subtitle_status(
         &self,
         request: &str,
