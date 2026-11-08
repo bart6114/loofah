@@ -111,6 +111,14 @@ For a native Linux installation, create a dedicated `loofah` system user, instal
 
 The container runs as UID/GID `10001`. Mount persistent volumes at `/var/lib/loofah` and `/var/cache/loofah`, and mount the configuration read-only at `/etc/loofah/server.json`. The supplied configuration binds loopback; when Caddy runs on the host, Linux host networking preserves that private listener. Do not expose the backend port publicly.
 
+Shutdown closes new admission and waits for owned startup, indexing, media,
+processing and storage work to actually finish. A five-second vault response
+deadline does not release ownership while work continues. Dirty transcript
+flushes retry with bounded backoff and retain the vault lock until successful.
+The example systemd unit still enforces `TimeoutStopSec=60`: a permanent storage
+failure can reach that external forced-stop limit. Allow more time when needed
+and check service errors before treating a backup as cleanly stopped.
+
 ## Optional processing host configuration
 
 Processing remains experimental. Configure the worker and summary-body job APIs
@@ -300,6 +308,39 @@ The editor snapshot includes only the requested note's raw-note tasks. Its opaqu
 The separate `note_editor_write` capability accepts `markdown`, optional `title`, `expected_revision`, `expected_tasks_revision` and explicit `tasks` in a compound PUT. Both revisions must match after recovery; otherwise HTTP 409 returns the current coherent editor snapshot and changes nothing. This guards task-only changes even when Markdown is unchanged. Task IDs, statuses, due dates and rich task bodies come from the editor's serialized state; existing Rust replacement rules retain assignment/creation metadata and tasks from other sources. The service does not round-trip rich content through a different Markdown converter. The shared operation bounds and validates input before committing, then uses the schema 2 note recovery record for body, title and task persistence. Metadata growth beyond 8 MiB is rejected before the note body can commit. Success and conflict responses use the same 32 MiB limit.
 
 The native client refuses either editor operation when an older server lacks its advertised capability, before credential access or sending a request. An unsupported write is explicitly not committed. The opt-in notes workspace mounts the existing rich editor through these contracts, using the same scoped recovery/persistence lifecycle as source and output editing. It does not mount the main desktop shell or replace local startup.
+
+### Compound summary and template editing
+
+`document_editor_read` and `document_editor_write` add GET/PUT operations at
+`sessions/{session}/summary/editor` and
+`sessions/{session}/outputs/{document}/editor` under the selected vault API.
+Snapshots contain the target document, session metadata and only that target's
+tasks. Saves require `expected_revision`, `expected_metadata_revision` and
+`expected_tasks_revision` together with Markdown, optional session title and
+explicit tasks. All three revisions must match; HTTP 409 returns a coherent
+current snapshot. The tasks revision covers the entire session tasks file, so
+another task source changing also prevents a stale save.
+
+These operations use the shared Rust transaction through IPC and HTTPS. They
+preserve template frontmatter and output labels, unrelated documents, unknown
+metadata and tasks from other sources. A session title edit does not rewrite the
+raw note or another output. Summary reads may describe a missing summary; saving
+creates it. A missing template output is not recreated. The existing remote
+preview's source output editor remains available independently of this contract.
+
+Compound output device recovery uses schema 3 with the physical session and
+logical target, all revision baselines, explicit task state and the original
+draft. Existing schemas 1/2 retain their original bytes until resolved. Older
+clients reject schema 3 rather than treating it as a text-only draft. Successful
+or replayed save snapshots are historical receipts: clients reread canonical
+content before updating the scoped query cache. This is device recovery of
+unsaved input, not offline remote editing.
+
+New compound output intents use schema 5 in the existing `document-saves/`
+directory. Preserve this directory in backups. Recover or drain these intents
+with the current executable before a downgrade; an older executable cannot
+recover them. Restore a complete matching pre-upgrade storage backup when
+rolling back. Canonical vault files retain their existing format.
 
 The additive `audio_metadata_read` capability returns the existing recording filename, content type, byte length and SHA-256, with the same camelCase shape as desktop metadata. It returns null when an existing session has no recording, 404 for a missing/inaccessible session, and retryable 503 while recording/import is active. Readers can use this operation. Only exact canonical recording names and the legacy `audio/` location are considered; unknown files, dotfiles and per-channel/transient captures are not selected. Symlinked recording paths are refused.
 

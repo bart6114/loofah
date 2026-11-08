@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod capture;
+mod document_editor;
 mod jobs;
 mod processing_settings;
 mod session_cleanup;
@@ -32,6 +33,7 @@ pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
         .merge(crate::media::router())
         .merge(capture::router())
+        .merge(document_editor::router())
         .merge(jobs::router())
         .merge(processing_settings::router())
         .merge(session_cleanup::router())
@@ -181,6 +183,8 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "session_cleanup".into(),
             "note_editor_read".into(),
             "note_editor_write".into(),
+            "document_editor_read".into(),
+            "document_editor_write".into(),
             "audio_metadata_read".into(),
             "recording_leases".into(),
             "recording_waveforms".into(),

@@ -3,6 +3,7 @@ mod attachment_upload;
 mod attachments;
 mod audio_metadata;
 mod capture;
+mod document_editor;
 mod lifecycle;
 mod metadata;
 mod note_editor;

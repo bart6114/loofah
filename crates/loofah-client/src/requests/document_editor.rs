@@ -50,7 +50,7 @@ pub(super) fn validate_snapshot(
                 return Err(malformed());
             }
             let matches = match target {
-                DocumentTarget::Summary => document.kind == "summary",
+                DocumentTarget::Summary => document.kind == "summary" && document.id == session_id,
                 DocumentTarget::TemplateOutput { document_id } => {
                     document.kind == "template_output" && document.id == *document_id
                 }
@@ -96,5 +96,13 @@ pub(super) fn validate_outcome(
             ));
         }
     };
+    if matches!(outcome, DocumentEditorSaveOutcome::Saved(_))
+        && snapshot.document.document.is_none()
+    {
+        return Err(failure(
+            ErrorCode::IncompatibleVersion,
+            "Saved document is missing from the response",
+        ));
+    }
     validate_snapshot(snapshot, session_id, target)
 }

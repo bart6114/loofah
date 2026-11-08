@@ -340,6 +340,25 @@ async fn document_editor_rejects_cross_resource_and_malformed_replies_and_retain
             ..
         })
     ));
+    for (mode, save) in [(8, true), (9, false), (9, true)] {
+        fixture
+            .state
+            .document_editor_mode
+            .store(mode, Ordering::SeqCst);
+        let error = client
+            .execute(
+                operation(DocumentTarget::Summary, save),
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+        assert_eq!(
+            error.mutation_outcome,
+            save.then_some(MutationOutcome::Unknown)
+        );
+    }
     fixture
         .state
         .document_editor_mode
