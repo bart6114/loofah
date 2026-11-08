@@ -3,6 +3,14 @@ name = "loofah-server"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+cpu-transcription = [
+  "dep:hypr-transcribe-core",
+  "dep:hypr-transcribe-whisper-local",
+  "dep:hypr-whisper",
+  "dep:owhisper-interface",
+]
+
 [build-dependencies]
 serde_json = { workspace = true }
 
@@ -15,9 +23,13 @@ hypr-loofah-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-search-cache = { workspace = true }
 hypr-storage = { workspace = true }
+hypr-transcribe-core = { workspace = true, optional = true }
+hypr-transcribe-whisper-local = { workspace = true, optional = true }
 hypr-vault-read = { workspace = true }
 hypr-vault-write = { workspace = true }
+hypr-whisper = { workspace = true, optional = true }
 jsonwebtoken = { version = "11.1", features = ["rust_crypto"] }
+owhisper-interface = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

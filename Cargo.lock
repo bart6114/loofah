@@ -7755,6 +7755,7 @@ dependencies = [
  "loofah-client",
  "loofah-core",
  "loofah-protocol",
+ "owhisper-interface",
  "reqwest 0.13.2",
  "search-cache",
  "serde",
@@ -7767,10 +7768,13 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "transcribe-core",
+ "transcribe-whisper-local",
  "url",
  "uuid",
  "vault-read",
  "vault-write",
+ "whisper",
 ]
 
 [[package]]
