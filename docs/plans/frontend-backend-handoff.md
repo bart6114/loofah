@@ -934,7 +934,7 @@ and CPU-only services do not need summary settings, subtitle/raw imports do not
 request unavailable transcription policy, and summaries preserve titles when
 generated titles are absent. The focused adapter/deletion frontend cohort passed
 64 tests, desktop typecheck passed, and actual Native bindings were regenerated
-and formatted. The current 21-package Native graph passed 22 focused export,
+and formatted. The current 21-package Native graph passed 21 focused export,
 operational and Store deletion cases, followed by all three explicit checked
 deletion Native/SDK/real-HTTP cases. Local checked deletion remains default off;
 these focused passes do not replace the final platform matrix.
@@ -959,3 +959,12 @@ Native/plugin binding exports. Generated contracts were formatted and desktop
 typecheck passed. Timer-flushed partial updates, UI, server network tests and the
 full combined preview cohort remain pending. These are focused integration
 results; the final source/platform matrix is still required.
+
+
+The full frontend cohort through the initial preview backend and window SDK
+checkpoint passed **2,599 tests in 293 files**. This precedes the standalone
+window and preview UI source integration. CLI CI path filters now include the
+shared application/client/protocol, owner/media, capture, vault and storage crates,
+so later shared-only edits cannot silently skip CLI validation. Formatting and
+workflow checks passed, including 26 Python helper tests and the configured
+zizmor threshold.
