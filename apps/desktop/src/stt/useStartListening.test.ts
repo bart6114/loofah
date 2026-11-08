@@ -73,6 +73,14 @@ vi.mock("@hypr/ui/components/ui/toast", () => ({
   },
 }));
 
+const summaryOwner = vi.hoisted(() => ({
+  scope: { client: { scope: "local:captured" } },
+  current: () => true,
+}));
+vi.mock("~/shared/application/use-vault-read-scope", () => ({
+  useVaultReadScope: () => summaryOwner,
+}));
+
 vi.mock("~/ai/task-window-sync", () => ({
   requestMainAutoEnhance: requestMainAutoEnhanceMock,
 }));
@@ -242,6 +250,7 @@ describe("useStartListening", () => {
     finishLocalWorkMock.mockResolvedValue({ status: "ok", data: null });
 
     getEnhancerServiceMock.mockImplementation(() => ({
+      scope: summaryOwner.scope,
       queueAutoEnhance: queueAutoEnhanceMock,
       queueAutoEnhanceIfSummaryEmpty: queueAutoEnhanceIfSummaryEmptyMock,
       resetEnhanceTasks: resetEnhanceTasksMock,
@@ -714,6 +723,36 @@ describe("useStartListening", () => {
     expect(catalogLocalSessionAudioMock).not.toHaveBeenCalled();
   });
 
+  test("does not retarget post-capture generation to a replacement service with the same scope string", async () => {
+    useSessionHasTranscriptMock.mockReturnValue(true);
+    const { result } = renderHook(() =>
+      useStartListening("session-1", () => true),
+    );
+    await act(async () => {
+      await result.current();
+    });
+    getEnhancerServiceMock.mockReturnValue({
+      scope: { client: { scope: summaryOwner.scope.client.scope } },
+      queueAutoEnhance: queueAutoEnhanceMock,
+      queueAutoEnhanceIfSummaryEmpty: queueAutoEnhanceIfSummaryEmptyMock,
+      resetEnhanceTasks: resetEnhanceTasksMock,
+    });
+    const onStopped = startMock.mock.calls[0]?.[1]?.onStopped;
+    await act(async () => {
+      await onStopped?.("session-1", {
+        durationSeconds: 42,
+        audioPath: "/tmp/session.wav",
+        requestedLiveTranscription: false,
+        liveTranscriptionActive: false,
+        needsBatchRepair: false,
+      });
+    });
+    expect(resetEnhanceTasksMock).not.toHaveBeenCalled();
+    expect(queueAutoEnhanceMock).not.toHaveBeenCalled();
+    expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();
+    expect(requestMainAutoEnhanceMock).not.toHaveBeenCalled();
+  });
+
   test("catalogs finalized audio even when transcript persistence fails", async () => {
     sessionAppendTranscriptMock.mockResolvedValueOnce({
       status: "error",
@@ -916,8 +955,10 @@ describe("useStartListening", () => {
     });
 
     expect(requestMainAutoEnhanceMock).toHaveBeenCalledWith(
+      summaryOwner.scope,
       "session-1",
       "regenerate",
+      expect.any(Function),
     );
     expect(queueAutoEnhanceMock).not.toHaveBeenCalled();
     expect(queueAutoEnhanceIfSummaryEmptyMock).not.toHaveBeenCalled();

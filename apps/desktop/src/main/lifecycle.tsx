@@ -1,9 +1,7 @@
-import { useRouteContext } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 
 import { useMainHost, type MainCaptureActivity } from "./host-context";
 
-import { useLanguageModel } from "~/ai/hooks";
 import { DevtoolsFloatingPanelHost } from "~/devtools-panel/host";
 import { initEnhancerService } from "~/services/enhancer";
 import { EventListeners } from "~/services/event-listeners";
@@ -108,25 +106,13 @@ function SessionDeletionUndoListener() {
 }
 
 function EnhancerInit() {
-  const { aiTaskStore } = useRouteContext({
-    from: "__root__",
-  });
-
-  const model = useLanguageModel();
-
-  const modelRef = useRef(model);
-  modelRef.current = model;
-
+  const { scope } = useVaultHost();
+  const host = useMainHost();
+  const capture = host?.scope === scope ? host.listenerStore : undefined;
   useEffect(() => {
-    if (!aiTaskStore) return;
-
-    const service = initEnhancerService({
-      aiTaskStore,
-      getModel: () => modelRef.current,
-    });
-
+    if (!scope) return;
+    const service = initEnhancerService({ scope, capture });
     return () => service.dispose();
-  }, [aiTaskStore]);
-
+  }, [scope, capture]);
   return null;
 }

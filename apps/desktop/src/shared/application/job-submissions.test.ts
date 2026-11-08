@@ -147,6 +147,54 @@ function fixture(scopeId = "scope") {
 }
 
 describe("durable device summary submissions", () => {
+  it.each([false, true])(
+    "persists automatic only-if-empty intent without changing default wire requests (%s)",
+    async (onlyIfEmpty) => {
+      const { controller, disk, client } = fixture();
+      client.features.push("conditional_summary_jobs");
+      await controller.generateSummary("note", { onlyIfEmpty });
+      expect(disk[0].input).toEqual({
+        session_id: "note",
+        target: { kind: "summary" },
+        expected_revision: "baseline",
+        ...(onlyIfEmpty ? { only_if_empty: true } : {}),
+      });
+    },
+  );
+  it("refuses unsupported conditional generation before persisting or dispatching", async () => {
+    const { controller, store, client } = fixture();
+    await expect(
+      controller.generateSummary("note", { onlyIfEmpty: true }),
+    ).rejects.toThrow("conditional summary");
+    expect(store.prepare).not.toHaveBeenCalled();
+    expect(client.submitSummaryJob).not.toHaveBeenCalled();
+  });
+
+  it("retains unknown conditional intent when capability disappears and still refreshes acknowledged jobs", async () => {
+    const { controller, store, client, disk, job } = fixture();
+    client.features.push("conditional_summary_jobs");
+    client.submitSummaryJob.mockRejectedValueOnce(new Error("Reply lost"));
+    await expect(
+      controller.generateSummary("note", { onlyIfEmpty: true }),
+    ).rejects.toThrow("Reply lost");
+    const original = structuredClone(disk[0]);
+    client.features.pop();
+    client.submitSummaryJob.mockClear();
+    await expect(controller.resume(original.request_id)).rejects.toMatchObject({
+      detail: {
+        code: "incompatible_version",
+        mutation_outcome: "not_committed",
+      },
+    });
+    expect(client.submitSummaryJob).not.toHaveBeenCalled();
+    expect(disk).toEqual([original]);
+    await store.observe(original.request_id, job);
+    await controller.resume(original.request_id);
+    expect(client.processingJob).toHaveBeenCalledWith(job.id, undefined);
+    expect(client.submitSummaryJob).not.toHaveBeenCalled();
+    expect(disk[0].input).toEqual(original.input);
+  });
+
   it("persists explicit title policy with the original baseline and replays exactly that input after a lost reply", async () => {
     const { controller, scope, store, client, disk } = fixture();
     client.features.push("generated_titles");

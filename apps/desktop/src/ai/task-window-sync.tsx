@@ -8,6 +8,7 @@ import {
   useSummaryActivity,
   type SummaryActivity,
 } from "~/session/summary-activity";
+import type { VaultScope } from "~/shared/application/vault-scope";
 import { createAsyncListenerScope } from "~/shared/async-listener-scope";
 import type { AITaskStore } from "~/store/zustand/ai-task";
 import type { RemoteTaskState, TaskState } from "~/store/zustand/ai-task/tasks";
@@ -19,6 +20,7 @@ const TASK_ENHANCE_EVENT = "hypr:ai-task-enhance";
 const TASK_ENHANCE_RESULT_EVENT = "hypr:ai-task-enhance-result";
 type TaskEnhanceResultPayload = {
   requestId: string;
+  ownerId?: string;
   result?: EnhanceResult;
   queued?: boolean;
   error?: string;
@@ -39,6 +41,9 @@ type TaskCancelPayload = {
 };
 
 type TaskEnhancePayload = {
+  scope: string;
+  kind: "owner" | "generate";
+  ownerId?: string;
   sessionId: string;
   requestId?: string;
   sourceLabel?: string;
@@ -60,18 +65,56 @@ export async function requestMainAITaskCancel(taskId: string) {
 }
 
 export async function requestMainEnhance(
+  scope: VaultScope,
   sessionId: string,
   opts?: TaskEnhancePayload["opts"],
+  current = () => true,
 ) {
-  const response = await requestEnhance(sessionId, { opts });
+  const response = await requestEnhance(scope, sessionId, { opts }, current);
   if (!response.result)
     throw new Error("Summary did not start. Please try again.");
   return response.result;
 }
 
 async function requestEnhance(
+  scope: VaultScope,
   sessionId: string,
   request: Pick<TaskEnhancePayload, "auto" | "opts">,
+  current: () => boolean,
+) {
+  const check = () => {
+    if (
+      !current() ||
+      scope.getSnapshot().state !== "connected" ||
+      !scope.client.canEdit
+    )
+      throw new Error("The summary owner is no longer available.");
+  };
+  check();
+  const owner = await exchangeEnhance(
+    scope.client.scope,
+    sessionId,
+    { kind: "owner" },
+    check,
+  );
+  check();
+  if (!owner.ownerId)
+    throw new Error("The summary owner could not be confirmed.");
+  const response = await exchangeEnhance(
+    scope.client.scope,
+    sessionId,
+    { kind: "generate", ownerId: owner.ownerId, ...request },
+    check,
+  );
+  check();
+  return response;
+}
+
+async function exchangeEnhance(
+  scope: string,
+  sessionId: string,
+  request: Pick<TaskEnhancePayload, "kind" | "ownerId" | "auto" | "opts">,
+  check: () => void,
 ) {
   const requestId = crypto.randomUUID();
   const sourceLabel = getCurrentWebviewWindowLabel();
@@ -81,15 +124,26 @@ async function requestEnhance(
   try {
     return await new Promise<TaskEnhanceResultPayload>((resolve, reject) => {
       timeout = setTimeout(
-        () => reject(new Error("Summary did not start. Please try again.")),
+        () =>
+          reject(
+            new Error(
+              "Summary did not start. Review saved requests before trying again.",
+            ),
+          ),
         30_000,
       );
       void listen<TaskEnhanceResultPayload>(
         TASK_ENHANCE_RESULT_EVENT,
         ({ payload }) => {
           if (payload.requestId !== requestId) return;
-          if (payload.error) reject(new Error(payload.error));
-          else if (payload.result || payload.queued) resolve(payload);
+          try {
+            check();
+            if (payload.error) reject(new Error(payload.error));
+            else if (payload.ownerId || payload.result || payload.queued)
+              resolve(payload);
+          } catch (error) {
+            reject(error);
+          }
         },
       )
         .then(async (stop) => {
@@ -98,7 +152,9 @@ async function requestEnhance(
             return;
           }
           unlisten = stop;
+          check();
           await emitTo("main", TASK_ENHANCE_EVENT, {
+            scope,
             sessionId,
             ...request,
             requestId,
@@ -115,10 +171,12 @@ async function requestEnhance(
 }
 
 export async function requestMainAutoEnhance(
+  scope: VaultScope,
   sessionId: string,
   auto: NonNullable<TaskEnhancePayload["auto"]>,
+  current = () => true,
 ) {
-  await requestEnhance(sessionId, { auto });
+  await requestEnhance(scope, sessionId, { auto }, current);
 }
 
 export function AITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
@@ -205,11 +263,25 @@ function MainAITaskWindowSyncBridge({ store }: { store: AITaskStore }) {
             event.payload;
           void (async () => {
             const service = getEnhancerService();
-            if (!service) {
-              throw new Error(
-                "Summary service is unavailable. Please try again.",
-              );
+            if (
+              !service ||
+              service.scope.client.scope !== event.payload.scope
+            ) {
+              throw new Error("The summary owner is no longer available.");
             }
+            service.assertCurrent();
+            if (event.payload.kind === "owner") {
+              if (requestId && sourceLabel)
+                await emitTo(sourceLabel, TASK_ENHANCE_RESULT_EVENT, {
+                  requestId,
+                  ownerId: service.ownerId,
+                } satisfies TaskEnhanceResultPayload);
+              return;
+            }
+            if (service.ownerId !== event.payload.ownerId)
+              throw new Error(
+                "The summary owner changed. Review saved requests before trying again.",
+              );
 
             if (auto === "regenerate") {
               await service.resetEnhanceTasks(sessionId);
@@ -363,5 +435,14 @@ function isTaskEnhancePayload(payload: unknown): payload is TaskEnhancePayload {
   }
 
   const candidate = payload as Partial<TaskEnhancePayload>;
-  return typeof candidate.sessionId === "string";
+  return (
+    typeof candidate.sessionId === "string" &&
+    typeof candidate.scope === "string" &&
+    candidate.scope.length > 0 &&
+    (candidate.kind === "owner" ||
+      (candidate.kind === "generate" &&
+        typeof candidate.ownerId === "string")) &&
+    typeof candidate.requestId === "string" &&
+    typeof candidate.sourceLabel === "string"
+  );
 }

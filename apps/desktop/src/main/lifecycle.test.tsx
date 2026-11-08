@@ -26,7 +26,9 @@ vi.mock("~/shared/application/vault-provider", () => ({
 vi.mock("~/onboarding/welcome-note", () => ({
   takePendingWelcomeSession: mocks.welcome,
 }));
-vi.mock("~/services/enhancer", () => ({ initEnhancerService: vi.fn() }));
+vi.mock("~/services/enhancer", () => ({
+  initEnhancerService: vi.fn(() => ({ dispose: vi.fn() })),
+}));
 vi.mock("~/ai/hooks", () => ({ useLanguageModel: () => null }));
 vi.mock("~/stt/window-control", () => ({
   MainListenerControlBridge: () => null,

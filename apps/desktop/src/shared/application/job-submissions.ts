@@ -79,7 +79,10 @@ export class JobSubmissions {
 
   async generateSummary(
     sessionId: string,
-    options?: RequestOptions & { titlePolicy?: TitlePolicy },
+    options?: RequestOptions & {
+      titlePolicy?: TitlePolicy;
+      onlyIfEmpty?: boolean;
+    },
   ) {
     return this.generateDocument(sessionId, { kind: "summary" }, options);
   }
@@ -87,9 +90,16 @@ export class JobSubmissions {
   async generateDocument(
     sessionId: string,
     input: DocumentTarget,
-    options?: RequestOptions & { titlePolicy?: TitlePolicy },
+    options?: RequestOptions & {
+      titlePolicy?: TitlePolicy;
+      onlyIfEmpty?: boolean;
+    },
   ) {
-    const { titlePolicy = "preserve", ...requestOptions } = options ?? {};
+    const {
+      titlePolicy = "preserve",
+      onlyIfEmpty = false,
+      ...requestOptions
+    } = options ?? {};
     const transportOptions = Object.keys(requestOptions).length
       ? requestOptions
       : undefined;
@@ -97,7 +107,7 @@ export class JobSubmissions {
       input.kind === "summary"
         ? { kind: "summary" }
         : { kind: "template_output", document_id: input.document_id };
-    this.requireFeature(target, titlePolicy);
+    this.requireFeature(target, titlePolicy, onlyIfEmpty);
     const guard = captureSessionGenerationGuard(
       this.scope,
       sessionId,
@@ -154,6 +164,7 @@ export class JobSubmissions {
         session_id: sessionId,
         target,
         expected_revision: baseline.revision,
+        ...(onlyIfEmpty ? { only_if_empty: true } : {}),
         ...(titlePolicy === "generate_if_empty"
           ? { title_policy: titlePolicy }
           : {}),
@@ -183,7 +194,11 @@ export class JobSubmissions {
       );
     prepared?.assertReady();
     if (!receipt.job)
-      this.requireFeature(receipt.input.target, receipt.input.title_policy);
+      this.requireFeature(
+        receipt.input.target,
+        receipt.input.title_policy,
+        receipt.input.only_if_empty,
+      );
     options?.signal?.throwIfAborted();
     const guard = receipt.job
       ? null
@@ -224,7 +239,11 @@ export class JobSubmissions {
     return job;
   }
 
-  private requireFeature(target?: DocumentTarget, titlePolicy?: TitlePolicy) {
+  private requireFeature(
+    target?: DocumentTarget,
+    titlePolicy?: TitlePolicy,
+    onlyIfEmpty = false,
+  ) {
     if (
       !this.scope.client.features.includes("summary_body_jobs") ||
       (target?.kind === "template_output" &&
@@ -233,6 +252,19 @@ export class JobSubmissions {
       throw new ApplicationRequestError({
         code: "incompatible_version",
         message: "This connection does not support summary generation",
+        retryable: false,
+        request_id: null,
+        current_revision: null,
+        mutation_outcome: "not_committed",
+      });
+    if (
+      onlyIfEmpty &&
+      !this.scope.client.features.includes("conditional_summary_jobs")
+    )
+      throw new ApplicationRequestError({
+        code: "incompatible_version",
+        message:
+          "This connection does not support conditional summary generation",
         retryable: false,
         request_id: null,
         current_revision: null,

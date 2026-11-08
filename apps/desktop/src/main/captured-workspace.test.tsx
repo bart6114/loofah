@@ -89,7 +89,10 @@ vi.mock("./update-banner", () => ({
   SidebarTimelineUpdateButton: () => null,
 }));
 vi.mock("~/services/enhancer", () => ({
-  initEnhancerService: native.local,
+  initEnhancerService: (...args: unknown[]) => {
+    native.local(...args);
+    return { dispose: vi.fn() };
+  },
   getEnhancerService: native.local,
 }));
 vi.mock("~/stt/audio-import-worker", () => ({

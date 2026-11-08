@@ -17,6 +17,7 @@ import { catalogLocalSessionAudio } from "~/session/attachments";
 import { enqueueSessionAudioOperation } from "~/session/audio-operations";
 import { useSession, useSessionHasTranscript } from "~/session/queries";
 import { beginSummaryActivity } from "~/session/summary-activity";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { useConfigValue } from "~/shared/config";
 import { id } from "~/shared/utils";
 import type {
@@ -61,6 +62,7 @@ export function useStartListening(
   sessionId: string,
   isAvailable: () => boolean,
 ) {
+  const summaryOwner = useVaultReadScope();
   const session = useSession(sessionId);
   const hadTranscriptBeforeStart = useSessionHasTranscript(sessionId);
 
@@ -203,14 +205,22 @@ export function useStartListening(
               hadTranscriptBeforeStart &&
               (transcriptId !== null || batchCompleted);
             const service = getEnhancerService();
+            if (
+              !summaryOwner.current() ||
+              (service && service.scope !== summaryOwner.scope)
+            )
+              return;
             if (!service) {
               await requestMainAutoEnhance(
+                summaryOwner.scope,
                 sessionId,
                 shouldRegenerateExistingSummary ? "regenerate" : "if_empty",
+                () => summaryOwner.current() && isAvailable(),
               );
             } else if (shouldRegenerateExistingSummary) {
               await service.resetEnhanceTasks(sessionId);
-              if (isAvailable()) service.queueAutoEnhance(sessionId);
+              if (isAvailable() && summaryOwner.current())
+                service.queueAutoEnhance(sessionId);
             } else {
               await service.queueAutoEnhanceIfSummaryEmpty(sessionId);
             }
@@ -298,6 +308,8 @@ export function useStartListening(
     transcriptionTiming,
     start,
     isAvailable,
+    summaryOwner.scope,
+    summaryOwner.current,
   ]);
 
   return startListening;
