@@ -112,6 +112,7 @@ run_cli() {
   run_step "export-core tests" cargo test --locked -p export-core
   run_step "search-cache tests" cargo test --locked -p search-cache
   run_step "agent-access tests" cargo test --locked -p agent-access
+  run_step "local owner transport tests" cargo test --locked -p loofah-local-owner
   run_step "CLI tests" cargo test --locked -p loof-cli
   run_step "TipTap tests" cargo test --locked -p tiptap
   run_step "CLI clippy" cargo clippy --locked \

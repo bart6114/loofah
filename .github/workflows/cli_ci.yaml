@@ -75,6 +75,7 @@ jobs:
           cargo test --locked -p export-core
           cargo test --locked -p search-cache
           cargo test --locked -p agent-access
+          cargo test --locked -p loofah-local-owner
           cargo test --locked -p loof-cli
           cargo test --locked -p tiptap
       - run: |
