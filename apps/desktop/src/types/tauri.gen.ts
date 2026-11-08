@@ -1761,6 +1761,124 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async remoteMediaRequest(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    query: MediaQuery,
+  ): Promise<Result<MediaReply, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_request", {
+          connectionId,
+          vaultId,
+          requestId,
+          query,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaSubmit(
+    connectionId: string,
+    vaultId: string,
+    declaration: MediaDeclaration,
+    source: DeviceAttachmentSource | null,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_submit", {
+          connectionId,
+          vaultId,
+          declaration,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaRecover(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_recover", {
+          connectionId,
+          vaultId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaCancel(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_cancel", {
+          connectionId,
+          vaultId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaResumeSource(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+    source: DeviceAttachmentSource,
+  ): Promise<Result<MediaRequestStatus, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_resume_source", {
+          connectionId,
+          vaultId,
+          requestId,
+          source,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteMediaSubmissions(
+    connectionId: string,
+    vaultId: string,
+  ): Promise<Result<MediaSubmission[], ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_submissions", {
+          connectionId,
+          vaultId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async remoteUploadAttachmentSource(
     connectionId: string,
     upload: AttachmentUpload,
@@ -3812,6 +3930,75 @@ export type ManualMediaSummaryStatus = {
   reason: string | null;
 };
 export type Me = { member: MemberInfo; personal_vault_id: string };
+export type MediaDeclaration = {
+  request_id: string;
+  operation: MediaOperation;
+  transcription: MediaTranscriptionOptions | null;
+  summary: CaptureProcessingSummary | null;
+};
+export type MediaOperation =
+  | {
+      kind: "import_audio";
+      session_id: string | null;
+      expected: MediaSessionSnapshot | null;
+      filename: string;
+      content_type: string | null;
+      created_at: string | null;
+      transcribe: boolean;
+      source: MediaUploadSource;
+    }
+  | { kind: "transcribe"; expected: LocalMediaSourceSnapshot }
+  | {
+      kind: "import_subtitles";
+      session_id: string;
+      expected: MediaSessionSnapshot;
+      filename: string;
+      source: MediaUploadSource;
+    };
+export type MediaPhase =
+  | "receiving"
+  | "ready"
+  | "running"
+  | "review"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+export type MediaQuery =
+  | { kind: "source"; session_id: string }
+  | { kind: "list"; session_id: string | null }
+  | { kind: "status"; request_id: string }
+  | { kind: "result"; request_id: string };
+export type MediaReply =
+  | { kind: "source"; value: MediaSessionSnapshot }
+  | { kind: "list"; value: MediaRequestStatus[] }
+  | { kind: "status"; value: MediaRequestStatus }
+  | { kind: "result"; value: TranscriptWithData | null };
+export type MediaRequestStatus = {
+  declaration: MediaDeclaration;
+  revision: string;
+  phase: MediaPhase;
+  media: LocalMediaStatus | null;
+};
+export type MediaScope = {
+  profile_id: string;
+  server: string;
+  member_id: string;
+  vault_id: string;
+};
+export type MediaSessionSnapshot = {
+  metadata: MetadataSnapshot;
+  transcript_revision: string;
+  transcript_present: boolean;
+  recording: LocalMediaSourceSnapshot | null;
+};
+export type MediaSubmission = {
+  schema_version: number;
+  scope: MediaScope;
+  declaration: MediaDeclaration;
+  admission_revision: string | null;
+};
+export type MediaTranscriptionOptions = { model: string; languages: string[] };
+export type MediaUploadSource = { sha256: string; size_bytes: number };
 export type Meeting = {
   id: string;
   title: string;

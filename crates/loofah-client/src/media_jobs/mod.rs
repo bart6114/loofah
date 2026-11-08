@@ -28,7 +28,7 @@ impl RemoteClient {
 }
 impl MediaAuthority {
     pub async fn source(&self, session: &str) -> Result<MediaSessionSnapshot> {
-        validate_session_id(session).map_err(invalid)?;
+        validate_session_id(session).map_err(|cause| invalid(&cause.to_string()))?;
         let value: MediaSessionSnapshot = self
             .json(
                 Method::GET,
@@ -46,7 +46,7 @@ impl MediaAuthority {
     }
     pub async fn list(&self, session: Option<&str>) -> Result<Vec<MediaRequestStatus>> {
         if let Some(session) = session {
-            validate_session_id(session).map_err(invalid)?;
+            validate_session_id(session).map_err(|cause| invalid(&cause.to_string()))?;
         }
         let values: Vec<MediaRequestStatus> = self
             .json(
