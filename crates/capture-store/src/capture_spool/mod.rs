@@ -126,6 +126,15 @@ impl CaptureSpool {
             .await
     }
 
+    /// A device profile must recover any prior start, even if its selected vault
+    /// or member changed. This lookup never exposes another scope's contents.
+    pub async fn request_exists(self: &Arc<Self>, request_id: &str) -> Result<bool> {
+        validate_uuid(request_id)?;
+        let request_id = request_id.to_owned();
+        self.run(move |_, state| Ok(store::request_exists(state, &request_id)))
+            .await
+    }
+
     async fn run<T: Send + 'static>(
         self: &Arc<Self>,
         action: impl FnOnce(&Self, &mut store::State) -> Result<T> + Send + 'static,

@@ -990,6 +990,46 @@ async fn explicit_io_barrier_joins_an_abandoned_chunk_before_reporting_drained()
     assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
 }
 
+#[tokio::test]
+async fn request_lookup_is_profile_wide_and_survives_reopen_without_changing_manifests() {
+    let temp = test_directory();
+    let root = temp.path().join("spool");
+    let spool = open(&root).await;
+    let first = identity();
+    let unknown = uuid::Uuid::new_v4().to_string();
+    assert!(!spool.request_exists(&first.request_id).await.unwrap());
+    assert!(!spool.request_exists(&unknown).await.unwrap());
+    let writer = spool
+        .begin(first.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    assert!(spool.request_exists(&first.request_id).await.unwrap());
+    let mut other = first.clone();
+    other.scope.member_id = "other-member".into();
+    other.scope.vault_id = "other-vault".into();
+    other.capture_id = uuid::Uuid::new_v4().to_string();
+    other.request_id = uuid::Uuid::new_v4().to_string();
+    let other_writer = spool
+        .begin(other.clone(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let before = writer.snapshot().await.unwrap();
+    assert!(spool.request_exists(&other.request_id).await.unwrap());
+    assert!(spool.request_exists("../invalid-request").await.is_err());
+    assert_eq!(writer.snapshot().await.unwrap(), before);
+    assert!(!spool.request_exists(&unknown).await.unwrap());
+    drop(writer);
+    drop(other_writer);
+    drop(spool);
+    let spool = open(&root).await;
+    assert!(spool.request_exists(&first.request_id).await.unwrap());
+    assert!(spool.request_exists(&other.request_id).await.unwrap());
+    assert_eq!(
+        spool.resume(first).await.unwrap().snapshot().await.unwrap(),
+        before
+    );
+}
+
 struct Child(std::process::Child);
 impl Drop for Child {
     fn drop(&mut self) {

@@ -31,6 +31,7 @@ struct ProfileHost {
 }
 struct CaptureEntry {
     identity: CaptureIdentity,
+    format: CaptureFormat,
     device: DeviceCaptureTicket,
 }
 struct UploadEntry {
@@ -49,11 +50,20 @@ struct Inner {
     observer: Arc<dyn DeviceCaptureObserver>,
     state: Mutex<State>,
     starts: Arc<Semaphore>,
+    start_serial: tokio::sync::Mutex<()>,
     upload_updates: watch::Sender<u64>,
     uploads: Arc<CaptureUploader>,
     finished: CancellationToken,
     draining: std::sync::atomic::AtomicBool,
     executor: tokio::runtime::Handle,
+    #[cfg(test)]
+    mapping_pause: Mutex<Option<MappingPause>>,
+}
+
+#[cfg(test)]
+struct MappingPause {
+    entered: tokio::sync::oneshot::Sender<()>,
+    release: Arc<Semaphore>,
 }
 
 pub struct RemoteCaptureCoordinator {
@@ -76,6 +86,20 @@ impl Drop for RemoteCaptureCoordinator {
     }
 }
 impl RemoteCaptureCoordinator {
+    #[cfg(test)]
+    pub(super) fn pause_mapping(
+        &self,
+        entered: tokio::sync::oneshot::Sender<()>,
+        release: Arc<Semaphore>,
+    ) {
+        *self.inner.mapping_pause.lock().unwrap() = Some(MappingPause { entered, release });
+    }
+
+    #[cfg(test)]
+    pub(super) fn pending_starts(&self) -> usize {
+        8 - self.inner.starts.available_permits()
+    }
+
     #[cfg(test)]
     pub(super) fn install_test_host(
         &self,
@@ -117,11 +141,14 @@ impl RemoteCaptureCoordinator {
                     uploads: HashMap::new(),
                 }),
                 starts: Arc::new(Semaphore::new(8)),
+                start_serial: tokio::sync::Mutex::new(()),
                 upload_updates: watch::channel(0).0,
                 uploads: CaptureUploader::new(2)?,
                 finished: CancellationToken::new(),
                 draining: std::sync::atomic::AtomicBool::new(false),
                 executor: tokio::runtime::Handle::current(),
+                #[cfg(test)]
+                mapping_pause: Mutex::new(None),
             }),
         }))
     }
@@ -130,9 +157,16 @@ impl RemoteCaptureCoordinator {
         &self,
         profile: Arc<ProfileLease>,
         client: Option<Arc<RemoteClient>>,
+        request_id: String,
         target: CaptureTarget,
         format: CaptureFormat,
     ) -> Result<RemoteDeviceCapture, ApplicationError> {
+        if !valid_uuid(&request_id) {
+            return Err(error(
+                ErrorCode::Validation,
+                "A canonical capture request UUID is required",
+            ));
+        }
         let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
             error(
                 ErrorCode::ResourceLimit,
@@ -165,11 +199,42 @@ impl RemoteCaptureCoordinator {
             }
             hypr_loofah_protocol::validate_capture_format(&format)
                 .map_err(|message| error(ErrorCode::Validation, message))?;
+            let _serial = inner.start_serial.lock().await;
+            {
+                let state = inner
+                    .state
+                    .lock()
+                    .expect("device capture coordinator poisoned");
+                if let Some((_, entry)) = state.captures.iter().find(|((profile, _), entry)| {
+                    profile == &id && entry.identity.request_id == request_id
+                }) {
+                    if entry.identity.scope != scope
+                        || entry.identity.target != target
+                        || entry.format != format
+                    {
+                        return Err(error(
+                            ErrorCode::Conflict,
+                            "The capture request changed; its original recording was retained",
+                        ));
+                    }
+                    return Ok(RemoteDeviceCapture {
+                        profile_id: id,
+                        identity: entry.identity.clone(),
+                        device: entry.device.clone(),
+                    });
+                }
+            }
             let host = inner.host(&id).await?;
+            if host.spool.request_exists(&request_id).await? {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "Recover the previous capture instead of restarting its request UUID",
+                ));
+            }
             let identity = CaptureIdentity {
                 scope,
                 capture_id: uuid::Uuid::new_v4().to_string(),
-                request_id: uuid::Uuid::new_v4().to_string(),
+                request_id,
                 target,
             };
             let ticket = {
@@ -195,23 +260,43 @@ impl RemoteCaptureCoordinator {
                         ));
                     }
                 }
-                let ticket = host
-                    .device
+                host.device
                     .start(CaptureStartIntent {
                         profile_id: id.clone(),
                         identity: identity.clone(),
-                        format,
+                        format: format.clone(),
                     })
-                    .map_err(|cause| error(ErrorCode::Unavailable, &cause.to_string()))?;
+                    .map_err(|cause| error(ErrorCode::Unavailable, &cause.to_string()))?
+            };
+            #[cfg(test)]
+            {
+                let pause = inner.mapping_pause.lock().unwrap().take();
+                if let Some(pause) = pause {
+                    let _ = pause.entered.send(());
+                    pause
+                        .release
+                        .acquire()
+                        .await
+                        .expect("mapping pause closed")
+                        .forget();
+                }
+            }
+            {
+                let mut state = inner
+                    .state
+                    .lock()
+                    .expect("device capture coordinator poisoned");
+                // This start was admitted before shutdown. Complete its mapping
+                // even if the caller disappeared or shutdown began meanwhile.
                 state.captures.insert(
                     (id.clone(), identity.capture_id.clone()),
                     CaptureEntry {
                         identity: identity.clone(),
+                        format,
                         device: ticket.clone(),
                     },
                 );
-                ticket
-            };
+            }
             let watching = ticket.clone();
             let observed = identity.clone();
             let profile_id = id.clone();

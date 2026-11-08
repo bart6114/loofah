@@ -47,6 +47,13 @@ pub(super) struct State {
     pub(super) dirty: bool,
 }
 
+pub(super) fn request_exists(state: &State, request_id: &str) -> bool {
+    state
+        .entries
+        .values()
+        .any(|entry| entry.manifest.snapshot.identity.request_id == request_id)
+}
+
 pub(super) fn owner_lease(root: &Path) -> Result<File> {
     let path = root.join(".lock");
     check_file(&path, true)?;
