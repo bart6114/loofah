@@ -129,25 +129,24 @@ impl VaultContext {
                             }
                             let mut changed = !owner.path().exists();
                             for (id, policy) in &owner.policies {
-                                if !stored.records.contains_key(id) {
-                                    stored.records.insert(
-                                        id.clone(),
-                                        Record {
+                                let endpoint = fingerprint(&policy.endpoint)?;
+                                match stored.records.entry(id.clone()) {
+                                    std::collections::btree_map::Entry::Vacant(entry) => {
+                                        entry.insert(Record {
                                             revision: uuid::Uuid::new_v4().to_string(),
-                                            endpoint: fingerprint(&policy.endpoint)?,
-                                            policy_endpoint: fingerprint(&policy.endpoint)?,
+                                            endpoint: endpoint.clone(),
+                                            policy_endpoint: endpoint,
                                             api_key: None,
-                                        },
-                                    );
-                                    changed = true;
-                                } else {
-                                    let endpoint = fingerprint(&policy.endpoint)?;
-                                    let record =
-                                        stored.records.get_mut(id).expect("existing provider");
-                                    if record.policy_endpoint != endpoint {
-                                        record.policy_endpoint = endpoint;
-                                        record.revision = uuid::Uuid::new_v4().to_string();
+                                        });
                                         changed = true;
+                                    }
+                                    std::collections::btree_map::Entry::Occupied(mut entry) => {
+                                        let record = entry.get_mut();
+                                        if record.policy_endpoint != endpoint {
+                                            record.policy_endpoint = endpoint;
+                                            record.revision = uuid::Uuid::new_v4().to_string();
+                                            changed = true;
+                                        }
                                     }
                                 }
                             }
@@ -157,7 +156,7 @@ impl VaultContext {
                             if changed {
                                 owner.persist(&stored)?;
                             }
-                            Ok(owner)
+                            Ok::<_, ApplicationError>(owner)
                         })
                         .await
                         .map_err(|_| storage(false))?
@@ -170,7 +169,7 @@ impl VaultContext {
                     "Provider credential policy is already configured",
                 ));
             }
-            Ok(credentials.clone())
+            Ok::<_, ApplicationError>(credentials.clone())
         })
         .await
         .map_err(|_| storage(false))?
