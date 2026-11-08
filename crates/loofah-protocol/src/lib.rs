@@ -1,5 +1,10 @@
 #![forbid(unsafe_code)]
 
+mod document_editor;
+pub use document_editor::{
+    DocumentEditorSaveOutcome, DocumentEditorSnapshot, SaveDocumentEditorRequest,
+};
+
 use serde::{Deserialize, Serialize};
 
 mod endpoint;
