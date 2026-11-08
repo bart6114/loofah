@@ -36,6 +36,14 @@ impl LocalSessionLifecycleHost for StandaloneLocalHost {
 }
 
 impl VaultContext {
+    /// Native entrypoints must not treat failed Local host registration as server admission.
+    pub fn require_local_session_lifecycle_host(&self) -> Result<(), ApplicationError> {
+        if self.local_lifecycle_host.get().is_none() || self.lease_pin().is_none() {
+            return Err(crate::session_lifecycle_gate::session_lifecycle_busy());
+        }
+        Ok(())
+    }
+
     pub fn configure_local_session_lifecycle_host(
         &self,
         host: std::sync::Arc<dyn LocalSessionLifecycleHost>,
