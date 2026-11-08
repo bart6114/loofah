@@ -8,6 +8,9 @@ pub use document_editor::{
 
 use serde::{Deserialize, Serialize};
 
+mod local_cli;
+pub use local_cli::*;
+
 mod endpoint;
 pub use endpoint::validate_endpoint;
 

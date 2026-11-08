@@ -1,0 +1,569 @@
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+
+use hypr_loofah_protocol::{
+    LocalCliOperation, LocalCliOperationKind, LocalCliReply, LocalCliResponse, NoteSaveOutcome,
+    NoteSnapshot, SaveNoteRequest,
+};
+use hypr_storage::vault::{LeaseAttempt, VaultLease};
+use tokio::sync::Semaphore;
+
+use super::*;
+
+struct Fixture {
+    _root: tempfile::TempDir,
+    vault: PathBuf,
+    endpoints: EndpointRoot,
+    temporary: PathBuf,
+}
+impl Fixture {
+    fn new() -> Self {
+        let base = std::env::var_os("LOOFAH_OWNER_TEST_ROOT")
+            .or_else(|| std::env::var_os("RUNNER_TEMP"))
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let root = tempfile::Builder::new()
+            .prefix("oo-")
+            .tempdir_in(base)
+            .unwrap();
+        let vault = root.path().join("v");
+        std::fs::create_dir(&vault).unwrap();
+        let endpoints = EndpointRoot::new(root.path().join("e")).unwrap();
+        let temporary = endpoints.path().to_owned();
+        Self {
+            _root: root,
+            vault,
+            endpoints,
+            temporary,
+        }
+    }
+    fn lease(&self) -> VaultLease {
+        match VaultLease::try_acquire_existing(&self.vault).unwrap() {
+            LeaseAttempt::Acquired(lease) => lease,
+            LeaseAttempt::Busy => panic!("unexpected owner"),
+        }
+    }
+    async fn client(&self) -> OwnerClient {
+        match OwnerClient::resolve(&self.vault, &self.endpoints, &self.temporary)
+            .await
+            .unwrap()
+        {
+            OwnerResolution::Connected(client) => client,
+            OwnerResolution::Acquired(_) => panic!("owner lost its lease"),
+        }
+    }
+}
+
+struct Echo {
+    calls: Arc<AtomicUsize>,
+    gate: Option<Arc<Semaphore>>,
+    text: String,
+    blob: Arc<std::sync::Mutex<Option<Blob>>>,
+}
+impl Echo {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            calls: Arc::new(AtomicUsize::new(0)),
+            gate: None,
+            text: "hello".into(),
+            blob: Default::default(),
+        })
+    }
+}
+impl OwnerHandler for Echo {
+    fn operations(&self) -> Vec<LocalCliOperationKind> {
+        vec![
+            LocalCliOperationKind::Note,
+            LocalCliOperationKind::SaveNote,
+            LocalCliOperationKind::Attach,
+            LocalCliOperationKind::Attachment,
+        ]
+    }
+    fn execute(&self, request: OwnerRequest) -> OwnerFuture {
+        let calls = self.calls.clone();
+        let gate = self.gate.clone();
+        let text = self.text.clone();
+        let stored = self.blob.clone();
+        Box::pin(async move {
+            calls.fetch_add(1, Ordering::Release);
+            if let Some(gate) = gate {
+                gate.acquire().await.unwrap().forget();
+            }
+            let snapshot = |text| NoteSnapshot {
+                markdown: Some(text),
+                title: "title".into(),
+                revision: "r".into(),
+            };
+            let (reply, blob) = match request.operation {
+                LocalCliOperation::SaveNote { input, .. } => (
+                    LocalCliReply::NoteSaved {
+                        outcome: NoteSaveOutcome::Saved(snapshot(input.markdown)),
+                    },
+                    None,
+                ),
+                LocalCliOperation::Attach { .. } => {
+                    *stored.lock().unwrap() = request.blob;
+                    (
+                        LocalCliReply::Attached {
+                            attachment_id: "file.bin".into(),
+                            relative_path: "sessions/note/attachments/file.bin".into(),
+                        },
+                        None,
+                    )
+                }
+                LocalCliOperation::Attachment { .. } => (
+                    LocalCliReply::Attachment {
+                        filename: "file.bin".into(),
+                    },
+                    stored.lock().unwrap().clone(),
+                ),
+                _ => (
+                    LocalCliReply::Note {
+                        snapshot: snapshot(text),
+                    },
+                    None,
+                ),
+            };
+            OwnerResponse {
+                response: LocalCliResponse { result: Ok(reply) },
+                blob,
+            }
+        })
+    }
+}
+
+async fn until(mut condition: impl FnMut() -> bool) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !condition() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn held_owner_without_endpoint_never_returns_an_independent_lease() {
+    let fixture = Fixture::new();
+    let lease = fixture.lease();
+    let result = OwnerClient::resolve(&fixture.vault, &fixture.endpoints, &fixture.temporary).await;
+    assert!(matches!(result, Err(Error::Unavailable(_))));
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&fixture.vault).unwrap(),
+        LeaseAttempt::Busy
+    ));
+    drop(lease);
+    drop(fixture.lease());
+}
+
+#[tokio::test]
+async fn current_user_connection_binds_vault_and_delivers_a_typed_reply() {
+    let fixture = Fixture::new();
+    let handler = Echo::new();
+    let server = OwnerServer::bind(
+        fixture.lease(),
+        &fixture.endpoints,
+        &fixture.temporary,
+        handler.clone(),
+    )
+    .await
+    .unwrap();
+    let output = fixture
+        .client()
+        .await
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::Note {
+                session_id: "note".into(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(output.response.result.unwrap(),LocalCliReply::Note{snapshot:NoteSnapshot{markdown:Some(ref text),..}} if text=="hello")
+    );
+    assert_eq!(handler.calls.load(Ordering::Acquire), 1);
+    server.shutdown().await.unwrap();
+    drop(fixture.lease());
+}
+
+#[tokio::test]
+async fn large_local_notes_are_chunked_without_a_new_total_content_limit() {
+    let fixture = Fixture::new();
+    let server = OwnerServer::bind(
+        fixture.lease(),
+        &fixture.endpoints,
+        &fixture.temporary,
+        Echo::new(),
+    )
+    .await
+    .unwrap();
+    let body = "x".repeat(33 * 1024 * 1024);
+    let output = fixture
+        .client()
+        .await
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::SaveNote {
+                session_id: "note".into(),
+                input: SaveNoteRequest {
+                    markdown: body.clone(),
+                    title: None,
+                    expected_revision: "r".into(),
+                },
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let LocalCliReply::NoteSaved {
+        outcome: NoteSaveOutcome::Saved(snapshot),
+    } = output.response.result.unwrap()
+    else {
+        panic!("wrong reply")
+    };
+    assert_eq!(snapshot.markdown.as_deref(), Some(body.as_str()));
+    server.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn raw_blobs_stream_separately_and_survive_exact_hash_verification() {
+    let fixture = Fixture::new();
+    let input = fixture._root.path().join("input");
+    let data = vec![37; 150_001];
+    std::fs::write(&input, &data).unwrap();
+    let blob = Blob::copy_from(std::fs::File::open(input).unwrap(), &fixture.temporary)
+        .await
+        .unwrap();
+    let handler = Echo::new();
+    let server = OwnerServer::bind(
+        fixture.lease(),
+        &fixture.endpoints,
+        &fixture.temporary,
+        handler.clone(),
+    )
+    .await
+    .unwrap();
+    let output = fixture
+        .client()
+        .await
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::Attach {
+                session_id: "note".into(),
+                filename: "file.bin".into(),
+            },
+            Some(blob),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        output.response.result.unwrap(),
+        LocalCliReply::Attached { .. }
+    ));
+    let output = fixture
+        .client()
+        .await
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::Attachment {
+                session_id: "note".into(),
+                attachment_id: "file.bin".into(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let bytes = output
+        .blob
+        .unwrap()
+        .with_file(|file| {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)?;
+            Ok(bytes)
+        })
+        .await
+        .unwrap();
+    assert_eq!(bytes, data);
+    *handler.blob.lock().unwrap() = None;
+    server.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn dropped_client_and_shutdown_waiter_cannot_release_an_admitted_operation_owner() {
+    let fixture = Fixture::new();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(Semaphore::new(0));
+    let handler = Arc::new(Echo {
+        calls: calls.clone(),
+        gate: Some(gate.clone()),
+        text: "saved".into(),
+        blob: Default::default(),
+    });
+    let lease = fixture.lease();
+    let original = Arc::downgrade(&lease.pin());
+    let server = Arc::new(
+        OwnerServer::bind(lease, &fixture.endpoints, &fixture.temporary, handler)
+            .await
+            .unwrap(),
+    );
+    let client = fixture.client().await;
+    let request = tokio::spawn(async move {
+        client
+            .execute(
+                uuid::Uuid::new_v4().to_string(),
+                LocalCliOperation::SaveNote {
+                    session_id: "note".into(),
+                    input: SaveNoteRequest {
+                        markdown: "saved".into(),
+                        title: None,
+                        expected_revision: "r".into(),
+                    },
+                },
+                None,
+            )
+            .await
+    });
+    until(|| calls.load(Ordering::Acquire) == 1).await;
+    request.abort();
+    let _ = request.await;
+    let owner = server.clone();
+    let waiter = tokio::spawn(async move { owner.shutdown().await });
+    tokio::task::yield_now().await;
+    waiter.abort();
+    let _ = waiter.await;
+    assert!(original.upgrade().is_some());
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&fixture.vault).unwrap(),
+        LeaseAttempt::Busy
+    ));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(25), server.wait_for_shutdown())
+            .await
+            .is_err()
+    );
+    gate.add_permits(1);
+    tokio::time::timeout(Duration::from_secs(5), server.wait_for_shutdown())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(calls.load(Ordering::Acquire), 1);
+    assert!(original.upgrade().is_none());
+    drop(fixture.lease());
+}
+
+#[tokio::test]
+async fn concurrent_startup_has_one_kernel_owner_and_never_falls_back_from_busy() {
+    let fixture = Fixture::new();
+    let mut tasks = Vec::new();
+    for _ in 0..8 {
+        let vault = fixture.vault.clone();
+        let endpoints = fixture.endpoints.clone();
+        let root = fixture.temporary.clone();
+        tasks.push(tokio::spawn(async move {
+            OwnerClient::resolve(&vault, &endpoints, &root).await
+        }));
+    }
+    let mut leases = Vec::new();
+    for task in tasks {
+        match task.await.unwrap() {
+            Ok(OwnerResolution::Acquired(lease)) => leases.push(lease),
+            Err(Error::Unavailable(_)) => {}
+            _ => panic!("unexpected owner resolution"),
+        }
+    }
+    assert_eq!(leases.len(), 1);
+    drop(leases);
+    drop(fixture.lease());
+}
+
+#[tokio::test]
+async fn malformed_control_is_bounded_and_never_dispatches_an_operation() {
+    use tokio::io::AsyncWriteExt;
+    let fixture = Fixture::new();
+    let handler = Echo::new();
+    let server = OwnerServer::bind(
+        fixture.lease(),
+        &fixture.endpoints,
+        &fixture.temporary,
+        handler.clone(),
+    )
+    .await
+    .unwrap();
+    let endpoint = fixture.endpoints.endpoint(&fixture.vault).unwrap();
+    let mut stream = endpoint.connect().await.unwrap();
+    stream.write_all(&(16_385u32).to_be_bytes()).await.unwrap();
+    assert!(wire::read_control(&mut stream).await.is_err());
+    assert_eq!(handler.calls.load(Ordering::Acquire), 0);
+    server.shutdown().await.unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn sockets_and_runtime_directories_are_private_and_stale_cleanup_preserves_unknown_entries() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let fixture = Fixture::new();
+    let endpoint = fixture.endpoints.endpoint(&fixture.vault).unwrap();
+    std::fs::write(&endpoint.address, b"unknown user data").unwrap();
+    assert!(
+        OwnerServer::bind(
+            fixture.lease(),
+            &fixture.endpoints,
+            &fixture.temporary,
+            Echo::new()
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(
+        std::fs::read(&endpoint.address).unwrap(),
+        b"unknown user data"
+    );
+    std::fs::remove_file(&endpoint.address).unwrap();
+    let stale = std::os::unix::net::UnixListener::bind(&endpoint.address).unwrap();
+    drop(stale);
+    let server = OwnerServer::bind(
+        fixture.lease(),
+        &fixture.endpoints,
+        &fixture.temporary,
+        Echo::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::metadata(fixture.endpoints.path()).unwrap().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(
+        std::fs::metadata(&endpoint.address).unwrap().mode() & 0o777,
+        0o600
+    );
+    fixture.client().await;
+    server.shutdown().await.unwrap();
+    assert!(!endpoint.address.exists());
+    std::fs::set_permissions(
+        fixture.endpoints.path(),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    assert!(EndpointRoot::new(fixture.endpoints.path().to_owned()).is_err());
+}
+
+#[tokio::test]
+async fn owner_death_allows_fallback_only_after_kernel_lease_acquisition() {
+    let fixture = Fixture::new();
+    let ready = fixture._root.path().join("ready");
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "tests::owner_child", "--ignored", "--nocapture"])
+        .env("LOOFAH_OWNER_CHILD_VAULT", &fixture.vault)
+        .env("LOOFAH_OWNER_CHILD_ENDPOINTS", fixture.endpoints.path())
+        .env("LOOFAH_OWNER_CHILD_READY", &ready)
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    until(|| ready.exists()).await;
+    let client = fixture.client().await;
+    let old_epoch = client.epoch().to_owned();
+    drop(client);
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let lease = match OwnerClient::resolve(&fixture.vault, &fixture.endpoints, &fixture.temporary)
+        .await
+        .unwrap()
+    {
+        OwnerResolution::Acquired(lease) => lease,
+        _ => panic!("dead owner retained ownership"),
+    };
+    let server = OwnerServer::bind(lease, &fixture.endpoints, &fixture.temporary, Echo::new())
+        .await
+        .unwrap();
+    assert_ne!(fixture.client().await.epoch(), old_epoch);
+    server.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "child process fixture"]
+async fn owner_child() {
+    let Some(vault) = std::env::var_os("LOOFAH_OWNER_CHILD_VAULT") else {
+        return;
+    };
+    let root = EndpointRoot::new(PathBuf::from(
+        std::env::var_os("LOOFAH_OWNER_CHILD_ENDPOINTS").unwrap(),
+    ))
+    .unwrap();
+    let lease = match VaultLease::try_acquire_existing(&PathBuf::from(vault)).unwrap() {
+        LeaseAttempt::Acquired(lease) => lease,
+        _ => panic!("owner collision"),
+    };
+    let _server = OwnerServer::bind(lease, &root, root.path(), Echo::new())
+        .await
+        .unwrap();
+    std::fs::write(
+        PathBuf::from(std::env::var_os("LOOFAH_OWNER_CHILD_READY").unwrap()),
+        b"ready",
+    )
+    .unwrap();
+    std::future::pending::<()>().await;
+}
+
+struct PanicHandler;
+impl OwnerHandler for PanicHandler {
+    fn operations(&self) -> Vec<LocalCliOperationKind> {
+        vec![LocalCliOperationKind::SaveNote]
+    }
+    fn execute(&self, _request: OwnerRequest) -> OwnerFuture {
+        Box::pin(async move { panic!("application worker fault") })
+    }
+}
+
+#[tokio::test]
+async fn application_worker_panic_is_unknown_and_cannot_claim_clean_owner_shutdown() {
+    let fixture = Fixture::new();
+    let lease = fixture.lease();
+    let original = Arc::downgrade(&lease.pin());
+    let server = OwnerServer::bind(
+        lease,
+        &fixture.endpoints,
+        &fixture.temporary,
+        Arc::new(PanicHandler),
+    )
+    .await
+    .unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let error = fixture
+        .client()
+        .await
+        .execute(
+            id.clone(),
+            LocalCliOperation::SaveNote {
+                session_id: "note".into(),
+                input: SaveNoteRequest {
+                    markdown: "saved".into(),
+                    title: None,
+                    expected_revision: "r".into(),
+                },
+            },
+            None,
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(error,Error::Unknown{request_id} if request_id==id));
+    assert!(matches!(
+        server.shutdown().await,
+        Err(Error::ApplicationWorkerLost)
+    ));
+    assert!(original.upgrade().is_some());
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&fixture.vault).unwrap(),
+        LeaseAttempt::Busy
+    ));
+}

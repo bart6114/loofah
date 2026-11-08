@@ -1,0 +1,13 @@
+# Local vault owner transport
+
+Internal same-user transport for typed CLI and MCP operations. It has no Tauri, model-engine, network-login, or application-logic dependency. The application dispatcher supplies the operations it supports; unsupported operations fail explicitly.
+
+`storage::vault::VaultLease` is the ownership authority. Resolve it for each operation. A busy vault can only use its owner endpoint: missing, incompatible, stalled, or stale endpoints never authorize an independent Store. Only successfully acquiring the canonical vault lock allows standalone access. Idle MCP servers retain a locator, not a vault lease. Older desktop/CLI versions do not honor this lock: stop all older processes before upgrading; endpoint discovery cannot prove their absence.
+
+Unix endpoints use a private current-user directory, a `0600` socket, and kernel peer credentials in both directions. Windows endpoints use protected current-user SID DACLs, reject remote pipe clients, and check the peer process token in both directions. Windows x64 and ARM64 native checks remain required.
+
+Control messages are limited to 16 KiB and data frames to 64 KiB. Typed JSON and optional raw file blobs stream through private host-created temporary files with length and SHA-256 verification. There is no transport-wide note, import, or export size limit. Four connections can execute concurrently. A connection handles one operation and binds its UUID, vault identity, and owner epoch; this transport does not supply a generic mutation journal or automatically replay mutations after lost replies.
+
+Admitted handlers continue after their client disconnects. Shutdown stops new admission and network delivery, then waits for actual admitted work and file transfers to finish. Cancelling a shutdown waiter does not release its owner. An application worker panic returns an uncertain shutdown error and retains ownership for review. Host handlers must retain their application/native resources through actual completion. Abrupt process termination cannot provide a clean-drain guarantee; canonical recovery remains the application's responsibility.
+
+Tests inject a short endpoint directory rather than writing sockets under `/tmp`. For local development, set `LOOFAH_OWNER_TEST_ROOT=/Volumes/T7`; CI uses `RUNNER_TEMP` when provided. Temporary transfer data and build artifacts must follow the host's artifact-location policy.
