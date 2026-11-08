@@ -120,7 +120,7 @@ pub(super) async fn local_attachment(
     }
 }
 
-pub(super) struct StagedExport {
+pub(crate) struct StagedExport {
     file: tempfile::NamedTempFile,
     root: PathBuf,
     identity: DirectoryIdentity,
@@ -195,7 +195,56 @@ pub(super) fn stage(
         extension: extension.into(),
     })
 }
-pub(super) fn publish(mut staged: StagedExport) -> Result<PathBuf, ApplicationError> {
+pub(crate) fn stage_download(
+    root: PathBuf,
+    filename: &str,
+) -> Result<(StagedExport, std::fs::File), ApplicationError> {
+    hypr_loofah_protocol::validate_attachment_basename(filename)
+        .map_err(|_| error(ErrorCode::Validation, "Invalid original media filename"))?;
+    let parent = root.parent().ok_or_else(unexpected)?;
+    directory(parent)?;
+    match std::fs::create_dir(&root) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(io_error(error)),
+    }
+    let identity = directory(&root)?;
+    let file = tempfile::Builder::new()
+        .prefix(".loofah-source-")
+        .tempfile_in(&root)
+        .map_err(io_error)?;
+    let output = file.reopen().map_err(io_error)?;
+    let filename = hypr_storage::fs::windows_safe_filename(filename);
+    let path = Path::new(&filename);
+    let name = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or_else(unexpected)?
+        .into();
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .into();
+    Ok((
+        StagedExport {
+            file,
+            root,
+            identity,
+            name,
+            extension,
+        },
+        output,
+    ))
+}
+impl StagedExport {
+    pub(crate) fn mark_download(&self) {
+        if let Err(cause) = crate::remote::attachments::mark_download(self.file.path()) {
+            tracing::warn!(%cause,"Could not apply original media download metadata");
+        }
+    }
+}
+pub(crate) fn publish(mut staged: StagedExport) -> Result<PathBuf, ApplicationError> {
     if directory(&staged.root)? != staged.identity {
         return Err(error(
             ErrorCode::Conflict,
@@ -203,10 +252,15 @@ pub(super) fn publish(mut staged: StagedExport) -> Result<PathBuf, ApplicationEr
         ));
     }
     for suffix in 0..10000 {
-        let name = if suffix == 0 {
-            format!("{}.{}", staged.name, staged.extension)
+        let stem = if suffix == 0 {
+            staged.name.clone()
         } else {
-            format!("{} ({suffix}).{}", staged.name, staged.extension)
+            format!("{} ({suffix})", staged.name)
+        };
+        let name = if staged.extension.is_empty() {
+            stem
+        } else {
+            format!("{stem}.{}", staged.extension)
         };
         let path = staged.root.join(name);
         match staged.file.persist_noclobber(&path) {

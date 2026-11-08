@@ -838,6 +838,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             remote::media_jobs::remote_media_cancel::<tauri::Wry>,
             remote::media_jobs::remote_media_resume_source::<tauri::Wry>,
             remote::media_jobs::remote_media_submissions::<tauri::Wry>,
+            remote::media_jobs::remote_media_export_source::<tauri::Wry>,
             remote::remote_upload_attachment_source::<tauri::Wry>,
             remote::remote_cancel_request::<tauri::Wry>,
             remote::remote_subscribe::<tauri::Wry>,

@@ -185,3 +185,34 @@ fn retired_export_window_cannot_rebind_or_cancel_the_replacement_generation() {
         .unwrap();
     assert!(published);
 }
+
+#[test]
+fn original_source_publication_streams_large_files_and_preserves_existing_names() {
+    use std::io::Write;
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().canonicalize().unwrap().join("Loofah");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("original.wav"), b"user file").unwrap();
+    let (stage, mut file) = files::stage_download(root.clone(), "original.wav").unwrap();
+    file.write_all(b"verified source").unwrap();
+    // A sparse source proves this path does not share the rendered-export Vec budget.
+    file.set_len(129 * 1024 * 1024).unwrap();
+    file.sync_all().unwrap();
+    drop(file);
+    let saved = files::publish(stage).unwrap();
+    assert_eq!(saved.file_name().unwrap(), "original (1).wav");
+    assert_eq!(std::fs::metadata(saved).unwrap().len(), 129 * 1024 * 1024);
+    assert_eq!(
+        std::fs::read(root.join("original.wav")).unwrap(),
+        b"user file"
+    );
+    let (stage, file) = files::stage_download(root.clone(), "original").unwrap();
+    drop(file);
+    assert_eq!(
+        files::publish(stage).unwrap().file_name().unwrap(),
+        "original"
+    );
+    for invalid in ["../outside.wav", ".hidden.wav", "nested/source.wav"] {
+        assert!(files::stage_download(root.clone(), invalid).is_err());
+    }
+}

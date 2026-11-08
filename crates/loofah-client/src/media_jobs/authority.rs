@@ -166,3 +166,18 @@ impl SourcePin {
         Ok(())
     }
 }
+
+/// Holds only the final original profile/login fence, after the private copy is complete.
+pub struct MediaSourceExportGuard(Arc<DispatchGuard>);
+impl MediaSourceExportGuard {
+    pub fn check_current(&self) -> Result<()> {
+        self.0.check_current()
+    }
+}
+impl MediaAuthority {
+    pub async fn guard_source_export(&self) -> Result<MediaSourceExportGuard> {
+        self.client.media_source_export_capability(&self.cancel)?;
+        self.check_current().await?;
+        Ok(MediaSourceExportGuard(self.guard().await?))
+    }
+}

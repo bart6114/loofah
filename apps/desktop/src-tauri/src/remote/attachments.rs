@@ -529,7 +529,7 @@ fn publish_copy(
 }
 
 #[cfg(windows)]
-fn mark_download(path: &Path) -> std::io::Result<()> {
+pub(crate) fn mark_download(path: &Path) -> std::io::Result<()> {
     use std::io::Write;
     let mut stream = path.as_os_str().to_os_string();
     stream.push(":Zone.Identifier");
@@ -543,7 +543,7 @@ fn mark_download(path: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn mark_download(path: &Path) -> std::io::Result<()> {
+pub(crate) fn mark_download(path: &Path) -> std::io::Result<()> {
     use std::process::{Command, Stdio};
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -584,7 +584,7 @@ fn mark_download(path: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn mark_download(_: &Path) -> std::io::Result<()> {
+pub(crate) fn mark_download(_: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

@@ -5,12 +5,29 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 mod authority;
+mod download;
 mod submissions;
 mod upload;
-pub use authority::{MediaAuthority, MediaScope};
+pub use authority::{MediaAuthority, MediaScope, MediaSourceExportGuard};
 pub use submissions::{MediaSubmission, MediaSubmissions};
 const SNAPSHOT_LIMIT: usize = 16 * 1024 * 1024;
 impl RemoteClient {
+    pub fn media_source_export_capability(&self, cancel: &CancellationToken) -> Result<()> {
+        self.media_jobs_capability(cancel)?;
+        if !self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "media_source_export")
+        {
+            return Err(failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support original media source export. Upgrade the server and reconnect.",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn media_initial_metadata_capability(&self, cancel: &CancellationToken) -> Result<()> {
         self.media_jobs_capability(cancel)?;
         if !self

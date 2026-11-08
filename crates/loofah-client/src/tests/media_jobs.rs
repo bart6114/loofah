@@ -416,3 +416,5 @@ async fn cancelled_media_upload_keeps_original_profile_until_actual_source_read_
     .unwrap();
     assert_eq!(reopened.profile().await.name, "media");
 }
+
+mod source_export;

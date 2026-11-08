@@ -1,4 +1,4 @@
-mod files;
+pub(crate) mod files;
 mod state;
 #[cfg(test)]
 mod tests;

@@ -75,6 +75,7 @@ pub struct RemoteClient {
     tokens: Arc<Mutex<auth::TokenState>>,
     stop: CancellationToken,
     upload_writers: Arc<tokio::sync::Semaphore>,
+    media_source_readers: Arc<tokio::sync::Semaphore>,
 }
 
 impl RemoteClient {
@@ -164,6 +165,7 @@ impl RemoteClient {
             tokens: Arc::new(Mutex::new(auth::TokenState::default())),
             stop: CancellationToken::new(),
             upload_writers: Arc::new(tokio::sync::Semaphore::new(2)),
+            media_source_readers: Arc::new(tokio::sync::Semaphore::new(2)),
         }))
     }
 

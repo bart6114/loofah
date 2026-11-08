@@ -1,9 +1,11 @@
 use super::*;
+mod source_export;
 use crate::attachment_upload::{DeviceAttachmentSource, DeviceUploadIo, UploadReader};
 use hypr_loofah_client::media_jobs::{
     MediaAuthority, MediaScope, MediaSubmission, MediaSubmissions,
 };
 use hypr_loofah_protocol::*;
+pub use source_export::remote_media_export_source;
 use std::sync::Weak;
 
 #[derive(Default)]
