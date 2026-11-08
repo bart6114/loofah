@@ -277,7 +277,7 @@ async fn sealed_capture(
         .await;
     assert_eq!(status, StatusCode::OK, "{value}");
     let path = format!("{base}/{}", input.identity.capture_id);
-    let frames = 160;
+    let frames = 16_000;
     let pcm: Vec<u8> = (0..frames)
         .flat_map(|_| [0.25f32.to_le_bytes(), (-0.5f32).to_le_bytes()].concat())
         .collect();
@@ -391,9 +391,12 @@ async fn executable_stopped_restore_preserves_scopes_secrets_pending_capture_and
     server.stop().await;
     let relative = PathBuf::from(format!("vaults/{vault}/sessions/{session}"));
     let directory = storage.join(&relative);
+    let attachment: Vec<u8> = (0..2 * 1024 * 1024)
+        .map(|index| (index % 251) as u8)
+        .collect();
     fs::write(
         directory.join("unknown-private-attachment.bin"),
-        b"USER ATTACHMENT\0\xff",
+        &attachment,
     )
     .unwrap();
     fs::write(
@@ -596,7 +599,7 @@ async fn executable_stopped_restore_preserves_scopes_secrets_pending_capture_and
                 .join("unknown-private-attachment.bin")
         )
         .unwrap(),
-        b"USER ATTACHMENT\0\xff"
+        attachment
     );
     assert_eq!(
         fs::read(restored.join(&relative).join(".hidden-user-data")).unwrap(),
