@@ -7737,6 +7737,7 @@ name = "loofah-local-owner"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "loofah-core",
  "loofah-protocol",
  "serde",
  "serde_json",

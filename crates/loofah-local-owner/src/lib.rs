@@ -6,6 +6,10 @@ use hypr_loofah_protocol::{
 use hypr_storage::vault::VaultLease;
 
 mod blob;
+#[cfg(feature = "core")]
+mod core;
+#[cfg(feature = "core")]
+pub use core::CoreOwner;
 mod client;
 mod platform;
 mod server;

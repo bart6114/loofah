@@ -90,8 +90,12 @@ impl OwnerServer {
         })
     }
 
-    pub async fn shutdown(&self) -> Result<()> {
+    pub fn request_shutdown(&self) {
         self.stop.cancel();
+    }
+
+    pub async fn shutdown(&self) -> Result<()> {
+        self.request_shutdown();
         self.wait_for_shutdown().await
     }
     pub async fn wait_for_shutdown(&self) -> Result<()> {

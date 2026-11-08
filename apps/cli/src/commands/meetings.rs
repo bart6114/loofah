@@ -568,8 +568,14 @@ async fn attach_file(
         )
         .await?
         .response
-        .result?
-    {
+        .result
+        .map_err(|error| {
+            if error.code == hypr_loofah_protocol::ErrorCode::NotFound {
+                Error::NotFound(format!("meeting '{id}'"))
+            } else {
+                Error::from(error)
+            }
+        })? {
         Reply::Attached {
             attachment_id,
             relative_path,

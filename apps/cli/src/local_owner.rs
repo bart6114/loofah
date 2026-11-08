@@ -3,10 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use hypr_loofah_core::{
-    VaultRuntime,
-    local_cli::{LocalCli, LocalCliArtifact},
-};
+use hypr_loofah_core::{VaultRuntime, local_cli::LocalCli};
 use hypr_loofah_local_owner::{
     Blob, EndpointRoot, OwnerClient, OwnerFuture, OwnerHandler, OwnerRequest, OwnerResolution,
     OwnerResponse, OwnerServer,
@@ -285,64 +282,42 @@ impl OwnerHandler for CoreOwner {
                 progress,
             } = request;
             let result = async {
-                let input = match blob {
-                    Some(blob) => {
-                        let size = blob.len();
-                        let sha = blob.sha256().to_owned();
-                        let path = blob.trusted_path().map_err(application_owner_error)?;
-                        let file = blob
-                            .with_file(|file| Ok(file.try_clone()?))
-                            .await
-                            .map_err(application_owner_error)?;
-                        Some(LocalCliArtifact::new(
-                            file,
-                            size,
-                            sha,
-                            Some(path),
-                            Box::new(blob),
-                        ))
-                    }
-                    None => None,
+                if let Dispatcher::Application(dispatcher) = dispatcher {
+                    return Ok(
+                        hypr_loofah_local_owner::CoreOwner::new(dispatcher, temporary)
+                            .execute(OwnerRequest {
+                                request_id,
+                                operation,
+                                blob,
+                                progress,
+                            })
+                            .await,
+                    );
+                }
+                let Dispatcher::Maintenance { lease, cache } = dispatcher else {
+                    unreachable!()
                 };
+                if blob.is_some() {
+                    return Err(hypr_loofah_client::failure(
+                        ErrorCode::Validation,
+                        "Maintenance does not accept an upload",
+                    ));
+                }
                 let progress = Arc::new(move |event| progress.report(event));
-                let result = match dispatcher {
-                    Dispatcher::Application(dispatcher) => {
-                        dispatcher
-                            .execute(request_id, operation, input, progress)
-                            .await?
-                    }
-                    Dispatcher::Maintenance { lease, cache } => {
-                        if input.is_some() {
-                            return Err(hypr_loofah_client::failure(
-                                ErrorCode::Validation,
-                                "Maintenance does not accept an upload",
-                            ));
-                        }
-                        hypr_loofah_core::local_cli::execute_local_maintenance(
-                            lease, cache, operation, progress,
-                        )
-                        .await?
-                    }
-                };
-                let blob = match result.artifact {
-                    Some(artifact) => {
-                        let (file, owner) = artifact.into_parts();
-                        Some(
-                            Blob::copy_from_owned(file, &temporary, owner)
-                                .await
-                                .map_err(application_owner_error)?,
-                        )
-                    }
-                    None => None,
-                };
-                Ok::<_, ApplicationError>((result.reply, blob))
+                let result = hypr_loofah_core::local_cli::execute_local_maintenance(
+                    lease, cache, operation, progress,
+                )
+                .await?;
+                Ok::<_, ApplicationError>(OwnerResponse {
+                    response: LocalCliResponse {
+                        result: Ok(result.reply),
+                    },
+                    blob: None,
+                })
             }
             .await;
             match result {
-                Ok((reply, blob)) => OwnerResponse {
-                    response: LocalCliResponse { result: Ok(reply) },
-                    blob,
-                },
+                Ok(response) => response,
                 Err(cause) => OwnerResponse {
                     response: LocalCliResponse { result: Err(cause) },
                     blob: None,

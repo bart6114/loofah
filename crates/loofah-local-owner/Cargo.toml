@@ -3,7 +3,11 @@ name = "loofah-local-owner"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+core = ["dep:hypr-loofah-core"]
+
 [dependencies]
+hypr-loofah-core = { workspace = true, optional = true }
 hypr-loofah-protocol = { workspace = true }
 hypr-storage = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

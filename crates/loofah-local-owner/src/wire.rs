@@ -86,7 +86,44 @@ pub(crate) async fn send_control<W: AsyncWrite + Unpin>(io: &mut W, value: &Cont
 
 pub(crate) async fn read_control<R: AsyncRead + Unpin>(io: &mut R) -> Result<Control> {
     let bytes = read_frame(io, CONTROL_BYTES).await?;
-    decode(&bytes)
+    decode_control(&bytes)
+}
+
+fn decode_control(bytes: &[u8]) -> Result<Control> {
+    #[derive(Deserialize)]
+    struct Header {
+        kind: String,
+    }
+    let header: Header = decode(bytes)?;
+    if header.kind != "progress" {
+        return decode(bytes);
+    }
+    // Serde's internally tagged enum buffers its content and cannot deserialize
+    // u128. Read progress directly from JSON to preserve the full elapsed range.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Progress {
+        kind: ProgressKind,
+        request_id: String,
+        epoch: String,
+        progress: LocalCliProgress,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum ProgressKind {
+        Progress,
+    }
+    let Progress {
+        kind: ProgressKind::Progress,
+        request_id,
+        epoch,
+        progress,
+    } = decode(bytes)?;
+    Ok(Control::Progress {
+        request_id,
+        epoch,
+        progress,
+    })
 }
 
 fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
@@ -182,4 +219,48 @@ async fn read_frame<R: AsyncRead + Unpin>(io: &mut R, limit: usize) -> Result<Ve
 
 pub(crate) fn uuid(value: &str) -> bool {
     uuid::Uuid::parse_str(value).is_ok_and(|id| !id.is_nil() && id.to_string() == value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn framed_progress_roundtrips_integer_elapsed_time_without_narrowing() {
+        for elapsed_ms in [0, 1, u32::MAX as u128 + 1, u64::MAX as u128, u128::MAX] {
+            let expected = Control::Progress {
+                request_id: uuid::Uuid::new_v4().to_string(),
+                epoch: uuid::Uuid::new_v4().to_string(),
+                progress: LocalCliProgress {
+                    schema_version: "2".into(),
+                    phase: "indexing".into(),
+                    processed: 1,
+                    total: Some(2),
+                    added: 1,
+                    updated: 0,
+                    deleted: 0,
+                    elapsed_ms,
+                },
+            };
+            let (mut sender, mut receiver) = tokio::io::duplex(CONTROL_BYTES);
+            send_control(&mut sender, &expected).await.unwrap();
+            let actual = read_control(&mut receiver).await.unwrap();
+            assert_eq!(
+                serde_json::to_string(&actual).unwrap(),
+                serde_json::to_string(&expected).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn progress_rejects_negative_fractional_and_unknown_fields() {
+        let base = r#"{"kind":"progress","request_id":"request","epoch":"epoch","progress":{"schema_version":"2","phase":"indexing","processed":1,"total":2,"added":1,"updated":0,"deleted":0,"elapsed_ms":0}}"#;
+        for changed in [
+            base.replace("\"elapsed_ms\":0", "\"elapsed_ms\":-1"),
+            base.replace("\"elapsed_ms\":0", "\"elapsed_ms\":0.5"),
+            base.replace("\"elapsed_ms\":0", "\"elapsed_ms\":0,\"future\":true"),
+        ] {
+            assert!(decode_control(changed.as_bytes()).is_err());
+        }
+    }
 }
