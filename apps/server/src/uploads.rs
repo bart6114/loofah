@@ -145,7 +145,11 @@ async fn upload(
     let checked_identity = identity.clone();
     let checked_vault = vault.clone();
     let (send, receive) = mpsc::channel(2);
-    let mut work = tokio::spawn(async move {
+    let observation = crate::operational::REQUEST
+        .try_with(Clone::clone)
+        .ok()
+        .flatten();
+    let mut work = tokio::spawn(crate::operational::REQUEST.scope(observation, async move {
         admitted_write(&host, async move {
             let _permit = permit;
             let _monitor = observer;
@@ -170,7 +174,7 @@ async fn upload(
                 .map_err(ApiError::from)
         })
         .await
-    });
+    }));
     let mut stream = body.into_data_stream();
     let mut received = 0_u64;
     loop {

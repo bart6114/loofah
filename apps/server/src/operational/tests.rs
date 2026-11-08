@@ -271,3 +271,42 @@ async fn future_runtime_schema_keeps_liveness_but_fails_readiness_without_leakin
     // Shutdown reports the original failed runtime while still draining its owners.
     let _ = service.shutdown().await;
 }
+
+#[tokio::test]
+async fn streamed_attachment_writer_keeps_its_original_operational_scope() {
+    use sha2::{Digest, Sha256};
+    let fixture = Fixture::new().await;
+    let me = fixture.login("alice").await;
+    let vault = &me.personal_vault_id;
+    let metrics = sampled(&fixture, vault).await;
+    let (status, created) = fixture
+        .call(
+            "alice",
+            "POST",
+            &format!("/api/v1/vaults/{vault}/sessions"),
+            Some(json!({"title":"Test","markdown":"Note"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let session = created["meta"]["id"].as_str().unwrap();
+    let before = metrics.writes.load(Ordering::Relaxed);
+    let completed = metrics.writes_completed.load(Ordering::Relaxed);
+    let bytes = b"PRIVATE-SOURCE-CANARY";
+    let sha = Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let response = fixture.app.clone().oneshot(Request::builder().method("POST").uri(format!("/api/v1/vaults/{vault}/sessions/{session}/attachments?filename=fixture.bin&size_bytes={}&sha256={sha}", bytes.len())).header("authorization", format!("Bearer {}", fixture.token("alice"))).header("x-loofah-api-major", "1").header("x-request-id", uuid::Uuid::new_v4().to_string()).header("content-type", "application/octet-stream").header("content-length", bytes.len()).body(Body::from(bytes.to_vec())).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(metrics.writes.load(Ordering::Relaxed), before + 1);
+    assert_eq!(
+        metrics.writes_completed.load(Ordering::Relaxed),
+        completed + 1
+    );
+    assert!(
+        !serde_json::to_string(&metrics.snapshot(StoragePressure::Normal))
+            .unwrap()
+            .contains("CANARY")
+    );
+    fixture.service.shutdown().await.unwrap();
+}
