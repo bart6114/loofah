@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 
+import { useTranscriptOverview } from "./transcript-overview";
+
 import { type Person, usePeople } from "~/people/queries";
 import {
   type ApplicationClient,
@@ -57,18 +59,7 @@ export function useSessionTranscripts(sessionId: string): TranscriptRecord[] {
 }
 
 export function useSessionTranscriptMetadata(sessionId: string) {
-  return useIndexQuery({
-    entity: "transcripts",
-    ids: [sessionId],
-    queryKey: ["session-transcript-metadata", sessionId],
-    queryFn: async () => {
-      const result =
-        await getApplicationClient().store.sessionTranscriptMetadata(sessionId);
-      if (result.status === "error") throw new Error(result.error);
-      return result.data;
-    },
-    enabled: Boolean(sessionId),
-  });
+  return useTranscriptOverview(sessionId);
 }
 
 export function useSessionTranscriptsQuery(sessionId: string) {

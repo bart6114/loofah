@@ -34,6 +34,7 @@ const native = vi.hoisted(() => ({
     applicationReadDocument: vi.fn(),
     applicationSaveDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
+    applicationTranscriptOverview: vi.fn(),
     applicationAudioMetadata: vi.fn(),
     applicationAttachmentInfo: vi.fn(),
     applicationAttachmentMetadata: vi.fn(),
@@ -1382,4 +1383,43 @@ it("shares checked attachment review and removal contracts with a stable request
     "attachment_removed",
     options,
   );
+});
+
+it("reads indexed transcript overviews through both captured adapters without loading transcript words", async () => {
+  const overview = {
+    has_words: true,
+    speaker_labels: ["Bob", "Alice"],
+    started_at: 10,
+    ended_at: null,
+  };
+  native.commands.applicationTranscriptOverview.mockResolvedValue({
+    status: "ok",
+    data: overview,
+  });
+  const local = await connectLocalVault();
+  expect(local.features).toContain("transcript_overview");
+  expect(await local.transcriptOverview("same")).toEqual(overview);
+  expect(native.commands.applicationTranscriptOverview).toHaveBeenCalledWith(
+    "same",
+  );
+  const request = vi.fn().mockResolvedValue(overview);
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://example.com",
+        capabilities: { features: ["transcript_overview"] },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    vault,
+  );
+  const options = { signal: new AbortController().signal };
+  expect(await remote.transcriptOverview("same", options)).toEqual(overview);
+  expect(request).toHaveBeenCalledWith(
+    { kind: "transcript_overview", vault_id: "first", session_id: "same" },
+    "transcript_overview",
+    options,
+  );
+  expect(native.commands.applicationTranscripts).not.toHaveBeenCalled();
 });

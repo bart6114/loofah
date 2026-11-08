@@ -11,6 +11,7 @@ import { VaultScope } from "~/shared/application/vault-scope";
 export function createRenderCacheHost(
   scopeId = "local:transcript",
   networkMode: "always" | "online" = "always",
+  overrides: Partial<VaultClient> = {},
 ) {
   let receive: ((event: VaultClientEvent) => void) | undefined;
   const scope = new VaultScope({
@@ -25,6 +26,7 @@ export function createRenderCacheHost(
         receive = undefined;
       };
     },
+    ...overrides,
   } as unknown as VaultClient);
   scope.queryClient.setDefaultOptions({ queries: { retry: false } });
   const rootClient = new QueryClient({

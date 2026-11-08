@@ -68,6 +68,7 @@ import type {
   TasksSaveOutcome,
   ReplaceTasksRequest,
   TranscriptWithData,
+  TranscriptOverview,
   VaultInfo,
   SummaryJobRequest,
   ListProcessingJobsInput,
@@ -243,6 +244,10 @@ export type VaultClient = {
     input: SaveDocumentRequest,
     options?: RequestOptions,
   ) => Promise<DocumentSaveOutcome>;
+  transcriptOverview: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<TranscriptOverview>;
   transcripts: (
     sessionId: string,
     options?: RequestOptions,
@@ -372,6 +377,7 @@ export async function connectLocalVault(): Promise<VaultClient> {
       "recording_delete",
       "notes",
       "session_summaries",
+      "transcript_overview",
       "tag_editing",
       "session_cleanup",
       "note_editor_read",
@@ -487,6 +493,8 @@ export async function connectLocalVault(): Promise<VaultClient> {
       ),
     documents: (sessionId, options) =>
       ipc(() => commands.applicationDocuments(sessionId), options),
+    transcriptOverview: (sessionId, options) =>
+      ipc(() => commands.applicationTranscriptOverview(sessionId), options),
     transcripts: (sessionId, options) =>
       ipc(() => commands.applicationTranscripts(sessionId), options),
     audioMetadata: (sessionId, options) =>
@@ -826,6 +834,16 @@ export function connectRemoteVault(
       connection.request(
         { kind: "documents", vault_id: vaultId, session_id: sessionId },
         "documents",
+        options,
+      ),
+    transcriptOverview: (sessionId, options) =>
+      connection.request(
+        {
+          kind: "transcript_overview",
+          vault_id: vaultId,
+          session_id: sessionId,
+        },
+        "transcript_overview",
         options,
       ),
     transcripts: (sessionId, options) =>

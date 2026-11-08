@@ -1,14 +1,22 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@hypr/utils";
 
-import { usePeople } from "~/people/queries";
-import { useSessionTranscriptMetadata } from "~/stt/queries";
+import { useTranscriptOverview } from "~/stt/transcript-overview";
 
 export function useSessionPeopleNames(sessionId: string): string[] {
-  const { data } = useSessionTranscriptMetadata(sessionId);
-  const people = usePeople();
+  const overview = useTranscriptOverview(sessionId);
+  const { data: people = [] } = useQuery(
+    {
+      ...overview.scope.peopleOptions(),
+      enabled:
+        overview.readable && Boolean(overview.data?.speaker_labels.length),
+    },
+    overview.scope.queryClient,
+  );
+  const data = overview.data;
   return useMemo(() => {
     const nameById = new Map(people.map((person) => [person.id, person.name]));
     return [

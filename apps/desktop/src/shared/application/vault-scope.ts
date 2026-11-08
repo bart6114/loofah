@@ -468,6 +468,13 @@ export class VaultScope {
         ),
     });
   }
+  transcriptOverviewOptions(sessionId: string) {
+    return queryOptions({
+      queryKey: ["vault", this.client.scope, "transcript_overview", sessionId],
+      queryFn: ({ signal }) =>
+        this.run(() => this.client.transcriptOverview(sessionId, { signal })),
+    });
+  }
   transcriptsOptions(sessionId: string) {
     return queryOptions({
       queryKey: ["vault", this.client.scope, "transcripts", sessionId],
@@ -763,6 +770,13 @@ export class VaultScope {
           if (kind === "tasks_snapshot")
             return (
               ["tasks", "sessions", "session_headers"].includes(
+                change.entity,
+              ) &&
+              (all || ids.has(String(id)))
+            );
+          if (kind === "transcript_overview")
+            return (
+              ["transcripts", "sessions", "session_headers"].includes(
                 change.entity,
               ) &&
               (all || ids.has(String(id)))

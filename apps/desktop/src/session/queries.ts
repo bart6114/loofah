@@ -19,6 +19,7 @@ import { useIndexQuery } from "~/shared/index-query";
 import { DEFAULT_USER_ID, id } from "~/shared/utils";
 import { enqueueDatabaseWrite } from "~/shared/write-queue";
 import type { DeletedSessionData } from "~/store/zustand/undo-delete";
+import { useTranscriptOverview } from "~/stt/transcript-overview";
 import {
   type EnhancedDoc,
   type SessionMetaPatch,
@@ -141,22 +142,7 @@ export function useUpdateSession(sessionId: string) {
 }
 
 export function useSessionHasTranscript(sessionId: string): boolean {
-  const { data = false } = useIndexQuery({
-    // Transcript events carry the session id.
-    entity: "transcripts",
-    ids: [sessionId],
-    queryKey: ["session-has-transcript", sessionId],
-    queryFn: async () => {
-      const result =
-        await getApplicationClient().store.sessionHasTranscript(sessionId);
-      if (result.status === "error") {
-        throw new Error(result.error);
-      }
-      return result.data;
-    },
-    enabled: Boolean(sessionId),
-  });
-  return sessionId ? data : false;
+  return useTranscriptOverview(sessionId).data?.has_words ?? false;
 }
 
 export function useEnhancedNoteRecords(

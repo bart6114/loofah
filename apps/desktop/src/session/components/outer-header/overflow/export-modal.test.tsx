@@ -13,6 +13,7 @@ import { ExportModal } from "./export-modal";
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(),
+  overview: vi.fn(),
   render: vi.fn(),
   export: vi.fn(),
   download: vi.fn(),
@@ -64,7 +65,16 @@ const transcript = {
 let host: ReturnType<typeof createRenderCacheHost>;
 beforeEach(() => {
   vi.clearAllMocks();
-  host = createRenderCacheHost();
+  host = createRenderCacheHost("local:export", "always", {
+    features: ["transcript_overview"],
+    transcriptOverview: mocks.overview,
+  });
+  mocks.overview.mockResolvedValue({
+    has_words: true,
+    speaker_labels: [],
+    started_at: 0,
+    ended_at: 60000,
+  });
   mocks.read.mockResolvedValue({ status: "ok", data: [transcript] });
   mocks.render.mockResolvedValue({
     status: "ok",
