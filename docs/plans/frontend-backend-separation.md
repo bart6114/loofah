@@ -3434,3 +3434,23 @@ content/AI/import/export/CLI-owner migrations and full macOS/Windows acceptance
 remain required. The next parallel slice pairs injected durable Core batch jobs
 with a concrete host that reuses existing recording preparation and Whisper CPU
 resources; public capabilities wait for paired end-to-end verification.
+
+### Main summary controls use shared processing jobs
+
+The main Enhanced view, empty Summary view and summary header now submit through
+`JobSubmissions` and the captured `VaultScope` for both Local and Remote. The same
+capabilities select summary and template-output support. The editor stays mounted
+while jobs run; status, cancellation, retained generated text and explicit recovery
+of an unknown request use the existing scoped processing UI and durable device
+receipts. Switching a target or immutable owner aborts pre-admission UI work.
+Main controls request a generated title only for an untitled note when the host
+advertises that stage; older hosts retain the existing title. Unsaved or uncertain
+scoped title drafts now block generation alongside note and document drafts.
+
+The header opens the selected vault's processing settings. Main generation no
+longer reads Local provider settings, models or legacy streamed text. Rust keeps
+prompt rendering, language, images, tag suggestions, provider policy and title
+application; the existing Native adapter retains Local ChatGPT and credential
+storage. Local remains offline and login-free. Legacy automatic recording triggers
+still require Native/Core durable declaration before producer completion; adapting
+their dispatch to shared jobs does not by itself complete that durability gate.

@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { writeText as writeClipboardText } from "@tauri-apps/plugin-clipboard-manager";
 import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { json2md, parseJsonContent } from "@hypr/editor/markdown";
 import { DancingSticks } from "@hypr/ui/components/ui/dancing-sticks";
@@ -9,7 +9,6 @@ import { Spinner } from "@hypr/ui/components/ui/spinner";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn } from "@hypr/utils";
 
-import { useAITaskTask } from "~/ai/hooks";
 import * as AudioPlayer from "~/audio-player";
 import { useLegacySessionActivity } from "~/main/use-legacy-activity";
 import { useEnhancedNoteActions } from "~/session/components/note-input/enhanced-actions";
@@ -28,13 +27,12 @@ import {
   useEnhancedNoteTitle,
   useSession,
 } from "~/session/queries";
-import { useOpenSummaryPrompt } from "~/settings/use-open-summary-prompt";
-import { useVaultHost } from "~/shared/application/vault-provider";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
+import { VaultProcessingSettings } from "~/shared/application/vault-processing-settings";
 import {
   type MenuItemDef,
   useNativeContextMenu,
 } from "~/shared/hooks/useNativeContextMenu";
-import { createTaskId } from "~/store/zustand/ai-task/task-configs";
 import { type EditorView } from "~/store/zustand/tabs/schema";
 
 function getStoredNoteMarkdown(content: string | undefined) {
@@ -340,17 +338,6 @@ function useEnhancedViewTitle(sessionId: string, enhancedNoteId: string) {
   return { viewTitle: title?.trim() || "Summary" };
 }
 
-function useEnhancedViewGenerating(enhancedNoteId: string) {
-  const taskId = createTaskId(enhancedNoteId, "enhance");
-  const enhanceTask = useAITaskTask(taskId, "enhance");
-
-  const { scope } = useVaultHost();
-  return (
-    !!scope?.client.features.includes("legacy_desktop_enhance") &&
-    enhanceTask.isGenerating
-  );
-}
-
 function HeaderViewEnhancedInactive({
   sessionId,
   onClick = () => {},
@@ -361,7 +348,10 @@ function HeaderViewEnhancedInactive({
   onClick?: () => void;
 }) {
   const { viewTitle } = useEnhancedViewTitle(sessionId, enhancedNoteId);
-  const isGenerating = useEnhancedViewGenerating(enhancedNoteId);
+  const { isGenerating } = useEnhancedNoteActions({
+    sessionId,
+    enhancedNoteId,
+  });
 
   return (
     <button
@@ -399,6 +389,7 @@ function HeaderViewEnhancedActive({
     isGenerating,
     isError,
     onRegenerate,
+    onCancel,
   } = useEnhanceLogic(sessionId, enhancedNoteId);
   const hasSource = useSummarySource(sessionId);
   const content = useEnhancedNote(
@@ -419,7 +410,8 @@ function HeaderViewEnhancedActive({
     void onRegenerate();
   }, [onRegenerate]);
   const { t } = useLingui();
-  const openSummaryPrompt = useOpenSummaryPrompt();
+  const owner = useVaultReadScope();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const contextMenu = useMemo<MenuItemDef[]>(() => {
     const items: MenuItemDef[] = [
       {
@@ -440,11 +432,22 @@ function HeaderViewEnhancedActive({
       },
     ];
 
-    items.push({
-      id: "edit-summary-prompt",
-      text: t`Edit summary prompt`,
-      action: openSummaryPrompt,
-    });
+    if (owner.scope.client.features.includes("processing_settings"))
+      items.push({
+        id: "edit-summary-prompt",
+        text: t`Processing settings`,
+        action: () => {
+          if (owner.current()) setSettingsOpen(true);
+        },
+      });
+    if (isGenerating)
+      items.push({
+        id: `cancel-enhanced-${enhancedNoteId}`,
+        text: t`Cancel processing`,
+        action: () => {
+          void onCancel();
+        },
+      });
 
     if (canRemove) {
       items.push({ separator: true });
@@ -466,7 +469,9 @@ function HeaderViewEnhancedActive({
     enhancedNoteId,
     handleCopy,
     handleRegenerate,
-    openSummaryPrompt,
+    owner.scope,
+    owner.current,
+    onCancel,
     t,
     hasSource,
     isGenerating,
@@ -475,38 +480,48 @@ function HeaderViewEnhancedActive({
   ]);
   const showContextMenu = useNativeContextMenu(contextMenu);
   return (
-    <button
-      data-main-area-window-drag-region
-      data-tauri-drag-region="false"
-      type="button"
-      aria-label={viewTitle}
-      aria-current="page"
-      aria-disabled={isGenerating}
-      tabIndex={isGenerating ? -1 : 0}
-      onClick={showContextMenu}
-      onPointerDown={(event) => event.stopPropagation()}
-      onContextMenu={showContextMenu}
-      className={iconHeaderViewClassName(
-        true,
-        "tray",
-        cn([
-          "max-w-56 min-w-[62px] gap-1.5 pr-1.5 pl-2",
-          isGenerating ? "cursor-not-allowed opacity-70" : "cursor-pointer",
-          isError
-            ? [
-                "text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10",
-              ]
-            : [
-                "focus-visible:text-foreground focus-visible:bg-card",
-                "dark:focus-visible:text-foreground dark:focus-visible:bg-accent",
-              ],
-        ]),
+    <>
+      <button
+        data-main-area-window-drag-region
+        data-tauri-drag-region="false"
+        type="button"
+        aria-label={viewTitle}
+        aria-current="page"
+        onClick={showContextMenu}
+        onPointerDown={(event) => event.stopPropagation()}
+        onContextMenu={showContextMenu}
+        className={iconHeaderViewClassName(
+          true,
+          "tray",
+          cn([
+            "max-w-56 min-w-[62px] gap-1.5 pr-1.5 pl-2",
+            "cursor-pointer",
+            isError
+              ? [
+                  "text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10",
+                ]
+              : [
+                  "focus-visible:text-foreground focus-visible:bg-card",
+                  "dark:focus-visible:text-foreground dark:focus-visible:bg-accent",
+                ],
+          ]),
+        )}
+      >
+        {isGenerating ? <Spinner size={14} className="shrink-0" /> : null}
+        <span className="min-w-0 truncate text-xs font-medium">
+          {viewTitle}
+        </span>
+        <ChevronDownIcon className="size-3.5" />
+      </button>
+      {owner.current() && (
+        <VaultProcessingSettings
+          scope={owner.scope}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          hideTrigger
+        />
       )}
-    >
-      {isGenerating ? <Spinner size={14} className="shrink-0" /> : null}
-      <span className="min-w-0 truncate text-xs font-medium">{viewTitle}</span>
-      <ChevronDownIcon className="size-3.5" />
-    </button>
+    </>
   );
 }
 
@@ -839,7 +854,10 @@ export function Header({
                     key={`enhanced-${view.id}`}
                     sessionId={sessionId}
                     enhancedNoteId={view.id}
-                    canRemove={view.id !== primaryEnhancedTabId}
+                    canRemove={
+                      view.id !== primaryEnhancedTabId &&
+                      isAvailable("legacy_desktop_session_controls")
+                    }
                     onRemove={
                       view.id !== primaryEnhancedTabId
                         ? () => {

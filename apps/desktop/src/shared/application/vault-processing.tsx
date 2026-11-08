@@ -1,6 +1,11 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useForm } from "@tanstack/react-form";
-import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useIsMutating,
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
@@ -30,10 +35,14 @@ export function VaultProcessing({
   scope,
   sessionId,
   target = { kind: "summary" },
+  defaultTitlePolicy = "preserve",
+  sourceAvailable = true,
 }: {
   scope: VaultScope;
   sessionId: string;
   target?: DocumentTarget;
+  defaultTitlePolicy?: TitlePolicy;
+  sourceAvailable?: boolean;
 }) {
   const [host, setHost] = useState(scope);
   useEffect(() => setHost(scope), [scope]);
@@ -50,6 +59,8 @@ export function VaultProcessing({
       scope={scope}
       sessionId={sessionId}
       target={target}
+      defaultTitlePolicy={defaultTitlePolicy}
+      sourceAvailable={sourceAvailable}
     />
   );
 }
@@ -91,18 +102,26 @@ function useReceipts(
   );
 }
 
-function SummaryJobs({
-  scope,
-  sessionId,
-  target,
-}: {
-  scope: VaultScope;
-  sessionId: string;
-  target: DocumentTarget;
-}) {
-  const { t } = useLingui();
+export function useDocumentProcessing(
+  scope: VaultScope,
+  sessionId: string,
+  target: DocumentTarget | null | undefined,
+  enabled = true,
+) {
   const controller = useMemo(() => new JobSubmissions(scope), [scope]);
-  const form = useForm({ defaultValues: { generateTitle: false } });
+  const targetKey = JSON.stringify(target);
+  const lifetime = useMemo(
+    () => ({ active: false, cancel: new AbortController() }),
+    [scope, sessionId, targetKey],
+  );
+  useEffect(() => {
+    lifetime.cancel = new AbortController();
+    lifetime.active = enabled;
+    return () => {
+      lifetime.active = false;
+      lifetime.cancel.abort();
+    };
+  }, [lifetime, enabled]);
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const connected = connection.state === "connected";
   const denied = [
@@ -111,7 +130,16 @@ function SummaryJobs({
     "closed",
     "incompatible",
   ].includes(connection.state);
-  const receipts = useReceipts(controller, sessionId, !denied);
+  const supported =
+    !!target &&
+    scope.client.features.includes("summary_body_jobs") &&
+    (target.kind === "summary" ||
+      scope.client.features.includes("template_output_jobs"));
+  const receipts = useReceipts(
+    controller,
+    sessionId,
+    enabled && supported && !denied,
+  );
   const active = useQuery(
     {
       ...scope.processingJobsOptions({
@@ -120,7 +148,7 @@ function SummaryJobs({
         after: null,
         limit: 200,
       }),
-      enabled: connected,
+      enabled: enabled && supported && connected,
       refetchInterval: (query) =>
         query.state.data?.items.length ? 15_000 : false,
     },
@@ -154,14 +182,28 @@ function SummaryJobs({
         query.state.data?.pages.some((page) => page.items.some(activeJob))
           ? 15_000
           : false,
-      enabled: connected,
+      enabled: enabled && supported && connected,
     },
     scope.queryClient,
   );
+  const mutationKey = [
+    "document_generation",
+    scope.client.scope,
+    sessionId,
+    target,
+  ];
+  const generating = useIsMutating({ mutationKey }, scope.queryClient) > 0;
   const generate = useMutation(
     {
-      mutationFn: (titlePolicy: TitlePolicy) =>
-        controller.generateDocument(sessionId, target, { titlePolicy }),
+      mutationKey,
+      mutationFn: (titlePolicy: TitlePolicy) => {
+        if (!lifetime.active || !enabled || !supported || !target)
+          throw new Error("This document is not available for generation.");
+        return controller.generateDocument(sessionId, target, {
+          titlePolicy,
+          signal: lifetime.cancel.signal,
+        });
+      },
       networkMode: "always",
       retry: false,
       onSettled: () => refresh(controller),
@@ -174,20 +216,101 @@ function SummaryJobs({
       ...(history.data?.pages.flatMap((page) => page.items) ?? []),
       ...(active.data?.items ?? []),
     ]) {
-      if (!sameTarget(job.target, target)) continue;
+      if (!target || !sameTarget(job.target, target)) continue;
       const previous = merged.get(job.id);
       if (!previous || activeJob(previous)) merged.set(job.id, job);
     }
-    return Array.from(merged.values());
+    return Array.from(merged.values()).sort(
+      (a, b) =>
+        b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
+    );
   }, [active.data, history.data, target]);
   const known = new Map(rows.map((job) => [job.id, job]));
-  const targetReceipts = receipts.data?.filter((receipt) =>
-    sameTarget(receipt.input.target, target),
+  const targetReceipts = receipts.data?.filter(
+    (receipt) => !!target && sameTarget(receipt.input.target, target),
   );
   const pending = targetReceipts?.some(
     (receipt) =>
       !receipt.job || activeJob(known.get(receipt.job.id) ?? receipt.job),
   );
+  const cancel = useMutation(
+    {
+      mutationFn: async () => {
+        if (!lifetime.active || !connected)
+          throw new Error("This document is not available for cancellation.");
+        for (const job of rows.filter(activeJob))
+          await controller.cancel(job.id, { signal: lifetime.cancel.signal });
+      },
+      networkMode: "always",
+      retry: false,
+      onSettled: () => refresh(controller),
+    },
+    scope.queryClient,
+  );
+  const canGenerate =
+    enabled &&
+    supported &&
+    connected &&
+    scope.client.canEdit &&
+    !generating &&
+    !pending &&
+    !receipts.isPending &&
+    !receipts.isError &&
+    !active.isPending &&
+    !active.isError &&
+    !rows.some(activeJob);
+  return {
+    controller,
+    connected,
+    denied,
+    receipts,
+    active,
+    history,
+    generate,
+    cancel,
+    rows,
+    pending,
+    targetReceipts,
+    supported,
+    canGenerate,
+    isGenerating: generating || rows.some(activeJob),
+  };
+}
+
+function SummaryJobs({
+  scope,
+  sessionId,
+  target,
+  defaultTitlePolicy,
+  sourceAvailable,
+}: {
+  scope: VaultScope;
+  sessionId: string;
+  target: DocumentTarget;
+  defaultTitlePolicy: TitlePolicy;
+  sourceAvailable: boolean;
+}) {
+  const { t } = useLingui();
+  const {
+    controller,
+    connected,
+    denied,
+    receipts,
+    active,
+    history,
+    generate,
+    rows,
+    pending,
+    targetReceipts,
+    canGenerate,
+  } = useDocumentProcessing(scope, sessionId, target);
+  const form = useForm({
+    defaultValues: {
+      generateTitle:
+        defaultTitlePolicy === "generate_if_empty" &&
+        scope.client.features.includes("generated_titles"),
+    },
+  });
   if (denied) return null;
   return (
     <section
@@ -199,21 +322,7 @@ function SummaryJobs({
         {(target.kind === "summary" || scope.client.canEdit) && (
           <Button
             size="sm"
-            disabled={
-              !connected ||
-              !scope.client.canEdit ||
-              generate.isPending ||
-              pending ||
-              receipts.isPending ||
-              receipts.isError ||
-              active.isPending ||
-              active.isError ||
-              active.data?.items.some(
-                (job) =>
-                  sameTarget(job.target, target) &&
-                  activeJob(known.get(job.id) ?? job),
-              )
-            }
+            disabled={!canGenerate || !sourceAvailable}
             onClick={() =>
               generate.mutate(
                 form.getFieldValue("generateTitle")

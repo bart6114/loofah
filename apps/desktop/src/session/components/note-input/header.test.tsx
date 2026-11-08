@@ -6,6 +6,7 @@ vi.mock("~/ai/task-window-sync", () => ({
   requestMainEnhance: hoisted.requestMainEnhance,
 }));
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -27,6 +28,8 @@ type CapturedMenuItem =
 
 const hoisted = vi.hoisted(() => ({
   enhance: vi.fn(),
+  cancelSummary: vi.fn(),
+  summaryScope: { client: { features: ["processing_settings"] } },
   requestMainEnhance: vi.fn(),
   regenerateTranscript: vi.fn(),
   startListening: vi.fn(),
@@ -173,6 +176,35 @@ vi.mock("~/session/hooks/useEnhancedNotes", () => ({
   useEnsureDefaultSummary: vi.fn(),
 }));
 
+vi.mock("~/session/components/note-input/enhanced-actions", () => ({
+  useEnhancedNoteActions: () => ({
+    generationUnavailable: false,
+    canRegenerate: !hoisted.isGenerating,
+    isGenerating: hoisted.isGenerating,
+    isError: false,
+    onRegenerate: hoisted.enhance,
+    onCancel: hoisted.cancelSummary,
+  }),
+}));
+vi.mock("~/shared/application/use-vault-read-scope", () => ({
+  useVaultReadScope: () => ({
+    scope: hoisted.summaryScope,
+    current: () => true,
+  }),
+}));
+vi.mock("~/shared/application/vault-processing-settings", () => ({
+  VaultProcessingSettings: ({
+    scope,
+    open,
+  }: {
+    scope: unknown;
+    open: boolean;
+  }) =>
+    open && scope === hoisted.summaryScope ? (
+      <div role="dialog">Scoped processing settings</div>
+    ) : null,
+}));
+
 vi.mock("~/shared/application/vault-provider", () => ({
   useVaultHost: () => ({
     scope: {
@@ -301,6 +333,7 @@ import { createEditorTabs, Header, useEditorTabs } from "./header";
 describe("Header", () => {
   beforeEach(() => {
     hoisted.enhance.mockReset();
+    hoisted.cancelSummary.mockReset();
     hoisted.requestMainEnhance.mockReset();
     hoisted.requestMainEnhance.mockResolvedValue({
       type: "started",
@@ -679,6 +712,41 @@ describe("Header", () => {
     expect(
       screen.getByRole("button", { name: "Customer Call" }).textContent,
     ).toBe("Customer Call");
+    const menu = hoisted.nativeContextMenus
+      .flat()
+      .find((item) => "id" in item && item.id === "cancel-enhanced-note-1");
+    expect(menu && "action" in menu).toBe(true);
+    if (menu && "action" in menu) menu.action();
+    expect(hoisted.cancelSummary).toHaveBeenCalledOnce();
+    expect(
+      screen
+        .getByRole("button", { name: "Customer Call" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
+  });
+
+  it("opens the current vault's processing settings from the summary menu", () => {
+    render(
+      <Header
+        sessionId="session-1"
+        editorTabs={[{ type: "enhanced", id: "note-1" }, { type: "raw" }]}
+        currentTab={{ type: "enhanced", id: "note-1" }}
+        handleTabChange={vi.fn()}
+      />,
+    );
+    const item = hoisted.nativeContextMenus
+      .flat()
+      .find((item) => "id" in item && item.id === "edit-summary-prompt");
+    expect(item && "text" in item ? item.text : null).toBe(
+      "Processing settings",
+    );
+    act(() => {
+      if (item && "action" in item) item.action();
+    });
+    expect(screen.getByRole("dialog").textContent).toBe(
+      "Scoped processing settings",
+    );
+    expect(hoisted.enhance).not.toHaveBeenCalled();
   });
 
   it("shows a spinner in the transcript tab while transcribing", () => {

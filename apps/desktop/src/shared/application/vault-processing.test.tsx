@@ -222,7 +222,9 @@ it("only opts into title generation when explicitly checked and captures that po
   expect(calls.submitSummaryJob.mock.calls[0][0]).toEqual(
     data.receipts[0].input,
   );
-  expect(calls.readDocument.mock.calls[0][2]).toBeUndefined();
+  expect(calls.readDocument.mock.calls[0][2]?.signal).toBeInstanceOf(
+    AbortSignal,
+  );
 });
 
 it.each([
@@ -506,7 +508,7 @@ it("regenerates an existing target and keeps summary jobs and ambiguous receipts
   await screen.findByText("Summary saved");
   expect(calls.submitSummaryJob).toHaveBeenCalledWith(
     { session_id: "note", target, expected_revision: "output-r0" },
-    { requestId: data.receipts[1].request_id },
+    { requestId: data.receipts[1].request_id, signal: expect.any(AbortSignal) },
   );
   expect(calls.submitSummaryJob).toHaveBeenCalledOnce();
 });
@@ -540,20 +542,21 @@ it("remounts target status and errors when selection changes while a previous ta
   ];
   mounted.rerender(<VaultProcessing scope={scope} sessionId="note" />);
   await screen.findByText("Saved notes or transcript could not be read.");
-  release({
-    document: {
-      id: "output",
-      session_id: "note",
-      kind: "template_output",
-      title: "Output",
-      template_id: "template",
-      sort_order: 2,
-      markdown: "Existing",
-    },
-    revision: "output-r0",
-  });
-  await waitFor(() => expect(calls.submitSummaryJob).toHaveBeenCalledOnce());
-  expect(calls.submitSummaryJob.mock.calls[0][0].target).toEqual(target);
+  await act(async () =>
+    release({
+      document: {
+        id: "output",
+        session_id: "note",
+        kind: "template_output",
+        title: "Output",
+        template_id: "template",
+        sort_order: 2,
+        markdown: "Existing",
+      },
+      revision: "output-r0",
+    }),
+  );
+  expect(calls.submitSummaryJob).not.toHaveBeenCalled();
   expect(screen.queryByText("Summary saved")).toBeNull();
   expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
 });
@@ -743,5 +746,47 @@ it("requires explicit confirmation to forget an unresolved request and does not 
     requestId,
   );
   expect(calls.cancelProcessingJob).not.toHaveBeenCalled();
+  expect(calls.submitSummaryJob).not.toHaveBeenCalled();
+});
+
+it.each([true, false])(
+  "uses the main control's default title policy only when supported (%s)",
+  async (titles) => {
+    const { scope, data } = await fixture({
+      features: ["summary_body_jobs", ...(titles ? ["generated_titles"] : [])],
+    });
+    render(
+      <VaultProcessing
+        scope={scope}
+        sessionId="note"
+        defaultTitlePolicy="generate_if_empty"
+      />,
+    );
+    const generate = screen.getByRole("button", {
+      name: "Summarize saved notes",
+    });
+    await waitFor(() => expect(generate).toHaveProperty("disabled", false));
+    if (titles)
+      expect(screen.getByRole("checkbox")).toHaveProperty("checked", true);
+    fireEvent.click(generate);
+    await screen.findByText("Summary saved");
+    expect(data.receipts[0].input.title_policy).toBe(
+      titles ? "generate_if_empty" : undefined,
+    );
+  },
+);
+
+it("keeps empty main source disabled without inspecting provider credentials or creating a receipt", async () => {
+  const { scope, calls } = await fixture();
+  render(
+    <VaultProcessing scope={scope} sessionId="note" sourceAvailable={false} />,
+  );
+  const generate = screen.getByRole("button", {
+    name: "Summarize saved notes",
+  });
+  await waitFor(() => expect(calls.processingJobs).toHaveBeenCalled());
+  expect(generate).toHaveProperty("disabled", true);
+  fireEvent.click(generate);
+  expect(native.deviceJobSubmissionPrepare).not.toHaveBeenCalled();
   expect(calls.submitSummaryJob).not.toHaveBeenCalled();
 });

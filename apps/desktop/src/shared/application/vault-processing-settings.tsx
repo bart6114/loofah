@@ -21,8 +21,20 @@ import type {
 import { VaultProviderCredentials } from "./vault-provider-credentials";
 import type { VaultScope } from "./vault-scope";
 
-export function VaultProcessingSettings({ scope }: { scope: VaultScope }) {
-  const [open, setOpen] = useState(false);
+export function VaultProcessingSettings({
+  scope,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  scope: VaultScope;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const connection = useSyncExternalStore(scope.subscribe, scope.getSnapshot);
   const denied = [
     "access_denied",
@@ -32,16 +44,18 @@ export function VaultProcessingSettings({ scope }: { scope: VaultScope }) {
   ].includes(connection.state);
   useEffect(() => {
     if (denied) setOpen(false);
-  }, [denied]);
+  }, [denied, setOpen]);
   if (!scope.client.features.includes("processing_settings") || denied)
     return null;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <Trans>Processing settings</Trans>
-        </Button>
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button size="sm" variant="outline">
+            <Trans>Processing settings</Trans>
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>

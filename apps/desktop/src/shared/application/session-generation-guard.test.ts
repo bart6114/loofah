@@ -20,6 +20,7 @@ import {
   drainDatabaseWrites,
   registerWriteFlusher,
 } from "~/shared/write-queue";
+import { useLiveTitle } from "~/store/zustand/live-title";
 
 const inventory = vi.spyOn(NativeDraftStore.prototype, "inventory");
 const stops: (() => void)[] = [];
@@ -112,6 +113,60 @@ afterEach(async () => {
   onlineManager.setOnline(true);
   vi.useRealTimers();
   await drainDatabaseWrites();
+  useLiveTitle.setState({ titles: {} });
+});
+
+it.each([false, true])(
+  "refuses an unsaved or uncertain scoped title before summary admission (uncertain=%s)",
+  async (uncertain) => {
+    const context = fixture();
+    useLiveTitle.getState().setTitle({
+      scope: context.scope,
+      sessionId: "same",
+      owner: {},
+      title: uncertain ? "Saved" : "Unsaved title",
+      baselineTitle: "Saved",
+      revision: "metadata",
+      uncertain,
+      legacy: false,
+    });
+    await expect(context.guard.prepare()).rejects.toThrow("Confirm or recover");
+  },
+);
+
+it("retires a prepared generation if a title draft appears then disappears", async () => {
+  const context = fixture();
+  await context.guard.prepare();
+  const draft = {
+    scope: context.scope,
+    sessionId: "same",
+    owner: {},
+    title: "Unsaved title",
+    baselineTitle: "",
+    revision: "metadata",
+    uncertain: false,
+    legacy: false,
+  };
+  useLiveTitle.getState().setTitle(draft);
+  useLiveTitle.getState().clearTitle(draft);
+  expect(() => context.guard.assertReady()).toThrow("Confirm or recover");
+});
+
+it("ignores another immutable owner's title draft despite matching scope and session strings", async () => {
+  const context = fixture(undefined, "same-scope");
+  const replacement = fixture(undefined, "same-scope");
+  await context.guard.prepare();
+  useLiveTitle.getState().setTitle({
+    scope: replacement.scope,
+    sessionId: "same",
+    owner: {},
+    title: "Other owner",
+    baselineTitle: "",
+    revision: "metadata",
+    uncertain: true,
+    legacy: false,
+  });
+  expect(() => context.guard.assertReady()).not.toThrow();
 });
 
 it("flushes first-500ms raw typing before generation without requiring a closed tab", async () => {

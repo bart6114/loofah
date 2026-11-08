@@ -1,529 +1,111 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { cleanup, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { TabsTestProvider } from "~/store/zustand/tabs/test-utils";
-function render(ui: ReactNode) {
-  const client = new QueryClient();
-  return renderUI(ui, {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>
-        <TabsTestProvider>{children}</TabsTestProvider>
-      </QueryClientProvider>
-    ),
-  });
-}
-
-vi.mock("~/main/use-legacy-activity", () => ({
-  useLegacySessionActivity: () => ({ isAvailable: () => hoisted.legacy }),
+const mocks = vi.hoisted(() => ({
+  scope: { client: { scope: "owner", features: ["summary_body_jobs"] } },
+  target: { kind: "summary" } as object | null | undefined,
+  content: "Canonical saved summary",
+  exists: true,
+  panel: vi.fn(),
+  model: vi.fn(() => {
+    throw new Error("Main summary must not read a Local model");
+  }),
 }));
-
+vi.mock("~/ai/hooks", () => ({
+  useAITaskTask: mocks.model,
+  useLanguageModel: mocks.model,
+}));
+vi.mock("~/shared/application/vault-provider", () => ({
+  useVaultHost: () => ({ scope: mocks.scope }),
+}));
 vi.mock("~/session/hooks/useSummarySource", () => ({
   useSummarySource: () => true,
 }));
-vi.mock("~/shared/config", () => ({ useConfigValue: () => "" }));
-vi.mock("~/shared/application/vault-provider", () => ({
-  useVaultHost: () => ({
-    scope: {
-      client: {
-        canEdit: true,
-        features: [
-          "document_editor_write",
-          ...(hoisted.legacy ? ["legacy_desktop_enhance"] : []),
-        ],
-      },
-    },
-  }),
-}));
-vi.mock("~/shared/application/session-generation-guard", () => ({
-  captureSessionGenerationGuard: () => ({
-    prepare: async () => {},
-    assertReady: () => {},
-    dispose: () => {},
-  }),
-}));
-vi.mock("~/services/enhancer", () => ({ getEnhancerService: vi.fn() }));
-vi.mock("~/ai/task-window-sync", () => ({
-  isMainAITaskHostWindow: () => true,
-  requestMainEnhance: vi.fn(),
-}));
-vi.mock("../header", () => ({ TemplatePickerPopover: () => null }));
-import { cleanup, render as renderUI, screen } from "@testing-library/react";
-import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { Enhanced as SessionEnhanced } from "./index";
-
-import type { LLMConnectionStatus } from "~/ai/hooks";
-
-const hoisted = vi.hoisted(() => ({
-  enhanceTask: undefined as
-    | {
-        status: string;
-        error: Error | undefined;
-        streamedText: string;
-        currentStep: unknown;
-        isGenerating: boolean;
-      }
-    | undefined,
-  titleTask: undefined as
-    | {
-        status: string;
-        error: Error | undefined;
-        streamedText: string;
-        currentStep: unknown;
-        isGenerating: boolean;
-      }
-    | undefined,
-  llmStatus: {
-    status: "success",
-    providerId: "openrouter",
-  } as LLMConnectionStatus,
-  legacy: true,
-  content: "",
-  noteExists: true,
-  awaitingGenerationRead: false,
-  generationReads: [] as string[],
-  sessionTitle: "",
-  enhancedEditorMountCount: 0,
-}));
-
-vi.mock("@hypr/ui/components/ui/spinner", () => ({
-  Spinner: () => <span data-testid="spinner" />,
-}));
-
-vi.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
-}));
-
-vi.mock("~/ai/hooks", () => ({
-  useAITaskTask: (_taskId: string, taskType: "enhance" | "title") => {
-    const task = taskType === "title" ? hoisted.titleTask : hoisted.enhanceTask;
-
-    return {
-      status: task?.status ?? "idle",
-      error: task?.error,
-      streamedText: task?.streamedText ?? "",
-      currentStep: task?.currentStep,
-      hasTask: !!task,
-      isGenerating: task?.isGenerating ?? false,
-    };
-  },
-  useLLMConnectionStatus: () => hoisted.llmStatus,
-}));
-
 vi.mock("~/session/queries", () => ({
-  useEnhancedDocumentTarget: () => ({ kind: "summary" }),
-  useEnhancedNote: (_id: string, generationId?: string) => {
-    if (generationId) {
-      hoisted.generationReads.push(generationId);
-      if (hoisted.awaitingGenerationRead) return null;
-    }
-    return hoisted.noteExists ? { content: hoisted.content } : null;
+  useEnhancedNote: () => (mocks.exists ? { content: mocks.content } : null),
+  useEnhancedDocumentTarget: () => mocks.target,
+}));
+vi.mock("~/shared/application/vault-processing", () => ({
+  VaultProcessing: (props: unknown) => {
+    mocks.panel(props);
+    return <div>Shared jobs</div>;
   },
 }));
-
-vi.mock("./config-error", () => ({
-  ConfigError: () => <div>Config error</div>,
-}));
-
 vi.mock("./editor", () => ({
-  EnhancedEditor: ({
-    content,
-    contentOverride,
-    generationId,
-  }: {
-    content: string;
-    contentOverride?: { content?: unknown[] };
-    generationId?: string;
-  }) => {
-    const [mountId] = useState(() => {
-      hoisted.enhancedEditorMountCount += 1;
-      return hoisted.enhancedEditorMountCount;
-    });
-    const collectText = (value: unknown): string => {
-      if (!value || typeof value !== "object") {
-        return "";
-      }
-
-      const node = value as {
-        text?: unknown;
-        content?: unknown[];
-      };
-
-      return [
-        typeof node.text === "string" ? node.text : "",
-        ...(node.content?.map(collectText) ?? []),
-      ].join("");
-    };
-
+  EnhancedEditor: ({ content }: { content: string }) => {
+    const [mountId] = useState(() => crypto.randomUUID());
     return (
-      <div
-        data-testid="enhanced-editor"
-        data-mount-id={mountId}
-        data-generation-id={generationId}
-      >
-        <span>Enhanced editor</span>
-        <span>{content}</span>
-        {contentOverride ? <span>{collectText(contentOverride)}</span> : null}
+      <div data-testid="editor" data-mount-id={mountId}>
+        {content}
       </div>
     );
   },
 }));
+import { Enhanced } from "./index";
 
-vi.mock("./enhance-error", () => ({
-  EnhanceError: () => <div>Enhance error</div>,
-}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.exists = true;
+  mocks.content = "Canonical saved summary";
+  mocks.target = { kind: "summary" };
+});
+afterEach(cleanup);
+const view = () => (
+  <Enhanced
+    sessionId="session"
+    sessionTitle="Saved title"
+    enhancedNoteId="session"
+  />
+);
 
-function Enhanced({
-  sessionId,
-  enhancedNoteId,
-}: {
-  sessionId: string;
-  enhancedNoteId: string;
-}) {
-  return (
-    <SessionEnhanced
-      sessionId={sessionId}
-      sessionTitle={hoisted.sessionTitle}
-      enhancedNoteId={enhancedNoteId}
-    />
+it("mounts shared scoped processing with legacy-compatible automatic empty-title generation", () => {
+  render(view());
+  expect(mocks.panel).toHaveBeenCalledWith(
+    expect.objectContaining({
+      scope: mocks.scope,
+      sessionId: "session",
+      target: { kind: "summary" },
+      defaultTitlePolicy: "generate_if_empty",
+    }),
   );
-}
-
-describe("Enhanced", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  beforeEach(() => {
-    hoisted.legacy = true;
-    hoisted.enhanceTask = undefined;
-    hoisted.titleTask = undefined;
-    hoisted.llmStatus = {
-      status: "success",
-      providerId: "openrouter",
-    };
-    hoisted.content = "";
-    hoisted.noteExists = true;
-    hoisted.awaitingGenerationRead = false;
-    hoisted.generationReads = [];
-    hoisted.sessionTitle = "";
-    hoisted.enhancedEditorMountCount = 0;
-  });
-
-  it("offers generation before the auto-enhance task is visible", () => {
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(
-      screen.getByRole("button", { name: "Generate summary" }),
-    ).not.toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.queryByText("Preparing summary...")).toBeNull();
-    expect(screen.queryByTestId("spinner")).toBeNull();
-  });
-
-  it("shows a generating status before streamed text arrives", () => {
-    hoisted.enhanceTask = {
-      status: "generating",
-      error: undefined,
-      streamedText: "",
-      currentStep: undefined,
-      isGenerating: true,
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.queryByTestId("enhanced-editor")).toBeNull();
-    expect(screen.getByRole("status")).not.toBeNull();
-    expect(screen.getByText("Analyzing structure...")).not.toBeNull();
-    expect(screen.queryByText(/^Tip:/)).toBeNull();
-  });
-
-  it("renders streamed summary in the generating view", () => {
-    hoisted.enhanceTask = {
-      status: "generating",
-      error: undefined,
-      streamedText: "Streaming summary",
-      currentStep: undefined,
-      isGenerating: true,
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.queryByTestId("enhanced-editor")).toBeNull();
-    expect(screen.getByText("Streaming summary")).not.toBeNull();
-    expect(screen.getByTestId("summary-title-space")).not.toBeNull();
-    expect(screen.getByText("Generating title...")).not.toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("keeps the completed stream visible until stored content arrives", () => {
-    hoisted.enhanceTask = {
-      status: "success",
-      error: undefined,
-      streamedText: "Generated summary",
-      currentStep: undefined,
-      isGenerating: false,
-    };
-
-    const view = render(
-      <Enhanced sessionId="session-1" enhancedNoteId="note-1" />,
-    );
-
-    expect(screen.queryByTestId("enhanced-editor")).toBeNull();
-    expect(screen.getByText("Generated summary")).not.toBeNull();
-
-    hoisted.content = "Stored summary";
-    view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByTestId("enhanced-editor")).not.toBeNull();
-    expect(screen.getByText("Stored summary")).not.toBeNull();
-    expect(hoisted.enhancedEditorMountCount).toBe(1);
-  });
-
-  it("waits for a fresh stored read after every generation, even with identical output", () => {
-    hoisted.content = "Previously saved summary";
-    const view = render(
-      <Enhanced sessionId="session-1" enhancedNoteId="note-1" />,
-    );
-    const completeRun = () => {
-      hoisted.enhanceTask = {
-        status: "generating",
-        error: undefined,
-        streamedText: "Repeated generated text",
-        currentStep: undefined,
-        isGenerating: true,
-      };
-      view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-      hoisted.awaitingGenerationRead = true;
-      hoisted.enhanceTask = {
-        ...hoisted.enhanceTask,
-        status: "success",
-        isGenerating: false,
-      };
-      view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-      expect(screen.queryByTestId("enhanced-editor")).toBeNull();
-      expect(screen.getByText("Repeated generated text")).toBeTruthy();
-      hoisted.content = "Fresh persisted summary";
-      hoisted.awaitingGenerationRead = false;
-      view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-      expect(screen.getByText("Fresh persisted summary")).toBeTruthy();
-      const generation =
-        hoisted.generationReads[hoisted.generationReads.length - 1];
-      expect(
-        screen
-          .getByTestId("enhanced-editor")
-          .getAttribute("data-generation-id"),
-      ).toBe(generation);
-      return generation;
-    };
-    const firstRead = completeRun();
-    hoisted.content = "User edited summary";
-    expect(completeRun()).not.toBe(firstRead);
-  });
-
-  it("remounts the editor with persisted content after generation", () => {
-    hoisted.content = "Stored summary";
-    const view = render(
-      <Enhanced sessionId="session-1" enhancedNoteId="note-1" />,
-    );
-    const editor = screen.getByTestId("enhanced-editor");
-
-    hoisted.enhanceTask = {
-      status: "generating",
-      error: undefined,
-      streamedText: "Streaming summary",
-      currentStep: undefined,
-      isGenerating: true,
-    };
-    view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.queryByTestId("enhanced-editor")).toBeNull();
-
-    hoisted.content = "Updated summary";
-    hoisted.enhanceTask = {
-      status: "success",
-      error: undefined,
-      streamedText: "Streaming summary",
-      currentStep: undefined,
-      isGenerating: false,
-    };
-    view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByTestId("enhanced-editor")).not.toBe(editor);
-    expect(screen.getByText("Updated summary")).not.toBeNull();
-    expect(hoisted.enhancedEditorMountCount).toBe(2);
-  });
-
-  it("keeps the completed stream visible over an empty stored document", () => {
-    hoisted.content = JSON.stringify({
-      type: "doc",
-      content: [{ type: "paragraph" }],
-    });
-    hoisted.enhanceTask = {
-      status: "success",
-      error: undefined,
-      streamedText: "Generated summary",
-      currentStep: undefined,
-      isGenerating: false,
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.queryByTestId("enhanced-editor")).toBeNull();
-    expect(screen.getByText("Generated summary")).not.toBeNull();
-  });
-  it("keeps the title row while streaming for an already titled session", () => {
-    hoisted.sessionTitle = "Existing title";
-    hoisted.enhanceTask = {
-      status: "generating",
-      error: undefined,
-      streamedText: "Streaming summary",
-      currentStep: undefined,
-      isGenerating: true,
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Streaming summary")).not.toBeNull();
-    expect(screen.getByTestId("summary-title-space")).not.toBeNull();
-    expect(screen.getByText("Existing title")).not.toBeNull();
-    expect(screen.queryByText("Generating title...")).toBeNull();
-  });
-
-  it("shows the generated title while the summary is still streaming", () => {
-    hoisted.enhanceTask = {
-      status: "generating",
-      error: undefined,
-      streamedText: "Streaming summary",
-      currentStep: undefined,
-      isGenerating: true,
-    };
-    hoisted.titleTask = {
-      status: "success",
-      error: undefined,
-      streamedText: "Generated Session Title",
-      currentStep: undefined,
-      isGenerating: false,
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByTestId("summary-title-space")).not.toBeNull();
-    expect(screen.getByText("Generated Session Title")).not.toBeNull();
-    expect(screen.queryByText("Generating title...")).toBeNull();
-  });
-
-  it("offers generation after an empty enhance task returns idle", () => {
-    hoisted.enhanceTask = {
-      status: "idle",
-      error: undefined,
-      streamedText: "",
-      currentStep: undefined,
-      isGenerating: false,
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(
-      screen.getByRole("button", { name: "Generate summary" }),
-    ).not.toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("shows config errors when a provider API key is missing", () => {
-    hoisted.llmStatus = {
-      status: "error",
-      reason: "missing_config",
-      providerId: "openai",
-      missing: ["api_key"],
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Config error")).not.toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("shows config errors when a provider base URL is missing", () => {
-    hoisted.llmStatus = {
-      status: "error",
-      reason: "missing_config",
-      providerId: "openai",
-      missing: ["base_url"],
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Config error")).not.toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("shows config errors for missing provider setup", () => {
-    hoisted.llmStatus = { status: "pending", reason: "missing_provider" };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Config error")).not.toBeNull();
-    expect(screen.queryByText("Enhanced editor")).toBeNull();
-  });
-
-  it("shows config errors when a model has not been selected", () => {
-    hoisted.llmStatus = {
-      status: "pending",
-      reason: "missing_model",
-      providerId: "openai",
-    };
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Config error")).not.toBeNull();
-    expect(screen.queryByText("Enhanced editor")).toBeNull();
-  });
-
-  it("renders the editor when the enhanced note already has content", () => {
-    hoisted.content = JSON.stringify({
-      type: "doc",
-      content: [{ type: "paragraph", content: [{ type: "text", text: "Hi" }] }],
-    });
-
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("keeps the compound host mounted during hydration so it can display device recovery", () => {
-    hoisted.noteExists = false;
-    const view = render(
-      <Enhanced sessionId="session-1" enhancedNoteId="note-1" />,
-    );
-
-    const mountId = screen.getByTestId("enhanced-editor").dataset.mountId;
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
-
-    hoisted.noteExists = true;
-    hoisted.awaitingGenerationRead = false;
-    hoisted.generationReads = [];
-    hoisted.content = "Stored summary";
-    view.rerender(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-
-    expect(screen.getByText("Enhanced editor")).not.toBeNull();
-    expect(screen.getByText("Stored summary")).not.toBeNull();
-    expect(screen.getByTestId("enhanced-editor").dataset.mountId).toBe(mountId);
-  });
-  it("does not expose local same-ID streaming or errors under a host without the legacy capability", () => {
-    hoisted.legacy = false;
-    hoisted.content = "Canonical scoped content";
-    hoisted.enhanceTask = {
-      status: "generating",
-      streamedText: "Private local meeting",
-      error: undefined,
-      currentStep: undefined,
-      isGenerating: true,
-    };
-    render(<Enhanced sessionId="session-1" enhancedNoteId="note-1" />);
-    expect(screen.queryByText("Private local meeting")).toBeNull();
-    expect(screen.getByText("Canonical scoped content")).toBeDefined();
-  });
+  expect(screen.getByTestId("editor").textContent).toBe(
+    "Canonical saved summary",
+  );
+  expect(mocks.model).not.toHaveBeenCalled();
+});
+it("retains the compound editor across empty content and canonical job updates", () => {
+  mocks.exists = false;
+  const mounted = render(view());
+  const mountId = screen.getByTestId("editor").dataset.mountId;
+  mocks.exists = true;
+  mocks.content = "";
+  mounted.rerender(view());
+  expect(screen.getByTestId("editor").dataset.mountId).toBe(mountId);
+  mocks.content = "New canonical result";
+  mounted.rerender(view());
+  expect(screen.getByTestId("editor").dataset.mountId).toBe(mountId);
+  expect(screen.getByText("New canonical result")).toBeTruthy();
+});
+it("keeps device recovery mounted while the document target is loading", () => {
+  mocks.target = undefined;
+  render(view());
+  expect(screen.getByTestId("editor")).toBeTruthy();
+  expect(mocks.panel).not.toHaveBeenCalled();
+});
+it("refuses ambiguous targets without mounting generation or an editable document", () => {
+  mocks.target = null;
+  render(view());
+  expect(screen.getByRole("alert").textContent).toContain(
+    "cannot be identified safely",
+  );
+  expect(screen.queryByTestId("editor")).toBeNull();
+  expect(mocks.panel).not.toHaveBeenCalled();
+});
+it("passes the exact selected template output identity to shared processing", () => {
+  mocks.target = { kind: "template_output", document_id: "output" };
+  render(view());
+  expect(mocks.panel).toHaveBeenCalledWith(
+    expect.objectContaining({ target: mocks.target }),
+  );
 });

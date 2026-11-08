@@ -19,6 +19,10 @@ import type { VaultScope } from "./vault-scope";
 
 import { hasUnsavedSessionNoteDrafts } from "~/session/pending-note-drafts";
 import { flushDatabaseWrites } from "~/shared/write-queue";
+import {
+  liveSessionTitleDraft,
+  useLiveTitle,
+} from "~/store/zustand/live-title";
 
 export function captureSessionGenerationGuard(
   scope: VaultScope,
@@ -45,6 +49,7 @@ export function captureSessionGenerationGuard(
   ].map(({ read }) => ({ read, draft: read(), value: "" }));
   let invalidated = false;
   let prepared = false;
+  let capturedTitle = liveSessionTitleDraft(scope, sessionId);
   const refused = () =>
     new ApplicationRequestError({
       code: "conflict",
@@ -85,6 +90,12 @@ export function captureSessionGenerationGuard(
         throw refused();
     }
     if (hasUnsavedSessionNoteDrafts(client.scope, sessionId)) throw refused();
+    const title = liveSessionTitleDraft(scope, sessionId);
+    if (
+      (title && (title.uncertain || title.title !== title.baselineTitle)) ||
+      (prepared && title !== capturedTitle)
+    )
+      throw refused();
   };
   const stops = [
     scope.subscribe(() => {
@@ -96,6 +107,10 @@ export function captureSessionGenerationGuard(
       try {
         check();
       } catch {}
+    }),
+    useLiveTitle.subscribe(() => {
+      if (prepared && liveSessionTitleDraft(scope, sessionId) !== capturedTitle)
+        invalidated = true;
     }),
     ...captured.flatMap(({ draft }) =>
       draft
@@ -129,6 +144,7 @@ export function captureSessionGenerationGuard(
           throw refused();
         for (const entry of captured)
           entry.value = JSON.stringify(entry.draft?.getSnapshot().draft);
+        capturedTitle = liveSessionTitleDraft(scope, sessionId);
         prepared = true;
       })();
       try {
