@@ -25,6 +25,7 @@ import {
   legacyTranscriptControlsAvailable,
   useVaultReadScope,
 } from "~/shared/application/use-vault-read-scope";
+import { VaultTranscription } from "~/shared/application/vault-transcription";
 import { useListener, useListenerStore } from "~/stt/contexts";
 import {
   type TranscriptRecord,
@@ -90,10 +91,23 @@ type TranscriptActions = {
 };
 export function TranscriptContent(props: TranscriptContentProps) {
   const owner = useVaultReadScope();
-  return owner.current() && legacyTranscriptControlsAvailable(owner.scope) ? (
-    <LegacyTranscriptContent {...props} />
-  ) : (
-    <TranscriptPresentation {...props} />
+  const shared = owner.current() && !!owner.scope.client.transcriptionJobs;
+  return (
+    <>
+      {owner.current() && legacyTranscriptControlsAvailable(owner.scope) ? (
+        <LegacyTranscriptContent {...props} />
+      ) : (
+        <TranscriptPresentation {...props} sharedTranscription={shared} />
+      )}
+      {shared && (
+        <VaultTranscription
+          key={props.sessionId}
+          scope={owner.scope}
+          sessionId={props.sessionId}
+          hasTranscript={props.transcripts.length > 0}
+        />
+      )}
+    </>
   );
 }
 function LegacyTranscriptContent(props: TranscriptContentProps) {
@@ -186,7 +200,11 @@ function TranscriptPresentation({
   retry = () => {},
   scrollRef,
   actions,
-}: TranscriptContentProps & { actions?: TranscriptActions }) {
+  sharedTranscription = false,
+}: TranscriptContentProps & {
+  actions?: TranscriptActions;
+  sharedTranscription?: boolean;
+}) {
   const screen = useTranscriptScreen({ sessionId, transcripts });
   const [viewerReady, setViewerReady] = useState(initiallyReady);
   useEffect(() => {
@@ -254,7 +272,7 @@ function TranscriptPresentation({
           onUploadTranscript={actions?.uploadTranscript}
         />
       )}
-      {!actions && screen.kind === "empty" && (
+      {!actions && !sharedTranscription && screen.kind === "empty" && (
         <p role="status">
           <Trans>
             Recording and transcription controls are unavailable for this

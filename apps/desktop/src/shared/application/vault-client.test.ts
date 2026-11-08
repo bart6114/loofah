@@ -1698,7 +1698,6 @@ it("maps checked session lifecycle to the same typed IPC and HTTPS contracts wit
   ]);
 });
 
-
 it("exposes Local transcription jobs only after the owned Native worker is attached", async () => {
   expect((await connectLocalVault()).transcriptionJobs).toBeUndefined();
   native.commands.applicationTranscriptionAvailable.mockResolvedValue(true);
@@ -1707,10 +1706,33 @@ it("exposes Local transcription jobs only after the owned Native worker is attac
   expect(local.features).toContain("transcription_policy");
   const api = local.transcriptionJobs!;
   const requestId = crypto.randomUUID();
-  const input = { session_id: "note", expected_recording_sha256: "a".repeat(64), expected_transcript: "absent" as const, model: "QuantizedBase", languages: ["en"], keywords: [] };
+  const input = {
+    session_id: "note",
+    expected_recording_sha256: "a".repeat(64),
+    expected_transcript: "absent" as const,
+    model: "QuantizedBase",
+    languages: ["en"],
+    keywords: [],
+  };
   const options = { requestId };
-  native.commands.applicationTranscriptionPolicy.mockResolvedValue({ status: "ok", data: { model: "QuantizedBase", availability: "ready", batch_enabled: true, live_enabled: false } });
-  for (const command of [native.commands.applicationTranscriptionJobs, native.commands.applicationTranscriptionJob, native.commands.applicationTranscriptionJobResult, native.commands.applicationSubmitTranscription, native.commands.applicationCancelTranscriptionJob, native.commands.applicationResumeTranscriptionResult]) command.mockResolvedValue({ status: "ok", data: null });
+  native.commands.applicationTranscriptionPolicy.mockResolvedValue({
+    status: "ok",
+    data: {
+      model: "QuantizedBase",
+      availability: "ready",
+      batch_enabled: true,
+      live_enabled: false,
+    },
+  });
+  for (const command of [
+    native.commands.applicationTranscriptionJobs,
+    native.commands.applicationTranscriptionJob,
+    native.commands.applicationTranscriptionJobResult,
+    native.commands.applicationSubmitTranscription,
+    native.commands.applicationCancelTranscriptionJob,
+    native.commands.applicationResumeTranscriptionResult,
+  ])
+    command.mockResolvedValue({ status: "ok", data: null });
   await api.policy();
   await api.list({ limit: 10, after: null });
   await api.get(requestId);
@@ -1718,26 +1740,78 @@ it("exposes Local transcription jobs only after the owned Native worker is attac
   await api.submit(input, options);
   await api.cancel(requestId);
   await api.resumeResult(requestId);
-  expect(native.commands.applicationSubmitTranscription).toHaveBeenCalledExactlyOnceWith(input, requestId);
-  expect(native.commands.applicationTranscriptionJobs).toHaveBeenCalledExactlyOnceWith({ limit: 10, after: null });
-  expect(native.commands.applicationTranscriptionJob).toHaveBeenCalledExactlyOnceWith(requestId);
-  expect(native.commands.applicationTranscriptionJobResult).toHaveBeenCalledExactlyOnceWith(requestId);
-  expect(native.commands.applicationCancelTranscriptionJob).toHaveBeenCalledExactlyOnceWith(requestId);
-  expect(native.commands.applicationResumeTranscriptionResult).toHaveBeenCalledExactlyOnceWith(requestId);
+  expect(
+    native.commands.applicationSubmitTranscription,
+  ).toHaveBeenCalledExactlyOnceWith(input, requestId);
+  expect(
+    native.commands.applicationTranscriptionJobs,
+  ).toHaveBeenCalledExactlyOnceWith({ limit: 10, after: null });
+  expect(
+    native.commands.applicationTranscriptionJob,
+  ).toHaveBeenCalledExactlyOnceWith(requestId);
+  expect(
+    native.commands.applicationTranscriptionJobResult,
+  ).toHaveBeenCalledExactlyOnceWith(requestId);
+  expect(
+    native.commands.applicationCancelTranscriptionJob,
+  ).toHaveBeenCalledExactlyOnceWith(requestId);
+  expect(
+    native.commands.applicationResumeTranscriptionResult,
+  ).toHaveBeenCalledExactlyOnceWith(requestId);
 });
 
-it.each([["batch_transcription_jobs"], ["transcription_policy"], []])("does not expose an incomplete Remote transcription contract: %j", (features) => {
-  const remote = connectRemoteVault({ info: { server: "https://company.example/", capabilities: { features } } } as unknown as NativeRemoteConnection, "member", { id: "vault", role: "editor" });
-  expect(remote.transcriptionJobs).toBeUndefined();
-  expect(native.commands.applicationTranscriptionAvailable).not.toHaveBeenCalled();
-});
+it.each([
+  { features: ["batch_transcription_jobs"] },
+  { features: ["transcription_policy"] },
+  { features: [] },
+])(
+  "does not expose an incomplete Remote transcription contract: %j",
+  ({ features }) => {
+    const remote = connectRemoteVault(
+      {
+        info: {
+          server: "https://company.example/",
+          capabilities: { features },
+        },
+      } as unknown as NativeRemoteConnection,
+      "member",
+      { id: "vault", role: "editor" },
+    );
+    expect(remote.transcriptionJobs).toBeUndefined();
+    expect(
+      native.commands.applicationTranscriptionAvailable,
+    ).not.toHaveBeenCalled();
+  },
+);
 
 it("pins all Remote transcription operations to the captured connection and vault without Local model reads", async () => {
   const request = vi.fn().mockResolvedValue(null);
-  const remote = connectRemoteVault({ info: { server: "https://company.example/", capabilities: { features: ["batch_transcription_jobs", "transcription_policy"] } }, request } as unknown as NativeRemoteConnection, "member", { id: "vault", role: "editor" });
+  const remote = connectRemoteVault(
+    {
+      info: {
+        server: "https://company.example/",
+        capabilities: {
+          features: ["batch_transcription_jobs", "transcription_policy"],
+        },
+      },
+      request,
+    } as unknown as NativeRemoteConnection,
+    "member",
+    { id: "vault", role: "editor" },
+  );
   const api = remote.transcriptionJobs!;
-  const input = { session_id: "note", expected_recording_sha256: "a".repeat(64), expected_transcript: "absent" as const, model: "server-cpu", languages: ["en"], keywords: [] };
-  const options = { requestId: crypto.randomUUID(), signal: new AbortController().signal };
+  const input = {
+    session_id: "note",
+    expected_recording_sha256: "a".repeat(64),
+    expected_transcript: "absent" as const,
+    model: "server-cpu",
+    languages: ["en"],
+    keywords: [],
+  };
+  const options = {
+    requestId: crypto.randomUUID(),
+    signal: new AbortController().signal,
+  };
   await api.policy(options);
   await api.list({ limit: 10, after: null }, options);
   await api.get("job", options);
@@ -1747,7 +1821,11 @@ it("pins all Remote transcription operations to the captured connection and vaul
   await api.resumeResult("job", options);
   expect(request.mock.calls.map(([operation]) => operation)).toEqual([
     { kind: "transcription_policy", vault_id: "vault" },
-    { kind: "transcription_jobs", vault_id: "vault", input: { limit: 10, after: null } },
+    {
+      kind: "transcription_jobs",
+      vault_id: "vault",
+      input: { limit: 10, after: null },
+    },
     { kind: "transcription_job", vault_id: "vault", job_id: "job" },
     { kind: "transcription_job_result", vault_id: "vault", job_id: "job" },
     { kind: "submit_transcription", vault_id: "vault", input },
@@ -1755,6 +1833,8 @@ it("pins all Remote transcription operations to the captured connection and vaul
     { kind: "resume_transcription_result", vault_id: "vault", job_id: "job" },
   ]);
   expect(request.mock.calls.every((call) => call[2] === options)).toBe(true);
-  expect(native.commands.applicationTranscriptionAvailable).not.toHaveBeenCalled();
+  expect(
+    native.commands.applicationTranscriptionAvailable,
+  ).not.toHaveBeenCalled();
   expect(native.commands.applicationTranscriptionPolicy).not.toHaveBeenCalled();
 });

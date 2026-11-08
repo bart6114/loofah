@@ -145,12 +145,30 @@ export type VaultClient = {
   };
   transcriptionJobs?: {
     policy: (options?: RequestOptions) => Promise<TranscriptionPolicy>;
-    list: (input: ListTranscriptionJobsInput, options?: RequestOptions) => Promise<TranscriptionJobPage>;
-    get: (jobId: string, options?: RequestOptions) => Promise<TranscriptionJobSnapshot>;
-    result: (jobId: string, options?: RequestOptions) => Promise<TranscriptionJobResult | null>;
-    submit: (input: TranscriptionJobRequest, options: RequestOptions & { requestId: string }) => Promise<TranscriptionJobSnapshot>;
-    cancel: (jobId: string, options?: RequestOptions) => Promise<TranscriptionJobSnapshot>;
-    resumeResult: (jobId: string, options?: RequestOptions) => Promise<TranscriptionJobSnapshot>;
+    list: (
+      input: ListTranscriptionJobsInput,
+      options?: RequestOptions,
+    ) => Promise<TranscriptionJobPage>;
+    get: (
+      jobId: string,
+      options?: RequestOptions,
+    ) => Promise<TranscriptionJobSnapshot>;
+    result: (
+      jobId: string,
+      options?: RequestOptions,
+    ) => Promise<TranscriptionJobResult | null>;
+    submit: (
+      input: TranscriptionJobRequest,
+      options: RequestOptions & { requestId: string },
+    ) => Promise<TranscriptionJobSnapshot>;
+    cancel: (
+      jobId: string,
+      options?: RequestOptions,
+    ) => Promise<TranscriptionJobSnapshot>;
+    resumeResult: (
+      jobId: string,
+      options?: RequestOptions,
+    ) => Promise<TranscriptionJobSnapshot>;
   };
   processingPolicy: (options?: RequestOptions) => Promise<ProcessingPolicy>;
   processingSettings: (
@@ -433,11 +451,12 @@ async function ipc<T>(
 export async function connectLocalVault({
   sessionLifecycleAvailable = false,
 }: { sessionLifecycleAvailable?: boolean } = {}): Promise<VaultClient> {
-  const [scope, processingAvailable, transcriptionAvailable] = await Promise.all([
-    commands.applicationScope().then(applicationResult),
-    commands.applicationProcessingAvailable(),
-    commands.applicationTranscriptionAvailable(),
-  ]);
+  const [scope, processingAvailable, transcriptionAvailable] =
+    await Promise.all([
+      commands.applicationScope().then(applicationResult),
+      commands.applicationProcessingAvailable(),
+      commands.applicationTranscriptionAvailable(),
+    ]);
   const requireLifecycle = (mutation: boolean) => {
     if (!sessionLifecycleAvailable)
       throw new ApplicationRequestError({
@@ -462,7 +481,9 @@ export async function connectLocalVault({
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
-      ...(transcriptionAvailable ? ["batch_transcription_jobs", "transcription_policy"] : []),
+      ...(transcriptionAvailable
+        ? ["batch_transcription_jobs", "transcription_policy"]
+        : []),
       ...(processingAvailable
         ? [
             "summary_body_jobs",
@@ -501,15 +522,43 @@ export async function connectLocalVault({
       "tasks_edit",
       "agent_read",
     ],
-    transcriptionJobs: transcriptionAvailable ? {
-      policy: (options) => ipc(() => commands.applicationTranscriptionPolicy(), options),
-      list: (input, options) => ipc(() => commands.applicationTranscriptionJobs(input), options),
-      get: (jobId, options) => ipc(() => commands.applicationTranscriptionJob(jobId), options),
-      result: (jobId, options) => ipc(() => commands.applicationTranscriptionJobResult(jobId), options),
-      submit: (input, options) => ipc(() => commands.applicationSubmitTranscription(input, options.requestId), options, true),
-      cancel: (jobId, options) => ipc(() => commands.applicationCancelTranscriptionJob(jobId), options, true),
-      resumeResult: (jobId, options) => ipc(() => commands.applicationResumeTranscriptionResult(jobId), options, true),
-    } : undefined,
+    transcriptionJobs: transcriptionAvailable
+      ? {
+          policy: (options) =>
+            ipc(() => commands.applicationTranscriptionPolicy(), options),
+          list: (input, options) =>
+            ipc(() => commands.applicationTranscriptionJobs(input), options),
+          get: (jobId, options) =>
+            ipc(() => commands.applicationTranscriptionJob(jobId), options),
+          result: (jobId, options) =>
+            ipc(
+              () => commands.applicationTranscriptionJobResult(jobId),
+              options,
+            ),
+          submit: (input, options) =>
+            ipc(
+              () =>
+                commands.applicationSubmitTranscription(
+                  input,
+                  options.requestId,
+                ),
+              options,
+              true,
+            ),
+          cancel: (jobId, options) =>
+            ipc(
+              () => commands.applicationCancelTranscriptionJob(jobId),
+              options,
+              true,
+            ),
+          resumeResult: (jobId, options) =>
+            ipc(
+              () => commands.applicationResumeTranscriptionResult(jobId),
+              options,
+              true,
+            ),
+        }
+      : undefined,
     processingPolicy: (options) =>
       ipc(() => commands.applicationProcessingPolicy(), options),
     processingSettings: (options) =>
@@ -828,15 +877,68 @@ export function connectRemoteVault(
           "legacy_desktop_session_controls",
         ].includes(feature),
     ),
-    transcriptionJobs: connection.info.capabilities.features.includes("batch_transcription_jobs") && connection.info.capabilities.features.includes("transcription_policy") ? {
-      policy: (options) => connection.request({ kind: "transcription_policy", vault_id: vaultId }, "transcription_policy", options),
-      list: (input, options) => connection.request({ kind: "transcription_jobs", vault_id: vaultId, input }, "transcription_jobs", options),
-      get: (jobId, options) => connection.request({ kind: "transcription_job", vault_id: vaultId, job_id: jobId }, "transcription_job", options),
-      result: (jobId, options) => connection.request({ kind: "transcription_job_result", vault_id: vaultId, job_id: jobId }, "transcription_job_result", options),
-      submit: (input, options) => connection.request({ kind: "submit_transcription", vault_id: vaultId, input }, "transcription_job", options),
-      cancel: (jobId, options) => connection.request({ kind: "cancel_transcription_job", vault_id: vaultId, job_id: jobId }, "transcription_job", options),
-      resumeResult: (jobId, options) => connection.request({ kind: "resume_transcription_result", vault_id: vaultId, job_id: jobId }, "transcription_job", options),
-    } : undefined,
+    transcriptionJobs:
+      connection.info.capabilities.features.includes(
+        "batch_transcription_jobs",
+      ) &&
+      connection.info.capabilities.features.includes("transcription_policy")
+        ? {
+            policy: (options) =>
+              connection.request(
+                { kind: "transcription_policy", vault_id: vaultId },
+                "transcription_policy",
+                options,
+              ),
+            list: (input, options) =>
+              connection.request(
+                { kind: "transcription_jobs", vault_id: vaultId, input },
+                "transcription_jobs",
+                options,
+              ),
+            get: (jobId, options) =>
+              connection.request(
+                { kind: "transcription_job", vault_id: vaultId, job_id: jobId },
+                "transcription_job",
+                options,
+              ),
+            result: (jobId, options) =>
+              connection.request(
+                {
+                  kind: "transcription_job_result",
+                  vault_id: vaultId,
+                  job_id: jobId,
+                },
+                "transcription_result",
+                options,
+              ),
+            submit: (input, options) =>
+              connection.request(
+                { kind: "submit_transcription", vault_id: vaultId, input },
+                "transcription_job",
+                options,
+              ),
+            cancel: (jobId, options) =>
+              connection.request(
+                {
+                  kind: "cancel_transcription_job",
+                  vault_id: vaultId,
+                  job_id: jobId,
+                },
+                "transcription_job",
+                options,
+              ),
+            resumeResult: (jobId, options) =>
+              connection.request(
+                {
+                  kind: "resume_transcription_result",
+                  vault_id: vaultId,
+                  job_id: jobId,
+                },
+                "transcription_job",
+                options,
+              ),
+          }
+        : undefined,
     processingPolicy: (options) =>
       connection.request(
         { kind: "processing_policy", vault_id: vaultId },

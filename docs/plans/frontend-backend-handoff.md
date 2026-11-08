@@ -61,6 +61,16 @@ bytes unchanged when false, and conflicts before generation if the reviewed
 summary has filled or changed. This adapter work does not complete Native/Core
 automatic processing durability before producer start.
 
+Shared manual transcription now has a scoped optional client contract and UI.
+The complete transcription policy/job capability pair is required. A device
+receipt freezes the request UUID, source hash and model before transport dispatch;
+loading recovery does not start inference. Explicit recovery reuses that request,
+while acknowledged receipts refresh status without another submission. Standard
+manual jobs preserve the absence-only transcript contract. Existing Local
+replacement/import controls still require migration to checked replacement
+authority; this UI does not grant it. Current-source integration and Native
+acceptance remain pending for these additions.
+
 Local shared lifecycle UI activation remains default OFF. Managed Local CLI
 stale-channel deletion now uses the tested strict Native physical-resource host
 proof; unregistered or uncertain hosts refuse. Recording append,
