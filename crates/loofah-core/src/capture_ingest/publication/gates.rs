@@ -7,7 +7,7 @@ use crate::events::EventHub;
 use hypr_loofah_protocol::{ApplicationError, ErrorCode, MutationOutcome};
 
 #[derive(Default, Clone)]
-pub(crate) struct PublicationGates(Arc<Mutex<State>>);
+pub(crate) struct PublicationGates(Arc<Mutex<State>>, Arc<tokio::sync::Mutex<()>>);
 
 #[derive(Default)]
 struct State {
@@ -44,6 +44,10 @@ impl PublicationGates {
             return Err(blocked());
         }
         Ok(())
+    }
+
+    pub(super) async fn bootstrap_guard(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.1.clone().lock_owned().await
     }
 
     pub(super) fn initialized(&self) -> bool {

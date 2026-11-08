@@ -47,6 +47,27 @@ impl VaultRuntime {
             cache_root.to_path_buf(),
             operation_root.to_path_buf(),
             None,
+            None,
+        )
+        .await
+    }
+
+    /// A standalone client must transfer its acquired owner instead of taking a second lock.
+    pub async fn open_leased(
+        id: String,
+        lease: hypr_storage::vault::VaultLease,
+        cache_root: &Path,
+        operation_root: &Path,
+        content_limits: hypr_vault_write::ContentLimits,
+    ) -> Result<Self, StoreError> {
+        let vault = lease.canonical_vault().to_owned();
+        Self::open_owned(
+            id,
+            vault,
+            cache_root.to_owned(),
+            operation_root.to_owned(),
+            None,
+            Some((lease, content_limits)),
         )
         .await
     }
@@ -65,6 +86,7 @@ impl VaultRuntime {
             cache_root.to_path_buf(),
             operation_root.to_path_buf(),
             Some(crate::vault_watch::ChangeSource::Unbounded(changes)),
+            None,
         )
         .await
     }
@@ -75,12 +97,16 @@ impl VaultRuntime {
         cache: std::path::PathBuf,
         operations: std::path::PathBuf,
         changes: Option<crate::vault_watch::ChangeSource>,
+        admitted: Option<(
+            hypr_storage::vault::VaultLease,
+            hypr_vault_write::ContentLimits,
+        )>,
     ) -> Result<Self, StoreError> {
         // Dropping a request detaches this owner; nested blocking recovery/migration
         // still runs to completion with the real filesystem lease in its stack.
-        tokio::spawn(
-            async move { Self::open_inner(id, &vault, &cache, &operations, changes).await },
-        )
+        tokio::spawn(async move {
+            Self::open_inner(id, &vault, &cache, &operations, changes, admitted).await
+        })
         .await
         .map_err(|cause| StoreError::Io(format!("vault initialization worker failed: {cause}")))?
     }
@@ -91,31 +117,54 @@ impl VaultRuntime {
         cache_root: &Path,
         operation_root: &Path,
         changes: Option<crate::vault_watch::ChangeSource>,
+        admitted: Option<(
+            hypr_storage::vault::VaultLease,
+            hypr_vault_write::ContentLimits,
+        )>,
     ) -> Result<Self, StoreError> {
         let vault = vault.to_path_buf();
         let operations = operation_root.to_path_buf();
-        let (vault, lease, operation_root) = tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&vault).map_err(io_error)?;
-            let lease = match hypr_storage::vault::VaultLease::try_acquire_existing(&vault)
-                .map_err(io_error)?
-            {
-                hypr_storage::vault::LeaseAttempt::Acquired(lease) => lease,
-                hypr_storage::vault::LeaseAttempt::Busy => {
-                    return Err(StoreError::Conflict(
-                        "vault is already open; connect through its local owner".into(),
-                    ));
-                }
-            };
-            let vault = lease.canonical_vault().to_owned();
-            // This is trusted host configuration, not a client path. Resolve its
-            // ancestor aliases once; private descendants still use strict guards.
-            std::fs::create_dir_all(&operations).map_err(io_error)?;
-            let operations = std::fs::canonicalize(operations).map_err(io_error)?;
-            Ok((vault, lease, operations))
-        })
-        .await
-        .map_err(|error| StoreError::Io(error.to_string()))??;
-        let store = Arc::new(SessionStore::new(vault.clone()));
+        let (vault, lease, operation_root, content_limits) =
+            tokio::task::spawn_blocking(move || {
+                let (lease, limits) = match admitted {
+                    Some((lease, limits)) => {
+                        if lease.canonical_vault() != vault.as_path() {
+                            return Err(StoreError::Conflict(
+                                "Acquired lease belongs to another vault".into(),
+                            ));
+                        }
+                        (lease, limits)
+                    }
+                    None => {
+                        std::fs::create_dir_all(&vault).map_err(io_error)?;
+                        let lease =
+                            match hypr_storage::vault::VaultLease::try_acquire_existing(&vault)
+                                .map_err(io_error)?
+                            {
+                                hypr_storage::vault::LeaseAttempt::Acquired(lease) => lease,
+                                hypr_storage::vault::LeaseAttempt::Busy => {
+                                    return Err(StoreError::Conflict(
+                                        "vault is already open; connect through its local owner"
+                                            .into(),
+                                    ));
+                                }
+                            };
+                        (lease, hypr_vault_write::ContentLimits::default())
+                    }
+                };
+                let vault = lease.canonical_vault().to_owned();
+                // This is trusted host configuration, not a client path. Resolve its
+                // ancestor aliases once; private descendants still use strict guards.
+                std::fs::create_dir_all(&operations).map_err(io_error)?;
+                let operations = std::fs::canonicalize(operations).map_err(io_error)?;
+                Ok((vault, lease, operations, limits))
+            })
+            .await
+            .map_err(|error| StoreError::Io(error.to_string()))??;
+        let store = Arc::new(SessionStore::with_content_limits(
+            vault.clone(),
+            content_limits,
+        ));
         store.pin_vault_lease(&lease)?;
         let (lease_pin, recording_publications) = VaultContext::bootstrap_recording_publications(
             store.clone(),

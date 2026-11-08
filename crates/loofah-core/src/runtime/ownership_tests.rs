@@ -400,3 +400,60 @@ async fn trusted_operation_root_alias_resolves_once_but_private_descendant_symli
         runtime.shutdown().await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn acquired_lease_runtime_reuses_original_descriptor_and_preserves_local_content_limits() {
+    let root = tempfile::tempdir().unwrap();
+    seed(root.path()).await;
+    let lease =
+        match hypr_storage::vault::VaultLease::try_acquire_existing(&root.path().join("vault"))
+            .unwrap()
+        {
+            hypr_storage::vault::LeaseAttempt::Acquired(lease) => lease,
+            _ => panic!("unexpected owner"),
+        };
+    let original = lease.pin();
+    let weak = Arc::downgrade(&original);
+    let runtime = VaultRuntime::open_leased(
+        "vault".into(),
+        lease,
+        &root.path().join("cache"),
+        &root.path().join("operations"),
+        hypr_vault_write::ContentLimits::unlimited(),
+    )
+    .await
+    .unwrap();
+    assert!(Arc::ptr_eq(
+        &runtime.context.lease_pin().unwrap(),
+        &original
+    ));
+    let mut note = runtime.context.read_note("note").await.unwrap();
+    let large = "x".repeat(hypr_vault_write::ContentLimits::default().note_write_bytes + 1);
+    let saved = runtime
+        .context
+        .save_note(
+            "note",
+            hypr_loofah_protocol::SaveNoteRequest {
+                markdown: large.clone(),
+                title: None,
+                expected_revision: std::mem::take(&mut note.revision),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(saved,hypr_loofah_protocol::NoteSaveOutcome::Saved(snapshot) if snapshot.markdown.as_deref()==Some(large.as_str()))
+    );
+    drop(original);
+    runtime
+        .shutdown_with_deadline(Duration::from_secs(10))
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while weak.upgrade().is_some() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}

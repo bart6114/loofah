@@ -3,6 +3,7 @@
 pub mod capture_live;
 pub mod events;
 pub mod jobs;
+pub mod local_cli;
 pub mod processing_settings;
 pub mod search;
 pub mod settings;
