@@ -50,6 +50,7 @@ async fn adopt(
     let source = copy::existing_directory(source)?;
     let output = copy::destination(output)?;
     copy::disjoint(&[&storage, &source, &output])?;
+    let storage_identity = fs::symlink_metadata(&storage)?;
     validate_backup_catalog(&storage.join("catalog.json"))
         .map_err(|_| MaintenanceError("A supported existing service catalog is required"))?;
     let catalog = Catalog::open(&storage)
@@ -66,7 +67,7 @@ async fn adopt(
     let vault_id = vault_id.to_owned();
     tokio::task::spawn_blocking(move || {
         let _catalog = catalog;
-        let storage_identity = fs::symlink_metadata(&storage)?;
+        check_root(&storage, &storage_identity)?;
         let source_identity = fs::symlink_metadata(&source)?;
         let _source_lease = lease(&source)?;
         let vaults = storage.join("vaults");
@@ -185,7 +186,16 @@ fn fresh_target(
         }
         if let Some(relative) = name.strip_prefix(runtime) {
             match entry {
-                Entry::Directory { .. } => {}
+                Entry::Directory { .. }
+                    if matches!(
+                        relative,
+                        "creates"
+                            | "creates/jobs"
+                            | "creates/transcription-jobs"
+                            | "creates/captures"
+                            | "creates/capture-live"
+                            | "creates/capture-processing"
+                    ) => {}
                 Entry::File { bytes: 0, .. }
                     if matches!(
                         relative,

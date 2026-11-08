@@ -180,7 +180,20 @@ async fn any_runtime_work_or_unknown_state_refuses_adoption_and_known_locks_must
         fs::write(&path, b"").unwrap();
         assert!(f.run().await.is_err(), "accepted runtime {file}");
         assert!(!f.output.exists());
-        fs::remove_file(path).unwrap();
+        fs::remove_dir_all(&runtime).unwrap();
+    }
+    for directory in [
+        "unknown",
+        "captures/original-scope",
+        "member-media",
+        "jobs/original-request",
+    ] {
+        fs::create_dir_all(runtime.join(directory)).unwrap();
+        assert!(
+            f.run().await.is_err(),
+            "accepted unknown runtime directory {directory}"
+        );
+        fs::remove_dir_all(&runtime).unwrap();
     }
     fs::create_dir_all(runtime.join("capture-processing")).unwrap();
     let path = runtime.join("capture-processing/.lock");
