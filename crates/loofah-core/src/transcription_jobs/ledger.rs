@@ -271,6 +271,7 @@ impl Journal {
         .await
         .map_err(storage)?
     }
+    #[cfg(test)]
     pub async fn submit(
         &self,
         member: String,
