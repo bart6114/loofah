@@ -77,6 +77,8 @@ struct Record {
     capture_processing: Option<crate::capture_processing::CaptureChildOrigin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_capture: Option<crate::local_capture_intents::LocalCaptureChildOrigin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manual_media: Option<crate::manual_media_intents::ManualMediaChildOrigin>,
 }
 
 #[derive(Clone, Copy)]
@@ -89,6 +91,39 @@ pub enum JobCompletion {
 }
 
 impl JobJournal {
+    pub(crate) async fn manual_media_origin(
+        &self,
+        id: String,
+    ) -> Result<Option<crate::manual_media_intents::ManualMediaChildOrigin>, ApplicationError> {
+        self.run(move |state, _| Ok(state.record(&id)?.manual_media.clone()))
+            .await
+    }
+    pub(crate) async fn replay_manual_media(
+        &self,
+        request_id: String,
+        request: SummaryJobRequest,
+        origin: crate::manual_media_intents::ManualMediaChildOrigin,
+    ) -> Result<Option<ProcessingJobSnapshot>, ApplicationError> {
+        origin.validate_request(&request)?;
+        let request_id = parse_uuid(&request_id)?;
+        self.run(move |state, _| {
+            let Some(record) = state.records.get(&key("desktop", &request_id)) else {
+                return Ok(None);
+            };
+            if record.request != request
+                || record.manual_media.as_ref() != Some(&origin)
+                || record.capture_processing.is_some()
+                || record.local_capture.is_some()
+            {
+                return Err(rejected(
+                    ErrorCode::Conflict,
+                    "Original manual summary child changed",
+                ));
+            }
+            Ok(Some(record.snapshot.clone()))
+        })
+        .await
+    }
     pub(crate) async fn replay_local_capture(
         &self,
         request_id: String,
@@ -256,6 +291,25 @@ impl JobJournal {
         origin: Option<crate::capture_processing::CaptureChildOrigin>,
         local: Option<crate::local_capture_intents::LocalCaptureChildOrigin>,
     ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        self.submit_with_all_origins(namespace, request_id, request, origin, local, None)
+            .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn submit_with_all_origins(
+        &self,
+        namespace: String,
+        request_id: String,
+        request: SummaryJobRequest,
+        origin: Option<crate::capture_processing::CaptureChildOrigin>,
+        local: Option<crate::local_capture_intents::LocalCaptureChildOrigin>,
+        manual: Option<crate::manual_media_intents::ManualMediaChildOrigin>,
+    ) -> Result<ProcessingJobSnapshot, ApplicationError> {
+        if let Some(manual) = &manual {
+            manual.validate_request(&request)?;
+            if origin.is_some() || local.is_some() || namespace != "desktop" {
+                return Err(storage());
+            }
+        }
         if let Some(local) = &local {
             local.validate_request(&request)?;
             if origin.is_some() || namespace != crate::local_capture_intents::SUMMARY_OWNER {
@@ -272,6 +326,9 @@ impl JobJournal {
             let key = key(&namespace, &request_id);
             if let Some(record) = state.records.get(&key) {
                 return if record.request == request
+                    && manual
+                        .as_ref()
+                        .is_none_or(|manual| record.manual_media.as_ref() == Some(manual))
                     && local
                         .as_ref()
                         .is_none_or(|local| record.local_capture.as_ref() == Some(local))
@@ -299,7 +356,9 @@ impl JobJournal {
             }
             let timestamp = now();
             let record = Record {
-                schema_version: if local.is_some() {
+                schema_version: if manual.is_some() {
+                    5
+                } else if local.is_some() {
                     4
                 } else if request.only_if_empty {
                     3
@@ -325,6 +384,7 @@ impl JobJournal {
                 body_applied: None,
                 capture_processing: origin,
                 local_capture: local,
+                manual_media: manual,
             };
             state.persist(&record)?;
             state.ids.insert(record.snapshot.id.clone(), key.clone());
@@ -588,7 +648,7 @@ impl State {
     }
 }
 
-fn validate_request(request: &SummaryJobRequest) -> Result<(), ApplicationError> {
+pub(crate) fn validate_request(request: &SummaryJobRequest) -> Result<(), ApplicationError> {
     hypr_vault_read::paths::validate_session_id(&request.session_id)
         .map_err(|_| rejected(ErrorCode::Validation, "Invalid job session"))?;
     if let DocumentTarget::TemplateOutput { document_id } = &request.target {
@@ -620,7 +680,7 @@ fn validate_namespace(namespace: &str) -> Result<(), ApplicationError> {
     }
     Ok(())
 }
-fn conditional_target_filled(
+pub(crate) fn conditional_target_filled(
     request: &SummaryJobRequest,
     snapshot: &hypr_loofah_protocol::DocumentSnapshot,
 ) -> bool {
@@ -647,7 +707,18 @@ fn validate_record(
             return Err(storage());
         }
     }
-    let expected_version = if record.local_capture.is_some() {
+    if let Some(manual) = &record.manual_media {
+        manual.validate_request(&record.request)?;
+        if record.capture_processing.is_some()
+            || record.local_capture.is_some()
+            || record.namespace != "desktop"
+        {
+            return Err(storage());
+        }
+    }
+    let expected_version = if record.manual_media.is_some() {
+        5
+    } else if record.local_capture.is_some() {
         4
     } else if record.request.only_if_empty {
         3

@@ -30,7 +30,11 @@ use crate::{
 };
 
 mod io;
+mod manual_source;
 mod source_guard;
+pub use manual_source::{
+    CompletedTranscriptPublication, TranscriptOnlyBinding, TranscriptOnlyGuard,
+};
 mod subtitle;
 pub use source_guard::{ProcessingSourceBinding, ProcessingSourceGuard};
 pub use subtitle::{SubtitleSourcePreparation, SubtitleSourceSnapshot};

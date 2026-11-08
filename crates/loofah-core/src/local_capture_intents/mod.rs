@@ -21,6 +21,7 @@ mod recovery;
 #[cfg(test)]
 mod tests;
 mod worker;
+pub(crate) use worker::automatic_eligible;
 
 pub const TRANSCRIPTION_OWNER: &str = "00000000-0000-0000-0000-000000000000";
 pub const SUMMARY_OWNER: &str = "desktop";

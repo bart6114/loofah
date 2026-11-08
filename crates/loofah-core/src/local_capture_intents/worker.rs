@@ -435,7 +435,7 @@ fn copy_source(source: &TranscriptSourceSnapshot, path: &Path) -> Result<(), App
     output.set_permissions(permissions).map_err(review)?;
     ledger::sync_parent(path)
 }
-pub(super) fn automatic_eligible(transcripts: &[TranscriptWithData]) -> bool {
+pub(crate) fn automatic_eligible(transcripts: &[TranscriptWithData]) -> bool {
     let mut words = 0usize;
     let mut characters = 0usize;
     for transcript in transcripts {

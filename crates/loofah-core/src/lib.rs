@@ -8,6 +8,7 @@ pub mod jobs;
 pub mod local_capture_intents;
 pub mod local_cli;
 pub mod local_session_work;
+pub mod manual_media_intents;
 pub mod processing_settings;
 pub mod provider_credentials;
 pub mod search;

@@ -148,6 +148,15 @@ async fn execute(
     let _work = context.admit_session_work(&work.request.session_id).await?;
     let (request_id, origin) = journal.capture_request_id(id.into()).await?;
     let local_origin = journal.local_capture_origin(id.into()).await?;
+    let manual_origin = journal.manual_media_origin(id.into()).await?;
+    if context
+        .guard_manual_media_summary(&work.principal, &request_id, manual_origin.as_ref())
+        .await
+        .is_err()
+    {
+        return Ok(JobCompletion::Interrupted);
+    }
+
     if context
         .guard_local_capture_summary(&work.principal, &request_id, local_origin.as_ref())
         .await
@@ -285,6 +294,13 @@ async fn execute(
     if !journal.begin_apply(id.into()).await? {
         return Ok(JobCompletion::Cancelled);
     }
+    let manual_source_guard = match context
+        .guard_manual_media_summary(&work.principal, &request_id, manual_origin.as_ref())
+        .await
+    {
+        Ok(guard) => guard,
+        Err(_) => return Ok(JobCompletion::Conflict),
+    };
     let local_source_guard = match context
         .guard_local_capture_summary(&work.principal, &request_id, local_origin.as_ref())
         .await
@@ -322,6 +338,7 @@ async fn execute(
     };
     drop(source_guard);
     drop(local_source_guard);
+    drop(manual_source_guard);
     if work.request.title_policy == TitlePolicy::GenerateIfEmpty
         && let Ok(hypr_loofah_protocol::DocumentSaveOutcome::Saved(snapshot)) = &applied
     {

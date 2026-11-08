@@ -9,6 +9,14 @@ pub(super) enum DocumentWriteMode {
 }
 
 impl SessionStore {
+    pub fn absent_document_revision(
+        session_id: &str,
+        target: &DocumentTarget,
+    ) -> Result<String, StoreError> {
+        crate::validate_session_id(session_id)?;
+        revision(session_id, target, None)
+    }
+
     pub async fn read_recovered_document_snapshot(
         &self,
         operation_root: Option<&std::path::Path>,
