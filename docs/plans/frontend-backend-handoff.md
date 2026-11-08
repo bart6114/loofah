@@ -2,159 +2,155 @@
 
 ## Current state
 
-The user resumed all work. Goal: fully implement, test and validate
-`docs/plans/frontend-backend-separation.md`. This checkpoint does not claim
-completion. All seven delivery phases remain open.
+The user resumed everything. Active goal: fully implement, test and validate
+`docs/plans/frontend-backend-separation.md`. All seven phases remain open.
+This checkpoint is not a release or completion claim. Verify live state first.
 
-- Integration worktree: `/Volumes/T7/src/loofah-backend-separation`.
+- Integration tree: `/Volumes/T7/src/loofah-backend-separation`.
 - Branch: `refactor/frontend-backend-separation`.
-- Last source checkpoint: `dc32e18570d3d7dfa9d42324b75956ba2cf165c9`.
+- Latest API checkpoint: `136812c9e`; interface checkpoint: `0ee7b680e`.
 - Last pushed head: `66b88b660e86efb53a5938e45e872769d0f74153`.
-- Draft PR: <https://github.com/bart6114/loofah/pull/123>; no merge or release.
-- Original `/Volumes/T7/src/free-meeting-transcriber` remains on main with tracked
-  files untouched. Preserve its pre-existing untracked documentation.
+- Draft PR: <https://github.com/bart6114/loofah/pull/123>; no merge/release.
+- Original `/Volumes/T7/src/free-meeting-transcriber` tracked files remain untouched.
 
-Verify live HEAD, status, processes, agents and CI before resuming. Default local
-use remains standalone, offline and login-free, including solo use. Preserve
-macOS and Windows 11 x64/ARM64; Linux is headless only. Exclude bases, CRDTs,
-general remote-vault offline editing, mobile and real-time collaborative editing.
-Every local build artifact, cache, temporary file, log and model stays physically
-on T7. Use isolated worktrees.
+Default local use stays standalone, offline and login-free, including solo use.
+Preserve macOS and Windows 11 x64/ARM64; Linux is headless only. Exclude bases,
+CRDTs, general remote-vault offline editing, mobile and collaborative editing.
+Use isolated worktrees. All local artifacts/caches/temp/logs/models must remain
+physically on T7. Preserve earlier stashes and recovery copies.
 
-## Implemented since the previous pushed batch
+## Latest integrated source
 
-The main plan records earlier extracted operations, HTTPS/SSE, scoped clients and
-drafts, checked editing, media/attachments, processing and CLI/MCP remote reads.
-New integrated work includes:
+Earlier extraction, authenticated HTTP/SSE, scoped clients/recovery, media,
+attachments, AI jobs and CLI/MCP reads are recorded in the main plan.
+Newer commits include:
 
-- Lossless title metadata patches, optional durable summary/title orchestration,
-  exact-policy device recovery, capability gates and actual generated contracts.
-  Preserve omits the new field exactly; title failure never discards a successful
-  body. Retained generated output can differ from the subsequently titled body.
-- Verified streaming WAV source and absent-only recording publication, complete
-  bounded receipt discovery/recovery, Core media readiness gates and fresh
-  authorization through canonical commit. HTTP/SDK publication is integrated.
-  Source audio is retained; independent canonical reads are still required before
-  any future device cleanup policy.
-- CPU speech resource ownership around the existing kernel: explicit verified
-  operator model, bounded batch/live admission, actual native/source/model drain,
-  lossy optional batch progress and complete authoritative terminal result.
-  This is not a public STT job or completed typed live inference feature.
-- Actual main New Note, slim linked-session summaries, balanced Scope QueryClient
-  mounting, checked Date editing, shared author metadata reads and scoped derived
-  transcript/export caches. Legacy source reads and rich main editor paths still
-  require migration; never replace their local facade with a global active router.
-- A capture test now waits for the specific retryable spool lease release after
-  shutdown. It preserves every original manifest/hash assertion.
+- `87997f6d5`: absent-only checked transcript publication, retained original result,
+  durable receipt and crash recovery; 83 selected Store tests passed.
+- `1424f2aaa`: complete stopped-storage restore with an empty cache; exact hashes,
+  identities/access, creation replay, sealed capture publication and unknown files.
+- `dfe918246`, `238c02a66`, `dc32e1857`: bounded transcript overview, actual contracts,
+  scoped main consumers/people; 10 API tests, native login-free case and UI checks.
+- `9f11e7a16`: unchanged canonical batch transcript mapper moved to transcribe-core;
+  old listener2 path reexports it. Seven mapping/integration cases passed.
+- `118f5f608`: typed f32 live Whisper facade with bounded admission, complete results,
+  explicit gaps/backpressure and actual native drain. 69 unit tests and one real
+  two-session CPU case passed. No public authenticated live session yet.
+- `5955f278f`: publication fixtures use canonical temp parents on macOS. Strict
+  private-directory guards remain unchanged. 62 focused publication cases passed
+  under a deliberately symlinked T7 temp parent.
+- `503972dcf`: Linux CI explicitly runs the real typed-live CPU fixture.
+- `8bd9359b0`: schema-3 compound document device recovery; old versions keep bytes.
+- `d5579b9bd`, `ea67486cb`: compound document DTOs and typed SDK transport.
+- `20690fa2c`: owned startup/drop/shutdown/media drains; retry dirty transcript flush
+  until actual completion. 111 selected worker checks, including 14 new regressions.
+  Trusted operation root canonicalizes once; strict private descendants remain.
+- `ff4ca7898`, `1f5278510`: compound Summary/template Store/Core transaction, schema-5
+  recovery, raw-frontmatter/unknown-field preservation and foreign task-ID guards.
+  All three revisions guard saves. Catalog authorization precedes Store locks.
+  Store 91 cases plus one existing ignored; final Core 13 selected cases passed.
+- `0ee7b680e`: actual native document editor commands and generated native/protocol
+  contracts, local/remote client methods and Scope queries/confirmation. Confirmation
+  cancels old reads and fetches canonical state, never seeds a historical save echo.
+  The local-only legacy enhancement capability is stripped from remote flags.
+  Native login-free command/export passed; 75 adapter/cache cases and typecheck pass.
 
-Important evidence under `/Volumes/T7/loofah-backend-build/`:
+Root integrated the thin document HTTPS adapter and SDK response-hardening
+follow-up as `136812c9e`. HTTP uses one catalog grant before Store locks and through encoding;
+post-save encoding failure retains Persisted outcome. SDK additionally rejects a
+Summary with the wrong logical ID and Saved with a missing document. Independent
+agent review found no further adapter/cache defect. All-target desktop/CLI and
+server/client/Core checks passed with no owned diagnostics.
 
-| Check                     | Evidence                                                                                                                                                                                                         |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Optional title stage      | `agents/title-stage/logs/core-stage-test-provenance-final.json`; final jobs 128 pass plus 8 crash children                                                                                                       |
-| Lossless title metadata   | `agents/title-metadata/logs/test-provenance.json`; 101 focused pass                                                                                                                                              |
-| Recording recovery        | `agents/capture/publication-recovery-verification.json`; 44 focused pass                                                                                                                                         |
-| Core capture publication  | `agents/capture-publication/logs/verification-final.json`; 58 selected pass                                                                                                                                      |
-| CPU resource owner        | `agents/capture/logs/stt-resources-verification.json`; 17 ownership cases                                                                                                                                        |
-| HTTP publication          | `logs/capture-publication-api-provenance.json`; 6 pass including lost reply/replay/independent read at 50/150/500 ms RTT                                                                                         |
-| Title HTTP/protocol       | `logs/generated-title-api-provenance.json`; real lost-reply title behavior and actual export checks                                                                                                              |
-| Main frontend             | `logs/main-session-headers-integrated-tests.log`, `main-session-date-integrated-tests.log`, `main-session-author-integrated-tests.log`, `transcript-cache-integrated-tests.log`, `date-review-wording-tests.log` |
-| Normal native check       | `logs/publication-speech-native-check.log`; pass with 31 known unwired capture warnings                                                                                                                          |
-| Headless dependency guard | `logs/publication-speech-headless-dependencies.txt`; no Tauri/device dependencies                                                                                                                                |
+## Evidence
 
-Actual generated files at this checkpoint:
+All paths below are under `/Volumes/T7/loofah-backend-build/`.
 
-- `apps/desktop/src/types/tauri.gen.ts` SHA256
-  `2fe77c7e8ea0bdc67730062c5955bb3e322d0a4dcf535e3f9183e3c70c4a5ab4`.
-- `apps/desktop/src/shared/application/protocol.gen.ts` SHA256
-  `3537e8aba7ffaba920ddfbfbae0f42486cf8cdbee4e05dd2981339f3a87e7624`.
+- `logs/document-editor-native-provenance.json`: fresh own binary, new login-free
+  IPC case and actual export. Export must run from `apps/desktop/src-tauri` because
+  its destination is relative. Format native generated output with oxfmt; never
+  hand-edit it. Protocol export output stays in its generator format.
+- `logs/document-editor-adapter-ui-tests-final.log`: 75 pass.
+- `logs/document-editor-adapter-typecheck-final.log`: pass.
+- `logs/document-editor-sdk-followup-provenance.json`: 22 SDK/recovery cases pass,
+  including real TLS 50/150/500 ms transport fixtures and both new response guards.
+- `logs/document-editor-server-tests-final.log` and
+  `document-editor-server-provenance-final.json`: both HTTP cases passed. Initial
+  fixture omitted `kind: template_output` and was corrected. The test drops a committed reply body and
+  delays rereads; it is not a hard TCP failure or complete latency acceptance test.
+- `logs/document-editor-adapter-source-sha256.json`: adapter source hashes.
+- `logs/{restore-test,transcript-publication-integrated,transcript-overview-test,
+  transcript-overview-native,transcript-overview-check,shared-transcript-mapper,
+  typed-live-integrated}-provenance.json`: earlier integration proof.
+- `agents/capture/logs/document-editor-store-core-final-proof.json` and
+  `document-editor-auth-order-proof.json`: Store/Core/crash/auth-order proof.
+- `agents/runtime-ownership/logs/verification.json`: lifecycle proof.
 
-Do not hand-edit generated bindings. For TitlePolicy, serde `default` must follow
-its custom `skip_serializing_if` attribute so Specta exports the field optional.
+Require own compiler source path, `fresh=false`, dep-file, exact nonzero test
+inventory, source and executable hashes. A zero-match run is not verification.
+Never cancel healthy builds or wipe/bypass caches. Shared existing cache roots
+are `/Volumes/T7/loofah-search-build/{target-root,target-tauri}`; use exclusive
+validation windows, not just Cargo locks. macOS binary assessment may stall launch.
 
-## Active distribution and build windows
+## Active distribution
 
-- A (`frontend_distribution`): overview API integrated as `dfe918246`, actual
-  generated contracts as `238c02a66`, frontend as `dc32e1857`. Worker 196 tests and
-  actual-binding typecheck pass; Root 93 targeted UI tests, 10 API tests, one
-  native login-free test, all-target desktop/CLI/Core/client/server checks pass.
-  A now audits a coherent main Enhanced editor/task migration read-only.
-- B (`backend_distribution`): first transcript publication integrated as
-  `87997f6d5`; Store 83 selected tests pass. Source-only lifecycle fix is frozen
-  in `/Volumes/T7/src/loofah-runtime-ownership`, branch
-  `fix/backend-runtime-ownership`, base `66b88b660`. B has the exclusive existing
-  target-tauri validation window. Root must not run native-cache Cargo until B
-  explicitly releases it. C's target-root window remains independent.
-- C (`capture_distribution`): typed f32 live facade in
-  `/Volumes/T7/src/loofah-separation-typed-live`, branch
-  `refactor/backend-typed-live`. Final frozen source snapshot
-  `41222a235741ca71a81396d504084f99c31dbfab117d0c348ed4effc4c23f4c4` passed
-  69 unit tests/eight ignored and one opt-in CPU test with two independent live
-  sessions. Final check/Clippy remain in progress; no integration or public STT
-  claim yet. C exclusively owns target-root until explicitly released.
-- Root: reviewed integration, exports, frontend checks/docs/CI. Portable mapper
-  extraction integrated as `9f11e7a16`: production mapping text unchanged, six
-  pure mapping cases plus original Soniqo integration case pass, package checks
-  pass. No new endpoint. Source Cargo edges add fs-format and serde to existing
-  transcribe-core. Root currently has no Cargo or test process running.
+- A (`frontend_distribution`): coherent main Enhanced compound editor/task migration.
+  Old frozen tree `/Volumes/T7/src/loofah-separation-document-editor`, base
+  `6fbac0fa6`. Its 34 owned files are archived/hash-verified at
+  `agents/document-editor/frontend-contract-vv14mtld/`. A is authorized to create
+  `/Volumes/T7/src/loofah-separation-document-editor-ui` from exact `0ee7b680e`,
+  restore only verified owned paths and validate actual contracts. Root owns
+  generated bindings/locales/interfaces. Review fixes include strict missing/empty
+  uncertainty confirmation, opaque task-body refusal, mounted-only draft cleanup,
+  captured attachment resources and a trusted local-only legacy generation gate.
+  Do not activate the remote main shell through remaining legacy source paths.
+- B (`backend_distribution`): durable batch transcription Core orchestration in
+  `/Volumes/T7/src/loofah-separation-batch-transcription`, base `1f5278510`.
+  Protocol-only clean worker commit `93e5f5071` passed 20 tests; not yet integrated.
+  It injects a prepared engine and retains authenticated member/source/Context and
+  actual drain through terminal publication; no inference restart after ambiguity.
+  No Core Whisper/device dependency or public capability before paired CPU E2E.
+- C (`capture_distribution`): read-only frontend/adapter review finished. Approved
+  source-only preparation extraction and concrete CPU host in fresh
+  `/Volumes/T7/src/loofah-separation-transcription-cpu`, base `1f5278510`.
+  Own transcribe-core recorded_audio module, thin legacy lease wrapper and new
+  unregistered server transcription_cpu module. Root owns hound/tempfile manifest
+  edges and later optional feature/config/route registration. Coordinate trait
+  details with B. Use explicit Ubuntu 24.04 CPU packaging initially; current
+  bookworm default image stays unchanged. No Cargo without a reserved window.
+- Root: integration, contracts, adapters, exports/locales, lifecycle/configuration,
+  deployment, remaining CLI ownership, docs and hosted acceptance. Root's native
+  Cargo and HTTP tests are finished; verify current cache reservations before builds.
 
-New proof files under `/Volumes/T7/loofah-backend-build/logs/`:
-`restore-test-provenance.json` (stopped full-storage restore, cold cache, preserved
-identities/access/receipts/unknown files and resumed sealed publication),
-`transcript-publication-integrated-provenance.json`,
-`transcript-overview-test-provenance.json`,
-`transcript-overview-native-provenance.json`,
-`transcript-overview-check-provenance.json`,
-`transcript-overview-integrated-ui-tests.log` (90 cases),
-`transcript-overview-integrated-export-tests.log` (three cases),
-`transcript-overview-integrated-ui-typecheck.log`,
-`shared-transcript-mapper-provenance.json`.
-Worker overview logs: `agents/transcript-overview/logs/`.
+## CI and remaining gates
 
-Source must stay frozen through each dependent build. Require compiler artifact
-`fresh=false`, own source path and dep-file, exact nonzero new-test inventory,
-source hashes and executable SHA. A zero-match test result is not verification.
-Never cancel healthy builds or wipe/bypass shared caches to avoid locks. macOS
-binary assessment can stall compilation or launch for minutes; inspect first.
+At pushed `66b88b660`, backend (including container/Linux CPU), CLI, ci and zizmor
+passed. Desktop frontend passed. Both Windows architectures completed native
+checks/tests and installers successfully. macOS Rust failed publication fixtures
+because `/var` aliases `/private/var`; the canonical-parent fixture fix is already
+integrated and locally verified. Previous capture-lease race is fixed. The last
+fully green head remains `93dada10bb`. Push the next validated corrective batch
+without waiting for an old failed SHA to become green; never cancel healthy CI.
+Update/read back PR #123 body/head after pushing. Skipped speech-model jobs do not
+establish Windows real inference/device acceptance.
 
-## CI and next integration batch
+Remaining: main remote profiles/remote-only startup; remaining scoped content,
+AI/streaming/import/export and CLI owner/mutation workflows; owner-managed
+credentials; trusted device capture source/uploader, public controls, quit drain,
+pending-note/append recovery; authenticated live/batch transcription and checked
+promotion; portable diarization; verified source retention/cleanup; upgrade/
+downgrade and full production macOS/Windows QA. Validate realistic RTT/disconnects,
+two-hour recording, concurrent AI and realistic vault sizes before release.
 
-The last fully green head remains `93dada10bb592c824ae59eeff72187b5079a9558`,
-including Windows x64/ARM64 installers. The aade batch finished with one shared
-capture-fixture lease-release race on macOS and both Windows architectures. Its
-bounded test-only fix passed 28 local capture cases and is included in the new
-pushed `66b88b660` batch.
+Raw capture staging retains a 2 GiB/64-capture per-vault quota; publication does not
+reclaim sources. Do not delete recoverable audio based only on chunk acknowledgments.
+Systemd still has a 60-second forced-stop budget; permanent flush failure retains
+ownership internally but can be externally killed. Full-storage restore with the
+current binary passed; cross-version/operator rollback acceptance remains open.
 
-For 66b, four workflows are green: backend-ci (headless, container and Linux CPU
-STT), cli-ci, ci and zizmor. Desktop frontend is green; macOS Rust and Windows
-x64/ARM64 remain active at this checkpoint. Keep healthy CI running and batch
-subsequent pushes after Windows finishes. Do not count the skipped Windows
-speech-model lane or prerecorded CPU tests as hardware/real-device acceptance.
-Draft PR #123 body/head was verified at 66b; update after the next validated push.
-
-## Remaining acceptance gates
-
-Main profile selection and remote-only startup; remaining rich editor/tasks,
-transcript/people/content/import/export and CLI-owner/mutation migrations;
-owner-managed provider credentials; trusted device capture source/uploader,
-public controls, quit ownership, pending-note/append recovery; authenticated
-live/batch STT, checked transcript promotion and portable diarization; verified
-source retention/cleanup; restore/upgrade/downgrade and full platform QA.
-
-The current service retains raw capture sources under a 2 GiB/64-capture quota per
-vault. Publication does not reclaim it. Continuous-use recording needs verified
-retention/cleanup and replay semantics after pruning. Do not silently delete the
-only recoverable audio. Recording queues are distinct from offline remote editing.
-
-Production macOS responsiveness, real capture/STT, realistic 50/150/500 ms networks,
-disconnects, two-hour recordings and Windows native x64/ARM64 remain required.
-The lifecycle fix must distinguish existing detached Service initialization
-from direct open/Drop paths. Systemd retains its 60-second stop budget; forced
-termination cannot guarantee in-memory legacy transcript durability.
-
-## Preserved recovery state
+## Preserved recovery
 
 Pause archive: `/Volumes/T7/loofah-backend-build/pause-2026-11-07T093537Z/`.
-Stash `d13afbb1cb44a7939c3a5755458f97652e3630b1` was already restored,
-hash-verified and incorporated in 0868995b4; do not reapply it. Preserve other
-pre-existing stashes without treating them as instructions.
+Stash `d13afbb1cb44a7939c3a5755458f97652e3630b1` was restored/hash-verified and
+incorporated in `0868995b4`; do not reapply it. Preserve other old stashes and A's
+old tree/archive; do not mistake them for pending source instructions.

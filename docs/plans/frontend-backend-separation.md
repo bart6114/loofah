@@ -3362,3 +3362,64 @@ acceptance are required. The later startup/document/watch cancellation ownership
 gap remains a separate hardening audit. Linux CPU live/diarization, imports,
 remaining content/CLI ownership and mutations, restore/downgrade and full platform
 acceptance remain open. No merge/release or complete deployment-mode claim.
+
+## Compound document editing and owned runtime checkpoint
+
+Current interface/API checkpoints `0ee7b680e` and `136812c9e` build on shared
+Store/Core checkpoints `ff4ca7898`/`1f5278510`. Earlier checkpoint sections are
+historical. All seven delivery phases remain open; no main remote activation or
+release is claimed.
+
+Summary/template editor reads return one coherent document, session metadata and
+that target's logical tasks. Saves require all three revisions, including the
+complete session tasks revision. A concurrent title or unrelated task-source edit
+returns the current conflict snapshot without overwriting it. A single shared
+Rust transaction owns body/title/task preflight, durable intent and recovery.
+Template frontmatter/output labels, unrelated notes/documents/tasks and unknown
+metadata remain intact. Missing summaries can be created; missing template
+outputs cannot. Legacy summary aliases are resolved without a pre-intent move.
+Remote preparation is bounded; trusted local capacity retains existing behavior.
+
+Native IPC and HTTPS expose the same operations. SDK validation covers owner,
+logical target, revisions, task coordinates and save/status consistency before
+projecting responses. Unsupported requests fail before credential access. The
+frontend Scope cancels old per-session compound reads, invalidates affected
+queries, and rereads canonical content after a save. It never seeds a historical
+save receipt as current content. Device recovery schema 3 pins the physical
+session/logical target and preserves explicit tasks and all baselines; existing
+schemas retain original bytes. Store recovery schema 5 uses the existing private
+operation directory. Downgrades must drain/recover new records first or restore a
+complete binary/storage backup. Canonical vault format is unchanged.
+
+Validation: Store 91 selected cases plus one existing ignored, Core 13 selected
+cases, SDK 22 transport/recovery cases, native login-free command and actual
+binding export, 75 frontend adapter/cache cases and actual-binding typecheck pass.
+Two HTTP cases cover reader/editor/private-vault access, targets, three stale
+revisions and canonical reread after a discarded reply body. SDK fixtures exercise
+real TLS at 50/150/500 ms delays. The new HTTP test deliberately drops a reply body
+and delays rereads; it does not establish hard-disconnect or full network latency
+acceptance. Normal all-target desktop/CLI/server/client/Core checks pass.
+
+The actual main Enhanced rich-editor migration is independently reviewed and
+awaits its own final integration checks. Review caught missing-versus-empty
+uncertainty confirmation, opaque future task bodies, retired-draft cleanup and
+legacy bare-ID AI actions. A trusted local-adapter capability guards those legacy
+actions; remote server capability strings cannot enable them. This guards the
+partial migration while scoped processing/profile work continues.
+
+Runtime ownership hardening (`20690fa2c`) now joins direct startup, watch/index,
+media and processing work through Drop/shutdown. Dirty transcript flushes retry
+while retaining the vault lock; a response deadline does not release ownership.
+The external systemd 60-second stop limit still permits forced termination and
+requires operator attention on persistent storage failure. A stopped full-storage
+restore with a cold cache passed for the current binary. Cross-version rollback
+and full operator acceptance remain open.
+
+Typed live CPU inference, canonical transcript mapping and absent-only transcript
+publication are integrated foundations. Public authenticated transcription jobs,
+main remote profiles, trusted device uploader/controls/quit ownership, source
+retention, pending-session/append behavior, provider credentials, remaining
+content/AI/import/export/CLI-owner migrations and full macOS/Windows acceptance
+remain required. The next parallel slice pairs injected durable Core batch jobs
+with a concrete host that reuses existing recording preparation and Whisper CPU
+resources; public capabilities wait for paired end-to-end verification.

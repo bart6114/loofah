@@ -122,57 +122,31 @@ If two tracks need to change the same transaction/lifecycle invariant, sequence 
 
 ## Current integration checkpoint
 
-Root source `0818a893e`, catalogs `3306a0988`: scoped optional title jobs and exact
-request recovery are integrated, along with raw metadata preservation, the
-absent-only recording publication primitive and verified bounded WAV sources.
-Root's 165 combined frontend cases, actual binding typecheck, native receipts,
-28 capture cases, default checks and catalog drift checks pass. Local remains
-offline and login-free. The full implementation goal is still active.
+See [the handoff](./frontend-backend-handoff.md) for live SHAs, trees, test evidence
+and cache ownership. All seven phases remain open. Root interface checkpoint
+`0ee7b680e` contains actual compound document IPC/SDK contracts and scoped client
+queries. Default local use remains offline and login-free. No merge/release.
 
-- A: main session-summary/linked-note slim reads through captured `VaultScope`;
-  fresh base `3306a0988`, existing bounded ID-query contract. No profile activation.
-- B: Core absent-only capture publication, repeatable authorization, owned source
-  drain, bootstrap recovery and same-process recording read/delete gates. Tree
-  `/Volumes/T7/src/loofah-capture-publication`, base `9fa1fa50f`. No public endpoint
-  or capability before integration tests.
-- C: bounded store-owned pending publication inventory and opaque recovery plans,
-  strict receipt validation, inherited timestamp bounds and known transcript
-  absence guards. Tree `/Volumes/T7/src/loofah-separation-publication-recovery`,
-  base `b7af0fe3c`. C currently owns the exclusive Cargo target-root window.
-- Root: integration, HTTPS/SDK publication adapters after B/C validation, native
-  junctions, generated contracts/catalogs, requested docs and hosted gates.
+The first-wave descriptions above are historical. Current allocation:
 
-Use an exclusive shared-target validation window, not just Cargo locks. Pin
-compiler-artifact source paths, `fresh=false`, exact nonzero new-test inventories
-and executable hashes. Do not cancel healthy builds or wipe/bypass shared caches.
-Root has no running Cargo pipeline; all local artifacts remain physically on T7.
+- A: main Enhanced compound rich editor, tasks/recovery, scoped queries and guarded
+  legacy generation initiators; integrate against actual Root contracts. No main
+  remote activation while legacy source/generation paths remain.
+- B: durable Core batch transcription jobs with injected prepared engine, checked
+  source binding and absent-only transcript publication. Protocol worker checkpoint
+  `93e5f5071` passed 20 cases and awaits integration. No public capability yet.
+- C: independent review completed; extract existing recording preparation without
+  changing mono/multichannel/duplicate/inversion behavior, then concrete CPU host
+  against B's engine contract. No Core/device coupling or public route changes.
+- Root: shared junctions, HTTP/native/SDK adapters, actual generated contracts and
+  locales, configuration/deployment, CLI ownership, integration and platform gates.
 
-Last pushed `aade2e309` is not fully green: macOS and Windows x64 hit the same
-capture-test lease-release timing race; bounded test-only fix `67e4e06f3` is
-integrated and its 28 native capture tests pass. Windows ARM64 is still active.
-Wait for that run to finish before pushing the validated corrective batch; an
-unresolved actual source failure must be fixed, rather than perpetually waiting
-for the old failed SHA to become healthy. Draft PR #123 remains unmerged. The
-last fully green platform head remains `93dada10bb`.
+Both Windows jobs on pushed `66b88b660` passed checks/tests/installers. The macOS
+publication fixture alias failure has a validated canonical-temp-parent fix in
+Root. Backend/container/Linux CPU, CLI, formatting/security and desktop frontend
+passed. Batch the next validated corrective push and verify fresh CI for its exact
+SHA. The last fully green platform head remains `93dada10bb`.
 
-## Current continuation allocation
-
-The first-wave descriptions above are historical. Read [the handoff](./frontend-backend-handoff.md)
-for current commits, worktrees and evidence. All seven plan phases remain open.
-
-- A: overview read/main consumers integrated and tested; read-only audit of a
-  coherent main Enhanced editor/task migration next.
-- B: first transcript publication integrated; frozen lifecycle ownership fix now
-  validates using the exclusive existing target-tauri cache.
-- C: typed f32 live facade; final-source 69 unit cases and real two-session CPU
-  fixture pass, final package checks continue using exclusive target-root.
-- Root: reviewed integration, actual contracts, frontend checks, shared canonical
-  mapper extraction, stopped-storage restore acceptance, docs/PR/CI and later
-  Core transcription orchestration. No Root Cargo until a worker releases its
-  cache window.
-
-The corrective 66b88b660 batch is pushed. Backend/container/Linux CPU, CLI and
-format/security workflows are green; desktop frontend is green. Mac Rust and
-Windows x64/ARM64 are still active. Batch further pushes after Windows finishes;
-never cancel healthy CI. Preserve actual artifact provenance and all remaining
-platform/feature acceptance gates.
+Use existing exclusive cache windows and keep dependent Rust sources frozen.
+Retain own artifact paths, fresh compilation, exact test inventory and hashes;
+never cancel healthy work or create new cold caches to bypass a lock.
