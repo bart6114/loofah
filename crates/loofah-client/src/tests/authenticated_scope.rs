@@ -50,3 +50,45 @@ async fn selected_scope_preserves_shared_vault_and_rejects_profile_login_disconn
         assert!(authority.check_current().await.is_err());
     }
 }
+
+#[tokio::test]
+async fn selected_scope_rechecks_original_session_authorization_without_personal_fallback() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let fixture=Fixture::with_extra_routes(Some(Duration::ZERO),Router::new().route("/api/v1/vaults/shared-vault/sessions/note",get(move|State(provider):State<Arc<Provider>>|{let seen=seen.clone();async move{
+        seen.fetch_add(1,Ordering::SeqCst);
+        if provider.denied.load(Ordering::SeqCst) {return (StatusCode::FORBIDDEN,Json(failure(ErrorCode::Forbidden,"Membership revoked"))).into_response();}
+        Json(json!({"meta":{"id":"note","title":"Original shared session","created_at":"2026-11-08T00:00:00Z","tags":[]},"note":{"markdown":"Original","revision":"0".repeat(64)}})).into_response()
+    }}))).await;
+    let client = fixture.client().await;
+    fixture.login(&client).await;
+    let root = tempfile::tempdir().unwrap();
+    let profiles = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
+    let profile = profiles.create("export", client.address()).await.unwrap();
+    let mut original = profile.profile().await;
+    original.member_id = Some("member".into());
+    original.vault_id = Some("test".into());
+    original
+        .credential_accounts
+        .push(client.credential_account().into());
+    profile.save(original).await.unwrap();
+    let authority = client
+        .bind_authenticated_scope(
+            profile,
+            CaptureScope {
+                server: client.address().into(),
+                member_id: "member".into(),
+                vault_id: "shared-vault".into(),
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    authority.authorize_session("note").await.unwrap();
+    fixture.state.denied.store(true, Ordering::SeqCst);
+    assert_eq!(
+        authority.authorize_session("note").await.unwrap_err().code,
+        ErrorCode::Forbidden
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
