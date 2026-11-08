@@ -528,10 +528,10 @@ impl Drop for Fixture {
 #[tokio::test]
 async fn cancelling_first_read_does_not_cancel_or_duplicate_vault_initialization() {
     let fixture = Fixture::new().await;
-    let me = fixture.login("alice").await;
     let (entered, receiver) = std::sync::mpsc::channel();
     let resume = Arc::new(std::sync::Barrier::new(2));
     *fixture.service.startup_pause.lock().unwrap() = Some((entered, resume.clone()));
+    let me = fixture.login("alice").await;
     let task = {
         let service = fixture.service.clone();
         let id = me.personal_vault_id.clone();
