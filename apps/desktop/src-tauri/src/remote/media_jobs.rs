@@ -75,22 +75,24 @@ impl MediaJobState {
                     "Media requests require a saved desktop profile",
                 )
             })?;
-            (connection.client.clone(), profile.clone())
+            (connection.client_for(owner)?, profile.clone())
         };
         client.media_jobs_capability(&state.window_lifetime(owner))?;
         let current = profile.profile().await;
-        if current.vault_id.as_deref() != Some(vault) {
-            return Err(failure(
-                ErrorCode::Conflict,
-                "The original media vault changed",
-            ));
-        }
         let scope = MediaScope {
             profile_id: current.id,
             server: current.server,
             member_id: current.member_id.ok_or_else(missing)?,
             vault_id: vault.into(),
         };
+        if current.vault_id.as_deref() != Some(vault)
+            && !client.check_window_media_scope(&profile, &scope)?
+        {
+            return Err(failure(
+                ErrorCode::Conflict,
+                "The original media vault changed",
+            ));
+        }
         let lifetime = state.window_lifetime(owner);
         let Some(request) = request else {
             return client.bind_media(profile, scope, lifetime).await;

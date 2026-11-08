@@ -1,6 +1,7 @@
 pub(crate) mod attachments;
 pub(crate) mod media;
 pub(crate) mod media_jobs;
+pub(crate) mod note_windows;
 
 use std::{
     collections::HashMap,
@@ -60,6 +61,8 @@ pub async fn media_response<R: tauri::Runtime>(
 pub struct RemoteState {
     registry: Arc<Mutex<HashMap<String, Connection>>>,
     windows: Mutex<HashMap<String, CancellationToken>>,
+    notes: Mutex<HashMap<String, note_windows::NoteGrant>>,
+    note_drains: Arc<note_windows::NoteDrains>,
     media: media::MediaRegistry,
     attachments: attachments::AttachmentRegistry,
     active_profile: tokio::sync::OnceCell<Arc<hypr_loofah_client::ProfileLease>>,
@@ -69,6 +72,7 @@ struct Connection {
     client: Arc<RemoteClient>,
     profile: Option<(String, Arc<hypr_loofah_client::ProfileLease>)>,
     leases: HashMap<String, usize>,
+    views: HashMap<String, Arc<RemoteClient>>,
     authenticated: bool,
     login: Option<(WorkId, CancellationToken)>,
     requests: HashMap<WorkId, CancellationToken>,
@@ -90,10 +94,12 @@ impl Drop for Connection {
 }
 impl RemoteState {
     pub fn shutdown(&self) {
+        self.stop_note_windows();
         for (_, token) in self.windows.lock().unwrap().drain() {
             token.cancel();
         }
         self.registry.lock().unwrap().clear();
+        self.notes.lock().unwrap().clear();
         self.media.clear();
         self.attachments.clear();
     }
@@ -106,6 +112,7 @@ impl RemoteState {
             .clone()
     }
     pub fn release_window(&self, owner: &str) {
+        self.notes.lock().unwrap().remove(owner);
         let mut windows = self.windows.lock().unwrap();
         if let Some(token) = windows.remove(owner) {
             token.cancel();
@@ -170,6 +177,7 @@ impl RemoteState {
                 client,
                 profile,
                 leases: HashMap::from([(owner.into(), 1)]),
+                views: HashMap::new(),
                 authenticated: false,
                 login: None,
                 requests: HashMap::new(),
@@ -221,10 +229,13 @@ impl RemoteState {
             if connection.requests.len() >= 32 {
                 return Err(capacity());
             }
+            let client = connection.client_for(owner)?;
+            let work = client.begin_window_work()?;
             connection.requests.insert(key.clone(), cancel.clone());
             (
-                connection.client.clone(),
+                client,
                 PendingRequest {
+                    _window_work: Some(work),
                     registry: self.registry.clone(),
                     connection: connection_id.to_owned(),
                     id: key,
@@ -292,7 +303,7 @@ impl RemoteState {
         if bound_id != profile_id {
             return Err(missing());
         }
-        Ok((connection.client.clone(), lease.clone()))
+        Ok((connection.client_for(owner)?, lease.clone()))
     }
     pub(crate) fn admit_export(
         &self,
@@ -331,12 +342,19 @@ impl RemoteState {
             .unwrap()
             .get(id)
             .filter(|connection| connection.leases.contains_key(owner))
-            .map(|connection| connection.client.clone())
-            .ok_or_else(missing)
+            .ok_or_else(missing)?
+            .client_for(owner)
     }
 }
 
 impl Connection {
+    fn client_for(&self, owner: &str) -> Result<Arc<RemoteClient>, ApplicationError> {
+        let client = self.views.get(owner).unwrap_or(&self.client);
+        if !self.leases.contains_key(owner) || client.is_closed() {
+            return Err(missing());
+        }
+        Ok(client.clone())
+    }
     fn release(&mut self, owner: &str, all: bool) {
         if let Some(count) = self.leases.get_mut(owner) {
             if !all && *count > 1 {
@@ -346,6 +364,9 @@ impl Connection {
             self.leases.remove(owner);
         } else {
             return;
+        }
+        if let Some(view) = self.views.remove(owner) {
+            view.disconnect();
         }
         if self
             .login
@@ -423,6 +444,7 @@ pub async fn remote_connect<R: tauri::Runtime>(
     window: tauri::Window<R>,
     server: String,
 ) -> Result<RemoteConnectionInfo, ApplicationError> {
+    note_windows::require_primary_connection_window(window.label())?;
     let state = app.state::<RemoteState>();
     let lifetime = state.window_lifetime(window.label());
     let credentials = Arc::new(OsCredentials::new(format!(
@@ -444,6 +466,7 @@ pub async fn remote_connect_desktop_profile<R: tauri::Runtime>(
     name: String,
     profile_id: String,
 ) -> Result<RemoteConnectionInfo, ApplicationError> {
+    note_windows::require_primary_connection_window(window.label())?;
     let bootstrap = app.state::<tauri_plugin_settings::DesktopBootstrap>();
     let startup = bootstrap.startup()?;
     let selected = bootstrap
@@ -518,6 +541,7 @@ struct PendingRequest {
     connection: String,
     id: WorkId,
     login: bool,
+    _window_work: Option<hypr_loofah_client::WindowWork>,
 }
 impl Drop for PendingRequest {
     fn drop(&mut self) {
@@ -579,6 +603,7 @@ pub async fn remote_login<R: tauri::Runtime>(
             connection: connection_id,
             id,
             login: true,
+            _window_work: None,
         }
     };
     let url = login.authorization_url().to_string();
@@ -792,7 +817,7 @@ impl RemoteState {
         if connection.subscriptions.len() >= 8 {
             return Err(capacity());
         }
-        let subscription = subscribe(&connection.client)?;
+        let subscription = subscribe(&connection.client_for(owner)?)?;
         connection.subscriptions.insert(key, subscription);
         Ok(())
     }
@@ -857,6 +882,7 @@ pub async fn remote_logout<R: tauri::Runtime>(
     window: tauri::Window<R>,
     connection_id: String,
 ) -> Result<(), ApplicationError> {
+    note_windows::require_primary_connection_window(window.label())?;
     let state = app.state::<RemoteState>();
     let client = state.client(&connection_id, window.label())?;
     state.attachments.cancel_connection(&connection_id).await;
@@ -894,7 +920,7 @@ mod tests {
         }
     }
 
-    async fn clients() -> (
+    pub(super) async fn clients() -> (
         Arc<RemoteClient>,
         Arc<RemoteClient>,
         tokio::task::JoinHandle<()>,
@@ -1324,5 +1350,90 @@ mod tests {
         assert!(state.client(&info.connection_id, "second").is_ok());
         remote_disconnect(app.handle().clone(), second_window, info.connection_id);
         task.abort();
+    }
+}
+
+#[cfg(test)]
+mod note_grant_tests {
+    use super::*;
+    use hypr_loofah_protocol::{VaultInfo, VaultKind, VaultRole};
+
+    #[tokio::test]
+    async fn standalone_note_grants_are_one_shot_exact_window_and_connection_owned() {
+        for parent_first in [true, false] {
+            let (parent, view, task) = super::tests::clients().await;
+            let state = RemoteState::default();
+            let info = state
+                .register(parent.clone(), "main", &state.window_lifetime("main"))
+                .unwrap();
+            state
+                .registry
+                .lock()
+                .unwrap()
+                .get_mut(&info.connection_id)
+                .unwrap()
+                .authenticated = true;
+            let child = format!("remote-note-{}", uuid::Uuid::new_v4());
+            let grant = note_windows::RemoteNoteWindowInfo {
+                connection: info.clone(),
+                member_id: "original".into(),
+                vault: VaultInfo {
+                    id: "shared".into(),
+                    name: "Original shared workspace".into(),
+                    kind: VaultKind::Shared,
+                    role: VaultRole::Editor,
+                    revision: "0".repeat(64),
+                },
+                session_id: "original-note".into(),
+            };
+            assert!(
+                state
+                    .reserve_note(
+                        &info.connection_id,
+                        "forged-parent",
+                        &child,
+                        &parent,
+                        view.clone(),
+                        grant.clone()
+                    )
+                    .is_err()
+            );
+            state
+                .reserve_note(
+                    &info.connection_id,
+                    "main",
+                    &child,
+                    &parent,
+                    view.clone(),
+                    grant,
+                )
+                .unwrap();
+            assert!(state.claim_note("remote-note-wrong").is_err());
+            let claimed = state.claim_note(&child).unwrap();
+            assert_eq!(claimed.session_id, "original-note");
+            assert_eq!(claimed.vault.id, "shared");
+            assert!(state.claim_note(&child).is_err());
+            assert!(Arc::ptr_eq(
+                &state.client(&info.connection_id, &child).unwrap(),
+                &view
+            ));
+            if parent_first {
+                state.release_window("main");
+                assert!(!parent.is_closed());
+                assert!(!view.is_closed());
+                assert!(state.client(&info.connection_id, &child).is_ok());
+                state.release_window(&child);
+                assert!(parent.is_closed());
+            } else {
+                state.release_window(&child);
+                assert!(view.is_closed());
+                assert!(!parent.is_closed());
+                assert!(state.client(&info.connection_id, "main").is_ok());
+            }
+            assert!(state.claim_note(&child).is_err());
+            assert!(note_windows::require_primary_connection_window(&child).is_err());
+            state.shutdown();
+            task.abort();
+        }
     }
 }

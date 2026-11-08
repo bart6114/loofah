@@ -7,6 +7,7 @@ import { commands as fsSyncCommands } from "@hypr/plugin-fs-sync";
 import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { DancingSticks } from "@hypr/ui/components/ui/dancing-sticks";
 import { Spinner } from "@hypr/ui/components/ui/spinner";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 import { cn, format, getYear, safeParseDate, TZDate } from "@hypr/utils";
 
 import {
@@ -21,6 +22,7 @@ import {
   useSessionDeletionAccess,
 } from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
+import { openScopedNoteWindow } from "~/shared/application/open-note-window";
 import type { MenuItemDef } from "~/shared/hooks/useNativeContextMenu";
 import { writeSessionContextDragData } from "~/shared/session-drag";
 import { InteractiveButton } from "~/shared/ui/interactive-button";
@@ -351,7 +353,11 @@ const SessionItem = memo(
     const handleOpenStandaloneWindow = useCallback(() => {
       if (isAvailable("legacy_desktop_session_controls"))
         void openStandaloneNoteWindow(sessionId);
-    }, [sessionId, isAvailable]);
+      else if (legacy.scope?.client.openNoteWindow)
+        void openScopedNoteWindow(legacy.scope, sessionId).catch((error) =>
+          sonnerToast.error(error.message),
+        );
+    }, [sessionId, isAvailable, legacy.scope]);
 
     const handleDragStart = useCallback(
       (event: DragEvent<HTMLElement>) => {
@@ -385,7 +391,12 @@ const SessionItem = memo(
           id: "open-new-window",
           text: t`Open in New Window`,
           action: handleOpenStandaloneWindow,
-          disabled: !isAvailable("legacy_desktop_session_controls"),
+          disabled:
+            !isAvailable("legacy_desktop_session_controls") &&
+            !(
+              legacy.scope?.client.openNoteWindow &&
+              legacy.scope.getSnapshot().state === "connected"
+            ),
         },
         {
           id: "show",
@@ -406,6 +417,7 @@ const SessionItem = memo(
       ],
       [
         handleOpenStandaloneWindow,
+        legacy.scope,
         handleShowInFinder,
         handleDelete,
         deletion.available,

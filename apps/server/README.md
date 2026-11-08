@@ -2,6 +2,17 @@
 
 The server is experimental. It exposes authenticated vault, note, existing-content, search, attachment-upload, configured summary/title and batch-transcription jobs, capture staging/publication and change-stream APIs. Authenticated live captions and durable recording uploads are available experimentally; declared capture processing is experimental, and full recording/platform acceptance remains required. The desktop's default local mode works without an account or server.
 
+Saved-server desktop workspaces can open existing notes in separate windows. A
+native one-use grant binds each window to the original account, profile, selected
+vault and note; it cannot discover another server or sign in independently.
+Closing the main window or changing its note tabs leaves an already-open child
+bound to that original workspace. Signing out, changing the saved profile/login
+generation or losing access retires the child. Local note windows keep their
+existing offline behavior. Remote floating captions use the device's retained,
+bounded live-caption tail and display preferences; they never write a transcript
+preview into the vault. Reconnecting retains that recent tail, while access
+revocation clears it. Native macOS and Windows UI acceptance remains required.
+
 Automatic summary requests can set `only_if_empty: true` when the server
 advertises `conditional_summary_jobs`. This policy is part of the saved request
 identity: admission and queued execution require the reviewed document revision

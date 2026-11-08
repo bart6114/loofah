@@ -71,7 +71,9 @@ pub async fn remote_media_export_source<R: tauri::Runtime>(
                     connected.authenticated
                         && connected.login.is_none()
                         && connected.leases.contains_key(&owner)
-                        && Arc::ptr_eq(&connected.client, &client)
+                        && connected
+                            .client_for(&owner)
+                            .is_ok_and(|view| Arc::ptr_eq(&view, &client))
                 })
                 .ok_or_else(missing)?;
             let _connected = connected;

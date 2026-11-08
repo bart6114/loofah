@@ -9,6 +9,9 @@ const fake = vi.hoisted(() => ({
   show: vi.fn(),
   update: vi.fn(),
   hide: vi.fn(),
+  captionShow: vi.fn(),
+  captionUpdate: vi.fn(),
+  captionHide: vi.fn(),
   notice: vi.fn(),
   mic: vi.fn(),
   ready: true,
@@ -19,6 +22,11 @@ const fake = vi.hoisted(() => ({
     floating_bar_enabled: false,
     floating_bar_opacity: 0.7,
     ignored_platforms: [],
+    live_caption_opacity: 0.4,
+    live_caption_width: 500,
+    live_caption_line_count: 2,
+    live_caption_position: "bottomCenter",
+    live_caption_minimized: false,
   },
 }));
 vi.mock("./device-recording-controls", () => ({
@@ -57,6 +65,9 @@ vi.mock("@hypr/plugin-windows", () => ({
     floatingBarUpdate: fake.update,
     floatingBarShow: fake.show,
     floatingBarHide: fake.hide,
+    liveCaptionShow: fake.captionShow,
+    liveCaptionUpdate: fake.captionUpdate,
+    liveCaptionHide: fake.captionHide,
     windowShow: vi.fn(),
   },
   events: {
@@ -104,6 +115,9 @@ beforeEach(() => {
   fake.update.mockResolvedValue({ status: "ok", data: null });
   fake.show.mockResolvedValue({ status: "ok", data: null });
   fake.hide.mockResolvedValue({ status: "ok", data: null });
+  fake.captionShow.mockResolvedValue({ status: "ok", data: null });
+  fake.captionUpdate.mockResolvedValue({ status: "ok", data: null });
+  fake.captionHide.mockResolvedValue({ status: "ok", data: null });
 });
 afterEach(() => {
   cleanup();
@@ -295,4 +309,97 @@ it("stops only the original physical capture on sleep and ignores wake", async (
     fake.detect!({ payload: { type: "sleepStateChanged", value: false } }),
   );
   expect(view.monitor.stop).toHaveBeenCalledOnce();
+});
+
+it("renders original Native captions using device preferences and clears revoked text", async () => {
+  fake.options.floating_bar_enabled = true;
+  const record = {
+    ...item(),
+    processing: {
+      format: { sample_rate: 16000, channels: ["microphone", "system_audio"] },
+      declaration: { request: { capture_fingerprint: "a" } },
+      status: {
+        capture_id: "first",
+        capture_fingerprint: "a",
+        live_generation_id: "generation",
+        session_id: "original",
+      },
+      captions: {
+        binding: {
+          capture_id: "first",
+          capture_fingerprint: "a",
+          generation_id: "generation",
+          session_id: "original",
+          format: {
+            sample_rate: 16000,
+            channels: ["microphone", "system_audio"],
+          },
+        },
+        connection: "connected",
+        words: [
+          {
+            id: "one",
+            text: "Original shared speech",
+            start_ms: 0,
+            end_ms: 1000,
+            channel: 0,
+            role: "microphone",
+          },
+        ],
+        partials: [],
+      },
+    },
+  };
+  const view = mount([record]);
+  await waitFor(() =>
+    expect(fake.captionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Original shared speech",
+        width: 500,
+        lineCount: 2,
+        position: "bottomCenter",
+        opacity: 0.4,
+      }),
+    ),
+  );
+  expect(fake.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      liveCaptionToggleVisible: true,
+      transcriptBubbles: [
+        expect.objectContaining({
+          text: "Original shared speech",
+          speakerLabel: "Microphone",
+        }),
+      ],
+    }),
+  );
+  const before = fake.captionHide.mock.calls.length;
+  act(() =>
+    view.cache.setQueryData(
+      ["device", "recordings", "profile"],
+      [
+        {
+          ...record,
+          processing: {
+            ...record.processing,
+            captions: {
+              ...record.processing.captions,
+              connection: "access_denied",
+            },
+          },
+        },
+      ],
+    ),
+  );
+  await waitFor(() =>
+    expect(fake.captionHide.mock.calls.length).toBeGreaterThan(before),
+  );
+  await waitFor(() =>
+    expect(fake.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        liveCaptionToggleVisible: false,
+        transcriptBubbles: [],
+      }),
+    ),
+  );
 });

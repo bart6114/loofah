@@ -18,6 +18,7 @@ import {
   commands,
   type Me,
   type RemoteConnectionInfo,
+  type RemoteNoteWindowInfo,
   type RemoteEvent,
   type RemoteOperation,
   type RemoteReply,
@@ -57,7 +58,52 @@ export class NativeRemoteConnection {
   >();
   private readonly closingAttachments = new Map<string, Promise<void>>();
 
-  private constructor(readonly info: RemoteConnectionInfo) {}
+  private constructor(
+    readonly info: RemoteConnectionInfo,
+    readonly standaloneNote = false,
+    readonly windowLeaseAvailable = false,
+  ) {}
+
+  static async claimNoteWindow(): Promise<{
+    info: RemoteNoteWindowInfo;
+    connection: NativeRemoteConnection;
+  }> {
+    const info = applicationResult(await commands.remoteClaimNoteWindow());
+    return {
+      info,
+      connection: new NativeRemoteConnection(info.connection, true),
+    };
+  }
+
+  async openNoteWindow(
+    vaultId: string,
+    sessionId: string,
+    options?: RequestOptions,
+  ): Promise<void> {
+    this.assertOpen();
+    const signal = options?.signal;
+    signal?.throwIfAborted();
+    const requestId = options?.requestId ?? crypto.randomUUID();
+    const cancel = () => {
+      void commands
+        .remoteCancelRequest(this.info.connection_id, requestId)
+        .catch(() => {});
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      applicationResult(
+        await commands.remoteOpenNoteWindow(
+          this.info.connection_id,
+          requestId,
+          vaultId,
+          sessionId,
+        ),
+      );
+      if (this.closed || signal?.aborted) throw connectionClosed();
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
 
   static async connect(server: string): Promise<NativeRemoteConnection> {
     return new NativeRemoteConnection(
@@ -73,6 +119,8 @@ export class NativeRemoteConnection {
       applicationResult(
         await commands.remoteConnectDesktopProfile(name, profileId),
       ),
+      false,
+      true,
     );
   }
 

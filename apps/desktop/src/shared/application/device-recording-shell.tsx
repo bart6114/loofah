@@ -17,12 +17,17 @@ import {
 } from "@hypr/plugin-windows";
 import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
+import { deviceCaptionPreview } from "./device-caption-preview";
 import {
   activeDeviceCapture,
   useDeviceStartActions,
 } from "./device-recording-controls";
 import type { createDeviceRecordingMonitor } from "./device-recordings";
 
+import {
+  getFloatingOverlaySettings,
+  getLiveCaptionDisplayText,
+} from "~/meeting-float/overlay-settings";
 import { getSettingsValuesFromNativeChange } from "~/meeting-float/settings-change";
 import {
   initializeDeviceSettings,
@@ -58,6 +63,11 @@ function MainDeviceRecordingShell({
     "floating_bar_enabled",
     "floating_bar_opacity",
     "ignored_platforms",
+    "live_caption_opacity",
+    "live_caption_width",
+    "live_caption_line_count",
+    "live_caption_position",
+    "live_caption_minimized",
   ] as const);
   const key = ["device", "recordings", profileId];
   const inventory = useQuery({
@@ -269,7 +279,7 @@ function MainDeviceRecordingShell({
       monitor={monitor}
       item={active}
       enabled={ready && options.floating_bar_enabled !== false}
-      opacity={options.floating_bar_opacity ?? 0.78}
+      settings={getFloatingOverlaySettings(options)}
     />
   );
 }
@@ -278,16 +288,16 @@ function DeviceRecordingOverlay({
   monitor,
   item,
   enabled,
-  opacity,
+  settings,
 }: {
   monitor: ReturnType<typeof createDeviceRecordingMonitor>;
   item: DeviceRecordingInfo | null;
   enabled: boolean;
-  opacity: number;
+  settings: ReturnType<typeof getFloatingOverlaySettings>;
 }) {
   const cache = useQueryClient();
-  const latest = useRef({ item, enabled, opacity });
-  latest.current = { item, enabled, opacity };
+  const latest = useRef({ item, enabled, settings });
+  latest.current = { item, enabled, settings };
   const bindings = useRef(new Map<string, CaptureIdentity>());
   const binding = useRef<{
     key: string;
@@ -295,6 +305,13 @@ function DeviceRecordingOverlay({
     fingerprint: string;
   } | null>(null);
   const fingerprint = item ? JSON.stringify(item.identity) : null;
+  const captionGeneration = deviceCaptionPreview(item)?.generation ?? null;
+  const operations = useRef(Promise.resolve());
+  const enqueue = (work: () => Promise<void>) => {
+    const next = operations.current.then(work, work);
+    operations.current = next.catch(() => {});
+    return next;
+  };
   if (fingerprint && binding.current?.fingerprint !== fingerprint) {
     const key = crypto.randomUUID();
     const identity = structuredClone(item!.identity);
@@ -346,7 +363,10 @@ function DeviceRecordingOverlay({
   }, [monitor, cache]);
   useEffect(() => {
     if (!enabled || !fingerprint || !item || !activeDeviceCapture(item)) {
-      void windows.floatingBarHide();
+      void enqueue(async () => {
+        await windows.floatingBarHide();
+        await windows.liveCaptionHide();
+      });
       return;
     }
     const original = binding.current!;
@@ -357,34 +377,58 @@ function DeviceRecordingOverlay({
       try {
         const telemetry = await monitor.telemetry(original.identity);
         if (closed) return;
-        const value = latest.current;
-        await windows.floatingBarUpdate({
-          captureKey: original.key,
-          amplitude: Math.max(
-            0,
-            Math.min(
-              1,
-              Math.max(telemetry?.mic ?? 0, telemetry?.speaker ?? 0) / 1000,
+        await enqueue(async () => {
+          if (closed) return;
+          const value = latest.current;
+          if (JSON.stringify(value.item?.identity) !== original.fingerprint)
+            return;
+          const captions = deviceCaptionPreview(value.item);
+          const settings = value.settings;
+          await windows.floatingBarUpdate({
+            captureKey: original.key,
+            amplitude: Math.max(
+              0,
+              Math.min(
+                1,
+                Math.max(telemetry?.mic ?? 0, telemetry?.speaker ?? 0) / 1000,
+              ),
             ),
-          ),
-          title: "Recording",
-          status: value.item?.failure ? "error" : "recording",
-          colorScheme: document.documentElement.classList.contains("dark")
-            ? "dark"
-            : "light",
-          opacity: Math.max(0.35, Math.min(0.95, value.opacity)),
-          liveCaptionOpacity: 0.3,
-          liveCaptionWidth: 440,
-          liveCaptionLineCount: 1,
-          liveCaptionPosition: "topCenter",
-          liveCaptionMinimized: true,
-          liveCaptionToggleVisible: false,
-          transcriptBubbles: [],
+            title: "Recording",
+            status: value.item?.failure ? "error" : "recording",
+            colorScheme: document.documentElement.classList.contains("dark")
+              ? "dark"
+              : "light",
+            opacity: settings.floatingBarOpacity,
+            liveCaptionOpacity: settings.liveCaptionOpacity,
+            liveCaptionWidth: settings.liveCaptionWidth,
+            liveCaptionLineCount: settings.liveCaptionLineCount,
+            liveCaptionPosition: settings.liveCaptionPosition,
+            liveCaptionMinimized: settings.liveCaptionMinimized,
+            liveCaptionToggleVisible: !!captions,
+            transcriptBubbles: captions?.bubbles ?? [],
+          });
+          if (
+            closed ||
+            JSON.stringify(latest.current.item?.identity) !==
+              original.fingerprint
+          )
+            return;
+          if (captions && !settings.liveCaptionMinimized) {
+            await windows.liveCaptionUpdate({
+              text: getLiveCaptionDisplayText(captions.text, settings),
+              opacity: settings.liveCaptionOpacity,
+              width: settings.liveCaptionWidth,
+              lineCount: settings.liveCaptionLineCount,
+              position: settings.liveCaptionPosition,
+              minimized: false,
+            });
+            if (!closed) await windows.liveCaptionShow();
+          } else await windows.liveCaptionHide();
+          if (!closed && !shown) {
+            await windows.floatingBarShow();
+            shown = true;
+          }
         });
-        if (!closed && !shown) {
-          await windows.floatingBarShow();
-          shown = true;
-        }
       } finally {
         if (!closed)
           timer = setTimeout(() => {
@@ -396,8 +440,11 @@ function DeviceRecordingOverlay({
     return () => {
       closed = true;
       if (timer) clearTimeout(timer);
-      void windows.floatingBarHide();
+      void enqueue(async () => {
+        await windows.floatingBarHide();
+        await windows.liveCaptionHide();
+      });
     };
-  }, [monitor, enabled, fingerprint]);
+  }, [monitor, enabled, fingerprint, captionGeneration]);
   return null;
 }

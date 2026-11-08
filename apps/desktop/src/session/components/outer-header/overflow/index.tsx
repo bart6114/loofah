@@ -1,4 +1,5 @@
 import { Trans } from "@lingui/react/macro";
+import { useMutation } from "@tanstack/react-query";
 import {
   AudioLinesIcon,
   FileDownIcon,
@@ -19,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@hypr/ui/components/ui/dropdown-menu";
+import { sonnerToast } from "@hypr/ui/components/ui/toast";
 
 import { DeleteNote } from "./delete";
 import { ExportModal } from "./export-modal";
@@ -35,6 +37,8 @@ import { useRegenerateTranscript } from "~/session/components/note-input/transcr
 import { useHasTranscript } from "~/session/components/shared";
 import { useSessionDeletionAccess } from "~/session/hooks/useDeleteSession";
 import { openStandaloneNoteWindow } from "~/session/window";
+import { openScopedNoteWindow } from "~/shared/application/open-note-window";
+import { useVaultReadScope } from "~/shared/application/use-vault-read-scope";
 import { useConfigValue } from "~/shared/config";
 import type { EditorView } from "~/store/zustand/tabs/schema";
 import { useUploadFile } from "~/stt/useUploadFile";
@@ -51,7 +55,12 @@ export function OverflowButton(props: {
   const deletion = useSessionDeletionAccess();
   if (isAvailable("legacy_desktop_session_controls"))
     return <LegacyOverflowButton {...props} />;
-  if (!deletion.shared && !legacy.scope.client.exportSession) return null;
+  if (
+    !deletion.shared &&
+    !legacy.scope.client.exportSession &&
+    !legacy.scope.client.openNoteWindow
+  )
+    return null;
   return (
     <SharedOverflowButton
       {...props}
@@ -73,6 +82,11 @@ function SharedOverflowButton({
   canExport: boolean;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
+  const owner = useVaultReadScope();
+  const openWindow = useMutation({
+    mutationFn: () => openScopedNoteWindow(owner.scope, sessionId),
+    onError: (error) => sonnerToast.error(error.message),
+  });
   return (
     <>
       <DropdownMenu>
@@ -82,6 +96,19 @@ function SharedOverflowButton({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
+          {owner.scope.client.openNoteWindow && (
+            <DropdownMenuItem
+              disabled={
+                openWindow.isPending ||
+                !owner.current() ||
+                owner.connection.state !== "connected"
+              }
+              onSelect={() => openWindow.mutate()}
+            >
+              <SquareArrowOutUpRightIcon />
+              <Trans>Open in New Window</Trans>
+            </DropdownMenuItem>
+          )}
           {canExport && (
             <DropdownMenuItem onSelect={() => setExportOpen(true)}>
               <FileDownIcon />

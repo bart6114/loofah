@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   remoteConnect: vi.fn(),
+  remoteClaimNoteWindow: vi.fn(),
+  remoteOpenNoteWindow: vi.fn(),
   remoteLogin: vi.fn(),
   remoteCancelLogin: vi.fn(),
   remoteRequest: vi.fn(),
@@ -894,4 +896,50 @@ describe("scoped media bridge", () => {
     });
     expect(native.remoteMediaSubmit).toHaveBeenCalledTimes(1);
   });
+});
+
+it("claims a standalone note without discovery or login and cancels opening on its original request", async () => {
+  native.remoteClaimNoteWindow.mockResolvedValue({
+    status: "ok",
+    data: {
+      connection: info,
+      member_id: "member",
+      vault: { id: "original", role: "reader" },
+      session_id: "note",
+    },
+  });
+  const claimed = await NativeRemoteConnection.claimNoteWindow();
+  expect(claimed.connection.standaloneNote).toBe(true);
+  expect(claimed.info.vault.id).toBe("original");
+  expect(native.remoteConnect).not.toHaveBeenCalled();
+  expect(native.remoteLogin).not.toHaveBeenCalled();
+  await claimed.connection.disconnect();
+  expect(native.remoteDisconnect).toHaveBeenCalledWith(info.connection_id);
+  expect(native.remoteLogout).not.toHaveBeenCalled();
+  const parent = await NativeRemoteConnection.connect(info.server);
+  let complete!: () => void;
+  native.remoteOpenNoteWindow.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = () => resolve({ status: "ok", data: null });
+      }),
+  );
+  const abort = new AbortController();
+  const pending = parent.openNoteWindow("original", "note", {
+    requestId: "original-request",
+    signal: abort.signal,
+  });
+  abort.abort();
+  expect(native.remoteCancelRequest).toHaveBeenCalledWith(
+    info.connection_id,
+    "original-request",
+  );
+  complete();
+  await expect(pending).rejects.toBeTruthy();
+  expect(native.remoteOpenNoteWindow).toHaveBeenCalledWith(
+    info.connection_id,
+    "original-request",
+    "original",
+    "note",
+  );
 });

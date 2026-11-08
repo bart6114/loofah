@@ -2,8 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useLayoutEffect, useMemo } from "react";
 
+import { getCurrentWebviewWindowLabel } from "@hypr/plugin-windows";
+
 import { ClassicMainLayout } from "~/main/layout";
 import { TabContentNote } from "~/session";
+import { RemoteNoteWindow } from "~/shared/application/remote-note-window";
 import { StandaloneWindowShell } from "~/shared/window-shell";
 import { type Tab, useTabs, useTabsStore } from "~/store/zustand/tabs";
 import { useListener } from "~/stt/contexts";
@@ -16,6 +19,9 @@ function Component() {
   const { sessionId } = Route.useParams();
   useCloseStandaloneNoteWindowOnEscape();
 
+  if (getCurrentWebviewWindowLabel().startsWith("remote-note-"))
+    return <RemoteNoteWindow />;
+
   return (
     <ClassicMainLayout includeServices={false}>
       <StandaloneNote sessionId={sessionId} />
@@ -25,6 +31,10 @@ function Component() {
 
 function StandaloneNote({ sessionId }: { sessionId: string }) {
   useAttachStandaloneNoteToLiveSession(sessionId);
+  return <StandaloneNoteContent sessionId={sessionId} />;
+}
+
+export function StandaloneNoteContent({ sessionId }: { sessionId: string }) {
   const tab = useStandaloneNoteTab(sessionId);
   return (
     <StandaloneWindowShell topDragRegion={false}>

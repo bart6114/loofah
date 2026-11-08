@@ -3,6 +3,7 @@ import {
   legacyAttachmentPresentation,
   scopedAttachmentPresentation,
 } from "@hypr/editor/attachment-presentation";
+import { commands as windowsCommands } from "@hypr/plugin-windows";
 
 import {
   openLocalAttachment,
@@ -151,6 +152,10 @@ export type VaultClient = {
     options?: RequestOptions,
   ) => Promise<void>;
   readonly features: readonly string[];
+  openNoteWindow?: (
+    sessionId: string,
+    options?: RequestOptions,
+  ) => Promise<void>;
   exportSession?: (
     input: SessionExportInput,
     options?: RequestOptions,
@@ -633,6 +638,14 @@ export async function connectLocalVault({
         ? scopedAttachmentPresentation(input)
         : legacyAttachmentPresentation(input),
     openAttachmentDirectory: openLocalAttachmentDirectory,
+    openNoteWindow: async (sessionId, options) => {
+      options?.signal?.throwIfAborted();
+      const result = await windowsCommands.windowShow({
+        type: "note",
+        value: sessionId,
+      });
+      if (result.status === "error") throw new Error(String(result.error));
+    },
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
@@ -1086,6 +1099,11 @@ export function connectRemoteVault(
   return {
     scope: remoteVaultScope(connection.info.server, memberId, vaultId),
     nativeConnectionId: connection.info.connection_id,
+    openNoteWindow:
+      !connection.windowLeaseAvailable || connection.standaloneNote
+        ? undefined
+        : (sessionId, options) =>
+            connection.openNoteWindow(vaultId, sessionId, options),
     networkMode: "online",
     canEdit: vault.role !== "reader",
     providerCredentials:

@@ -829,6 +829,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_save_metadata::<tauri::Wry>,
             application::application_save_note::<tauri::Wry>,
             application::application_search::<tauri::Wry>,
+            remote::note_windows::remote_open_note_window,
+            remote::note_windows::remote_claim_note_window::<tauri::Wry>,
             remote::remote_connect::<tauri::Wry>,
             remote::remote_connect_desktop_profile::<tauri::Wry>,
             remote::remote_login::<tauri::Wry>,

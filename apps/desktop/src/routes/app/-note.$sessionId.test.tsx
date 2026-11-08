@@ -15,6 +15,8 @@ import {
 } from "~/store/zustand/tabs/test-utils";
 
 const mocks = vi.hoisted(() => ({
+  label: "note-local",
+  remote: vi.fn(),
   attachLiveSession: vi.fn(),
   close: vi.fn(),
   listenerState: {
@@ -25,6 +27,15 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("@hypr/plugin-windows", () => ({
+  getCurrentWebviewWindowLabel: () => mocks.label,
+}));
+vi.mock("~/shared/application/remote-note-window", () => ({
+  RemoteNoteWindow: () => {
+    mocks.remote();
+    return <output>original remote claim</output>;
+  },
+}));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     close: mocks.close,
@@ -62,6 +73,8 @@ import {
 
 describe("standalone note window route", () => {
   beforeEach(() => {
+    mocks.label = "note-local";
+    mocks.remote.mockClear();
     mocks.listenerState.attachLiveSession = mocks.attachLiveSession;
     mocks.listenerState.live.eventUnlistenersBySession = {};
     mocks.attachLiveSession.mockClear();
@@ -93,6 +106,18 @@ describe("standalone note window route", () => {
       id: "standalone-local",
     });
     expect(mocks.attachLiveSession).toHaveBeenCalledWith("standalone-local");
+    params.mockRestore();
+  });
+
+  it("uses the Native remote grant instead of the renderer route's session or Local listener", () => {
+    mocks.label = "remote-note-native-grant";
+    const params = vi
+      .spyOn(Route, "useParams")
+      .mockReturnValue({ sessionId: "forged-session" });
+    const Component = Route.options.component!;
+    render(<Component />);
+    expect(screen.getByText("original remote claim")).toBeTruthy();
+    expect(mocks.attachLiveSession).not.toHaveBeenCalled();
     params.mockRestore();
   });
 
