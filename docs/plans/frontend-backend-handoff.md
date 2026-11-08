@@ -51,16 +51,16 @@ Important evidence under `/Volumes/T7/loofah-backend-build/`:
 
 | Check                     | Evidence                                                                                                                                                                                                         |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Optional title stage      | `agents/title-stage/logs/core-stage-test-provenance-final.json`; final jobs 128 pass plus 8 crash children                                                                                                         |
-| Lossless title metadata   | `agents/title-metadata/logs/test-provenance.json`; 101 focused pass                                                                                                                                               |
-| Recording recovery        | `agents/capture/publication-recovery-verification.json`;44 focused pass                                                                                                                                          |
-| Core capture publication  | `agents/capture-publication/logs/verification-final.json`;58 selected pass                                                                                                                                       |
-| CPU resource owner        | `agents/capture/logs/stt-resources-verification.json`;17 ownership cases                                                                                                                                         |
-| HTTP publication          | `logs/capture-publication-api-provenance.json`;6 pass including lost reply/replay/independent read at 50/150/500 ms RTT                                                                                            |
+| Optional title stage      | `agents/title-stage/logs/core-stage-test-provenance-final.json`; final jobs 128 pass plus 8 crash children                                                                                                       |
+| Lossless title metadata   | `agents/title-metadata/logs/test-provenance.json`; 101 focused pass                                                                                                                                              |
+| Recording recovery        | `agents/capture/publication-recovery-verification.json`; 44 focused pass                                                                                                                                         |
+| Core capture publication  | `agents/capture-publication/logs/verification-final.json`; 58 selected pass                                                                                                                                      |
+| CPU resource owner        | `agents/capture/logs/stt-resources-verification.json`; 17 ownership cases                                                                                                                                        |
+| HTTP publication          | `logs/capture-publication-api-provenance.json`; 6 pass including lost reply/replay/independent read at 50/150/500 ms RTT                                                                                         |
 | Title HTTP/protocol       | `logs/generated-title-api-provenance.json`; real lost-reply title behavior and actual export checks                                                                                                              |
 | Main frontend             | `logs/main-session-headers-integrated-tests.log`, `main-session-date-integrated-tests.log`, `main-session-author-integrated-tests.log`, `transcript-cache-integrated-tests.log`, `date-review-wording-tests.log` |
-| Normal native check       | `logs/publication-speech-native-check.log`;pass with 31 known unwired capture warnings                                                                                                                            |
-| Headless dependency guard | `logs/publication-speech-headless-dependencies.txt`;no Tauri/device dependencies                                                                                                                                 |
+| Normal native check       | `logs/publication-speech-native-check.log`; pass with 31 known unwired capture warnings                                                                                                                          |
+| Headless dependency guard | `logs/publication-speech-headless-dependencies.txt`; no Tauri/device dependencies                                                                                                                                |
 
 Actual generated files at this checkpoint:
 
@@ -82,7 +82,7 @@ its custom `skip_serializing_if` attribute so Specta exports the field optional.
   files; 83 cases pass, check 0 diagnostics, library Clippy 31 baseline/0 new.
   Proof `agents/transcript-publication/logs/verification.json`; executable SHA256
   `dcd9f9edae3770ad3148a95edce580ee54ca3729cdcfde9fdaf92019fc7f59de`.
-  Integration remains pending at this checkpoint. B now audits startup ownership
+  Integrated as `87997f6d5`; paired Core orchestration remains pending. B now audits startup ownership
   read-only. Service::vault already owns initialization in a detached task;
   direct runtime initialization and Drop/shutdown-timeout paths need tracing.
 - C (`capture_distribution`): typed f32 live facade, bounded atomic per-channel
