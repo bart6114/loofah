@@ -185,6 +185,12 @@ async fn public_jobs_replay_after_application_and_return_bound_private_recovery_
             .unwrap()
             .contains(&json!("generated_titles"))
     );
+    assert!(
+        capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("processing_previews"))
+    );
     fixture.service.shutdown().await.unwrap();
     provider.close().await;
 }
@@ -410,6 +416,12 @@ async fn disabled_processing_and_unsupported_or_injected_inputs_fail_explicitly(
             .as_array()
             .unwrap()
             .contains(&json!("generated_titles"))
+    );
+    assert!(
+        !capabilities["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("processing_previews"))
     );
     fixture.service.shutdown().await.unwrap();
 }

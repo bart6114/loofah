@@ -593,8 +593,10 @@ does not stop an admitted server job; membership removal/downgrade does. Arbitra
 custom summary templates are disabled by default. Enabling them explicitly trusts
 the vault's custom template code; the check uses the exact snapshot rendered.
 
-Private streamed summary previews are under qualification; `processing_previews`
-remains unadvertised until the desktop adapters and platform checks are complete.
+Configured summary workers advertise `processing_previews` alongside
+`summary_body_jobs`; hosts without a configured worker omit both capabilities.
+The desktop enables its corresponding local capability only after the original
+Native processing service is available.
 `GET /api/v1/vaults/{vault}/jobs/{job}/preview` reads only the submitting member's
 original job and optional retained partial body. It never starts or resumes a
 model, changes the target baseline, or writes canonical summary content. Thinking

@@ -666,6 +666,7 @@ export async function connectLocalVault({
       ...(processingAvailable
         ? [
             "summary_body_jobs",
+            "processing_previews",
             "conditional_summary_jobs",
             "template_output_jobs",
             "generated_titles",

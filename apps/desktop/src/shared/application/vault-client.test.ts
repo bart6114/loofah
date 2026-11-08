@@ -174,11 +174,15 @@ beforeEach(() => {
 it("advertises local document jobs only when the native worker is available", async () => {
   const available = await connectLocalVault();
   expect(available.features).toContain("summary_body_jobs");
+  expect(available.features).toContain("processing_previews");
+  expect(available.processingJobPreview).toBeTypeOf("function");
   expect(available.features).toContain("template_output_jobs");
   expect(available.features).toContain("generated_titles");
   native.commands.applicationProcessingAvailable.mockResolvedValue(false);
   const local = await connectLocalVault();
   expect(local.features).not.toContain("summary_body_jobs");
+  expect(local.features).not.toContain("processing_previews");
+  expect(local.processingJobPreview).toBeUndefined();
   expect(local.features).not.toContain("template_output_jobs");
   expect(local.features).not.toContain("generated_titles");
   expect(local.features).toContain("tag_editing");
