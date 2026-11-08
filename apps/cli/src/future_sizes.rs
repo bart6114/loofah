@@ -13,6 +13,80 @@ fn command_future_sizes() {
         ("run", future_bytes(run)),
         ("run_inner", future_bytes(run_inner)),
         (
+            "profile_commands",
+            future_bytes(|command: cli::ProfileCommand| profiles::run(command, false)),
+        ),
+        (
+            "reader_gateway",
+            future_bytes(|reader: &'static agent_reader::AgentReader| reader.command_gateway()),
+        ),
+        (
+            "reader_list",
+            future_bytes(
+                |(reader, input): (
+                    &'static agent_reader::AgentReader,
+                    hypr_agent_access::ListMeetingsInput,
+                )| reader.list(input),
+            ),
+        ),
+        (
+            "remote_begin",
+            future_bytes(|target: &'static profiles::RemoteTarget| target.begin()),
+        ),
+        (
+            "remote_read",
+            future_bytes(|target: &'static profiles::RemoteTarget| {
+                target.execute(|_| hypr_loofah_client::RemoteOperation::Me)
+            }),
+        ),
+        (
+            "remote_import",
+            future_bytes(|session: &'static profiles::RemoteSession| {
+                session.import_media(
+                    std::path::PathBuf::new(),
+                    None,
+                    None,
+                    false,
+                    Default::default(),
+                    false,
+                )
+            }),
+        ),
+        (
+            "remote_transcribe",
+            future_bytes(|session: &'static profiles::RemoteSession| {
+                session.transcribe_media("session", false)
+            }),
+        ),
+        (
+            "local_import",
+            future_bytes(|path: &'static std::path::Path| {
+                commands::import::run(
+                    path,
+                    std::path::PathBuf::new(),
+                    None,
+                    None,
+                    false,
+                    Default::default(),
+                    false,
+                )
+            }),
+        ),
+        (
+            "gateway_attachment",
+            future_bytes(|gateway: &'static command_gateway::CommandGateway| {
+                gateway.attachment_file("session", "source.wav")
+            }),
+        ),
+        (
+            "gateway_attach",
+            future_bytes(
+                |(gateway, source): (&'static command_gateway::CommandGateway, std::fs::File)| {
+                    gateway.attach("session".into(), "source.wav".into(), source)
+                },
+            ),
+        ),
+        (
             "dispatch",
             future_bytes(
                 |(args, path, cache): (
