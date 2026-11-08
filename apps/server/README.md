@@ -321,10 +321,27 @@ write-path restrictions cover the selected storage/cache roots.
 
 This path rejects symbolic links, hard-linked files, special files and file names
 that are not portable UTF-8 relative paths; it never dereferences them into a
-snapshot. No external writer may modify storage during maintenance. The current
-qualification includes stopped-service restore and legacy interrupted document
-recovery fixtures; it does not establish production upgrade downtime, all prior
-executable versions, live-client reconnect or uninterrupted device recording.
+snapshot. No external writer may modify storage during maintenance.
+
+Controlled Linux ARM64 process acceptance on 2026-11-08 used the immutable
+`c9290ee7d8` executable and the packaged `43977c22c` executable, with synthetic
+loopback identity/provider fixtures and no model inference. Actual backup,
+verification and restore commands preserved canonical files, unknown files,
+dotfiles, empty directories, identities, permissions, creation receipts and
+separately protected provider credentials. Restored sealed captures published
+exactly once; receiving media remained pending without creating a note. A killed
+service reopened its receipts, a legacy interrupted Markdown/task write recovered
+before reads, and future catalog/runtime formats failed closed. An interrupted
+provider job remained interrupted after restore and same-request replay, with no
+additional provider call. The matching older executable also opened the original
+pre-upgrade snapshot with its unpublished capture intact.
+
+This qualifies those exact controlled artifacts and synthetic records, not a
+released-version compatibility matrix, Linux x64, production SSO/TLS, production
+upgrade downtime, interrupted large restore copying, live-client reconnect or
+uninterrupted device recording. `/health` currently checks catalog availability;
+operators must verify authenticated reads for every required vault because a
+future runtime format can fail one vault while the catalog remains available.
 
 ## Optional CPU transcription
 

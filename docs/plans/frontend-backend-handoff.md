@@ -709,3 +709,40 @@ passed; Native focused and fresh x64/ARM64 execution remain pending.
 Original Remote media source export now has an SDK streaming verifier and a Native `remote_media_export_source` command. The renderer supplies only its original request UUID and connection/vault routing; the SDK resolves the scoped durable submission and exact server admission, then validates content type, revision, SHA-256, length and unencoded whole-body bytes. A private Downloads/Loofah staging file survives the actual writer drain, and a fresh original profile/member/login fence gates the final no-clobber save. This path does not use the 128 MiB rendered-export buffer and never dispatches inference or rebinds media authority. Focused source regressions cover descriptor/body corruption, login/profile ABA, aborted caller flush ownership, capability checks before credentials, and large-file no-clobber staging. Source formatted; execution and Native command generation remain assigned to the single integration build lane. Server advertisement of `media_source_export` remains gated on its qualification.
 
 Windows ARM checkpoint `0d` exposed CLI main-thread stack overflows across ordinary session commands. The CLI now heap-pins Local owner startup/recovery and Remote SDK dispatch at their existing ownership boundaries, plus the task-local entry and optional Remote media workflows. These stay on the original task with the original cancellation and authority; no thread-stack increase or extra runtime is used. The measured Native entry future fell from 35,152 to 608 bytes, gateway state from 6,960 to 2,584, and Local owner entry from 6,208 to 1,520. A regression measures future types without constructing them, enforcing 4 KiB entry/transport and 16 KiB workflow budgets. Actual generated poll frames and Windows x64/ARM64 subprocess tests remain required: type size alone does not prove runtime stack bounds. The shipped CLI skill now includes read-only server `sessions media` and exact-original-request recovery guidance, fixing the command documentation contract exposed by the full library run.
+
+
+
+## Controlled operator acceptance, 2026-11-08
+
+Actual process acceptance used immutable Linux ARM64 server source `c9290ee7d8`
+(with its recorded desktop-only lockfile edge) and the CPU runtime-packaged
+`43977c22c` server. This is earlier than current root source; both report application
+version 0.45.7, so this is a cross-commit compatibility check, not a released-version
+matrix. Models were not configured. Synthetic OIDC and a non-inference streaming
+provider ran only inside an isolated Docker network namespace.
+
+The actual maintenance commands rejected a live service, missing/mismatched
+private bundles, and future catalog formats. Restore into empty storage matched
+all 14 original file digests, preserved unknown/dot bytes and empty directories,
+and regenerated an external cache. Authenticated readback preserved owner/reader
+roles, private credential status and creation replay. A sealed unpublished capture
+survived restoration and published exactly once; a receiving media admission
+survived another backup without inventing canonical content. Killed-process restart,
+old-executable snapshot rollback, interrupted legacy Markdown/task recovery, and
+future-runtime refusal were exercised. A dispatched provider job restored as
+`interrupted`; same-request replay left the original two provider calls unchanged.
+No user data, real credentials, inference, deployment or soak state was used.
+
+Local evidence is under
+`~/Library/Caches/loofah-separation/operator-acceptance-141d5c237/`; `proof.json`
+records exact binary/image provenance, script hashes and 26 checkpoints. Its digest
+is `da77b842a85be801a5f6454c3ff349ef99836782f12c26f81faa9338e234ac28`.
+The corresponding `operator-acceptance-*`, `operator-upgrade-recovery-*` and
+`operator-interrupted-job-*` logs remain in the task cache logs directory, including
+failed harness attempts. No product bug was found in this acceptance slice.
+
+Still separate: current-root regression, hosted x64 CPU packaging, production
+OIDC/TLS, released-version compatibility, large-copy interruption, client reconnect
+and uninterrupted physical recording. The server still needs content-free
+operational metrics and required-vault readiness probes. ONNX live/batch admission
+currently shares a bounded single slot and has no explicit live-priority scheduler.
