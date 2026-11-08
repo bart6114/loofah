@@ -55,17 +55,31 @@ impl MediaExecutionScope {
 }
 
 impl LocalCli {
+    pub(crate) fn scoped_media_reader(
+        context: Arc<VaultContext>,
+        principal: String,
+    ) -> Result<Self, ApplicationError> {
+        let scope = Arc::new(MediaExecutionScope::new(
+            &context.events.vault_id(),
+            principal,
+            Default::default(),
+            Arc::new(ReadOnly),
+        )?);
+        let mut cli = Self::new(context)?.with_media_scope(scope);
+        cli.read_only = true;
+        Ok(cli)
+    }
     pub(crate) fn with_media_scope(mut self, scope: Arc<MediaExecutionScope>) -> Self {
         self.media_scope = Some(scope);
         self
     }
-    pub(super) fn media_namespace(&self, local: &str) -> String {
+    pub(crate) fn media_namespace(&self, local: &str) -> String {
         match &self.media_scope {
             Some(scope) => format!("remote-media:{}:{local}", scope.namespace),
             None => local.into(),
         }
     }
-    pub(super) fn media_directory(&self, local: &str) -> PathBuf {
+    pub(crate) fn media_directory(&self, local: &str) -> PathBuf {
         match &self.media_scope {
             Some(scope) => PathBuf::from("member-media")
                 .join(&scope.namespace)
@@ -96,5 +110,39 @@ impl LocalCli {
                 )
             }),
         }
+    }
+}
+
+struct ReadOnly;
+impl MediaAuthorizer for ReadOnly {
+    fn authorize(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Send>, ApplicationError>> + Send + '_>> {
+        Box::pin(async {
+            Err(error(
+                ErrorCode::Forbidden,
+                "Media reader cannot authorize mutations",
+            ))
+        })
+    }
+    fn observe(
+        &self,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        crate::transcription_jobs::TranscriptionAccess,
+                        ApplicationError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async {
+            Err(error(
+                ErrorCode::Forbidden,
+                "Media reader cannot authorize mutations",
+            ))
+        })
     }
 }
