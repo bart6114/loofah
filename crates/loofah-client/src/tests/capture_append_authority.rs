@@ -4,7 +4,12 @@ use super::*;
 async fn append_authority_rejects_profile_and_login_aba_disconnect_and_window_cancellation() {
     for change in ["profile", "login", "disconnect", "cancel"] {
         let fixture = Fixture::new().await;
-        let client = fixture.client().await;
+        let mut client = fixture.client().await;
+        Arc::get_mut(&mut client)
+            .unwrap()
+            .capabilities
+            .features
+            .push("capture_ingestion".into());
         fixture.login(&client).await;
         let root = tempfile::tempdir().unwrap();
         let profiles = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
