@@ -659,3 +659,9 @@ workspaces without hydrating vault configuration or preloading Local processors.
 Recording reminder/floating settings remain gated until their events target the
 scoped device capture owner; the legacy notification listener must never be
 mounted in a Remote workspace because it creates Local sessions.
+The scoped device shell now has source seams for bounded latest-value Native
+telemetry and identity-bearing floating Stop events on macOS and Windows.
+Telemetry callbacks use a nonblocking bounded cache; UI reads select the complete
+original capture identity. Floating views copy their rendered capture key into
+the Stop event; legacy Local listeners ignore keyed events. The Remote event and
+overlay host is still being connected, and Recording settings remain gated.

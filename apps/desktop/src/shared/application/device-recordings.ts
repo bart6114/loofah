@@ -175,6 +175,17 @@ function createMonitor() {
       assertOpen();
       return applicationResult(result);
     },
+    async telemetry(identity: CaptureIdentity) {
+      assertOpen();
+      const original = structuredClone(identity);
+      const value = applicationResult(
+        await commands.deviceRecordingTelemetry(original),
+      );
+      assertOpen();
+      if (value && JSON.stringify(value.identity) !== JSON.stringify(original))
+        throw connectionClosed();
+      return value;
+    },
     async stop(identity: CaptureIdentity) {
       return applicationResult(await commands.deviceRecordingStop(identity));
     },

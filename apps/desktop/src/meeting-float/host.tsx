@@ -358,7 +358,8 @@ function FloatingMeetingWindowSync({
     };
 
     windowsEvents.floatingBarStop
-      .listen(() => {
+      .listen(({ payload }) => {
+        if (payload.capture_key) return;
         void hideFloatingMeetingPanel();
         listenerStore.getState().stop();
       })

@@ -873,6 +873,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             device_recordings::device_recording_finish_recovery::<tauri::Wry>,
             device_recordings::device_recording_export::<tauri::Wry>,
             device_recordings::device_recording_status::<tauri::Wry>,
+            device_recordings::device_recording_telemetry::<tauri::Wry>,
             device_recordings::device_recording_stop::<tauri::Wry>,
             device_recordings::device_recording_resume_upload::<tauri::Wry>,
             device_recordings::device_recording_subscribe::<tauri::Wry>,

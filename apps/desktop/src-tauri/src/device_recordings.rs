@@ -49,18 +49,63 @@ pub struct DeviceRecordingInventory {
     pub recordings: Vec<DeviceRecordingInfo>,
 }
 
+#[derive(Clone, Serialize, specta::Type)]
+pub struct DeviceRecordingTelemetry {
+    pub identity: CaptureIdentity,
+    pub mic: u16,
+    pub speaker: u16,
+    pub device: Option<String>,
+}
+
 struct DeviceEvents {
+    telemetry: Mutex<Vec<DeviceRecordingTelemetry>>,
     wake: watch::Sender<u64>,
 }
 impl Default for DeviceEvents {
     fn default() -> Self {
         Self {
+            telemetry: Mutex::new(Vec::new()),
             wake: watch::channel(0).0,
         }
     }
 }
 impl DeviceCaptureObserver for DeviceEvents {
     fn emit(&self, event: ScopedDeviceCaptureEvent) {
+        // Audio callbacks never wait for UI readers and never enqueue amplitude history.
+        if let Ok(mut values) = self.telemetry.try_lock() {
+            if matches!(event.event, DeviceCaptureEvent::Preparing)
+                && !values.iter().any(|value| value.identity == event.identity)
+            {
+                if values.len() == 8 {
+                    values.remove(0);
+                }
+                values.push(DeviceRecordingTelemetry {
+                    identity: event.identity.clone(),
+                    mic: 0,
+                    speaker: 0,
+                    device: None,
+                });
+            }
+            if let Some(value) = values
+                .iter_mut()
+                .find(|value| value.identity == event.identity)
+            {
+                match &event.event {
+                    DeviceCaptureEvent::Amplitude { mic, speaker } => {
+                        value.mic = *mic;
+                        value.speaker = *speaker;
+                    }
+                    DeviceCaptureEvent::Capturing { device } => value.device = device.clone(),
+                    DeviceCaptureEvent::Finalizing
+                    | DeviceCaptureEvent::Sealed(_)
+                    | DeviceCaptureEvent::Interrupted { .. } => {
+                        value.mic = 0;
+                        value.speaker = 0;
+                    }
+                    _ => {}
+                }
+            }
+        }
         if !matches!(event.event, DeviceCaptureEvent::Amplitude { .. }) {
             self.wake
                 .send_modify(|sequence| *sequence = sequence.wrapping_add(1));
@@ -965,6 +1010,61 @@ pub fn allow_frontend_exit_flush<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn telemetry_is_bounded_coalesced_and_never_waits_for_a_ui_reader() {
+        let events = DeviceEvents::default();
+        let identity = CaptureIdentity {
+            scope: CaptureScope {
+                server: "https://example.test".into(),
+                member_id: "member".into(),
+                vault_id: "vault".into(),
+            },
+            capture_id: uuid::Uuid::new_v4().to_string(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+            target: hypr_loofah_protocol::CaptureTarget::PendingSession {
+                create_request_id: uuid::Uuid::new_v4().to_string(),
+            },
+        };
+        let emit = |identity: CaptureIdentity, event| {
+            events.emit(ScopedDeviceCaptureEvent { identity, event })
+        };
+        emit(identity.clone(), DeviceCaptureEvent::Preparing);
+        for value in 0..100 {
+            emit(
+                identity.clone(),
+                DeviceCaptureEvent::Amplitude {
+                    mic: value,
+                    speaker: value,
+                },
+            );
+        }
+        assert_eq!(events.telemetry.lock().unwrap()[0].mic, 99);
+        let guard = events.telemetry.lock().unwrap();
+        emit(
+            identity.clone(),
+            DeviceCaptureEvent::Amplitude {
+                mic: 1000,
+                speaker: 1000,
+            },
+        );
+        drop(guard);
+        assert_eq!(events.telemetry.lock().unwrap()[0].mic, 99);
+        let mut foreign = identity.clone();
+        foreign.scope.member_id = "foreign".into();
+        emit(
+            foreign,
+            DeviceCaptureEvent::Amplitude { mic: 1, speaker: 1 },
+        );
+        assert_eq!(events.telemetry.lock().unwrap()[0].mic, 99);
+        emit(identity.clone(), DeviceCaptureEvent::Finalizing);
+        assert_eq!(events.telemetry.lock().unwrap()[0].mic, 0);
+        for _ in 0..20 {
+            let mut next = identity.clone();
+            next.capture_id = uuid::Uuid::new_v4().to_string();
+            emit(next, DeviceCaptureEvent::Preparing);
+        }
+        assert_eq!(events.telemetry.lock().unwrap().len(), 8);
+    }
 
     #[test]
     fn terminal_inventory_preserves_only_the_exact_explicitly_recovered_prefix() {
@@ -1053,4 +1153,24 @@ mod tests {
         assert!(next.recordings.is_empty());
         assert!(state.drain(Duration::from_secs(1)).await);
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_recording_telemetry<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    identity: CaptureIdentity,
+) -> Result<Option<DeviceRecordingTelemetry>, ApplicationError> {
+    let profile = profile(&app).await?;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile.profile().await.id)?;
+    let value = state
+        .events
+        .telemetry
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|value| value.identity == identity)
+        .cloned();
+    Ok(value)
 }

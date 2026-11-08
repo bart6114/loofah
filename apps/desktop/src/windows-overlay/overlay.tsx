@@ -26,7 +26,8 @@ const settings = (change: Partial<FloatingBarSettingsChange>) =>
 
 function RecordingBar({ state }: { state: FloatingBarState }) {
   const stop = useMutation({
-    mutationFn: () => events.floatingBarStop.emit({}),
+    mutationFn: (captureKey: string | null) =>
+      events.floatingBarStop.emit({ capture_key: captureKey }),
   });
   const captions = useMutation({
     mutationFn: () =>
@@ -79,7 +80,7 @@ function RecordingBar({ state }: { state: FloatingBarState }) {
       <button
         className="stop"
         disabled={stop.isPending}
-        onClick={() => stop.mutate()}
+        onClick={() => stop.mutate(state.captureKey ?? null)}
         aria-label="Stop recording"
       >
         ■ Stop

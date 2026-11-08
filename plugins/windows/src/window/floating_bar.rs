@@ -34,6 +34,8 @@ pub struct FloatingTranscriptBubble {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FloatingBarState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture_key: Option<String>,
     pub amplitude: f64,
     pub title: String,
     pub status: FloatingBarStatus,
@@ -101,9 +103,20 @@ mod platform {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn rust_on_floating_bar_stop() {
+    pub extern "C" fn rust_on_floating_bar_stop(capture_ptr: *const c_char) {
+        let capture_key = if capture_ptr.is_null() {
+            None
+        } else {
+            let Ok(key) = (unsafe { CStr::from_ptr(capture_ptr) }).to_str() else {
+                return;
+            };
+            if key.len() > 16384 {
+                return;
+            }
+            (!key.is_empty()).then(|| key.to_owned())
+        };
         if let Some(app) = APP_HANDLE.get() {
-            let _ = crate::events::FloatingBarStop {}.emit(app);
+            let _ = crate::events::FloatingBarStop { capture_key }.emit(app);
         }
     }
 
