@@ -136,7 +136,12 @@ impl VaultContext {
                 input.identity.target,
                 hypr_loofah_protocol::CaptureTarget::AppendSession { .. }
             ) {
-                append::checked_source(&context, &input.identity, true).await?;
+                let exists = spool
+                    .inventory(scope.clone())
+                    .await?
+                    .iter()
+                    .any(|snapshot| snapshot.identity.capture_id == input.identity.capture_id);
+                append::checked_source(&context, &input.identity, !exists).await?;
             }
             let writer = spool
                 .begin_with_observation(

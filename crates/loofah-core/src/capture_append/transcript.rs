@@ -26,7 +26,7 @@ pub fn merge_transcript(
         return Ok(original.map(<[u8]>::to_vec));
     }
     let mut value: Value = match original {
-        Some(bytes) => serde_json::from_slice(bytes).map_err(|_| invalid())?,
+        Some(bytes) => super::json::unique(bytes).map_err(|_| invalid())?,
         None => json!({"transcripts": []}),
     };
     // Deserialize for known schema validation, while retaining the raw tree for
@@ -36,6 +36,28 @@ pub fn merge_transcript(
     if existing.transcripts.iter().any(|entry| {
         entry.id == suffix.id || entry.session_id != session_id || !entry.started_at.is_finite()
     }) {
+        return Err(invalid());
+    }
+    let mut word_ids: std::collections::HashSet<_> = existing
+        .transcripts
+        .iter()
+        .flat_map(|transcript| &transcript.words)
+        .filter_map(|word| word.id.as_deref())
+        .map(str::to_owned)
+        .collect();
+    let mut suffix_ids = std::collections::HashSet::new();
+    for word in &suffix.words {
+        if let Some(id) = &word.id {
+            if id.is_empty() || !word_ids.insert(id.clone()) || !suffix_ids.insert(id.clone()) {
+                return Err(invalid());
+            }
+        }
+    }
+    if suffix
+        .speaker_hints
+        .iter()
+        .any(|hint| !suffix_ids.contains(&hint.word_id))
+    {
         return Err(invalid());
     }
     let base = existing
@@ -132,6 +154,16 @@ mod tests {
     #[test]
     fn rejects_malformed_original_duplicate_identity_and_out_of_suffix_range() {
         assert!(merge_transcript(Some(b""), suffix(), "s", 1, 160).is_err());
+        assert!(
+            merge_transcript(
+                Some(br#"{"transcripts":[],"future":{"value":1,"value":2}}"#),
+                suffix(),
+                "s",
+                1,
+                160
+            )
+            .is_err()
+        );
         let original = serde_json::to_vec(&json!({"transcripts":[suffix()]})).unwrap();
         assert!(merge_transcript(Some(&original), suffix(), "s", 1, 160).is_err());
         assert!(merge_transcript(None, suffix(), "s", 1, 159).is_err());

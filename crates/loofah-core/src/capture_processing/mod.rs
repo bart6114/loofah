@@ -6,6 +6,7 @@ use hypr_loofah_protocol::*;
 use std::{future::Future, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
+mod append;
 mod ledger;
 mod origin;
 pub(crate) use origin::CaptureChildOrigin;
@@ -37,6 +38,7 @@ pub trait CaptureProcessingAuthorizer: Send + Sync + 'static {
 }
 
 pub(crate) struct CaptureProcessingService {
+    append: append::Workers,
     journal: ledger::Journal,
     policy: CaptureProcessingPolicy,
     authorizer: Arc<dyn CaptureProcessingAuthorizer>,
@@ -83,6 +85,7 @@ impl VaultRuntime {
             .join("capture-processing");
         let journal = ledger::Journal::open(root, self.context.clone()).await?;
         let service = Arc::new(CaptureProcessingService {
+            append: Default::default(),
             journal,
             policy,
             authorizer,
@@ -102,6 +105,8 @@ impl VaultRuntime {
                     .catch_unwind()
                     .await
                     .unwrap_or_else(|_| Err(storage("Capture processing coordinator panicked")));
+                let drained = service.append.shutdown().await;
+                let result = result.and(drained);
                 if result.is_err() {
                     service
                         .failed
@@ -162,11 +167,20 @@ impl VaultContext {
                 CaptureTarget::ExistingSession {
                     expected_audio_sha256: Some(_),
                     ..
-                } | CaptureTarget::AppendSession { .. }
+                }
             ) {
                 return Err(error(
                     ErrorCode::Validation,
                     "Capture processing append is not supported",
+                ));
+            }
+            if let CaptureTarget::AppendSession { admission, .. } = &source.identity.target
+                && admission.request.processing.as_ref().is_none_or(|options| {
+                    options.request(source.capture_fingerprint.clone()) != input
+                })
+            {
+                return Err(conflict(
+                    "Append processing differs from its pre-capture admission",
                 ));
             }
             if source.identity.request_id != request_id

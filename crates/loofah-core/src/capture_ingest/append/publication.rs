@@ -34,14 +34,6 @@ where
             "Append capture differs from its admission",
         ));
     }
-    if admission.request.processing.is_some() {
-        let mut cause = rejected(
-            ErrorCode::Unavailable,
-            "Append suffix processing must finish before compound publication",
-        );
-        cause.retryable = true;
-        return Err(cause);
-    }
     let session = session_id.clone();
     let _session = context.admit_session_work(&session).await?;
     let _request = context.admit_session_lifecycle_request(
@@ -57,15 +49,6 @@ where
         .root
         .join("recording-appends");
     let identity = super::identity(&admission.request)?;
-    let mut ticket = context
-        .recording_publications
-        .begin(
-            &session,
-            &super::super::publication::bootstrap::append_key(&super::identity(
-                &admission.request,
-            )?),
-        )?
-        .with_events(context.events.clone());
     let existing = context
         .store
         .prepare_recording_append_status(&root, identity.clone())
@@ -74,6 +57,15 @@ where
     let plan = if let Some(plan) = existing {
         plan
     } else {
+        context.ensure_recording_publication_ready(&session)?;
+        let merged = if admission.request.processing.is_some() {
+            context
+                .capture_append_merged(&snapshot.identity, &expected)
+                .await?
+                .bytes
+        } else {
+            source.raw_transcript().map(<[u8]>::to_vec)
+        };
         if !source
             .recheck()
             .await
@@ -125,7 +117,6 @@ where
         let produced = producer.await;
         let (file, combined) = combined.map_err(super::io)??;
         produced.map_err(super::io)??;
-        let merged = source.raw_transcript().map(<[u8]>::to_vec);
         let artifact = RecordingAppendArtifact {
             sha256: combined.sha256,
             size_bytes: combined.bytes,
@@ -138,6 +129,15 @@ where
             .await
             .map_err(|cause| storage_error(cause, false))?
     };
+    let mut ticket = context
+        .recording_publications
+        .begin(
+            &session,
+            &super::super::publication::bootstrap::append_key(&super::identity(
+                &admission.request,
+            )?),
+        )?
+        .with_events(context.events.clone());
     let plan = plan
         .recheck()
         .await
@@ -156,7 +156,8 @@ where
             sha256, size_bytes, ..
         } => (sha256, size_bytes),
         RecordingAppendOutcome::Changed => {
-            return Err(unknown(
+            ticket.resolved();
+            return Err(rejected(
                 ErrorCode::Conflict,
                 "Append source changed; retain the capture for review",
             ));

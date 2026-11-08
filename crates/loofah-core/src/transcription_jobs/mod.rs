@@ -13,6 +13,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{VaultContext, VaultRuntime, vault::error};
 
+mod append;
+pub(crate) use append::CaptureSuffixInput;
 pub(crate) mod ledger;
 mod source;
 #[cfg(test)]
@@ -133,6 +135,8 @@ impl Default for TranscriptionLimits {
 }
 
 pub(crate) struct TranscriptionService {
+    engine: Arc<dyn TranscriptionEngine>,
+    authorizer: Arc<dyn TranscriptionAuthorizer>,
     journal: ledger::Journal,
     stop: CancellationToken,
     finished: CancellationToken,
@@ -185,9 +189,12 @@ impl VaultContext {
             .join("transcription-jobs");
         let journal =
             ledger::Journal::open(root, self.events.clone(), limits, Some(self.clone())).await?;
-        let worker =
-            TranscriptionWorker::start(self.clone(), journal.clone(), engine, authorizer).await?;
+        let worker = TranscriptionWorker::start(
+            self.clone(), journal.clone(), engine.clone(), authorizer.clone(),
+        ).await?;
         let service = TranscriptionService {
+            engine,
+            authorizer,
             journal,
             stop: worker.stop.clone(),
             finished: worker.finished.clone(),

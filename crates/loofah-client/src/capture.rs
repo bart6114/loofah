@@ -29,6 +29,18 @@ impl RemoteClient {
             )));
         }
         let input = prepared.request();
+        if input.processing.is_some()
+            && !self
+                .capabilities
+                .features
+                .iter()
+                .any(|feature| feature == "capture_processing")
+        {
+            return Err(not_committed(failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support declared append processing",
+            )));
+        }
         if input.scope.server != self.address.as_str() {
             return Err(not_committed(invalid(
                 "Append scope belongs to another server",
@@ -53,6 +65,35 @@ impl RemoteClient {
         cancel: CancellationToken,
     ) -> Result<CaptureIngestStatus> {
         self.capture_capability(&cancel)?;
+        if let hypr_loofah_protocol::CaptureTarget::AppendSession {
+            session_id,
+            admission,
+        } = &input.identity.target
+        {
+            if !self
+                .capabilities
+                .features
+                .iter()
+                .any(|feature| feature == "capture_append")
+            {
+                return Err(not_committed(failure(
+                    ErrorCode::IncompatibleVersion,
+                    "This server does not support checked recording append",
+                )));
+            }
+            hypr_loofah_protocol::validate_capture_append_admission(admission)
+                .map_err(|message| not_committed(invalid(message)))?;
+            if session_id != &admission.request.session_id
+                || input.identity.scope != admission.request.scope
+                || input.identity.capture_id != admission.request.capture_id
+                || input.identity.request_id != admission.request.request_id
+                || input.format != admission.baseline.format
+            {
+                return Err(not_committed(invalid(
+                    "Append capture differs from its original admission",
+                )));
+            }
+        }
         if input.identity.scope.server != self.address.as_str()
             || input.first_admitted_audio_observed_at_ms > 9_007_199_254_740_991
         {

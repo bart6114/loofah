@@ -62,10 +62,23 @@ pub(super) fn validate_operation(
                 ));
             }
         }
-        CaptureTarget::AppendSession { .. } => {
-            return Err(invalid(
-                "Append processing requires compound publication support",
-            ));
+        CaptureTarget::AppendSession {
+            session_id,
+            admission,
+        } => {
+            validate_capture_append_admission(admission).map_err(invalid)?;
+            if session_id != &admission.request.session_id
+                || identity.scope != admission.request.scope
+                || identity.capture_id != admission.request.capture_id
+                || identity.request_id != admission.request.request_id
+                || admission.request.processing.as_ref().is_none_or(|options| {
+                    options.request(input.capture_fingerprint.clone()) != *input
+                })
+            {
+                return Err(invalid(
+                    "Append processing differs from its durable admission",
+                ));
+            }
         }
         CaptureTarget::PendingSession { create_request_id } => {
             if !uuid(create_request_id) {

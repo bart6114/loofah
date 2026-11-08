@@ -21,6 +21,14 @@ use super::{VaultContext, rejected};
 use crate::vault::storage_error;
 
 impl VaultContext {
+    pub(crate) async fn capture_append_source(
+        self: &Arc<Self>,
+        capture: &CaptureIdentity,
+        check_current: bool,
+    ) -> Result<AppendSource, ApplicationError> {
+        checked_source(self, capture, check_current).await
+    }
+
     pub async fn prepare_capture_append_authorized<G, F>(
         self: &Arc<Self>,
         member: String,
@@ -34,6 +42,14 @@ impl VaultContext {
         hypr_loofah_protocol::validate_capture_append_request(&input)
             .map_err(|message| rejected(ErrorCode::Validation, message))?;
         self.validate(&input.session_id)?;
+        if input.processing.is_some()
+            && (self.capture_processing.get().is_none() || self.transcription.get().is_none())
+        {
+            return Err(rejected(
+                ErrorCode::Unavailable,
+                "Append processing engines are not configured",
+            ));
+        }
         let settings = self.capture_ingestion.get().ok_or_else(unavailable)?;
         if self.lease.is_none()
             || input.scope.server != settings.server
@@ -327,4 +343,101 @@ fn io(cause: impl std::fmt::Display) -> ApplicationError {
         ErrorCode::Unavailable,
         &format!("Append preparation could not be confirmed: {cause}"),
     )
+}
+
+pub(crate) struct CaptureSuffixSource {
+    pub original: AppendSource,
+    pub path: std::path::PathBuf,
+    pub sha256: String,
+    pub seal: hypr_loofah_protocol::CaptureSeal,
+}
+impl VaultContext {
+    pub(crate) async fn prepare_capture_suffix(
+        self: &Arc<Self>,
+        identity: &CaptureIdentity,
+    ) -> Result<CaptureSuffixSource, ApplicationError> {
+        let original = checked_source(self, identity, true).await?;
+        let writer = self
+            .capture_writer(
+                identity.scope.member_id.clone(),
+                identity.capture_id.clone(),
+            )
+            .await?;
+        let snapshot = writer.snapshot().await?;
+        if &snapshot.identity != identity {
+            return Err(rejected(
+                ErrorCode::Conflict,
+                "Append suffix identity changed",
+            ));
+        }
+        let seal = snapshot
+            .seal
+            .ok_or_else(|| rejected(ErrorCode::Unavailable, "Append suffix is not sealed"))?;
+        let verified = super::wav::verify(&writer, &seal).await?;
+        let path = original.directory().join("core-inference.wav");
+        let temporary = original
+            .directory()
+            .join(format!("core-inference-{}.wav", uuid::Uuid::new_v4()));
+        let (mut reader, producer) = verified.reader(self.clone(), writer);
+        let pin = self.clone();
+        let expected_sha = verified.artifact_sha256.clone();
+        let expected_bytes = verified.artifact_size_bytes;
+        let output_path = path.clone();
+        let prepared = tokio::task::spawn_blocking(move || {
+            let _pin = pin;
+            if std::fs::symlink_metadata(&output_path).is_ok() {
+                verify_private_wave(&output_path, &expected_sha, expected_bytes)?;
+                return Ok::<_, ApplicationError>(());
+            }
+            let mut file = File::create_new(&temporary).map_err(io)?;
+            std::io::copy(&mut reader, &mut file).map_err(io)?;
+            file.sync_all().map_err(io)?;
+            drop(file);
+            verify_private_wave(&temporary, &expected_sha, expected_bytes)?;
+            let mut permissions = std::fs::metadata(&temporary).map_err(io)?.permissions();
+            permissions.set_readonly(true);
+            std::fs::set_permissions(&temporary, permissions).map_err(io)?;
+            hypr_storage::fs::rename_no_replace(&temporary, &output_path).map_err(io)?;
+            crate::transcription_jobs::ledger::sync_parent(&output_path)
+        })
+        .await;
+        let produced = producer.await;
+        prepared.map_err(io)??;
+        produced.map_err(io)??;
+        Ok(CaptureSuffixSource {
+            original,
+            path,
+            sha256: verified.artifact_sha256,
+            seal,
+        })
+    }
+}
+fn verify_private_wave(path: &Path, expected: &str, bytes: u64) -> Result<(), ApplicationError> {
+    use sha2::Digest;
+    let metadata = path.symlink_metadata().map_err(io)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() != bytes {
+        return Err(unavailable());
+    }
+    let mut file = File::open(path).map_err(io)?;
+    let mut hash = sha2::Sha256::new();
+    let mut buffer = [0; 65536];
+    loop {
+        let count = file.read(&mut buffer).map_err(io)?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    let hash: String = hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    if hash != expected {
+        return Err(rejected(
+            ErrorCode::Conflict,
+            "Retained append suffix changed",
+        ));
+    }
+    Ok(())
 }

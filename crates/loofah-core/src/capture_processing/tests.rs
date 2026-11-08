@@ -1,3 +1,4 @@
+mod append;
 use super::*;
 use crate::{jobs::*, transcription_jobs::*};
 use std::{
@@ -73,6 +74,7 @@ impl JobAuthorizer for Auth {
 #[derive(Default)]
 struct Batch {
     calls: AtomicUsize,
+    observed_frames: AtomicUsize,
     empty: AtomicBool,
     fail: AtomicBool,
     prepare_busy: AtomicBool,
@@ -104,6 +106,12 @@ impl PreparedTranscription for Prepared {
     > {
         Box::pin(async move {
             self.0.calls.fetch_add(1, Ordering::AcqRel);
+            self.0.observed_frames.store(
+                hound::WavReader::open(input.source.path())
+                    .map(|reader| reader.duration() as usize)
+                    .unwrap_or(0),
+                Ordering::Release,
+            );
             if self.0.fail.load(Ordering::Acquire) {
                 return Err(TranscriptionFailure::EngineFailed);
             }

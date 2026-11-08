@@ -311,8 +311,9 @@ fn validate(record: &Record, vault: &str, id: &str) -> Result<(), ApplicationErr
             CaptureTarget::ExistingSession {
                 expected_audio_sha256: Some(_),
                 ..
-            } | CaptureTarget::AppendSession { .. }
+            }
         )
+        || matches!(&record.identity.target, CaptureTarget::AppendSession { admission, .. } if admission.request.processing.as_ref().is_none_or(|options| options.request(s.capture_fingerprint.clone()) != s.request))
         || s.request
             .model
             .as_ref()

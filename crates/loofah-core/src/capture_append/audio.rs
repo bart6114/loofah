@@ -195,6 +195,17 @@ fn io(cause: impl std::fmt::Display) -> ApplicationError {
     )
 }
 
+pub(crate) fn verify_file_sha256(path: &Path, expected: &str) -> Result<(), ApplicationError> {
+    let metadata = path.symlink_metadata().map_err(io)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(conflict("Append input is no longer a regular file"));
+    }
+    if file_hash(&mut File::open(path).map_err(io)?)? != expected {
+        return Err(conflict("Retained append inference input changed"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

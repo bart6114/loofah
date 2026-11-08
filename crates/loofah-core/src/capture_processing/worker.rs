@@ -86,7 +86,7 @@ pub(super) async fn run(
 
 async fn step(
     context: &Arc<VaultContext>,
-    service: &CaptureProcessingService,
+    service: &Arc<CaptureProcessingService>,
     record: &mut Record,
 ) -> Result<(), ApplicationError> {
     let member = record.member().to_owned();
@@ -116,6 +116,12 @@ async fn step(
         record.snapshot.failure = None;
     }
 
+    if matches!(record.identity.target, CaptureTarget::AppendSession { .. })
+        && !record.transcript_ready
+        && !super::append::step(context, service, record, &source, ready).await?
+    {
+        return Ok(());
+    }
     if let Some(generation) = record.snapshot.live_generation_id.clone() {
         match context
             .capture_live_processing_outcome(member.clone(), generation.clone())
@@ -411,6 +417,9 @@ async fn cancel_children(
     record: &Record,
 ) -> Result<bool, ApplicationError> {
     let mut settled = true;
+    if matches!(record.identity.target, CaptureTarget::AppendSession { .. }) {
+        settled &= super::append::cancel(context, record).await?;
+    }
     if let Some(generation) = &record.snapshot.live_generation_id {
         match context
             .cancel_capture_live_authorized(

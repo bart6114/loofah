@@ -178,6 +178,13 @@ impl CaptureSpool {
     ) -> Result<CaptureWriter> {
         validate_identity(&identity)?;
         validate_format(&format)?;
+        if let CaptureTarget::AppendSession { admission, .. } = &identity.target
+            && admission.request.processing != processing
+        {
+            return Err(invalid(
+                "Append processing differs from its pre-capture admission",
+            ));
+        }
         let declaration = processing.map(|options| CaptureProcessingDeclaration {
             request: options.request(hypr_loofah_protocol::capture_fingerprint(
                 &identity, &format,

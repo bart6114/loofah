@@ -71,6 +71,10 @@ pub struct TrustedTranscriptionSource {
     owner: Box<dyn Send>,
 }
 impl TrustedTranscriptionSource {
+    pub(crate) fn capture_suffix(path: PathBuf, owner: Box<dyn Send>) -> Self {
+        Self { path, owner }
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }

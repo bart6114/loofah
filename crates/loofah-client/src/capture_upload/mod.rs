@@ -289,8 +289,20 @@ async fn run(
         CaptureTarget::ExistingSession {
             expected_audio_sha256: Some(_),
             ..
-        } | CaptureTarget::AppendSession { .. }
+        }
     ) {
+        set(progress, CaptureUploadPhase::AppendUnsupported, None);
+        return Ok(());
+    }
+    if matches!(
+        &writer.identity().target,
+        CaptureTarget::AppendSession { .. }
+    ) && !client
+        .capabilities()
+        .features
+        .iter()
+        .any(|feature| feature == "capture_append")
+    {
         set(progress, CaptureUploadPhase::AppendUnsupported, None);
         return Ok(());
     }
@@ -420,6 +432,17 @@ async fn cycle(
         )
         .await?;
     validate_status(&remote, &snapshot)?;
+    if let CaptureTarget::AppendSession { admission, .. } = &snapshot.identity.target
+        && let Some(options) = &admission.request.processing
+    {
+        client
+            .declare_capture_processing(
+                &snapshot.identity,
+                &options.request(snapshot.capture_fingerprint.clone()),
+                stop.clone(),
+            )
+            .await?;
+    }
     observe_session(writer, &remote).await?;
     if snapshot.acknowledged.as_ref() != Some(&remote.prefix) {
         writer.acknowledge_prefix(remote.prefix.clone()).await?;
