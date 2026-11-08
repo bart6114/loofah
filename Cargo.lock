@@ -15065,9 +15065,11 @@ dependencies = [
  "axum",
  "fs-format",
  "futures-util",
+ "hound",
  "owhisper-interface",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
