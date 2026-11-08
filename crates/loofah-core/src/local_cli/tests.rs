@@ -19,7 +19,7 @@ impl Fixture {
         };
         let runtime = VaultRuntime::open_leased(
             "local:vault".into(),
-            lease,
+            lease.clone(),
             &root.path().join("cache"),
             &root.path().join("operations"),
             hypr_vault_write::ContentLimits::unlimited(),
@@ -33,6 +33,10 @@ impl Fixture {
         .await
         .unwrap()
         .unwrap();
+        runtime
+            .context
+            .enable_standalone_local_session_lifecycle(&lease)
+            .unwrap();
         let cli = Arc::new(LocalCli::new(runtime.context.clone()).unwrap());
         Self {
             _root: root,

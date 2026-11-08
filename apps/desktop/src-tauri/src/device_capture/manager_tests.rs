@@ -512,6 +512,7 @@ async fn root_host(
         None,
         DeviceCaptureRoot,
         DeviceCaptureRootArgs {
+            maintenance: Default::default(),
             audio,
             runtime: Arc::new(LocalPanic),
         },

@@ -11,6 +11,7 @@ mod api;
 mod error;
 mod listener;
 mod listener2;
+mod maintenance;
 
 pub use api::*;
 pub use error::{Error, Result};
@@ -24,10 +25,11 @@ pub use hypr_transcription_core::listener::{
     SessionLifecycleEvent as DeviceSessionLifecycleEvent,
     SessionProgressEvent as DeviceSessionProgressEvent,
     actors::{
-        ChannelMode as DeviceChannelMode, DeviceAppendReceipt, DeviceCaptureArgs,
-        DeviceCaptureCompletion, DeviceCaptureCompletionSnapshot, DeviceCaptureKey,
-        DeviceCaptureReporter, DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink,
-        DeviceSinkError, RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
+        CaptureMaintenanceGate, CaptureMaintenanceGuard, ChannelMode as DeviceChannelMode,
+        DeviceAppendReceipt, DeviceCaptureArgs, DeviceCaptureCompletion,
+        DeviceCaptureCompletionSnapshot, DeviceCaptureKey, DeviceCaptureReporter,
+        DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink, DeviceSinkError,
+        RootActor as DeviceCaptureRoot, RootArgs as DeviceCaptureRootArgs,
         RootMsg as DeviceCaptureRootMsg,
     },
 };
@@ -37,8 +39,8 @@ pub use hypr_transcription_core::listener2::{
     suggest_providers_for_languages_batch,
 };
 pub use listener::{
-    DeviceCaptureStartError, device_capture_root_ready, start_device_capture, stop_device_capture,
-    tracked_start_device_capture,
+    DeviceCaptureStartError, admit_session_maintenance, device_capture_root_ready,
+    start_device_capture, stop_device_capture, tracked_start_device_capture,
 };
 pub use listener::{Listener, ListenerPluginExt};
 pub use listener2::{Listener2, Listener2PluginExt};
@@ -56,7 +58,9 @@ pub struct PluginState {
 
 pub type SessionStateCache = Arc<StdMutex<HashMap<String, (bool, bool)>>>;
 
+#[derive(Default)]
 pub struct BatchSessionRegistry {
+    maintenance: Arc<tokio::sync::RwLock<()>>,
     pub sessions: StdMutex<HashMap<String, BatchSessionEntry>>,
 }
 
@@ -125,8 +129,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             app.manage(state);
             app.manage(Arc::new(BatchSessionRegistry {
                 sessions: StdMutex::new(HashMap::new()),
+                ..Default::default()
             }));
 
+            let maintenance = CaptureMaintenanceGate::default();
+            app.manage(maintenance.clone());
             let audio = app.state::<Arc<dyn AudioProvider>>().inner().clone();
             let session_state_cache: SessionStateCache = Arc::new(StdMutex::new(HashMap::new()));
             app.manage(session_state_cache.clone());
@@ -139,7 +146,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 Actor::spawn(
                     Some(RootActor::name()),
                     RootActor,
-                    RootArgs { runtime, audio },
+                    RootArgs {
+                        runtime,
+                        audio,
+                        maintenance,
+                    },
                 )
                 .await
                 .map(|_| tracing::info!("root_actor_spawned"))

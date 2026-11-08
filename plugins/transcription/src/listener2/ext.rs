@@ -44,6 +44,13 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         work: Option<hypr_loofah_core::local_session_work::LocalSessionWork>,
     ) -> Result<(), core::Error> {
         let mut admission = PendingLocalWork(work);
+        let registry = self
+            .manager
+            .try_state::<Arc<BatchSessionRegistry>>()
+            .ok_or_else(|| core::Error::BatchError("Batch ownership is unavailable".into()))?
+            .inner()
+            .clone();
+        let maintenance = registry.start()?;
         let state = self.manager.state::<crate::SharedState>();
         let guard = state.lock().await;
         let app = guard.app.clone();
@@ -66,11 +73,6 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
                 .await
                 .map_err(|e| core::Error::BatchError(e.to_string()))?;
         }
-        let registry = self
-            .manager
-            .state::<Arc<BatchSessionRegistry>>()
-            .inner()
-            .clone();
         let session_id = params.session_id.clone();
         let idle_timeout = batch_idle_timeout(&params);
 
@@ -119,6 +121,7 @@ impl<'a, R: tauri::Runtime, M: tauri::Manager<R>> Listener2<'a, R, M> {
         }
 
         let runtime = Arc::new(TauriBatchRuntime {
+            _maintenance: maintenance,
             _audio_guard: audio_guard,
             work: admission.0.take(),
             app: app.clone(),
@@ -226,6 +229,7 @@ impl<R: tauri::Runtime, T: tauri::Manager<R>> Listener2PluginExt<R> for T {
 }
 
 struct TauriBatchRuntime {
+    _maintenance: tokio::sync::OwnedRwLockReadGuard<()>,
     _audio_guard: Option<tokio::sync::OwnedMutexGuard<()>>,
     work: Option<hypr_loofah_core::local_session_work::LocalSessionWork>,
     app: tauri::AppHandle,
@@ -453,6 +457,7 @@ mod tests {
 
     fn make_registry(control: Arc<BatchSessionControl>) -> Arc<BatchSessionRegistry> {
         Arc::new(BatchSessionRegistry {
+            maintenance: Default::default(),
             sessions: std::sync::Mutex::new(std::collections::HashMap::from([(
                 "session-1".to_string(),
                 BatchSessionEntry {

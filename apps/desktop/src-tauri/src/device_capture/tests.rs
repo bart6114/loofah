@@ -392,6 +392,7 @@ async fn real_device_helper_drains_realistic_fake_audio_into_reopenable_exact_sp
         Some(DeviceCaptureRoot::name()),
         DeviceCaptureRoot,
         DeviceCaptureRootArgs {
+            maintenance: Default::default(),
             runtime: Arc::new(NoLocalRuntime),
             audio,
         },
@@ -515,4 +516,159 @@ async fn concurrent_prepare_claims_one_device_capture_identity() {
         PreparedDeviceCapture::prepare(spool, identity, CaptureFormat::stereo(), observer),
     );
     assert_eq!(usize::from(first.is_ok()) + usize::from(second.is_ok()), 1);
+}
+
+#[tokio::test]
+async fn managed_native_lifecycle_requires_registered_idle_actor_and_original_persistence_owner() {
+    use hypr_loofah_core::{
+        VaultContext, local_cli::LocalCli, local_session_work::LocalSessionWorkRegistry,
+        search::SearchService, settings::ConfigState, startup::StartupState,
+    };
+    use hypr_loofah_protocol::{LocalCliOperation, LocalCliReply};
+    use hypr_storage::vault::{LeaseAttempt, VaultLease};
+    use tauri_plugin_transcription::{
+        BatchSessionRegistry, CaptureMaintenanceGate, DeviceCaptureRoot, DeviceCaptureRootArgs,
+    };
+
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
+    let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let vault = root.path().join("vault");
+    std::fs::create_dir(&vault).unwrap();
+    let LeaseAttempt::Acquired(lease) = VaultLease::try_acquire_existing(&vault).unwrap() else {
+        panic!("fixture lease")
+    };
+    let store = Arc::new(hypr_vault_write::SessionStore::new(vault.clone()));
+    let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Note","created_at":"2026-11-08T10:00:00Z","tags":[]})).unwrap();
+    store
+        .create_note_session(&meta, "Preserve note")
+        .await
+        .unwrap();
+    let source = vault.join("sessions/note");
+    std::fs::write(source.join("audio_mic.wav"), b"stale microphone").unwrap();
+    std::fs::write(source.join("user.bin"), b"private attachment").unwrap();
+    let context = Arc::new(
+        VaultContext::new(
+            "local:managed-lifecycle".into(),
+            store,
+            StartupState::new(Some(&vault)),
+            Arc::new(ConfigState::load_or_default(&vault)),
+            Arc::new(SearchService::default()),
+        )
+        .with_operation_storage(root.path().join("operations"))
+        .with_vault_lease(lease.clone())
+        .unwrap(),
+    );
+    let registry = LocalSessionWorkRegistry::new(context.clone());
+    let gate = CaptureMaintenanceGate::default();
+    let app = tauri::test::mock_builder()
+        .manage(registry.clone())
+        .manage(gate.clone())
+        .manage(Arc::new(BatchSessionRegistry::default()))
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .unwrap();
+    crate::local_owner::configure_lifecycle(app.handle(), &context).unwrap();
+    let cli = LocalCli::new(context.clone()).unwrap();
+    let lifecycle = || LocalCliOperation::SessionLifecycle {
+        session_id: "note".into(),
+    };
+    assert!(
+        cli.execute(
+            uuid::Uuid::new_v4().to_string(),
+            lifecycle(),
+            None,
+            Arc::new(|_| {})
+        )
+        .await
+        .is_err()
+    );
+    let (_frames, receiver) = tokio::sync::mpsc::channel(1);
+    let (actor, actor_task) = ractor::Actor::spawn(
+        Some(DeviceCaptureRoot::name()),
+        DeviceCaptureRoot,
+        DeviceCaptureRootArgs {
+            maintenance: gate,
+            runtime: Arc::new(NoLocalRuntime),
+            audio: Arc::new(FakeAudio {
+                receiver: Mutex::new(Some(receiver)),
+                admitted: Arc::new(AtomicUsize::new(0)),
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let work = registry
+        .begin("note".into(), request.clone())
+        .await
+        .unwrap();
+    assert!(
+        cli.execute(
+            uuid::Uuid::new_v4().to_string(),
+            lifecycle(),
+            None,
+            Arc::new(|_| {})
+        )
+        .await
+        .is_err()
+    );
+    work.producer_finished().unwrap();
+    assert!(
+        cli.execute(
+            uuid::Uuid::new_v4().to_string(),
+            lifecycle(),
+            None,
+            Arc::new(|_| {})
+        )
+        .await
+        .is_err()
+    );
+    registry.persistence_finished("note", &request).unwrap();
+    let LocalCliReply::SessionLifecycle { revision, .. } = cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            lifecycle(),
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap()
+        .reply
+    else {
+        panic!("lifecycle")
+    };
+    let LocalCliReply::SessionDeleted { trash_path, .. } = cli
+        .execute(
+            uuid::Uuid::new_v4().to_string(),
+            LocalCliOperation::DeleteSession {
+                session_id: "note".into(),
+                expected_revision: revision,
+            },
+            None,
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap()
+        .reply
+    else {
+        panic!("deletion")
+    };
+    assert!(!source.exists());
+    assert_eq!(
+        std::fs::read(trash_path.join("audio_mic.wav")).unwrap(),
+        b"stale microphone"
+    );
+    assert_eq!(
+        std::fs::read(trash_path.join("user.bin")).unwrap(),
+        b"private attachment"
+    );
+    assert_eq!(
+        std::fs::read(trash_path.join("notes.md")).unwrap(),
+        b"Preserve note"
+    );
+    assert!(matches!(
+        VaultLease::try_acquire_existing(&vault).unwrap(),
+        LeaseAttempt::Busy
+    ));
+    actor.stop(None);
+    actor_task.await.unwrap();
 }

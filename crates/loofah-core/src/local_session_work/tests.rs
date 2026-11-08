@@ -107,3 +107,38 @@ async fn definitive_rejection_releases_only_its_own_admission() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn weak_lifecycle_observer_rejects_foreign_missing_and_unconfirmed_registry() {
+    let (_root, context, registry) = fixture().await;
+    let observer = registry.downgrade();
+    assert!(observer.ensure_idle_for(&context, "note").is_ok());
+    let (_other_root, other, _registry) = fixture().await;
+    assert!(observer.ensure_idle_for(&other, "note").is_err());
+    let request = uuid::Uuid::new_v4().to_string();
+    let work = registry
+        .begin("note".into(), request.clone())
+        .await
+        .unwrap();
+    assert!(observer.ensure_idle_for(&context, "note").is_err());
+    work.producer_finished().unwrap();
+    assert!(observer.ensure_idle_for(&context, "note").is_err());
+    registry.persistence_finished("note", &request).unwrap();
+    assert!(observer.ensure_idle_for(&context, "note").is_ok());
+    drop(work);
+    drop(registry);
+    assert!(observer.ensure_idle_for(&context, "note").is_err());
+}
+
+#[tokio::test]
+async fn weak_lifecycle_observer_rejects_poisoned_inventory() {
+    let (_root, context, registry) = fixture().await;
+    let observer = registry.downgrade();
+    let other = registry.clone();
+    let _ = std::thread::spawn(move || {
+        let _state = other.0.state.lock().unwrap();
+        panic!("unconfirmed producer state");
+    })
+    .join();
+    assert!(observer.ensure_idle_for(&context, "note").is_err());
+}

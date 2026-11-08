@@ -315,7 +315,7 @@ impl LocalCli {
             LocalCliOperation::SessionLifecycle { session_id } => {
                 context.read_metadata(&session_id).await?;
                 let snapshot = context
-                    .read_session_lifecycle(&session_id)
+                    .read_local_session_lifecycle(&session_id)
                     .await
                     .map_err(local_lifecycle_error)?;
                 LocalCliReply::SessionLifecycle {
@@ -332,7 +332,7 @@ impl LocalCli {
                     expected_revision,
                 };
                 match context
-                    .delete_session(
+                    .delete_local_session(
                         LOCAL_CLI_NAMESPACE.into(),
                         request_id.clone(),
                         input.clone(),

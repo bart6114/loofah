@@ -159,6 +159,17 @@ remains protected. Device's earlier hardware-release/file-drain behavior is kept
 Pending batch preflight releases only before producer dispatch; actual native
 batch work retains the original runtime/audio ownership chain.
 
+Managed Local CLI lifecycle operations now require a registered Native host proof,
+bound to the exact Context and original work registry. Strict actor admission
+rejects a missing/unresponsive actor, active or retiring capture, and pending
+finalizers. The proof holds capture and batch maintenance locks through Store's
+actual tree inspection and trash move, blocking new capture/batch starts. A batch
+runtime retains its lock after its visible registry entry disappears; an actor
+that exits with unconfirmed resources makes its shared gate unavailable until
+process restart. Standalone CLI owners explicitly register against their original
+vault lease. Local UI activation is still off; this source checkpoint requires
+integrated Native and Windows validation.
+
 The server's explicit processing intent is durable and member-private. It uses
 existing live, batch and summary jobs; first admission pins the operator model.
 Existing unsealed captures can feed live processing, Pending captures wait for

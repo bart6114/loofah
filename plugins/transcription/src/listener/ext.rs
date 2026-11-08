@@ -210,3 +210,70 @@ pub async fn stop_device_capture(key: crate::DeviceCaptureKey) -> bool {
     let actor: ActorRef<RootMsg> = cell.into();
     ractor::call!(actor, RootMsg::StopDeviceCapture, key).unwrap_or(false)
 }
+
+/// Rust-only proof; display snapshots deliberately cannot authorize destructive maintenance.
+pub async fn admit_session_maintenance(
+    expected: crate::CaptureMaintenanceGate,
+) -> Result<crate::CaptureMaintenanceGuard, crate::Error> {
+    let actor = registry::where_is(RootActor::name()).map(ActorRef::<RootMsg>::from);
+    admit_actor_maintenance(actor, expected).await
+}
+
+async fn admit_actor_maintenance(
+    actor: Option<ActorRef<RootMsg>>,
+    expected: crate::CaptureMaintenanceGate,
+) -> Result<crate::CaptureMaintenanceGuard, crate::Error> {
+    let actor = actor.ok_or_else(|| crate::Error::ActorNotFound(RootActor::name()))?;
+    match call_t!(actor, RootMsg::AdmitSessionMaintenance, 500, expected) {
+        Ok(Some(guard)) => Ok(guard),
+        Ok(None) => Err(crate::Error::SessionAlreadyRunning),
+        Err(_) => Err(crate::Error::StartSessionFailed),
+    }
+}
+
+#[cfg(test)]
+mod maintenance_tests {
+    use super::*;
+    use ractor::{Actor, ActorProcessingErr};
+
+    struct SilentRoot;
+    #[ractor::async_trait]
+    impl Actor for SilentRoot {
+        type Msg = RootMsg;
+        type State = Vec<ractor::RpcReplyPort<Option<crate::CaptureMaintenanceGuard>>>;
+        type Arguments = ();
+        async fn pre_start(
+            &self,
+            _: ActorRef<RootMsg>,
+            _: (),
+        ) -> Result<Self::State, ActorProcessingErr> {
+            Ok(Vec::new())
+        }
+        async fn handle(
+            &self,
+            _: ActorRef<RootMsg>,
+            message: RootMsg,
+            state: &mut Self::State,
+        ) -> Result<(), ActorProcessingErr> {
+            if let RootMsg::AdmitSessionMaintenance(_, reply) = message {
+                state.push(reply);
+            }
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn strict_maintenance_never_converts_missing_failed_or_unresponsive_actor_to_idle() {
+        let gate = crate::CaptureMaintenanceGate::default();
+        assert!(admit_actor_maintenance(None, gate.clone()).await.is_err());
+        let (actor, task) = Actor::spawn(None, SilentRoot, ()).await.unwrap();
+        assert!(
+            admit_actor_maintenance(Some(actor.clone()), gate.clone())
+                .await
+                .is_err()
+        );
+        actor.stop(None);
+        task.await.unwrap();
+        assert!(admit_actor_maintenance(Some(actor), gate).await.is_err());
+    }
+}

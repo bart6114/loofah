@@ -424,6 +424,9 @@ pub async fn main() {
                             Ok(context) => {
                                 application::forward_changes(&app_handle, &context);
                                 app_handle.manage(hypr_loofah_core::local_session_work::LocalSessionWorkRegistry::new(context.clone()));
+                                if let Err(error) = local_owner::configure_lifecycle(&app_handle, &context) {
+                                    tracing::error!(%error, "Local session lifecycle remains unavailable");
+                                }
                                 app_handle.manage(context);
                                 search_index::spawn(app_handle.clone(), store.clone());
                                 session_store::spawn_dispatcher(app_handle.clone());

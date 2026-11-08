@@ -1,3 +1,6 @@
+mod lifecycle;
+pub(crate) use lifecycle::configure_lifecycle;
+
 use std::sync::Arc;
 
 use hypr_loofah_core::{VaultContext, local_cli::LocalCli};

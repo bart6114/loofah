@@ -131,6 +131,10 @@ impl LocalGateway {
                         })?;
                         runtime
                             .context
+                            .enable_standalone_local_session_lifecycle(&lease)
+                            .map_err(Error::local)?;
+                        runtime
+                            .context
                             .startup
                             .wait_until_ready()
                             .await

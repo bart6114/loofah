@@ -11,9 +11,9 @@ use crate::actors::session::lifecycle::{
     clear_sentry_session_context, configure_sentry_session_context, emit_session_ended,
 };
 use crate::actors::{
-    ChannelMode, DeviceCaptureKey, DeviceCaptureReporter, DeviceIngress, DeviceRecordingSink,
-    RecordingDestination, SessionConfigUpdate, SessionContext, SessionMsg, SessionParams,
-    spawn_session_supervisor,
+    CaptureMaintenanceGate, CaptureMaintenanceGuard, ChannelMode, DeviceCaptureKey,
+    DeviceCaptureReporter, DeviceIngress, DeviceRecordingSink, RecordingDestination,
+    SessionConfigUpdate, SessionContext, SessionMsg, SessionParams, spawn_session_supervisor,
 };
 use crate::{
     ListenerRuntime, SessionLifecycleEvent, Snapshot, StartSessionError, State, TranscriptionMode,
@@ -43,6 +43,10 @@ pub enum RootMsg {
     LocalResourcesStopped(ractor::ActorId),
     DeviceFirstAudioObserved(DeviceCaptureKey, ractor::ActorId, SystemTime),
     GetCaptureAdmission(RpcReplyPort<bool>),
+    AdmitSessionMaintenance(
+        CaptureMaintenanceGate,
+        RpcReplyPort<Option<CaptureMaintenanceGuard>>,
+    ),
     UpdateSessionConfig(SessionConfigUpdate, RpcReplyPort<()>),
     StopSession(RpcReplyPort<()>),
     GetState(RpcReplyPort<State>),
@@ -50,6 +54,7 @@ pub enum RootMsg {
 }
 
 pub struct RootArgs {
+    pub maintenance: CaptureMaintenanceGate,
     pub runtime: Arc<dyn ListenerRuntime>,
     pub audio: Arc<dyn AudioProvider>,
 }
@@ -75,6 +80,7 @@ impl CaptureKey {
 }
 
 struct TrackedCapture {
+    _physical: tokio::sync::OwnedRwLockReadGuard<()>,
     key: CaptureKey,
     runtime: Arc<dyn ListenerRuntime>,
     recording: RecordingDestination,
@@ -85,10 +91,20 @@ struct TrackedCapture {
 }
 
 pub struct RootState {
+    maintenance: CaptureMaintenanceGate,
     runtime: Arc<dyn ListenerRuntime>,
     audio: Arc<dyn AudioProvider>,
     active: Option<TrackedCapture>,
     finalizing: HashMap<CaptureKey, TrackedCapture>,
+}
+
+impl Drop for RootState {
+    fn drop(&mut self) {
+        if self.active.is_some() || !self.finalizing.is_empty() {
+            // Restarting an actor cannot prove that its previous native resources drained.
+            self.maintenance.mark_unknown();
+        }
+    }
 }
 
 pub struct RootActor;
@@ -110,6 +126,7 @@ impl Actor for RootActor {
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(RootState {
+            maintenance: args.maintenance,
             runtime: args.runtime,
             audio: args.audio,
             active: None,
@@ -221,6 +238,17 @@ impl Actor for RootActor {
                     completion.first_audio(at);
                 }
             }
+            RootMsg::AdmitSessionMaintenance(expected, reply) => {
+                let guard = if expected.same_owner(&state.maintenance)
+                    && !physical_busy(state)
+                    && state.finalizing.is_empty()
+                {
+                    state.maintenance.maintain()
+                } else {
+                    None
+                };
+                let _ = reply.send(guard);
+            }
             RootMsg::GetCaptureAdmission(reply) => {
                 let _ = reply.send(device_admission(state));
             }
@@ -274,7 +302,8 @@ fn physical_busy(state: &RootState) -> bool {
             .any(|capture| !capture.resources_stopped)
 }
 fn device_admission(state: &RootState) -> bool {
-    !physical_busy(state)
+    state.maintenance.start().is_some()
+        && !physical_busy(state)
         && state
             .finalizing
             .values()
@@ -311,6 +340,10 @@ async fn start_session_impl(
     local_completion: Option<DeviceCaptureReporter>,
     state: &mut RootState,
 ) -> Result<(), StartSessionError> {
+    let physical = state
+        .maintenance
+        .start()
+        .ok_or(StartSessionError::SessionAlreadyRunning)?;
     let completion = device
         .as_ref()
         .map(|args| args.completion.clone())
@@ -395,6 +428,7 @@ async fn start_session_impl(
     supervisor.link(root_cell);
     let stopped = supervisor.get_status() == ActorStatus::Stopped;
     let mut tracked = TrackedCapture {
+        _physical: physical,
         key,
         runtime: runtime.clone(),
         resources_stopped: !recording.is_device() && completion.is_none(),
@@ -848,6 +882,177 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn maintenance_proof_blocks_all_capture_starts_and_survives_actor_replacement() {
+        let maintenance = CaptureMaintenanceGate::default();
+        let (root, task) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                maintenance: maintenance.clone(),
+                runtime: Arc::new(Runtime::default()),
+                audio: Arc::new(Audio::default()),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            ractor::call!(
+                root,
+                RootMsg::AdmitSessionMaintenance,
+                CaptureMaintenanceGate::default()
+            )
+            .unwrap()
+            .is_none()
+        );
+        let proof = ractor::call!(root, RootMsg::AdmitSessionMaintenance, maintenance.clone())
+            .unwrap()
+            .unwrap();
+        let params = SessionParams {
+            session_id: "must-not-open-local-storage".into(),
+            languages: vec![],
+            onboarding: true,
+            transcription_mode: TranscriptionMode::Batch,
+            model: String::new(),
+            base_url: String::new(),
+            api_key: String::new(),
+            keywords: vec![],
+            participant_human_ids: vec![],
+            self_human_id: None,
+        };
+        assert_eq!(
+            ractor::call!(root, RootMsg::StartSession, params.clone()).unwrap(),
+            Err(StartSessionError::SessionAlreadyRunning)
+        );
+        assert_eq!(
+            ractor::call!(
+                root,
+                RootMsg::StartTrackedSession,
+                params.clone(),
+                crate::actors::DeviceCaptureCompletion::channel().0
+            )
+            .unwrap(),
+            Err(StartSessionError::SessionAlreadyRunning)
+        );
+        assert_eq!(
+            ractor::call!(
+                root,
+                RootMsg::StartDeviceCapture,
+                args('f', Sink::new(false), Arc::new(Runtime::default()))
+            )
+            .unwrap(),
+            Err(StartSessionError::SessionAlreadyRunning)
+        );
+        assert!(!ractor::call!(root, RootMsg::GetCaptureAdmission).unwrap());
+        root.stop(None);
+        task.await.unwrap();
+        let (replacement, task) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                maintenance: maintenance.clone(),
+                runtime: Arc::new(Runtime::default()),
+                audio: Arc::new(Audio::default()),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            ractor::call!(replacement, RootMsg::StartSession, params).unwrap(),
+            Err(StartSessionError::SessionAlreadyRunning)
+        );
+        assert!(
+            ractor::call!(
+                replacement,
+                RootMsg::AdmitSessionMaintenance,
+                maintenance.clone()
+            )
+            .unwrap()
+            .is_none()
+        );
+        drop(proof);
+        assert!(ractor::call!(replacement, RootMsg::GetCaptureAdmission).unwrap());
+        assert!(
+            ractor::call!(replacement, RootMsg::AdmitSessionMaintenance, maintenance)
+                .unwrap()
+                .is_some()
+        );
+        replacement.stop(None);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn maintenance_rejects_active_retiring_and_storage_finalizing_capture() {
+        let maintenance = CaptureMaintenanceGate::default();
+        let audio = Arc::new(Audio::default());
+        let drain = Arc::new(tokio::sync::Semaphore::new(0));
+        let frames = audio.source_options(
+            Arc::new(CaptureIntegrity::default()),
+            false,
+            true,
+            Some(drain.clone()),
+            0,
+        );
+        let runtime = Arc::new(Runtime::default());
+        let sink = Sink::new(true);
+        let (root, task) = Actor::spawn(
+            None,
+            RootActor,
+            RootArgs {
+                maintenance: maintenance.clone(),
+                runtime: Arc::new(Runtime::default()),
+                audio,
+            },
+        )
+        .await
+        .unwrap();
+        let capture = args('e', sink.clone(), runtime.clone());
+        let key = capture.key.clone();
+        ractor::call!(root, RootMsg::StartDeviceCapture, capture)
+            .unwrap()
+            .unwrap();
+        frames.send(Ok(frame())).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), sink.entered.notified())
+            .await
+            .unwrap();
+        assert!(
+            ractor::call!(root, RootMsg::AdmitSessionMaintenance, maintenance.clone())
+                .unwrap()
+                .is_none()
+        );
+        assert!(ractor::call!(root, RootMsg::StopDeviceCapture, key).unwrap());
+        assert!(
+            ractor::call!(root, RootMsg::AdmitSessionMaintenance, maintenance.clone())
+                .unwrap()
+                .is_none()
+        );
+        drain.add_permits(1);
+        admitted(&root).await;
+        assert!(
+            ractor::call!(root, RootMsg::AdmitSessionMaintenance, maintenance.clone())
+                .unwrap()
+                .is_none()
+        );
+        sink.release();
+        ended(&runtime).await;
+        let proof = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(proof) =
+                    ractor::call!(root, RootMsg::AdmitSessionMaintenance, maintenance.clone())
+                        .unwrap()
+                {
+                    break proof;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(proof);
+        root.stop(None);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn tracked_local_completion_requires_native_drain_and_finished_file_writers() {
         async fn rejects_new_capture(root: &ActorRef<RootMsg>, params: &SessionParams) {
             let reporter = crate::actors::DeviceCaptureCompletion::channel().0;
@@ -882,6 +1087,7 @@ mod tests {
                 None,
                 RootActor,
                 RootArgs {
+                    maintenance: CaptureMaintenanceGate::default(),
                     runtime: runtime.clone(),
                     audio: audio.clone(),
                 },
@@ -963,6 +1169,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: local.clone(),
                 audio,
             },
@@ -1038,6 +1245,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio,
             },
@@ -1089,6 +1297,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio,
             },
@@ -1147,6 +1356,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio: audio.clone(),
             },
@@ -1201,6 +1411,7 @@ mod tests {
                 None,
                 RootActor,
                 RootArgs {
+                    maintenance: CaptureMaintenanceGate::default(),
                     runtime: Arc::new(Runtime::default()),
                     audio: audio.clone(),
                 },
@@ -1264,6 +1475,7 @@ mod tests {
                 None,
                 RootActor,
                 RootArgs {
+                    maintenance: CaptureMaintenanceGate::default(),
                     runtime: Arc::new(Runtime::default()),
                     audio: audio.clone(),
                 },
@@ -1308,6 +1520,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio,
             },
@@ -1346,6 +1559,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio: audio.clone(),
             },
@@ -1417,6 +1631,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio: audio.clone(),
             },
@@ -1514,6 +1729,7 @@ mod tests {
     }
     #[tokio::test]
     async fn unsupported_provider_interrupts_and_never_claims_physical_cleanup() {
+        let maintenance = CaptureMaintenanceGate::default();
         let audio = Arc::new(Audio::default());
         let frames =
             audio.source_options(Arc::new(CaptureIntegrity::default()), false, false, None, 0);
@@ -1523,6 +1739,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: maintenance.clone(),
                 runtime: Arc::new(Runtime::default()),
                 audio,
             },
@@ -1549,6 +1766,8 @@ mod tests {
         );
         root.stop(None);
         handle.await.unwrap();
+        assert!(maintenance.maintain().is_none());
+        assert!(maintenance.start().is_none());
     }
     #[tokio::test]
     async fn mismatched_provider_receipt_interrupts_data_but_releases_confirmed_resources() {
@@ -1561,6 +1780,7 @@ mod tests {
             None,
             RootActor,
             RootArgs {
+                maintenance: CaptureMaintenanceGate::default(),
                 runtime: Arc::new(Runtime::default()),
                 audio,
             },

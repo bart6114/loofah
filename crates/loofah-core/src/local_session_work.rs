@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 use hypr_loofah_protocol::{ApplicationError, ErrorCode, MutationOutcome};
@@ -10,6 +10,9 @@ use crate::{VaultContext, vault::error};
 
 #[derive(Clone)]
 pub struct LocalSessionWorkRegistry(Arc<Inner>);
+#[derive(Clone)]
+pub struct LocalSessionWorkObserver(Weak<Inner>);
+
 struct Inner {
     context: Arc<VaultContext>,
     state: Mutex<State>,
@@ -38,6 +41,10 @@ impl LocalSessionWorkRegistry {
             context,
             state: Mutex::new(State::default()),
         }))
+    }
+
+    pub fn downgrade(&self) -> LocalSessionWorkObserver {
+        LocalSessionWorkObserver(Arc::downgrade(&self.0))
     }
 
     pub async fn begin(
@@ -101,6 +108,25 @@ impl LocalSessionWorkRegistry {
         if entry.producer_finished {
             state.entries.remove(&request);
             state.finished.insert(request);
+        }
+        Ok(())
+    }
+}
+
+impl LocalSessionWorkObserver {
+    /// The caller must already own Core's exclusive lifecycle gate for this session.
+    pub fn ensure_idle_for(
+        &self,
+        context: &Arc<VaultContext>,
+        session: &str,
+    ) -> Result<(), ApplicationError> {
+        let registry = self.0.upgrade().ok_or_else(unavailable)?;
+        if !Arc::ptr_eq(&registry.context, context) {
+            return Err(unavailable());
+        }
+        let state = registry.state.lock().map_err(|_| unavailable())?;
+        if state.entries.values().any(|entry| entry.session == session) {
+            return Err(unavailable());
         }
         Ok(())
     }
