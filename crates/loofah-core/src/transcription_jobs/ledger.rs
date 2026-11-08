@@ -947,7 +947,11 @@ mod lifecycle_tests {
     #[tokio::test]
     async fn pending_or_uncertain_batch_work_is_not_hidden_when_the_engine_is_disabled() {
         let root = tempfile::tempdir().unwrap();
-        let directory = root.path().join("transcription-jobs");
+        let directory = root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("transcription-jobs");
         let journal = Journal::open(
             directory.clone(),
             crate::events::EventHub::new("vault".into(), 16),
