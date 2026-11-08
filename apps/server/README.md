@@ -893,6 +893,28 @@ note. Public processing jobs do not yet request generated titles. Drain any
 schema-4 intents with the current version before downgrading; older readers must
 not attempt their recovery.
 
+## Capture durability acceptance
+
+The ignored Linux `capture_soak_wall_clock` integration test uses the real SDK,
+authenticated server routes and one generated stereo chunk per wall-clock second.
+Run it by exact name with a new `LOOFAH_SOAK_ROOT` and `LOOFAH_SOAK_SECONDS=7200`.
+With `--features cpu-transcription` and `LOOFAH_SOAK_MODEL` pointing to a verified
+CPU model, it also requires live captions and recognizable canonical repair of
+the committed English speech fixture. It exercises link outages (including ten
+minutes offline), lost replies, server restart, producer restart, every canonical
+PCM frame and explicit verified raw retirement. Generated audio does not qualify
+OS microphone/system-audio capture or another platform's native build.
+
+`capture_publication_memory_replay` is a separate ignored full-size regression.
+It paces only the first 30 seconds to establish live captions, then produces the
+remaining audio without wall-clock waits. Its logs always mark real-time
+qualification false. It restarts the server before publication, checks the same
+canonical audio and repair, and requires server peak RSS below 768 MiB before
+retirement. `LOOFAH_SOAK_SERVER_RSS_LIMIT_KIB` can set a recorded budget for a
+different model. This replay complements a paced run; it cannot replace one.
+Both tests require fresh disposable local storage and retain failed artifacts
+for diagnosis. Never point either harness at a user vault.
+
 ## Storage, backups and upgrades
 
 `storage_root` is a dedicated service directory, separate from `cache_root`:
