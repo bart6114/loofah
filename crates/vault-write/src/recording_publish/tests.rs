@@ -54,7 +54,8 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
-        let root = tempfile::tempdir().unwrap();
+        // Receipt roots require real ancestors; macOS aliases its system temp directory.
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let store = SessionStore::new(root.path().join("vault"));
         let meta=serde_json::from_value(serde_json::json!({"id":"note","title":"Before","created_at":"2026-11-06T10:00:00Z","tags":[],"custom":{"nested":{"keep":true}},"audio":{"custom":{"keep":"audio"}},"tag_suggestions":{"items":[],"dismissed":[],"custom":{"keep":"nested"}}})).unwrap();
         store.create_note_session(&meta, "User note").await.unwrap();

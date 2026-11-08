@@ -28,7 +28,8 @@ fn generated() -> TranscriptWithData {
 
 impl Fixture {
     async fn new() -> Self {
-        let root = tempfile::tempdir().unwrap();
+        // Receipt roots require real ancestors; macOS aliases its system temp directory.
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let store = SessionStore::new(root.path().join("vault"));
         let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"User title","created_at":"2026-11-08T10:00:00Z","tags":["preserve"],"audio":{"source":"recording","layout":"mic_system"},"future":{"nested":[true,42]}})).unwrap();
         store
