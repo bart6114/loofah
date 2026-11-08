@@ -1000,3 +1000,6 @@ async fn symlinked_session_stage_receipt_and_peaks_are_never_followed() {
         assert_eq!(std::fs::read(&outside).unwrap(), b"keep");
     }
 }
+
+#[path = "recovery_tests.rs"]
+mod recovery;

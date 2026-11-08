@@ -16,9 +16,16 @@
 //! are not stronger than those helpers, whose directory flush is currently Unix-only.
 
 mod io;
+mod recovery;
 #[cfg(test)]
 mod tests;
 mod types;
+
+pub use recovery::{
+    PendingRecordingPublication, RecordingPublicationDiscoveryIssue,
+    RecordingPublicationDiscoveryLimits, RecordingPublicationInventory, RecordingPublicationPhase,
+    RecordingPublicationRecoveryPreparation, RecordingPublicationReviewKind,
+};
 
 pub use types::{RecordingExpectation, RecordingPublication, RecordingPublicationRequest};
 
@@ -62,6 +69,8 @@ impl SessionStore {
             operations.into(),
             request,
             Some(Box::new(source)),
+            None,
+            None,
         )
         .await?
         .ok_or_else(|| StoreError::Io("Missing recording publication plan".into()))
@@ -73,7 +82,7 @@ impl SessionStore {
         operations: &Path,
         request: RecordingPublicationRequest,
     ) -> Result<Option<RecordingPublicationPlan>, StoreError> {
-        prepare(self.clone(), operations.into(), request, None).await
+        prepare(self.clone(), operations.into(), request, None, None, None).await
     }
 }
 
@@ -82,6 +91,8 @@ async fn prepare(
     operations: PathBuf,
     request: RecordingPublicationRequest,
     source: Option<Box<dyn Read + Send>>,
+    provided_audio: Option<tokio::sync::OwnedMutexGuard<()>>,
+    expected_receipt: Option<Receipt>,
 ) -> Result<Option<RecordingPublicationPlan>, StoreError> {
     request.validate()?;
     if !operations.is_absolute() {
@@ -91,8 +102,49 @@ async fn prepare(
     }
     tokio::spawn(async move {
         store.ensure_ready()?;
-        let audio = store.lock_session_audio(&request.session_id).await?;
+        let audio = match provided_audio {
+            Some(audio) => audio,
+            None => store.lock_session_audio(&request.session_id).await?,
+        };
         let transcript = store.transcript_operations.lock(&request.session_id).await;
+        let path = io::receipt_path(&operations, &request);
+        let checked_path = path.clone();
+        let checked_request = request.clone();
+        let recovery_only = expected_receipt.is_some();
+        let receipt = tokio::task::spawn_blocking(move || {
+            let current = io::read(&checked_path)?;
+            if let Some(current) = &current {
+                current.validate(&checked_request)?;
+            }
+            if let Some(expected) = expected_receipt {
+                let Some(current) = &current else {
+                    return Err(StoreError::Conflict(
+                        "Discovered recording receipt disappeared".into(),
+                    ));
+                };
+                if !recovery::same_intent(current, &expected)
+                    || matches!(current.state, State::Uncertain)
+                    || (expected.state == State::MetadataWritten && current.state == State::Pending)
+                {
+                    return Err(StoreError::Conflict(
+                        "Discovered recording intent changed".into(),
+                    ));
+                }
+            }
+            Ok::<_, StoreError>(current)
+        })
+        .await
+        .map_err(io::worker_error)??;
+        if recovery_only
+            && receipt
+                .as_ref()
+                .is_some_and(|receipt| receipt.state == State::Committed)
+        {
+            return Ok(None);
+        }
+        if receipt.is_none() && source.is_none() {
+            return Ok(None);
+        }
         let snapshot = store.lock_snapshot().await;
         store.ensure_ready()?;
         let directory = store
@@ -113,13 +165,6 @@ async fn prepare(
             .is_some_and(|raw| io::busy(&store, &request.session_id, raw));
         drop(snapshot);
         tokio::task::spawn_blocking(move || {
-            let path = io::receipt_path(&operations, &request);
-            let receipt = io::read(&path)?;
-            if let Some(existing) = &receipt {
-                existing.validate(&request)?;
-            } else if source.is_none() {
-                return Ok(None);
-            }
             let mut plan = RecordingPublicationPlan {
                 store,
                 request,
@@ -147,6 +192,14 @@ async fn prepare(
                 return Ok(Some(plan));
             }
             io::regular_directory(&plan.directory)?;
+            if plan.requires_transcript_absence() && !io::transcript_absent(&plan.directory)? {
+                plan.finished = Some(if plan.receipt.is_some() {
+                    RecordingPublication::Uncertain
+                } else {
+                    RecordingPublication::Changed
+                });
+                return Ok(Some(plan));
+            }
             if let Some(receipt) = plan.receipt.as_ref() {
                 let stage = io::Stage::from_receipt(&plan.directory, receipt)?;
                 let staged = io::open_snapshot(stage.path())?;
@@ -304,6 +357,13 @@ impl RecordingPublicationPlan {
                 RecordingPublication::Changed
             }));
         }
+        if self.requires_transcript_absence() && !io::transcript_absent(&self.directory)? {
+            return Ok(CommitStep::Finished(if self.receipt.is_some() {
+                RecordingPublication::Uncertain
+            } else {
+                RecordingPublication::Changed
+            }));
+        }
         let current_receipt = io::read(&self.receipt_path)?;
         if current_receipt != self.receipt {
             return Ok(CommitStep::Finished(RecordingPublication::Uncertain));
@@ -398,6 +458,9 @@ impl RecordingPublicationPlan {
         io::invalidate_peaks(&self.directory)?;
         fault(3)?;
         let receipt = self.receipt.as_mut().unwrap();
+        if !io::transcript_absent(&self.directory)? {
+            return Ok(CommitStep::Finished(RecordingPublication::Uncertain));
+        }
         let latest = io::read_metadata(&self.directory, limit)?
             .ok_or_else(|| StoreError::Io("Recording metadata disappeared".into()))?;
         let latest_hash = io::json_hash(&latest)?;
@@ -432,6 +495,9 @@ impl RecordingPublicationPlan {
         mut self,
         fault: impl Fn(u8) -> Result<(), StoreError>,
     ) -> Result<RecordingPublication, StoreError> {
+        if !io::transcript_absent(&self.directory)? {
+            return Ok(RecordingPublication::Uncertain);
+        }
         let canonical = self.directory.join("audio.wav");
         let current = io::open_snapshot(&canonical)?;
         if !matches!((&self.artifact,&current),(Some(before),Some(after)) if before.unchanged(after)?)
@@ -463,6 +529,12 @@ impl RecordingPublicationPlan {
         fault(5)?;
         Ok(self.request.published())
     }
+    fn requires_transcript_absence(&self) -> bool {
+        self.receipt
+            .as_ref()
+            .is_none_or(|receipt| receipt.state != State::Committed)
+    }
+
     fn publish_index(&self, raw: &serde_json::Value) -> Result<(), StoreError> {
         let meta: crate::SessionMeta =
             serde_json::from_value(raw.clone()).map_err(io::serialize_error)?;
