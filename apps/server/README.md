@@ -6,7 +6,7 @@ The existing Whisper implementation now exposes a cancellable Rust batch kernel 
 
 Capture identity, format, chunk, seal and receipt types live in the shared protocol with the unchanged version-1 fingerprint and checksum-chain functions. The neutral `capture-store` crate stores durable staging on the device and service. A first-audio producer observation upgrades a capture manifest to schema 2 without changing its audio hashes; older readers refuse that manifest. Existing untimed schema-1 captures remain readable without an invented timestamp.
 
-The experimental `capture_ingestion` capability exposes authenticated staging APIs below. These endpoints retain private upload chunks; they do not publish a recording into a session, run transcription, expose remote recording controls, or authorize deletion of device audio. Local desktop capture remains login-free.
+The experimental `capture_ingestion` capability exposes authenticated staging APIs below. These endpoints retain private upload chunks; they do not publish a recording into a session, run transcription, expose remote recording controls, or authorize deletion of device audio. Local desktop capture remains login-free. The SDK publication operation requires a separate `capture_publication` capability, which awaits safe canonical publication and recovery integration. Staging support alone cannot dispatch publication or load its credentials.
 
 | Method | Path below `/api/v1/vaults/{vault}`     | Result                                                                                                        |
 | ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |

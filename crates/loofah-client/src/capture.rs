@@ -148,6 +148,58 @@ impl RemoteClient {
         Ok(status)
     }
 
+    pub async fn publish_capture(
+        self: &Arc<Self>,
+        vault_id: &str,
+        capture_id: &str,
+        seal: &CaptureSeal,
+        cancel: CancellationToken,
+    ) -> Result<CaptureIngestStatus> {
+        self.capture_capability(&cancel)?;
+        if !self
+            .capabilities
+            .features
+            .iter()
+            .any(|feature| feature == "capture_publication")
+        {
+            return Err(not_committed(failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support capture publication. Upgrade the server, then reconnect.",
+            )));
+        }
+        if seal.frames == 0
+            || seal.chunk_count == 0
+            || seal.pcm_bytes == 0
+            || !valid_hash(&seal.capture_fingerprint)
+            || !valid_hash(&seal.chain_digest)
+            || !valid_hash(&seal.source_sha256)
+        {
+            return Err(not_committed(invalid(
+                "A nonempty sealed capture is required",
+            )));
+        }
+        let request = self
+            .http
+            .post(self.endpoint(&["vaults", vault_id, "captures", capture_id, "publish"])?)
+            .json(seal);
+        let status = self
+            .capture_request(request, &uuid::Uuid::new_v4().to_string(), true, cancel)
+            .await?;
+        let status = self
+            .capture_status_checked(status, vault_id, capture_id)
+            .map_err(unknown)?;
+        if status.seal.as_ref() != Some(seal)
+            || status.publication.as_ref().is_none_or(|publication| {
+                publication.source != *seal
+                    || publication.canonical_audio_bytes > u64::from(u32::MAX)
+            })
+        {
+            return Err(unknown(invalid_response()));
+        }
+        // The caller still verifies an independent canonical read before device cleanup.
+        Ok(status)
+    }
+
     fn capture_capability(&self, cancel: &CancellationToken) -> Result<()> {
         if cancel.is_cancelled() || self.stop.is_cancelled() {
             return Err(not_committed(cancelled()));

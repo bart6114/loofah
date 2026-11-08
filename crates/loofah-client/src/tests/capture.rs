@@ -71,6 +71,15 @@ async fn capture_operations_require_capability_before_loading_credentials_or_sen
             )
             .await
             .unwrap_err(),
+        client
+            .publish_capture(
+                "vault",
+                &input.identity.capture_id,
+                &seal,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err(),
     ];
     for cause in results {
         assert_eq!(cause.code, ErrorCode::IncompatibleVersion);
@@ -78,4 +87,32 @@ async fn capture_operations_require_capability_before_loading_credentials_or_sen
     }
     assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
     assert!(fixture.credentials.values.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn capture_ingestion_alone_cannot_publish_or_load_credentials() {
+    let fixture = Fixture::new().await;
+    let mut client = fixture.client().await;
+    Arc::get_mut(&mut client).unwrap().capabilities.features = vec!["capture_ingestion".into()];
+    let cause = client
+        .publish_capture(
+            "vault",
+            &uuid::Uuid::new_v4().to_string(),
+            &CaptureSeal {
+                capture_fingerprint: "0".repeat(64),
+                chunk_count: 1,
+                frames: 1,
+                pcm_bytes: 4,
+                chain_digest: "0".repeat(64),
+                source_sha256: "0".repeat(64),
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(cause.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(cause.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert!(!client.tokens.lock().await.loaded);
+    assert!(fixture.credentials.values.lock().await.is_empty());
+    assert_eq!(fixture.state.issued.load(Ordering::SeqCst), 0);
 }
