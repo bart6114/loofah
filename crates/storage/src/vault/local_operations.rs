@@ -244,14 +244,18 @@ mod tests {
         let vault = tempfile::tempdir().unwrap();
         let lease = lease(vault.path());
         assert!(local_operation_root(&lease, Path::new("relative"), None).is_err());
+        // Joining onto a Windows verbatim path normalizes away parent components.
+        let mut raw = vault.path().canonicalize().unwrap().into_os_string();
+        raw.push(format!("{0}missing{0}..{0}data", std::path::MAIN_SEPARATOR));
+        let traversing = PathBuf::from(raw);
         assert!(
-            local_operation_root(
-                &lease,
-                &vault.path().canonicalize().unwrap().join("missing/../data"),
-                None
-            )
-            .is_err()
+            traversing
+                .components()
+                .any(|part| matches!(part, Component::ParentDir))
         );
+        assert!(local_operation_root(&lease, &traversing, None).is_err());
+        assert!(local_operation_root(&lease, vault.path(), Some(&traversing)).is_err());
+        assert!(!vault.path().join("data").exists());
     }
 
     #[cfg(unix)]
