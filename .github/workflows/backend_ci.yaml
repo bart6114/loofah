@@ -165,6 +165,7 @@ jobs:
             case_log="$RUNNER_TEMP/loofah-cpu-stt/runtime-${runtime_case//:/_}.log"
             docker run --rm --platform linux/amd64 --network none --read-only \
               --tmpfs /tmp:rw,noexec,nosuid,size=3g \
+              --tmpfs "$PWD/apps/server:rw,noexec,nosuid,size=1m" \
               --mount "type=bind,source=$PWD/crates/data,target=$PWD/crates/data,readonly" \
               --mount "type=bind,source=$LOOFAH_WHISPER_MODEL,target=/models/ggml-base-q8_0.bin,readonly" \
               --mount "type=bind,source=$LOOFAH_ONNX_MODELS,target=/models/onnx,readonly" \
