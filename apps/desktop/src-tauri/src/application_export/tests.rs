@@ -90,3 +90,50 @@ async fn cancelled_exports_keep_shutdown_admission_until_physical_work_returns()
     task.await.unwrap();
     assert!(state.drain(Duration::from_secs(1)).await);
 }
+
+#[test]
+fn export_pre_admission_cancellation_is_window_scoped_and_cannot_be_evicted() {
+    let state = SessionExportState::default();
+    let request = uuid::Uuid::new_v4().to_string();
+    state.cancel("first", &request);
+    assert_eq!(
+        state
+            .admit("first", &request, CancellationToken::new())
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Cancelled
+    );
+    let other = state
+        .admit("other", &request, CancellationToken::new())
+        .unwrap();
+    assert!(other.check().is_ok());
+    drop(other);
+    for _ in 0..130 {
+        state.cancel("first", &uuid::Uuid::new_v4().to_string());
+    }
+    assert!(
+        state
+            .admit(
+                "first",
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new()
+            )
+            .is_err()
+    );
+    assert!(
+        state
+            .admit("first", &request, CancellationToken::new())
+            .is_err()
+    );
+    state.release_window("first");
+    assert!(
+        state
+            .admit(
+                "first",
+                &uuid::Uuid::new_v4().to_string(),
+                CancellationToken::new()
+            )
+            .is_ok()
+    );
+}

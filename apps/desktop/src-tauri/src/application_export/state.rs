@@ -1,7 +1,7 @@
 use super::error;
 use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -18,6 +18,8 @@ struct Inner {
 struct Registry {
     stopping: bool,
     active: HashMap<(String, String), CancellationToken>,
+    cancelled: HashSet<(String, String)>,
+    cancellation_full: HashSet<String>,
 }
 pub(super) struct ExportWork {
     state: SessionExportState,
@@ -44,6 +46,12 @@ impl SessionExportState {
             return Err(error(
                 ErrorCode::Unavailable,
                 "Export service is shutting down",
+            ));
+        }
+        if state.cancelled.contains(&key) || state.cancellation_full.contains(owner) {
+            return Err(error(
+                ErrorCode::Cancelled,
+                "This export request was cancelled",
             ));
         }
         if state.active.len() >= 2 || state.active.contains_key(&key) {
@@ -74,7 +82,9 @@ impl SessionExportState {
         self.pending()
     }
     pub fn release_window(&self, owner: &str) {
-        let state = self.0.state.lock().unwrap();
+        let mut state = self.0.state.lock().unwrap();
+        state.cancelled.retain(|(window, _)| window != owner);
+        state.cancellation_full.remove(owner);
         for ((window, _), token) in &state.active {
             if window == owner {
                 token.cancel();
@@ -82,15 +92,27 @@ impl SessionExportState {
         }
     }
     pub(super) fn cancel(&self, owner: &str, request: &str) {
-        if let Some(token) = self
-            .0
-            .state
-            .lock()
-            .unwrap()
-            .active
-            .get(&(owner.into(), request.into()))
+        if !uuid::Uuid::parse_str(request).is_ok_and(|id| !id.is_nil() && id.to_string() == request)
         {
+            return;
+        }
+        let mut state = self.0.state.lock().unwrap();
+        let key = (owner.to_owned(), request.to_owned());
+        if let Some(token) = state.active.get(&key) {
             token.cancel();
+        }
+        // The renderer may send cancellation before the original IPC is admitted.
+        // Bound its journal without evicting an unknown still-in-flight request.
+        if state
+            .cancelled
+            .iter()
+            .filter(|(window, _)| window == owner)
+            .count()
+            >= 128
+        {
+            state.cancellation_full.insert(owner.into());
+        } else {
+            state.cancelled.insert(key);
         }
     }
     pub async fn drain(&self, deadline: Duration) -> bool {
