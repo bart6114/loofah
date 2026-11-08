@@ -28,6 +28,20 @@ const FAILED: u8 = 2;
 const STOPPING: u8 = 3;
 const STOPPED: u8 = 4;
 
+pub(crate) fn model_fingerprint() -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update(b"loofah-server-onnx-models-v1\0");
+    for model in [Model::Batch, Model::Streaming, Model::Diarizer] {
+        digest.update(model.fingerprint());
+    }
+    digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 struct Models {
     batch: BatchSession,
     diarizer: Diarizer,

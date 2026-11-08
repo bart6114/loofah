@@ -62,6 +62,14 @@ fn default_transcription_audio() -> u64 {
 }
 
 impl TranscriptionConfig {
+    pub(crate) fn model_fingerprint(&self) -> String {
+        #[cfg(feature = "cpu-transcription")]
+        if self.onnx.is_some() {
+            return crate::transcription_onnx::model_fingerprint();
+        }
+        self.model_sha256.clone()
+    }
+
     pub fn validate(&self) -> std::result::Result<(), String> {
         if self.model.is_empty()
             || self.model.len() > 512

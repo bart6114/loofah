@@ -111,6 +111,23 @@ impl Model {
         }
     }
 
+    pub fn fingerprint(self) -> String {
+        let mut digest = Sha256::new();
+        digest.update(b"loofah-onnx-manifest-v1\0");
+        digest.update(self.id().as_bytes());
+        for asset in self.assets() {
+            digest.update((asset.name.len() as u64).to_le_bytes());
+            digest.update(asset.name.as_bytes());
+            digest.update(asset.bytes.to_le_bytes());
+            digest.update(asset.sha256.as_bytes());
+        }
+        digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
     pub fn size_bytes(self) -> u64 {
         self.assets().iter().map(|asset| asset.bytes).sum()
     }

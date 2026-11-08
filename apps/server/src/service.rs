@@ -190,7 +190,7 @@ impl Service {
         let capture_processing_model = self.config.transcription.as_ref().map(|config| {
             hypr_loofah_core::capture_processing::CaptureProcessingModel {
                 alias: config.model.clone(),
-                sha256: config.model_sha256.clone(),
+                sha256: config.model_fingerprint(),
             }
         });
         #[cfg(feature = "cpu-transcription")]
