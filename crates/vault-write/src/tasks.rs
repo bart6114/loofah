@@ -166,6 +166,28 @@ pub(super) fn replaced_source_tasks(
     next
 }
 
+pub(super) fn validate_source_task_ids(
+    existing: &[TaskItem],
+    source_type: &str,
+    source_id: &str,
+    inputs: &[TaskInput],
+) -> Result<(), StoreError> {
+    let foreign: std::collections::HashSet<_> = existing
+        .iter()
+        .filter(|task| task.source_type != source_type || task.source_id != source_id)
+        .map(|task| task.id.as_str())
+        .collect();
+    if inputs
+        .iter()
+        .any(|input| foreign.contains(input.id.as_str()))
+    {
+        return Err(StoreError::Conflict(
+            "Task identifier belongs to another source".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl SessionStore {
     pub async fn read_recovered_session_tasks(
         &self,

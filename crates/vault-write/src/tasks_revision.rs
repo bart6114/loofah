@@ -70,6 +70,7 @@ impl SessionStore {
             }
         };
         let existing = current.tasks;
+        crate::tasks::validate_source_task_ids(&existing, source_type, source_id, &inputs)?;
         let next = crate::tasks::replaced_source_tasks(&existing, source_type, source_id, inputs);
         crate::tasks::validate_task_file_size(&next, self.content_limits.tasks_file_bytes)?;
         self.persist_generated_tasks(&guard, session_id, &next)
@@ -135,16 +136,9 @@ impl SessionStore {
                 .transpose()
                 .map_err(|cause| StoreError::Serialize(cause.to_string()))?
                 .unwrap_or_default();
-            let mut bytes = b"loofah/session-tasks/v1\0".to_vec();
-            bytes.extend_from_slice(&(id.len() as u64).to_be_bytes());
-            bytes.extend_from_slice(id.as_bytes());
-            bytes.push(u8::from(raw.is_some()));
-            if let Some(raw) = raw {
-                bytes.extend_from_slice(&raw);
-            }
             Ok(Some(TasksSnapshot {
                 tasks,
-                revision: crate::sha256(&bytes),
+                revision: revision(&id, raw.as_deref()),
             }))
         })
         .await
@@ -157,6 +151,17 @@ impl SessionStore {
         crate::tasks::sort_tasks(&mut snapshot.tasks);
         Ok(Some(snapshot))
     }
+}
+
+pub(super) fn revision(id: &str, raw: Option<&[u8]>) -> String {
+    let mut bytes = b"loofah/session-tasks/v1\0".to_vec();
+    bytes.extend_from_slice(&(id.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(id.as_bytes());
+    bytes.push(u8::from(raw.is_some()));
+    if let Some(raw) = raw {
+        bytes.extend_from_slice(raw);
+    }
+    crate::sha256(&bytes)
 }
 
 #[cfg(test)]

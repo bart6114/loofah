@@ -22,6 +22,7 @@ struct Intent {
 enum StoredIntent {
     Document(Intent),
     Title(crate::generated_title::TitleIntent),
+    Editor(crate::document_editor::recovery::Intent),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -179,6 +180,17 @@ impl SessionStore {
             return Ok(());
         };
         let intent = match intent {
+            StoredIntent::Editor(intent) => {
+                crate::document_editor::recovery::validate(&intent, self.content_limits)?;
+                if path.file_name()
+                    != intent_path(path.parent().unwrap(), &intent.session_id).file_name()
+                {
+                    return Err(StoreError::Io("Invalid editor recovery filename".into()));
+                }
+                return crate::document_editor::recovery::recover(self, guard, path, &intent)
+                    .await
+                    .map_err(StoreError::after_commit);
+            }
             StoredIntent::Document(intent) => intent,
             StoredIntent::Title(intent) => {
                 crate::validate_session_id(&intent.session_id)?;
@@ -709,6 +721,23 @@ impl SessionStore {
         self.write_document_intent(root, intent).await
     }
 
+    pub(super) async fn begin_editor_write_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        root: &Path,
+        intent: crate::document_editor::recovery::Intent,
+    ) -> Result<PendingDocument, StoreError> {
+        crate::document_editor::recovery::validate(&intent, self.content_limits)?;
+        let id = intent.session_id.clone();
+        self.write_pending_record(
+            root,
+            &id,
+            StoredIntent::Editor(intent),
+            self.content_limits.recovery_bytes,
+        )
+        .await
+    }
+
     async fn write_document_intent(
         &self,
         root: &Path,
@@ -856,7 +885,7 @@ fn read(path: &Path, limit: usize) -> Result<Option<StoredIntent>, StoreError> {
         Ok(meta) => {
             if meta.len() > crate::generated_title::MAX_INTENT as u64 {
                 match oversized_schema_version(path)? {
-                    1..=3 => {}
+                    1..=3 | 5 => {}
                     4 => {
                         return Err(StoreError::ResourceLimit(
                             "Title recovery record exceeds its size limit".into(),
@@ -891,7 +920,15 @@ fn read(path: &Path, limit: usize) -> Result<Option<StoredIntent>, StoreError> {
     }
     let version: Version =
         serde_json::from_slice(&bytes).map_err(|cause| StoreError::Serialize(cause.to_string()))?;
-    if version.schema_version == 4 {
+    if version.schema_version == 5 {
+        let raw = serde_json::from_slice::<crate::metadata_revision::UniqueValue>(&bytes)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))?
+            .0;
+        serde_json::from_value(raw)
+            .map(StoredIntent::Editor)
+            .map(Some)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))
+    } else if version.schema_version == 4 {
         if bytes.len() > crate::generated_title::MAX_INTENT {
             return Err(StoreError::ResourceLimit(
                 "Title recovery record exceeds its size limit".into(),

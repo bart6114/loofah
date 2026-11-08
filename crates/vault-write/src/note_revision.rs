@@ -60,6 +60,12 @@ impl SessionStore {
                     note, tasks, &id,
                 ))));
             }
+            crate::tasks::validate_source_task_ids(
+                &tasks.tasks,
+                "session_raw_note",
+                &id,
+                &input.tasks,
+            )?;
             let next = crate::tasks::replaced_source_tasks(
                 &tasks.tasks,
                 "session_raw_note",

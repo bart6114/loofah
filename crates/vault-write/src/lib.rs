@@ -12,6 +12,7 @@ pub mod audio;
 mod audio_layout;
 pub mod content;
 mod content_limits;
+mod document_editor;
 mod document_operation;
 mod document_revision;
 pub mod enhanced;
@@ -52,6 +53,7 @@ pub use content::{
     NoteSaveOutcome, NoteSnapshot, SessionMeta, SessionMetaPatch, TagSuggestionState,
 };
 pub use content_limits::ContentLimits;
+pub use document_editor::{DocumentEditorPlan, DocumentEditorPreparation};
 pub use enhanced::{EnhancedDoc, EnhancedDocPatch};
 pub use generated_title::{
     GeneratedTitleBaseline, GeneratedTitleOutcome, GeneratedTitlePreparation, RawNoteTitleOutcome,

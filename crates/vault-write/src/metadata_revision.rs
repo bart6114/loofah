@@ -191,14 +191,10 @@ impl SessionStore {
                     "Session metadata identity does not match its directory".into(),
                 ));
             }
-            let mut bytes = b"loofah/session-meta/v1\0".to_vec();
-            bytes.extend_from_slice(&(id.len() as u64).to_be_bytes());
-            bytes.extend_from_slice(id.as_bytes());
-            bytes.extend_from_slice(&raw);
             Ok(Some((
                 MetadataSnapshot {
                     meta,
-                    revision: crate::sha256(&bytes),
+                    revision: revision(&id, &raw),
                 },
                 value,
             )))
@@ -206,6 +202,14 @@ impl SessionStore {
         .await
         .map_err(|cause| StoreError::Io(cause.to_string()))?
     }
+}
+
+pub(super) fn revision(id: &str, raw: &[u8]) -> String {
+    let mut bytes = b"loofah/session-meta/v1\0".to_vec();
+    bytes.extend_from_slice(&(id.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(id.as_bytes());
+    bytes.extend_from_slice(raw);
+    crate::sha256(&bytes)
 }
 
 pub(super) fn serialize_title_patch(
