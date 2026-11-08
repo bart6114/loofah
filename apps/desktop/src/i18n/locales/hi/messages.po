@@ -281,6 +281,10 @@ msgstr ""
 msgid "Cancel date edit"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Cancel processing"
+msgstr ""
+
 #: src/shared/application/server-preview.tsx
 msgid "Cancel sign-in"
 msgstr ""
@@ -496,6 +500,10 @@ msgstr ""
 msgid "Connection unavailable"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Content changed during title generation."
+msgstr ""
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Context always provided"
 msgstr ""
@@ -528,6 +536,10 @@ msgstr ""
 msgid "Copy generated text"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Copy generated title"
+msgstr ""
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Copy my vault"
 msgstr ""
@@ -558,6 +570,10 @@ msgstr ""
 
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
+msgstr ""
+
+#: src/shared/useNewNote.ts
+msgid "Could not create note."
 msgstr ""
 
 #: src/shared/application/vault-attachment-provider.tsx
@@ -650,6 +666,10 @@ msgstr ""
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
+msgstr ""
+
+#: src/shared/useNewNote.ts
+msgid "Creating note..."
 msgstr ""
 
 #: src/settings/ai/llm/select.tsx
@@ -845,6 +865,10 @@ msgstr ""
 msgid "Everything relocates; the old location is cleaned up."
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "Existing title kept."
+msgstr ""
+
 #: src/sidebar/timeline/index.tsx
 msgid "Expand all"
 msgstr ""
@@ -907,6 +931,10 @@ msgid "General"
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
+msgid "Generate a title if this note is untitled"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
 msgid "Generated summary text"
 msgstr ""
 
@@ -920,6 +948,7 @@ msgstr ""
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 #: src/session/components/title-input.tsx
+#: src/shared/application/vault-processing.tsx
 msgid "Generating title..."
 msgstr ""
 
@@ -1350,6 +1379,10 @@ msgstr ""
 msgid "No summary model"
 msgstr ""
 
+#: src/shared/application/vault-processing.tsx
+msgid "No title was generated."
+msgstr ""
+
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
 msgstr ""
@@ -1534,6 +1567,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Processing may already have started. Resume uses the original request."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Processing request"
 msgstr ""
 
 #: src/shared/application/vault-processing-settings.tsx
@@ -1800,6 +1837,7 @@ msgstr ""
 #: src/shared/application/vault-attachment-provider.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/application/vault-processing-settings.tsx
+#: src/shared/useNewNote.ts
 msgid "Retry"
 msgstr ""
 
@@ -1880,6 +1918,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "Saving summary"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Saving title…"
 msgstr ""
 
 #: src/settings/ai/llm/summary-prompt.tsx
@@ -2352,6 +2394,10 @@ msgstr ""
 msgid "The attachment was not removed. Close this dialog and review it again."
 msgstr ""
 
+#: src/shared/useNewNote.ts
+msgid "The note may already exist. Retry the same request before creating another."
+msgstr ""
+
 #: src/shared/application/vault-processing.tsx
 msgid "The preview is shortened. Copy to recover the complete text."
 msgstr ""
@@ -2382,6 +2428,10 @@ msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "The summary provider failed."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "The title save could not be confirmed. Review the saved note before using this title."
 msgstr ""
 
 #: src/shared/application/vault-processing-settings.tsx
@@ -2436,6 +2486,26 @@ msgstr ""
 
 #: src/shared/application/notes-workspace.tsx
 msgid "Title"
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation cancelled."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation failed."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation interrupted."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation is unavailable."
+msgstr ""
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title saved"
 msgstr ""
 
 #: src/main/about-storage.tsx

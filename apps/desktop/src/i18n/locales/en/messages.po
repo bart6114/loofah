@@ -281,6 +281,10 @@ msgstr "Cancel"
 msgid "Cancel date edit"
 msgstr "Cancel date edit"
 
+#: src/shared/application/vault-processing.tsx
+msgid "Cancel processing"
+msgstr "Cancel processing"
+
 #: src/shared/application/server-preview.tsx
 msgid "Cancel sign-in"
 msgstr "Cancel sign-in"
@@ -496,6 +500,10 @@ msgstr "Connection details"
 msgid "Connection unavailable"
 msgstr "Connection unavailable"
 
+#: src/shared/application/vault-processing.tsx
+msgid "Content changed during title generation."
+msgstr "Content changed during title generation."
+
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Context always provided"
 msgstr "Context always provided"
@@ -528,6 +536,10 @@ msgstr "Copy failed"
 msgid "Copy generated text"
 msgstr "Copy generated text"
 
+#: src/shared/application/vault-processing.tsx
+msgid "Copy generated title"
+msgstr "Copy generated title"
+
 #: src/settings/general/storage/change-location.tsx
 msgid "Copy my vault"
 msgstr "Copy my vault"
@@ -559,6 +571,10 @@ msgstr "Could not complete file action. Check your connection and try again."
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Could not confirm the file action. A copy may already be in Downloads/Loofah."
 msgstr "Could not confirm the file action. A copy may already be in Downloads/Loofah."
+
+#: src/shared/useNewNote.ts
+msgid "Could not create note."
+msgstr "Could not create note."
 
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Could not load attachment. Retry when connected."
@@ -651,6 +667,10 @@ msgstr "Create vault"
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Created"
 msgstr "Created"
+
+#: src/shared/useNewNote.ts
+msgid "Creating note..."
+msgstr "Creating note..."
 
 #: src/settings/ai/llm/select.tsx
 msgid "Current connection"
@@ -845,6 +865,10 @@ msgstr "Enter your API key (optional)"
 msgid "Everything relocates; the old location is cleaned up."
 msgstr "Everything relocates; the old location is cleaned up."
 
+#: src/shared/application/vault-processing.tsx
+msgid "Existing title kept."
+msgstr "Existing title kept."
+
 #: src/sidebar/timeline/index.tsx
 msgid "Expand all"
 msgstr "Expand all"
@@ -907,6 +931,10 @@ msgid "General"
 msgstr "General"
 
 #: src/shared/application/vault-processing.tsx
+msgid "Generate a title if this note is untitled"
+msgstr "Generate a title if this note is untitled"
+
+#: src/shared/application/vault-processing.tsx
 msgid "Generated summary text"
 msgstr "Generated summary text"
 
@@ -920,6 +948,7 @@ msgstr "Generating summary"
 
 #: src/session/components/note-input/enhanced/streaming.tsx
 #: src/session/components/title-input.tsx
+#: src/shared/application/vault-processing.tsx
 msgid "Generating title..."
 msgstr "Generating title..."
 
@@ -1350,6 +1379,10 @@ msgstr "No saved summary requests."
 msgid "No summary model"
 msgstr "No summary model"
 
+#: src/shared/application/vault-processing.tsx
+msgid "No title was generated."
+msgstr "No title was generated."
+
 #: src/settings/ai/stt/select.tsx
 msgid "No transcription models are available for this device."
 msgstr "No transcription models are available for this device."
@@ -1535,6 +1568,10 @@ msgstr "Previous match"
 #: src/shared/application/vault-processing.tsx
 msgid "Processing may already have started. Resume uses the original request."
 msgstr "Processing may already have started. Resume uses the original request."
+
+#: src/shared/application/vault-processing.tsx
+msgid "Processing request"
+msgstr "Processing request"
 
 #: src/shared/application/vault-processing-settings.tsx
 msgid "Processing settings"
@@ -1800,6 +1837,7 @@ msgstr "Resuming…"
 #: src/shared/application/vault-attachment-provider.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/application/vault-processing-settings.tsx
+#: src/shared/useNewNote.ts
 msgid "Retry"
 msgstr "Retry"
 
@@ -1881,6 +1919,10 @@ msgstr "Saves pending edits before using the saved notes and transcript."
 #: src/shared/application/vault-processing.tsx
 msgid "Saving summary"
 msgstr "Saving summary"
+
+#: src/shared/application/vault-processing.tsx
+msgid "Saving title…"
+msgstr "Saving title…"
 
 #: src/settings/ai/llm/summary-prompt.tsx
 msgid "Saving..."
@@ -2352,6 +2394,10 @@ msgstr "The attachment changed. Close this dialog and review it again."
 msgid "The attachment was not removed. Close this dialog and review it again."
 msgstr "The attachment was not removed. Close this dialog and review it again."
 
+#: src/shared/useNewNote.ts
+msgid "The note may already exist. Retry the same request before creating another."
+msgstr "The note may already exist. Retry the same request before creating another."
+
 #: src/shared/application/vault-processing.tsx
 msgid "The preview is shortened. Copy to recover the complete text."
 msgstr "The preview is shortened. Copy to recover the complete text."
@@ -2383,6 +2429,10 @@ msgstr "The summary could not be saved safely."
 #: src/shared/application/vault-processing.tsx
 msgid "The summary provider failed."
 msgstr "The summary provider failed."
+
+#: src/shared/application/vault-processing.tsx
+msgid "The title save could not be confirmed. Review the saved note before using this title."
+msgstr "The title save could not be confirmed. Review the saved note before using this title."
 
 #: src/shared/application/vault-processing-settings.tsx
 msgid "These settings apply to this vault. Provider credentials are managed separately."
@@ -2437,6 +2487,26 @@ msgstr "Timezone"
 #: src/shared/application/notes-workspace.tsx
 msgid "Title"
 msgstr "Title"
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation cancelled."
+msgstr "Title generation cancelled."
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation failed."
+msgstr "Title generation failed."
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation interrupted."
+msgstr "Title generation interrupted."
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title generation is unavailable."
+msgstr "Title generation is unavailable."
+
+#: src/shared/application/vault-processing.tsx
+msgid "Title saved"
+msgstr "Title saved"
 
 #: src/main/about-storage.tsx
 msgid "Total file sizes, including attachments and hidden files. Space used on this Mac may differ for cloud files."
