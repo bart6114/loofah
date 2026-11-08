@@ -126,29 +126,8 @@ impl Journal {
                 .try_clone()
                 .map_err(storage)?;
             let vault = context.events.vault_id();
-            let mut records = BTreeMap::new();
-            for (index, entry) in std::fs::read_dir(&root).map_err(storage)?.enumerate() {
-                if index >= 256 {
-                    return Err(capacity());
-                }
-                let entry = entry.map_err(storage)?;
-                let name = entry.file_name();
-                let Some(id) = name.to_str().filter(|id| valid_uuid(id)) else {
-                    continue;
-                };
-                if records.len() >= MAX_GENERATIONS {
-                    return Err(capacity());
-                }
-                let metadata = std::fs::symlink_metadata(entry.path()).map_err(storage)?;
-                if !metadata.is_dir() || metadata.file_type().is_symlink() {
-                    return Err(storage("Unsafe live ledger entry"));
-                }
-                let mut record: Record = serde_json::from_slice(&read(
-                    &entry.path().join("record.json"),
-                    MANIFEST_BYTES,
-                )?)
-                .map_err(storage)?;
-                validate(&record, &vault, id)?;
+            let mut records = read_records(&root, &vault)?;
+            for record in records.values_mut() {
                 if !record.snapshot.state.is_terminal() {
                     record.snapshot.state = if record.commit_pending {
                         CaptureLiveState::Uncertain
@@ -161,9 +140,8 @@ impl Journal {
                         CaptureLiveFailure::Interrupted
                     });
                     record.snapshot.completed_through_frame = None;
-                    persist(&entry.path(), &record)?;
+                    persist(&root.join(&record.snapshot.generation_id), record)?;
                 }
-                records.insert(id.to_owned(), record);
             }
             Ok(Self(Arc::new(Inner {
                 root,
@@ -489,14 +467,110 @@ impl Journal {
     pub fn blocks(&self, session: &str) -> bool {
         self.0.failed.load(std::sync::atomic::Ordering::Acquire)
             || self.0.records.lock().map_or(true, |records| {
-                records.values().any(|r| {
-                    r.snapshot.session_id == session
-                        && (r.commit_pending
-                            || !r.snapshot.state.is_terminal()
-                            || r.snapshot.state == CaptureLiveState::Uncertain)
-                })
+                records.values().any(|r| record_blocks(r, session))
             })
     }
+}
+
+fn record_blocks(record: &Record, session: &str) -> bool {
+    record.snapshot.session_id == session
+        && (record.commit_pending
+            || !record.snapshot.state.is_terminal()
+            || record.snapshot.state == CaptureLiveState::Uncertain)
+}
+
+fn read_records(
+    root: &std::path::Path,
+    vault: &str,
+) -> Result<BTreeMap<String, Record>, ApplicationError> {
+    let mut records = BTreeMap::new();
+    for (index, entry) in std::fs::read_dir(root).map_err(storage)?.enumerate() {
+        if index >= 256 {
+            return Err(capacity());
+        }
+        let entry = entry.map_err(storage)?;
+        let name = entry.file_name();
+        let Some(id) = name.to_str().filter(|id| valid_uuid(id)) else {
+            if name
+                .to_str()
+                .is_some_and(|name| uuid::Uuid::parse_str(name).is_ok())
+            {
+                return Err(storage("Noncanonical live ledger identity"));
+            }
+            continue;
+        };
+        if records.len() >= MAX_GENERATIONS {
+            return Err(capacity());
+        }
+        let metadata = std::fs::symlink_metadata(entry.path()).map_err(storage)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(storage("Unsafe live ledger entry"));
+        }
+        let record: Record =
+            serde_json::from_slice(&read(&entry.path().join("record.json"), MANIFEST_BYTES)?)
+                .map_err(storage)?;
+        validate(&record, vault, id)?;
+        records.insert(id.to_owned(), record);
+    }
+    Ok(records)
+}
+
+pub(super) async fn ensure_idle_unopened(
+    root: PathBuf,
+    vault: String,
+    session: String,
+    vault_lease: Option<File>,
+) -> Result<(), ApplicationError> {
+    tokio::task::spawn_blocking(move || {
+        let owned_vault_lease = vault_lease;
+        if !root.is_absolute() {
+            return Err(storage("Live capture path is not absolute"));
+        }
+        let mut exists = false;
+        for parent in root.ancestors() {
+            match std::fs::symlink_metadata(parent) {
+                Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {
+                    exists |= parent == root
+                }
+                Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {}
+                _ => return Err(storage("Unsafe retained live capture directory")),
+            }
+        }
+        if !exists {
+            return Ok(());
+        }
+        if owned_vault_lease.is_none() {
+            return Err(unavailable(
+                "Vault ownership required for retained live capture review",
+            ));
+        }
+        let lock = root.join(".lock");
+        let owned_ledger_lease = if check_file(&lock)? {
+            let file = File::options()
+                .read(true)
+                .write(true)
+                .open(&lock)
+                .map_err(storage)?;
+            file.try_lock()
+                .map_err(|_| unavailable("Retained live capture still has an owner"))?;
+            Some(file)
+        } else {
+            None
+        };
+        let records = read_records(&root, &vault)?;
+        if (owned_ledger_lease.is_none() && !records.is_empty())
+            || records
+                .values()
+                .any(|record| record_blocks(record, &session))
+        {
+            return Err(unavailable(
+                "Retained live capture requires recovery or review",
+            ));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(storage)?
 }
 
 fn caption_name(sequence: u64) -> String {

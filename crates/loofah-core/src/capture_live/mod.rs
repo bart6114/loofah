@@ -100,6 +100,31 @@ impl CaptureLiveService {
 }
 
 impl VaultContext {
+    pub(crate) async fn ensure_capture_live_lifecycle_idle(
+        &self,
+        session: &str,
+    ) -> Result<(), ApplicationError> {
+        if self.capture_live.get().is_some() {
+            return self.ensure_capture_processing_ready(session);
+        }
+        let Some(operations) = &self.operations else {
+            return Ok(());
+        };
+        let lease = self
+            .lease
+            .as_ref()
+            .map(|lease| lease.try_clone())
+            .transpose()
+            .map_err(storage)?;
+        ledger::ensure_idle_unopened(
+            operations.root.join("capture-live"),
+            self.events.vault_id(),
+            session.to_owned(),
+            lease,
+        )
+        .await
+    }
+
     pub fn ensure_capture_processing_ready(&self, session: &str) -> Result<(), ApplicationError> {
         if self.capture_live.get().is_some_and(|service| {
             service.failed.load(std::sync::atomic::Ordering::Acquire)

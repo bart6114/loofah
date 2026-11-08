@@ -1402,7 +1402,7 @@ async fn verified_publication_releases_lifecycle_inventory_but_unknown_publicati
 async fn unsafe_reopened_capture_inventory_fails_closed_without_touching_raw_files() {
     let mut fixture = Fixture::new().await;
     fixture.stop().await;
-    let unsafe_entry = fixture.operations.join("captures/unrecognized-scope");
+    let unsafe_entry = fixture.operations.join("captures").join("A".repeat(64));
     std::fs::write(&unsafe_entry, b"retain unexpected data").unwrap();
     fixture.context = Some(leased_context(&fixture.vault, &fixture.operations).await);
     let exclusive = fixture

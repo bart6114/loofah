@@ -94,7 +94,8 @@ binding and publication work. Checked session changes use a non-waiting exclusiv
 permit and refuse retained unpublished captures, ambiguous publication evidence
 or unfinished live generations, including after raw recording publication. This
 checks the service's private vault-wide staging inventory without exposing other
-members' captures or removing raw files.
+members' captures or removing raw files. Retained live ledgers are checked without
+loading a model or rewriting recovery state when the CPU service is disabled.
 
 A published response contains the exact source seal, session ID, canonical SHA-256
 and byte count. Verify a separate authenticated canonical artifact read before

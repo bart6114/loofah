@@ -1022,6 +1022,156 @@ async fn restart_retains_pending_commit_as_uncertain_with_result_without_inferen
 }
 
 #[tokio::test]
+async fn disabled_live_service_checks_retained_journal_read_only_with_bounds_and_no_model() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let fake = Fake::new();
+    let mut context = context(&root, fake.clone(), Auth::new()).await;
+    let (input, request, _) = begin(&context).await;
+    let id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned();
+    let record = ledger::Record::new(
+        input.identity.clone(),
+        input.format.clone(),
+        request,
+        id.clone(),
+        "session".into(),
+        input.first_admitted_audio_observed_at_ms,
+        "",
+    );
+    context
+        .capture_live
+        .get()
+        .unwrap()
+        .journal
+        .admit(record, String::new())
+        .await
+        .unwrap();
+    append(&context, &input, 1).await;
+    let writer = context
+        .capture_writer(MEMBER.into(), input.identity.capture_id.clone())
+        .await
+        .unwrap();
+    let seal = writer.seal().await.unwrap();
+    context
+        .publish_capture_authorized(MEMBER.into(), input.identity.capture_id, seal, || async {
+            Ok(())
+        })
+        .await
+        .unwrap();
+    drop(
+        Arc::get_mut(&mut context)
+            .unwrap()
+            .capture_live
+            .take()
+            .unwrap(),
+    );
+    let retained = context
+        .operations
+        .as_ref()
+        .unwrap()
+        .root
+        .join("capture-live");
+    let original = root.join("live");
+    std::fs::rename(&original, &retained).unwrap();
+    let path = retained.join(&id).join("record.json");
+    let template: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let exclusive = context.try_session_lifecycle_change("session").unwrap();
+    for kind in [
+        "starting",
+        "interrupted",
+        "uncertain",
+        "future",
+        "duplicate",
+        "wrong_vault",
+        "corrupt",
+    ] {
+        let mut record = template.clone();
+        record["snapshot"]["state"] = serde_json::json!(if kind == "starting" {
+            "starting"
+        } else if kind == "uncertain" {
+            "uncertain"
+        } else {
+            "interrupted"
+        });
+        if kind == "uncertain" {
+            record["commit_pending"] = serde_json::json!(true);
+        }
+        if kind == "future" {
+            record["version"] = serde_json::json!(2);
+        }
+        if kind == "wrong_vault" {
+            record["identity"]["scope"]["vault_id"] = serde_json::json!("another-vault");
+        }
+        let mut bytes = serde_json::to_vec(&record).unwrap();
+        if kind == "duplicate" {
+            bytes.splice(1..1, b"\"version\":1,".iter().copied());
+        }
+        if kind == "corrupt" {
+            bytes = b"{incomplete".to_vec();
+        }
+        std::fs::write(&path, &bytes).unwrap();
+        let checked = context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await;
+        if kind == "interrupted" {
+            checked.unwrap();
+        } else {
+            assert_eq!(
+                checked.unwrap_err().mutation_outcome,
+                Some(MutationOutcome::NotCommitted),
+                "{kind}"
+            );
+        }
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            bytes,
+            "read-only guard changed {kind}"
+        );
+    }
+    std::fs::rename(&retained, &original).unwrap();
+    context
+        .ensure_capture_session_lifecycle_idle("session")
+        .await
+        .unwrap();
+    assert!(!retained.exists());
+    std::fs::rename(&original, &retained).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&template).unwrap()).unwrap();
+    let alias = retained.join(id.to_uppercase());
+    let alias_stage = retained.join("alias-stage");
+    std::fs::rename(retained.join(&id), &alias_stage).unwrap();
+    std::fs::rename(&alias_stage, &alias).unwrap();
+    assert!(
+        context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await
+            .is_err()
+    );
+    std::fs::rename(alias, &alias_stage).unwrap();
+    std::fs::rename(&alias_stage, retained.join(&id)).unwrap();
+    for number in 0..256 {
+        std::fs::write(
+            retained.join(format!("unknown-{number}")),
+            b"preserve ignored entry",
+        )
+        .unwrap();
+    }
+    assert!(
+        context
+            .ensure_capture_session_lifecycle_idle("session")
+            .await
+            .is_err()
+    );
+    assert_eq!(fake.calls.load(Ordering::Acquire), 0);
+    assert!(writer.snapshot().await.unwrap().publication.is_some());
+    assert_eq!(
+        std::fs::read(retained.join("unknown-0")).unwrap(),
+        b"preserve ignored entry"
+    );
+    drop(exclusive);
+}
+
+#[tokio::test]
 async fn already_sealed_capture_never_starts_a_substitute_live_generation() {
     let root = tempfile::tempdir().unwrap();
     let root = root.path().canonicalize().unwrap();

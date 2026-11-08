@@ -25,7 +25,8 @@ impl VaultContext {
     ) -> Result<(), ApplicationError> {
         self.validate(session).map_err(super::not_committed)?;
         self.ensure_recording_publication_ready(session)?;
-        self.ensure_capture_processing_ready(session)
+        self.ensure_capture_live_lifecycle_idle(session)
+            .await
             .map_err(super::not_committed)?;
         if let Some(settings) = self.capture_ingestion.get() {
             let root = self
