@@ -5,7 +5,10 @@ use hypr_transcribe_whisper_local::resources::{
 };
 
 use super::{BatchParams, BatchRunMode, BatchRunOutput, audio, build_listen_params, diarize};
-use crate::BatchRuntime;
+use crate::{BatchEvent, BatchRuntime};
+
+#[cfg(test)]
+mod tests;
 
 /// Runs the same preparation, channel semantics and diarization as the UI batch
 /// kernel, with a native owner instead of an HTTP server that another caller can replace.
@@ -21,6 +24,10 @@ pub async fn run_owned_whisper_batch(
         Some(runtime.clone()),
     )
     .await?;
+    let runtime: Arc<dyn BatchRuntime> = Arc::new(audio::PreparedRuntime {
+        inner: runtime,
+        prepared: prepared.clone(),
+    });
     let listen = build_listen_params(
         &params,
         prepared.pcm.channels as u8,
@@ -29,12 +36,13 @@ pub async fn run_owned_whisper_batch(
     let source =
         TrustedBatchSource::new(prepared.path.clone(), (prepared.clone(), runtime.clone()))
             .map_err(failure)?;
-    let work = resources
+    let mut work = resources
         .start_batch(admission, source, listen)
         .map_err(failure)?;
     let diarization =
         diarize::SharedDiarization::for_file(Arc::new(diarize::SoniqoDiarizer), prepared.clone());
     let mut completion = work.observer();
+    let mut events_open = true;
     let result = loop {
         if runtime.is_cancelled() {
             work.cancel();
@@ -43,6 +51,15 @@ pub async fn run_owned_whisper_batch(
             break result;
         }
         tokio::select! {
+            event = work.events.recv(), if events_open => {
+                match event {
+                    Some(event @ (owhisper_interface::batch_sse::BatchSseMessage::Progress { .. } | owhisper_interface::batch_sse::BatchSseMessage::Segment { .. })) => {
+                        runtime.emit(BatchEvent::BatchResponseStreamed { session_id: params.session_id.clone(), event: event.into() });
+                    }
+                    Some(_) => {},
+                    None => events_open = false,
+                }
+            }
             next = completion.changed() => {
                 if next.is_none() { return Err(failure("Native completion observer closed")); }
             }
