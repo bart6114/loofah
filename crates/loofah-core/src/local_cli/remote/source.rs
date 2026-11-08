@@ -234,6 +234,12 @@ impl MediaDispatcher {
     }
 }
 
+#[cfg(test)]
+type ReadPause = (
+    tokio::sync::oneshot::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
 #[derive(Clone)]
 pub struct MediaSourceReader {
     source: Arc<std::sync::Mutex<LocalCliArtifact>>,
@@ -241,6 +247,8 @@ pub struct MediaSourceReader {
     owner: Arc<MediaDispatcher>,
     pub size_bytes: u64,
     pub sha256: String,
+    #[cfg(test)]
+    pub(super) read_pause: Arc<std::sync::Mutex<Option<ReadPause>>>,
 }
 impl MediaDispatcher {
     pub async fn open_source(
@@ -271,6 +279,8 @@ impl MediaDispatcher {
             .ok_or_else(|| unavailable("This media request has no retained upload"))?;
         drop(self.authorization.authorize().await?);
         Ok(MediaSourceReader {
+            #[cfg(test)]
+            read_pause: Default::default(),
             chunks: Arc::new(chunks),
             size_bytes: source.size_bytes,
             sha256: source.sha256.clone(),
@@ -301,8 +311,15 @@ impl MediaSourceReader {
         let requested = length;
         let length = (self.size_bytes - offset).min(64 * 1024) as usize;
         let expected = self.chunks[(offset / (64 * 1024)) as usize];
+        #[cfg(test)]
+        let pause = self.read_pause.lock().unwrap().take();
         tokio::task::spawn_blocking(move || {
             let _guard = (guard, authorization);
+            #[cfg(test)]
+            if let Some((entered, release)) = pause {
+                let _ = entered.send(());
+                let _ = release.recv();
+            }
             let mut source = source
                 .lock()
                 .map_err(|_| unavailable("Media source reader stopped"))?;

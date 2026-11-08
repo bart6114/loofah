@@ -627,3 +627,48 @@ async fn original_source_export_is_verified_private_and_never_dispatches() {
     drop(reader);
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn cancelled_original_source_reader_keeps_actual_io_and_shutdown_pinned() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Guard(Arc<AtomicBool>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+    let fixture = Fixture::new().await;
+    let input = fixture.declaration(SUBTITLE).await;
+    let request = input.request_id.clone();
+    let admission = fixture.media.declare(input).await.unwrap();
+    let directory = fixture.media.root.join(format!("{request}.source"));
+    ledger::ensure_directory(&directory).unwrap();
+    std::fs::write(directory.join("source"), SUBTITLE).unwrap();
+    let reader = fixture
+        .media
+        .open_source(&request, &admission.revision)
+        .await
+        .unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let (release, paused) = std::sync::mpsc::channel();
+    *reader.read_pause.lock().unwrap() = Some((entered, paused));
+    let retired = Arc::new(AtomicBool::new(false));
+    let guard = Guard(retired.clone());
+    let caller =
+        tokio::spawn(async move { reader.read_chunk_with_guard(0, 64 * 1024, guard).await });
+    waiting.await.unwrap();
+    caller.abort();
+    let _ = caller.await;
+    assert!(!retired.load(Ordering::Acquire));
+    let shutdown = fixture.media.shutdown();
+    tokio::pin!(shutdown);
+    assert!(futures_util::poll!(&mut shutdown).is_pending());
+    assert!(!retired.load(Ordering::Acquire));
+    release.send(()).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), &mut shutdown)
+        .await
+        .unwrap();
+    assert!(retired.load(Ordering::Acquire));
+    drop(shutdown);
+    fixture.runtime.shutdown().await.unwrap();
+}
