@@ -179,6 +179,16 @@ async fn summary_requires_original_publication_and_replays_one_child_without_aud
         ProcessingJobState::Succeeded
     );
     std::fs::remove_file(path.join("vault/sessions/note/transcript.json")).unwrap();
+    // The child can commit before the parent checkpoints its returned job ID.
+    let mut lost_parent = journal::load(&context, &declaration.request_id)
+        .await
+        .unwrap()
+        .unwrap();
+    lost_parent.status.state = ManualMediaSummaryState::SourceBound;
+    lost_parent.status.job = None;
+    journal::persist(&context, &lost_parent, false)
+        .await
+        .unwrap();
     let replay = context
         .complete_manual_media_summary(declaration.request_id.clone())
         .await
