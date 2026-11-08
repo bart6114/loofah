@@ -238,12 +238,18 @@ async fn configured_local_ollama_publishes_automatic_summary_and_title_without_l
         let normalized = result.markdown.to_lowercase();
         assert!(["saffron", "friday", "migration"].iter().any(|term| normalized.contains(term)), "summary lost the meeting subject: {result:?}");
         let summary = context.read_document("eligible", &DocumentTarget::Summary).await.unwrap();
-        assert_eq!(summary.document.unwrap().markdown, result.markdown);
+        let published_summary = summary.document.unwrap().markdown;
         let title = result.title.as_ref().expect("requested title stage must be retained");
         assert_eq!(title.status, ProcessingTitleStatus::Applied, "{title:?}");
         let meta = context.read_metadata("eligible").await.unwrap().meta;
         assert!(!meta.title.trim().is_empty());
         assert_eq!(Some(meta.title.as_str()), title.candidate.as_deref());
+        let expected_summary = if result.markdown.trim_start().lines().next() == Some(&format!("# {}", meta.title.trim())) {
+            result.markdown.clone()
+        } else {
+            format!("# {}\n\n{}", meta.title.trim(), result.markdown.trim_start()).trim().to_owned()
+        };
+        assert_eq!(published_summary, expected_summary, "title publication must preserve the complete generated summary body");
         assert_eq!(std::fs::read(session.join("notes.md")).unwrap(), original_note);
         assert_eq!(std::fs::read(session.join("transcript.json")).unwrap(), original_transcript);
         let replay = context.complete_manual_media_summary(request.clone()).await.unwrap();
