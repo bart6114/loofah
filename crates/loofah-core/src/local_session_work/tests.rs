@@ -142,3 +142,16 @@ async fn weak_lifecycle_observer_rejects_poisoned_inventory() {
     .join();
     assert!(observer.ensure_idle_for(&context, "note").is_err());
 }
+
+#[tokio::test]
+async fn unknown_and_foreign_completed_acknowledgements_are_not_success() {
+    let (_root, context, registry) = fixture().await;
+    let id = uuid::Uuid::new_v4().to_string();
+    assert!(registry.persistence_finished("note", &id).is_err());
+    let work = registry.begin("note".into(), id.clone()).await.unwrap();
+    work.producer_finished().unwrap();
+    registry.persistence_finished("note", &id).unwrap();
+    registry.persistence_finished("note", &id).unwrap();
+    assert!(registry.persistence_finished("other", &id).is_err());
+    assert!(context.try_session_lifecycle_change("note").is_ok());
+}

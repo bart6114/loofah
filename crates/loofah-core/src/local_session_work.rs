@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, Mutex, Weak},
 };
 
@@ -20,7 +20,7 @@ struct Inner {
 #[derive(Default)]
 struct State {
     entries: HashMap<uuid::Uuid, Entry>,
-    finished: HashSet<uuid::Uuid>,
+    finished: HashMap<uuid::Uuid, String>,
 }
 struct Entry {
     session: String,
@@ -58,7 +58,7 @@ impl LocalSessionWorkRegistry {
             let admission = registry.0.context.admit_session_work(&session).await?;
             registry.0.context.read_note(&session).await?;
             let mut state = registry.0.state.lock().map_err(|_| unavailable())?;
-            if state.entries.contains_key(&request) || state.finished.contains(&request) {
+            if state.entries.contains_key(&request) || state.finished.contains_key(&request) {
                 let mut cause = error(
                     ErrorCode::Conflict,
                     "The original Local work request already exists",
@@ -96,7 +96,14 @@ impl LocalSessionWorkRegistry {
         let request = request(request_id)?;
         let mut state = self.0.state.lock().map_err(|_| unavailable())?;
         let Some(entry) = state.entries.get_mut(&request) else {
-            return Ok(());
+            return match state.finished.get(&request) {
+                Some(original) if original == session => Ok(()),
+                Some(_) => Err(error(
+                    ErrorCode::Validation,
+                    "Local work belongs to another session",
+                )),
+                None => Err(unavailable()),
+            };
         };
         if entry.session != session {
             return Err(error(
@@ -106,8 +113,11 @@ impl LocalSessionWorkRegistry {
         }
         entry.persistence_finished = true;
         if entry.producer_finished {
-            state.entries.remove(&request);
-            state.finished.insert(request);
+            let completed = state
+                .entries
+                .remove(&request)
+                .expect("confirmed original entry");
+            state.finished.insert(request, completed.session);
         }
         Ok(())
     }
@@ -139,8 +149,11 @@ impl LocalSessionWork {
         if let Some(entry) = state.entries.get_mut(&self.request) {
             entry.producer_finished = true;
             if entry.persistence_finished {
-                state.entries.remove(&self.request);
-                state.finished.insert(self.request);
+                let completed = state
+                    .entries
+                    .remove(&self.request)
+                    .expect("confirmed original entry");
+                state.finished.insert(self.request, completed.session);
             }
         }
         Ok(())
@@ -149,8 +162,9 @@ impl LocalSessionWork {
     /// A rejected admission must prove that no producer was dispatched.
     pub fn not_started(&self) -> Result<(), ApplicationError> {
         let mut state = self.registry.0.state.lock().map_err(|_| unavailable())?;
-        state.entries.remove(&self.request);
-        state.finished.insert(self.request);
+        if let Some(completed) = state.entries.remove(&self.request) {
+            state.finished.insert(self.request, completed.session);
+        }
         Ok(())
     }
 }
