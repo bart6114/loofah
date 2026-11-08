@@ -183,6 +183,14 @@ impl DeviceCaptureHost {
         self: &Arc<Self>,
         intent: CaptureStartIntent,
     ) -> Result<DeviceCaptureTicket, DeviceSinkError> {
+        self.start_authorized(intent, None)
+    }
+
+    pub(super) fn start_authorized(
+        self: &Arc<Self>,
+        intent: CaptureStartIntent,
+        authority: Option<Arc<hypr_loofah_client::CaptureAppendAuthority>>,
+    ) -> Result<DeviceCaptureTicket, DeviceSinkError> {
         if !self.driver.ready() {
             return Err(DeviceSinkError("Device recorder is not ready".into()));
         }
@@ -199,13 +207,20 @@ impl DeviceCaptureHost {
             hypr_loofah_client::capture_spool::CaptureTarget::ExistingSession {
                 session_id,
                 expected_audio_sha256,
-            } => {
-                session_id.len() <= 512
-                    && expected_audio_sha256
-                        .as_ref()
-                        .is_none_or(|hash| hash.len() == 64)
-            }
-            hypr_loofah_client::capture_spool::CaptureTarget::AppendSession { .. } => false,
+            } => session_id.len() <= 512 && expected_audio_sha256.is_none(),
+            hypr_loofah_client::capture_spool::CaptureTarget::AppendSession {
+                session_id,
+                admission,
+            } => authority.as_ref().is_some_and(|authority| {
+                authority.request() == &admission.request
+                    && session_id == &admission.request.session_id
+                    && id.scope == admission.request.scope
+                    && id.capture_id == admission.request.capture_id
+                    && id.request_id == admission.request.request_id
+                    && intent.format == admission.baseline.format
+                    && intent.processing == admission.request.processing
+                    && hypr_loofah_protocol::validate_capture_append_admission(admission).is_ok()
+            }),
             hypr_loofah_client::capture_spool::CaptureTarget::PendingSession {
                 create_request_id,
             } => create_request_id.len() == 36,
@@ -281,7 +296,7 @@ impl DeviceCaptureHost {
         }
         let host = self.clone();
         self.executor.spawn(async move {
-            if std::panic::AssertUnwindSafe(host.run(entry.clone(), intent))
+            if std::panic::AssertUnwindSafe(host.run(entry.clone(), intent, authority))
                 .catch_unwind()
                 .await
                 .is_err()
@@ -481,7 +496,12 @@ impl DeviceCaptureHost {
         });
     }
 
-    async fn run(self: &Arc<Self>, entry: Arc<Entry>, intent: CaptureStartIntent) {
+    async fn run(
+        self: &Arc<Self>,
+        entry: Arc<Entry>,
+        intent: CaptureStartIntent,
+        authority: Option<Arc<hypr_loofah_client::CaptureAppendAuthority>>,
+    ) {
         if entry.stop.is_cancelled() {
             self.retire(&entry, DeviceHostPhase::NeverStarted, None);
             return;
@@ -520,11 +540,52 @@ impl DeviceCaptureHost {
             self.retire(&entry, DeviceHostPhase::NeverStarted, None);
             return;
         }
+        let authority = match authority {
+            Some(authority) => match authority.guard_dispatch().await {
+                Ok(guard) => Some(guard),
+                Err(error) => {
+                    prepared.sink.interrupted(error.to_string());
+                    self.retire(
+                        &entry,
+                        DeviceHostPhase::NeverStarted,
+                        Some(error.to_string()),
+                    );
+                    return;
+                }
+            },
+            None => None,
+        };
+        if entry.stop.is_cancelled() {
+            prepared
+                .sink
+                .interrupted("Capture stopped before dispatch".into());
+            self.retire(&entry, DeviceHostPhase::NeverStarted, None);
+            return;
+        }
+        if let Some(guard) = &authority {
+            if let Err(error) = guard.check_current() {
+                prepared.sink.interrupted(error.to_string());
+                self.retire(
+                    &entry,
+                    DeviceHostPhase::NeverStarted,
+                    Some(error.to_string()),
+                );
+                return;
+            }
+        }
         self.update(&entry, |state| state.phase = DeviceHostPhase::Starting);
         self.ensure_observer(&entry);
         entry.dispatched.store(true, Ordering::Release);
         let start = self.driver.start(prepared.into_args());
         tokio::pin!(start);
+        // The native driver sends the actor RPC on its first poll. Scope fences
+        // cover that admission, never the potentially delayed acknowledgement.
+        let first = futures_util::poll!(&mut start);
+        drop(authority);
+        if let std::task::Poll::Ready(result) = first {
+            self.apply_start_result(&entry, result);
+            return;
+        }
         let result = tokio::select! {
             biased;
             result = &mut start => result,

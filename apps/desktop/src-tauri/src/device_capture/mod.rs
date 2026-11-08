@@ -88,7 +88,7 @@ impl PreparedDeviceCapture {
         observer: Arc<dyn DeviceCaptureObserver>,
     ) -> Result<Self, DeviceSinkError> {
         let mode = match format.channels.as_slice() {
-            [CaptureChannel::Microphone, CaptureChannel::SystemAudio] => {
+            [CaptureChannel::Mixed] | [CaptureChannel::Microphone, CaptureChannel::SystemAudio] => {
                 DeviceChannelMode::MicAndSpeaker
             }
             [CaptureChannel::Microphone] => DeviceChannelMode::MicOnly,

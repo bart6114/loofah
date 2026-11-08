@@ -17,6 +17,7 @@ use super::{
 
 pub struct SpoolRecordingSink {
     writer: CaptureWriter,
+    downmix_stereo: bool,
     state: Mutex<SinkState>,
     operations: tokio::sync::Mutex<()>,
     observer: Arc<dyn DeviceCaptureObserver>,
@@ -65,6 +66,8 @@ impl SpoolRecordingSink {
         observer: Arc<dyn DeviceCaptureObserver>,
     ) -> Self {
         Self {
+            downmix_stereo: snapshot.format.channels
+                == [hypr_loofah_protocol::CaptureChannel::Mixed],
             writer,
             state: Mutex::new(SinkState {
                 snapshot,
@@ -323,6 +326,11 @@ impl DeviceRecordingSink for SpoolRecordingSink {
         pcm: Arc<[u8]>,
     ) -> Result<DeviceAppendReceipt, DeviceSinkError> {
         let _operation = self.operations.lock().await;
+        let pcm = if self.downmix_stereo {
+            mix_stereo(frames, &pcm)?
+        } else {
+            pcm
+        };
         let (expected_sequence, expected_frame, expected_offset, channels, fingerprint, ended) = {
             let state = self
                 .state
@@ -447,4 +455,25 @@ impl SpoolRecordingSink {
         state.end = Some(end);
         Ok(expected)
     }
+}
+
+fn mix_stereo(frames: u32, pcm: &[u8]) -> Result<Arc<[u8]>, DeviceSinkError> {
+    if frames == 0 || pcm.len() != frames as usize * 8 {
+        return Err(DeviceSinkError(
+            "Mixed capture requires complete native stereo frames".into(),
+        ));
+    }
+    let mut mixed = Vec::with_capacity(frames as usize * 4);
+    for frame in pcm.chunks_exact(8) {
+        let left = f32::from_le_bytes(frame[..4].try_into().unwrap());
+        let right = f32::from_le_bytes(frame[4..].try_into().unwrap());
+        if !left.is_finite() || !right.is_finite() {
+            return Err(DeviceSinkError(
+                "Device audio contains non-finite samples".into(),
+            ));
+        }
+        let sample = ((f64::from(left) + f64::from(right)) * 0.5) as f32;
+        mixed.extend_from_slice(&sample.to_le_bytes());
+    }
+    Ok(mixed.into())
 }

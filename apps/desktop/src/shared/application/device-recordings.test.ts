@@ -3,6 +3,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   commands: {
     deviceRecordingStart: vi.fn(),
+    deviceRecordingAppend: vi.fn(),
+    deviceRecordingAppendPending: vi.fn(),
     deviceRecordingInventory: vi.fn(),
     deviceRecordingRecoveryInventory: vi.fn(),
     deviceRecordingStatus: vi.fn(),
@@ -246,4 +248,71 @@ it("retirement keeps the original connection and request after unknown IPC compl
     client.retire(identity, "same-cleanup", () => true),
   ).rejects.toThrow();
   expect(native.commands.deviceRecordingRetire).toHaveBeenCalledTimes(2);
+});
+
+it("never appends from an offline monitor or a retired original scope", async () => {
+  const monitor = createDeviceRecordingMonitor();
+  expect("append" in monitor).toBe(false);
+  const request = {
+    session_id: "note",
+    request_id: "request",
+    capture_id: "capture",
+    admission_id: "admission",
+    processing: null,
+  };
+  const offline = createDeviceRecordingClient({ scope });
+  await expect(offline.append(request, () => true)).rejects.toThrow();
+  const connected = createDeviceRecordingClient({
+    scope,
+    connectionId: "original",
+  });
+  await expect(connected.append(request, () => false)).rejects.toThrow();
+  await expect(connected.pendingAppendRequests(() => false)).rejects.toThrow();
+  expect(native.commands.deviceRecordingAppend).not.toHaveBeenCalled();
+  expect(native.commands.deviceRecordingAppendPending).not.toHaveBeenCalled();
+});
+
+it("keeps all append IDs and options after a lost reply and fences late results", async () => {
+  const request = {
+    session_id: "note",
+    request_id: "request",
+    capture_id: "capture",
+    admission_id: "admission",
+    processing: null,
+  };
+  const client = createDeviceRecordingClient({
+    scope,
+    connectionId: "original",
+  });
+  native.commands.deviceRecordingAppend.mockRejectedValueOnce(
+    new Error("lost"),
+  );
+  await expect(client.append(request, () => true)).rejects.toMatchObject({
+    detail: { mutation_outcome: "unknown" },
+  });
+  native.commands.deviceRecordingAppend.mockResolvedValueOnce({
+    status: "ok",
+    data: { identity },
+  });
+  await client.append(request, () => true);
+  expect(native.commands.deviceRecordingAppend.mock.calls[0]).toEqual(
+    native.commands.deviceRecordingAppend.mock.calls[1],
+  );
+  expect(native.commands.deviceRecordingAppend).toHaveBeenLastCalledWith(
+    "original",
+    { ...request, scope },
+  );
+  let resolve!: (value: unknown) => void;
+  let current = true;
+  native.commands.deviceRecordingAppend.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const pending = client.append(request, () => current);
+  current = false;
+  resolve({ status: "ok", data: { identity } });
+  await expect(pending).rejects.toThrow();
+  expect(native.commands.deviceRecordingStart).not.toHaveBeenCalled();
 });

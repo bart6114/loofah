@@ -22,6 +22,9 @@ use tauri_plugin_transcription::{
 use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
+#[path = "append_tests.rs"]
+mod append;
+
 #[path = "coordinator_tests.rs"]
 mod coordinator;
 

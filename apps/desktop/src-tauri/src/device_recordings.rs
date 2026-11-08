@@ -447,6 +447,89 @@ pub async fn device_recording_start<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn device_recording_append_pending<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+    connection_id: String,
+    scope: CaptureScope,
+) -> Result<Vec<hypr_loofah_protocol::CaptureAppendRequest>, ApplicationError> {
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let (client, bound_profile) = app.state::<crate::remote::RemoteState>().profile(
+        &connection_id,
+        window.label(),
+        &profile_id,
+    )?;
+    if !Arc::ptr_eq(&profile, &bound_profile) || client.address() != scope.server {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "The original append profile changed",
+        ));
+    }
+    state
+        .host(&app)
+        .await?
+        .pending_append_requests(profile, scope)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn device_recording_append<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::Window<R>,
+    connection_id: String,
+    input: hypr_loofah_protocol::CaptureAppendRequest,
+) -> Result<DeviceRecordingInfo, ApplicationError> {
+    let profile = profile(&app).await?;
+    let profile_id = profile.profile().await.id;
+    let state = app.state::<DeviceRecordingState>();
+    state.bind_profile(&profile_id)?;
+    let (client, bound_profile) = app.state::<crate::remote::RemoteState>().profile(
+        &connection_id,
+        window.label(),
+        &profile_id,
+    )?;
+    if !Arc::ptr_eq(&profile, &bound_profile) {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "The original append profile changed",
+        ));
+    }
+    let lifetime = state
+        .windows
+        .lock()
+        .unwrap()
+        .entry(window.label().to_owned())
+        .or_default()
+        .clone();
+    let request_id = input.request_id.clone();
+    let result = state
+        .host(&app)
+        .await?
+        .start_append(profile, client, input, window.label().to_owned(), lifetime)
+        .await;
+    *state.inventory.lock().unwrap() = None;
+    *state.recovery.lock().unwrap() = None;
+    let capture = result?;
+    state
+        .live(&profile_id)
+        .into_iter()
+        .find(|item| item.identity == capture.identity)
+        .ok_or_else(|| ApplicationError {
+            request_id: Some(request_id),
+            mutation_outcome: Some(hypr_loofah_protocol::MutationOutcome::Unknown),
+            ..failure(
+                ErrorCode::Unavailable,
+                "Append was accepted; refresh its original device status before retrying",
+            )
+        })
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn device_recording_inventory<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<DeviceRecordingInventory, ApplicationError> {

@@ -672,3 +672,55 @@ async fn managed_native_lifecycle_requires_registered_idle_actor_and_original_pe
     actor.stop(None);
     actor_task.await.unwrap();
 }
+
+#[tokio::test]
+async fn mixed_append_sink_downmixes_native_stereo_without_changing_frames() {
+    let _capture = CAPTURE_TEST_LOCK.lock().await;
+    let (_temp, spool) = spool().await;
+    let id = identity();
+    let mut format = CaptureFormat::stereo();
+    format.channels = vec![CaptureChannel::Mixed];
+    let prepared = PreparedDeviceCapture::prepare(
+        spool.clone(),
+        id.clone(),
+        format.clone(),
+        Arc::new(Observer::default()),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        prepared.args.mode,
+        DeviceChannelMode::MicAndSpeaker
+    ));
+    let samples = [0.75f32, -0.25, f32::MAX, f32::MAX, -0.5, 0.5];
+    let pcm: Vec<_> = samples.into_iter().flat_map(f32::to_le_bytes).collect();
+    assert!(
+        prepared
+            .sink
+            .append(0, 3, Arc::from(pcm[..12].to_vec()))
+            .await
+            .is_err()
+    );
+    let invalid: Vec<_> = [f32::NAN, 0.0]
+        .into_iter()
+        .flat_map(f32::to_le_bytes)
+        .collect();
+    assert!(prepared.sink.append(0, 1, invalid.into()).await.is_err());
+    let receipt = prepared.sink.append(0, 3, pcm.into()).await.unwrap();
+    assert_eq!(receipt.frames, 3);
+    let done = prepared
+        .sink
+        .finish(DeviceRecordingEnd::Complete)
+        .await
+        .unwrap();
+    assert_eq!(done.frames, 3);
+    assert_eq!(done.pcm_bytes, 12);
+    let writer = spool.resume(id).await.unwrap();
+    let bytes = writer.read_chunk(0).await.unwrap().bytes;
+    let expected: Vec<_> = [0.25f32, f32::MAX, 0.0]
+        .into_iter()
+        .flat_map(f32::to_le_bytes)
+        .collect();
+    assert_eq!(bytes, expected);
+    assert_eq!(writer.snapshot().await.unwrap().format, format);
+}

@@ -8,6 +8,7 @@ import {
 
 import {
   commands,
+  type CaptureAppendRequest,
   type CaptureIdentity,
   type CaptureScope,
   type DeviceCaptureStartRequest,
@@ -55,6 +56,43 @@ export function createDeviceRecordingClient({
         throw unknown();
       }
       if (isDisposed() || signal?.aborted) throw unknown();
+      return applicationResult(result);
+    },
+    async pendingAppendRequests(isCurrent: () => boolean) {
+      assertOpen();
+      if (!connectionId || !isCurrent()) throw connectionClosed();
+      const result = await commands.deviceRecordingAppendPending(
+        connectionId,
+        destination,
+      );
+      assertOpen();
+      if (!isCurrent()) throw connectionClosed();
+      return applicationResult(result);
+    },
+    async append(
+      input: Omit<CaptureAppendRequest, "scope">,
+      isCurrent: () => boolean,
+    ) {
+      assertOpen();
+      if (!connectionId || !isCurrent()) throw connectionClosed();
+      const request = structuredClone({ ...input, scope: destination });
+      const unknown = () =>
+        new ApplicationRequestError({
+          code: "unavailable",
+          message:
+            "The original append request was retained. Check device status and retry this same request.",
+          request_id: request.request_id,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: "unknown",
+        });
+      let result;
+      try {
+        result = await commands.deviceRecordingAppend(connectionId, request);
+      } catch {
+        throw unknown();
+      }
+      if (isDisposed() || !isCurrent()) throw unknown();
       return applicationResult(result);
     },
     async retire(

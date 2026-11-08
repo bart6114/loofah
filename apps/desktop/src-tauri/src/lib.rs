@@ -788,6 +788,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::set_dismissed_toasts::<tauri::Wry>,
             commands::show_devtool::<tauri::Wry>,
             device_recordings::device_recording_start::<tauri::Wry>,
+            device_recordings::device_recording_append::<tauri::Wry>,
+            device_recordings::device_recording_append_pending::<tauri::Wry>,
             device_recordings::device_recording_cancel_processing::<tauri::Wry>,
             device_recordings::device_recording_retire::<tauri::Wry>,
             device_recordings::device_recording_inventory::<tauri::Wry>,

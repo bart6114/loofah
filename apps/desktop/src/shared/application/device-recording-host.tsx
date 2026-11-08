@@ -29,6 +29,7 @@ import { VaultHostContext } from "./vault-provider";
 import type { VaultScope } from "./vault-scope";
 
 import type {
+  CaptureAppendRequest,
   CaptureScope,
   DeviceCaptureStartRequest,
 } from "~/types/tauri.gen";
@@ -41,6 +42,7 @@ export type DeviceRecordingDestination = {
 
 type DeviceRecordingOwner = {
   scopeKey: string;
+  connectionId?: string;
   client: ReturnType<typeof createDeviceRecordingClient>;
 };
 const RecordingContext = createContext<
@@ -92,6 +94,7 @@ export function DeviceRecordingHost({
     setOwner({
       profileId,
       scopeKey: destination.scopeKey,
+      connectionId: destination.connectionId,
       client,
       destination,
     });
@@ -314,6 +317,38 @@ function AdmittedRecordButton({
     { ...scope.transcriptOverviewOptions(sessionId), enabled: permitted },
     scope.queryClient,
   );
+  const appendPermitted =
+    permitted &&
+    !!recording.connectionId &&
+    scope.client.nativeConnectionId === recording.connectionId &&
+    scope.client.features.includes("capture_append");
+  const appendCurrent = () =>
+    owner.current() &&
+    scope.getSnapshot().state === "connected" &&
+    appendPermitted;
+  const appendPending = useQuery({
+    queryKey: [
+      "device",
+      "append-preparations",
+      recording.connectionId,
+      sessionId,
+    ],
+    queryFn: async () => {
+      const requests = (
+        await recording.client.pendingAppendRequests(appendCurrent)
+      ).filter((request) => request.session_id === sessionId);
+      if (requests.length > 1)
+        throw new Error(
+          "Multiple saved append requests need recovery before recording again.",
+        );
+      return requests[0] ?? null;
+    },
+    enabled: appendPermitted && audio.isSuccess && !!audio.data,
+    networkMode: "always",
+    retry: false,
+    staleTime: 0,
+  });
+  const appendIntent = useRef<Omit<CaptureAppendRequest, "scope"> | null>(null);
   const intent = useRef<Omit<DeviceCaptureStartRequest, "scope"> | null>(null);
   const start = useMutation({
     networkMode: "always",
@@ -325,6 +360,30 @@ function AdmittedRecordButton({
         !permitted
       )
         throw new Error("Reconnect to this vault before starting a recording.");
+      if (appendIntent.current || (!intent.current && audio.data)) {
+        if (
+          !appendCurrent() ||
+          (!appendIntent.current && !appendPending.isSuccess)
+        )
+          throw new Error(
+            "Reconnect to the original vault before appending audio.",
+          );
+        const request = (appendIntent.current ??= appendPending.data ?? {
+          session_id: sessionId,
+          request_id: crypto.randomUUID(),
+          capture_id: crypto.randomUUID(),
+          admission_id: crypto.randomUUID(),
+          processing: captureProcessingOptions(processing.state.values),
+        });
+        try {
+          return await recording.client.append(request, appendCurrent);
+        } finally {
+          void cache.invalidateQueries({ queryKey: ["device", "recordings"] });
+          void cache.invalidateQueries({
+            queryKey: ["device", "append-preparations"],
+          });
+        }
+      }
       if (
         !audio.isSuccess ||
         !transcript.isSuccess ||
@@ -356,14 +415,20 @@ function AdmittedRecordButton({
   const canStart =
     permitted &&
     audio.isSuccess &&
-    !audio.data &&
-    transcript.isSuccess &&
-    !transcript.data.has_words;
+    (appendIntent.current || (!intent.current && audio.data)
+      ? appendPermitted && (!!appendIntent.current || appendPending.isSuccess)
+      : !!intent.current ||
+        (transcript.isSuccess && !transcript.data.has_words));
   return (
     <div className="flex flex-col items-start gap-1">
       <DeviceProcessingOptions
         form={processing}
-        disabled={start.isPending || !!intent.current}
+        disabled={
+          start.isPending ||
+          !!intent.current ||
+          !!appendIntent.current ||
+          !!appendPending.data
+        }
       />
       <Button
         size="sm"
@@ -373,14 +438,35 @@ function AdmittedRecordButton({
       >
         {start.isPending ? (
           <Trans>Starting recording…</Trans>
+        ) : audio.data ? (
+          <Trans>Append audio</Trans>
         ) : (
           <Trans>Record audio</Trans>
         )}
       </Button>
-      {(audio.error || transcript.error || start.error) && (
+      {audio.data && (
+        <p className="text-muted-foreground text-xs">
+          {appendPending.data ? (
+            <Trans>
+              Retry the saved append request with its original recording and
+              processing choices.
+            </Trans>
+          ) : (
+            <Trans>
+              Append to the verified recording. Enable transcription to include
+              the new audio in the transcript.
+            </Trans>
+          )}
+        </p>
+      )}
+      {(audio.error ||
+        transcript.error ||
+        appendPending.error ||
+        start.error) && (
         <p role="alert" className="text-destructive text-xs">
           {start.error?.message ??
             audio.error?.message ??
+            appendPending.error?.message ??
             transcript.error?.message}
         </p>
       )}

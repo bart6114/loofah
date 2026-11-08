@@ -20,6 +20,8 @@ use hypr_loofah_protocol::{ApplicationError, ErrorCode};
 use tokio::sync::{OnceCell, Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
+mod append;
+
 use super::{
     CaptureStartIntent, DeviceCaptureHost, DeviceCaptureObserver, DeviceCaptureTicket,
     DeviceHostPhase, DeviceShutdownReport,
@@ -42,6 +44,7 @@ struct UploadEntry {
 }
 struct State {
     closing: bool,
+    append: HashMap<(String, String), Arc<append::AppendIntent>>,
     profiles: HashMap<String, Arc<OnceCell<Arc<ProfileHost>>>>,
     captures: HashMap<(String, String), CaptureEntry>,
     uploads: HashMap<(String, String), UploadEntry>,
@@ -152,6 +155,7 @@ impl RemoteCaptureCoordinator {
                 observer,
                 state: Mutex::new(State {
                     closing: false,
+                    append: HashMap::new(),
                     profiles: HashMap::new(),
                     captures: HashMap::new(),
                     uploads: HashMap::new(),
@@ -202,6 +206,18 @@ impl RemoteCaptureCoordinator {
         client: Option<Arc<RemoteClient>>,
         request: DeviceCaptureStartRequest,
     ) -> Result<RemoteDeviceCapture, ApplicationError> {
+        self.start_authorized(profile, client, request, None, None)
+            .await
+    }
+
+    async fn start_authorized(
+        &self,
+        profile: Arc<ProfileLease>,
+        client: Option<Arc<RemoteClient>>,
+        request: DeviceCaptureStartRequest,
+        append: Option<Arc<hypr_loofah_client::CaptureAppendAuthority>>,
+        owned_admission: Option<tokio::sync::OwnedSemaphorePermit>,
+    ) -> Result<RemoteDeviceCapture, ApplicationError> {
         let DeviceCaptureStartRequest {
             request_id,
             scope: expected_scope,
@@ -215,12 +231,15 @@ impl RemoteCaptureCoordinator {
                 "A canonical capture request UUID is required",
             ));
         }
-        let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
-            error(
-                ErrorCode::ResourceLimit,
-                "Too many device captures are being prepared",
-            )
-        })?;
+        let permit = match owned_admission {
+            Some(permit) => permit,
+            None => self.inner.starts.clone().try_acquire_owned().map_err(|_| {
+                error(
+                    ErrorCode::ResourceLimit,
+                    "Too many device captures are being prepared",
+                )
+            })?,
+        };
         let inner = self.inner.clone();
         tokio::spawn(async move {
             let _permit = permit;
@@ -235,6 +254,22 @@ impl RemoteCaptureCoordinator {
                 }
                 CaptureTarget::PendingSession { create_request_id }
                     if valid_uuid(create_request_id) => {}
+                CaptureTarget::AppendSession {
+                    session_id,
+                    admission,
+                } if append.as_ref().is_some_and(|authority| {
+                    authority.request() == &admission.request
+                        && session_id == &admission.request.session_id
+                        && request_id == admission.request.request_id
+                        && expected_scope == admission.request.scope
+                        && format == admission.baseline.format
+                        && processing == admission.request.processing
+                }) =>
+                {
+                    hypr_loofah_protocol::validate_capture_append_admission(admission)
+                        .map_err(|message| error(ErrorCode::Validation, message))?;
+                    append.as_ref().unwrap().check_current().await?;
+                }
                 _ => {
                     return Err(error(
                         ErrorCode::Validation,
@@ -288,7 +323,10 @@ impl RemoteCaptureCoordinator {
             }
             let identity = CaptureIdentity {
                 scope,
-                capture_id: uuid::Uuid::new_v4().to_string(),
+                capture_id: append.as_ref().map_or_else(
+                    || uuid::Uuid::new_v4().to_string(),
+                    |authority| authority.request().capture_id.clone(),
+                ),
                 request_id,
                 target,
             };
@@ -316,12 +354,15 @@ impl RemoteCaptureCoordinator {
                     }
                 }
                 host.device
-                    .start(CaptureStartIntent {
-                        profile_id: id.clone(),
-                        identity: identity.clone(),
-                        format: format.clone(),
-                        processing: processing.clone(),
-                    })
+                    .start_authorized(
+                        CaptureStartIntent {
+                            profile_id: id.clone(),
+                            identity: identity.clone(),
+                            format: format.clone(),
+                            processing: processing.clone(),
+                        },
+                        append,
+                    )
                     .map_err(|cause| error(ErrorCode::Unavailable, &cause.to_string()))?
             };
             #[cfg(test)]

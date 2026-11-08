@@ -17,6 +17,8 @@ const native = vi.hoisted(() => ({
     stop: ReturnType<typeof vi.fn>;
   }[],
   start: vi.fn(),
+  append: vi.fn(),
+  pendingAppend: vi.fn(),
   resume: vi.fn(),
   retire: vi.fn(),
   finish: vi.fn(),
@@ -49,6 +51,8 @@ vi.mock("./device-recordings", () => ({
     native.destinations.push(destination);
     return {
       start: native.start,
+      append: native.append,
+      pendingAppendRequests: native.pendingAppend,
       recoveryInventory: vi.fn(async () => native.records),
       resumeUpload: native.resume,
       retire: (identity: unknown, request: string, current: () => boolean) => {
@@ -109,6 +113,8 @@ const caches: QueryClient[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
   native.start.mockReset().mockResolvedValue(record());
+  native.append.mockReset();
+  native.pendingAppend.mockReset().mockResolvedValue([]);
   native.finish.mockReset();
   native.retire.mockReset();
   native.exportAudio.mockReset();
@@ -133,6 +139,7 @@ async function mount({
   strict = false,
   nativeConnectionId = "original-connection",
   features = ["capture_publication", "capture_retirement"],
+  hasAudio = false,
 } = {}) {
   if (active) native.records = [record()];
   const backend = {
@@ -141,7 +148,7 @@ async function mount({
     networkMode: "always",
     canEdit,
     features,
-    audioMetadata: vi.fn(async () => null),
+    audioMetadata: vi.fn(async () => (hasAudio ? { duration_ms: 1000 } : null)),
     transcriptOverview: vi.fn(async () => ({
       has_words: false,
       speaker_labels: [],
@@ -286,7 +293,7 @@ it("starts a pending capture before server sign-in using only the saved destinat
   render(
     <QueryClientProvider client={cache}>
       <DeviceRecordingHost
-        profileId={profileId}
+        profileId="profile"
         destination={{
           scopeKey: destination.scopeKey,
           scope: destination.scope,
@@ -770,4 +777,74 @@ it("does not reuse cleanup authorization after the access scope is replaced", as
   view.rerenderHost("profile", replacement);
   await waitFor(() => expect(original()).toBe(false));
   expect(view.scope.getSnapshot().state).toBe("connected");
+});
+
+it("offers append only for the same live client with the append capability", async () => {
+  for (const options of [
+    { features: ["capture_publication"] },
+    {
+      features: ["capture_publication", "capture_append"],
+      nativeConnectionId: "replacement",
+    },
+    { features: ["capture_publication", "capture_append"], canEdit: false },
+  ]) {
+    const view = await mount({ ...options, hasAudio: true });
+    const button = await screen.findByRole("button", {
+      name: options.canEdit === false ? "Record audio" : "Append audio",
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    view.unmount();
+  }
+  expect(native.append).not.toHaveBeenCalled();
+  expect(native.pendingAppend).not.toHaveBeenCalled();
+});
+
+it("reuses the saved append declaration after restart and never guesses a format", async () => {
+  const original = {
+    scope: destination.scope,
+    session_id: "note",
+    request_id: "original-append-request",
+    capture_id: "original-append-capture",
+    admission_id: "original-admission",
+    processing: null,
+  };
+  native.pendingAppend.mockResolvedValue([original]);
+  native.append.mockRejectedValue(new Error("Lost append response"));
+  const view = await mount({
+    hasAudio: true,
+    features: ["capture_publication", "capture_append"],
+  });
+  const button = await screen.findByRole("button", { name: "Append audio" });
+  await waitFor(() =>
+    expect((button as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(button);
+  await screen.findByText("Lost append response");
+  fireEvent.click(button);
+  await waitFor(() => expect(native.append).toHaveBeenCalledTimes(2));
+  expect(native.append.mock.calls[0][0]).toEqual(original);
+  expect(native.append.mock.calls[1][0]).toEqual(original);
+  expect(native.append.mock.calls[0][0]).not.toHaveProperty("format");
+  expect(native.start).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+it("refuses ambiguous saved append requests instead of obtaining a fresh baseline", async () => {
+  native.pendingAppend.mockResolvedValue([
+    { session_id: "note", request_id: "first" },
+    { session_id: "note", request_id: "second" },
+  ]);
+  await mount({
+    hasAudio: true,
+    features: ["capture_publication", "capture_append"],
+  });
+  await screen.findByText(
+    "Multiple saved append requests need recovery before recording again.",
+  );
+  expect(
+    (screen.getByRole("button", { name: "Append audio" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(native.append).not.toHaveBeenCalled();
+  expect(native.start).not.toHaveBeenCalled();
 });
