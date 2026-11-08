@@ -11,6 +11,23 @@ pub use authority::{MediaAuthority, MediaScope};
 pub use submissions::{MediaSubmission, MediaSubmissions};
 const SNAPSHOT_LIMIT: usize = 16 * 1024 * 1024;
 impl RemoteClient {
+    pub fn media_initial_metadata_capability(&self, cancel: &CancellationToken) -> Result<()> {
+        self.media_jobs_capability(cancel)?;
+        if !self
+            .capabilities
+            .features
+            .iter()
+            .any(|f| f == "media_initial_metadata")
+        {
+            let mut cause = failure(
+                ErrorCode::IncompatibleVersion,
+                "This server does not support initial media metadata. Upgrade the server and reconnect.",
+            );
+            cause.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            return Err(cause);
+        }
+        Ok(())
+    }
     pub fn media_jobs_capability(&self, cancel: &CancellationToken) -> Result<()> {
         if self.is_closed() || cancel.is_cancelled() {
             return Err(crate::cancelled());
@@ -239,6 +256,16 @@ impl MediaAuthority {
                 ErrorCode::Conflict,
                 "Original media submission scope changed",
             ));
+        }
+        if matches!(
+            submission.declaration.operation,
+            MediaOperation::ImportAudio {
+                initial: Some(_),
+                ..
+            }
+        ) {
+            self.client
+                .media_initial_metadata_capability(&self.cancel)?;
         }
         validate_media_declaration(&submission.declaration).map_err(invalid)
     }

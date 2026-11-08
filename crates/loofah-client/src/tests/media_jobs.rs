@@ -140,6 +140,14 @@ async fn media_capability_precedes_credentials_and_original_authority_rejects_lo
         .capabilities
         .features
         .push("media_jobs".into());
+    assert_eq!(
+        client
+            .media_initial_metadata_capability(&CancellationToken::new())
+            .unwrap_err()
+            .code,
+        ErrorCode::IncompatibleVersion
+    );
+    assert_eq!(fixture.credentials.loads.load(Ordering::SeqCst), before);
     let root = tempfile::tempdir().unwrap();
     let path = root.path().canonicalize().unwrap();
     let (bound, _profile) = authority(&fixture, &client, &path, CancellationToken::new()).await;

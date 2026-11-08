@@ -181,8 +181,17 @@ pub async fn remote_media_submit<R: tauri::Runtime>(
     validate_media_declaration(&declaration).map_err(invalid)?;
     let state = app.state::<RemoteState>();
     let media = app.state::<MediaJobState>();
-    let (_, cancel, _pending) =
+    let (client, cancel, _pending) =
         state.admit(&connection_id, window.label(), &declaration.request_id)?;
+    if matches!(
+        declaration.operation,
+        MediaOperation::ImportAudio {
+            initial: Some(_),
+            ..
+        }
+    ) {
+        client.media_initial_metadata_capability(&cancel)?;
+    }
     let authority = media
         .authority(
             &state,
