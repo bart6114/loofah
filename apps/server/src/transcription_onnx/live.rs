@@ -209,7 +209,7 @@ fn run(
 ) -> (u64, u64, Option<CaptureLiveFailure>) {
     let mut consumed = 0_u64;
     let mut count = 0_u64;
-    let mut operation = || -> Result<(), CaptureLiveFailure> {
+    let operation = || -> Result<(), CaptureLiveFailure> {
         let mut sessions = LiveSession::load_verified_pair(model)
             .map_err(|_| CaptureLiveFailure::EngineUnavailable)?;
         let mut mapper =

@@ -203,3 +203,32 @@ async fn onnx_shutdown_retains_original_model_admission_until_release() {
     closing.await.unwrap();
     assert_eq!(host.resources.phase.load(Ordering::Acquire), STOPPED);
 }
+
+#[tokio::test]
+async fn failed_onnx_verification_is_redacted_and_never_admits_work() {
+    let models = tempfile::tempdir().unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let config = serde_json::from_value(serde_json::json!({"model":"public-alias", "model_path":models.path(),
+        "onnx":{"streaming_model_path":models.path(),"diarizer_model_path":models.path(),"snapshot_root":scratch.path()} })).unwrap();
+    let host = OnnxHost::start(&config);
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while host.resources.phase.load(Ordering::Acquire) == LOADING {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let policy = host.policy();
+    assert_eq!(policy.availability, TranscriptionAvailability::Unavailable);
+    assert!(
+        !serde_json::to_string(&policy)
+            .unwrap()
+            .contains(models.path().to_str().unwrap())
+    );
+    assert!(matches!(
+        host.admit(),
+        Err(TranscriptionFailure::EngineUnavailable)
+    ));
+    host.shutdown().await;
+    assert_eq!(std::fs::read_dir(scratch.path()).unwrap().count(), 0);
+}

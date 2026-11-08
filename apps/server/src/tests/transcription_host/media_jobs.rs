@@ -31,7 +31,7 @@ async fn real_configured_media_replacement_uses_shared_cpu_and_original_member_s
     ));
 }
 
-async fn assert_real_media(fixture: Fixture) {
+async fn assert_real_media(fixture: Fixture) -> TranscriptWithData {
     let me = fixture.login("alice").await;
     let vault = &me.personal_vault_id;
     let context = fixture.service.vault(vault).await.unwrap();
@@ -167,6 +167,7 @@ async fn assert_real_media(fixture: Fixture) {
             .is_file()
     );
     fixture.service.shutdown().await.unwrap();
+    result
 }
 
 #[tokio::test]
@@ -194,6 +195,21 @@ async fn real_configured_onnx_media_preserves_shared_checked_publication() {
     })
     .await
     .unwrap();
-    assert_real_media(fixture).await;
+    let result = assert_real_media(fixture).await;
+    assert!(
+        !result.speaker_hints.is_empty(),
+        "Real ONNX diarization must produce system-channel hints"
+    );
+    for hint in result.speaker_hints {
+        let word = result
+            .words
+            .iter()
+            .find(|word| word.id.as_deref() == Some(hint.word_id.as_str()))
+            .unwrap();
+        assert_eq!(
+            word.channel, 1.0,
+            "Diarization must preserve the self channel"
+        );
+    }
     assert_eq!(std::fs::read_dir(scratch.path()).unwrap().count(), 0);
 }
