@@ -319,6 +319,8 @@ export type TitlePolicy = "preserve" | "generate_if_empty"
 
 export type Transcript = { id: string; started_at_ms: number; ended_at_ms: number | null; memo: string; text: string; words: JsonValue[]; speaker_hints: JsonValue[] }
 
+export type TranscriptOverview = { has_words: boolean; speaker_labels: string[]; started_at: number | null; ended_at: number | null }
+
 export type TranscriptSpeakerHint = { id?: string | null; word_id: string; type: string; value?: JsonValue }
 
 export type TranscriptWithData = { id: string; user_id?: string; created_at?: string; session_id: string; started_at?: number; ended_at?: number | null; memo_md?: string; words?: TranscriptWord[]; speaker_hints?: TranscriptSpeakerHint[] }

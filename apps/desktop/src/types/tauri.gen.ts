@@ -398,6 +398,21 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationTranscriptOverview(
+    sessionId: string,
+  ): Promise<Result<TranscriptOverview, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_transcript_overview", {
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationDocuments(
     sessionId: string,
   ): Promise<Result<EnhancedDoc[], ApplicationError>> {
@@ -2688,6 +2703,7 @@ export type RemoteOperation =
       target: DocumentTarget;
       input: SaveDocumentRequest;
     }
+  | { kind: "transcript_overview"; vault_id: string; session_id: string }
   | { kind: "transcripts"; vault_id: string; session_id: string }
   | { kind: "audio_metadata"; vault_id: string; session_id: string }
   | {
@@ -2796,6 +2812,7 @@ export type RemoteReply =
   | { kind: "documents"; value: EnhancedDoc[] }
   | { kind: "document"; value: DocumentSnapshot }
   | { kind: "document_save"; value: DocumentSaveOutcome }
+  | { kind: "transcript_overview"; value: TranscriptOverview }
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "audio_metadata"; value: FileMetadata | null }
   | { kind: "attachment_info"; value: FileInfo | null }
@@ -3137,6 +3154,12 @@ export type TranscriptDelta = {
   replaced_ids: string[];
   new_hints: TranscriptSpeakerHint[];
   started_at_ms: number;
+};
+export type TranscriptOverview = {
+  has_words: boolean;
+  speaker_labels: string[];
+  started_at: number | null;
+  ended_at: number | null;
 };
 export type TranscriptSpeakerHint = {
   id?: string | null;
