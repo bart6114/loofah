@@ -108,9 +108,6 @@ impl SessionExportState {
     pub fn pending(&self) -> bool {
         !self.0.state.lock().unwrap().active.is_empty()
     }
-    pub fn initialized(&self) -> bool {
-        self.pending()
-    }
     pub fn release_window(&self, owner: &str) {
         let mut state = self.0.state.lock().unwrap();
         state.owners.remove(owner);
