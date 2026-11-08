@@ -16,6 +16,9 @@ mod transcription;
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    TranscriptionPolicy {
+        vault_id: String,
+    },
     StartCaptureLive {
         vault_id: String,
         binding: crate::CaptureLiveBinding,
@@ -318,6 +321,7 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    TranscriptionPolicy(TranscriptionPolicy),
     CaptureLiveSnapshot(CaptureLiveSnapshot),
     CaptureLiveCaptions(CaptureLiveCaptionPage),
     CaptureLiveResult(Option<TranscriptionJobResult>),
@@ -410,6 +414,7 @@ impl RemoteClient {
             return Err(error);
         }
         let required_feature = match &operation {
+            RemoteOperation::TranscriptionPolicy { .. } => Some("transcription_policy"),
             operation if capture_live::is_operation(operation) => {
                 Some("capture_live_transcription")
             }
@@ -453,6 +458,7 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::TranscriptionPolicy { .. } => "transcription policy",
                 ref operation if capture_live::is_operation(operation) => {
                     "live capture transcription"
                 }
@@ -656,6 +662,10 @@ impl RemoteClient {
         })?;
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::TranscriptionPolicy { vault_id } => (
+                Method::GET,
+                vec!["vaults", vault_id, "transcription", "policy"],
+            ),
             RemoteOperation::StartCaptureLive {
                 vault_id,
                 binding,
@@ -1409,6 +1419,16 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                RemoteOperation::TranscriptionPolicy { .. } => {
+                    let policy: TranscriptionPolicy = json_body(response, 4096).await?;
+                    validate_transcription_policy(&policy).map_err(|_| {
+                        failure(
+                            ErrorCode::IncompatibleVersion,
+                            "Invalid transcription policy",
+                        )
+                    })?;
+                    RemoteReply::TranscriptionPolicy(policy)
+                }
                 operation @ (RemoteOperation::StartCaptureLive { .. }
                 | RemoteOperation::CaptureLiveStatus { .. }
                 | RemoteOperation::CaptureLiveCaptions { .. }

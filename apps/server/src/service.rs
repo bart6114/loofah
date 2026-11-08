@@ -276,6 +276,18 @@ impl Service {
         .map_err(ApiError::internal)?
     }
 
+    pub(crate) fn transcription_policy(&self) -> hypr_loofah_protocol::TranscriptionPolicy {
+        #[cfg(feature = "cpu-transcription")]
+        if let (Some(host), Some(config)) = (&self.transcription, &self.config.transcription) {
+            let mut policy = host.policy(&config.model);
+            if self.stop.is_cancelled() {
+                policy.availability = hypr_loofah_protocol::TranscriptionAvailability::Stopping;
+            }
+            return policy;
+        }
+        hypr_loofah_protocol::TranscriptionPolicy::default()
+    }
+
     pub async fn shutdown(self: &Arc<Self>) -> Result<()> {
         self.shutdown_with_deadline(std::time::Duration::from_secs(30))
             .await

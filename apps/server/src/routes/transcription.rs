@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) fn router() -> Router<Arc<Service>> {
     Router::new()
+        .route("/vaults/{vault}/transcription/policy", get(policy))
         .route("/vaults/{vault}/transcription/jobs", get(list).post(submit))
         .route("/vaults/{vault}/transcription/jobs/{job}", get(status))
         .route(
@@ -117,6 +118,19 @@ async fn resume(
         Ok(Json(
             context.resume_transcription_result(member, job).await?,
         ))
+    })
+    .await
+}
+
+async fn policy(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath(vault): ApiPath<String>,
+) -> Result<Response> {
+    let access = service.catalog.access(&identity, &vault, false).await?;
+    let host = service.clone();
+    content_read(&service, access, 4096, async move {
+        Ok(host.transcription_policy())
     })
     .await
 }

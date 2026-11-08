@@ -148,13 +148,12 @@ pub(super) fn validate_facets(reply: &TimelineFacets, input: &TimelineFacetsQuer
         if node.parent_path.as_deref() != parent || node.label != label {
             return Err(malformed());
         }
-        if let Some(parent) = parent {
-            if nodes
+        if let Some(parent) = parent
+            && nodes
                 .get(parent)
                 .is_none_or(|ancestor| ancestor.subtree_count < node.subtree_count)
-            {
-                return Err(malformed());
-            }
+        {
+            return Err(malformed());
         }
     }
     Ok(())

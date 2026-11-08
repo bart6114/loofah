@@ -74,6 +74,14 @@ impl TranscriptionHost {
         self.engine.clone()
     }
 
+    pub(crate) fn policy(&self, model: &str) -> hypr_loofah_protocol::TranscriptionPolicy {
+        model_policy(
+            model,
+            self.engine.observer().snapshot(),
+            self.engine.accepting(),
+        )
+    }
+
     pub(crate) fn stop_admission(&self) {
         self.engine.stop_admission();
     }
@@ -101,6 +109,73 @@ impl TranscriptionHost {
                 );
                 std::future::pending::<()>().await;
             }
+        }
+    }
+}
+
+fn model_policy(
+    model: &str,
+    snapshot: hypr_transcribe_whisper_local::resources::ResourceSnapshot,
+    accepting: bool,
+) -> hypr_loofah_protocol::TranscriptionPolicy {
+    use hypr_loofah_protocol::TranscriptionAvailability as State;
+    let availability = match snapshot.phase {
+        ResourcePhase::Stopping | ResourcePhase::Stopped => State::Stopping,
+        _ if !accepting => State::Unavailable,
+        ResourcePhase::Loading => State::Loading,
+        ResourcePhase::Ready if snapshot.batch_groups > 0 || snapshot.live_groups > 0 => {
+            State::InUse
+        }
+        ResourcePhase::Ready => State::Ready,
+        ResourcePhase::Failed(_) => State::Unavailable,
+    };
+    hypr_loofah_protocol::TranscriptionPolicy {
+        model: Some(model.into()),
+        availability,
+        batch_enabled: true,
+        live_enabled: true,
+    }
+}
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+    use hypr_loofah_protocol::TranscriptionAvailability as State;
+    use hypr_transcribe_whisper_local::resources::{ResourceError, ResourceSnapshot};
+    #[test]
+    fn model_policy_is_advisory_sanitized_and_respects_closed_admission() {
+        for (phase, batch, live, accepting, state) in [
+            (ResourcePhase::Loading, 0, 0, true, State::Loading),
+            (ResourcePhase::Ready, 0, 0, true, State::Ready),
+            (ResourcePhase::Ready, 1, 0, true, State::InUse),
+            (ResourcePhase::Ready, 0, 1, true, State::InUse),
+            (ResourcePhase::Ready, 0, 0, false, State::Unavailable),
+            (
+                ResourcePhase::Failed(ResourceError::Failed(
+                    "/private/operator/model.bin secret".into(),
+                )),
+                0,
+                0,
+                true,
+                State::Unavailable,
+            ),
+            (ResourcePhase::Stopping, 0, 0, false, State::Stopping),
+            (ResourcePhase::Stopped, 0, 0, false, State::Stopping),
+        ] {
+            let policy = model_policy(
+                "public-operator-alias",
+                ResourceSnapshot {
+                    phase,
+                    batch_groups: batch,
+                    live_groups: live,
+                    live_channels: live * 2,
+                },
+                accepting,
+            );
+            assert_eq!(policy.availability, state);
+            assert!(policy.batch_enabled && policy.live_enabled);
+            assert_eq!(policy.model.as_deref(), Some("public-operator-alias"));
+            assert!(!serde_json::to_string(&policy).unwrap().contains("private"));
+            assert!(!serde_json::to_string(&policy).unwrap().contains("secret"));
         }
     }
 }

@@ -21,6 +21,8 @@ mod processing_settings;
 pub use processing_settings::*;
 mod transcript_overview;
 pub use transcript_overview::*;
+mod transcription_policy;
+pub use transcription_policy::*;
 mod transcription;
 pub use transcription::*;
 mod timeline;

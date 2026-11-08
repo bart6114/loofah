@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod capture;
+mod capture_live;
 mod document_editor;
 mod jobs;
 mod processing_settings;
@@ -35,6 +36,7 @@ pub fn router(service: Arc<Service>) -> Router {
     let protected = Router::new()
         .merge(crate::media::router())
         .merge(capture::router())
+        .merge(capture_live::router())
         .merge(document_editor::router())
         .merge(jobs::router())
         .merge(processing_settings::router())
@@ -183,6 +185,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "notes".into(),
             "session_summaries".into(),
             "timeline_read".into(),
+            "transcription_policy".into(),
             "transcript_overview".into(),
             "tag_editing".into(),
             "session_cleanup".into(),

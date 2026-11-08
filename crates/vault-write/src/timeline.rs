@@ -216,10 +216,10 @@ impl SessionStore {
             if candidate.timestamp.is_none() {
                 undated += 1;
             }
-            if let TimelineView::Date { before_ms } = &input.view {
-                if candidate.timestamp.is_some_and(|value| value >= *before_ms) {
-                    future += 1;
-                }
+            if let TimelineView::Date { before_ms } = &input.view
+                && candidate.timestamp.is_some_and(|value| value >= *before_ms)
+            {
+                future += 1;
             }
             let paths = tag_paths(meta, &mut budget)?;
             if !matches(&input.view, &candidate, &paths) {

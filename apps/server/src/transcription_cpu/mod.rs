@@ -59,6 +59,10 @@ impl CpuTranscriptionHost {
         }))
     }
 
+    pub(crate) fn accepting(&self) -> bool {
+        !self.failed.load(Ordering::Acquire)
+    }
+
     pub(crate) fn observer(&self) -> ResourceObserver {
         self.resources.observer()
     }

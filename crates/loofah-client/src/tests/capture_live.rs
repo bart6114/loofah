@@ -26,6 +26,10 @@ impl Live {
     fn routes(self: &Arc<Self>) -> Router<Arc<Provider>> {
         Router::new()
             .route(
+                &format!("/api/v1/vaults/{VAULT}/transcription/policy"),
+                get(policy),
+            )
+            .route(
                 &format!("/api/v1/vaults/{VAULT}/captures/{CAPTURE}"),
                 get(metadata),
             )
@@ -344,4 +348,55 @@ async fn live_https_stream_reconnects_exact_prefix_keeps_state_only_pages_and_ne
         assert_eq!(state.cancels.load(Ordering::SeqCst), 0);
         assert_eq!(state.connections.load(Ordering::SeqCst), 2);
     }
+}
+
+async fn policy(Extension(state): Extension<Arc<Live>>, headers: HeaderMap) -> Json<Value> {
+    check(&headers);
+    let mut value = json!({"model":"operator-cpu-base","availability":"ready","batch_enabled":true,"live_enabled":true});
+    match state.mode.load(Ordering::SeqCst) {
+        10 => value["model_path"] = json!("/private/model.bin"),
+        11 => value["model"] = json!(" alias"),
+        12 => value["availability"] = json!("disabled"),
+        13 => value["model"] = Value::Null,
+        14 => value["availability"] = json!("unavailable"),
+        15 => value["model"] = json!("x".repeat(513)),
+        _ => {}
+    }
+    Json(value)
+}
+#[tokio::test]
+async fn transcription_policy_gates_before_credentials_and_validates_public_model_metadata() {
+    let state = Live::new();
+    let fixture = Fixture::with_extra_routes(None, state.routes()).await;
+    let mut client = fixture.client().await;
+    let operation = || RemoteOperation::TranscriptionPolicy {
+        vault_id: VAULT.into(),
+    };
+    let loads = fixture.credentials.loads.load(Ordering::SeqCst);
+    assert_eq!(
+        execute(&client, operation()).await.unwrap_err().code,
+        ErrorCode::IncompatibleVersion
+    );
+    assert_eq!(fixture.credentials.loads.load(Ordering::SeqCst), loads);
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("transcription_policy".into());
+    fixture.login(&client).await;
+    let RemoteReply::TranscriptionPolicy(value) = execute(&client, operation()).await.unwrap()
+    else {
+        panic!("Expected policy")
+    };
+    assert_eq!(value.model.as_deref(), Some("operator-cpu-base"));
+    for mode in [10, 11, 12, 13, 15] {
+        state.mode.store(mode, Ordering::SeqCst);
+        assert!(execute(&client, operation()).await.is_err(), "mode{mode}");
+    }
+    state.mode.store(14, Ordering::SeqCst);
+    let RemoteReply::TranscriptionPolicy(value) = execute(&client, operation()).await.unwrap()
+    else {
+        panic!("Expected policy")
+    };
+    assert_eq!(value.availability, TranscriptionAvailability::Unavailable);
 }

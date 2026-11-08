@@ -3,6 +3,7 @@ mod attachment_upload;
 mod attachments;
 mod audio_metadata;
 mod capture;
+mod capture_live;
 mod document_editor;
 mod lifecycle;
 mod metadata;
@@ -23,6 +24,7 @@ mod transcript_overview;
 mod transcription;
 #[cfg(feature = "cpu-transcription")]
 mod transcription_host;
+mod transcription_policy;
 mod waveform;
 
 use std::sync::Arc;
