@@ -162,7 +162,7 @@ impl VaultContext {
                 CaptureTarget::ExistingSession {
                     expected_audio_sha256: Some(_),
                     ..
-                }
+                } | CaptureTarget::AppendSession { .. }
             ) {
                 return Err(error(
                     ErrorCode::Validation,

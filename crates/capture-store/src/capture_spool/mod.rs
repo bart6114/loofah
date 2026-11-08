@@ -156,6 +156,11 @@ impl CaptureSpool {
     ) -> Result<CaptureWriter> {
         validate_identity(&identity)?;
         validate_format(&format)?;
+        if let CaptureTarget::AppendSession { admission, .. } = &identity.target
+            && format != admission.baseline.format
+        {
+            return Err(invalid("Append format differs from its admitted baseline"));
+        }
         let usage = Arc::new(
             self.use_gate(&identity)?
                 .try_read_owned()
@@ -478,6 +483,19 @@ fn validate_identity(id: &CaptureIdentity) -> Result<()> {
                 .is_some_and(|value| !valid_hash(value))
             {
                 return Err(invalid("Invalid capture audio baseline"));
+            }
+        }
+        CaptureTarget::AppendSession {
+            session_id,
+            admission,
+        } => {
+            hypr_loofah_protocol::validate_capture_append_admission(admission).map_err(invalid)?;
+            if session_id != &admission.request.session_id
+                || id.scope != admission.request.scope
+                || id.capture_id != admission.request.capture_id
+                || id.request_id != admission.request.request_id
+            {
+                return Err(invalid("Append admission belongs to another capture"));
             }
         }
         CaptureTarget::PendingSession { create_request_id } => validate_uuid(create_request_id)?,

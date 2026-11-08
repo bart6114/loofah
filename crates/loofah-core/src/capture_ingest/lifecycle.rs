@@ -3,7 +3,8 @@ use hypr_loofah_protocol::{CaptureIdentity, CaptureTarget};
 
 pub(super) fn target_session_id(identity: &CaptureIdentity) -> Result<String, ApplicationError> {
     match &identity.target {
-        CaptureTarget::ExistingSession { session_id, .. } => Ok(session_id.clone()),
+        CaptureTarget::ExistingSession { session_id, .. }
+        | CaptureTarget::AppendSession { session_id, .. } => Ok(session_id.clone()),
         CaptureTarget::PendingSession { create_request_id } => {
             let request_id = uuid::Uuid::parse_str(create_request_id)
                 .ok()

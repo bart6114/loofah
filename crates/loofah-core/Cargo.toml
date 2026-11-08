@@ -10,6 +10,7 @@ chrono = { workspace = true }
 futures-util = { workspace = true }
 hound = { workspace = true }
 hypr-agent-access = { workspace = true }
+hypr-audio-utils = { workspace = true }
 hypr-capture-store = { workspace = true }
 hypr-fs-sync-core = { workspace = true }
 hypr-loofah-protocol = { workspace = true }

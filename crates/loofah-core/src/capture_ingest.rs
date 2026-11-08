@@ -124,6 +124,15 @@ impl VaultContext {
                     "Capture identity does not match the authenticated vault scope",
                 ));
             }
+            if matches!(
+                input.identity.target,
+                hypr_loofah_protocol::CaptureTarget::AppendSession { .. }
+            ) {
+                return Err(rejected(
+                    ErrorCode::Unavailable,
+                    "Append publication is not yet configured",
+                ));
+            }
             let _admission = context
                 .admit_session_work(&target_session_id(&input.identity)?)
                 .await?;

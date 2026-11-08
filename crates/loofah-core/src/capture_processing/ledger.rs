@@ -311,7 +311,7 @@ fn validate(record: &Record, vault: &str, id: &str) -> Result<(), ApplicationErr
             CaptureTarget::ExistingSession {
                 expected_audio_sha256: Some(_),
                 ..
-            }
+            } | CaptureTarget::AppendSession { .. }
         )
         || s.request
             .model

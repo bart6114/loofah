@@ -388,7 +388,8 @@ pub(super) fn begin(
     }
     let capture_fingerprint = fingerprint(&id, &format);
     let session_id = match &id.target {
-        CaptureTarget::ExistingSession { session_id, .. } => Some(session_id.clone()),
+        CaptureTarget::ExistingSession { session_id, .. }
+        | CaptureTarget::AppendSession { session_id, .. } => Some(session_id.clone()),
         CaptureTarget::PendingSession { .. } => None,
     };
     let created_at_ms = SystemTime::now()
@@ -1106,6 +1107,7 @@ pub(super) fn load(root: &Path, limits: &CaptureSpoolLimits) -> Result<State> {
         }
         match &snapshot.identity.target {
             CaptureTarget::ExistingSession { session_id, .. }
+            | CaptureTarget::AppendSession { session_id, .. }
                 if snapshot.session_id.as_ref() != Some(session_id) =>
             {
                 return Err(damaged());

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod capture_append;
 pub mod capture_live;
 pub mod capture_processing;
 pub mod events;

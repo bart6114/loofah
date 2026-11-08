@@ -285,11 +285,13 @@ async fn run(
     ended: &CancellationToken,
     progress: &watch::Sender<CaptureUploadProgress>,
 ) -> Result<()> {
-    if let CaptureTarget::ExistingSession {
-        expected_audio_sha256: Some(_),
-        ..
-    } = &writer.identity().target
-    {
+    if matches!(
+        &writer.identity().target,
+        CaptureTarget::ExistingSession {
+            expected_audio_sha256: Some(_),
+            ..
+        } | CaptureTarget::AppendSession { .. }
+    ) {
         set(progress, CaptureUploadPhase::AppendUnsupported, None);
         return Ok(());
     }

@@ -62,6 +62,11 @@ pub(super) fn validate_operation(
                 ));
             }
         }
+        CaptureTarget::AppendSession { .. } => {
+            return Err(invalid(
+                "Append processing requires compound publication support",
+            ));
+        }
         CaptureTarget::PendingSession { create_request_id } => {
             if !uuid(create_request_id) {
                 return Err(invalid("A canonical creation UUID is required"));

@@ -346,10 +346,12 @@ fn target_session(snapshot: &super::CaptureSnapshot) -> Result<String, Applicati
             session_id,
             expected_audio_sha256: None,
         } if snapshot.session_id.as_deref() == Some(session_id.as_str()) => Ok(session_id.clone()),
-        CaptureTarget::ExistingSession { .. } => Err(rejected(
-            ErrorCode::Validation,
-            "Capture publication only supports an absent recording target",
-        )),
+        CaptureTarget::ExistingSession { .. } | CaptureTarget::AppendSession { .. } => {
+            Err(rejected(
+                ErrorCode::Validation,
+                "Capture publication only supports an absent recording target",
+            ))
+        }
         CaptureTarget::PendingSession { .. } => {
             let expected = super::target_session_id(&snapshot.identity)?;
             if snapshot

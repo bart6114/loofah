@@ -20,6 +20,10 @@ pub enum CaptureTarget {
         session_id: String,
         expected_audio_sha256: Option<String>,
     },
+    AppendSession {
+        session_id: String,
+        admission: crate::CaptureAppendAdmission,
+    },
     PendingSession {
         create_request_id: String,
     },
