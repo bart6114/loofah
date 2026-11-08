@@ -1339,6 +1339,8 @@ mod tests {
                     .is_some(),
                 controlled
             );
+            assert!(ractor::registry::where_is(crate::actors::SourceActor::name()).is_none());
+            assert!(ractor::registry::where_is(crate::actors::RecorderActor::name()).is_none());
             assert!(directory.path().join("sessions/local-note").is_dir());
             if controlled {
                 admitted(&root).await;

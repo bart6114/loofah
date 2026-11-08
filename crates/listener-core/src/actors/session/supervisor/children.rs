@@ -10,6 +10,10 @@ use crate::actors::{
 
 use super::SessionState;
 
+pub(super) type ChildJoins = std::sync::Arc<
+    std::sync::Mutex<std::collections::HashMap<ractor::ActorId, tokio::task::JoinHandle<()>>>,
+>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ChildKind {
     Source,
@@ -60,9 +64,10 @@ pub(super) async fn spawn_source(
     ctx: &SessionContext,
     recorder_cell: Option<ActorCell>,
     listener_routing: crate::actors::source::ListenerRouting,
+    joins: ChildJoins,
 ) -> Result<ActorRef<SourceMsg>, ractor::SpawnErr> {
     let recorder = recorder_cell.map(Into::into);
-    let (source_ref, _) = Actor::spawn_linked(
+    let (source_ref, join) = Actor::spawn_linked(
         Some(match &ctx.recording {
             crate::actors::RecordingDestination::Device { key, .. } => {
                 format!("source:{}", key.as_str())
@@ -93,14 +98,16 @@ pub(super) async fn spawn_source(
         supervisor_cell,
     )
     .await?;
+    joins.lock().unwrap().insert(source_ref.get_id(), join);
     Ok(source_ref)
 }
 
 pub(super) async fn spawn_recorder(
     supervisor_cell: ActorCell,
     ctx: &SessionContext,
+    joins: ChildJoins,
 ) -> Result<ActorCell, ractor::SpawnErr> {
-    let (recorder_ref, _): (ActorRef<RecMsg>, _) = Actor::spawn_linked(
+    let (recorder_ref, join): (ActorRef<RecMsg>, _) = Actor::spawn_linked(
         Some(match &ctx.recording {
             crate::actors::RecordingDestination::Device { key, .. } => {
                 format!("recorder:{}", key.as_str())
@@ -114,6 +121,7 @@ pub(super) async fn spawn_recorder(
         supervisor_cell,
     )
     .await?;
+    joins.lock().unwrap().insert(recorder_ref.get_id(), join);
     Ok(recorder_ref.get_cell())
 }
 
@@ -121,9 +129,10 @@ pub(super) async fn spawn_listener(
     supervisor_cell: ActorCell,
     ctx: &SessionContext,
     stream_offset_secs: Option<f64>,
+    joins: ChildJoins,
 ) -> Result<ActorCell, ractor::SpawnErr> {
     let mode = ChannelMode::determine(ctx.params.onboarding);
-    let (listener_ref, _): (ActorRef<crate::actors::ListenerMsg>, _) = Actor::spawn_linked(
+    let (listener_ref, join): (ActorRef<crate::actors::ListenerMsg>, _) = Actor::spawn_linked(
         Some(ListenerActor::name()),
         ListenerActor,
         ListenerArgs {
@@ -146,6 +155,7 @@ pub(super) async fn spawn_listener(
         supervisor_cell,
     )
     .await?;
+    joins.lock().unwrap().insert(listener_ref.get_id(), join);
     Ok(listener_ref.get_cell())
 }
 
@@ -162,14 +172,17 @@ pub(super) async fn try_restart_source(
     let ctx = state.ctx.clone();
     let recorder_cell = state.recorder_cell.as_ref().cloned();
     let listener_routing = state.mode.listener_routing(state.listener_cell.as_ref());
+    let joins = state.child_joins.clone();
 
     let cell = spawn_with_retry(&RETRY_STRATEGY, || {
         let sup = sup.clone();
         let ctx = ctx.clone();
         let recorder_cell = recorder_cell.clone();
         let listener_routing = listener_routing.clone();
+        let joins = joins.clone();
         async move {
-            let source_ref = spawn_source(sup, &ctx, recorder_cell, listener_routing).await?;
+            let source_ref =
+                spawn_source(sup, &ctx, recorder_cell, listener_routing, joins).await?;
             Ok(source_ref.get_cell())
         }
     })
@@ -195,10 +208,12 @@ pub(super) async fn try_restart_recorder(
     let sup = supervisor_cell;
     let ctx = state.ctx.clone();
 
+    let joins = state.child_joins.clone();
     let cell = spawn_with_retry(&RETRY_STRATEGY, || {
         let sup = sup.clone();
         let ctx = ctx.clone();
-        async move { spawn_recorder(sup, &ctx).await }
+        let joins = joins.clone();
+        async move { spawn_recorder(sup, &ctx, joins).await }
     })
     .await;
 
@@ -226,7 +241,7 @@ pub(super) async fn attach_listener_to_source(state: &SessionState) {
 pub(super) async fn stop_listener(state: &mut SessionState, reason: &str) -> f64 {
     if let Some(cell) = state.listener_cell.take() {
         let replay_duration_secs = prepare_listener_refresh(state).await;
-        stop_child(&cell, reason, "listener").await;
+        stop_child(&cell, &state.child_joins, reason, "listener").await;
         return replay_duration_secs;
     }
 
@@ -299,18 +314,18 @@ pub(super) async fn drain_local(state: &SessionState) -> bool {
 pub(super) async fn shutdown_children(state: &mut SessionState, reason: &str) -> bool {
     let mut stopped = true;
     if let Some(cell) = state.source_cell.take() {
-        stopped &= stop_child(&cell, reason, "source").await;
+        stopped &= stop_child(&cell, &state.child_joins, reason, "source").await;
     }
     if let Some(cell) = state.listener_cell.take() {
-        stopped &= stop_child(&cell, reason, "listener").await;
+        stopped &= stop_child(&cell, &state.child_joins, reason, "listener").await;
     }
     if let Some(cell) = state.recorder_cell.take() {
-        stopped &= stop_child(&cell, reason, "recorder").await;
+        stopped &= stop_child(&cell, &state.child_joins, reason, "recorder").await;
     }
     stopped
 }
 
-async fn stop_child(cell: &ActorCell, reason: &str, child: &str) -> bool {
+async fn stop_child(cell: &ActorCell, joins: &ChildJoins, reason: &str, child: &str) -> bool {
     if let Err(error) = cell
         .stop_and_wait(Some(reason.to_string()), Some(CHILD_STOP_TIMEOUT))
         .await
@@ -318,5 +333,25 @@ async fn stop_child(cell: &ActorCell, reason: &str, child: &str) -> bool {
         tracing::warn!(?error, %child, "child_stop_and_wait_failed");
         return false;
     }
-    true
+    join_child(joins, cell.get_id()).await
+}
+
+// ActorTerminated and stop_and_wait can precede actor registry cleanup.
+pub(super) async fn join_child(joins: &ChildJoins, id: ractor::ActorId) -> bool {
+    let join = match joins.lock() {
+        Ok(mut joins) => joins.remove(&id),
+        Err(_) => return false,
+    };
+    match join {
+        Some(mut join) => match tokio::time::timeout(CHILD_STOP_TIMEOUT, &mut join).await {
+            Ok(result) => result.is_ok(),
+            Err(_) => {
+                if let Ok(mut joins) = joins.lock() {
+                    joins.insert(id, join);
+                }
+                false
+            }
+        },
+        None => false,
+    }
 }

@@ -25,6 +25,7 @@ const LISTENER_RETRY_DELAYS: [Duration; 5] = [
 
 pub struct SessionState {
     ctx: SessionContext,
+    child_joins: children::ChildJoins,
     source_cell: Option<ActorCell>,
     listener_cell: Option<ActorCell>,
     recorder_cell: Option<ActorCell>,
@@ -63,8 +64,9 @@ impl Actor for SessionActor {
                 ctx.requested_transcription_mode,
                 ctx.params.transcription_mode,
             );
+            let child_joins = children::ChildJoins::default();
             let recorder_cell = Some(
-                children::spawn_recorder(myself.get_cell(), &ctx)
+                children::spawn_recorder(myself.get_cell(), &ctx, child_joins.clone())
                     .await
                     .map_err(|e| -> ActorProcessingErr { Box::new(e) })?,
             );
@@ -73,12 +75,14 @@ impl Actor for SessionActor {
                 &ctx,
                 recorder_cell.as_ref().cloned(),
                 mode.listener_routing(None),
+                child_joins.clone(),
             )
             .await
             .map_err(|e| -> ActorProcessingErr { Box::new(e) })?;
 
             Ok(SessionState {
                 ctx,
+                child_joins,
                 source_cell: Some(source_ref.get_cell()),
                 listener_cell: None,
                 recorder_cell,
@@ -107,7 +111,14 @@ impl Actor for SessionActor {
                 return Ok(());
             }
 
-            match children::spawn_listener(myself.get_cell(), &state.ctx, None).await {
+            match children::spawn_listener(
+                myself.get_cell(),
+                &state.ctx,
+                None,
+                state.child_joins.clone(),
+            )
+            .await
+            {
                 Ok(listener_cell) => {
                     state.listener_cell = Some(listener_cell);
                     state.mode.on_listener_attached();
@@ -232,6 +243,12 @@ impl Actor for SessionActor {
             SupervisionEvent::ActorStarted(_) | SupervisionEvent::ProcessGroupChanged(_) => {}
 
             SupervisionEvent::ActorTerminated(cell, _, reason) => {
+                if children::identify_child(state, &cell).is_some()
+                    && !children::join_child(&state.child_joins, cell.get_id()).await
+                {
+                    meltdown(myself, state).await;
+                    return Ok(());
+                }
                 match children::identify_child(state, &cell) {
                     Some(ChildKind::Listener) => {
                         tracing::info!(?reason, "listener_terminated");
@@ -274,6 +291,12 @@ impl Actor for SessionActor {
             }
 
             SupervisionEvent::ActorFailed(cell, error) => {
+                if children::identify_child(state, &cell).is_some()
+                    && !children::join_child(&state.child_joins, cell.get_id()).await
+                {
+                    meltdown(myself, state).await;
+                    return Ok(());
+                }
                 match children::identify_child(state, &cell) {
                     Some(ChildKind::Listener) => {
                         tracing::info!(?error, "listener_failed");
@@ -379,7 +402,14 @@ async fn refresh_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState
     let replay_offset_secs =
         (state.ctx.started_at_instant.elapsed().as_secs_f64() - replay_duration_secs).max(0.0);
 
-    match children::spawn_listener(myself.get_cell(), &state.ctx, Some(replay_offset_secs)).await {
+    match children::spawn_listener(
+        myself.get_cell(),
+        &state.ctx,
+        Some(replay_offset_secs),
+        state.child_joins.clone(),
+    )
+    .await
+    {
         Ok(listener_cell) => {
             state.listener_cell = Some(listener_cell);
             state.mode.on_listener_attached();
@@ -497,7 +527,14 @@ async fn retry_listener(myself: ActorRef<SessionMsg>, state: &mut SessionState) 
     let replay_offset_secs =
         (state.ctx.started_at_instant.elapsed().as_secs_f64() - replay_duration_secs).max(0.0);
 
-    match children::spawn_listener(myself.get_cell(), &state.ctx, Some(replay_offset_secs)).await {
+    match children::spawn_listener(
+        myself.get_cell(),
+        &state.ctx,
+        Some(replay_offset_secs),
+        state.child_joins.clone(),
+    )
+    .await
+    {
         Ok(listener_cell) => {
             tracing::info!(
                 attempts = state.listener_retry_attempt,
@@ -734,6 +771,7 @@ mod tests {
 
     fn test_state(ctx: SessionContext) -> SessionState {
         SessionState {
+            child_joins: Default::default(),
             ctx,
             source_cell: None,
             listener_cell: None,
@@ -1062,6 +1100,7 @@ mod tests {
         .unwrap();
 
         let mut state = SessionState {
+            child_joins: Default::default(),
             ctx: test_ctx(),
             source_cell: Some(source_ref.get_cell()),
             listener_cell: Some(listener_ref.get_cell()),
