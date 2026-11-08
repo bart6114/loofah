@@ -1039,8 +1039,10 @@ async fn imported_mp3_preserves_timestamps_transcript_and_recovers_without_reenc
         .await
         .unwrap()
         .unwrap();
+    let outcome = status.commit().await.unwrap();
     assert!(
-        matches!(status.commit().await.unwrap(), RecordingPublication::Published { filename, .. } if filename == "audio.mp3")
+        matches!(&outcome, RecordingPublication::Published { filename, .. } if filename == "audio.mp3"),
+        "{outcome:?}",
     );
     let after: serde_json::Value =
         serde_json::from_slice(&std::fs::read(f.directory.join("_meta.json")).unwrap()).unwrap();

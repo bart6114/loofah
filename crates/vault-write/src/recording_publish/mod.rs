@@ -473,10 +473,10 @@ impl RecordingPublicationPlan {
         fault(2)?;
         io::invalidate_peaks(&self.directory)?;
         fault(3)?;
-        let receipt = self.receipt.as_mut().unwrap();
-        if !io::transcript_absent(&self.directory)? {
+        if self.requires_transcript_absence() && !io::transcript_absent(&self.directory)? {
             return Ok(CommitStep::Finished(RecordingPublication::Uncertain));
         }
+        let receipt = self.receipt.as_mut().unwrap();
         let latest = io::read_metadata(&self.directory, limit)?
             .ok_or_else(|| StoreError::Io("Recording metadata disappeared".into()))?;
         let latest_hash = io::json_hash(&latest)?;
@@ -511,7 +511,7 @@ impl RecordingPublicationPlan {
         mut self,
         fault: impl Fn(u8) -> Result<(), StoreError>,
     ) -> Result<RecordingPublication, StoreError> {
-        if !io::transcript_absent(&self.directory)? {
+        if self.requires_transcript_absence() && !io::transcript_absent(&self.directory)? {
             return Ok(RecordingPublication::Uncertain);
         }
         let canonical = self.directory.join(self.request.filename());
