@@ -198,10 +198,12 @@ pub(super) async fn step(
             dispatch,
             transcript,
         };
-        let bytes = serde_json::to_vec(&result).map_err(storage)?;
-        if bytes.len() as u64 > limit {
-            return Err(unknown("Append result exceeds its retained output budget"));
-        }
+        crate::transcription_jobs::ledger::validate_result(&result.transcript).map_err(unknown)?;
+        let bytes = crate::transcription_jobs::ledger::encode_bounded_result(
+            &result,
+            usize::try_from(limit).unwrap_or(usize::MAX),
+        )
+        .map_err(unknown)?;
         tokio::task::spawn_blocking(move || {
             let _owner = owner;
             write_new(&output, &bytes)
@@ -263,7 +265,10 @@ async fn result(
         }
         let retained = read(&path, limit)?;
         let output: ResultFile = serde_json::from_slice(&retained).map_err(storage)?;
-        if serde_json::to_vec(&output).map_err(storage)? != retained {
+        crate::transcription_jobs::ledger::validate_result(&output.transcript)?;
+        if crate::transcription_jobs::ledger::encode_bounded_result(&output, retained.len())?
+            != retained
+        {
             return Err(conflict("Unsupported retained append result fields"));
         }
         output.dispatch.validate(&expected, &seal)?;

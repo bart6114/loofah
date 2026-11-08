@@ -801,7 +801,7 @@ fn read_result(root: &Path, r: &Record) -> Result<Option<TranscriptWithData>, Ap
     }
     Ok(Some(transcript))
 }
-pub(crate) fn encode_result(transcript: &TranscriptWithData) -> Result<Vec<u8>, ApplicationError> {
+pub(crate) fn validate_result(transcript: &TranscriptWithData) -> Result<(), ApplicationError> {
     if transcript.words.len() > 250_000
         || transcript.speaker_hints.len() > 500_000
         || !transcript.started_at.is_finite()
@@ -813,32 +813,48 @@ pub(crate) fn encode_result(transcript: &TranscriptWithData) -> Result<Vec<u8>, 
     {
         return Err(error(ErrorCode::Validation, "Invalid transcription result"));
     }
-    struct Buffer(Vec<u8>);
+    Ok(())
+}
+pub(crate) fn encode_bounded_result(
+    value: &impl Serialize,
+    limit: usize,
+) -> Result<Vec<u8>, ApplicationError> {
+    struct Buffer {
+        bytes: Vec<u8>,
+        limit: usize,
+    }
+
     impl Write for Buffer {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            if self.0.len().saturating_add(bytes.len()) > TRANSCRIPTION_RESULT_LIMIT {
+            if self.bytes.len().saturating_add(bytes.len()) > self.limit {
                 return Err(std::io::Error::other("transcription result size limit"));
             }
-            self.0.extend_from_slice(bytes);
+            self.bytes.extend_from_slice(bytes);
             Ok(bytes.len())
         }
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
     }
+    let mut buffer = Buffer {
+        bytes: Vec::new(),
+        limit: limit.min(TRANSCRIPTION_RESULT_LIMIT),
+    };
+    serde_json::to_writer(&mut buffer, value).map_err(|_| capacity())?;
+    Ok(buffer.bytes)
+}
+pub(crate) fn encode_result(transcript: &TranscriptWithData) -> Result<Vec<u8>, ApplicationError> {
+    validate_result(transcript)?;
     #[derive(Serialize)]
     struct Envelope<'a> {
         transcripts: [&'a TranscriptWithData; 1],
     }
-    let mut buffer = Buffer(Vec::new());
-    serde_json::to_writer(
-        &mut buffer,
+    encode_bounded_result(
         &Envelope {
             transcripts: [transcript],
         },
+        TRANSCRIPTION_RESULT_LIMIT,
     )
-    .map_err(|_| capacity())?;
-    Ok(buffer.0)
 }
 pub(crate) fn hash(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
