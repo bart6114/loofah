@@ -40,9 +40,24 @@ pub struct MediaDispatcher {
     capacity: Arc<tokio::sync::Semaphore>,
     admission: Mutex<()>,
     tasks: Mutex<HashMap<String, Task>>,
-    request_gates: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    request_gates: Mutex<HashMap<String, std::sync::Weak<Mutex<()>>>>,
+    journal_gates: Mutex<HashMap<String, std::sync::Weak<tokio::sync::RwLock<()>>>>,
     receivers: Mutex<HashMap<String, (CancellationToken, tokio::sync::watch::Receiver<bool>)>>,
     stop: CancellationToken,
+    #[cfg(test)]
+    source_write_pause: std::sync::Mutex<
+        Option<(
+            tokio::sync::oneshot::Sender<()>,
+            std::sync::mpsc::Receiver<()>,
+        )>,
+    >,
+    #[cfg(test)]
+    declaration_pause: std::sync::Mutex<
+        Option<(
+            tokio::sync::oneshot::Sender<()>,
+            tokio::sync::oneshot::Receiver<()>,
+        )>,
+    >,
 }
 impl MediaDispatcher {
     pub fn new(
@@ -89,8 +104,13 @@ impl MediaDispatcher {
             admission: Mutex::new(()),
             tasks: Mutex::new(HashMap::new()),
             request_gates: Mutex::new(HashMap::new()),
+            journal_gates: Mutex::new(HashMap::new()),
             receivers: Mutex::new(HashMap::new()),
             stop: CancellationToken::new(),
+            #[cfg(test)]
+            source_write_pause: Default::default(),
+            #[cfg(test)]
+            declaration_pause: Default::default(),
         }))
     }
     fn cli(
@@ -133,6 +153,7 @@ impl MediaDispatcher {
         if self.stop.is_cancelled() {
             return Err(unavailable("Media service is stopping"));
         }
+        let _request_gate = self.request_gate(&input.request_id).await?;
         let _gate = self.admission.lock().await;
         drop(self.authorization.authorize().await?);
         if let Some(existing) = self.load(&input.request_id).await? {
@@ -180,6 +201,14 @@ impl MediaDispatcher {
         self.declare_summary(&record.declaration).await?;
         record.phase = ready;
         self.save(record.clone(), false).await?;
+        #[cfg(test)]
+        {
+            let pause = self.declaration_pause.lock().unwrap().take();
+            if let Some((entered, release)) = pause {
+                let _ = entered.send(());
+                let _ = release.await;
+            }
+        }
         if record.phase == MediaPhase::Ready {
             self.dispatch(record.clone()).await?;
         }
@@ -289,19 +318,36 @@ impl MediaDispatcher {
         tasks.insert(request_key, Task { cancel, join });
         Ok(())
     }
+    async fn journal_gate(&self, request: &str) -> Arc<tokio::sync::RwLock<()>> {
+        let mut gates = self.journal_gates.lock().await;
+        gates.retain(|_, gate| gate.strong_count() > 0);
+        gates
+            .get(request)
+            .and_then(std::sync::Weak::upgrade)
+            .unwrap_or_else(|| {
+                let gate = Arc::new(tokio::sync::RwLock::new(()));
+                gates.insert(request.into(), Arc::downgrade(&gate));
+                gate
+            })
+    }
     async fn request_gate(
         &self,
         request: &str,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, ApplicationError> {
         journal::validate_request(request)?;
         let mut gates = self.request_gates.lock().await;
+        gates.retain(|_, gate| gate.strong_count() > 0);
         if !gates.contains_key(request) && gates.len() >= self.limits.requests {
             return Err(unavailable("Media request capacity exhausted"));
         }
         let gate = gates
-            .entry(request.into())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone();
+            .get(request)
+            .and_then(std::sync::Weak::upgrade)
+            .unwrap_or_else(|| {
+                let gate = Arc::new(Mutex::new(()));
+                gates.insert(request.into(), Arc::downgrade(&gate));
+                gate
+            });
         drop(gates);
         Ok(gate.lock_owned().await)
     }
@@ -332,6 +378,7 @@ fn operation(input: &MediaDeclaration) -> Result<LocalCliOperation, ApplicationE
             filename,
             content_type,
             created_at,
+            initial,
             transcribe,
             ..
         } => {
@@ -348,25 +395,37 @@ fn operation(input: &MediaDeclaration) -> Result<LocalCliOperation, ApplicationE
                     expected_metadata_revision: expected.metadata.revision.clone(),
                     created_at: normalized_date(created_at)?,
                 },
-                (None, None) => LocalCliOperation::Import {
-                    filename,
-                    title: Some(
-                        input
-                            .operation
-                            .upload()
-                            .unwrap()
-                            .0
-                            .rsplit_once('.')
-                            .map_or(input.operation.upload().unwrap().0, |(base, _)| base)
-                            .into(),
-                    ),
-                    into: None,
-                    transcribe: *transcribe,
-                    metadata: LocalInitialSessionMetadata {
-                        created_at: normalized_date(created_at)?,
-                        ..Default::default()
-                    },
-                },
+                (None, None) => {
+                    let mut metadata = initial
+                        .as_ref()
+                        .map(|initial| initial.metadata.clone())
+                        .unwrap_or_default();
+                    metadata.created_at =
+                        normalized_date(&created_at.clone().or(metadata.created_at))?;
+                    LocalCliOperation::Import {
+                        filename,
+                        title: initial
+                            .as_ref()
+                            .and_then(|initial| initial.title.clone())
+                            .or_else(|| {
+                                Some(
+                                    input
+                                        .operation
+                                        .upload()
+                                        .unwrap()
+                                        .0
+                                        .rsplit_once('.')
+                                        .map_or(input.operation.upload().unwrap().0, |(base, _)| {
+                                            base
+                                        })
+                                        .into(),
+                                )
+                            }),
+                        into: None,
+                        transcribe: *transcribe,
+                        metadata,
+                    }
+                }
                 _ => return Err(conflict("Original import baseline unavailable")),
             }
         }

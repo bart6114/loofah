@@ -297,3 +297,106 @@ async fn revocation_cancels_open_upload_and_shutdown_drains_original_receiver() 
     );
     fixture.stop().await;
 }
+
+#[tokio::test]
+async fn cancellation_keeps_original_blocking_writer_owned_until_its_real_exit() {
+    let fixture = Fixture::new().await;
+    let input = fixture.declaration(SUBTITLE).await;
+    let admission = fixture.media.declare(input.clone()).await.unwrap();
+    let (entered, entry) = tokio::sync::oneshot::channel();
+    let (release, waiting) = std::sync::mpsc::channel();
+    *fixture.media.source_write_pause.lock().unwrap() = Some((entered, waiting));
+    let media = fixture.media.clone();
+    let request = input.request_id.clone();
+    let receiving =
+        tokio::spawn(async move { media.receive(request, admission.revision, SUBTITLE).await });
+    entry.await.unwrap();
+    let media = fixture.media.clone();
+    let stopping = tokio::spawn(async move { media.shutdown().await });
+    tokio::task::yield_now().await;
+    assert!(!stopping.is_finished());
+    assert!(!receiving.is_finished());
+    let completion = fixture
+        .media
+        .receivers
+        .lock()
+        .await
+        .get(&input.request_id)
+        .map(|(_, done)| done.clone());
+    // shutdown may already have taken the inventory, but must still await its actual writer.
+    if let Some(done) = completion {
+        assert!(!*done.borrow());
+    }
+    release.send(()).unwrap();
+    assert!(receiving.await.unwrap().is_err());
+    stopping.await.unwrap();
+    assert!(
+        !fixture
+            .root
+            .path()
+            .join("vault/sessions")
+            .join(&fixture.session)
+            .join("transcript.json")
+            .exists()
+    );
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn declaration_and_recovery_share_one_dispatch_and_original_task_owner() {
+    let fixture = Fixture::new().await;
+    std::fs::write(
+        fixture
+            .root
+            .path()
+            .join("vault/sessions")
+            .join(&fixture.session)
+            .join("audio.wav"),
+        b"immutable source",
+    )
+    .unwrap();
+    let media = MediaDispatcher::with_capacity(
+        fixture.runtime.context.clone(),
+        "member-a".into(),
+        fixture.authority.clone(),
+        MediaLimits::default(),
+        Arc::new(tokio::sync::Semaphore::new(0)),
+    )
+    .unwrap();
+    let expected = media
+        .source(&fixture.session)
+        .await
+        .unwrap()
+        .recording
+        .unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let input = MediaDeclaration {
+        request_id: request.clone(),
+        operation: MediaOperation::Transcribe { expected },
+        transcription: Some(MediaTranscriptionOptions {
+            model: "server-alias".into(),
+            languages: vec![],
+        }),
+        summary: None,
+    };
+    let (entered, entry) = tokio::sync::oneshot::channel();
+    let (release, waiting) = tokio::sync::oneshot::channel();
+    *media.declaration_pause.lock().unwrap() = Some((entered, waiting));
+    let declaring = media.clone();
+    let declaration = tokio::spawn(async move { declaring.declare(input).await });
+    entry.await.unwrap();
+    let recovering = media.clone();
+    let recovered_request = request.clone();
+    let recovering = tokio::spawn(async move { recovering.recover(&recovered_request).await });
+    tokio::task::yield_now().await;
+    assert!(!recovering.is_finished());
+    release.send(()).unwrap();
+    declaration.await.unwrap().unwrap();
+    assert_eq!(
+        recovering.await.unwrap().unwrap().phase,
+        MediaPhase::Running
+    );
+    assert_eq!(media.tasks.lock().await.len(), 1);
+    media.shutdown().await;
+    fixture.stop().await;
+}

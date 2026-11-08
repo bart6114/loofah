@@ -1,8 +1,21 @@
 use super::*;
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-struct ReceiveCompletion(tokio::sync::watch::Sender<bool>);
-impl Drop for ReceiveCompletion { fn drop(&mut self) { self.0.send_replace(true); } }
+use std::io::Write;
+use tokio::io::{AsyncRead, AsyncReadExt};
+#[derive(Clone)]
+struct ReceiveCompletion {
+    _owner: Arc<ReceiveFinished>,
+}
+struct ReceiveFinished(tokio::sync::watch::Sender<bool>);
+impl Drop for ReceiveFinished {
+    fn drop(&mut self) {
+        self.0.send_replace(true);
+    }
+}
+enum SourcePart {
+    Bytes(Vec<u8>),
+    Complete,
+}
 
 impl MediaDispatcher {
     pub async fn source(&self, session: &str) -> Result<MediaSessionSnapshot, ApplicationError> {
@@ -11,21 +24,32 @@ impl MediaDispatcher {
         self.context.ensure_recording_publication_ready(session)?;
         let metadata = self.context.read_metadata(session).await?;
         let source = subtitles::subtitle_source(&self.context, session, "0".repeat(64)).await?;
-        if source.session_created_at() != metadata.meta.created_at { return Err(conflict("Media session changed")); }
-        let recording = match LocalCli::new(self.context.clone())?.media_source(session).await {
+        if source.session_created_at() != metadata.meta.created_at {
+            return Err(conflict("Media session changed"));
+        }
+        let recording = match LocalCli::new(self.context.clone())?
+            .media_source(session)
+            .await
+        {
             Ok(recording) => Some(recording),
             Err(cause) if cause.code == ErrorCode::NotFound => None,
             Err(cause) => return Err(cause),
         };
         let snapshot = MediaSessionSnapshot {
-            metadata, transcript_revision: source.transcript_revision().into(),
-            transcript_present: source.transcript_present(), recording,
+            metadata,
+            transcript_revision: source.transcript_revision().into(),
+            transcript_present: source.transcript_present(),
+            recording,
         };
-        validate_media_session_snapshot(&snapshot).map_err(|_| conflict("Media source changed while reading"))?;
+        validate_media_session_snapshot(&snapshot)
+            .map_err(|_| conflict("Media source changed while reading"))?;
         Ok(snapshot)
     }
     pub async fn receive<R: AsyncRead + Unpin + Send + 'static>(
-        self: &Arc<Self>, request: String, revision: String, mut reader: R,
+        self: &Arc<Self>,
+        request: String,
+        revision: String,
+        mut reader: R,
     ) -> Result<MediaRequestStatus, ApplicationError> {
         let owner = self.clone();
         tokio::spawn(async move {
@@ -35,7 +59,7 @@ impl MediaDispatcher {
             if record.phase != MediaPhase::Receiving { return owner.status(&request).await; }
             if owner.stop.is_cancelled() { return Err(unavailable("Media service is stopping")); }
             let (finished, done) = tokio::sync::watch::channel(false);
-            let _completion = ReceiveCompletion(finished);
+            let completion = ReceiveCompletion { _owner: Arc::new(ReceiveFinished(finished)) };
             let receiving = owner.stop.child_token();
             {
                 let mut receivers = owner.receivers.lock().await;
@@ -58,26 +82,66 @@ impl MediaDispatcher {
                 #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
                 options.open(create_stage).map_err(|_| unavailable("Media source staging failed"))
             }).await.map_err(|_| unavailable("Media source owner stopped"))??;
-            let mut file = tokio::fs::File::from_std(file);
-            let mut digest = Sha256::new(); let mut size = 0_u64; let mut buffer = vec![0; 64 * 1024];
-            loop {
-                let read = tokio::select! {
-                    _ = receiving.cancelled() => return Err(unavailable("Media upload interrupted")),
-                    _ = access.cancelled.cancelled() => return Err(error(ErrorCode::Forbidden, "Media access revoked")),
-                    _ = access.interrupted.cancelled() => return Err(unavailable("Media upload interrupted")),
-                    read = reader.read(&mut buffer) => read.map_err(|_| conflict("Media source stream incomplete"))?,
-                };
-                if read == 0 { break; }
-                size = size.checked_add(read as u64).filter(|size| *size <= expected.size_bytes)
-                    .ok_or_else(|| error(ErrorCode::Validation, "Media source exceeds its declaration"))?;
-                digest.update(&buffer[..read]);
-                file.write_all(&buffer[..read]).await.map_err(|_| unavailable("Media source staging failed"))?;
-            }
-            if size != expected.size_bytes || ledger::hex(&digest.finalize()) != expected.sha256 {
-                return Err(conflict("Media source differs from its immutable declaration"));
-            }
-            file.sync_all().await.map_err(|_| unavailable("Media source sync failed"))?;
-            drop(file);
+            let (send, mut receive) = tokio::sync::mpsc::channel::<SourcePart>(2);
+            let expected_source = expected.clone();
+            let writer_owner = owner.context.clone();
+            let writer_completion = completion.clone();
+            #[cfg(test)]
+            let mut pause = owner.source_write_pause.lock().unwrap().take();
+            let writer = tokio::task::spawn_blocking(move || {
+                let _owner = writer_owner;
+                let _completion = writer_completion;
+                let mut file = file;
+                let mut digest = Sha256::new();
+                let mut size = 0_u64;
+                loop {
+                    match receive.blocking_recv() {
+                        Some(SourcePart::Bytes(bytes)) => {
+                            #[cfg(test)]
+                            if let Some((entered, release)) = pause.take() {
+                                let _ = entered.send(()); let _ = release.recv();
+                            }
+                            size = size.checked_add(bytes.len() as u64).filter(|size| *size <= expected_source.size_bytes)
+                                .ok_or_else(|| conflict("Media source exceeds its immutable declaration"))?;
+                            digest.update(&bytes);
+                            file.write_all(&bytes).map_err(|_| unavailable("Media source staging failed"))?;
+                        }
+                        Some(SourcePart::Complete) => {
+                            if size != expected_source.size_bytes || ledger::hex(&digest.finalize()) != expected_source.sha256 {
+                                return Err(conflict("Media source differs from its immutable declaration"));
+                            }
+                            file.sync_all().map_err(|_| unavailable("Media source sync failed"))?;
+                            return Ok(());
+                        }
+                        None => return Err(conflict("Media source stream incomplete")),
+                    }
+                }
+            });
+            let streamed: Result<(), ApplicationError> = async {
+                let mut buffer = vec![0; 64 * 1024];
+                loop {
+                    let read = tokio::select! {
+                        _ = receiving.cancelled() => return Err(unavailable("Media upload interrupted")),
+                        _ = access.cancelled.cancelled() => return Err(error(ErrorCode::Forbidden, "Media access revoked")),
+                        _ = access.interrupted.cancelled() => return Err(unavailable("Media upload interrupted")),
+                        read = reader.read(&mut buffer) => read.map_err(|_| conflict("Media source stream incomplete"))?,
+                    };
+                    let part = if read == 0 { SourcePart::Complete } else { SourcePart::Bytes(buffer[..read].to_vec()) };
+                    tokio::select! {
+                        _ = receiving.cancelled() => return Err(unavailable("Media upload interrupted")),
+                        _ = access.cancelled.cancelled() => return Err(error(ErrorCode::Forbidden, "Media access revoked")),
+                        _ = access.interrupted.cancelled() => return Err(unavailable("Media upload interrupted")),
+                        sent = send.send(part) => sent.map_err(|_| unavailable("Media source writer stopped"))?,
+                    }
+                    if read == 0 { break; }
+                }
+                Ok(())
+            }.await;
+            drop(send);
+            let stored = writer.await.map_err(|_| unavailable("Media source writer requires review"))?;
+            streamed?;
+            stored?;
+            if receiving.is_cancelled() { return Err(error(ErrorCode::Cancelled, "Media upload stopped after source writer drained")); }
             let _authorization = owner.authorization.authorize().await?;
             let complete = directory.join("source");
             let pin = owner.context.clone();
@@ -94,22 +158,45 @@ impl MediaDispatcher {
             owner.status(&request).await
         }).await.map_err(|_| unavailable("Media receiving requires review"))?
     }
-    pub(super) async fn artifact(&self, record: &Admission) -> Result<Option<LocalCliArtifact>, ApplicationError> {
-        let Some((_, expected)) = record.declaration.operation.upload() else { return Ok(None); };
+    pub(super) async fn artifact(
+        &self,
+        record: &Admission,
+    ) -> Result<Option<LocalCliArtifact>, ApplicationError> {
+        let Some((_, expected)) = record.declaration.operation.upload() else {
+            return Ok(None);
+        };
         let expected = expected.clone();
-        let directory = self.root.join(format!("{}.source", record.declaration.request_id));
+        let directory = self
+            .root
+            .join(format!("{}.source", record.declaration.request_id));
         let pin = self.context.clone();
         tokio::task::spawn_blocking(move || {
-            if !ledger::existing_directory(&directory)? || !ledger::check_file(&directory.join("source"))? {
+            if !ledger::existing_directory(&directory)?
+                || !ledger::check_file(&directory.join("source"))?
+            {
                 return Err(conflict("Original verified media source unavailable"));
             }
             let path = directory.join("source");
             crate::capture_append::verify_file_sha256(&path, &expected.sha256)?;
-            let file = std::fs::File::open(path).map_err(|_| conflict("Original media source unavailable"))?;
-            if file.metadata().map_err(|_| conflict("Original media source unavailable"))?.len() != expected.size_bytes {
+            let file = std::fs::File::open(path)
+                .map_err(|_| conflict("Original media source unavailable"))?;
+            if file
+                .metadata()
+                .map_err(|_| conflict("Original media source unavailable"))?
+                .len()
+                != expected.size_bytes
+            {
                 return Err(conflict("Original media source length changed"));
             }
-            Ok(Some(LocalCliArtifact::new(file, expected.size_bytes, expected.sha256, None, Box::new(pin))))
-        }).await.map_err(|_| unavailable("Media source verifier stopped"))?
+            Ok(Some(LocalCliArtifact::new(
+                file,
+                expected.size_bytes,
+                expected.sha256,
+                None,
+                Box::new(pin),
+            )))
+        })
+        .await
+        .map_err(|_| unavailable("Media source verifier stopped"))?
     }
 }
