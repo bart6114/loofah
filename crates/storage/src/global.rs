@@ -15,6 +15,9 @@ pub fn compute_vault_config_path(base: &Path) -> PathBuf {
 }
 
 pub fn compute_default_base(bundle_id: &str) -> Option<PathBuf> {
+    if let Some(value) = std::env::var_os("LOOFAH_GLOBAL_BASE") {
+        return explicit_base(&value);
+    }
     let data_dir = dirs::data_dir()?;
     let app_folder = resolve_app_folder(bundle_id, cfg!(debug_assertions));
     let current = data_dir.join(app_folder);
@@ -25,6 +28,12 @@ pub fn compute_default_base(bundle_id: &str) -> Option<PathBuf> {
         Some(legacy) => migrate_legacy_base(&legacy, &current),
         None => current,
     })
+}
+
+fn explicit_base(value: &std::ffi::OsStr) -> Option<PathBuf> {
+    let path = PathBuf::from(value);
+    (path.is_absolute() && path.to_str().is_some() && (!path.exists() || path.is_dir()))
+        .then_some(path)
 }
 
 /// Dev builds and the staging channel use the raw bundle id as the folder
@@ -87,6 +96,21 @@ fn merge_directory(source: &Path, target: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_global_base_never_falls_back_to_or_migrates_an_existing_profile() {
+        let root = tempfile::tempdir().unwrap();
+        let isolated = root.path().join("isolated");
+        assert_eq!(explicit_base(isolated.as_os_str()), Some(isolated.clone()));
+        assert!(!isolated.exists());
+        for invalid in ["", ".", "relative/profile"] {
+            assert_eq!(explicit_base(std::ffi::OsStr::new(invalid)), None);
+        }
+        let file = root.path().join("file");
+        std::fs::write(&file, "untouched").unwrap();
+        assert_eq!(explicit_base(file.as_os_str()), None);
+        assert_eq!(std::fs::read(&file).unwrap(), b"untouched");
+    }
 
     #[test]
     fn resolve_app_folder_uses_new_folder_for_new_stable_installs() {

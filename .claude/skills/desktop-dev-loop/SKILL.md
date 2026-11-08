@@ -17,6 +17,15 @@ Dev builds use the **raw bundle id** as the folder name; release builds use
 `loofah` (`crates/storage/src/global.rs:19`). For dev that means
 `~/Library/Application Support/io.loofah.dev/`.
 
+For an isolated profile, including an optimized release build, set
+`LOOFAH_GLOBAL_BASE` to a fresh absolute local directory and `LOOFAH_VAULT_BASE`
+to a separate disposable vault before launching. The explicit global root skips
+legacy profile migration and contains startup preferences, model resources and
+operation bookkeeping. An invalid root fails startup instead of falling back to
+an existing profile. Use a unique bundle identifier for isolated native logs and
+permissions. Do not repoint a user's existing profile for QA. Engine-specific
+caches such as Soniqo remain separate and need their own supported configuration.
+
 | What | Where | Notes |
 |---|---|---|
 | Sessions, `config.json` | *vault base* | Defaults to the app-support dir, but is relocatable — `global.json` in the global base points at it |
