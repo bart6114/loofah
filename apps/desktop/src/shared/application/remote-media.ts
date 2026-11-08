@@ -51,6 +51,20 @@ export function remoteMedia(
     };
   };
   return {
+    pendingSubmissions: async (options) =>
+      (await connection.mediaSubmissions(vaultId, options)).map(
+        ({ declaration }) => ({
+          request_id: declaration.request_id,
+          filename:
+            declaration.operation.kind === "transcribe"
+              ? null
+              : declaration.operation.filename,
+          session_id:
+            declaration.operation.kind === "transcribe"
+              ? declaration.operation.expected.session_id
+              : declaration.operation.session_id,
+        }),
+      ),
     source: async (sessionId, options) => {
       const source = await query(
         { kind: "source", session_id: sessionId },

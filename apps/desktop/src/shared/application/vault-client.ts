@@ -161,6 +161,15 @@ export type VaultClient = {
     ) => Promise<ProviderCredentialSaveOutcome>;
   };
   media?: {
+    pendingSubmissions?: (
+      options?: RequestOptions,
+    ) => Promise<
+      Array<{
+        request_id: string;
+        filename: string | null;
+        session_id: string | null;
+      }>
+    >;
     source: (
       sessionId: string,
       options?: RequestOptions,

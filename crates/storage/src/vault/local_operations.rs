@@ -7,7 +7,12 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-const BUNDLES: [&str; 3] = ["io.loofah.stable", "io.loofah.dev", "io.loofah.staging"];
+const BUNDLES: [&str; 4] = [
+    "io.loofah.stable",
+    "io.loofah.dev",
+    "io.loofah.staging",
+    "io.loofah.separation-qa",
+];
 
 /// Hash an already canonical vault path using the existing Native storage-key recipe.
 pub fn canonical_vault_key(canonical_vault: &Path) -> String {
@@ -27,8 +32,12 @@ pub fn local_operation_root(
         .map(|bundle| resolve_host_directory(&base.join(bundle)))
         .into_iter()
         .collect::<io::Result<Vec<_>>>()?;
+    let mut preferred = applications[0].clone();
     if let Some(actual) = native_application_root {
         let actual = resolve_host_directory(actual)?;
+        if actual == applications[3] {
+            preferred = actual.clone();
+        }
         if !applications.contains(&actual) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -63,7 +72,7 @@ pub fn local_operation_root(
         }
     }
     match existing.len() {
-        0 => Ok(applications[0].join("backend").join(key).join("creates")),
+        0 => Ok(preferred.join("backend").join(key).join("creates")),
         1 => Ok(existing.into_iter().next().unwrap()),
         _ => Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
@@ -161,6 +170,21 @@ mod tests {
             root(&base, "io.loofah.stable", &lease)
         );
         assert!(!base.exists());
+    }
+
+    #[test]
+    fn isolated_qa_state_is_discoverable_by_cli_without_writing_a_production_profile() {
+        let vault = tempfile::tempdir().unwrap();
+        let lease = lease(vault.path());
+        let base = vault.path().canonicalize().unwrap().join("data");
+        let application = base.join("io.loofah.separation-qa");
+        let selected = local_operation_root(&lease, &base, Some(&application)).unwrap();
+        assert_eq!(selected, root(&base, "io.loofah.separation-qa", &lease));
+        std::fs::create_dir_all(&selected).unwrap();
+        std::fs::write(selected.join("intent"), b"original").unwrap();
+        assert_eq!(local_operation_root(&lease, &base, None).unwrap(), selected);
+        assert!(!base.join("io.loofah.stable").exists());
+        assert_eq!(std::fs::read(selected.join("intent")).unwrap(), b"original");
     }
 
     #[test]
