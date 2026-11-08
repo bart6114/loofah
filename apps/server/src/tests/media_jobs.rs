@@ -50,7 +50,7 @@ async fn upload(
     )
     .await
 }
-async fn upload_bytes(
+pub(super) async fn upload_bytes(
     fixture: &Fixture,
     subject: &str,
     vault: &str,
