@@ -7,7 +7,7 @@ use std::{
 };
 use tokio_util::sync::CancellationToken;
 
-fn input(fixture: &Fixture, me: &Me) -> CaptureIngestRequest {
+pub(super) fn input(fixture: &Fixture, me: &Me) -> CaptureIngestRequest {
     CaptureIngestRequest {
         identity: CaptureIdentity {
             scope: CaptureScope {
@@ -33,12 +33,12 @@ fn input(fixture: &Fixture, me: &Me) -> CaptureIngestRequest {
         first_admitted_audio_observed_at_ms: 1_794_096_001_123,
     }
 }
-fn pcm(frames: u32) -> Vec<u8> {
+pub(super) fn pcm(frames: u32) -> Vec<u8> {
     (0..frames)
         .flat_map(|_| [0.25f32.to_le_bytes(), (-0.5f32).to_le_bytes()].concat())
         .collect()
 }
-fn descriptor(
+pub(super) fn descriptor(
     input: &CaptureIngestRequest,
     sequence: u64,
     frames: u32,
@@ -62,7 +62,7 @@ fn descriptor(
     descriptor.digest = capture_chunk_digest(&descriptor);
     descriptor
 }
-async fn begin(
+pub(super) async fn begin(
     fixture: &Fixture,
     subject: &str,
     input: &CaptureIngestRequest,
@@ -77,7 +77,7 @@ async fn begin(
         )
         .await
 }
-async fn append(
+pub(super) async fn append(
     fixture: &Fixture,
     subject: &str,
     input: &CaptureIngestRequest,
@@ -467,7 +467,7 @@ async fn shared_vault_capture_staging_remains_private_and_rechecks_demotion_and_
     assert!(!begin(&fixture, "bob", &input).await.0.is_success());
 }
 
-fn hash(bytes: impl AsRef<[u8]>) -> String {
+pub(super) fn hash(bytes: impl AsRef<[u8]>) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))

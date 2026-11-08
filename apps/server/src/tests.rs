@@ -10,6 +10,7 @@ mod processing_api;
 mod processing_settings;
 mod recording;
 mod recording_delete;
+mod restore;
 mod session_cleanup;
 mod session_summaries;
 mod tag_editing;
