@@ -456,8 +456,11 @@ impl RemoteClient {
         }
         if self.stop.is_cancelled() || cancel.is_cancelled() {
             let mut error = cancelled();
-            if matches!(operation, RemoteOperation::DeleteEmptySession { .. })
-                || tag_write(&operation)
+            if matches!(
+                operation,
+                RemoteOperation::DeleteEmptySession { .. }
+                    | RemoteOperation::CreateSessionWithMetadata { .. }
+            ) || tag_write(&operation)
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
                 || capture_live::is_write(&operation)
@@ -520,6 +523,7 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                RemoteOperation::CreateSessionWithMetadata { .. } => "initial session metadata",
                 ref operation if provider_credentials::is_operation(operation) => {
                     "provider credential management"
                 }

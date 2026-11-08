@@ -13,7 +13,6 @@ pub async fn run(
     command: MeetingCommand,
     json: bool,
 ) -> Result<()> {
-    let vault = reader.vault()?;
     let MeetingCommand::Export {
         id,
         format,
@@ -31,32 +30,45 @@ pub async fn run(
         ));
     }
     if let Some(path) = &path {
-        let vault = vault
-            .canonicalize()
-            .map_err(|e| Error::operation("resolve vault", e.to_string()))?;
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        let destination = path
-            .canonicalize()
-            .or_else(|_| {
-                parent
-                    .canonicalize()
-                    .map(|p| p.join(path.file_name().unwrap_or_default()))
-            })
-            .map_err(|e| Error::operation("resolve output", e.to_string()))?;
-        if destination.starts_with(&vault) {
-            return Err(Error::operation(
-                "export session",
-                "output must be outside the source vault",
-            ));
+        if let crate::agent_reader::AgentReader::Local(gateway) = reader {
+            let vault = gateway
+                .vault()
+                .canonicalize()
+                .map_err(|e| Error::operation("resolve vault", e.to_string()))?;
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            let destination = path
+                .canonicalize()
+                .or_else(|_| {
+                    parent
+                        .canonicalize()
+                        .map(|p| p.join(path.file_name().unwrap_or_default()))
+                })
+                .map_err(|e| Error::operation("resolve output", e.to_string()))?;
+            if destination.starts_with(&vault) {
+                return Err(Error::operation(
+                    "export session",
+                    "output must be outside the source vault",
+                ));
+            }
         }
         if !force && path.symlink_metadata().is_ok() {
             return Err(Error::OutputExists(path.clone()));
         }
     }
-    let mut meeting = reader.export(id.clone()).await?;
+    let gateway = reader.command_gateway().await?;
+    let Reply::AgentExport {
+        export: mut meeting,
+    } = gateway
+        .execute(Operation::AgentExport {
+            session_id: id.clone(),
+        })
+        .await?
+    else {
+        return Err(crate::profiles::unexpected());
+    };
     // Preserve the pre-existing Markdown/JSON artifact and envelope contract.
     if include.is_empty() && matches!(format, ExportFormat::Markdown | ExportFormat::Json) {
         let content = match (format, json) {
@@ -111,10 +123,16 @@ pub async fn run(
         None
     } else {
         let transcript = if include.contains(&ExportContent::Transcript) {
+            let Reply::AgentSegments { segments } = gateway
+                .execute(Operation::AgentSegments {
+                    session_id: id.clone(),
+                })
+                .await?
+            else {
+                return Err(crate::profiles::unexpected());
+            };
             Some(Transcript {
-                items: reader
-                    .segments(id.clone())
-                    .await?
+                items: segments
                     .into_iter()
                     .map(|s| TranscriptItem {
                         speaker: Some(s.speaker_label),
@@ -147,7 +165,7 @@ pub async fn run(
             attachments: vec![],
         };
         if format == ExportFormat::Pdf {
-            let (files, owners) = collect_owned_attachments(reader, &id, &input).await?;
+            let (files, owners) = collect_owned_attachments(&gateway, &id, &input).await?;
             input.attachments = files;
             attachment_owners = owners;
         }
@@ -220,14 +238,13 @@ fn format_date(value: &str) -> String {
 }
 
 async fn collect_owned_attachments(
-    reader: &crate::agent_reader::AgentReader,
+    gateway: &crate::command_gateway::CommandGateway,
     session_id: &str,
     input: &ExportInput,
 ) -> Result<(
     Vec<hypr_export_core::ExportAttachment>,
     Vec<tempfile::NamedTempFile>,
 )> {
-    let gateway = reader.local_gateway()?;
     let markdown = format!(
         "{}\n{}",
         input.note_md.as_deref().unwrap_or_default(),
@@ -244,8 +261,6 @@ async fn collect_owned_attachments(
                 after: after.clone(),
             })
             .await?
-            .response
-            .result?
         {
             Reply::AttachmentPage { page } => page,
             _ => return Err(crate::profiles::unexpected()),
@@ -258,56 +273,9 @@ async fn collect_owned_attachments(
             if !markdown.contains(&format!("]({src}")) {
                 continue;
             }
-            let response = gateway
-                .execute(Operation::Attachment {
-                    session_id: session_id.to_owned(),
-                    attachment_id: file.filename.clone(),
-                })
-                .await?;
-            match response.response.result {
-                Ok(Reply::Attachment { .. }) => {}
-                Ok(_) => return Err(crate::profiles::unexpected()),
-                Err(cause)
-                    if matches!(
-                        cause.code,
-                        hypr_loofah_protocol::ErrorCode::NotFound
-                            | hypr_loofah_protocol::ErrorCode::Internal
-                    ) =>
-                {
-                    continue;
-                }
-                Err(cause) => return Err(cause.into()),
-            }
-            let blob = response.blob.ok_or_else(crate::profiles::unexpected)?;
-            let private = blob.trusted_path().map_err(|cause| {
-                Error::operation("prepare export attachment", cause.to_string())
-            })?;
-            let directory = private
-                .parent()
-                .ok_or_else(|| {
-                    Error::operation(
-                        "prepare export attachment",
-                        "Private attachment has no directory",
-                    )
-                })?
-                .to_owned();
-            let suffix = Path::new(&file.filename)
-                .extension()
-                .and_then(|value| value.to_str())
-                .map(|extension| format!(".{extension}"))
-                .unwrap_or_default();
-            let staged = blob
-                .with_file(move |source| {
-                    let mut output = tempfile::Builder::new()
-                        .suffix(&suffix)
-                        .tempfile_in(directory)?;
-                    std::io::copy(source, output.as_file_mut())?;
-                    Ok(output)
-                })
-                .await
-                .map_err(|cause| {
-                    Error::operation("prepare export attachment", cause.to_string())
-                })?;
+            let Some(staged) = gateway.attachment_file(session_id, &file.filename).await? else {
+                continue;
+            };
             files.push(hypr_export_core::ExportAttachment {
                 src,
                 path: staged.path().to_string_lossy().into_owned(),
@@ -363,9 +331,10 @@ mod tests {
             vault.clone(),
             hypr_search_cache::Cache::new(&root.path().join("cache"), &vault).unwrap(),
         );
-        let (attachments, owners) = collect_owned_attachments(&reader, "session", &input)
-            .await
-            .unwrap();
+        let (attachments, owners) =
+            collect_owned_attachments(&reader.command_gateway().await.unwrap(), "session", &input)
+                .await
+                .unwrap();
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0].src, "attachments/photo%20%C3%A9.PNG");
         assert_eq!(

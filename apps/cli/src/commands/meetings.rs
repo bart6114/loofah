@@ -87,9 +87,7 @@ pub(crate) async fn run_with_reader(
             output::emit(&rendered);
             Ok(())
         }
-        MeetingCommand::Rename { id, title } => {
-            rename_session(reader.vault()?, &id, title, json).await
-        }
+        MeetingCommand::Rename { id, title } => rename_session(reader, &id, title, json).await,
         MeetingCommand::New {
             title,
             note,
@@ -100,10 +98,9 @@ pub(crate) async fn run_with_reader(
             author,
             skill,
         } => {
-            let vault = reader.vault()?;
-            // Read the body before touching the vault, so a bad --note path creates nothing.
+            let gateway = reader.command_gateway().await?;
             let body = note.as_deref().map(read_body).transpose()?;
-            let meta = match local(vault)?
+            let meta = match gateway
                 .execute(Operation::CreateSession {
                     title,
                     markdown: body,
@@ -117,8 +114,6 @@ pub(crate) async fn run_with_reader(
                     },
                 })
                 .await?
-                .response
-                .result?
             {
                 Reply::SessionCreated { meta } => meta,
                 _ => return Err(crate::profiles::unexpected()),
@@ -153,14 +148,7 @@ pub(crate) async fn run_with_reader(
             append,
         } => {
             if set.is_some() || append.is_some() {
-                return edit_note(
-                    reader.vault()?,
-                    &id,
-                    set.as_deref(),
-                    append.as_deref(),
-                    json,
-                )
-                .await;
+                return edit_note(reader, &id, set.as_deref(), append.as_deref(), json).await;
             }
 
             let meeting = reader
@@ -216,12 +204,10 @@ pub(crate) async fn run_with_reader(
             Ok(())
         }
         MeetingCommand::Tag { command } => match command {
-            TagCommand::Add { id, tags } => edit_tags(reader.vault()?, &id, tags, true, json).await,
-            TagCommand::Remove { id, tags } => {
-                edit_tags(reader.vault()?, &id, tags, false, json).await
-            }
+            TagCommand::Add { id, tags } => edit_tags(reader, &id, tags, true, json).await,
+            TagCommand::Remove { id, tags } => edit_tags(reader, &id, tags, false, json).await,
         },
-        MeetingCommand::Delete { id } => delete_session(reader.vault()?, &id, json).await,
+        MeetingCommand::Delete { id } => delete_session(reader, &id, json).await,
         MeetingCommand::Recover { request_id } => {
             let reply = local(reader.vault()?)?
                 .execute(Operation::RecoverMedia {
@@ -266,14 +252,14 @@ pub(crate) async fn run_with_reader(
             Ok(())
         }
         MeetingCommand::Attach { id, file, name } => {
-            let saved = attach_file(reader.vault()?, &id, &file, name).await?;
+            let saved = attach_file(reader, &id, &file, name).await?;
             let rendered = if json {
                 output::json(
                     "meetings.attach",
                     &serde_json::json!({
                         "id": id,
                         "attachment_id": saved.attachment_id,
-                        "path": saved.relative_path.to_string_lossy(),
+                        "path": saved.relative_path.as_ref().map(|path| path.to_string_lossy()),
                         "src": to_portable_attachment_src(&saved.attachment_id),
                     }),
                     None,
@@ -295,22 +281,13 @@ fn local(vault: &Path) -> Result<crate::local_owner::LocalGateway> {
     ))
 }
 
-fn conflict(action: &'static str) -> Error {
-    Error::operation(
-        action,
-        "The session changed concurrently; nothing was overwritten. Read it again before retrying.",
-    )
-}
-
-async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Result<()> {
-    let gateway = local(vault)?;
+async fn rename_session(reader: &AgentReader, id: &str, title: String, json: bool) -> Result<()> {
+    let gateway = reader.command_gateway().await?;
     let snapshot = match gateway
         .execute(Operation::Metadata {
             session_id: id.to_owned(),
         })
         .await?
-        .response
-        .result?
     {
         Reply::Metadata { snapshot } => snapshot,
         _ => return Err(crate::profiles::unexpected()),
@@ -327,15 +304,13 @@ async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Re
             },
         })
         .await?
-        .response
-        .result?
     {
         Reply::MetadataSaved {
             outcome: MetadataSaveOutcome::Saved(_),
         } => {}
         Reply::MetadataSaved {
-            outcome: MetadataSaveOutcome::Conflict(_),
-        } => return Err(conflict("rename session")),
+            outcome: MetadataSaveOutcome::Conflict(snapshot),
+        } => return Err(gateway.conflict("rename session", snapshot.revision)),
         _ => return Err(crate::profiles::unexpected()),
     }
 
@@ -353,7 +328,7 @@ async fn rename_session(vault: &Path, id: &str, title: String, json: bool) -> Re
 }
 
 async fn edit_note(
-    vault: &Path,
+    reader: &AgentReader,
     id: &str,
     set: Option<&Path>,
     append: Option<&Path>,
@@ -364,15 +339,13 @@ async fn edit_note(
         (None, Some(path)) => ("append", path),
         _ => unreachable!("clap enforces exactly one of --set/--append"),
     };
+    let gateway = reader.command_gateway().await?;
     let body = read_body(source)?;
-    let gateway = local(vault)?;
     let snapshot = match gateway
         .execute(Operation::Note {
             session_id: id.to_owned(),
         })
         .await?
-        .response
-        .result?
     {
         Reply::Note { snapshot } => snapshot,
         _ => return Err(crate::profiles::unexpected()),
@@ -393,13 +366,13 @@ async fn edit_note(
             },
         }
     };
-    match gateway.execute(operation).await?.response.result? {
+    match gateway.execute(operation).await? {
         Reply::NoteSaved {
             outcome: NoteSaveOutcome::Saved(_),
         } => {}
         Reply::NoteSaved {
-            outcome: NoteSaveOutcome::Conflict(_),
-        } => return Err(conflict("edit note")),
+            outcome: NoteSaveOutcome::Conflict(snapshot),
+        } => return Err(gateway.conflict("edit note", snapshot.revision)),
         _ => return Err(crate::profiles::unexpected()),
     }
 
@@ -421,21 +394,25 @@ async fn edit_note(
 /// the same shape the desktop writes. Adding a present tag or removing an
 /// absent one is a no-op; `remove` never touches the append-only `tags.json`
 /// registry, while `add` registers each newly added tag there.
-async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: bool) -> Result<()> {
+async fn edit_tags(
+    reader: &AgentReader,
+    id: &str,
+    tags: Vec<String>,
+    add: bool,
+    json: bool,
+) -> Result<()> {
     if tags
         .iter()
         .any(|tag| hypr_vault_read::normalize_tag_name(tag).is_none())
     {
         return Err(Error::operation("edit tags", "tag name cannot be empty"));
     }
-    let gateway = local(vault)?;
+    let gateway = reader.command_gateway().await?;
     let snapshot = match gateway
         .execute(Operation::Metadata {
             session_id: id.to_owned(),
         })
         .await?
-        .response
-        .result?
     {
         Reply::Metadata { snapshot } => snapshot,
         _ => return Err(crate::profiles::unexpected()),
@@ -448,8 +425,6 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
             expected_revision: snapshot.revision,
         })
         .await?
-        .response
-        .result?
     {
         Reply::TagDelta {
             outcome: MetadataSaveOutcome::Saved(_),
@@ -457,9 +432,9 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
             tags,
         } => (changed, tags),
         Reply::TagDelta {
-            outcome: MetadataSaveOutcome::Conflict(_),
+            outcome: MetadataSaveOutcome::Conflict(snapshot),
             ..
-        } => return Err(conflict("edit tags")),
+        } => return Err(gateway.conflict("edit tags", snapshot.revision)),
         _ => return Err(crate::profiles::unexpected()),
     };
 
@@ -487,54 +462,31 @@ async fn edit_tags(vault: &Path, id: &str, tags: Vec<String>, add: bool, json: b
     Ok(())
 }
 
-async fn delete_session(vault: &Path, id: &str, json: bool) -> Result<()> {
-    let gateway = local(vault)?;
+async fn delete_session(reader: &AgentReader, id: &str, json: bool) -> Result<()> {
+    let gateway = reader.command_gateway().await?;
     let revision = match gateway
         .execute(Operation::SessionLifecycle {
             session_id: id.to_owned(),
         })
         .await?
-        .response
-        .result?
     {
         Reply::SessionLifecycle { revision, .. } => revision,
         _ => return Err(crate::profiles::unexpected()),
     };
-    let (path, trash_path, deleted_at) = match gateway
-        .execute(Operation::DeleteSession {
-            session_id: id.to_owned(),
-            expected_revision: revision,
-        })
-        .await?
-        .response
-        .result?
-    {
-        Reply::SessionDeleted {
-            path,
-            trash_path,
-            deleted_at,
-            ..
-        } => (path, trash_path, deleted_at),
-        _ => return Err(crate::profiles::unexpected()),
-    };
-
+    let deleted = gateway.delete(id.to_owned(), revision).await?;
+    let mut value = serde_json::json!({ "id": id, "status": "deleted", "mode": "soft", "path": deleted.path, "trash_path": deleted.trash_path, "deleted_at": deleted.deleted_at });
+    if let Some(token) = &deleted.trash_token {
+        value["trash_token"] = token.clone().into();
+        value["revision"] = serde_json::to_value(&deleted.revision).unwrap();
+    }
     let rendered = if json {
-        output::json(
-            "sessions.delete",
-            &serde_json::json!({
-                "id": id,
-                "status": "deleted",
-                "mode": "soft",
-                "path": path,
-                "trash_path": trash_path,
-                "deleted_at": deleted_at,
-            }),
-            None,
-        )?
+        output::json("sessions.delete", &value, None)?
+    } else if let Some(path) = &deleted.trash_path {
+        format!("Deleted session {id}; recover from {}", path.display())
     } else {
         format!(
-            "Deleted session {id}; recover from {}",
-            trash_path.display()
+            "Deleted session {id}; server restore token: {}",
+            deleted.trash_token.as_deref().unwrap_or_default()
         )
     };
     output::emit(&rendered);
@@ -557,11 +509,11 @@ pub(super) async fn session_path(vault: &Path, id: &str) -> Result<std::path::Pa
 }
 
 async fn attach_file(
-    vault: &Path,
+    reader: &AgentReader,
     id: &str,
     file: &Path,
     name: Option<String>,
-) -> Result<hypr_vault_write::SavedAttachment> {
+) -> Result<crate::command_gateway::SavedAttachment> {
     // Read the bytes before touching the vault, so a bad path creates nothing.
     if !file.is_file() {
         return Err(Error::NotFound(format!("file {}", file.display())));
@@ -583,34 +535,11 @@ async fn attach_file(
             })?,
     };
 
-    match local(vault)?
-        .execute_with_upload(
-            Operation::Attach {
-                session_id: id.to_owned(),
-                filename,
-            },
-            Some(source),
-            std::sync::Arc::new(|_| {}),
-        )
+    reader
+        .command_gateway()
         .await?
-        .response
-        .result
-        .map_err(|error| {
-            if error.code == hypr_loofah_protocol::ErrorCode::NotFound {
-                Error::NotFound(format!("meeting '{id}'"))
-            } else {
-                Error::from(error)
-            }
-        })? {
-        Reply::Attached {
-            attachment_id,
-            relative_path,
-        } => Ok(hypr_vault_write::SavedAttachment {
-            attachment_id,
-            relative_path,
-        }),
-        _ => Err(crate::profiles::unexpected()),
-    }
+        .attach(id.to_owned(), filename, source)
+        .await
 }
 
 /// Byte-matches the desktop editor's `toPortableAttachmentSrc`
@@ -738,6 +667,13 @@ fn truncate(value: &str, width: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn test_reader(vault: &std::path::Path) -> crate::agent_reader::AgentReader {
+        crate::agent_reader::AgentReader::local(
+            vault.to_path_buf(),
+            crate::vault::cache_for_vault(vault).unwrap(),
+        )
+    }
+
     use super::*;
 
     #[test]
@@ -804,7 +740,7 @@ mod tests {
         .unwrap();
         let input = root.path().join("note.md");
         std::fs::write(&input, "Updated through the local CLI").unwrap();
-        edit_note(&vault, &meta.id, Some(&input), None, false)
+        edit_note(&test_reader(&vault), &meta.id, Some(&input), None, false)
             .await
             .unwrap();
         assert_eq!(
@@ -834,10 +770,10 @@ mod tests {
         let file = source.path().join("image 73.png");
         std::fs::write(&file, b"png-bytes").unwrap();
 
-        let first = attach_file(vault.path(), &meta.id, &file, None)
+        let first = attach_file(&test_reader(vault.path()), &meta.id, &file, None)
             .await
             .unwrap();
-        let second = attach_file(vault.path(), &meta.id, &file, None)
+        let second = attach_file(&test_reader(vault.path()), &meta.id, &file, None)
             .await
             .unwrap();
 
@@ -848,7 +784,7 @@ mod tests {
             .path()
             .join(store.session_dir(&meta.id).await.unwrap());
         for saved in [&first, &second] {
-            let abs = vault.path().join(&saved.relative_path);
+            let abs = vault.path().join(saved.relative_path.as_ref().unwrap());
             assert!(abs.is_file());
             assert_eq!(abs.parent().unwrap(), session_dir.join("attachments"));
         }
@@ -863,7 +799,7 @@ mod tests {
 
         // --name overrides the stored filename.
         let named = attach_file(
-            vault.path(),
+            &test_reader(vault.path()),
             &meta.id,
             &file,
             Some("weird (v2)!.png".to_string()),
@@ -884,7 +820,7 @@ mod tests {
         let file = source.path().join("doc.pdf");
         std::fs::write(&file, b"%PDF").unwrap();
 
-        let error = attach_file(vault.path(), "no-such-meeting", &file, None)
+        let error = attach_file(&test_reader(vault.path()), "no-such-meeting", &file, None)
             .await
             .unwrap_err();
         assert_eq!(error.code(), "not_found");
@@ -902,7 +838,7 @@ mod tests {
         .await
         .unwrap();
         let error = attach_file(
-            vault.path(),
+            &test_reader(vault.path()),
             &meta.id,
             &source.path().join("missing.pdf"),
             None,

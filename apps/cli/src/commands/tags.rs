@@ -2,15 +2,20 @@ use crate::cli::TagsCommand;
 use crate::{Result, output};
 
 pub async fn run(cache: &hypr_search_cache::Cache, command: TagsCommand, json: bool) -> Result<()> {
+    let reader = crate::agent_reader::AgentReader::local(cache.vault().to_owned(), cache.clone());
+    run_with_reader(&reader, command, json).await
+}
+pub async fn run_with_reader(
+    reader: &crate::agent_reader::AgentReader,
+    command: TagsCommand,
+    json: bool,
+) -> Result<()> {
     match command {
         TagsCommand::List => {
-            let gateway =
-                crate::local_owner::LocalGateway::new(cache.vault().to_owned(), cache.clone());
+            let gateway = reader.command_gateway().await?;
             let tags = match gateway
                 .execute(hypr_loofah_protocol::LocalCliOperation::Tags {})
                 .await?
-                .response
-                .result?
             {
                 hypr_loofah_protocol::LocalCliReply::Tags { tags } => tags,
                 _ => return Err(crate::profiles::unexpected()),

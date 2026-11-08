@@ -2,6 +2,7 @@
 
 mod agent_reader;
 mod cli;
+mod command_gateway;
 mod commands;
 mod error;
 mod local_owner;
@@ -32,7 +33,7 @@ async fn run_inner(args: Args) -> Result<u8> {
     }
     if let Some(name) = &args.profile {
         match &args.command {
-            cli::Command::Sessions { .. } | cli::Command::Mcp => {}
+            cli::Command::Sessions { .. } | cli::Command::Tags { .. } | cli::Command::Mcp => {}
             _ => {
                 return Err(Error::operation(
                     "run remote command",
@@ -44,6 +45,9 @@ async fn run_inner(args: Args) -> Result<u8> {
         match args.command {
             cli::Command::Sessions { command } => {
                 commands::meetings::run_with_reader(&reader, command, args.json).await?
+            }
+            cli::Command::Tags { command } => {
+                commands::tags::run_with_reader(&reader, command, args.json).await?
             }
             cli::Command::Mcp => mcp::serve_with_reader(reader).await?,
             _ => unreachable!("remote commands were checked before selecting the profile"),

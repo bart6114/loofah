@@ -14,18 +14,18 @@ pub(crate) enum AgentReader {
 }
 
 impl AgentReader {
-    pub fn local(vault: PathBuf, cache: hypr_search_cache::Cache) -> Self {
-        Self::Local(crate::local_owner::LocalGateway::new(vault, cache))
-    }
-
-    pub fn local_gateway(&self) -> Result<&crate::local_owner::LocalGateway> {
+    pub async fn command_gateway(&self) -> Result<crate::command_gateway::CommandGateway> {
         match self {
-            Self::Local(gateway) => Ok(gateway),
-            Self::Remote(_) => Err(crate::Error::operation(
-                "run remote command",
-                "This command is not available for server profiles yet. No local vault was accessed.",
+            Self::Local(gateway) => Ok(crate::command_gateway::CommandGateway::Local(
+                gateway.clone(),
+            )),
+            Self::Remote(target) => Ok(crate::command_gateway::CommandGateway::Remote(
+                target.begin().await?,
             )),
         }
+    }
+    pub fn local(vault: PathBuf, cache: hypr_search_cache::Cache) -> Self {
+        Self::Local(crate::local_owner::LocalGateway::new(vault, cache))
     }
 
     pub fn vault(&self) -> Result<&Path> {
@@ -103,35 +103,6 @@ impl AgentReader {
                 RemoteReply::AgentMeeting(meeting) => Ok(meeting),
                 _ => Err(crate::profiles::unexpected()),
             },
-        }
-    }
-
-    pub async fn export(&self, session_id: String) -> Result<hypr_loofah_protocol::AgentExport> {
-        match self
-            .local_gateway()?
-            .execute(LocalCliOperation::AgentExport { session_id })
-            .await?
-            .response
-            .result?
-        {
-            LocalCliReply::AgentExport { export } => Ok(export),
-            _ => Err(crate::profiles::unexpected()),
-        }
-    }
-
-    pub async fn segments(
-        &self,
-        session_id: String,
-    ) -> Result<Vec<hypr_loofah_protocol::RenderedTranscriptSegment>> {
-        match self
-            .local_gateway()?
-            .execute(LocalCliOperation::AgentSegments { session_id })
-            .await?
-            .response
-            .result?
-        {
-            LocalCliReply::AgentSegments { segments } => Ok(segments),
-            _ => Err(crate::profiles::unexpected()),
         }
     }
 

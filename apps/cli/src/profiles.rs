@@ -1,8 +1,8 @@
 use std::{path::PathBuf, sync::Arc};
 
 use hypr_loofah_client::{
-    ConnectionProfile, ConnectionProfiles, CredentialStore, OsCredentials, ProfileLease,
-    RemoteClient, RemoteOperation, RemoteReply, failure,
+    ConnectionProfile, ConnectionProfiles, CredentialStore, OsCredentials, ProfileCommitGuard,
+    ProfileGeneration, ProfileLease, RemoteClient, RemoteOperation, RemoteReply, failure,
 };
 use hypr_loofah_protocol::{ErrorCode, Me};
 use tokio_util::sync::CancellationToken;
@@ -173,6 +173,86 @@ impl RemoteTarget {
             return Err(failure(ErrorCode::IncompatibleVersion,"This server does not provide the agent read operations required by the CLI and MCP bridge").into());
         }
         request(&client, build(self.binding.vault.clone())).await
+    }
+}
+
+pub(crate) struct RemoteSession {
+    pub(super) client: Arc<RemoteClient>,
+    lease: Arc<ProfileLease>,
+    generation: ProfileGeneration,
+    member: String,
+    pub(super) vault: String,
+    pub(super) request_id: String,
+}
+impl RemoteTarget {
+    pub async fn begin(&self) -> Result<RemoteSession> {
+        let lease = self.store.open(&self.name).await?;
+        let generation = lease.generation().await?;
+        let profile = generation.profile();
+        if binding(profile)? != self.binding {
+            return Err(failure(
+                ErrorCode::Conflict,
+                "This server profile changed its account or vault; select it again",
+            )
+            .into());
+        }
+        let client = connect(&lease, profile).await?;
+        if !profile
+            .credential_accounts
+            .iter()
+            .any(|account| account == client.credential_account())
+        {
+            return Err(failure(
+                ErrorCode::Unauthenticated,
+                "The server authentication settings changed; sign in to this profile again",
+            )
+            .into());
+        }
+        let session = RemoteSession {
+            client,
+            lease,
+            generation,
+            member: self.binding.member.clone(),
+            vault: self.binding.vault.clone(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+        };
+        drop(session.guard().await?);
+        Ok(session)
+    }
+}
+impl RemoteSession {
+    pub(super) async fn guard(&self) -> Result<ProfileCommitGuard> {
+        let guard = self.lease.guard_generation(&self.generation).await?;
+        let RemoteReply::Me(me) = request(&self.client, RemoteOperation::Me).await? else {
+            return Err(unexpected());
+        };
+        if me.member.id != self.member {
+            return Err(failure(
+                ErrorCode::Unauthenticated,
+                "The original server member changed; this command was not retargeted",
+            )
+            .into());
+        }
+        Ok(guard)
+    }
+    pub async fn execute(
+        &self,
+        build: impl FnOnce(String) -> RemoteOperation,
+    ) -> Result<RemoteReply> {
+        let _guard = self.guard().await?;
+        Ok(self
+            .client
+            .execute(
+                build(self.vault.clone()),
+                &self.request_id,
+                CancellationToken::new(),
+            )
+            .await?)
+    }
+}
+impl Drop for RemoteSession {
+    fn drop(&mut self) {
+        self.client.disconnect();
     }
 }
 
@@ -348,7 +428,7 @@ mod tests {
         assert_eq!(channel("loof"), "stable");
     }
     #[tokio::test]
-    async fn remote_mutations_and_paths_fail_before_reading_input_or_contacting_a_server() {
+    async fn remote_filesystem_paths_fail_without_contacting_a_server() {
         use clap::Parser;
         let root = tempfile::tempdir().unwrap();
         let store = ConnectionProfiles::new(root.path().join("profiles")).unwrap();
@@ -365,20 +445,7 @@ mod tests {
         let reader = crate::agent_reader::AgentReader::Remote(
             RemoteTarget::select_from(store, "work").await.unwrap(),
         );
-        for args in [
-            vec![
-                "loof", "sessions", "new", "--title", "Denied", "--note", "-",
-            ],
-            vec!["loof", "sessions", "rename", "id", "Denied"],
-            vec!["loof", "sessions", "note", "id", "--set", "-"],
-            vec!["loof", "sessions", "note", "id", "--append", "-"],
-            vec!["loof", "sessions", "delete", "id"],
-            vec!["loof", "sessions", "tag", "add", "id", "tag"],
-            vec!["loof", "sessions", "tag", "remove", "id", "tag"],
-            vec!["loof", "sessions", "path", "id"],
-            vec!["loof", "sessions", "attach", "id", "missing.bin"],
-            vec!["loof", "sessions", "export", "id", "--output", "missing.md"],
-        ] {
+        for args in [vec!["loof", "sessions", "path", "id"]] {
             let crate::cli::Command::Sessions { command } =
                 crate::Args::try_parse_from(args).unwrap().command
             else {
@@ -420,6 +487,7 @@ mod tests {
         profile.vault_id = Some("other".into());
         lease.save(profile).await.unwrap();
         drop(lease);
+        assert_eq!(target.begin().await.err().unwrap().code(), "conflict");
         let error = target
             .execute(|_| panic!("changed profiles must not dispatch"))
             .await
@@ -428,6 +496,7 @@ mod tests {
         let lease = store.open("work").await.unwrap();
         lease.remove().await.unwrap();
         drop(lease);
+        assert_eq!(target.begin().await.err().unwrap().code(), "not_found");
         let error = target
             .execute(|_| panic!("removed profiles must not dispatch"))
             .await

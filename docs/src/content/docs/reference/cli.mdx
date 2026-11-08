@@ -18,7 +18,7 @@ loof [--base DIR] [--vault-path DIR] [--profile NAME] [--json] <command>
 | --- | --- | --- |
 | `--base DIR` | `LOOFAH_BASE` | Use `DIR` as the vault directory. |
 | `--vault-path DIR` | `LOOFAH_VAULT_PATH` | Use an explicit vault directory. |
-| `--profile NAME` | None | Use a saved HTTPS server connection for supported read commands. |
+| `--profile NAME` | None | Use a saved HTTPS server connection for supported commands. |
 | `--json` | None | Emit a versioned JSON response or machine-readable JSON error. |
 
 `--vault-path` takes precedence over `--base`. Without either option, the CLI uses Loofah's platform application-data directory, following the `vault_path` redirect in its `global.json` when the vault has been relocated.
@@ -50,14 +50,24 @@ credentials and metadata; vault files stay intact. Set
 `LOOFAH_CLI_PROFILE_DIR` to an absolute path to relocate CLI connection metadata.
 This directory contains no tokens and is separate from the vault.
 
-The initial `--profile NAME` support covers `sessions list`, `sessions search`,
-`sessions get`, read-only `sessions note` (including `--kind`),
-`sessions transcript`, and all existing read-only MCP tools and resources.
-The `meetings` alias and JSON schema version `2` remain available. Transcripts
-are complete; oversized responses fail explicitly rather than truncating.
+`--profile NAME` supports session listing, search, reads, creation, rename, note
+set/append, tags, soft deletion, attachment uploads, and exports. Initial creation
+flags require the server's `session_initial_metadata` capability and are committed
+together with the initial note. Writes check the original revision; a concurrent
+edit is reported without overwriting it. The command keeps its original profile,
+member, and vault throughout dispatch. Unknown write outcomes are never retried
+automatically. MCP tools and resources remain read-only.
 
-Remote writes, export, attachment operations, import, transcription, tag listing,
-`doctor`, `init`, and filesystem paths are not available through profiles yet.
+The `meetings` alias and JSON schema version `2` remain available. Transcripts
+and exports are complete; oversized responses fail explicitly rather than
+truncating. Remote delete replies include `trash_token` and `revision`; local
+filesystem fields (`path`, `trash_path`, `deleted_at`) are `null`. Remote attachment
+replies provide the attachment ID and portable Markdown source with `path: null`.
+PDF exports download only referenced managed attachments and verify their bytes
+before rendering.
+
+Remote import, transcription, `doctor`, `init`, recovery of Local media requests,
+and filesystem paths are not available through profiles yet.
 Unsupported commands and connection/authentication failures return errors and
 never fall back to the local vault. `--profile` conflicts with `--base` and
 `--vault-path`, including their environment variables. Profile management does
