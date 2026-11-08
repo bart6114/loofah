@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { commands as openerCommands } from "@hypr/plugin-opener2";
 import { Button } from "@hypr/ui/components/ui/button";
 
 import {
@@ -279,7 +280,37 @@ function RecoveryRequest({
     scope.queryClient,
   );
   const job = query.data;
-  const disabled = !connected || !scope.client.canEdit || action.isPending;
+  const sourceExport = useMutation(
+    {
+      retry: false,
+      networkMode: "always",
+      mutationFn: async () => {
+        const signal = lifetime.abort.signal;
+        const current = () =>
+          lifetime.active &&
+          !signal.aborted &&
+          scope.getSnapshot().state === "connected" &&
+          scope.client.canEdit;
+        if (!current() || !api.exportSource)
+          throw new Error(
+            t`This saved request is no longer available in its original workspace.`,
+          );
+        const result = await scope.run(() =>
+          api.exportSource!(receipt.request_id, { signal }),
+        );
+        if (!current()) return;
+        const reveal = await openerCommands.revealItemInDir(result.path);
+        if (reveal.status === "error") throw new Error(reveal.error);
+        return result;
+      },
+    },
+    scope.queryClient,
+  );
+  const disabled =
+    !connected ||
+    !scope.client.canEdit ||
+    action.isPending ||
+    sourceExport.isPending;
   const review =
     query.isError ||
     (query.isSuccess &&
@@ -310,10 +341,27 @@ function RecoveryRequest({
         </p>
       )}
       {job?.error && <p>{job.error.message}</p>}
-      {(query.error || action.error) && (
-        <p role="alert">{(action.error ?? query.error)?.message}</p>
+      {(query.error || action.error || sourceExport.error) && (
+        <p role="alert">
+          {(sourceExport.error ?? action.error ?? query.error)?.message}
+        </p>
+      )}
+      {sourceExport.data && (
+        <p role="status">
+          <Trans>Original file saved to Downloads/Loofah.</Trans>
+        </p>
       )}
       <div className="mt-2 flex flex-wrap gap-2">
+        {api.exportSource && receipt.filename && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => sourceExport.mutate()}
+          >
+            <Trans>Save original file</Trans>
+          </Button>
+        )}
         {review && (
           <Button
             size="sm"

@@ -26,6 +26,8 @@ import type {
   AttachmentUploadStatus,
   UploadAttachmentRequest,
   DeleteRecordingRequest,
+  DeleteDocumentRequest,
+  DeleteDocumentOutcome,
   RemoveAttachmentRequest,
   FileInfo,
   FileMetadata,
@@ -165,6 +167,10 @@ export type VaultClient = {
     ) => Promise<ProviderCredentialSaveOutcome>;
   };
   media?: {
+    exportSource?: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<SessionExportResult>;
     pendingSubmissions?: (options?: RequestOptions) => Promise<
       Array<{
         request_id: string;
@@ -399,6 +405,12 @@ export type VaultClient = {
     target: DocumentTarget,
     options?: RequestOptions,
   ) => Promise<DocumentEditorSnapshot>;
+  deleteDocument?: (
+    sessionId: string,
+    target: DocumentTarget,
+    input: DeleteDocumentRequest,
+    options: RequestOptions & { requestId: string },
+  ) => Promise<DeleteDocumentOutcome>;
   saveDocumentEditor: (
     sessionId: string,
     target: DocumentTarget,

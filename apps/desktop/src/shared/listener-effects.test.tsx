@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   openNew: vi.fn(),
   openNewNote: vi.fn(),
+  recordNew: vi.fn(),
   emit: vi.fn(),
   registrations: [] as {
     handler: (event: any) => void;
@@ -19,7 +20,10 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({}),
 }));
-vi.mock("~/shared/useNewNote", () => ({ useNewNote: () => mocks.openNewNote }));
+vi.mock("~/shared/useNewNote", () => ({
+  useNewNote: () => mocks.openNewNote,
+  useNewNoteAndListen: () => mocks.recordNew,
+}));
 vi.mock("~/store/zustand/tabs", () => ({
   useTabs: (select: any) => select({ openNew: mocks.openNew }),
   isTabInputSupported: () => true,

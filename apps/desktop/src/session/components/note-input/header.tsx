@@ -22,11 +22,13 @@ import { useCanShowTranscript } from "~/session/components/shared";
 import { useSummarySource } from "~/session/hooks/useSummarySource";
 import {
   deleteEnhancedNote,
+  useEnhancedDocumentTarget,
   useEnhancedNote,
   useEnhancedNoteRecords,
   useEnhancedNoteTitle,
   useSession,
 } from "~/session/queries";
+import { DeleteDocumentModal } from "~/shared/application/delete-document-modal";
 import {
   mediaControlsAvailable,
   useVaultReadScope,
@@ -308,6 +310,7 @@ function HeaderViewEnhanced({
   enhancedNoteId,
   canRemove = false,
   onRemove,
+  onRemoved,
 }: {
   isActive: boolean;
   onClick?: () => void;
@@ -315,24 +318,55 @@ function HeaderViewEnhanced({
   enhancedNoteId: string;
   canRemove?: boolean;
   onRemove?: () => void;
+  onRemoved?: () => void;
 }) {
-  if (!isActive) {
-    return (
-      <HeaderViewEnhancedInactive
-        sessionId={sessionId}
-        enhancedNoteId={enhancedNoteId}
-        onClick={onClick}
-      />
-    );
-  }
-
+  const owner = useVaultReadScope();
+  const legacy = useLegacySessionActivity(sessionId);
+  const target = useEnhancedDocumentTarget(sessionId, enhancedNoteId);
+  const [removalOpen, setRemovalOpen] = useState(false);
+  const sharedRemoval =
+    !!owner.scope.client.deleteDocument &&
+    owner.scope.client.canEdit &&
+    owner.connection.state === "connected" &&
+    owner.current() &&
+    target?.kind === "template_output";
   return (
-    <HeaderViewEnhancedActive
-      sessionId={sessionId}
-      enhancedNoteId={enhancedNoteId}
-      canRemove={canRemove}
-      onRemove={onRemove}
-    />
+    <>
+      {!isActive ? (
+        <HeaderViewEnhancedInactive
+          sessionId={sessionId}
+          enhancedNoteId={enhancedNoteId}
+          onClick={onClick}
+        />
+      ) : (
+        <HeaderViewEnhancedActive
+          sessionId={sessionId}
+          enhancedNoteId={enhancedNoteId}
+          canRemove={
+            canRemove &&
+            (sharedRemoval ||
+              legacy.isAvailable("legacy_desktop_session_controls"))
+          }
+          onRemove={() => {
+            if (sharedRemoval) setRemovalOpen(true);
+            else if (legacy.isAvailable("legacy_desktop_session_controls"))
+              onRemove?.();
+          }}
+        />
+      )}
+      {removalOpen && target?.kind === "template_output" && (
+        <DeleteDocumentModal
+          key={JSON.stringify([sessionId, target])}
+          sessionId={sessionId}
+          target={target}
+          onClose={() => setRemovalOpen(false)}
+          onDeleted={() => {
+            setRemovalOpen(false);
+            onRemoved?.();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -458,9 +492,14 @@ function HeaderViewEnhancedActive({
         id: `remove-enhanced-${enhancedNoteId}`,
         text: "Remove",
         action: () => {
-          if (canRegenerate) onRemove?.();
+          if (
+            owner.current() &&
+            owner.scope.getSnapshot().state === "connected" &&
+            owner.scope.client.canEdit
+          )
+            onRemove?.();
         },
-        disabled: isGenerating || !onRemove || !canRegenerate,
+        disabled: isGenerating || !onRemove,
       });
     }
 
@@ -856,10 +895,16 @@ export function Header({
                     key={`enhanced-${view.id}`}
                     sessionId={sessionId}
                     enhancedNoteId={view.id}
-                    canRemove={
-                      view.id !== primaryEnhancedTabId &&
-                      isAvailable("legacy_desktop_session_controls")
-                    }
+                    canRemove={view.id !== primaryEnhancedTabId}
+                    onRemoved={() => {
+                      const previousView = editorTabs[index - 1];
+                      if (
+                        currentTab.type === "enhanced" &&
+                        currentTab.id === view.id &&
+                        previousView
+                      )
+                        handleTabChange(previousView);
+                    }}
                     onRemove={
                       view.id !== primaryEnhancedTabId
                         ? () => {

@@ -51,6 +51,11 @@ export function remoteMedia(
     };
   };
   return {
+    exportSource: connection.info.capabilities.features.includes(
+      "media_source_export",
+    )
+      ? (id, options) => connection.exportMediaSource(vaultId, id, options)
+      : undefined,
     pendingSubmissions: async (options) =>
       (await connection.mediaSubmissions(vaultId, options)).map(
         ({ declaration }) => ({

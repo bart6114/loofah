@@ -203,6 +203,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "notes".into(),
             "session_initial_metadata".into(),
             "media_jobs".into(),
+            "media_source_export".into(),
             "media_initial_metadata".into(),
             "session_summaries".into(),
             "timeline_read".into(),

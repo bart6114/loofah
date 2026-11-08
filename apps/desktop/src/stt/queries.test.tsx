@@ -602,16 +602,14 @@ it("checks speaker ownership at queue execution, not only enqueue", async () => 
 });
 
 it("binds the displayed transcript to the checked canonical snapshot revision without a legacy read", async () => {
-  const read = vi
-    .fn()
-    .mockResolvedValue({
-      session_id: "session-1",
-      session_created_at: "2026-11-08T10:00:00Z",
-      revision: "a".repeat(64),
-      transcripts: [
-        { id: "t", session_id: "session-1", words: [], speaker_hints: [] },
-      ],
-    });
+  const read = vi.fn().mockResolvedValue({
+    session_id: "session-1",
+    session_created_at: "2026-11-08T10:00:00Z",
+    revision: "a".repeat(64),
+    transcripts: [
+      { id: "t", session_id: "session-1", words: [], speaker_hints: [] },
+    ],
+  });
   const wrapper = createWrapper({
     read,
     assign: vi.fn(),

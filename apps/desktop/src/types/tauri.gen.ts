@@ -1924,6 +1924,25 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async remoteMediaExportSource(
+    connectionId: string,
+    vaultId: string,
+    requestId: string,
+  ): Promise<Result<SessionExportResult, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_media_export_source", {
+          connectionId,
+          vaultId,
+          requestId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async remoteUploadAttachmentSource(
     connectionId: string,
     upload: AttachmentUpload,

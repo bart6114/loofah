@@ -11,6 +11,7 @@ async fn media_capabilities_are_paired_even_without_optional_transcription() {
     assert_eq!(status, StatusCode::OK);
     let features = capabilities["features"].as_array().unwrap();
     assert!(features.contains(&json!("media_jobs")));
+    assert!(features.contains(&json!("media_source_export")));
     assert!(features.contains(&json!("media_initial_metadata")));
 }
 async fn declare_subtitle(fixture: &Fixture, vault: &str, request: &str) -> Value {

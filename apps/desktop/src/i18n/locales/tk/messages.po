@@ -266,7 +266,7 @@ msgstr ""
 msgid "Audio is saved on this device and awaiting upload."
 msgstr ""
 
-#: src/shared/application/device-recording-host.tsx
+#: src/shared/application/device-recording-controls.tsx
 msgid "Audio is saved on this device. A note is created after upload to the selected vault."
 msgstr ""
 
@@ -497,6 +497,7 @@ msgstr ""
 #: src/changelog/index.tsx
 #: src/main/audio-import-dialog.tsx
 #: src/session/components/note-input/search/bar.tsx
+#: src/shared/application/delete-document-modal.tsx
 #: src/shared/application/remove-attachment-dialog.tsx
 #: src/shared/open-note-dialog.tsx
 msgid "Close"
@@ -1323,6 +1324,10 @@ msgstr ""
 msgid "Loading preview…"
 msgstr ""
 
+#: src/shared/application/delete-document-modal.tsx
+msgid "Loading saved output…"
+msgstr ""
+
 #: src/shared/application/media-recovery-panel.tsx
 msgid "Loading saved requests…"
 msgstr ""
@@ -1742,6 +1747,10 @@ msgstr ""
 msgid "Opening your vault…"
 msgstr ""
 
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Original file saved to Downloads/Loofah."
+msgstr ""
+
 #: src/main/about-storage.tsx
 msgid "Other files"
 msgstr ""
@@ -1908,7 +1917,7 @@ msgstr ""
 msgid "Record"
 msgstr ""
 
-#: src/shared/application/device-recording-host.tsx
+#: src/shared/application/device-recording-controls.tsx
 msgid "Record a new note"
 msgstr ""
 
@@ -2090,6 +2099,10 @@ msgstr ""
 msgid "Removal could not be confirmed. Check the attachment and vault Trash before trying again."
 msgstr ""
 
+#: src/shared/application/delete-document-modal.tsx
+msgid "Removal could not be confirmed. Retry checks the same request and saved version."
+msgstr ""
+
 #: src/session/components/note-input/attachments.tsx
 #: src/shared/application/vault-attachment-uploads.tsx
 #: src/shared/application/vault-sharing.tsx
@@ -2112,6 +2125,14 @@ msgstr ""
 
 #: src/shared/application/remove-attachment-dialog.tsx
 msgid "Remove attachment?"
+msgstr ""
+
+#: src/shared/application/delete-document-modal.tsx
+msgid "Remove output"
+msgstr ""
+
+#: src/shared/application/delete-document-modal.tsx
+msgid "Remove saved output"
 msgstr ""
 
 #: src/session/components/session-tags.tsx
@@ -2140,6 +2161,10 @@ msgstr ""
 
 #: src/session/components/note-input/search/bar.tsx
 msgid "Replace with..."
+msgstr ""
+
+#: src/shared/application/delete-document-modal.tsx
+msgid "Request"
 msgstr ""
 
 #. placeholder {0}: title.toLowerCase()
@@ -2233,6 +2258,10 @@ msgstr ""
 msgid "Retry creation"
 msgstr ""
 
+#: src/shared/application/delete-document-modal.tsx
+msgid "Retry original removal"
+msgstr ""
+
 #: src/shared/application/media-recovery-panel.tsx
 msgid "Retry status"
 msgstr ""
@@ -2251,6 +2280,10 @@ msgstr ""
 
 #: src/session/components/title-input.tsx
 msgid "Review saved title"
+msgstr ""
+
+#: src/shared/application/delete-document-modal.tsx
+msgid "Review the saved output below. Removing it moves this file to the vault trash. Your note and tasks stay saved."
 msgstr ""
 
 #: src/shared/application/vault-sharing.tsx
@@ -2286,8 +2319,16 @@ msgstr ""
 msgid "Save my version"
 msgstr ""
 
+#: src/shared/application/delete-document-modal.tsx
+msgid "Save or recover your edits before removing this output. Your draft stays on this device."
+msgstr ""
+
 #: src/shared/application/attachments.ts
 msgid "Save original copy"
+msgstr ""
+
+#: src/shared/application/media-recovery-panel.tsx
+msgid "Save original file"
 msgstr ""
 
 #: src/shared/application/vault-processing-settings.tsx
@@ -2330,6 +2371,10 @@ msgstr ""
 
 #: src/shared/application/vault-attachment-provider.tsx
 msgid "Saved original copy."
+msgstr ""
+
+#: src/shared/application/delete-document-modal.tsx
+msgid "Saved output to remove"
 msgstr ""
 
 #. placeholder {0}: storeTitle ?? ""
@@ -2658,6 +2703,7 @@ msgstr ""
 msgid "Starting"
 msgstr ""
 
+#: src/shared/application/device-recording-controls.tsx
 #: src/shared/application/device-recording-host.tsx
 #: src/shared/application/device-recording-queue.tsx
 msgid "Starting recording…"
@@ -2946,6 +2992,10 @@ msgstr ""
 msgid "The recording or transcript changed. Generated content did not replace your changes."
 msgstr ""
 
+#: src/shared/application/delete-document-modal.tsx
+msgid "The saved output changed. Close this dialog and review it before removing it."
+msgstr ""
+
 #: src/settings/ai/llm/configure.tsx
 msgid "The selected provider processes the text you send for summaries. API usage may have separate charges."
 msgstr ""
@@ -3040,12 +3090,20 @@ msgstr ""
 msgid "This operation is unavailable for this connection."
 msgstr ""
 
+#: src/shared/application/delete-document-modal.tsx
+msgid "This output is unavailable in its original workspace."
+msgstr ""
+
 #: src/shared/application/device-recovery.tsx
 msgid "This recovery copy has already been cleared."
 msgstr ""
 
 #: src/shared/application/vault-processing.tsx
 msgid "This removes the saved request from this device. It does not stop processing. A new summary request may run again."
+msgstr ""
+
+#: src/shared/application/delete-document-modal.tsx
+msgid "This saved output no longer exists."
 msgstr ""
 
 #: src/shared/application/media-recovery-panel.tsx

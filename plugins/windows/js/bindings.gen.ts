@@ -364,6 +364,7 @@ export type FloatingBarSettingsChange = {
   liveCaptionMinimized: boolean | null;
 };
 export type FloatingBarState = {
+  captureKey?: string | null;
   amplitude: number;
   title: string;
   status: FloatingBarStatus;
@@ -378,7 +379,7 @@ export type FloatingBarState = {
   transcriptBubbles: FloatingTranscriptBubble[];
 };
 export type FloatingBarStatus = "recording" | "error";
-export type FloatingBarStop = Record<string, never>;
+export type FloatingBarStop = { capture_key?: string | null };
 export type FloatingTranscriptBubble = {
   id: string;
   speakerLabel: string;

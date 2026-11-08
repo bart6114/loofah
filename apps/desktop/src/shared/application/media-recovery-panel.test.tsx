@@ -10,8 +10,12 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
+  reveal: vi.fn(),
   selectFile: vi.fn(),
   prepareSource: vi.fn(),
+}));
+vi.mock("@hypr/plugin-opener2", () => ({
+  commands: { revealItemInDir: native.reveal },
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: native.selectFile }));
 vi.mock("./device-attachment-source", async (original) => ({
@@ -69,6 +73,9 @@ async function fixture({ state = "missing", canEdit = true, count = 1 } = {}) {
     close: vi.fn(async () => {}),
   };
   const media = {
+    exportSource: vi.fn(async (_requestId: string, _options?: unknown) => ({
+      path: "/downloads/Loofah/Original.wav",
+    })),
     pendingSubmissions: vi.fn(async () => receipts),
     status: vi.fn(async (requestId: string) => {
       if (state === "missing") throw missing();
@@ -120,6 +127,42 @@ async function fixture({ state = "missing", canEdit = true, count = 1 } = {}) {
     expand,
   };
 }
+
+it("explicitly saves a retained original without recovering or repeating inference", async () => {
+  native.reveal.mockResolvedValue({ status: "ok", data: null });
+  const f = await fixture({ state: "review" });
+  await f.expand();
+  expect(f.media.exportSource).not.toHaveBeenCalled();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Save original file" }),
+  );
+  await screen.findByText("Original file saved to Downloads/Loofah.");
+  expect(f.media.exportSource).toHaveBeenCalledWith(
+    "original-request",
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(native.reveal).toHaveBeenCalledWith("/downloads/Loofah/Original.wav");
+  expect(f.media.recover).not.toHaveBeenCalled();
+  expect(f.media.importAudio).not.toHaveBeenCalled();
+});
+
+it("keeps a failed source save for explicit retry with the same original request", async () => {
+  const f = await fixture({ state: "review" });
+  f.media.exportSource.mockRejectedValue(new Error("Source is unavailable"));
+  await f.expand();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Save original file" }),
+  );
+  await screen.findByText("Source is unavailable");
+  expect(f.media.exportSource).toHaveBeenCalledTimes(1);
+  expect(native.reveal).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Save original file" }));
+  await waitFor(() => expect(f.media.exportSource).toHaveBeenCalledTimes(2));
+  expect(
+    f.media.exportSource.mock.calls.every(([id]) => id === "original-request"),
+  ).toBe(true);
+  expect(f.media.recover).not.toHaveBeenCalled();
+});
 
 it("keeps lost POST receipts visible without creating a note or dispatching on load", async () => {
   const f = await fixture();

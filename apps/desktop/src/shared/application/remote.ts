@@ -279,6 +279,33 @@ export class NativeRemoteConnection {
     );
   }
 
+  exportMediaSource(
+    vaultId: string,
+    requestId: string,
+    options?: RequestOptions,
+  ) {
+    if (!this.info.capabilities.features.includes("media_source_export"))
+      return Promise.reject(
+        new ApplicationRequestError({
+          code: "incompatible_version",
+          message: "This server does not support original media source export",
+          request_id: requestId,
+          retryable: false,
+          current_revision: null,
+          mutation_outcome: null,
+        }),
+      );
+    return this.mediaAction(requestId, options, false, async () =>
+      applicationResult(
+        await commands.remoteMediaExportSource(
+          this.info.connection_id,
+          vaultId,
+          requestId,
+        ),
+      ),
+    );
+  }
+
   private async mediaAction<T>(
     requestId: string,
     options: RequestOptions | undefined,

@@ -20,6 +20,8 @@ const status = (phase = "running") => ({
   revision: "admission",
 });
 let connection: {
+  info: { capabilities: { features: string[] } };
+  exportMediaSource: ReturnType<typeof vi.fn>;
   mediaSubmissions: ReturnType<typeof vi.fn>;
   mediaRequest: ReturnType<typeof vi.fn>;
   request: ReturnType<typeof vi.fn>;
@@ -34,6 +36,10 @@ const prepared = {
 };
 beforeEach(() => {
   connection = {
+    info: { capabilities: { features: ["media_jobs", "media_source_export"] } },
+    exportMediaSource: vi.fn(async () => ({
+      path: "/downloads/Loofah/Original.wav",
+    })),
     mediaSubmissions: vi.fn(async () => []),
     mediaRequest: vi.fn(async (_vault, input) =>
       input.kind === "source" ? source : status(),
@@ -55,6 +61,26 @@ beforeEach(() => {
 });
 const api = () =>
   remoteMedia(connection as unknown as NativeRemoteConnection, "company");
+
+it("saves the original source by its original request without declaring or recovering work", async () => {
+  const abort = new AbortController();
+  expect(
+    await api().exportSource!("original", { signal: abort.signal }),
+  ).toEqual({ path: "/downloads/Loofah/Original.wav" });
+  expect(connection.exportMediaSource).toHaveBeenCalledWith(
+    "company",
+    "original",
+    { signal: abort.signal },
+  );
+  expect(connection.submitMedia).not.toHaveBeenCalled();
+  expect(connection.recoverMedia).not.toHaveBeenCalled();
+  expect(connection.mediaRequest).not.toHaveBeenCalled();
+});
+
+it("keeps original source export unavailable without the advertised capability", () => {
+  connection.info.capabilities.features = ["media_jobs"];
+  expect(api().exportSource).toBeUndefined();
+});
 
 it("freezes the original server baseline, model and summary before submitting exact selected bytes", async () => {
   await api().importAudio(

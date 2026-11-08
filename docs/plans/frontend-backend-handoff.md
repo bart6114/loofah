@@ -809,3 +809,64 @@ state are under this workstation's local `Library/Caches/loofah-separation`, wit
 `capture-soak-full-7200-c9290ee7d8-run2`, `whisper-gap-*`,
 `capture-memory-replay-*`, and `capture-retirement-existing-resume-c1c0ef7cb`
 artifact names. None depend on an external drive or earlier workstation state.
+
+### Integrated desktop and Native validation, local workstation (2026-11-08)
+
+The source-export path is now paired through Core, HTTP, SDK and the Native
+streaming saver. The service advertises `media_source_export`; the recovery panel
+exposes an explicit Save original file action only with that capability. The
+original upload UUID, admission revision, full byte count/digest and fresh original
+profile/member/editor authority gate publication into Downloads/Loofah. Six SDK
+source-export cases passed in the Native library cohort, including late editor
+revocation, delayed headers and actual cancelled-writer drain.
+
+Secondary-output removal now has a gated shared confirmation component and header
+wiring. It flushes and protects device drafts, reads the saved output before
+confirmation, freezes its raw document revision/session generation and request
+UUID, and never refreshes that baseline on invalidation. Unknown replies retain
+explicit same-request retry; conflicts require another review. Known noncommitted
+refusals recheck device drafts. A changed session/scope retires the confirmation,
+and tabs change only after a known deleted outcome. Its Store/API/SDK/Native
+adapters and capability activation are still being integrated; the optional
+client operation remains absent until those are qualified.
+
+Actual exporters produced protocol, Native and Windows floating-control bindings.
+The Windows plugin exporter is selected explicitly in the stable integration
+package set (21 packages; same feature graph and absolute Native build path).
+Desktop typecheck passed. The complete frontend cohort passed 2,586 cases in 292
+files; a subsequent 109-case focused cohort covers the final confirmation guards,
+source saver and vault restart changes. Locale extraction/strict compilation and
+lint passed (114 existing warnings, zero errors). Workflow helpers passed 26
+cases and zizmor reported no high-severity findings.
+
+The Native 21-library cohort at source `905af7f40f` plus the paired capability
+change passed 2,352 tests, failed one stale CLI skill contract, and ignored 32
+opt-in/helpers. The documentation contract was corrected and passed on rerun.
+All-target checking passed after capture-retirement integration. The six CLI
+integration targets passed apart from a stale missing-profile expectation; its
+updated profile tests passed separately, preserving isolated Local storage and
+checking that Remote failures never create it. The exact current debug executable
+also built successfully. These are scoped local results, not fresh Windows proof.
+
+The opt-in real Native Ollama case passed in 8.37 seconds using the separately
+downloaded local `qwen2.5:1.5b` model on a cloud-disabled loopback service. It checks
+automatic summary/title publication, original child replay, short-input skipping,
+exact original transcript bytes and complete note prose beneath the existing title
+heading stamp. No Loofah account or external provider is involved.
+
+An optimized macOS QA baseline at source `6e5206b175` used disposable local
+configuration and synthetic vaults. GUI note editing, full-text search, a
+5,000-session/2,500-transcript startup, a new note, and public English2 audio import
+completed with 73 transcript words and an automatic local Ollama summary. PDF text
+and both rendered pages were checked. Input-to-accessibility automation bounds
+were 478ms for search, 430ms for opening a distant note and 402ms for creating a
+note; these include automation overhead and are not frame-latency/p95 claims.
+The final build still needs production regression. A real settings bug found there
+is fixed: explicit vault switching now relaunches directly instead of consulting
+the newly selected vault's onboarding flag and deferring forever.
+
+No microphone or system-audio access was granted. The post-onboarding note-only
+QA fixture sets `ONBOARDING=false` without altering OS permission checks; physical
+capture waits for the pending confirmation. Evidence is under the local task cache
+`qa/production-ui-baseline-6e-evidence.json` and named validation logs. No user vault
+was used. No merge, release, version bump or deployment has occurred.

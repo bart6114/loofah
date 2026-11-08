@@ -115,6 +115,10 @@ export type CreateSessionRequest = { title: string; markdown: string }
 
 export type CreateVaultRequest = { name: string }
 
+export type DeleteDocumentOutcome = { kind: "deleted"; revision: string; trash_token: string } | { kind: "conflict"; snapshot: DocumentEditorSnapshot } | { kind: "not_found" }
+
+export type DeleteDocumentRequest = { expected_revision: string; expected_session_created_at: string }
+
 export type DeleteEmptySessionOutcome = { kind: "deleted" } | { kind: "not_empty" } | { kind: "not_found" }
 
 export type DeleteEmptySessionRequest = { session_id: string }

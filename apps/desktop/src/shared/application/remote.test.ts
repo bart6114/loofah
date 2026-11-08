@@ -24,6 +24,7 @@ const native = vi.hoisted(() => ({
   remoteMediaCancel: vi.fn(),
   remoteMediaResumeSource: vi.fn(),
   remoteMediaSubmissions: vi.fn(),
+  remoteMediaExportSource: vi.fn(),
   attachmentTargets: new Map<string, string>(),
 }));
 vi.mock("~/types/tauri.gen", () => ({ commands: native }));
@@ -57,6 +58,57 @@ const error = {
   current_revision: null,
   mutation_outcome: null,
 };
+
+it("requires original-source capability before native dispatch", async () => {
+  const client = await NativeRemoteConnection.connect(info.server);
+  await expect(
+    client.exportMediaSource("vault", "original"),
+  ).rejects.toMatchObject({ detail: { code: "incompatible_version" } });
+  expect(native.remoteMediaExportSource).not.toHaveBeenCalled();
+});
+
+it("keeps original source save routing and cancellation on the original request", async () => {
+  native.remoteConnect.mockResolvedValueOnce({
+    status: "ok",
+    data: {
+      ...info,
+      capabilities: {
+        ...info.capabilities,
+        features: ["media_jobs", "media_source_export"],
+      },
+    },
+  });
+  const client = await NativeRemoteConnection.connect(info.server);
+  let finish!: (value: unknown) => void;
+  native.remoteMediaExportSource.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const abort = new AbortController();
+  const saving = client.exportMediaSource(
+    "original-vault",
+    "original-request",
+    { signal: abort.signal },
+  );
+  const rejected = expect(saving).rejects.toMatchObject({
+    detail: { code: "cancelled", request_id: "original-request" },
+  });
+  expect(native.remoteMediaExportSource).toHaveBeenCalledExactlyOnceWith(
+    "connection",
+    "original-vault",
+    "original-request",
+  );
+  abort.abort();
+  expect(native.remoteCancelRequest).toHaveBeenCalledWith(
+    "connection",
+    "original-request",
+  );
+  finish({ status: "ok", data: { path: "/downloads/Loofah/source.wav" } });
+  await rejected;
+  expect(native.remoteMediaSubmit).not.toHaveBeenCalled();
+});
 
 it("keeps upload paths native, preserves the original request ID, and cancels an in-flight upload", async () => {
   const connection = await NativeRemoteConnection.connect(info.server);
