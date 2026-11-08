@@ -1349,14 +1349,13 @@ async fn dropped_live_start_waiter_respects_exclusive_lifecycle_and_durably_admi
     })
     .await
     .unwrap();
-    let exclusive = context.try_session_lifecycle_change("session").unwrap();
+    assert!(context.try_session_lifecycle_change("session").is_err());
     assert!(
         context
             .ensure_capture_session_lifecycle_idle("session")
             .await
             .is_err()
     );
-    drop(exclusive);
     fake.released.add_permits(1);
     context
         .cancel_capture_live_authorized(
@@ -1378,6 +1377,7 @@ async fn dropped_live_start_waiter_respects_exclusive_lifecycle_and_durably_admi
         .shutdown()
         .await
         .unwrap();
+    let _exclusive = context.try_session_lifecycle_change("session").unwrap();
 }
 
 #[tokio::test]

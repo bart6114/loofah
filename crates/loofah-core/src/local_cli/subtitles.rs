@@ -338,7 +338,7 @@ fn digest(bytes: &[u8]) -> String {
         .collect()
 }
 fn unknown(cause: impl std::fmt::Display) -> ApplicationError {
-    let mut cause = error(ErrorCode::Unavailable, cause.to_string());
+    let mut cause = error(ErrorCode::Unavailable, &cause.to_string());
     cause.mutation_outcome = Some(MutationOutcome::Unknown);
     cause
 }

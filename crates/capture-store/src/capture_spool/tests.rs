@@ -82,9 +82,21 @@ fn publication(snapshot: &CaptureSnapshot) -> CapturePublication {
     }
 }
 async fn open(root: &Path) -> Arc<CaptureSpool> {
-    CaptureSpool::open(root.into(), CaptureSpoolLimits::default())
-        .await
-        .unwrap()
+    // An unrelated fork can retain a CLOEXEC lease until exec after the last
+    // Rust owner drops. Negative ownership tests use CaptureSpool::open directly.
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            match CaptureSpool::open(root.into(), CaptureSpoolLimits::default()).await {
+                Ok(spool) => return spool,
+                Err(error) if error.code == ErrorCode::Unavailable && error.retryable => {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                Err(error) => panic!("Cannot open capture fixture: {error:?}"),
+            }
+        }
+    })
+    .await
+    .expect("Capture fixture ownership did not release")
 }
 
 #[tokio::test]
@@ -1369,11 +1381,18 @@ async fn fake_sender_lost_ack_disconnect_and_device_restart_replay_identical_chu
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "two-hour synthetic storage volume; choose LOOFAH_CAPTURE_STRESS_ROOT explicitly"]
 async fn two_hour_dual_channel_synthetic_spool_is_bounded_and_reopens_without_missing_frames() {
-    let parent = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_STRESS_ROOT")
-        .expect("Set LOOFAH_CAPTURE_STRESS_ROOT to an absolute storage directory with at least 1 GiB free"));
-    assert!(parent.is_absolute(), "The stress storage directory must be absolute");
+    let parent = PathBuf::from(std::env::var_os("LOOFAH_CAPTURE_STRESS_ROOT").expect(
+        "Set LOOFAH_CAPTURE_STRESS_ROOT to an absolute storage directory with at least 1 GiB free",
+    ));
+    assert!(
+        parent.is_absolute(),
+        "The stress storage directory must be absolute"
+    );
     std::fs::create_dir_all(&parent).unwrap();
-    let root = parent.canonicalize().unwrap().join(uuid::Uuid::new_v4().to_string());
+    let root = parent
+        .canonicalize()
+        .unwrap()
+        .join(uuid::Uuid::new_v4().to_string());
     let started = Instant::now();
     let spool = open(&root).await;
     let writer = spool

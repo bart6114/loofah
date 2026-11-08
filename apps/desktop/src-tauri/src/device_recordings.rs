@@ -862,6 +862,9 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
         return;
     }
     state.request_shutdown();
+    if let Some(capture) = app.try_state::<Arc<crate::local_capture::LocalCaptureState>>() {
+        capture.request_shutdown();
+    }
     if let Some(owner) = app.try_state::<crate::local_owner::LocalOwnerState>() {
         owner.request_shutdown();
     }
@@ -886,6 +889,20 @@ pub fn begin_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
             while !owner.drain(Duration::from_secs(5)).await {
                 let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
                 tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        }
+        if let Some(capture) = app.try_state::<Arc<crate::local_capture::LocalCaptureState>>() {
+            loop {
+                match tokio::time::timeout(Duration::from_secs(5), capture.drain()).await {
+                    Ok(Ok(())) => break,
+                    Ok(Err(error)) => {
+                        tracing::error!(%error, "local capture ownership could not be drained");
+                        return;
+                    }
+                    Err(_) => {
+                        let _ = tauri::Emitter::emit(&app, "device-recording-exit-pending", ());
+                    }
+                }
             }
         }
         if let Some(store) = app.try_state::<Arc<crate::session_store::SessionStore>>()

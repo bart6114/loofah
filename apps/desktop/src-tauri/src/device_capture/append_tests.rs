@@ -100,7 +100,7 @@ impl Fixture {
         let config = json!({"issuer":origin,"authorization_endpoint":format!("{origin}/authorize"),"token_endpoint":format!("{origin}/token"),"client_id":"desktop","audience":"api","scopes":["loofah:access"]});
         let discovery = json!({"issuer":origin,"authorization_endpoint":format!("{origin}/authorize"),"token_endpoint":format!("{origin}/token"),"code_challenge_methods_supported":["S256"]});
         let router = Router::new()
-            .route("/api/v1/capabilities",get(||async{Json(json!({"api_major":1,"application_version":"test","features":["capture_publication","capture_append"]}))}))
+            .route("/api/v1/capabilities",get(||async{Json(json!({"api_major":1,"application_version":"test","features":["capture_ingestion","capture_publication","capture_append"]}))}))
             .route("/api/v1/auth/config",get(move ||async move{Json(config)}))
             .route("/.well-known/openid-configuration",get(move ||async move{Json(discovery)}))
             .route("/token",post(||async{Json(json!({"access_token":"fixture","token_type":"Bearer","expires_in":3600}))}))
@@ -263,7 +263,11 @@ async fn profile_change_during_append_preparation_never_dispatches_or_refreshes_
         host.start_append(profile, client, request, "window".into(), lifetime)
             .await
     });
-    fixture.server.entered.acquire().await.unwrap().forget();
+    tokio::time::timeout(Duration::from_secs(5), fixture.server.entered.acquire())
+        .await
+        .expect("append request did not reach the server")
+        .unwrap()
+        .forget();
     let original = fixture.profile.profile().await;
     let mut changed = original.clone();
     changed.vault_id = Some("other".into());
@@ -348,7 +352,11 @@ async fn append_scope_commit_fence_releases_before_delayed_native_acknowledgemen
     let mut next = fixture.profile.profile().await;
     next.vault_id = Some("later-choice".into());
     let mut capture = fixture.start().await.unwrap();
-    delayed.entered.acquire().await.unwrap().forget();
+    tokio::time::timeout(Duration::from_secs(5), delayed.entered.acquire())
+        .await
+        .expect("producer dispatch did not reach its acknowledgement barrier")
+        .unwrap()
+        .forget();
     tokio::time::timeout(Duration::from_secs(2), fixture.profile.save(next))
         .await
         .expect("profile UI must not wait for native acknowledgement")

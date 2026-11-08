@@ -371,7 +371,7 @@ fn binding(client: &RemoteClient, writer: &CaptureWriter) -> CaptureUploadBindin
     }
 }
 async fn fixture(state: &Arc<Server>, rtt: Option<Duration>) -> (Fixture, Arc<RemoteClient>) {
-    let fixture = Fixture::with_extra_routes(rtt, state.routes()).await;
+    let fixture = Fixture::with_extra_routes(rtt.or(Some(Duration::ZERO)), state.routes()).await;
     let mut client = fixture.client().await;
     Arc::get_mut(&mut client).unwrap().capabilities.features = vec![
         "capture_ingestion".into(),

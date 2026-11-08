@@ -80,6 +80,27 @@ remain required. Stopped backup/restore source and focused validation are presen
 full service upgrade acceptance is still pending. Local stays standalone, offline
 and login-free. Do not merge, release or bump versions.
 
+The latest broad seventeen-package macOS library cohort passed 2,135 cases,
+with one Local actor fixture failure and 26 explicit ignored cases. Its sole
+failure came from two parallel fixtures sharing production singleton actor names;
+fixture isolation and actual child-task retirement corrections are integrated and
+await the next complete run. Earlier broad findings also corrected positive
+reopen tests for transient CLOEXEC lock inheritance during concurrent fork/exec,
+strict HTTPS retention fixtures and a live-worker lifecycle assertion. Negative
+ownership tests and actual ownership pins remain unchanged.
+
+Current shared frontend integration passes 2,565 tests across 283 files, including
+explicit immutable manual transcription recovery and recording-parent status.
+The local storage-volume fixture passed 7,200 stereo chunks, 115,200,000 frames
+and 921,600,000 bytes with exact reopening/seal/hash and a 750-byte maximum
+manifest. This is four minutes of storage-volume work, not two-hour wall-clock
+capture qualification. A separate paced, real CPU SDK/server soak is in progress.
+Four real Linux ARM64 executable maintenance tests passed against frozen source
+`7b50d486b9` plus their committed fixtures and a lock-only dependency overlay;
+they cover split secrets, unknown files, pending capture publication, rollback,
+legacy recovery and future-state refusal. They do not qualify later Native changes
+or all historical binaries.
+
 ## Transfer checkpoint (historical)
 
 The user explicitly requested that this workstation pause after saving all current
@@ -444,8 +465,8 @@ renderer acknowledgment. A bounded persistence queue fails closed and stops only
 the original request if it cannot keep up. Unknown native completion or failed
 canonical persistence leaves a durable review state and does not admit inference.
 The old global timestamp listener and recording-specific TypeScript persistence,
-batch and summary callbacks are removed. Native exit must drain this owner before
-shutting down its transcription and summary workers. Focused scope handoff tests
+batch and summary callbacks are removed. Native exit requests this owner to stop and joins its exact physical/persistence
+drain before Store flush and final transcription/summary worker shutdown. Focused scope handoff tests
 pass; native physical-drain/persistence tests require the coordinated native build
 lane, including Windows qualification.
 
