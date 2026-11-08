@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod document_delete;
+pub use document_delete::*;
 mod document_editor;
 pub use document_editor::{
     DOCUMENT_EDITOR_RESPONSE_LIMIT, DocumentEditorSaveOutcome, DocumentEditorSnapshot,

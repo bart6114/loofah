@@ -101,6 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register::<DocumentEditorSnapshot>()
         .register::<SaveDocumentEditorRequest>()
         .register::<DocumentEditorSaveOutcome>()
+        .register::<DeleteDocumentRequest>()
+        .register::<DeleteDocumentOutcome>()
         .register::<PersonItem>()
         .register::<TagItem>()
         .register::<TagSuggestionsRequest>()
