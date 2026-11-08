@@ -230,11 +230,15 @@ impl Fixture {
             )
             .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/summary/editor",
-                get(document_editor::read).put(document_editor::save),
+                get(document_editor::read)
+                    .put(document_editor::save)
+                    .delete(document_editor::delete),
             )
             .route(
                 "/api/v1/vaults/{vault}/sessions/{session}/outputs/{document}/editor",
-                get(document_editor::read).put(document_editor::save),
+                get(document_editor::read)
+                    .put(document_editor::save)
+                    .delete(document_editor::delete),
             )
             .merge(extra)
             .with_state(state.clone());

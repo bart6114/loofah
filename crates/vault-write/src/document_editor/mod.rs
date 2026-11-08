@@ -47,6 +47,17 @@ impl SessionStore {
         .await
     }
 
+    pub(super) async fn document_editor_snapshot_locked(
+        &self,
+        guard: &WriteGuard<'_>,
+        id: &str,
+        target: &DocumentTarget,
+    ) -> Result<Option<DocumentEditorSnapshot>, StoreError> {
+        self.editor_state_locked(guard, id, target)
+            .await
+            .map(|state| state.map(|state| state.snapshot))
+    }
+
     pub async fn prepare_document_editor(
         &self,
         operation_root: &Path,

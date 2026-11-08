@@ -823,6 +823,7 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             application::application_save_note_editor::<tauri::Wry>,
             application::application_read_document_editor::<tauri::Wry>,
             application::application_save_document_editor::<tauri::Wry>,
+            application::application_delete_document::<tauri::Wry>,
             application::application_read_metadata::<tauri::Wry>,
             application::application_save_metadata::<tauri::Wry>,
             application::application_save_note::<tauri::Wry>,

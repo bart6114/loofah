@@ -206,3 +206,71 @@ async fn document_editor_real_tcp_lost_reply_rereads_then_conflicts_at_realistic
         task.await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn checked_document_delete_real_http_lost_reply_preserves_restored_output_and_tasks() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.login("alice").await;
+    let vault = alice.personal_vault_id;
+    let (_, created) = fixture
+        .call(
+            "alice",
+            "POST",
+            &format!("/api/v1/vaults/{vault}/sessions"),
+            Some(json!({"title":"Keep","markdown":"Raw note"})),
+        )
+        .await;
+    let session = created["meta"]["id"].as_str().unwrap();
+    let context = fixture.service.vault(&vault).await.unwrap();
+    let directory = context.store.vault_base().join("sessions").join(session);
+    let document = uuid::Uuid::new_v4().to_string();
+    let path = directory.join("enhanced").join(format!("{document}.md"));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let original = b"---\nkind: template_output\ntitle: Output\nfuture: keep\n---\nOriginal bytes";
+    std::fs::write(&path, original).unwrap();
+    let tasks = b"{\"future\":true,\"tasks\":[]}";
+    std::fs::write(directory.join("tasks.json"), tasks).unwrap();
+    std::fs::write(directory.join(".private"), b"canary").unwrap();
+    let route = format!("/api/v1/vaults/{vault}/sessions/{session}/outputs/{document}/editor");
+    let (status, before) = fixture.call("alice", "GET", &route, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let before: DocumentEditorSnapshot = serde_json::from_value(before).unwrap();
+    let input = DeleteDocumentRequest {
+        expected_revision: before.document.revision,
+        expected_session_created_at: before.metadata.meta.created_at,
+    };
+    let request = uuid::Uuid::new_v4().to_string();
+    let (base, task) = fixture.tcp().await;
+    let client = reqwest::Client::new();
+    let send = |input: DeleteDocumentRequest| {
+        client
+            .delete(format!("{base}{route}"))
+            .bearer_auth(fixture.token("alice"))
+            .header("x-loofah-api-major", "1")
+            .header("x-request-id", &request)
+            .json(&input)
+            .send()
+    };
+    let response = send(input.clone()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    drop(response);
+    assert!(!path.exists());
+    std::fs::write(&path, original).unwrap();
+    let response = send(input.clone()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(matches!(
+        response.json::<DeleteDocumentOutcome>().await.unwrap(),
+        DeleteDocumentOutcome::Deleted { .. }
+    ));
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    assert_eq!(std::fs::read(directory.join("tasks.json")).unwrap(), tasks);
+    assert_eq!(
+        std::fs::read(directory.join(".private")).unwrap(),
+        b"canary"
+    );
+    let mut changed = input;
+    changed.expected_revision = "c".repeat(64);
+    assert_ne!(send(changed).await.unwrap().status(), StatusCode::OK);
+    assert_eq!(std::fs::read(path).unwrap(), original);
+    task.abort();
+}

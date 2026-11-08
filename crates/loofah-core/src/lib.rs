@@ -24,6 +24,7 @@ mod agent;
 mod attachment_upload;
 mod attachments;
 mod content;
+mod document_delete;
 mod document_editor;
 pub mod generated_title;
 mod media;

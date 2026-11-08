@@ -8,7 +8,7 @@ pub(super) fn router() -> Router<Arc<Service>> {
         )
         .route(
             "/vaults/{vault}/sessions/{session}/outputs/{document}/editor",
-            get(output).put(save_output),
+            get(output).put(save_output).delete(delete_output),
         )
 }
 
@@ -119,6 +119,55 @@ async fn save(
             cause
         })?;
         Ok((status, [("content-type", "application/json")], bytes).into_response())
+    })
+    .await
+}
+
+async fn delete_output(
+    State(service): State<Arc<Service>>,
+    axum::Extension(identity): IdentityExtension,
+    ApiPath((vault, session, document_id)): ApiPath<(String, String, String)>,
+    headers: HeaderMap,
+    ApiJson(input): ApiJson<DeleteDocumentRequest>,
+) -> Result<Response> {
+    let request = request_id(&headers)?.to_owned();
+    let access = service.catalog.access(&identity, &vault, true).await?;
+    let namespace = access.member_id.clone();
+    let context = service.vault(&vault).await?;
+    write(&service, access, async move {
+        let result = context
+            .delete_document(
+                namespace,
+                request,
+                &session,
+                &DocumentTarget::TemplateOutput { document_id },
+                input,
+            )
+            .await?;
+        let (status, outcome) = if matches!(result, DeleteDocumentOutcome::Conflict { .. }) {
+            (StatusCode::CONFLICT, MutationOutcome::NotCommitted)
+        } else {
+            (StatusCode::OK, MutationOutcome::Persisted)
+        };
+        let bytes = tokio::task::spawn_blocking(move || {
+            encode_content(&result, DOCUMENT_EDITOR_RESPONSE_LIMIT)
+        })
+        .await
+        .map_err(ApiError::internal)
+        .and_then(|result| result)
+        .map_err(|mut cause| {
+            cause.0.mutation_outcome = Some(outcome);
+            cause
+        })?;
+        Ok((
+            status,
+            [
+                ("content-type", "application/json"),
+                ("cache-control", "no-store"),
+            ],
+            bytes,
+        )
+            .into_response())
     })
     .await
 }

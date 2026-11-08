@@ -222,6 +222,12 @@ pub enum RemoteOperation {
         session_id: String,
         target: DocumentTarget,
     },
+    DeleteDocument {
+        vault_id: String,
+        session_id: String,
+        target: DocumentTarget,
+        input: DeleteDocumentRequest,
+    },
     SaveDocumentEditor {
         vault_id: String,
         session_id: String,
@@ -415,6 +421,7 @@ pub enum RemoteReply {
     DocumentSave(DocumentSaveOutcome),
     DocumentEditor(DocumentEditorSnapshot),
     DocumentEditorSave(DocumentEditorSaveOutcome),
+    DocumentDelete(DeleteDocumentOutcome),
     TranscriptOverview(TranscriptOverview),
     Transcripts(Vec<TranscriptWithData>),
     AudioMetadata(Option<FileMetadata>),
@@ -524,6 +531,7 @@ impl RemoteClient {
             | RemoteOperation::CancelProcessingJob { .. } => Some("summary_body_jobs"),
             RemoteOperation::DocumentEditor { .. } => Some("document_editor_read"),
             RemoteOperation::SaveDocumentEditor { .. } => Some("document_editor_write"),
+            RemoteOperation::DeleteDocument { .. } => Some("document_delete"),
             RemoteOperation::NoteEditor { .. } => Some("note_editor_read"),
             RemoteOperation::SaveNoteEditor { .. } => Some("note_editor_write"),
             RemoteOperation::AudioMetadata { .. } => Some("audio_metadata_read"),
@@ -606,6 +614,7 @@ impl RemoteClient {
                     RemoteOperation::CreateSessionWithMetadata { .. }
                         | RemoteOperation::SaveNoteEditor { .. }
                         | RemoteOperation::SaveDocumentEditor { .. }
+                        | RemoteOperation::DeleteDocument { .. }
                         | RemoteOperation::DeleteEmptySession { .. }
                         | RemoteOperation::SaveProcessingSettings { .. }
                         | RemoteOperation::SubmitSummaryJob { .. }
@@ -1301,12 +1310,23 @@ impl RemoteClient {
                 session_id,
                 target,
                 ..
+            }
+            | RemoteOperation::DeleteDocument {
+                vault_id,
+                session_id,
+                target,
+                ..
             } => {
-                let method = if let RemoteOperation::SaveDocumentEditor { input, .. } = &operation {
-                    body = Some(value(input)?);
-                    Method::PUT
-                } else {
-                    Method::GET
+                let method = match &operation {
+                    RemoteOperation::SaveDocumentEditor { input, .. } => {
+                        body = Some(value(input)?);
+                        Method::PUT
+                    }
+                    RemoteOperation::DeleteDocument { input, .. } => {
+                        body = Some(value(input)?);
+                        Method::DELETE
+                    }
+                    _ => Method::GET,
                 };
                 let segments = match target {
                     DocumentTarget::Summary => vec![
@@ -1653,6 +1673,11 @@ impl RemoteClient {
                 ));
             }
             if status == reqwest::StatusCode::CONFLICT
+                && matches!(&operation, RemoteOperation::DeleteDocument { .. })
+            {
+                return document_editor::decode_delete(response, &operation, true).await;
+            }
+            if status == reqwest::StatusCode::CONFLICT
                 && let RemoteOperation::SaveDocumentEditor {
                     session_id, target, ..
                 } = &operation
@@ -1923,6 +1948,9 @@ impl RemoteClient {
                 | RemoteOperation::AssignTranscriptSpeakers { .. }
                 | RemoteOperation::EnsurePerson { .. } => {
                     return transcript_editor::decode(response, &operation, false).await;
+                }
+                RemoteOperation::DeleteDocument { .. } => {
+                    return document_editor::decode_delete(response, &operation, false).await;
                 }
                 RemoteOperation::DocumentEditor {
                     session_id, target, ..

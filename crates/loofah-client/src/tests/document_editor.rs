@@ -379,3 +379,108 @@ async fn document_editor_rejects_cross_resource_and_malformed_replies_and_retain
         );
     }
 }
+
+pub(super) async fn delete(
+    State(state): State<Arc<Provider>>,
+    Path(params): Path<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(input): Json<DeleteDocumentRequest>,
+) -> Response {
+    state.document_editor_calls.lock().await.push(json!({"session":params["session"],"target":target(&params),"request_id":headers.get("x-request-id").unwrap().to_str().unwrap(),"input":input}));
+    let mode = state.document_editor_mode.load(Ordering::SeqCst);
+    if mode == 12 {
+        return oversized();
+    }
+    let (status, value) = match mode {
+        1 => (
+            StatusCode::CONFLICT,
+            json!({"kind":"conflict","snapshot":snapshot(&params["session"],&target(&params))}),
+        ),
+        2 => (
+            StatusCode::OK,
+            json!({"kind":"deleted","revision":"b".repeat(64),"trash_token":"c".repeat(64)}),
+        ),
+        3 => (
+            StatusCode::OK,
+            json!({"kind":"deleted","revision":input.expected_revision,"trash_token":"/private/trash"}),
+        ),
+        4 => (
+            StatusCode::OK,
+            json!({"kind":"conflict","snapshot":snapshot(&params["session"],&target(&params))}),
+        ),
+        _ => (
+            StatusCode::OK,
+            json!({"kind":"deleted","revision":input.expected_revision,"trash_token":"c".repeat(64)}),
+        ),
+    };
+    (status, Json(value)).into_response()
+}
+
+#[tokio::test]
+async fn checked_document_delete_preserves_request_identity_and_rejects_malformed_receipts() {
+    let fixture = Fixture::new().await;
+    let mut client = fixture.client().await;
+    let input = DeleteDocumentRequest {
+        expected_revision: "a".repeat(64),
+        expected_session_created_at: "2026-11-08T10:00:00Z".into(),
+    };
+    let operation = RemoteOperation::DeleteDocument {
+        vault_id: "test".into(),
+        session_id: "note".into(),
+        target: DocumentTarget::TemplateOutput {
+            document_id: "output".into(),
+        },
+        input: input.clone(),
+    };
+    let request = uuid::Uuid::new_v4().to_string();
+    let error = client
+        .execute(operation.clone(), &request, CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IncompatibleVersion);
+    assert_eq!(error.mutation_outcome, Some(MutationOutcome::NotCommitted));
+    assert!(fixture.state.document_editor_calls.lock().await.is_empty());
+    Arc::get_mut(&mut client)
+        .unwrap()
+        .capabilities
+        .features
+        .push("document_delete".into());
+    fixture.login(&client).await;
+    for _ in 0..2 {
+        assert!(matches!(
+            client
+                .execute(operation.clone(), &request, CancellationToken::new())
+                .await
+                .unwrap(),
+            RemoteReply::DocumentDelete(DeleteDocumentOutcome::Deleted { .. })
+        ));
+    }
+    let calls = fixture.state.document_editor_calls.lock().await;
+    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().all(|call| call["request_id"] == request
+        && call["input"] == serde_json::to_value(&input).unwrap()));
+    drop(calls);
+    fixture
+        .state
+        .document_editor_mode
+        .store(1, Ordering::SeqCst);
+    assert!(matches!(
+        client
+            .execute(operation.clone(), &request, CancellationToken::new())
+            .await
+            .unwrap(),
+        RemoteReply::DocumentDelete(DeleteDocumentOutcome::Conflict { .. })
+    ));
+    for mode in [2, 3, 4, 12] {
+        fixture
+            .state
+            .document_editor_mode
+            .store(mode, Ordering::SeqCst);
+        assert!(
+            client
+                .execute(operation.clone(), &request, CancellationToken::new())
+                .await
+                .is_err()
+        );
+    }
+}

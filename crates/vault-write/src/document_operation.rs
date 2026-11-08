@@ -23,6 +23,7 @@ enum StoredIntent {
     Document(Intent),
     Title(crate::generated_title::TitleIntent),
     Editor(crate::document_editor::recovery::Intent),
+    Deletion(crate::document_delete::Intent),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -184,6 +185,17 @@ impl SessionStore {
             return Ok(());
         };
         let intent = match intent {
+            StoredIntent::Deletion(intent) => {
+                crate::document_delete::validate(&intent)?;
+                if path.file_name()
+                    != intent_path(path.parent().unwrap(), &intent.session_id).file_name()
+                {
+                    return Err(StoreError::Io("Invalid deletion recovery filename".into()));
+                }
+                return crate::document_delete::recover(self, guard, path, &intent)
+                    .await
+                    .map_err(StoreError::after_commit);
+            }
             StoredIntent::Editor(intent) => {
                 crate::document_editor::recovery::validate(&intent, self.content_limits)?;
                 if path.file_name()
@@ -775,6 +787,23 @@ impl SessionStore {
         .await
     }
 
+    pub(super) async fn begin_document_deletion_locked(
+        &self,
+        _guard: &WriteGuard<'_>,
+        root: &Path,
+        intent: crate::document_delete::Intent,
+    ) -> Result<PendingDocument, StoreError> {
+        crate::document_delete::validate(&intent)?;
+        let id = intent.session_id.clone();
+        self.write_pending_record(
+            root,
+            &id,
+            StoredIntent::Deletion(intent),
+            self.content_limits.recovery_bytes,
+        )
+        .await
+    }
+
     async fn write_pending_record(
         &self,
         root: &Path,
@@ -850,7 +879,7 @@ impl SessionStore {
         .map_err(join_error)?
     }
 
-    fn validate_document_root(&self, root: &Path) -> Result<(), StoreError> {
+    pub(super) fn validate_document_root(&self, root: &Path) -> Result<(), StoreError> {
         if !root.is_absolute()
             || root
                 .components()
@@ -889,7 +918,7 @@ fn read(path: &Path, limit: usize) -> Result<Option<StoredIntent>, StoreError> {
         Ok(meta) => {
             if meta.len() > crate::generated_title::MAX_INTENT as u64 {
                 match oversized_schema_version(path)? {
-                    1..=3 | 5 => {}
+                    1..=3 | 5 | 6 => {}
                     4 => {
                         return Err(StoreError::ResourceLimit(
                             "Title recovery record exceeds its size limit".into(),
@@ -924,7 +953,15 @@ fn read(path: &Path, limit: usize) -> Result<Option<StoredIntent>, StoreError> {
     }
     let version: Version =
         serde_json::from_slice(&bytes).map_err(|cause| StoreError::Serialize(cause.to_string()))?;
-    if version.schema_version == 5 {
+    if version.schema_version == 6 {
+        let raw = serde_json::from_slice::<crate::metadata_revision::UniqueValue>(&bytes)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))?
+            .0;
+        serde_json::from_value(raw)
+            .map(StoredIntent::Deletion)
+            .map(Some)
+            .map_err(|cause| StoreError::Serialize(cause.to_string()))
+    } else if version.schema_version == 5 {
         let raw = serde_json::from_slice::<crate::metadata_revision::UniqueValue>(&bytes)
             .map_err(|cause| StoreError::Serialize(cause.to_string()))?
             .0;

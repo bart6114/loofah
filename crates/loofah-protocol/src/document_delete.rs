@@ -17,7 +17,7 @@ pub enum DeleteDocumentOutcome {
         trash_token: String,
     },
     Conflict {
-        snapshot: DocumentEditorSnapshot,
+        snapshot: Box<DocumentEditorSnapshot>,
     },
     NotFound,
 }

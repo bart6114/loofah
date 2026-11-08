@@ -179,7 +179,7 @@ impl VaultContext {
         })?
     }
 
-    fn validate_editor_target(
+    pub(crate) fn validate_editor_target(
         &self,
         id: &str,
         target: &DocumentTarget,

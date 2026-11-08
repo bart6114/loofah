@@ -1,15 +1,27 @@
 use super::*;
 
 pub(super) fn is_save(operation: &RemoteOperation) -> bool {
-    matches!(operation, RemoteOperation::SaveDocumentEditor { .. })
+    matches!(
+        operation,
+        RemoteOperation::SaveDocumentEditor { .. } | RemoteOperation::DeleteDocument { .. }
+    )
 }
 
 pub(super) fn validate_operation(operation: &RemoteOperation) -> Result<()> {
+    if let RemoteOperation::DeleteDocument { target, input, .. } = operation {
+        if !matches!(target, DocumentTarget::TemplateOutput { .. }) {
+            return Err(invalid("Only template outputs can be deleted"));
+        }
+        validate_delete_document_request(input).map_err(invalid)?;
+    }
     let (session_id, target) = match operation {
         RemoteOperation::DocumentEditor {
             session_id, target, ..
         }
         | RemoteOperation::SaveDocumentEditor {
+            session_id, target, ..
+        }
+        | RemoteOperation::DeleteDocument {
             session_id, target, ..
         } => (session_id, target),
         _ => return Ok(()),
@@ -105,4 +117,43 @@ pub(super) fn validate_outcome(
         ));
     }
     validate_snapshot(snapshot, session_id, target)
+}
+
+pub(super) async fn decode_delete(
+    response: reqwest::Response,
+    operation: &RemoteOperation,
+    conflict: bool,
+) -> Result<RemoteReply> {
+    let RemoteOperation::DeleteDocument {
+        session_id,
+        target,
+        input,
+        ..
+    } = operation
+    else {
+        unreachable!()
+    };
+    let outcome: DeleteDocumentOutcome =
+        json_body(response, DOCUMENT_EDITOR_RESPONSE_LIMIT).await?;
+    match (&outcome, conflict) {
+        (
+            DeleteDocumentOutcome::Deleted {
+                revision,
+                trash_token,
+            },
+            false,
+        ) if revision == &input.expected_revision && is_session_lifecycle_revision(trash_token) => {
+        }
+        (DeleteDocumentOutcome::NotFound, false) => {}
+        (DeleteDocumentOutcome::Conflict { snapshot }, true) => {
+            validate_snapshot(snapshot, session_id, target)?
+        }
+        _ => {
+            return Err(failure(
+                ErrorCode::IncompatibleVersion,
+                "Invalid checked deletion response",
+            ));
+        }
+    }
+    Ok(RemoteReply::DocumentDelete(outcome))
 }

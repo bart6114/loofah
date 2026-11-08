@@ -650,6 +650,19 @@ or replayed save snapshots are historical receipts: clients reread canonical
 content before updating the scoped query cache. This is device recovery of
 unsaved input, not offline remote editing.
 
+Checked template-output deletion uses schema 6 in the existing `document-saves/`
+recovery slot and retains completed request receipts in its private `.deletions/`
+subdirectory. The original request UUID, raw document revision, and session
+creation generation remain fixed across explicit retries. Only the selected
+output moves byte-for-byte into `.trash`; tasks, metadata, and attachments remain
+unchanged. Startup acknowledges completed moves but never initiates a deletion.
+If a recovered destructive intent has no retained trash, its result is ambiguous:
+the move may never have happened, or an operator may have moved the output back.
+That UUID requires review and can never initiate another move. Restore does not
+make an old request UUID delete the restored copy again. These
+receipts and pending intents must be included in stopped backups; older binaries
+that do not understand schema 6 cannot recover pending deletions.
+
 New compound output intents use schema 5 in the existing `document-saves/`
 directory. Preserve this directory in backups. Recover or drain these intents
 with the current executable before a downgrade; an older executable cannot

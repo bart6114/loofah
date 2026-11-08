@@ -63,6 +63,7 @@ const native = vi.hoisted(() => ({
     applicationSaveDocument: vi.fn(),
     applicationReadDocumentEditor: vi.fn(),
     applicationSaveDocumentEditor: vi.fn(),
+    applicationDeleteDocument: vi.fn(),
     applicationTranscripts: vi.fn(),
     applicationTranscriptOverview: vi.fn(),
     applicationAudioMetadata: vi.fn(),
@@ -2018,4 +2019,63 @@ it("exposes checked speaker editing only with its capability and pins every oper
       options,
     ],
   ]);
+});
+
+it("keeps Local checked deletion gated and forwards the frozen request to its selected adapter", async () => {
+  expect((await connectLocalVault()).deleteDocument).toBeUndefined();
+  const target = { kind: "template_output" as const, document_id: "output" };
+  const input = {
+    expected_revision: "a".repeat(64),
+    expected_session_created_at: "2026-11-08T10:00:00Z",
+  };
+  const options = {
+    requestId: "11111111-1111-4111-8111-111111111111",
+    signal: new AbortController().signal,
+  };
+  const outcome = {
+    kind: "deleted",
+    revision: input.expected_revision,
+    trash_token: "b".repeat(64),
+  };
+  native.commands.applicationDeleteDocument.mockResolvedValue({
+    status: "ok",
+    data: outcome,
+  });
+  const local = await connectLocalVault({ documentDeletionAvailable: true });
+  expect(await local.deleteDocument!("same", target, input, options)).toEqual(
+    outcome,
+  );
+  expect(native.commands.applicationDeleteDocument).toHaveBeenCalledWith(
+    "same",
+    target,
+    "11111111-1111-4111-8111-111111111111",
+    input,
+  );
+  const request = vi.fn().mockResolvedValue(outcome);
+  const connection = {
+    info: {
+      server: "https://example.com",
+      capabilities: { features: [] as string[] },
+    },
+    request,
+  } as unknown as NativeRemoteConnection;
+  expect(
+    connectRemoteVault(connection, "member", vault).deleteDocument,
+  ).toBeUndefined();
+  connection.info.capabilities.features.push("document_delete");
+  const remote = connectRemoteVault(connection, "member", vault);
+  expect(await remote.deleteDocument!("same", target, input, options)).toEqual(
+    outcome,
+  );
+  expect(request).toHaveBeenCalledWith(
+    {
+      kind: "delete_document",
+      vault_id: "first",
+      session_id: "same",
+      target,
+      input,
+    },
+    "document_delete",
+    options,
+  );
 });

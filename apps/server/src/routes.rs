@@ -217,6 +217,7 @@ async fn capabilities(State(service): State<Arc<Service>>) -> Json<Capabilities>
             "note_editor_write".into(),
             "document_editor_read".into(),
             "document_editor_write".into(),
+            "document_delete".into(),
             "audio_metadata_read".into(),
             "recording_leases".into(),
             "recording_waveforms".into(),

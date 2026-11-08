@@ -207,6 +207,20 @@ pub async fn application_read_document_editor<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_delete_document<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    session_id: String,
+    target: hypr_loofah_protocol::DocumentTarget,
+    request_id: String,
+    input: hypr_loofah_protocol::DeleteDocumentRequest,
+) -> Result<hypr_loofah_protocol::DeleteDocumentOutcome, ApplicationError> {
+    context(&app)?
+        .delete_document("desktop".into(), request_id, &session_id, &target, input)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn application_save_document_editor<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     session_id: String,
@@ -619,6 +633,79 @@ mod tests {
     use super::*;
     use hypr_loofah_core::{search::SearchService, settings::ConfigState, startup::StartupState};
     use hypr_loofah_protocol::{SessionSummaryOrder, SessionSummaryQuery};
+
+    #[tokio::test]
+    async fn local_checked_document_delete_is_offline_and_same_request_never_deletes_a_restored_copy()
+     {
+        use hypr_loofah_protocol::{DeleteDocumentOutcome, DeleteDocumentRequest, DocumentTarget};
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let vault = root.path().join("vault");
+        let store = Arc::new(hypr_vault_write::SessionStore::new(vault.clone()));
+        let meta = serde_json::from_value(serde_json::json!({"id":"note","title":"Local","created_at":"2026-11-08T00:00:00Z","tags":[]})).unwrap();
+        store
+            .create_note_session(&meta, "Keep original note")
+            .await
+            .unwrap();
+        let path = vault.join("sessions/note/enhanced/output.md");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = b"---\nkind: template_output\ntitle: Output\n---\nRetain exact bytes";
+        std::fs::write(&path, original).unwrap();
+        let context = Arc::new(
+            VaultContext::new(
+                "local:test".into(),
+                store,
+                StartupState::new(Some(&vault)),
+                Arc::new(ConfigState::load_or_default(&vault)),
+                Arc::new(SearchService::default()),
+            )
+            .with_operation_storage(root.path().join("runtime")),
+        );
+        let app = tauri::test::mock_builder()
+            .manage(context)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let target = DocumentTarget::TemplateOutput {
+            document_id: "output".into(),
+        };
+        let before =
+            application_read_document_editor(app.handle().clone(), "note".into(), target.clone())
+                .await
+                .unwrap();
+        let input = DeleteDocumentRequest {
+            expected_revision: before.document.revision,
+            expected_session_created_at: before.metadata.meta.created_at,
+        };
+        let request = uuid::Uuid::new_v4().to_string();
+        let outcome = application_delete_document(
+            app.handle().clone(),
+            "note".into(),
+            target.clone(),
+            request.clone(),
+            input.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, DeleteDocumentOutcome::Deleted { .. }));
+        assert!(!path.exists());
+        std::fs::write(&path, original).unwrap();
+        assert_eq!(
+            application_delete_document(
+                app.handle().clone(),
+                "note".into(),
+                target,
+                request,
+                input
+            )
+            .await
+            .unwrap(),
+            outcome
+        );
+        assert_eq!(std::fs::read(path).unwrap(), original);
+        assert_eq!(
+            std::fs::read(vault.join("sessions/note/notes.md")).unwrap(),
+            b"Keep original note"
+        );
+    }
 
     #[tokio::test]
     async fn local_document_editor_uses_shared_transaction_without_login() {

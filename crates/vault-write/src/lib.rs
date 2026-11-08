@@ -12,6 +12,7 @@ pub mod audio;
 mod audio_layout;
 pub mod content;
 mod content_limits;
+mod document_delete;
 mod document_editor;
 mod document_operation;
 mod document_revision;

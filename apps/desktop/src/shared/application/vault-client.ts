@@ -44,6 +44,8 @@ import type {
   RenderedTranscriptSegment,
   Change,
   CreateSessionRequest,
+  DeleteDocumentRequest,
+  DeleteDocumentOutcome,
   DeleteSessionRequest,
   DeleteSessionOutcome,
   RestoreSessionRequest,
@@ -594,7 +596,11 @@ async function nativeSessionExport(
 
 export async function connectLocalVault({
   sessionLifecycleAvailable = false,
-}: { sessionLifecycleAvailable?: boolean } = {}): Promise<VaultClient> {
+  documentDeletionAvailable = false,
+}: {
+  sessionLifecycleAvailable?: boolean;
+  documentDeletionAvailable?: boolean;
+} = {}): Promise<VaultClient> {
   const [
     scope,
     processingAvailable,
@@ -632,6 +638,7 @@ export async function connectLocalVault({
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
+      ...(documentDeletionAvailable ? ["document_delete"] : []),
       ...(mediaAvailable ? ["media_jobs"] : []),
       ...(recordingProcessingAvailable ? ["local_recording_processing"] : []),
       ...(transcriptionAvailable
@@ -894,6 +901,20 @@ export async function connectLocalVault({
         () => commands.applicationReadDocumentEditor(sessionId, target),
         options,
       ),
+    deleteDocument: documentDeletionAvailable
+      ? (sessionId, target, input, options) =>
+          ipc(
+            () =>
+              commands.applicationDeleteDocument(
+                sessionId,
+                target,
+                options.requestId,
+                input,
+              ),
+            options,
+            true,
+          )
+      : undefined,
     saveDocumentEditor: (sessionId, target, input, options) =>
       ipc(
         () => commands.applicationSaveDocumentEditor(sessionId, target, input),
@@ -1394,6 +1415,22 @@ export function connectRemoteVault(
         "document_editor",
         options,
       ),
+    deleteDocument: connection.info.capabilities.features.includes(
+      "document_delete",
+    )
+      ? (sessionId, target, input, options) =>
+          connection.request(
+            {
+              kind: "delete_document",
+              vault_id: vaultId,
+              session_id: sessionId,
+              target,
+              input,
+            },
+            "document_delete",
+            options,
+          )
+      : undefined,
     saveDocumentEditor: (sessionId, target, input, options) =>
       connection.request(
         {
