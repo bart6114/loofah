@@ -336,9 +336,20 @@ provider job remained interrupted after restore and same-request replay, with no
 additional provider call. The matching older executable also opened the original
 pre-upgrade snapshot with its unpublished capture intact.
 
+A separate forced-interruption acceptance on 2026-11-09 reused the immutable
+`43977c22c` Linux ARM64 runtime with a non-sparse 768 MiB unknown attachment.
+It observed real partial bytes, paused and killed backup at 21,889,024 copied
+bytes and restore at 25,034,752 bytes. A competing backup was refused while the
+original maintenance process retained the service lock. Neither partial copy was
+published; the original canonical inventory stayed unchanged, incomplete staging
+failed verification, and retries produced verified paired bundles and an exact
+restored file/directory/mode inventory. Existing destinations were never replaced.
+The test used at most 2,462,987,004 logical bytes, retained proof before removing
+its own abandoned staging, and used no service deployment, model or new binary.
+
 This qualifies those exact controlled artifacts and synthetic records, not a
 released-version compatibility matrix, Linux x64, production SSO/TLS, production
-upgrade downtime, interrupted large restore copying, live-client reconnect or
+upgrade downtime, live-client reconnect or
 uninterrupted device recording. That artifact predates the readiness probe below.
 
 ## Operational probes
