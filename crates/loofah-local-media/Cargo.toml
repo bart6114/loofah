@@ -15,3 +15,6 @@ owhisper-interface = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

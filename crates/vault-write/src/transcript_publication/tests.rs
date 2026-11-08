@@ -895,3 +895,35 @@ async fn replacement_recovers_after_canonical_rename_without_replaying_inference
     assert_eq!(canonical.transcripts.len(), 1);
     assert_eq!(canonical.transcripts[0].id, "replacement");
 }
+
+#[tokio::test]
+async fn replacement_source_uses_canonical_directory_and_recording_precedence() {
+    let f = Fixture::new().await;
+    for (filename, bytes) in [
+        ("audio.wav", b"Canonical recording source".as_slice()),
+        ("audio.mp3", b"preferred MP3".as_slice()),
+    ] {
+        std::fs::write(f.directory.join(filename), bytes).unwrap();
+        let Some(TranscriptSourcePreparation::Ready(source)) = f
+            .store
+            .prepare_transcript_replacement_source("note")
+            .await
+            .unwrap()
+        else {
+            panic!("missing canonical recording source");
+        };
+        assert_eq!(source.recording_selection(), filename);
+        let mut actual = Vec::new();
+        source.recording_file().read_to_end(&mut actual).unwrap();
+        assert_eq!(actual, bytes);
+    }
+    std::fs::remove_file(f.directory.join("audio.wav")).unwrap();
+    std::fs::remove_file(f.directory.join("audio.mp3")).unwrap();
+    assert!(matches!(
+        f.store
+            .prepare_transcript_replacement_source("note")
+            .await
+            .unwrap(),
+        Some(TranscriptSourcePreparation::NoRecording)
+    ));
+}

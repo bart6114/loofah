@@ -254,3 +254,84 @@ fn failure(cause: impl std::fmt::Display) -> ApplicationError {
         mutation_outcome: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn config(provider: Option<&str>, model: Option<&str>) -> AppConfig {
+        AppConfig {
+            current_stt_provider: provider.map(str::to_owned),
+            current_stt_model: model.map(str::to_owned),
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn vault_config_preserves_selected_meeting_languages() {
+        let config: AppConfig = serde_json::from_value(serde_json::json!({
+            "current_stt_provider": "fmtr", "current_stt_model": "soniqo-nemotron-3.5-streaming",
+            "meeting_languages": ["en-GB", "nl-BE"],
+        }))
+        .unwrap();
+        assert_eq!(
+            config.meeting_languages,
+            Some(vec!["en-GB".into(), "nl-BE".into()])
+        );
+        assert!(AppConfig::default().meeting_languages.is_none());
+    }
+
+    #[test]
+    fn missing_provider_or_model_asks_for_desktop_setup() {
+        for config in [
+            config(None, None),
+            config(Some("fmtr"), None),
+            config(None, Some("soniqo-parakeet-batch")),
+            config(Some(""), Some("")),
+        ] {
+            let error = model(&config).unwrap_err();
+            assert_eq!(error.code, ErrorCode::Validation);
+            assert!(
+                error
+                    .to_string()
+                    .contains("no speech-to-text model is configured"),
+                "unexpected message: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_fmtr_provider_is_rejected_as_unsupported() {
+        let error = model(&config(Some("deepgram"), Some("nova-3"))).unwrap_err();
+        assert!(error.to_string().contains("provider 'deepgram'"));
+        assert!(error.to_string().contains("not supported by the CLI"));
+    }
+
+    #[test]
+    fn non_soniqo_models_are_rejected_as_unsupported() {
+        for selected in [
+            "am-parakeet-v3",
+            "soniqo-qwen3-small",
+            "soniqo-qwen3-large",
+            "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+            "aufklarer/Qwen3-ASR-1.7B-MLX-8bit",
+            "QuantizedSmallEn",
+            "whisper-large-v3",
+        ] {
+            let error = model(&config(Some("fmtr"), Some(selected))).unwrap_err();
+            assert!(error.to_string().contains(selected));
+            assert!(error.to_string().contains("not supported by the CLI"));
+        }
+    }
+
+    #[test]
+    fn soniqo_models_resolve_to_their_configured_id() {
+        let selected = model(&config(Some("fmtr"), Some("soniqo-nemotron-3.5-streaming"))).unwrap();
+        assert_eq!(selected, "soniqo-nemotron-3.5-streaming");
+        let selected = model(&config(Some("fmtr"), Some("soniqo-parakeet-batch"))).unwrap();
+        assert_eq!(selected, "soniqo-parakeet-batch");
+
+        // Streaming models pass through unchanged; the engine maps them to
+        // their batch sibling, like the desktop passing conn.model along.
+        let selected = model(&config(Some("fmtr"), Some("soniqo-parakeet-streaming"))).unwrap();
+        assert_eq!(selected, "soniqo-parakeet-streaming");
+    }
+}
