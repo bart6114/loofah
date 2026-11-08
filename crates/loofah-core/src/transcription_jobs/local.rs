@@ -30,9 +30,9 @@ struct Owner {
 impl VaultContext {
     pub(crate) async fn prepare_local_capture_engine(
         self: &Arc<Self>,
-        input: &LocalInferenceInput,
+        input: LocalInferenceInput,
         cancel: CancellationToken,
-    ) -> Result<PreparedLocalInference, ApplicationError> {
+    ) -> Result<(PreparedLocalInference, LocalInferenceInput), ApplicationError> {
         let request = TranscriptionJobRequest {
             session_id: input.session_id.clone(),
             expected_recording_sha256: input.source_sha256.clone(),
@@ -47,7 +47,7 @@ impl VaultContext {
             .prepare(&request, cancel)
             .await
             .map_err(engine_error)?;
-        Ok(PreparedLocalInference { prepared, request })
+        Ok((PreparedLocalInference { prepared, request }, input))
     }
     pub(crate) async fn transcribe_local_capture_source(
         self: &Arc<Self>,

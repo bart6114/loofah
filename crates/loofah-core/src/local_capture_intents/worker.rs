@@ -301,9 +301,9 @@ impl LocalCaptureIntents {
                 audio: source.audio(),
                 owner: Box::new((source.clone(), admission)),
             };
-            let prepared = self
+            let (prepared, input) = self
                 .context
-                .prepare_local_capture_engine(&input, self.stop.child_token())
+                .prepare_local_capture_engine(input, self.stop.child_token())
                 .await?;
             if record.inference_dispatched {
                 return Err(review(
