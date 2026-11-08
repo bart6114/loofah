@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy)]
 pub struct ContentLimits {
     pub note_read_bytes: usize,
+    pub transcript_read_bytes: usize,
     pub note_write_bytes: usize,
     pub title_bytes: usize,
     pub task_count: usize,
@@ -19,6 +20,7 @@ impl Default for ContentLimits {
     fn default() -> Self {
         Self {
             note_read_bytes: 16 * 1024 * 1024,
+            transcript_read_bytes: 64 * 1024 * 1024,
             note_write_bytes: 4 * 1024 * 1024,
             title_bytes: 4096,
             task_count: 2000,
@@ -40,6 +42,7 @@ impl ContentLimits {
     pub const fn unlimited() -> Self {
         Self {
             note_read_bytes: usize::MAX,
+            transcript_read_bytes: usize::MAX,
             note_write_bytes: usize::MAX,
             title_bytes: usize::MAX,
             task_count: usize::MAX,

@@ -59,7 +59,7 @@ impl VaultContext {
         self.configure_local_session_lifecycle_host(std::sync::Arc::new(StandaloneLocalHost))
     }
 
-    async fn local_lifecycle_proof(
+    pub(crate) async fn local_lifecycle_proof(
         self: &std::sync::Arc<Self>,
         id: &str,
         admission: tokio::sync::OwnedRwLockWriteGuard<()>,

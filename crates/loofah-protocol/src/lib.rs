@@ -620,3 +620,6 @@ mod tests {
         );
     }
 }
+
+mod transcript_editor;
+pub use transcript_editor::*;

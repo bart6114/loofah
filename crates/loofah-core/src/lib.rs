@@ -40,4 +40,5 @@ mod session_summaries;
 mod tag_editing;
 mod tasks;
 mod timeline;
+mod transcript_editor;
 mod transcript_overview;

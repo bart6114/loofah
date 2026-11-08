@@ -15,6 +15,18 @@ pub(crate) struct TranscriptOperation {
 }
 
 impl TranscriptOperations {
+    pub fn try_lock(&self, id: &str) -> Option<TranscriptOperation> {
+        let mut registry = self.0.lock().unwrap();
+        let lock = registry.get(id).and_then(Weak::upgrade).unwrap_or_default();
+        let guard = lock.clone().try_lock_owned().ok()?;
+        registry.insert(id.to_owned(), Arc::downgrade(&lock));
+        Some(TranscriptOperation {
+            registry: self.0.clone(),
+            id: id.to_owned(),
+            lock,
+            guard: Some(guard),
+        })
+    }
     pub async fn lock(&self, id: &str) -> TranscriptOperation {
         let lock = {
             let mut registry = self.0.lock().unwrap();

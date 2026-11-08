@@ -108,6 +108,93 @@ fn next_retry_delay(current: std::time::Duration) -> std::time::Duration {
     (current * 2).min(RETRY_DELAY_CAP)
 }
 
+pub(crate) fn assigned_speaker_hints(
+    entry: &TranscriptWithData,
+    channel: i32,
+    speaker_index: Option<i32>,
+    speaker_label: &str,
+    anchor_word_id: &str,
+) -> Vec<TranscriptSpeakerHint> {
+    let new_id = format!("{anchor_word_id}:speaker_label");
+    let next_channel = f64::from(channel);
+    let next_speaker_index = speaker_index.map(f64::from);
+
+    let mut next_hints: Vec<TranscriptSpeakerHint> = {
+        let hints = &entry.speaker_hints;
+        let words_by_id: std::collections::HashMap<&str, &TranscriptWord> = entry
+            .words
+            .iter()
+            .filter_map(|word| word.id.as_deref().map(|id| (id, word)))
+            .collect();
+
+        // A channel is "diarized" when its provider hints resolve to >=2 distinct
+        // speaker indexes. On such a channel, indexed assignments and the
+        // channel-wide fallback are separate scopes that must coexist -- a
+        // channel-wide hint is the fallback for gap segments, not a stale duplicate.
+        let channel_is_diarized = {
+            let mut indexes: Vec<f64> = hints
+                .iter()
+                .filter(|h| {
+                    h.hint_type == "provider_speaker_index"
+                        && words_by_id
+                            .get(h.word_id.as_str())
+                            .is_some_and(|w| w.channel == next_channel)
+                })
+                .filter_map(|h| provider_speaker_index_for_word(hints, &h.word_id))
+                .collect();
+            indexes.sort_by(f64::total_cmp);
+            indexes.dedup();
+            indexes.len() >= 2
+        };
+
+        hints
+            .iter()
+            .filter(|hint| {
+                if hint.hint_type != "speaker_label" {
+                    return true;
+                }
+                if hint.id.as_deref() == Some(new_id.as_str()) {
+                    return false;
+                }
+                let Some(word) = words_by_id.get(hint.word_id.as_str()) else {
+                    return true;
+                };
+                if word.channel != next_channel {
+                    return true;
+                }
+                let existing_speaker_index = provider_speaker_index_for_word(hints, &hint.word_id);
+                let conflicts = if channel_is_diarized {
+                    // Diarized channel: only an exact scope match supersedes --
+                    // (ch, idx) evicts the same (ch, idx), channel-wide evicts
+                    // channel-wide. Mixed scopes coexist (fallback semantics).
+                    existing_speaker_index == next_speaker_index
+                } else {
+                    // Undiarized channel: a missing speaker index on either side
+                    // means "the whole channel", which conflicts with everything
+                    // on it (pre-diarization behavior, unchanged).
+                    match (existing_speaker_index, next_speaker_index) {
+                        (Some(left), Some(right)) => left == right,
+                        _ => true,
+                    }
+                };
+                !conflicts
+            })
+            .cloned()
+            .collect()
+    };
+
+    next_hints.push(TranscriptSpeakerHint {
+        id: Some(new_id),
+        word_id: anchor_word_id.to_string(),
+        hint_type: "speaker_label".to_string(),
+        // The frontend write path persisted the label as a bare JSON string;
+        // renderers read it back the same way.
+        value: serde_json::Value::String(speaker_label.to_string()),
+    });
+
+    next_hints
+}
+
 impl SessionStore {
     pub async fn finish_transcript(
         &self,
@@ -451,83 +538,8 @@ impl SessionStore {
             )));
         };
 
-        let new_id = format!("{anchor_word_id}:speaker_label");
-        let next_channel = f64::from(channel);
-        let next_speaker_index = speaker_index.map(f64::from);
-
-        let mut next_hints: Vec<TranscriptSpeakerHint> = {
-            let hints = &entry.speaker_hints;
-            let words_by_id: std::collections::HashMap<&str, &TranscriptWord> = entry
-                .words
-                .iter()
-                .filter_map(|word| word.id.as_deref().map(|id| (id, word)))
-                .collect();
-
-            // A channel is "diarized" when its provider hints resolve to >=2 distinct
-            // speaker indexes. On such a channel, indexed assignments and the
-            // channel-wide fallback are separate scopes that must coexist -- a
-            // channel-wide hint is the fallback for gap segments, not a stale duplicate.
-            let channel_is_diarized = {
-                let mut indexes: Vec<f64> = hints
-                    .iter()
-                    .filter(|h| {
-                        h.hint_type == "provider_speaker_index"
-                            && words_by_id
-                                .get(h.word_id.as_str())
-                                .is_some_and(|w| w.channel == next_channel)
-                    })
-                    .filter_map(|h| provider_speaker_index_for_word(hints, &h.word_id))
-                    .collect();
-                indexes.sort_by(f64::total_cmp);
-                indexes.dedup();
-                indexes.len() >= 2
-            };
-
-            hints
-                .iter()
-                .filter(|hint| {
-                    if hint.hint_type != "speaker_label" {
-                        return true;
-                    }
-                    if hint.id.as_deref() == Some(new_id.as_str()) {
-                        return false;
-                    }
-                    let Some(word) = words_by_id.get(hint.word_id.as_str()) else {
-                        return true;
-                    };
-                    if word.channel != next_channel {
-                        return true;
-                    }
-                    let existing_speaker_index =
-                        provider_speaker_index_for_word(hints, &hint.word_id);
-                    let conflicts = if channel_is_diarized {
-                        // Diarized channel: only an exact scope match supersedes --
-                        // (ch, idx) evicts the same (ch, idx), channel-wide evicts
-                        // channel-wide. Mixed scopes coexist (fallback semantics).
-                        existing_speaker_index == next_speaker_index
-                    } else {
-                        // Undiarized channel: a missing speaker index on either side
-                        // means "the whole channel", which conflicts with everything
-                        // on it (pre-diarization behavior, unchanged).
-                        match (existing_speaker_index, next_speaker_index) {
-                            (Some(left), Some(right)) => left == right,
-                            _ => true,
-                        }
-                    };
-                    !conflicts
-                })
-                .cloned()
-                .collect()
-        };
-
-        next_hints.push(TranscriptSpeakerHint {
-            id: Some(new_id),
-            word_id: anchor_word_id.to_string(),
-            hint_type: "speaker_label".to_string(),
-            // The frontend write path persisted the label as a bare JSON string;
-            // renderers read it back the same way.
-            value: serde_json::Value::String(speaker_label.to_string()),
-        });
+        let next_hints =
+            assigned_speaker_hints(entry, channel, speaker_index, speaker_label, anchor_word_id);
 
         // Hints-only mutation: `entry.words` is deliberately never reassigned, so word
         // content (including per-word metadata) cannot regress no matter what raced the
@@ -726,7 +738,10 @@ impl SessionStore {
 /// Live-era `provider_speaker_index` hints serialized the value as a JSON *string*
 /// (`"{\"channel\":1,\"speaker_index\":2}"`); newer writers store the object
 /// directly. Both shapes are on disk, so both must resolve.
-fn provider_speaker_index_for_word(hints: &[TranscriptSpeakerHint], word_id: &str) -> Option<f64> {
+pub(crate) fn provider_speaker_index_for_word(
+    hints: &[TranscriptSpeakerHint],
+    word_id: &str,
+) -> Option<f64> {
     let hint = hints
         .iter()
         .find(|h| h.hint_type == "provider_speaker_index" && h.word_id == word_id)?;
