@@ -2,6 +2,7 @@
 
 mod auth;
 mod capture;
+pub mod capture_upload;
 pub use hypr_capture_store::capture_spool;
 mod drafts;
 mod events;

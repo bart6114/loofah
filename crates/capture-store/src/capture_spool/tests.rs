@@ -944,6 +944,52 @@ async fn abandoned_callers_retain_the_root_lease_and_bounded_io_until_disk_work_
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_io_barrier_joins_an_abandoned_chunk_before_reporting_drained() {
+    let temp = test_directory();
+    let spool = open(&temp.path().join("spool")).await;
+    let writer = spool
+        .begin(identity(), CaptureFormat::stereo())
+        .await
+        .unwrap();
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let release = Arc::new(std::sync::Barrier::new(2));
+    *spool.pause.lock().unwrap() = Some(TestPause {
+        point: Fault::AfterChunkFileSync as u8,
+        entered,
+        release: release.clone(),
+    });
+    let operation = tokio::spawn({
+        let writer = writer.clone();
+        async move { writer.append_chunk(0, 8, pcm(8)).await }
+    });
+    waiting.await.unwrap();
+    operation.abort();
+    let _ = operation.await;
+    let drain = tokio::spawn({
+        let writer = writer.clone();
+        async move { writer.wait_for_io().await }
+    });
+    let started = tokio::time::timeout(Duration::from_secs(2), async {
+        while spool.io.available_permits() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    let blocked = !drain.is_finished();
+    tokio::task::spawn_blocking(move || release.wait())
+        .await
+        .unwrap();
+    started.unwrap();
+    assert!(blocked);
+    tokio::time::timeout(Duration::from_secs(5), drain)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(writer.snapshot().await.unwrap().chunk_count, 1);
+    assert_eq!(writer.read_chunk(0).await.unwrap().bytes, pcm(8));
+}
+
 struct Child(std::process::Child);
 impl Drop for Child {
     fn drop(&mut self) {

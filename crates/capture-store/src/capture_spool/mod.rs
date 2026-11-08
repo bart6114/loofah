@@ -37,6 +37,11 @@ pub struct CaptureWriter {
 }
 
 impl CaptureSpool {
+    /// Join already admitted blocking I/O without closing capture admission.
+    pub async fn wait_for_io(&self) {
+        let _drained = self.io.clone().acquire_many_owned(2).await;
+    }
+
     pub async fn open(root: PathBuf, limits: CaptureSpoolLimits) -> Result<Arc<Self>> {
         validate_root(&root)?;
         validate_limits(&limits)?;
@@ -150,6 +155,11 @@ impl CaptureSpool {
 }
 
 impl CaptureWriter {
+    /// Join already admitted blocking spool I/O, including a dropped async waiter.
+    pub async fn wait_for_io(&self) {
+        self.spool.wait_for_io().await;
+    }
+
     pub fn identity(&self) -> &CaptureIdentity {
         &self.identity
     }
