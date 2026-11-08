@@ -20,7 +20,9 @@ pub use drafts::{
     DocumentEditorRecovery, DraftCache, DraftText, EditorTaskRecovery, NoteDraftRecovery,
     RecoveryEntry, RecoveryScope,
 };
-pub use events::{ConnectionState, RemoteEvent, Subscription};
+pub use events::{
+    CaptureLiveBinding, CaptureLiveEvent, ConnectionState, RemoteEvent, Subscription,
+};
 #[cfg(feature = "os-credentials")]
 pub use os_credentials::OsCredentials;
 pub use profiles::{

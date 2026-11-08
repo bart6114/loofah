@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{RemoteClient, Result, cancelled, failure, invalid, json_body, unavailable};
 
+mod capture_live;
 mod document_editor;
 mod timeline;
 mod transcription;
@@ -15,6 +16,29 @@ mod transcription;
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteOperation {
+    StartCaptureLive {
+        vault_id: String,
+        binding: crate::CaptureLiveBinding,
+        input: CaptureLiveRequest,
+    },
+    CaptureLiveStatus {
+        vault_id: String,
+        binding: crate::CaptureLiveBinding,
+    },
+    CaptureLiveCaptions {
+        vault_id: String,
+        binding: crate::CaptureLiveBinding,
+        after: Option<u64>,
+        limit: u32,
+    },
+    CaptureLiveResult {
+        vault_id: String,
+        binding: crate::CaptureLiveBinding,
+    },
+    CancelCaptureLive {
+        vault_id: String,
+        binding: crate::CaptureLiveBinding,
+    },
     TimelineHeaders {
         vault_id: String,
         input: TimelineQuery,
@@ -294,6 +318,9 @@ pub enum RemoteOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum RemoteReply {
+    CaptureLiveSnapshot(CaptureLiveSnapshot),
+    CaptureLiveCaptions(CaptureLiveCaptionPage),
+    CaptureLiveResult(Option<TranscriptionJobResult>),
     TimelineHeaders(TimelinePage),
     TimelineFacets(TimelineFacets),
     SessionCleanup(DeleteEmptySessionOutcome),
@@ -364,6 +391,7 @@ impl RemoteClient {
                 || tag_write(&operation)
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
+                || capture_live::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
@@ -375,12 +403,16 @@ impl RemoteClient {
                 || tag_write(&operation)
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
+                || capture_live::is_write(&operation)
             {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
         }
         let required_feature = match &operation {
+            operation if capture_live::is_operation(operation) => {
+                Some("capture_live_transcription")
+            }
             operation if transcription::is_operation(operation) => Some("batch_transcription_jobs"),
             RemoteOperation::DeleteEmptySession { .. } => Some("session_cleanup"),
             RemoteOperation::SessionSummaries { .. } => Some("session_summaries"),
@@ -421,6 +453,9 @@ impl RemoteClient {
                 .any(|feature| feature == required)
         }) {
             let description = match operation {
+                ref operation if capture_live::is_operation(operation) => {
+                    "live capture transcription"
+                }
                 ref operation if transcription::is_operation(operation) => "batch transcription",
                 RemoteOperation::DeleteEmptySession { .. } => "conditional session cleanup",
                 RemoteOperation::SessionSummaries { .. } => "session summaries",
@@ -457,23 +492,25 @@ impl RemoteClient {
                 ),
             );
             error.request_id = Some(request_id.to_owned());
-            if matches!(
-                operation,
-                RemoteOperation::SaveNoteEditor { .. }
-                    | RemoteOperation::SaveDocumentEditor { .. }
-                    | RemoteOperation::DeleteEmptySession { .. }
-                    | RemoteOperation::SaveProcessingSettings { .. }
-                    | RemoteOperation::SubmitSummaryJob { .. }
-                    | RemoteOperation::SubmitTranscription { .. }
-                    | RemoteOperation::CancelTranscriptionJob { .. }
-                    | RemoteOperation::ResumeTranscriptionResult { .. }
-                    | RemoteOperation::CancelProcessingJob { .. }
-                    | RemoteOperation::DeleteRecording { .. }
-                    | RemoteOperation::RemoveAttachment { .. }
-                    | RemoteOperation::EnsureTag { .. }
-                    | RemoteOperation::AcceptTagSuggestion { .. }
-                    | RemoteOperation::DismissTagSuggestion { .. }
-            ) {
+            if capture_live::is_write(&operation)
+                || matches!(
+                    operation,
+                    RemoteOperation::SaveNoteEditor { .. }
+                        | RemoteOperation::SaveDocumentEditor { .. }
+                        | RemoteOperation::DeleteEmptySession { .. }
+                        | RemoteOperation::SaveProcessingSettings { .. }
+                        | RemoteOperation::SubmitSummaryJob { .. }
+                        | RemoteOperation::SubmitTranscription { .. }
+                        | RemoteOperation::CancelTranscriptionJob { .. }
+                        | RemoteOperation::ResumeTranscriptionResult { .. }
+                        | RemoteOperation::CancelProcessingJob { .. }
+                        | RemoteOperation::DeleteRecording { .. }
+                        | RemoteOperation::RemoveAttachment { .. }
+                        | RemoteOperation::EnsureTag { .. }
+                        | RemoteOperation::AcceptTagSuggestion { .. }
+                        | RemoteOperation::DismissTagSuggestion { .. }
+                )
+            {
                 error.mutation_outcome = Some(MutationOutcome::NotCommitted);
             }
             return Err(error);
@@ -611,8 +648,83 @@ impl RemoteClient {
             validate_session_summary_query(input).map_err(invalid)?;
         }
         timeline::validate_operation(&operation)?;
+        capture_live::validate_operation(&operation, request_id).map_err(|mut error| {
+            if capture_live::is_write(&operation) {
+                error.mutation_outcome = Some(MutationOutcome::NotCommitted);
+            }
+            error
+        })?;
         let mut body = None;
         let (method, segments) = match &operation {
+            RemoteOperation::StartCaptureLive {
+                vault_id,
+                binding,
+                input,
+            } => {
+                body = Some(value(input)?);
+                (
+                    Method::POST,
+                    vec!["vaults", vault_id, "captures", &binding.capture_id, "live"],
+                )
+            }
+            RemoteOperation::CaptureLiveStatus { vault_id, binding } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "captures",
+                    &binding.capture_id,
+                    "live",
+                    &binding.generation_id,
+                ],
+            ),
+            RemoteOperation::CaptureLiveCaptions {
+                vault_id,
+                binding,
+                after,
+                limit,
+            } => {
+                query.push(("limit", limit.to_string()));
+                if let Some(after) = after {
+                    query.push(("after", after.to_string()));
+                }
+                (
+                    Method::GET,
+                    vec![
+                        "vaults",
+                        vault_id,
+                        "captures",
+                        &binding.capture_id,
+                        "live",
+                        &binding.generation_id,
+                        "captions",
+                    ],
+                )
+            }
+            RemoteOperation::CaptureLiveResult { vault_id, binding } => (
+                Method::GET,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "captures",
+                    &binding.capture_id,
+                    "live",
+                    &binding.generation_id,
+                    "result",
+                ],
+            ),
+            RemoteOperation::CancelCaptureLive { vault_id, binding } => (
+                Method::POST,
+                vec![
+                    "vaults",
+                    vault_id,
+                    "captures",
+                    &binding.capture_id,
+                    "live",
+                    &binding.generation_id,
+                    "cancel",
+                ],
+            ),
             RemoteOperation::TimelineHeaders { vault_id, input } => {
                 body = Some(value(input)?);
                 (
@@ -1206,6 +1318,7 @@ impl RemoteClient {
             if tag_write(&operation)
                 || document_editor::is_save(&operation)
                 || transcription::is_write(&operation)
+                || capture_live::is_write(&operation)
             {
                 error.request_id.get_or_insert_with(|| request_id.into());
                 error
@@ -1296,6 +1409,13 @@ impl RemoteClient {
                     }));
             }
             let reply = match operation {
+                operation @ (RemoteOperation::StartCaptureLive { .. }
+                | RemoteOperation::CaptureLiveStatus { .. }
+                | RemoteOperation::CaptureLiveCaptions { .. }
+                | RemoteOperation::CaptureLiveResult { .. }
+                | RemoteOperation::CancelCaptureLive { .. }) => {
+                    capture_live::decode(response, &operation).await?
+                }
                 RemoteOperation::TimelineHeaders { input, .. } => {
                     let page: TimelinePage = json_body(response, TIMELINE_RESPONSE_LIMIT).await?;
                     timeline::validate_page(&page, &input)?;

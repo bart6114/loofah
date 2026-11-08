@@ -89,7 +89,7 @@ fn snapshot(job: &TranscriptionJobSnapshot) -> Result<()> {
     Ok(())
 }
 
-fn result(value: &TranscriptionJobResult, job: &str) -> Result<()> {
+pub(super) fn validate_result(value: &TranscriptionJobResult, job: &str) -> Result<()> {
     let transcript = &value.transcript;
     if value.job_id != job
         || validate_session_id(&value.session_id).is_err()
@@ -147,7 +147,7 @@ pub(super) async fn decode(
             let value: Option<TranscriptionJobResult> =
                 json_body(response, TRANSCRIPTION_RESULT_RESPONSE_LIMIT).await?;
             if let Some(value) = &value {
-                result(value, job_id)?;
+                validate_result(value, job_id)?;
             }
             Ok(RemoteReply::TranscriptionResult(value))
         }

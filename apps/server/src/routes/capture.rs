@@ -178,7 +178,7 @@ async fn publish(
     .await
 }
 
-async fn context(
+pub(super) async fn context(
     service: &Service,
     identity: &Identity,
     vault: &str,
@@ -190,7 +190,7 @@ async fn context(
     Ok((service.vault(vault).await?, member))
 }
 
-fn authorization(
+pub(super) fn authorization(
     service: Arc<Service>,
     identity: Identity,
     vault: String,

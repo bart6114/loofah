@@ -1,3 +1,10 @@
+mod capture_live;
+pub use capture_live::{CaptureLiveBinding, CaptureLiveEvent};
+pub(crate) use capture_live::{
+    validate_binding as validate_live_binding, validate_page as validate_live_page,
+    validate_snapshot as validate_live_snapshot,
+};
+
 use std::{sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
