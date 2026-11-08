@@ -1,179 +1,204 @@
 # Frontend/backend separation continuation
 
-## Goal and constraints
+## Goal and fixed constraints
 
 Fully implement, test and validate [the plan](./frontend-backend-separation.md).
-Implementation is authorized while the user is away. Status questions do not stop
-it. Keep standalone use offline, login-free and the default. Preserve macOS and
-Windows 11 x64/ARM64; Linux is headless only. Exclude bases, CRDTs, mobile,
-collaboration and general offline remote-vault editing. No merge or release yet.
+The goal remains active across status questions and intermediate checkpoints.
+Standalone Local remains the default, offline and login-free. Explicit saved
+Remote profiles never fall back to a Local vault. Preserve macOS and Windows 11
+x64/ARM64; Linux is headless only. Exclude bases, CRDTs, mobile, collaboration and
+general remote-vault offline editing. No merge or release yet.
 
-All worktrees, build/cache/temp/log/model/test artifacts must physically use T7.
-Original `/Volumes/T7/src/free-meeting-transcriber` tracked main stays untouched.
-Do not restore old stashes or cancel healthy builds/CI.
+Use existing isolated worktrees. All build/cache/temp/log/model/test artifacts
+physically use T7. Original `/Volumes/T7/src/free-meeting-transcriber` tracked main
+remains untouched (`?? docs/plans/` only). Do not restore old stashes or cancel
+healthy builds/CI. Do not create a new tree/cache to bypass a build lock.
 
-## Current source
+## Current authoritative source
 
-- Integration: `/Volumes/T7/src/loofah-backend-separation`,
+- Integration: `/Volumes/T7/src/loofah-backend-separation`, branch
   `refactor/frontend-backend-separation`.
-- Published checkpoint: `c32f8ae172345de16fc0a963584bb0178c043084`.
-  Later integrated source includes the uploader, captured Local control guards and
-  timeline contracts/Store/Core/HTTP/SDK source; these are not yet pushed.
-  `0e87fe212` adds actual typed timeline client/query seams and the device recording
-  client. Its 81 adapter tests and whole desktop typecheck pass.
-- Draft PR: <https://github.com/bart6114/loofah/pull/123>.
-- Integrated source now includes startup `0f44dadda`, active-profile save fix
-  `b80001d47`, main attachments `5b27c9855`, captured main host `77ead7fd3` and CPU
-  deployment `7cd59564f`.
-- Shared batch Core/CPU/HTTP operations are integrated through `013580cf3`;
-  model-to-canonical CPU proof is from the actual configured Service on macOS.
-- Root's fixed native runner is
-  `/Volumes/T7/src/loofah-separation-desktop-bootstrap`,
-  `refactor/backend-desktop-bootstrap`. Rebase it onto the integration head only
-  while clean and no dependent Rust build is running. It already contains the
-  startup fix, uploader/coordinator and timeline source. Root checkpoint
-  `d16e32a3f` added public device recording commands, scoped status/subscriptions, safe quit,
-  Local timeline IPC and actual protocol exports (integrated as `516385f18`). The runner is clean; current Native source/checks are verified.
+- Published checkpoint: `f5a30b2ad78c37b81de82e53634649c0e464bf70`.
+- Draft PR: <https://github.com/bart6114/loofah/pull/123>. Its head, body and draft
+  status were read back after the push. No merge/release.
+- Current combined source after six later unpublished commits:
+  `c04e918bad324a4457cdfbb5ac490331ab4ab7ba` (plus this handoff update).
+- Those six commits integrate B policy/routes (`e8e0f0c56`), C checked pending
+  publication (`168ba1275`), distinct pending capability guard (`518c78ed5`), A
+  admission gate (`942ef712e`), C capture lifecycle (`556a78f6d`) and disabled-live
+  retained-journal review (`c04e918ba`). Do not push the next batch over healthy
+  Windows jobs; finish relevant contract generation/checks first.
 
-Earlier implementation and evidence are historical sections in the main plan.
-Do not append another large chronological checkpoint there. Update its current
-summary and this handoff instead.
+The published checkpoint includes startup/profile lease fixes, scoped content and
+attachments, CPU deployment, portable uploader/coordinator, Local legacy controls
+and scoped undo, bounded main timeline, the captured main-workspace adapter,
+internal Core CPU live processing, native recording controls/recovery and the
+experimental recording UI. Earlier details in the main plan are historical.
+Update this handoff/current summary, not another huge chronological audit.
 
-## Startup cohort
+## User-visible behavior and outstanding integration
 
-The SDK stores a bounded, revision-checked `desktop-startup.json` next to saved
-connection metadata. Absent means Local without creating profiles or contacting
-an identity provider. Unknown/damaged records and removed/replaced profiles fail
-closed. Settings resolve this choice before resolving a local vault. Remote
-preferences have their own device directory and no legacy local-settings fallback.
-Owned settings I/O retains its serialization guard through actual completion.
+Local startup still opens the existing standalone app. Remote startup resolves a
+saved profile before opening any Local vault/Store/index or Local STT supervisor.
+It currently opens the experimental notes workspace, with a device recording host
+outside the authenticated vault tree. Existing unrecorded notes can capture audio;
+Stop and discovery of retained captures survive network/sign-in loss. Capture
+identity/request UUID, original member/vault, raw source and observed producer time
+remain bound. A lost start reply is Unknown; repeating the same UUID cannot start
+another microphone session. View teardown stops subscriptions, not recording.
 
-Native startup omits the local Store/Context/watcher/index and local STT supervisor
-in remote mode. The existing device transcription root remains available. A
-cached immutable active ProfileLease lives in RemoteState for the app lifetime;
-reconnects/offline captures must reuse it instead of opening the profile again.
-Each profile uses its own OS credential namespace. Window teardown closes its
-network client without releasing or retargeting capture ownership.
+Private device recovery inventory spans original accounts/vaults within the active
+profile without a server login. It never exposes an unfiltered remote listing.
+Memory status/cache plus upload progress avoid rescanning disk on every frame.
+New start invalidates old complete-inventory caches before admitting capture.
+Unknown inventory cannot prove idle. Device audio is never automatically deleted.
+Raw audio export/local recovery is still needed; the current queue retains data
+and can resume an upload to the original authorized destination.
 
-Frontend bootstrap keeps the original local tree intact. Explicit remote startup
-mounts the existing experimental notes workspace, with saved member/vault checks.
-Startup preferences apply next process start. Local-vault failure also exposes
-startup options. No general in-process transport switch exists.
+The actual main timeline uses bounded Date/Upcoming/Undated pages and complete tag
+facets, exact revision/cursor binding, explicit pagination/count/retry, bounded lazy
+tag admission and loaded-only selection. The real captured main workspace and
+editor work through scoped clients and private AI/listener stores. It is NOT yet
+selected by Remote bootstrap: remaining shared actions/settings/processing,
+recording activity, imports/exports and related gates must be connected. Unsupported
+legacy views/actions cannot load Local credentials/models or write a Local vault.
 
-Checks under `/Volumes/T7/loofah-backend-build/logs/desktop-bootstrap-*`:
+The server Core live worker tails the same durable chunks; no second PCM upload
+channel is required. Native HTTP/SSE subscription bridge exists. Automatic shared
+recording orchestration (live or batch repair, then summaries) is still needed;
+do not place that business workflow in React or require a desktop callback to
+complete server work. Use stable persisted identities, existing job services and
+fresh membership authorization through actual canonical commits.
 
-- Native build and all-target desktop/settings/SDK/CLI Rust checks passed.
-- 122 desktop tests passed, one existing ignored; actual native binding export
-  passed separately. Settings 15 and SDK profile/startup 18 passed.
-- Whole desktop frontend: 2,367 tests across 262 files passed; typecheck passed.
-- Focused startup/transport checks: 46 passed. New owned UI lint has zero warnings;
-  global lint retains 86 baseline warnings, zero errors.
-- All 109 locale catalogs extracted and strictly compiled. Global formatting and
-  changed-source checks passed; startup locale drift passed after commit.
-- Native provenance JSON records own source/executable/.d, hashes and exact tests.
-  The first native attempt lacked generated Codex catalog resources; running the
-  existing preparation script fixed that. Successful second build took 1m21s;
-  all-target check took 2m26s. Do not repeat a full native build for small UI edits.
+## Fixed trees, source owners and cache reservations
 
-Startup follow-up: the native command now reuses the immutable active profile
-lease when changing the next-start selection back from Local to that profile.
-The same shared SDK CAS/atomic-write operation is used; foreign-store/profile
-leases are rejected. All 20 SDK profile tests and the actual native command
-round trip pass; desktop/CLI all-target checks pass and actual binding export has
-no contract drift. See `logs/desktop-startup-leased-save-*` for proof.
-Title-only draft previews are memory-backed, not crash/restart durable.
+- **A `frontend_distribution`**:
+  `/Volumes/T7/src/loofah-separation-document-editor-ui`.
+  Timeline `95ac64b72` is integrated as `49c838f03`; captured workspace `3a08bc056`
+  as `223bad704`. A now owns protocol/Store/Core checked session delete/restore,
+  lifecycle gate and summary/batch durable admission/busy checks. Same tree updated
+  to combined `c04e918ba`; 16 owned WIP paths archived before update. Only narrow
+  A module/job hunks were restored, preserving incoming C/B fields.
+  A owns **target-root now**, first frozen check session `71974`, log
+  `agents/document-editor/logs/lifecycle-first-check.log`. No Native/model work.
+- **B `backend_distribution`**:
+  `/Volumes/T7/src/loofah-separation-batch-transcription`.
+  Validated timeline/live/policy `36d72f831` is integrated. Same clean tree updated
+  to `c04e918ba`, only storage lease helper reapplied as `602d97239` (original source
+  checkpoint `9cde856e2`, not yet compiled). B now owns Local CLI/MCP owner bridge,
+  portable ownership helper, Store I/O pin adoption and Context/Runtime lease
+  conversion. Source-first; no Cargo reservation while A uses target-root.
+- **C `capture_distribution`**:
+  `/Volumes/T7/src/loofah-separation-transcription-cpu`.
+  Validated Core live `3e8d17843`, pending `a8edbf9e5`, pending-cap follow-up
+  `5c0ab6bd4`, lifecycle `ab82e060b` and disabled-state fix `76d892f91` are integrated.
+  All C processes ended and target-root explicitly released to A. C next owns a
+  shared INTERNAL rich-create contract for existing CLI metadata flags, coordinated
+  with B, preserving old/default/pending receipts and atomic initial note creation.
+  No Cargo while A owns root; no Native/Store-lease edits.
+- **Root**:
+  integration, actual exports/contracts, frontend recording UI/activity, selected
+  main activation, native ownership/startup/quit, shared recording workflow and
+  remaining acceptance. Fixed Native source runner:
+  `/Volumes/T7/src/loofah-separation-desktop-bootstrap`, branch
+  `refactor/backend-desktop-bootstrap`, currently clean `1771eacd1` after C pending
+  validation. Native recovery source `acee60402` is integrated as `21a8e7bdc`.
+  **target-tauri is free for Root**; no current Cargo/test process there.
 
-## Latest attachment and deployment integration
+Physical caches: `/Volumes/T7/loofah-search-build/{target-root,target-tauri}`.
+Keep the source of each running build frozen. Use the fixed runner for Native
+checks; no second absolute-source-path Native build. Export native bindings from
+`apps/desktop/src-tauri`, then oxfmt from repo root (paths containing `..` fail).
+Protocol export format remains generator-owned.
 
-The actual main attachment list, upload hook, raw/output resources, image strip
-and navigation now use scoped APIs and canonical IDs. Runtime URLs and local paths
-do not determine upload success or enter new saved references. Lists are paged;
-resource/copy actions are lazy. Local offline upload and Finder/Explorer behavior
-remain available through the local adapter. Unknown replies retain the same UUID
-and staged source for explicit retry. Root reviewed callbacks/ownership and the
-combined startup/attachment/main-host run passes 332 checks across 31 files;
-whole desktop typecheck passes. Worker proof covers 142 cases and 50/150/500 ms retirement.
+## Near-term junctions and critical facts
 
-CPU deployment adds `Dockerfile.cpu` (Ubuntu 24.04 x64), a shared pinned Linux native
-setup and precise configured-Service runtime CI. Default notes-only image/job and
-macOS setup remain unchanged. Local capability checks and 23 workflow helper tests
-pass. Hosted `linux-cpu-stt` and the default container are green on `c32f8ae17`;
-full standalone CPU Docker build qualification remains pending. No local Docker daemon/VM was started.
+1. A contracts: `SessionLifecycleSnapshot`, `DeleteSessionRequest/Outcome`,
+   `RestoreSessionRequest/Outcome`; Core `read_session_lifecycle`, `delete_session`,
+   `restore_session`, with authorized variants. Expected revision and trash token
+   are opaque 64hex; no paths/force in HTTPS. Replay is historical, never proof of
+   current presence. Private receipt details for Local CLI preserve original
+   path/trash_path/deleted_at; timestamp persisted once. Prepared unknown intent
+   must not become NotCommitted merely because a later admission is busy.
+2. Core gate: shared `admit_session_work` through actual durable admission/binding;
+   non-queuing exclusive `try_session_lifecycle_change` for delete/restore. No
+   inference-long write lock. Active/uncertain journals and capture work block
+   deletion. C aggregate `ensure_capture_session_lifecycle_idle` covers original,
+   persisted and deterministic Pending targets, all members, live commit_pending
+   and retained journals even when the model is disabled. Unknown evidence fails
+   closed; unknown private files remain preserved/ignored.
+3. B ownership audit found desktop and old CLI do not currently acquire the
+   canonical vault lock. Native MUST acquire it BEFORE Store/startup/watch and
+   publish its owner endpoint only with that proof. Remote startup acquires no
+   Local lease. Pin the original descriptor through Store clones and actual
+   blocking I/O, not just request waiters. B APIs: portable `VaultLease`, typed
+   Store pin, Context `with_vault_lease`/`lease_pin`; no explicit early unlock.
+   C disabled-ledger File clone must become an original Arc pin with B's seam.
+4. CLI owner transport: same-user Unix socket/macOS and named pipe/Windows,
+   per-operation resolver (idle MCP holds no owner), no direct fallback while a
+   lock is held. Stream large content with bounded frames; no new hard Local note
+   cap. Preserve all existing commands/output; import/transcribe need injected
+   device host hooks and shared checked canonical application. Old pre-bridge
+   desktops need a stopped upgrade; discovery cannot prove they obey a new lock.
+5. B model policy is authenticated and memory-only, exposes only configured public
+   alias, sanitized availability and batch/live flags. No model path/hash/error or
+   secret. Register it in protocol exporter and regenerate actual Native bindings.
+   Add configured-host `capture_live` and `capture_pending_publication` capabilities
+   only with the matching verified implementation. Both remain unadvertised in
+   the current published build. Do not guess model names.
 
-## Active agents and next dependencies
+## Verification and hosted state
 
-Use the existing fixed trees; no new worktree per subtask.
+At published `f5a30b2ad`:
 
-- A `frontend_distribution`: `/Volumes/T7/src/loofah-separation-document-editor-ui`.
-  Main host, attachments and Local legacy-control admission guards are integrated
-  (`6ce2d8096` as `ee7436ba0`). Guards passed 543 tests/32 files and typecheck.
-  Scoped undo/delete recovery `83d46778f` is integrated as `873d24043` (82 tests,
-  typecheck, lint and format passed). Now consumes actual generated
-  timeline contracts for bounded Date/Upcoming/Undated/tag browsing. No Remote main
-  activation until remaining gates pass.
-- B `backend_distribution`: `/Volumes/T7/src/loofah-separation-batch-transcription`.
-  Uploader/coordinator/stable start UUID are integrated. Timeline protocol `6a8874df4`
-  and Store/Core/HTTP/SDK `0673b7dab` are integrated SOURCE ONLY, pending B's focused
-  backend validation. Native wrappers use `VaultContext::timeline_headers/facets`.
-  Next live HTTP/SSE/SDK against the C API handed off directly. Source work can
-  proceed while C finishes validation; no public live capability yet.
-- C `capture_distribution`: `/Volumes/T7/src/loofah-separation-transcription-cpu`.
-  Pure live protocol `359e445ed` is integrated and passed its three own-source tests.
-  Internal live Core/CPU vertical remains WIP/unadvertised. Its combined CPU graph
-  compiled successfully; fake/legacy cases, exact consumed-source hash proof and a
-  configured real CPU caption-before-seal case are next.
-- Root: integration, actual bindings, timeline client/query factories, public
-  recording controls/quit and device UI, remaining workflows and acceptance.
+- Whole frontend: **2,510 tests / 277 files**, typecheck, extraction and strict
+  compilation of all109 locale catalogs passed. One outdated enhanced-summary
+  fixture lacked captured activity; Root updated only that mock, verified its32
+  focused regressions, then reran the whole suite green. Lint: two pre-existing
+  warnings, zero new warnings/errors in Root-owned UI.
+- Native through Cargo: **132 desktop +33 capture-store passed**, existing ignored
+  opt-in helpers unchanged. Actual binding export passed separately. All-target
+  desktop/Store check passed. The two Codex probes failed only on direct binary
+  launch, but the SAME executable passed exact probe and complete Cargo suite;
+  they are NOT excluded from the required suite. Use Cargo environment for Native
+  runtime tests; retain pinned artifact/source provenance.
+- Main timeline149 and captured main-workspace110 focused checks passed; the
+  combined frontend run includes them. Local offline/no-login and no Local
+  provider/model side effects under the unsupported host were checked.
+- Core CPU live: actual20s dual-channel case produced first finalized words1.21s
+  after start, before seal, then verified consumed-source seal/SHA, canonical audio
+  and transcript, unknown data preservation and real drain. No two-hour/physical
+  acceptance claim. Proof `agents/capture/logs/capture-live-verification.json`.
 
-C owns target-root through its live validation, then explicitly hands it to B.
-Root finished the native/export/check cohort; no Cargo currently uses target-tauri. Do not launch
-competing Cargo work. Physical roots are
-`/Volumes/T7/loofah-search-build/{target-root,target-tauri}`. Keep source frozen
-through dependent builds. Root's fixed runner avoids compiling identical source
-from another absolute worktree path.
-Generate native bindings with cwd `apps/desktop/src-tauri`, then oxfmt the resulting
-file from the repo root (do not pass paths containing `..`). Keep protocol export
-format unchanged.
+Later unpublished source:
 
-## Hosted checks and release gates
+- B timeline17, liveHTTP3, SDKlive3 at50/150/500ms with exact prefix reconnect,
+  policy4 and old focused regressions passed; default/CPU all-target checks and
+  library Clippy passed. Proof `agents/batch-transcription/logs/timeline-live-policy-verification.json`.
+- C pending31 passed on fixed runner1771, checks/Clippy passed. Lifecycle final53,
+  default all-target check and Clippy passed on76d. Proofs
+  `agents/capture/logs/pending-capture-native-verification.json` and
+  `agents/capture/logs/capture-lifecycle-final-verification.json`.
+- Root logs/provenance: `device-live-recovery-source-verification.json`,
+  `device-live-recovery-cargo-full-tests.log`,
+  `recording-timeline-main-frontend-full-final.log`,
+  `recording-timeline-main-frontend-typecheck-final.log`, all under
+  `/Volumes/T7/loofah-backend-build/logs/`.
 
-Pushed `c32f8ae17`: full frontend/typecheck/locales, CLI, backend (including CPU),
-formatting and security passed. macOS failed an external Soniqo dependency download
-(SpeechCore v0.0.14 HTTP 504), including one failed-job retry; do not repeatedly
-rerun while that upstream asset is unavailable. Windows x64 native checks/tests
-passed but packaging failed from an external HTTP 504 (including its diagnostic
-retry), not a Rust compilation failure.
-Windows ARM64 remains active. Do not cancel it or push another batch over it.
-Last wholly green head remains `93dada10bb`.
+Fresh CI on f5a: backend42480766955, Windows42480766961, desktop42480767023 are
+running. CLI42480767208, generalCI42480766950 and zizmor42480767173 passed.
+Read current results, do not infer completion from these initial states. Previous
+c32 Windows ARM64 completed successfully; its x64 packaging and macOS dependency
+fetches failed externalHTTP504, not Rust compilation. Do not cancel healthy new
+Windows jobs or push another batch over them. No Windows speech-model acceptance
+claim from skipped jobs. Last wholly green earlier head was93dada10bb.
 
-Root's first new native recording cohort compiled and passed all recording,
-coordinator and status tests. Full desktop run: 130 passed, one existing ignored,
-two existing Codex executable-version probe tests failed their five-second runtime
-budgets on T7 (one focused retry also failed). Do not claim a fully green native
-suite. SDK uploader six cases and capture Store 33/three ignored passed. Proof:
-`logs/device-recordings-v2-test-provenance.json` and its per-executable logs.
-The consolidated native cohort now passes 131 tests (one ignored, the same two
-Codex probes excluded), actual binding export, and `cargo check -p desktop
---all-targets`. Proof: `logs/device-recordings-final-native-provenance.json`; own
-source depfile and hashes are recorded. Its warm native rebuild took38s, all-target
-check82s. Root wrapper await errors and five B SDK test-only compilation errors
-were corrected before that final result. Both actual generated contract files
-are integrated. A rebases the same fixed tree onto `0e87fe212` before restoring
-only its owned timeline controller WIP.
+## Remaining full-goal work
 
-The native recording client has no constructor I/O. UI retirement or a lost
-start reply preserves the original request UUID as an unknown outcome and does
-not stop device capture. Explicit Stop remains independent of network-client
-retirement. Closing subscriptions fences callbacks and cleans late admission.
-This adapter is not yet a complete recording UI. Before enabling Remote main
-cleanup, invalidate/rescan historical inventory at new-start admission so a
-retired in-memory ticket cannot turn an old queued capture into false idle. Keep
-unknown inventory protective. Root ran already-built timeline tests by pinned executable while C retained its
-cache: protocol1, Store9 and Core2 all passed. Proof:
-`logs/timeline-pinned-provenance.json`. SDK/HTTP timeline cases remain pending B.
-
-Still open: complete main remote UI, remaining processing/streaming/import/export,
-provider secrets and CLI owner/writes; capture/public lifecycle/pending/append,
-live STT/diarization and repair; retention/cleanup and production compatibility,
-upgrade, long-recording and macOS/Windows performance/UX acceptance. The full plan
-remains active, even when a useful intermediate feature is committed or pushed.
+Complete main feature activation, shared provider credentials/settings, imports and
+exports, CLI/MCP owner routing/all mutations, native lease bootstrap, automated
+recording/live/repair/summary workflow, pending controls and append, audio recovery
+export, retention/cleanup, headless CPU image and fresh Linux real-live validation,
+backup/restore/upgrades/version compatibility, two-hour outage/restart capture and
+production macOS/Windows responsiveness/UX. Keep the objective active until every
+requirement and release gate is proved; a useful checkpoint is not completion.

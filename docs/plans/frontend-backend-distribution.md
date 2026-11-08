@@ -128,30 +128,27 @@ login-free. The full objective remains active; no merge or release yet.
 
 The first-wave descriptions above are historical. Current allocation:
 
-- A: actual generated timeline contracts are ready at integration `0e87fe212`.
-  Build bounded per-owner Date/Upcoming/Undated/tag paging and viewport restoration;
-  Local control guards and scoped undo/delete recovery are integrated. No Remote
-  main activation until remaining gates pass.
-- B: timeline Store/Core/HTTP/SDK source is integrated, with SDK fixture compile
-  corrections. Finish focused backend checks after C releases target-root; prepare
-  live HTTP/SSE and SDK against C's explicit internal API handoff in parallel.
-- C: finish exact consumed-source hash/seal proof and one real configured CPU live
-  case after the92-case fake/legacy cohort. Keep the configured model host shared;
-  no public live capability until the combined gate.
-- Root: native recording controls/owned shutdown/Local timeline IPC and real
-  exports are integrated (`516385f18`), with frontend adapters (`0e87fe212`). Next
-  recording UI/activity/recovery integration and remaining workflows/acceptance.
+- A: checked shared session delete/restore, durable opaque trash tokens, session
+  lifecycle gate and summary/batch admission. Uses combined c04 foundation;
+  owns the current target-root check window after C's validated53-case release.
+- B: Local CLI/MCP owner routing and portable lease/IPC. The audit found Native
+  desktop and old CLI lack the canonical lock. Root will acquire/pin it before
+  Native Store startup; B owns shared lease/Store I/O pin/Runtime plumbing and CLI.
+  No direct fallback while owned, no Local login, no hard new Local content cap.
+- C: rich internal checked creation for existing CLI metadata flags, after validated
+  pending publication/lifecycle gates. Coordinates with B; source-first while A
+  uses target-root. C's original-Arc-only read pin follows B's shared lease seam.
+- Root: actual generation/contracts/capabilities, device recording/activity and
+  main activation, server-owned recording orchestration, native owner wiring,
+  integration and final acceptance. target-tauri is free for Root.
 
-Native tests pass131 (one ignored, two existing Codex executable-probe deadline
-failures explicitly excluded), actual binding export passes, and all-target Rust
-check passes. Frontend adapters pass81 tests and whole desktop typecheck. The
-standalone default remains offline and login-free.
-
-Pushed `c32f8ae17`: frontend, CLI, headless, Linux CPU and default server-container
-jobs passed. macOS is blocked by an external SpeechCore dependency HTTP504,
-including one retry. Windows x64 checks/tests pass but packaging also hit HTTP504;
-ARM64 remains active. Do not cancel it or launch a replacement batch over it.
-Last entirely green head remains `93dada10bb`.
+Published f5a30b2ad includes recording queue UI, paged main timeline, captured real
+main adapter and native recording/recovery controls. Whole frontend2510/277,
+Native Cargo132desktop+33Store, actual export, typecheck and localization passed.
+Main activation is still gated. Fresh hosted checks are running; no merge/release.
+Later combined c04 source includes validated model policy, pending publication and
+capture lifecycle gates; actual generated policy contracts still need integration.
+See the handoff for exact source, proof and current process handles.
 
 Reuse these existing worktrees. In particular, use Root's fixed bootstrap tree for
 consolidated native builds instead of compiling identical integration source from
