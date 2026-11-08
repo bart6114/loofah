@@ -97,6 +97,24 @@ pub async fn application_attachment_metadata<R: tauri::Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn application_timeline_headers<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::TimelineQuery,
+) -> Result<hypr_loofah_protocol::TimelinePage, ApplicationError> {
+    context(&app)?.timeline_headers(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn application_timeline_facets<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: hypr_loofah_protocol::TimelineFacetsQuery,
+) -> Result<hypr_loofah_protocol::TimelineFacets, ApplicationError> {
+    context(&app)?.timeline_facets(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn application_sessions<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     limit: u32,
@@ -816,6 +834,32 @@ mod tests {
                 .len(),
             3
         );
+        let timeline = application_timeline_headers(
+            app.handle().clone(),
+            hypr_loofah_protocol::TimelineQuery {
+                view: hypr_loofah_protocol::TimelineView::Date {
+                    before_ms: 1_900_000_000_000,
+                },
+                limit: 1,
+                cursor: None,
+                expected_revision: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(timeline.items.len(), 1);
+        assert_eq!(timeline.items[0].header.title, "Local note");
+        assert_eq!(timeline.total_count, 1);
+        let facets = application_timeline_facets(
+            app.handle().clone(),
+            hypr_loofah_protocol::TimelineFacetsQuery {
+                expected_revision: Some(timeline.revision),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(facets.untagged_count, 1);
+        assert!(facets.nodes.is_empty());
         std::fs::remove_file(vault.path().join("sessions/note/_meta.json")).unwrap();
         let rows = application_session_summaries(
             app.handle().clone(),

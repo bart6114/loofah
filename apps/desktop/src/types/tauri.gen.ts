@@ -354,6 +354,32 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationTimelineHeaders(
+    input: TimelineQuery,
+  ): Promise<Result<TimelinePage, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_timeline_headers", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async applicationTimelineFacets(
+    input: TimelineFacetsQuery,
+  ): Promise<Result<TimelineFacets, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_timeline_facets", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationSessions(
     limit: number,
     after: string | null,
@@ -1469,6 +1495,99 @@ export const commands = {
   async showDevtool(): Promise<boolean> {
     return await TAURI_INVOKE("show_devtool");
   },
+  async deviceRecordingStart(
+    connectionId: string | null,
+    input: DeviceCaptureStartRequest,
+  ): Promise<Result<DeviceRecordingInfo, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_start", {
+          connectionId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingInventory(): Promise<
+    Result<DeviceRecordingInventory, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_inventory"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingStatus(): Promise<
+    Result<DeviceRecordingInventory | null, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_status"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingStop(
+    identity: CaptureIdentity,
+  ): Promise<Result<boolean, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_stop", { identity }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingResumeUpload(
+    connectionId: string,
+    identity: CaptureIdentity,
+  ): Promise<Result<CaptureUploadProgress, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_resume_upload", {
+          connectionId,
+          identity,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingSubscribe(
+    subscriptionId: string,
+    channel: TAURI_CHANNEL<number>,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("device_recording_subscribe", {
+          subscriptionId,
+          channel,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deviceRecordingUnsubscribe(subscriptionId: string): Promise<void> {
+    await TAURI_INVOKE("device_recording_unsubscribe", { subscriptionId });
+  },
   async completeAppExit(): Promise<void> {
     await TAURI_INVOKE("complete_app_exit");
   },
@@ -2350,6 +2469,67 @@ export type Capabilities = {
   application_version: string;
   features: string[];
 };
+export type CaptureChannel = "microphone" | "system_audio" | "mixed";
+export type CaptureEncoding = "pcm_f32_le";
+export type CaptureFormat = {
+  encoding: CaptureEncoding;
+  sample_rate: number;
+  channels: CaptureChannel[];
+};
+export type CaptureIdentity = {
+  scope: CaptureScope;
+  capture_id: string;
+  request_id: string;
+  target: CaptureTarget;
+};
+/**
+ * An authenticated verifier must compare the finalized service receipt with an
+ * independent canonical artifact read before supplying this observation.
+ * Recording it never authorizes deletion of the device's audio.
+ */
+export type CapturePublication = {
+  source: CaptureSeal;
+  session_id: string;
+  canonical_audio_sha256: string;
+  canonical_audio_bytes: number;
+};
+export type CaptureScope = {
+  server: string;
+  member_id: string;
+  vault_id: string;
+};
+export type CaptureSeal = {
+  capture_fingerprint: string;
+  chunk_count: number;
+  frames: number;
+  pcm_bytes: number;
+  chain_digest: string;
+  source_sha256: string;
+};
+export type CaptureTarget =
+  | {
+      kind: "existing_session";
+      session_id: string;
+      expected_audio_sha256: string | null;
+    }
+  | { kind: "pending_session"; create_request_id: string };
+export type CaptureUploadPhase =
+  | "queued"
+  | "waiting_for_audio"
+  | "uploading"
+  | "retrying"
+  | "authentication_required"
+  | "pending_session"
+  | "append_unsupported"
+  | "verified"
+  | "needs_review"
+  | "stopped";
+export type CaptureUploadProgress = {
+  phase: CaptureUploadPhase;
+  acknowledged_chunks: number;
+  publication: CapturePublication | null;
+  error: ApplicationError | null;
+};
 export type Change =
   | {
       kind: "index_changed";
@@ -2440,6 +2620,40 @@ export type DesktopStartupSnapshot = {
 export type DeviceAttachmentSource =
   | { kind: "path"; path: string }
   | { kind: "staged"; id: string };
+export type DeviceCaptureStartRequest = {
+  request_id: string;
+  scope: CaptureScope;
+  target: CaptureTarget;
+  format: CaptureFormat;
+};
+export type DeviceHostPhase =
+  | "preparing"
+  | "starting"
+  | "capturing"
+  | "stopping"
+  | "pending"
+  | "finished"
+  | "failed"
+  | "never_started";
+export type DeviceRecordingInfo = {
+  profile_id: string;
+  identity: CaptureIdentity;
+  phase: DeviceHostPhase | null;
+  first_audio_ms: number | null;
+  observation_durable: boolean;
+  frames: number;
+  pcm_bytes: number;
+  sealed: boolean;
+  publication: CapturePublication | null;
+  upload: CaptureUploadProgress | null;
+  failure: string | null;
+};
+export type DeviceRecordingInventory = {
+  profile_id: string;
+  scope: CaptureScope;
+  ready: boolean;
+  recordings: DeviceRecordingInfo[];
+};
 export type DeviceVaultStateChanged = { scope: string };
 export type Document = {
   id: string;
@@ -2830,6 +3044,8 @@ export type RemoteEvent =
     }
   | { kind: "change"; event: ChangeEvent };
 export type RemoteOperation =
+  | { kind: "timeline_headers"; vault_id: string; input: TimelineQuery }
+  | { kind: "timeline_facets"; vault_id: string; input: TimelineFacetsQuery }
   | {
       kind: "delete_empty_session";
       vault_id: string;
@@ -3006,6 +3222,8 @@ export type RemoteOperation =
   | { kind: "agent_export"; vault_id: string; session_id: string }
   | { kind: "agent_segments"; vault_id: string; session_id: string };
 export type RemoteReply =
+  | { kind: "timeline_headers"; value: TimelinePage }
+  | { kind: "timeline_facets"; value: TimelineFacets }
   | { kind: "session_cleanup"; value: DeleteEmptySessionOutcome }
   | { kind: "session_summaries"; value: SessionSummary[] }
   | { kind: "processing_policy"; value: ProcessingPolicy }
@@ -3167,10 +3385,6 @@ export type SegmentWord = {
   id?: string | null;
 };
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot };
-/**
- * The slim `session_list_headers` row -- exactly what the always-mounted list
- * subscribers (timeline, summaries, tags, float) consume.
- */
 export type SessionListHeader = {
   id: string;
   title: string;
@@ -3368,6 +3582,64 @@ export type TasksSaveOutcome =
   | { kind: "saved"; snapshot: TasksSnapshot }
   | { kind: "conflict"; snapshot: TasksSnapshot };
 export type TasksSnapshot = { tasks: TaskItem[]; revision: string };
+export type TimelineFacets = {
+  revision: string;
+  /**
+   * Complete tree, never truncated. Clients retain locale-specific sibling
+   * ordering; only expanded nodes need their direct session pages.
+   */
+  nodes: TimelineTagFacet[];
+  untagged_count: number;
+};
+export type TimelineFacetsQuery = { expected_revision: string | null };
+export type TimelineHeader = {
+  header: SessionListHeader;
+  /**
+   * RFC3339 with an offset, or ISO date-only at UTC midnight. Other raw
+   * strings remain visible through Undated and are never rewritten.
+   */
+  timestamp_ms: number | null;
+};
+export type TimelinePage = {
+  items: TimelineHeader[];
+  next_cursor: string | null;
+  revision: string;
+  /**
+   * Exact matching count over the whole index, including preceding pages.
+   */
+  total_count: number;
+  /**
+   * Date only: all dated sessions at/after its cutoff. Zero for other views.
+   */
+  future_count: number;
+  /**
+   * All undated sessions in the index, independent of the selected view.
+   */
+  undated_count: number;
+};
+export type TimelineQuery = {
+  view: TimelineView;
+  limit: number;
+  cursor: string | null;
+  expected_revision: string | null;
+};
+export type TimelineTagFacet = {
+  path: string;
+  parent_path: string | null;
+  label: string;
+  direct_count: number;
+  subtree_count: number;
+};
+/**
+ * Date is newest-first with an exclusive upper bound. Upcoming is oldest-first
+ * with exclusive lower/optional upper bounds. Undated never substitutes server time.
+ */
+export type TimelineView =
+  | { kind: "date"; before_ms: number }
+  | { kind: "upcoming"; after_ms: number; before_ms: number | null }
+  | { kind: "tag"; path: string }
+  | { kind: "untagged" }
+  | { kind: "undated" };
 export type TitlePolicy = "preserve" | "generate_if_empty";
 export type Transcript = {
   id: string;

@@ -69,6 +69,15 @@ struct MappingPause {
 pub struct RemoteCaptureCoordinator {
     inner: Arc<Inner>,
 }
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceCaptureStartRequest {
+    pub request_id: String,
+    pub scope: CaptureScope,
+    pub target: CaptureTarget,
+    pub format: CaptureFormat,
+}
+
 pub struct RemoteDeviceCapture {
     pub profile_id: String,
     pub identity: CaptureIdentity,
@@ -153,6 +162,7 @@ impl RemoteCaptureCoordinator {
         }))
     }
 
+    #[cfg(test)]
     pub async fn start(
         &self,
         profile: Arc<ProfileLease>,
@@ -161,6 +171,32 @@ impl RemoteCaptureCoordinator {
         target: CaptureTarget,
         format: CaptureFormat,
     ) -> Result<RemoteDeviceCapture, ApplicationError> {
+        let (_, scope) = profile_scope(&profile).await?;
+        self.start_scoped(
+            profile,
+            client,
+            DeviceCaptureStartRequest {
+                request_id,
+                scope,
+                target,
+                format,
+            },
+        )
+        .await
+    }
+
+    pub async fn start_scoped(
+        &self,
+        profile: Arc<ProfileLease>,
+        client: Option<Arc<RemoteClient>>,
+        request: DeviceCaptureStartRequest,
+    ) -> Result<RemoteDeviceCapture, ApplicationError> {
+        let DeviceCaptureStartRequest {
+            request_id,
+            scope: expected_scope,
+            target,
+            format,
+        } = request;
         if !valid_uuid(&request_id) {
             return Err(error(
                 ErrorCode::Validation,
@@ -177,9 +213,6 @@ impl RemoteCaptureCoordinator {
         tokio::spawn(async move {
             let _permit = permit;
             let (id, scope) = profile_scope(&profile).await?;
-            if let Some(client) = &client {
-                validate_client(&scope, client)?;
-            }
             match &target {
                 CaptureTarget::ExistingSession {
                     session_id,
@@ -208,7 +241,7 @@ impl RemoteCaptureCoordinator {
                 if let Some((_, entry)) = state.captures.iter().find(|((profile, _), entry)| {
                     profile == &id && entry.identity.request_id == request_id
                 }) {
-                    if entry.identity.scope != scope
+                    if entry.identity.scope != expected_scope
                         || entry.identity.target != target
                         || entry.format != format
                     {
@@ -223,6 +256,15 @@ impl RemoteCaptureCoordinator {
                         device: entry.device.clone(),
                     });
                 }
+            }
+            if scope != expected_scope {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "The selected recording destination changed; recording was not started",
+                ));
+            }
+            if let Some(client) = &client {
+                validate_client(&scope, client)?;
             }
             let host = inner.host(&id).await?;
             if host.spool.request_exists(&request_id).await? {
@@ -340,6 +382,26 @@ impl RemoteCaptureCoordinator {
             .collect()
     }
 
+    pub fn operations_pending(&self) -> bool {
+        self.inner.starts.available_permits() != 8
+    }
+
+    pub fn profile_tickets(&self, profile_id: &str) -> Vec<RemoteDeviceCapture> {
+        self.inner
+            .state
+            .lock()
+            .expect("device capture coordinator poisoned")
+            .captures
+            .iter()
+            .filter(|((profile, _), _)| profile == profile_id)
+            .map(|((profile, _), entry)| RemoteDeviceCapture {
+                profile_id: profile.clone(),
+                identity: entry.identity.clone(),
+                device: entry.device.clone(),
+            })
+            .collect()
+    }
+
     pub fn upload_ticket(
         &self,
         profile_id: &str,
@@ -348,9 +410,19 @@ impl RemoteCaptureCoordinator {
         self.inner.upload_ticket(profile_id, identity)
     }
 
+    #[cfg(test)]
     pub async fn inventory(
         &self,
         profile: Arc<ProfileLease>,
+    ) -> Result<Vec<CaptureSnapshot>, ApplicationError> {
+        let (_, scope) = profile_scope(&profile).await?;
+        self.inventory_scoped(profile, scope).await
+    }
+
+    pub async fn inventory_scoped(
+        &self,
+        profile: Arc<ProfileLease>,
+        expected_scope: CaptureScope,
     ) -> Result<Vec<CaptureSnapshot>, ApplicationError> {
         let permit = self.inner.starts.clone().try_acquire_owned().map_err(|_| {
             error(
@@ -362,6 +434,12 @@ impl RemoteCaptureCoordinator {
         tokio::spawn(async move {
             let _permit = permit;
             let (id, scope) = profile_scope(&profile).await?;
+            if scope != expected_scope {
+                return Err(error(
+                    ErrorCode::Conflict,
+                    "The recording inventory destination changed",
+                ));
+            }
             inner.host(&id).await?.spool.inventory(scope).await
         })
         .await
@@ -723,7 +801,9 @@ impl Inner {
     }
 }
 
-async fn profile_scope(profile: &ProfileLease) -> Result<(String, CaptureScope), ApplicationError> {
+pub(crate) async fn profile_scope(
+    profile: &ProfileLease,
+) -> Result<(String, CaptureScope), ApplicationError> {
     let snapshot = profile.profile().await;
     if !valid_uuid(&snapshot.id) {
         return Err(error(

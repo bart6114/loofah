@@ -4,6 +4,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut types = specta::TypeCollection::default();
     types
         .register::<Capabilities>()
+        .register::<TimelineQuery>()
+        .register::<TimelinePage>()
+        .register::<TimelineFacetsQuery>()
+        .register::<TimelineFacets>()
+        .register::<CaptureLiveRequest>()
+        .register::<CaptureLiveSnapshot>()
+        .register::<CaptureLiveCaptionPage>()
         .register::<CaptureScope>()
         .register::<CaptureTarget>()
         .register::<CaptureIdentity>()

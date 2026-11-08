@@ -33,7 +33,8 @@ pub struct CaptureStartIntent {
     pub format: CaptureFormat,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
 pub enum DeviceHostPhase {
     Preparing,
     Starting,
@@ -51,7 +52,8 @@ impl DeviceHostPhase {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DeviceObservationDurability {
     NotObserved,
     Pending {

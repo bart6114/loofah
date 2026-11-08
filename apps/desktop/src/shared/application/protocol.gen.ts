@@ -40,6 +40,18 @@ export type CaptureIngestRequest = { identity: CaptureIdentity; format: CaptureF
 
 export type CaptureIngestStatus = { identity: CaptureIdentity; format: CaptureFormat; prefix: CapturePrefixReceipt; seal: CaptureSeal | null; first_admitted_audio_observed_at_ms: number; session_id: string | null; publication: CapturePublication | null }
 
+export type CaptureLiveCaption = { generation_id: string; sequence: number; physical_channel: number; role: CaptureChannel; new_words: FinalizedWord[]; partials?: PartialWord[]; replaced_ids: string[]; languages: string[] }
+
+export type CaptureLiveCaptionPage = { snapshot: CaptureLiveSnapshot; captions: CaptureLiveCaption[]; next_cursor: number | null }
+
+export type CaptureLiveFailure = "access_denied" | "interrupted" | "engine_unavailable" | "engine_failed" | "resource_limit" | "invalid_output" | "source_changed" | "backlog" | "idle" | "storage"
+
+export type CaptureLiveRequest = { capture_fingerprint: string; expected_transcript: AbsentTranscriptExpectation; model: string; languages?: string[]; keywords?: string[] }
+
+export type CaptureLiveSnapshot = { capture_id: string; capture_fingerprint: string; generation_id: string; session_id: string; state: CaptureLiveState; failure: CaptureLiveFailure | null; admitted_end_frame: number; input_consumed_end_frame: number; completed_through_frame: number | null; next_caption_sequence: number; result_available: boolean; publication: TranscriptionPublication | null }
+
+export type CaptureLiveState = "starting" | "running" | "finishing" | "cancelling" | "awaiting_recording" | "publishing" | "completed" | "empty" | "cancelled" | "interrupted" | "repair_required" | "conflict" | "uncertain"
+
 export type CapturePrefixReceipt = { capture_fingerprint: string; chunk_count: number; frames: number; pcm_bytes: number; chain_digest: string }
 
 /**
@@ -109,6 +121,8 @@ export type FileInfo = { filename: string; contentType: string; sizeBytes: numbe
 
 export type FileMetadata = { filename: string; contentType: string; sizeBytes: number; sha256: string }
 
+export type FinalizedWord = { id: string; text: string; start_ms: number; end_ms: number; channel: number; state: WordState; speaker_index?: number | null }
+
 export type GetMeetingInput = { meeting_id: string }
 
 export type GetMeetingTranscriptInput = { meeting_id: string }
@@ -169,6 +183,8 @@ export type NoteSaveOutcome = { kind: "saved"; note: NoteSnapshot } | { kind: "c
 export type NoteSnapshot = { markdown: string | null; title: string; revision: string }
 
 export type Pagination = { offset: number; limit: number; returned: number; total: number | null; next_offset: number | null }
+
+export type PartialWord = { text: string; start_ms: number; end_ms: number; channel: number; speaker_index?: number | null }
 
 export type PersonItem = { id: string; name?: string }
 
@@ -233,6 +249,8 @@ export type SegmentKey = { channel: ChannelProfile; speaker_index?: number | nul
 export type SegmentWord = { text: string; start_ms: number; end_ms: number; channel: ChannelProfile; is_final: boolean; id?: string | null }
 
 export type SessionDocument = { meta: SessionMeta; note: NoteSnapshot }
+
+export type SessionListHeader = { id: string; title: string; created_at: string; folder: string | null; tags: string[]; author: string | null; has_transcript_words: boolean }
 
 export type SessionListItem = { id: string; title: string; kind: string; status: string; created_at: string; updated_at: string; started_at: string; ended_at: string; tags: string[]; author: string | null; skill: string | null }
 
@@ -329,6 +347,46 @@ export type TasksSaveOutcome = { kind: "saved"; snapshot: TasksSnapshot } | { ki
 
 export type TasksSnapshot = { tasks: TaskItem[]; revision: string }
 
+export type TimelineFacets = { revision: string;
+/**
+ * Complete tree, never truncated. Clients retain locale-specific sibling
+ * ordering; only expanded nodes need their direct session pages.
+ */
+nodes: TimelineTagFacet[]; untagged_count: number }
+
+export type TimelineFacetsQuery = { expected_revision: string | null }
+
+export type TimelineHeader = { header: SessionListHeader;
+/**
+ * RFC3339 with an offset, or ISO date-only at UTC midnight. Other raw
+ * strings remain visible through Undated and are never rewritten.
+ */
+timestamp_ms: number | null }
+
+export type TimelinePage = { items: TimelineHeader[]; next_cursor: string | null; revision: string;
+/**
+ * Exact matching count over the whole index, including preceding pages.
+ */
+total_count: number;
+/**
+ * Date only: all dated sessions at/after its cutoff. Zero for other views.
+ */
+future_count: number;
+/**
+ * All undated sessions in the index, independent of the selected view.
+ */
+undated_count: number }
+
+export type TimelineQuery = { view: TimelineView; limit: number; cursor: string | null; expected_revision: string | null }
+
+export type TimelineTagFacet = { path: string; parent_path: string | null; label: string; direct_count: number; subtree_count: number }
+
+/**
+ * Date is newest-first with an exclusive upper bound. Upcoming is oldest-first
+ * with exclusive lower/optional upper bounds. Undated never substitutes server time.
+ */
+export type TimelineView = { kind: "date"; before_ms: number } | { kind: "upcoming"; after_ms: number; before_ms: number | null } | { kind: "tag"; path: string } | { kind: "untagged" } | { kind: "undated" }
+
 export type TitlePolicy = "preserve" | "generate_if_empty"
 
 export type Transcript = { id: string; started_at_ms: number; ended_at_ms: number | null; memo: string; text: string; words: JsonValue[]; speaker_hints: JsonValue[] }
@@ -371,3 +429,13 @@ export type VaultKind = "personal" | "shared"
 export type VaultMutation = { vault_id: string; revision: string }
 
 export type VaultRole = "reader" | "editor" | "owner"
+
+/**
+ * Whether a finalized word is stable or awaiting correction.
+ *
+ * A word is `Pending` when it has been confirmed by the STT model but a
+ * correction source (cloud STT fallback, LLM postprocessor, etc.) is still
+ * processing it. The word has an ID and is persisted, but its text may be
+ * replaced when the correction resolves via `TranscriptDelta::replaced_ids`.
+ */
+export type WordState = "final" | "pending"

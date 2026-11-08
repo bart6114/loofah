@@ -1,6 +1,7 @@
 use super::*;
 use crate::device_capture::remote::RemoteCaptureCoordinator;
 use hypr_loofah_client::{ConnectionProfiles, ProfileLease};
+use hypr_loofah_protocol::ErrorCode;
 
 async fn profile(root: &std::path::Path) -> Arc<ProfileLease> {
     let profiles = ConnectionProfiles::new(root.join("profiles")).unwrap();
@@ -307,6 +308,21 @@ async fn concurrent_start_replay_reuses_one_capture_and_changed_declarations_nev
         assert!(
             matches!(coordinator.start(profile.clone(),None,request.clone(),target.clone(),CaptureFormat::stereo()).await,Err(error) if error.code==ErrorCode::Conflict)
         );
+        let replay = coordinator
+            .start_scoped(
+                profile.clone(),
+                None,
+                crate::device_capture::remote::DeviceCaptureStartRequest {
+                    request_id: request.clone(),
+                    scope: left.identity.scope.clone(),
+                    target: target.clone(),
+                    format: CaptureFormat::stereo(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(replay.identity, left.identity);
+        assert_eq!(replay.device.key, left.device.key);
     }
     for invalid in ["invalid".to_owned(), uuid::Uuid::nil().to_string()] {
         assert!(
@@ -514,6 +530,46 @@ async fn existing_spool_request_after_restart_is_recovery_only_even_after_scope_
     profile.save(original).await.unwrap();
     assert_eq!(coordinator.inventory(profile).await.unwrap(), vec![before]);
     assert!(observer.0.lock().unwrap().is_empty());
+    assert!(
+        coordinator
+            .wait_shutdown(Duration::from_secs(1))
+            .await
+            .safe_to_exit
+    );
+}
+
+#[tokio::test]
+async fn explicit_start_scope_cannot_follow_a_later_saved_destination() {
+    let (temp, _) = spool().await;
+    let profile = profile(temp.path()).await;
+    let (_, scope) = crate::device_capture::remote::profile_scope(&profile)
+        .await
+        .unwrap();
+    let coordinator = RemoteCaptureCoordinator::new(
+        temp.path().join("must-not-create"),
+        Arc::new(Observer::default()),
+    )
+    .unwrap();
+    let mut changed = profile.profile().await;
+    changed.vault_id = Some("changed-vault".into());
+    profile.save(changed).await.unwrap();
+    let result = coordinator
+        .start_scoped(
+            profile,
+            None,
+            crate::device_capture::remote::DeviceCaptureStartRequest {
+                request_id: uuid::Uuid::new_v4().to_string(),
+                scope,
+                target: CaptureTarget::ExistingSession {
+                    session_id: "note".into(),
+                    expected_audio_sha256: None,
+                },
+                format: CaptureFormat::stereo(),
+            },
+        )
+        .await;
+    assert!(matches!(result, Err(error) if error.code == ErrorCode::Conflict));
+    assert!(!temp.path().join("must-not-create").exists());
     assert!(
         coordinator
             .wait_shutdown(Duration::from_secs(1))

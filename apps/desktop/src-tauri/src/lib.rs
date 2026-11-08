@@ -6,6 +6,7 @@ mod chatgpt;
 mod commands;
 mod desktop_profiles;
 mod device_capture;
+mod device_recordings;
 mod device_vault_state;
 mod draft_cache;
 mod embedded_cli;
@@ -122,6 +123,10 @@ fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEven
             .release_window(window.label());
         window
             .app_handle()
+            .state::<device_recordings::DeviceRecordingState>()
+            .release_window(window.label());
+        window
+            .app_handle()
             .state::<remote::RemoteState>()
             .release_window(window.label());
     }
@@ -221,6 +226,7 @@ pub async fn main() {
         .manage(job_submissions::JobSubmissionState::default())
         .manage(device_vault_state::DeviceVaultState::default())
         .manage(remote::RemoteState::default())
+        .manage(device_recordings::DeviceRecordingState::default())
         .manage(attachment_upload::DeviceUploadIo::default())
         .register_asynchronous_uri_scheme_protocol("loofah-media", |context, request, responder| {
             let app = context.app_handle().clone();
@@ -502,6 +508,19 @@ pub async fn main() {
                 return;
             }
 
+            let device = app.state::<device_recordings::DeviceRecordingState>();
+            device.request_shutdown();
+            if device.initialized() {
+                api.prevent_exit();
+                let _ = app.emit("device-recording-exit-pending", ());
+                if app.emit_to("main", APP_EXIT_REQUESTED_EVENT, ()).is_err() {
+                    device_recordings::begin_exit(app.clone());
+                } else {
+                    device_recordings::allow_frontend_exit_flush(app);
+                }
+                return;
+            }
+
             if should_force_quit() {
                 app.state::<processing::ProcessingState>()
                     .request_shutdown();
@@ -527,6 +546,8 @@ pub async fn main() {
             }
         }
         tauri::RunEvent::Exit => {
+            app.state::<device_recordings::DeviceRecordingState>()
+                .request_shutdown();
             app.state::<processing::ProcessingState>()
                 .request_shutdown();
             app.state::<chatgpt::ChatgptState>().shutdown();
@@ -640,6 +661,8 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             device_vault_state::device_remember_session::<tauri::Wry>,
             device_vault_state::device_pinned_tabs::<tauri::Wry>,
             device_vault_state::device_set_pinned_tabs::<tauri::Wry>,
+            application::application_timeline_headers::<tauri::Wry>,
+            application::application_timeline_facets::<tauri::Wry>,
             application::application_sessions::<tauri::Wry>,
             application::application_delete_empty_session::<tauri::Wry>,
             application::application_session_summaries::<tauri::Wry>,
@@ -722,6 +745,13 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             commands::get_dismissed_toasts::<tauri::Wry>,
             commands::set_dismissed_toasts::<tauri::Wry>,
             commands::show_devtool::<tauri::Wry>,
+            device_recordings::device_recording_start::<tauri::Wry>,
+            device_recordings::device_recording_inventory::<tauri::Wry>,
+            device_recordings::device_recording_status::<tauri::Wry>,
+            device_recordings::device_recording_stop::<tauri::Wry>,
+            device_recordings::device_recording_resume_upload::<tauri::Wry>,
+            device_recordings::device_recording_subscribe::<tauri::Wry>,
+            device_recordings::device_recording_unsubscribe::<tauri::Wry>,
             commands::complete_app_exit::<tauri::Wry>,
             commands::get_pinned_tabs::<tauri::Wry>,
             commands::set_pinned_tabs::<tauri::Wry>,

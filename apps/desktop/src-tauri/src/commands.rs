@@ -58,6 +58,12 @@ pub fn show_devtool<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
 #[tauri::command]
 #[specta::specta]
 pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    let device = app.state::<crate::device_recordings::DeviceRecordingState>();
+    device.request_shutdown();
+    if device.initialized() {
+        crate::device_recordings::begin_exit(app);
+        return;
+    }
     app.state::<crate::processing::ProcessingState>()
         .request_shutdown();
     // Last-chance flush before the process actually exits: any transcript words still sitting
