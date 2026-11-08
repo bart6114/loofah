@@ -15,6 +15,70 @@ pub struct Config {
     pub allow_insecure_loopback: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub processing: Option<crate::processing::ProcessingConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcription: Option<TranscriptionConfig>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptionConfig {
+    pub model: String,
+    pub model_path: PathBuf,
+    pub model_size_bytes: u64,
+    pub model_sha256: String,
+    #[serde(default = "one_workload")]
+    pub workload_groups: usize,
+    #[serde(default = "default_transcription_jobs")]
+    pub max_jobs: usize,
+    #[serde(default = "default_transcription_queue")]
+    pub max_queued: usize,
+    #[serde(default = "default_transcription_audio")]
+    pub private_audio_bytes: u64,
+}
+
+fn one_workload() -> usize {
+    1
+}
+fn default_transcription_jobs() -> usize {
+    256
+}
+fn default_transcription_queue() -> usize {
+    16
+}
+fn default_transcription_audio() -> u64 {
+    8 * 1024 * 1024 * 1024
+}
+
+impl TranscriptionConfig {
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.model.is_empty()
+            || self.model.len() > 512
+            || self.model.trim() != self.model
+            || self.model.chars().any(char::is_control)
+            || !self.model_path.is_absolute()
+            || self.model_path.to_str().is_none()
+            || self.model_size_bytes == 0
+            || self.model_size_bytes > 16 * 1024 * 1024 * 1024
+            || !hypr_loofah_protocol::is_transcription_sha256(&self.model_sha256)
+            || !(1..=8).contains(&self.workload_groups)
+            || !(1..=256).contains(&self.max_jobs)
+            || !(1..=16).contains(&self.max_queued)
+            || self.private_audio_bytes == 0
+            || self.private_audio_bytes > default_transcription_audio()
+        {
+            return Err("Invalid operator transcription model identity or capacity".into());
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "cpu-transcription")]
+    pub(crate) fn limits(&self) -> hypr_loofah_core::transcription_jobs::TranscriptionLimits {
+        hypr_loofah_core::transcription_jobs::TranscriptionLimits {
+            max_jobs: self.max_jobs,
+            max_queued: self.max_queued,
+            private_audio_bytes: self.private_audio_bytes,
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -39,6 +103,12 @@ fn default_token_types() -> Vec<String> {
 
 impl Config {
     pub fn validate(&self) -> std::result::Result<(), String> {
+        if let Some(transcription) = &self.transcription {
+            transcription.validate()?;
+            if !cfg!(feature = "cpu-transcription") {
+                return Err("This server build does not include CPU transcription".into());
+            }
+        }
         if let Some(processing) = &self.processing {
             processing.validate()?;
         }
@@ -110,6 +180,81 @@ pub(crate) fn validate_url(url: &Url, insecure: bool) -> std::result::Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn transcription() -> serde_json::Value {
+        json!({"model":"operator-base","model_path":std::env::temp_dir().join("provisioned-model.bin"),"model_size_bytes":81768585,"model_sha256":"a".repeat(64)})
+    }
+
+    #[test]
+    fn notes_configuration_has_no_implicit_transcription_model_or_capacity() {
+        let config: Config = serde_json::from_str(include_str!("../deploy/server.json")).unwrap();
+        assert!(config.transcription.is_none());
+        assert!(
+            serde_json::to_value(&config)
+                .unwrap()
+                .get("transcription")
+                .is_none()
+        );
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn operator_transcription_identity_and_capacity_are_strict_and_bounded_without_io() {
+        let valid = transcription();
+        let config: TranscriptionConfig = serde_json::from_value(valid.clone()).unwrap();
+        config.validate().unwrap();
+        assert_eq!(config.workload_groups, 1);
+        assert_eq!(config.max_jobs, 256);
+        assert_eq!(config.max_queued, 16);
+        assert_eq!(config.private_audio_bytes, 8 * 1024 * 1024 * 1024);
+        for (key, value) in [
+            ("model", json!("")),
+            ("model", json!(" model")),
+            ("model", json!("m\n")),
+            ("model_path", json!("relative-model.bin")),
+            ("model_size_bytes", json!(0)),
+            ("model_size_bytes", json!(16u64 * 1024 * 1024 * 1024 + 1)),
+            ("model_sha256", json!("A".repeat(64))),
+            ("workload_groups", json!(0)),
+            ("workload_groups", json!(9)),
+            ("max_jobs", json!(0)),
+            ("max_jobs", json!(257)),
+            ("max_queued", json!(0)),
+            ("max_queued", json!(17)),
+            ("private_audio_bytes", json!(0)),
+            ("private_audio_bytes", json!(8u64 * 1024 * 1024 * 1024 + 1)),
+        ] {
+            let mut candidate = valid.clone();
+            candidate[key] = value;
+            assert!(
+                serde_json::from_value::<TranscriptionConfig>(candidate)
+                    .unwrap()
+                    .validate()
+                    .is_err(),
+                "{key}"
+            );
+        }
+        for key in ["url", "api_key", "download", "future"] {
+            let mut candidate = valid.clone();
+            candidate[key] = json!("unsupported");
+            assert!(serde_json::from_value::<TranscriptionConfig>(candidate).is_err());
+        }
+    }
+
+    #[cfg(not(feature = "cpu-transcription"))]
+    #[test]
+    fn configured_transcription_is_rejected_by_notes_only_build_instead_of_silently_ignored() {
+        let mut config: Config =
+            serde_json::from_str(include_str!("../deploy/server.json")).unwrap();
+        config.transcription = Some(serde_json::from_value(transcription()).unwrap());
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("does not include CPU transcription")
+        );
+    }
 
     #[test]
     fn deployment_config_requires_https_dedicated_api_audience_and_scope() {

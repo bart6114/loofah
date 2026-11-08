@@ -7750,6 +7750,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "futures-util",
+ "hound",
  "http-body-util",
  "jsonwebtoken",
  "loofah-client",

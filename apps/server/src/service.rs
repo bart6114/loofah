@@ -40,6 +40,8 @@ pub struct Service {
     pub attachment_uploads: Arc<Semaphore>,
     pub streams: Arc<Semaphore>,
     processing: Option<Arc<crate::processing::ProcessingHost>>,
+    #[cfg(feature = "cpu-transcription")]
+    transcription: Option<Arc<crate::transcription_host::TranscriptionHost>>,
     runtimes: Mutex<BTreeMap<String, Arc<OnceCell<VaultRuntime>>>>,
     catalog_worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
     shutdown: OnceCell<tokio::sync::watch::Receiver<ShutdownResult>>,
@@ -64,6 +66,12 @@ impl Service {
             .as_ref()
             .map(crate::processing::ProcessingHost::load)
             .transpose()?;
+        #[cfg(feature = "cpu-transcription")]
+        let transcription = config
+            .transcription
+            .as_ref()
+            .map(crate::transcription_host::TranscriptionHost::load)
+            .transpose()?;
         let service = Arc::new(Self {
             #[cfg(test)]
             transcription_test_engine: Default::default(),
@@ -85,6 +93,8 @@ impl Service {
             attachment_uploads: Arc::new(Semaphore::new(2)),
             streams: Arc::new(Semaphore::new(128)),
             processing,
+            #[cfg(feature = "cpu-transcription")]
+            transcription,
             runtimes: Mutex::new(BTreeMap::new()),
             catalog_worker: Mutex::new(None),
             shutdown: OnceCell::new(),
@@ -92,11 +102,17 @@ impl Service {
         let mut changes = service.catalog.subscribe();
         let weak = Arc::downgrade(&service);
         let stop = service.stop.clone();
+        #[cfg(feature = "cpu-transcription")]
+        let transcription = service.transcription.clone();
         let worker = tokio::spawn(async move {
             let mut media_expiry = tokio::time::interval(std::time::Duration::from_secs(30));
             loop {
                 tokio::select! {
-                    _ = stop.cancelled() => break,
+                    _ = stop.cancelled() => {
+                        #[cfg(feature = "cpu-transcription")]
+                        if let Some(host) = &transcription { host.stop_admission(); }
+                        break;
+                    },
                     _ = media_expiry.tick() => {
                         let Some(service) = weak.upgrade() else { break; };
                         service.media_leases.expire_idle();
@@ -156,9 +172,9 @@ impl Service {
         let cache = self.config.cache_root.clone();
         let catalog = self.catalog.clone();
         let processing = self.processing.clone();
-        #[cfg(test)]
-        let transcription_test_engine = self.transcription_test_engine.get().cloned();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "cpu-transcription"))]
+        let transcription = self.transcription_engine();
+        #[cfg(any(test, feature = "cpu-transcription"))]
         let transcription_stop = self.stop.clone();
         let capture_origin = format!("{}/", self.config.public_url.origin().ascii_serialization());
         #[cfg(test)]
@@ -205,8 +221,8 @@ impl Service {
                         opened
                             .context
                             .enable_capture_ingestion(capture_origin, Default::default())?;
-                        #[cfg(test)]
-                        if let Some(engine) = transcription_test_engine {
+                        #[cfg(any(test, feature = "cpu-transcription"))]
+                        if let Some((engine, limits)) = transcription {
                             opened
                                 .enable_transcription(
                                     engine,
@@ -215,7 +231,7 @@ impl Service {
                                         opened.context.events.vault_id(),
                                         transcription_stop,
                                     )),
-                                    Default::default(),
+                                    limits,
                                 )
                                 .await?;
                         }
@@ -249,6 +265,34 @@ impl Service {
             .await
     }
 
+    #[cfg(any(test, feature = "cpu-transcription"))]
+    fn transcription_engine(
+        &self,
+    ) -> Option<(
+        Arc<dyn hypr_loofah_core::transcription_jobs::TranscriptionEngine>,
+        hypr_loofah_core::transcription_jobs::TranscriptionLimits,
+    )> {
+        #[cfg(test)]
+        if let Some(engine) = self.transcription_test_engine.get() {
+            return Some((engine.clone(), Default::default()));
+        }
+        #[cfg(feature = "cpu-transcription")]
+        {
+            self.transcription.as_ref().map(|host| host.engine())
+        }
+        #[cfg(not(feature = "cpu-transcription"))]
+        {
+            None
+        }
+    }
+
+    #[cfg(all(test, feature = "cpu-transcription"))]
+    pub(crate) fn transcription_resource_observer(
+        &self,
+    ) -> Option<hypr_transcribe_whisper_local::resources::ResourceObserver> {
+        self.transcription.as_ref().map(|host| host.observer())
+    }
+
     pub(crate) async fn shutdown_with_deadline(
         self: &Arc<Self>,
         deadline: std::time::Duration,
@@ -271,6 +315,10 @@ impl Service {
 
     async fn shutdown_completion(self: &Arc<Self>) -> tokio::sync::watch::Receiver<ShutdownResult> {
         self.stop.cancel();
+        #[cfg(feature = "cpu-transcription")]
+        if let Some(host) = &self.transcription {
+            host.stop_admission();
+        }
         self.shutdown
             .get_or_init(|| async {
                 let (result, completion) = tokio::sync::watch::channel(None);
@@ -318,6 +366,10 @@ impl Service {
                     failure.get_or_insert_with(|| ApiError::internal(cause));
                 }
             }
+        }
+        #[cfg(feature = "cpu-transcription")]
+        if let Some(host) = &self.transcription {
+            host.shutdown().await;
         }
         failure.map_or(Ok(()), Err)
     }

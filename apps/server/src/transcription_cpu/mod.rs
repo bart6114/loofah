@@ -63,8 +63,12 @@ impl CpuTranscriptionHost {
     }
 
     pub(crate) fn shutdown(&self) -> ResourceObserver {
-        self.failed.store(true, Ordering::Release);
+        self.stop_admission();
         self.resources.shutdown()
+    }
+
+    pub(crate) fn stop_admission(&self) {
+        self.failed.store(true, Ordering::Release);
     }
 }
 

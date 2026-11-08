@@ -20,6 +20,8 @@ mod tasks;
 mod template_jobs;
 mod transcript_overview;
 mod transcription;
+#[cfg(feature = "cpu-transcription")]
+mod transcription_host;
 mod waveform;
 
 use std::sync::Arc;
@@ -353,6 +355,14 @@ impl Fixture {
         processing: Option<crate::processing::ProcessingConfig>,
         public_url: Option<url::Url>,
     ) -> Self {
+        Self::with_transcription(processing, public_url, None).await
+    }
+
+    async fn with_transcription(
+        processing: Option<crate::processing::ProcessingConfig>,
+        public_url: Option<url::Url>,
+        transcription: Option<crate::config::TranscriptionConfig>,
+    ) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let issuer = format!("http://{}", listener.local_addr().unwrap());
         let metadata = json!({"issuer":issuer,"jwks_uri":format!("{issuer}/keys"),"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"code_challenge_methods_supported":["S256"]});
@@ -380,6 +390,7 @@ impl Fixture {
         let root = tempfile::tempdir().unwrap();
         let config = Config {
             processing,
+            transcription,
             storage_root: root.path().join("storage"),
             cache_root: root.path().join("cache"),
             public_url: public_url
