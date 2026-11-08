@@ -20,6 +20,7 @@ pub(crate) struct DeletedSession {
     pub trash_token: Option<String>,
     pub revision: Option<String>,
 }
+#[derive(Debug)]
 pub(crate) struct SavedAttachment {
     pub attachment_id: String,
     pub relative_path: Option<PathBuf>,
