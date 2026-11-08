@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{SessionStore, StoreError, WriteGuard, paths};
 
+mod checked;
+mod lookup;
+
 /// One tag, file-canonical in the vault-root `tags.json`. The id is the normalized
 /// (lowercased) name itself — unlike people's lossy slug, two names normalizing
 /// identically are by definition the same tag, so no collision suffixing is needed.
