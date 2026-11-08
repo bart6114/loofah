@@ -308,10 +308,10 @@ async fn proxy_at(
             let (socket, _) = tls.accept().await.unwrap();
             let acceptor = acceptor.clone();
             tokio::spawn(async move {
-                if let Ok(mut secure) = acceptor.accept(socket).await {
-                    if let Ok(mut plain) = tokio::net::TcpStream::connect(http_address).await {
-                        let _ = tokio::io::copy_bidirectional(&mut secure, &mut plain).await;
-                    }
+                if let Ok(mut secure) = acceptor.accept(socket).await
+                    && let Ok(mut plain) = tokio::net::TcpStream::connect(http_address).await
+                {
+                    let _ = tokio::io::copy_bidirectional(&mut secure, &mut plain).await;
                 }
             });
         }
@@ -1014,44 +1014,42 @@ async fn observe_processing(
             record(&root, json!({"live_observer_disconnected":true}));
             continue;
         };
-        if subscription.is_none() {
-            if let (Some(generation), Some(session)) =
+        if subscription.is_none()
+            && let (Some(generation), Some(session)) =
                 (&status.live_generation_id, &status.session_id)
-            {
-                let binding = hypr_loofah_client::CaptureLiveBinding {
-                    capture_id: identity.capture_id.clone(),
-                    capture_fingerprint: request_fingerprint(&identity),
-                    generation_id: generation.clone(),
-                    session_id: session.clone(),
-                    format: CaptureFormat::stereo(),
-                };
-                let observed = sequences.clone();
-                let bad = invalid.clone();
-                let output = root.clone();
-                subscription = Some(
-                    client
-                        .subscribe_capture_live(
-                            identity.scope.vault_id.clone(),
-                            binding,
-                            None,
-                            move |event| {
-                                if let hypr_loofah_client::CaptureLiveEvent::Page { page } = &event
-                                {
-                                    let mut seen = observed.lock().unwrap();
-                                    for caption in &page.captions {
-                                        if seen.len() >= 65_536 || !seen.insert(caption.sequence) {
-                                            bad.store(true, Ordering::SeqCst);
-                                            return false;
-                                        }
+        {
+            let binding = hypr_loofah_client::CaptureLiveBinding {
+                capture_id: identity.capture_id.clone(),
+                capture_fingerprint: request_fingerprint(&identity),
+                generation_id: generation.clone(),
+                session_id: session.clone(),
+                format: CaptureFormat::stereo(),
+            };
+            let observed = sequences.clone();
+            let bad = invalid.clone();
+            let output = root.clone();
+            subscription = Some(
+                client
+                    .subscribe_capture_live(
+                        identity.scope.vault_id.clone(),
+                        binding,
+                        None,
+                        move |event| {
+                            if let hypr_loofah_client::CaptureLiveEvent::Page { page } = &event {
+                                let mut seen = observed.lock().unwrap();
+                                for caption in &page.captions {
+                                    if seen.len() >= 65_536 || !seen.insert(caption.sequence) {
+                                        bad.store(true, Ordering::SeqCst);
+                                        return false;
                                     }
                                 }
-                                record(&output, json!({"live_sse":event}));
-                                true
-                            },
-                        )
-                        .unwrap(),
-                );
-            }
+                            }
+                            record(&output, json!({"live_sse":event}));
+                            true
+                        },
+                    )
+                    .unwrap(),
+            );
         }
         record(&root, json!({"live_processing_observation":status}));
     }
