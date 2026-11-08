@@ -13,7 +13,7 @@ mod mutations;
 mod read_owner;
 #[cfg(test)]
 mod tests;
-pub use artifact::LocalCliArtifact;
+pub use artifact::{LocalCliArtifact, MaterializedLocalArtifact};
 pub use maintenance::execute_local_maintenance;
 
 pub const LOCAL_CLI_NAMESPACE: &str = "local-cli";

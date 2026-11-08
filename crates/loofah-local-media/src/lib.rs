@@ -1,14 +1,14 @@
 use hypr_listener2_core::{BatchEvent, BatchParams, BatchProvider, BatchRuntime};
 use hypr_loofah_core::{
-    local_cli::{LocalCliArtifact, LocalMediaFuture, LocalMediaHost},
+    local_cli::{LocalCliArtifact, LocalMediaFuture, LocalMediaHost, MaterializedLocalArtifact},
     settings::AppConfig,
 };
 use hypr_loofah_protocol::{ApplicationError, ErrorCode, LocalCliProgress, TranscriptWithData};
 use owhisper_interface::batch_stream::BatchStreamEvent;
 use std::{
-    io::{Read, Seek, Write},
+    io::Seek,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 #[derive(Default)]
@@ -28,12 +28,13 @@ impl LocalMediaHost for LocalMediaEngine {
     ) -> LocalMediaFuture<LocalCliArtifact> {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
-                let (directory, path) = copy_input(source, &filename, temporary)?;
+                let input = source.materialize(&filename, temporary)?;
+                let path = input.path();
                 report(&progress, "importing audio", 0);
-                let output = directory.path().join("audio.mp3");
+                let output = input.directory().join("audio.mp3");
                 hypr_fs_sync_core::audio::import_audio(
                     &path,
-                    &directory.path().join("encode.tmp"),
+                    &input.directory().join("encode.tmp"),
                     &output,
                 )
                 .map_err(failure)?;
@@ -52,7 +53,7 @@ impl LocalMediaHost for LocalMediaEngine {
                     metadata.size_bytes,
                     metadata.sha256,
                     None,
-                    Box::new(directory),
+                    Box::new(input),
                 ))
             })
             .await
@@ -62,6 +63,7 @@ impl LocalMediaHost for LocalMediaEngine {
 
     fn transcribe(
         &self,
+        _request_id: String,
         source: LocalCliArtifact,
         filename: String,
         session_id: String,
@@ -88,12 +90,13 @@ impl LocalMediaHost for LocalMediaEngine {
                 .map(|language| language.parse())
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|cause| failure(format!("invalid meeting language: {cause}")))?;
-            let (directory, path) =
-                tokio::task::spawn_blocking(move || copy_input(source, &filename, temporary))
+            let input =
+                tokio::task::spawn_blocking(move || source.materialize(&filename, temporary))
                     .await
                     .map_err(failure)??;
+            let path = input.path().to_owned();
             let runtime = Arc::new(Runtime {
-                directory,
+                input: Mutex::new(input),
                 progress,
             });
             let output = hypr_listener2_core::run_batch(
@@ -157,67 +160,13 @@ fn model(config: &AppConfig) -> Result<String, ApplicationError> {
     Ok(model.into())
 }
 
-fn copy_input(
-    mut source: LocalCliArtifact,
-    filename: &str,
-    temporary: PathBuf,
-) -> Result<(tempfile::TempDir, PathBuf), ApplicationError> {
-    if std::path::Path::new(filename)
-        .file_name()
-        .and_then(|name| name.to_str())
-        != Some(filename)
-    {
-        return Err(failure("Invalid input filename"));
-    }
-    for path in temporary.ancestors() {
-        match std::fs::symlink_metadata(path) {
-            Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
-                return Err(failure("Unsafe local media temporary directory"));
-            }
-            Ok(_) => {}
-            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {}
-            Err(cause) => return Err(failure(cause)),
-        }
-    }
-    std::fs::create_dir_all(&temporary).map_err(failure)?;
-    let directory = tempfile::Builder::new()
-        .prefix("local-media-")
-        .tempdir_in(temporary)
-        .map_err(failure)?;
-    let path = directory.path().join(filename);
-    let mut output = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(failure)?;
-    let source_size = source.size_bytes;
-    source.rewind().map_err(failure)?;
-    std::io::copy(
-        &mut (&mut source).take(source_size.saturating_add(1)),
-        &mut output,
-    )
-    .map_err(failure)?;
-    output.flush().map_err(failure)?;
-    drop(output);
-    let copied = hypr_fs_sync_core::media::metadata_from_reader(
-        filename,
-        "application/octet-stream",
-        std::fs::File::open(&path).map_err(failure)?,
-    )
-    .map_err(failure)?;
-    if copied.sha256 != source.sha256 || copied.size_bytes != source.size_bytes {
-        return Err(failure("Recording input changed before processing"));
-    }
-    Ok((directory, path))
-}
-
 struct Runtime {
-    directory: tempfile::TempDir,
+    input: Mutex<MaterializedLocalArtifact>,
     progress: Arc<dyn Fn(LocalCliProgress) + Send + Sync>,
 }
 impl BatchRuntime for Runtime {
     fn emit(&self, event: BatchEvent) {
-        let _input_owner = &self.directory;
+        let _input_owner = &self.input;
         match event {
             BatchEvent::BatchStarted { .. } => report(&self.progress, "transcribing audio", 0),
             BatchEvent::BatchResponseStreamed {

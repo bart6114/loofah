@@ -533,6 +533,7 @@ impl LocalMediaHost for TestMedia {
     }
     fn transcribe(
         &self,
+        _request_id: String,
         _: LocalCliArtifact,
         _: String,
         session_id: String,

@@ -29,6 +29,7 @@ pub trait LocalMediaHost: Send + Sync + 'static {
     #[allow(clippy::too_many_arguments)]
     fn transcribe(
         &self,
+        request_id: String,
         source: LocalCliArtifact,
         filename: String,
         session_id: String,
@@ -396,6 +397,7 @@ impl LocalCli {
         let input = LocalCliArtifact::new(file, size, sha256, None, Box::new(source));
         let generated = host
             .transcribe(
+                request_id.into(),
                 input,
                 filename,
                 session_id.into(),

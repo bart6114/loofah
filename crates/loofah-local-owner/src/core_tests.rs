@@ -34,6 +34,7 @@ impl LocalMediaHost for PanicMedia {
     }
     fn transcribe(
         &self,
+        _: String,
         _: LocalCliArtifact,
         _: String,
         _: String,
