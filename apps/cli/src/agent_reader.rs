@@ -19,9 +19,9 @@ impl AgentReader {
             Self::Local(gateway) => Ok(crate::command_gateway::CommandGateway::Local(
                 gateway.clone(),
             )),
-            Self::Remote(target) => Ok(crate::command_gateway::CommandGateway::Remote(
+            Self::Remote(target) => Ok(crate::command_gateway::CommandGateway::Remote(Box::new(
                 target.begin().await?,
-            )),
+            ))),
         }
     }
     pub fn local(vault: PathBuf, cache: hypr_search_cache::Cache) -> Self {

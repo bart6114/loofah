@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 pub(crate) enum CommandGateway {
     Local(crate::local_owner::LocalGateway),
-    Remote(RemoteSession),
+    Remote(Box<RemoteSession>),
 }
 pub(crate) struct DeletedSession {
     pub path: Option<PathBuf>,

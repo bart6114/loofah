@@ -181,7 +181,7 @@ impl Fixture {
                 .await
                 .unwrap();
         let generation = lease.generation().await.unwrap();
-        let gateway = CommandGateway::Remote(RemoteSession {
+        let gateway = CommandGateway::Remote(Box::new(RemoteSession {
             media_receipts: root.path().join("media-submissions"),
             client,
             lease: lease.clone(),
@@ -189,7 +189,7 @@ impl Fixture {
             member: "alice".into(),
             vault: "private".into(),
             request_id: uuid::Uuid::new_v4().to_string(),
-        });
+        }));
         Self {
             _root: root,
             lease,
