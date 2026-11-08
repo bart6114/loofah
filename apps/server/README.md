@@ -6,8 +6,11 @@ The existing Whisper implementation now exposes a cancellable Rust batch kernel 
 `WhisperResources` owner now verifies an operator-provisioned CPU model before and
 after loading, bounds admission, retains source/native ownership through actual
 batch completion, and drains model destruction on shutdown. Its optional progress
-queue is lossy while the complete terminal result remains available. A live
-reservation is not live inference; typed live input and authenticated Core jobs
+queue is lossy while the complete terminal result remains available. The internal typed live facade now accepts exact f32 frames with bounded
+per-channel admission, explicit replay/gap handling, authoritative captions and
+separate bounded UI snapshots. Cancellation and finish retain native ownership
+through actual thread join. The existing s16 WebSocket API remains compatible.
+Authenticated Core jobs, durable caption promotion and remote capture wiring
 remain under implementation. Model paths stay operator configuration, not client
 request fields.
 
