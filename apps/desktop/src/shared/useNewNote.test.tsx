@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   commands: {
     applicationScope: vi.fn(),
     applicationProcessingAvailable: vi.fn(),
+    applicationTranscriptionAvailable: vi.fn(),
+    applicationRecordingProcessingAvailable: vi.fn(),
+    applicationLocalMediaAvailable: vi.fn(),
     applicationCreateSession: vi.fn(),
   },
   listen: vi.fn(),
@@ -443,6 +446,11 @@ it.each(["ipc", "https"] as const)(
         data: "local:fixture",
       });
       mocks.commands.applicationProcessingAvailable.mockResolvedValue(false);
+      mocks.commands.applicationLocalMediaAvailable.mockResolvedValue(false);
+      mocks.commands.applicationTranscriptionAvailable.mockResolvedValue(false);
+      mocks.commands.applicationRecordingProcessingAvailable.mockResolvedValue(
+        false,
+      );
       mocks.commands.applicationCreateSession.mockResolvedValue({
         status: "ok",
         data: session(),

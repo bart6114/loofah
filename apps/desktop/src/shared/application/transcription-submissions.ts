@@ -77,7 +77,10 @@ export class TranscriptionSubmissions {
       guard.check();
       if (
         receipts.some(
-          (receipt) => !receipt.job || activeTranscription(receipt.job),
+          (receipt) =>
+            !receipt.job ||
+            activeTranscription(receipt.job) ||
+            receipt.job.state === "uncertain",
         )
       )
         throw new Error(

@@ -92,6 +92,8 @@ import type {
   ProcessingSettingsSnapshot,
   ProcessingSettingsSaveOutcome,
   SaveProcessingSettingsRequest,
+  LocalMediaSourceSnapshot,
+  LocalMediaStatus,
   TranscriptionPolicy,
   TranscriptionJobRequest,
   ListTranscriptionJobsInput,
@@ -143,6 +145,51 @@ export type VaultClient = {
       input: SaveProviderCredentialRequest,
       options: RequestOptions & { requestId: string },
     ) => Promise<ProviderCredentialSaveOutcome>;
+  };
+  media?: {
+    source: (
+      sessionId: string,
+      options?: RequestOptions,
+    ) => Promise<LocalMediaSourceSnapshot>;
+    importAudio: (
+      input: {
+        sessionId: string | null;
+        prepared: Pick<PreparedAttachmentUpload, "input" | "source">;
+        createdAt?: string;
+        contentType?: string;
+      },
+      options: RequestOptions & { requestId: string },
+    ) => Promise<LocalMediaStatus>;
+    retranscribe: (
+      expected: LocalMediaSourceSnapshot,
+      options: RequestOptions & { requestId: string },
+    ) => Promise<LocalMediaStatus>;
+    importSubtitles: (
+      sessionId: string,
+      prepared: Pick<PreparedAttachmentUpload, "input" | "source">,
+      options: RequestOptions & { requestId: string },
+    ) => Promise<LocalMediaStatus>;
+    list: (
+      sessionId: string | null,
+      options?: RequestOptions,
+    ) => Promise<LocalMediaStatus[]>;
+    status: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<LocalMediaStatus>;
+    result: (requestId: string, options?: RequestOptions) => Promise<TranscriptWithData | null>;
+    cancel: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<LocalMediaStatus>;
+    recover: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<LocalMediaStatus>;
+    summaryStatus: (
+      requestId: string,
+      options?: RequestOptions,
+    ) => Promise<ManualMediaSummaryStatus | null>;
   };
   recordingProcessing?: {
     list: (
@@ -467,11 +514,13 @@ export async function connectLocalVault({
     processingAvailable,
     transcriptionAvailable,
     recordingProcessingAvailable,
+    mediaAvailable,
   ] = await Promise.all([
     commands.applicationScope().then(applicationResult),
     commands.applicationProcessingAvailable(),
     commands.applicationTranscriptionAvailable(),
     commands.applicationRecordingProcessingAvailable(),
+    commands.applicationLocalMediaAvailable(),
   ]);
   const requireLifecycle = (mutation: boolean) => {
     if (!sessionLifecycleAvailable)
@@ -497,6 +546,7 @@ export async function connectLocalVault({
     noteWriteQueueKey: (sessionId) => `session:${sessionId}:note`,
     features: [
       ...(sessionLifecycleAvailable ? ["session_lifecycle"] : []),
+      ...(mediaAvailable ? ["media_jobs"] : []),
       ...(recordingProcessingAvailable ? ["local_recording_processing"] : []),
       ...(transcriptionAvailable
         ? ["batch_transcription_jobs", "transcription_policy"]
@@ -539,6 +589,70 @@ export async function connectLocalVault({
       "tasks_edit",
       "agent_read",
     ],
+    media: mediaAvailable
+      ? {
+          source: (sessionId, options) =>
+            ipc(() => commands.applicationLocalMediaSource(sessionId), options),
+          importAudio: (input, options) =>
+            ipc(
+              () =>
+                commands.applicationLocalMediaImportAudio(
+                  options.requestId,
+                  input.sessionId,
+                  input.prepared.input,
+                  input.prepared.source,
+                  input.createdAt ?? null,
+                  input.contentType ?? null,
+                ),
+              options,
+              true,
+            ),
+          retranscribe: (expected, options) =>
+            ipc(
+              () =>
+                commands.applicationLocalMediaTranscribe(
+                  options.requestId,
+                  expected,
+                ),
+              options,
+              true,
+            ),
+          importSubtitles: (sessionId, prepared, options) =>
+            ipc(
+              () =>
+                commands.applicationLocalMediaImportSubtitles(
+                  options.requestId,
+                  sessionId,
+                  prepared.input,
+                  prepared.source,
+                ),
+              options,
+              true,
+            ),
+          list: (sessionId, options) =>
+            ipc(() => commands.applicationLocalMediaList(sessionId), options),
+          status: (requestId, options) =>
+            ipc(() => commands.applicationLocalMediaStatus(requestId), options),
+          result: (requestId, options) => ipc(() => commands.applicationLocalMediaResult(requestId), options),
+          cancel: (requestId, options) =>
+            ipc(
+              () => commands.applicationLocalMediaCancel(requestId),
+              { ...options, requestId },
+              true,
+            ),
+          recover: (requestId, options) =>
+            ipc(
+              () => commands.applicationLocalMediaRecover(requestId),
+              { ...options, requestId },
+              true,
+            ),
+          summaryStatus: (requestId, options) =>
+            ipc(
+              () => commands.applicationLocalMediaSummaryStatus(requestId),
+              options,
+            ),
+        }
+      : undefined,
     recordingProcessing: recordingProcessingAvailable
       ? {
           list: (sessionId, options) =>

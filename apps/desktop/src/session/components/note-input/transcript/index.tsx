@@ -25,6 +25,7 @@ import {
   legacyTranscriptControlsAvailable,
   useVaultReadScope,
 } from "~/shared/application/use-vault-read-scope";
+import { VaultRecordingProcessing } from "~/shared/application/vault-recording-processing";
 import { VaultTranscription } from "~/shared/application/vault-transcription";
 import { useListener, useListenerStore } from "~/stt/contexts";
 import {
@@ -98,6 +99,13 @@ export function TranscriptContent(props: TranscriptContentProps) {
         <LegacyTranscriptContent {...props} />
       ) : (
         <TranscriptPresentation {...props} sharedTranscription={shared} />
+      )}
+      {owner.current() && owner.scope.client.recordingProcessing && (
+        <VaultRecordingProcessing
+          key={`processing:${props.sessionId}`}
+          scope={owner.scope}
+          sessionId={props.sessionId}
+        />
       )}
       {shared && (
         <VaultTranscription

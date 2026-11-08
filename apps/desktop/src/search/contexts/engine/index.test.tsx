@@ -6,6 +6,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   applicationScope: vi.fn(),
   applicationProcessingAvailable: vi.fn(),
+  applicationTranscriptionAvailable: vi.fn(),
+  applicationRecordingProcessingAvailable: vi.fn(),
+  applicationLocalMediaAvailable: vi.fn(),
   applicationSearch: vi.fn(),
   listen: vi.fn(),
 }));
@@ -133,6 +136,9 @@ beforeEach(() => {
     data: "local:fixture",
   });
   native.applicationProcessingAvailable.mockResolvedValue(false);
+  native.applicationLocalMediaAvailable.mockResolvedValue(false);
+  native.applicationTranscriptionAvailable.mockResolvedValue(false);
+  native.applicationRecordingProcessingAvailable.mockResolvedValue(false);
   native.listen.mockResolvedValue(vi.fn());
 });
 afterEach(() => {

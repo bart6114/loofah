@@ -1,9 +1,11 @@
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { Button } from "@hypr/ui/components/ui/button";
 
+import type { TranscriptionJobSnapshot } from "./protocol.gen";
 import {
   activeTranscription,
   TranscriptionSubmissions,
@@ -19,6 +21,7 @@ export function VaultTranscription({
   sessionId: string;
   hasTranscript: boolean;
 }) {
+  const { t } = useLingui();
   const controller = useMemo(
     () => new TranscriptionSubmissions(scope),
     [scope],
@@ -86,6 +89,13 @@ export function VaultTranscription({
     },
     scope.queryClient,
   );
+  const recording = useQuery(
+    {
+      ...scope.audioMetadataOptions(sessionId),
+      enabled: connected && !hasTranscript,
+    },
+    scope.queryClient,
+  );
   const policy = useQuery(
     {
       queryKey: ["transcription", scope.client.scope, "policy"],
@@ -126,13 +136,13 @@ export function VaultTranscription({
         operation:
           | { kind: "start" }
           | { kind: "resume"; requestId: string }
-          | { kind: "cancel" | "result"; jobId: string },
+          | { kind: "cancel" | "result" | "copy"; jobId: string },
       ) => {
         if (
           !lifetime.active ||
           !connected ||
           scope.getSnapshot().state !== "connected" ||
-          !scope.client.canEdit
+          (operation.kind !== "copy" && !scope.client.canEdit)
         )
           throw new Error(
             "This connection is no longer available for transcription",
@@ -147,6 +157,25 @@ export function VaultTranscription({
             return scope.run(() => api.cancel(operation.jobId, options));
           case "result":
             return scope.run(() => api.resumeResult(operation.jobId, options));
+          case "copy": {
+            const result = await scope.run(() =>
+              api.result(operation.jobId, options),
+            );
+            if (
+              !lifetime.active ||
+              lifetime.abort.signal.aborted ||
+              scope.getSnapshot().state !== "connected"
+            )
+              return;
+            if (!result)
+              throw new Error("The saved transcription result is unavailable");
+            await writeText(
+              (result.transcript.words ?? [])
+                .map((word) => word.text)
+                .join(" "),
+            );
+            return;
+          }
         }
       },
       onSettled: refresh,
@@ -168,19 +197,21 @@ export function VaultTranscription({
   const blocked = receipts.data?.some(
     (receipt) =>
       !receipt.job ||
+      (rows.get(receipt.job.id) ?? receipt.job).state === "uncertain" ||
       activeTranscription(rows.get(receipt.job.id) ?? receipt.job),
   );
   const disabled = !connected || !scope.client.canEdit || action.isPending;
   return (
     <section
       className="flex flex-col gap-2 border-t p-3"
-      aria-label="Transcription jobs"
+      aria-label={t`Transcription jobs`}
     >
-      {!hasTranscript && (
+      {!hasTranscript && (recording.isPending || !!recording.data) && (
         <Button
           size="sm"
           disabled={
             disabled ||
+            !recording.data ||
             blocked ||
             receipts.isPending ||
             receipts.isError ||
@@ -195,6 +226,17 @@ export function VaultTranscription({
           <Trans>Transcribe saved recording</Trans>
         </Button>
       )}
+      {!hasTranscript &&
+        recording.data &&
+        policy.data &&
+        (!policy.data.batch_enabled ||
+          policy.data.availability !== "ready") && (
+          <p role="status">
+            <Trans>
+              Transcription is currently unavailable for this connection.
+            </Trans>
+          </p>
+        )}
       {receipts.data
         ?.filter((receipt) => !receipt.job)
         .map((receipt) => (
@@ -222,11 +264,7 @@ export function VaultTranscription({
         ))}
       {[...rows.values()].map((job) => (
         <div key={job.id} className="flex items-center gap-2 text-sm">
-          <p role="status">
-            {job.state}
-            {job.phase ? ` · ${job.phase}` : ""}
-            {job.failure ? ` · ${job.failure}` : ""}
-          </p>
+          <p role="status">{transcriptionStatus(job)}</p>
           {activeTranscription(job) && (
             <Button
               size="sm"
@@ -238,7 +276,8 @@ export function VaultTranscription({
             </Button>
           )}
           {job.result_available &&
-            ["interrupted", "uncertain"].includes(job.state) && (
+            !activeTranscription(job) &&
+            !["succeeded", "empty"].includes(job.state) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -248,8 +287,23 @@ export function VaultTranscription({
                 <Trans>Recover saved result</Trans>
               </Button>
             )}
+          {job.result_available && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!connected || action.isPending}
+              onClick={() => action.mutate({ kind: "copy", jobId: job.id })}
+            >
+              <Trans>Copy saved transcript</Trans>
+            </Button>
+          )}
         </div>
       ))}
+      {action.isSuccess && action.variables.kind === "copy" && (
+        <p role="status">
+          <Trans>Copied</Trans>
+        </p>
+      )}
       {history.hasNextPage && (
         <Button
           size="sm"
@@ -269,6 +323,7 @@ export function VaultTranscription({
           {
             (
               action.error ??
+              recording.error ??
               receipts.error ??
               acknowledged.error ??
               history.error ??
@@ -277,7 +332,8 @@ export function VaultTranscription({
           }
         </p>
       )}
-      {(receipts.isError ||
+      {(recording.isError ||
+        receipts.isError ||
         acknowledged.isError ||
         history.isError ||
         policy.isError) && (
@@ -285,11 +341,52 @@ export function VaultTranscription({
           size="sm"
           variant="outline"
           disabled={!connected}
-          onClick={() => void refresh()}
+          onClick={() => {
+            void refresh();
+            if (recording.isError) void recording.refetch();
+          }}
         >
           <Trans>Retry</Trans>
         </Button>
       )}
     </section>
   );
+}
+
+function transcriptionStatus(job: TranscriptionJobSnapshot) {
+  switch (job.state) {
+    case "queued":
+      return <Trans>Transcription queued</Trans>;
+    case "running":
+      if (job.phase === "preparing") return <Trans>Preparing recording</Trans>;
+      if (job.phase === "publishing") return <Trans>Saving transcript</Trans>;
+      return <Trans>Transcribing recording</Trans>;
+    case "cancelling":
+      return <Trans>Cancelling transcription</Trans>;
+    case "cancelled":
+      return <Trans>Transcription cancelled</Trans>;
+    case "succeeded":
+      return <Trans>Transcript saved</Trans>;
+    case "failed":
+      return <Trans>Transcription failed. Your recording is kept.</Trans>;
+    case "interrupted":
+      return (
+        <Trans>Transcription was interrupted. Review the saved request.</Trans>
+      );
+    case "conflict":
+      return (
+        <Trans>
+          The recording or transcript changed. Generated content did not replace
+          your changes.
+        </Trans>
+      );
+    case "empty":
+      return <Trans>No speech was found. Your recording is kept.</Trans>;
+    case "uncertain":
+      return (
+        <Trans>
+          The transcription outcome needs review. Your recording is kept.
+        </Trans>
+      );
+  }
 }

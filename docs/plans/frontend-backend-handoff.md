@@ -540,3 +540,11 @@ required for this follow-up.
 Remote CLI creation now has an additive `session_initial_metadata` capability and checked `/vaults/{vault}/session-creations` request. It delegates initial note and metadata publication to the existing Core rich-creation receipt, preserving the older title/markdown DTO and serialized receipts. The separate route does not shadow a valid session ID. Unknown fields, metadata budgets, reader/private-vault access, same-request replay and changed-request refusal have source regressions; shared-lane validation is pending. Remote CLI mutation command wiring remains in progress.
 
 Remote CLI mutation source now uses a command-scoped SDK gateway for checked creation (including initial metadata), rename, note set/append, tag changes/listing, soft-delete, attachment upload, and complete exports. The original profile generation/member/vault and profile lease remain pinned through dispatch and owned file transfers; unknown writes are not automatically retried. Local schema-2 output is unchanged. Remote paths are null and deletion returns its opaque trash token/revision. PDF attachments are downloaded through verified SDK leases before rendering. MCP remains read-only; Remote import/transcription and Local filesystem/recovery commands remain explicitly unavailable. Source formatting and diff checks completed; Cargo and platform acceptance remain on the sole integration build path.
+
+The shared client exposes optional media operations only when its initialized
+Native media owner is available. Source snapshots, staged imports, explicit
+recovery/cancellation and retained results keep the original scope and request
+UUID. The recording-parent and transcription-job panels display durable status
+without automatic inference replay; copied retained transcripts do not mutate
+changed canonical content. Generated Native/protocol contracts and the complete
+manual-media frontend migration require the integration build/checks.
