@@ -533,6 +533,8 @@ pub async fn main() {
                 return;
             }
 
+            app.state::<local_media::LocalMediaState>()
+                .request_shutdown();
             app.state::<local_transcription::LocalTranscriptionState>()
                 .request_shutdown();
             app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
@@ -546,6 +548,7 @@ pub async fn main() {
                 .initialized()
                 || device.initialized()
                 || owner.initialized()
+                || app.state::<local_media::LocalMediaState>().initialized()
                 || app
                     .state::<local_transcription::LocalTranscriptionState>()
                     .initialized()
@@ -587,6 +590,8 @@ pub async fn main() {
         }
         tauri::RunEvent::Exit => {
             app.state::<std::sync::Arc<local_capture::LocalCaptureState>>()
+                .request_shutdown();
+            app.state::<local_media::LocalMediaState>()
                 .request_shutdown();
             app.state::<local_transcription::LocalTranscriptionState>()
                 .request_shutdown();

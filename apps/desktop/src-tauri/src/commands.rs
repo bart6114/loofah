@@ -62,7 +62,18 @@ pub async fn complete_app_exit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     device.request_shutdown();
     let owner = app.state::<crate::local_owner::LocalOwnerState>();
     owner.request_shutdown();
-    if device.initialized() || owner.initialized() {
+    if device.initialized()
+        || owner.initialized()
+        || app
+            .try_state::<Arc<crate::local_capture::LocalCaptureState>>()
+            .is_some_and(|state| state.initialized())
+        || app
+            .try_state::<crate::local_transcription::LocalTranscriptionState>()
+            .is_some_and(|state| state.initialized())
+        || app
+            .try_state::<crate::local_media::LocalMediaState>()
+            .is_some_and(|state| state.initialized())
+    {
         crate::device_recordings::begin_exit(app);
         return;
     }

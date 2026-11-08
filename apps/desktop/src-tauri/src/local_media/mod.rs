@@ -94,6 +94,9 @@ impl LocalMediaHost for NativeMediaHost {
     }
 }
 impl LocalMediaState {
+    pub fn initialized(&self) -> bool {
+        self.service.get().is_some()
+    }
     pub fn initialize(&self, context: Arc<VaultContext>) -> Result<(), ApplicationError> {
         if self.stop.is_cancelled() {
             return Err(unavailable());

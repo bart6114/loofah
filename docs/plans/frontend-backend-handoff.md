@@ -511,3 +511,9 @@ Context pointer, and is absent when no Local owner was initialized. Managed CLI
 media now receives that same Native host; standalone CLI media remains independent.
 The adapter and regression sources still require the coordinated Native build;
 legacy manual frontend callers are not yet removed in this checkpoint.
+
+All Native exit entry points now route initialized Local capture, manual media and
+transcription owners through their drain path even when the CLI endpoint failed
+to bind. Manual media cancellation retains actual source/model tasks; Store flush
+and final worker shutdown follow those owned drains. This addition requires the
+combined Native/platform validation lane.
