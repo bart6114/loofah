@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use hypr_loofah_client::capture_spool::{CaptureSeal, CaptureSnapshot, CaptureWriter};
+use hypr_loofah_client::capture_spool::{CaptureSnapshot, CaptureWriter};
 use hypr_loofah_protocol::{ApplicationError, ErrorCode, MutationOutcome};
 use tauri_plugin_transcription::{
     DeviceAppendReceipt, DeviceFinishReceipt, DeviceRecordingEnd, DeviceRecordingSink,
@@ -93,13 +93,6 @@ impl SpoolRecordingSink {
             identity: self.writer.identity().clone(),
             event,
         });
-    }
-
-    pub fn seal(&self) -> Option<CaptureSeal> {
-        self.state
-            .lock()
-            .ok()
-            .and_then(|state| state.snapshot.seal.clone())
     }
 
     pub(super) fn completion(&self) -> tokio::sync::watch::Receiver<SinkCompletion> {
