@@ -549,3 +549,25 @@ without automatic inference replay; copied retained transcripts do not mutate
 changed canonical content. Generated Native/protocol contracts and the complete
 manual-media frontend migration require the integration build/checks.
 Manual-media summary completion refusals now retain an actionable `reason` in the original parent status, including source/target conflicts and unavailable processing. The parent preserves its existing source/child state because a lost receipt may already have admitted owned child work; recording a refusal never revokes that authority or starts another inference. Read-only status exposes the retained reason after restart, while successful original-child replay clears it. Source-only regression extends the frozen-target conflict case to retained status and repeated exact-request refusal.
+### Scoped desktop session export
+
+Native `application_export_session` and `remote_export_session` use the original
+Local context or authenticated Shared connection and the existing portable export
+renderer for PDF, Markdown, text, and Org. The selected summary/template document,
+note, and rendered transcript are frozen before rendering. PDF images resolve only
+explicit `attachments/<encoded basename>` references through scoped Core/SDK media
+leases; no vault directory enumeration or external image fetch occurs. Private
+copies are hash-verified, bounded to 32 images, 32 MiB each and 64 MiB total. Text is
+bounded to 8 MiB and the resulting file to 128 MiB.
+
+Shared publication refreshes authorization for the original session and holds the
+original profile and login generation only across the final filesystem commit.
+A selected Shared vault may differ from the profile's saved default vault. Account,
+profile, window, cancellation, or shutdown changes cannot select a replacement
+source. Downloads/Loofah is checked for symlinks and directory replacement; a
+same-directory temporary file is synced and published without replacing an existing
+filename. The original snapshots and private image copies remain owned until real
+blocking render/write work finishes. `SessionExportState::request_shutdown` and
+`drain` must be included in Native exit before dependent context teardown. This
+source checkpoint still requires the parent's actual Native build, exporter,
+frontend integration, and platform validation; it is not Windows qualification.

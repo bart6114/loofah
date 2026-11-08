@@ -1,5 +1,6 @@
 mod initial_metadata;
 mod attachments;
+mod authenticated_scope;
 mod capture;
 mod capture_append_authority;
 mod capture_live;

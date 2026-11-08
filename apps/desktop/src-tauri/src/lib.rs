@@ -1,5 +1,6 @@
 mod appearance;
 mod application;
+mod application_export;
 mod application_recording_processing;
 mod application_transcription;
 mod attachment_upload;
@@ -126,6 +127,10 @@ fn on_window_event(window: &tauri::Window<tauri::Wry>, event: &tauri::WindowEven
     if matches!(event, tauri::WindowEvent::Destroyed) {
         window
             .app_handle()
+            .state::<application_export::SessionExportState>()
+            .release_window(window.label());
+        window
+            .app_handle()
             .state::<attachment_upload::DeviceUploadIo>()
             .release_window(window.label());
         window
@@ -219,6 +224,14 @@ pub async fn main() {
 
     let mut builder = tauri_plugin_windows::extend_builder(tauri::Builder::default())
         .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                if let Some(state) = webview
+                    .app_handle()
+                    .try_state::<application_export::SessionExportState>()
+                {
+                    state.release_window(webview.window().label());
+                }
+            }
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
                 && let Some(io) = webview
                     .app_handle()
@@ -235,6 +248,7 @@ pub async fn main() {
             local_capture::LocalCaptureState::default(),
         ))
         .manage(local_media::LocalMediaState::default())
+        .manage(application_export::SessionExportState::default())
         .manage(local_owner::LocalOwnerState::default())
         .manage(job_submissions::JobSubmissionState::default())
         .manage(transcription_submissions::TranscriptionSubmissionState::default())
@@ -693,6 +707,9 @@ fn make_specta_builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             draft_cache::draft_cache_recovery::<tauri::Wry>,
             draft_cache::draft_cache_put::<tauri::Wry>,
             draft_cache::draft_cache_remove::<tauri::Wry>,
+            application_export::application_export_session::<tauri::Wry>,
+            application_export::remote_export_session::<tauri::Wry>,
+            application_export::session_export_cancel::<tauri::Wry>,
             application::application_scope::<tauri::Wry>,
             application::application_processing_available::<tauri::Wry>,
             local_media::commands::application_local_media_available::<tauri::Wry>,

@@ -5,4 +5,4 @@ mod utils;
 mod world;
 
 pub use compile::compile_to_pdf;
-pub use content::build_typst_content;
+pub use content::{build_typst_content, build_typst_content_with_labels};

@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+mod authenticated_scope;
+pub use authenticated_scope::{AuthenticatedScope, AuthenticatedScopeCommitGuard};
 mod capture;
 mod capture_append;
 mod capture_append_authority;

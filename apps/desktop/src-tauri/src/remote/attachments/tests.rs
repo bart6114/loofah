@@ -768,3 +768,45 @@ async fn native_attachment_logout_closes_known_leases_before_credentials_are_sto
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn export_attachment_is_fresh_bounded_scoped_and_retires_its_resource() {
+    let fixture = Fixture::new().await;
+    let root = tempfile::tempdir().unwrap();
+    let target = AttachmentTarget {
+        vault_id: "vault".into(),
+        session_id: "note".into(),
+        attachment_id: "a.svg".into(),
+    };
+    let result = export_attachment(
+        &fixture.state,
+        &fixture.connection,
+        "first",
+        target.clone(),
+        root.path().into(),
+        CancellationToken::new(),
+        1,
+    )
+    .await;
+    assert_eq!(result.err().unwrap().code, ErrorCode::ResourceLimit);
+    assert_eq!(fixture.api.reads.load(Ordering::SeqCst), 0);
+    assert!(fixture.state.attachments.entries.lock().unwrap().is_empty());
+    assert!(fixture.api.leases.lock().unwrap().is_empty());
+    let copy = export_attachment(
+        &fixture.state,
+        &fixture.connection,
+        "first",
+        target,
+        root.path().into(),
+        CancellationToken::new(),
+        32 * 1024 * 1024,
+    )
+    .await
+    .unwrap();
+    assert_eq!(std::fs::read(&copy.path).unwrap(), *fixture.api.bytes);
+    assert_eq!(fixture.state.attachments.entries.lock().unwrap().len(), 1);
+    fixture.state.release_window("first");
+    assert!(copy.check_current(&CancellationToken::new()).is_err());
+    drop(copy);
+    assert!(fixture.state.attachments.entries.lock().unwrap().is_empty());
+}

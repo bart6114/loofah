@@ -293,6 +293,37 @@ impl RemoteState {
         }
         Ok((connection.client.clone(), lease.clone()))
     }
+    pub(crate) fn admit_export(
+        &self,
+        id: &str,
+        owner: &str,
+        request_id: &str,
+    ) -> Result<
+        (
+            Arc<RemoteClient>,
+            Arc<hypr_loofah_client::ProfileLease>,
+            CancellationToken,
+            Box<dyn Send + Sync>,
+        ),
+        ApplicationError,
+    > {
+        let profile = {
+            let registry = self.registry.lock().unwrap();
+            let connection = registry
+                .get(id)
+                .filter(|connection| {
+                    connection.authenticated && connection.leases.contains_key(owner)
+                })
+                .ok_or_else(missing)?;
+            connection
+                .profile
+                .as_ref()
+                .map(|(_, profile)| profile.clone())
+                .ok_or_else(missing)?
+        };
+        let (client, cancel, pending) = self.admit(id, owner, request_id)?;
+        Ok((client, profile, cancel, Box::new(pending)))
+    }
     fn client(&self, id: &str, owner: &str) -> Result<Arc<RemoteClient>, ApplicationError> {
         self.registry
             .lock()

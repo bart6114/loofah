@@ -38,7 +38,7 @@ pub enum AttachmentCopyAction {
 }
 
 pub(super) struct AttachmentRegistry {
-    entries: Mutex<HashMap<String, Arc<Entry>>>,
+    entries: Arc<Mutex<HashMap<String, Arc<Entry>>>>,
     slots: Arc<Semaphore>,
     transfers: Arc<Semaphore>,
     copies: Arc<Semaphore>,
@@ -384,6 +384,19 @@ impl Entry {
         request: CancellationToken,
         fresh: bool,
     ) -> Result<LocalCopy, ApplicationError> {
+        self.local_copy_bounded(root, transfers, copies, request, fresh, None)
+            .await
+    }
+
+    async fn local_copy_bounded(
+        self: &Arc<Self>,
+        root: PathBuf,
+        transfers: Arc<Semaphore>,
+        copies: Arc<Semaphore>,
+        request: CancellationToken,
+        fresh: bool,
+        limit: Option<u64>,
+    ) -> Result<LocalCopy, ApplicationError> {
         let mut copy = tokio::select! {
             _ = self.cancel.cancelled() => return Err(closed()),
             _ = request.cancelled() => return Err(closed()),
@@ -410,6 +423,12 @@ impl Entry {
                 result = lease.open(self, request.clone()) => result?,
             };
             let metadata = descriptor.metadata.clone();
+            if limit.is_some_and(|limit| metadata.size_bytes > limit) {
+                return Err(failure(
+                    ErrorCode::ResourceLimit,
+                    "Export image byte budget exceeded",
+                ));
+            }
             let stage_root = root.clone();
             let (staging, file) = tokio::task::spawn_blocking(move || {
                 std::fs::create_dir_all(&stage_root).map_err(io_error)?;
@@ -429,10 +448,21 @@ impl Entry {
                 (staging, (permit, copy_permit), self.clone()),
                 request.clone(),
             );
-            let (file, (staging, _permit, _entry)) = tokio::select! {
-                _ = self.cancel.cancelled() => return Err(closed()),
-                result = download => result?,
+            let completed = if limit.is_some() {
+                // Export shutdown owns the whole copy: cancellation still joins
+                // SDK writes before its private directory and host admission drop.
+                tokio::pin!(download);
+                tokio::select! {
+                    result = &mut download => result,
+                    _ = self.cancel.cancelled() => { request.cancel(); download.await },
+                }
+            } else {
+                tokio::select! {
+                    _ = self.cancel.cancelled() => return Err(closed()),
+                    result = download => result,
+                }
             };
+            let (file, (staging, _permit, _entry)) = completed?;
             let synced = file.sync_all().await.map_err(io_error);
             drop(file);
             synced?;
@@ -759,7 +789,7 @@ pub async fn remote_attachment_copy<R: tauri::Runtime>(
     .map_err(worker_error)?
 }
 
-fn download_root<R: tauri::Runtime>(
+pub(crate) fn download_root<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, ApplicationError> {
     #[cfg(feature = "dev")]
@@ -796,4 +826,64 @@ fn io_error(cause: std::io::Error) -> ApplicationError {
 fn worker_error(cause: tokio::task::JoinError) -> ApplicationError {
     tracing::error!(%cause, "native attachment worker stopped");
     failure(ErrorCode::Internal, "Attachment operation stopped")
+}
+
+pub(crate) struct ExportAttachmentOwner {
+    pub path: PathBuf,
+    pub metadata: FileMetadata,
+    entry: Arc<Entry>,
+    entries: Arc<Mutex<HashMap<String, Arc<Entry>>>>,
+}
+impl ExportAttachmentOwner {
+    pub fn check_current(&self, cancel: &CancellationToken) -> Result<(), ApplicationError> {
+        self.entry.check(Some(cancel))
+    }
+}
+impl Drop for ExportAttachmentOwner {
+    fn drop(&mut self) {
+        self.entries.lock().unwrap().remove(&self.entry.id);
+        self.entry.cancel.cancel();
+    }
+}
+
+pub(crate) async fn export_attachment(
+    state: &RemoteState,
+    connection: &str,
+    owner: &str,
+    target: AttachmentTarget,
+    root: PathBuf,
+    cancel: CancellationToken,
+    limit: u64,
+) -> Result<ExportAttachmentOwner, ApplicationError> {
+    let entry = state.attachments.reserve(
+        state,
+        connection,
+        owner,
+        &uuid::Uuid::new_v4().to_string(),
+        target,
+    )?;
+    let mut retained = ExportAttachmentOwner {
+        path: PathBuf::new(),
+        metadata: FileMetadata {
+            filename: String::new(),
+            content_type: String::new(),
+            size_bytes: 0,
+            sha256: String::new(),
+        },
+        entry: entry.clone(),
+        entries: state.attachments.entries.clone(),
+    };
+    let copied = entry
+        .local_copy_bounded(
+            root,
+            state.attachments.transfers.clone(),
+            state.attachments.copies.clone(),
+            cancel,
+            true,
+            Some(limit),
+        )
+        .await?;
+    retained.path = copied.path;
+    retained.metadata = copied.metadata;
+    Ok(retained)
 }

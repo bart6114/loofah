@@ -70,6 +70,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 hypr-audio-actual = { workspace = true }
 hypr-audio-mock = { workspace = true, optional = true }
+hypr-export-core = { workspace = true }
 hypr-fs-format = { workspace = true }
 hypr-host = { workspace = true }
 hypr-language = { workspace = true }
@@ -90,8 +91,10 @@ hypr-vault-write = { workspace = true, features = ["tauri-events"] }
 
 chrono = { workspace = true }
 dirs = { workspace = true }
+percent-encoding = "2"
 pico-args = { workspace = true }
 ractor = { workspace = true }
+same-file = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
