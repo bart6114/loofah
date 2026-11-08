@@ -26,7 +26,7 @@ vi.mock("react-dom/client", async (original) => {
     entry.roots.push(root);
     return root;
   };
-  return { ...actual, default: { ...actual.default, createRoot }, createRoot };
+  return { ...actual, default: { ...actual, createRoot }, createRoot };
 });
 vi.mock("@tanstack/react-router", () => ({
   createRouter: () => ({}),

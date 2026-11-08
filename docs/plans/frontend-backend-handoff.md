@@ -1026,3 +1026,12 @@ The first and final logs are `vault-adoption-linux-first.log` and
 This is controlled Linux operator qualification, not a Native feature-activation
 or Windows qualification claim. No user vault, deployed service or Local
 activation flag changed.
+
+
+The combined standalone-window, read-only preview and opt-in Local transcript
+frontend now passes **2,615 tests in 298 files**, plus desktop typecheck and
+strict locale compilation. The actual-entry mock needed a TypeScript-only module
+namespace correction; its runtime assertion still exercises the real entry
+module. Native bindings came from the corrected concrete Wry exporter. Preview
+capability activation and checked Local transcript/lifecycle/output controls
+remain gated on the pending Native/provider/platform qualification.

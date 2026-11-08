@@ -1091,6 +1091,10 @@ msgstr "Generating summary"
 msgid "Generating title..."
 msgstr "Generating title..."
 
+#: src/shared/application/vault-processing-preview.tsx
+msgid "Generating… Partial text is not saved."
+msgstr "Generating… Partial text is not saved."
+
 #: src/sidebar/timeline/index.tsx
 msgid "Go back to now"
 msgstr "Go back to now"
@@ -1177,6 +1181,10 @@ msgstr "In {totalSeconds}s"
 #: src/settings/ai/stt/diarization-status.tsx
 msgid "Included automatically with on-device transcription — no setup needed."
 msgstr "Included automatically with on-device transcription — no setup needed."
+
+#: src/shared/application/vault-processing-preview.tsx
+msgid "Incomplete generation. This partial text was not saved."
+msgstr "Incomplete generation. This partial text was not saved."
 
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Install Codex CLI"
@@ -1466,12 +1474,17 @@ msgstr "Metadata"
 
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
+#: src/shared/application/device-recording-shell.tsx
 msgid "Microphone"
 msgstr "Microphone"
 
 #: src/onboarding/permissions.tsx
 msgid "Microphone access turned on"
 msgstr "Microphone access turned on"
+
+#: src/shared/application/device-recording-shell.tsx
+msgid "Mixed audio"
+msgstr "Mixed audio"
 
 #: src/settings/ai/llm/select.tsx
 msgid "Model"
@@ -1739,6 +1752,10 @@ msgstr "Open on GitHub"
 msgid "Opened file."
 msgstr "Opened file."
 
+#: src/shared/application/remote-note-window.tsx
+msgid "Opening note…"
+msgstr "Opening note…"
+
 #: src/settings/ai/llm/chatgpt.tsx
 msgid "Opening your browser…"
 msgstr "Opening your browser…"
@@ -1774,6 +1791,10 @@ msgstr "Overview"
 #: src/shared/application/vault-sharing.tsx
 msgid "Owner"
 msgstr "Owner"
+
+#: src/shared/application/vault-processing-preview.tsx
+msgid "Partial summary preview"
+msgstr "Partial summary preview"
 
 #: src/session/components/outer-header/overflow/export-modal.tsx
 msgid "Participants"
@@ -1908,6 +1929,10 @@ msgstr "Reconnect to save settings. Your changes stay in this form."
 #: src/shared/application/media-recovery-panel.tsx
 msgid "Reconnect to the original workspace to inspect or recover requests."
 msgstr "Reconnect to the original workspace to inspect or recover requests."
+
+#: src/shared/application/open-note-window.ts
+msgid "Reconnect to this workspace before opening its note."
+msgstr "Reconnect to this workspace before opening its note."
 
 #: src/sidebar/timeline/index.tsx
 msgid "Reconnecting… Loaded notes remain available."
@@ -2901,6 +2926,7 @@ msgstr "Symbolic links and their targets are excluded."
 
 #: src/onboarding/permissions.tsx
 #: src/settings/general/permissions.tsx
+#: src/shared/application/device-recording-shell.tsx
 msgid "System audio"
 msgstr "System audio"
 
@@ -2967,6 +2993,10 @@ msgstr "The note may already exist. Retry the same request before creating anoth
 #: src/sidebar/timeline/index.tsx
 msgid "The open note is outside this loaded timeline window."
 msgstr "The open note is outside this loaded timeline window."
+
+#: src/shared/application/vault-processing-preview.tsx
+msgid "The partial preview is shortened."
+msgstr "The partial preview is shortened."
 
 #: src/shared/application/vault-processing.tsx
 msgid "The preview is shortened. Copy to recover the complete text."
@@ -3084,6 +3114,14 @@ msgstr "This model supports English only. Choose another model or change your sp
 #: src/settings/ai/stt/timing.tsx
 msgid "This model transcribes after recording."
 msgstr "This model transcribes after recording."
+
+#: src/shared/application/remote-note-window.tsx
+msgid "This note window is no longer connected to its original workspace. Open it again from that workspace."
+msgstr "This note window is no longer connected to its original workspace. Open it again from that workspace."
+
+#: src/shared/application/remote-note-window.tsx
+msgid "This note's workspace is no longer available."
+msgstr "This note's workspace is no longer available."
 
 #: src/settings/index.tsx
 #: src/shared/main/tab-content.tsx

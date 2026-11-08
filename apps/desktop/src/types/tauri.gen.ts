@@ -1777,6 +1777,40 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async remoteOpenNoteWindow(
+    connectionId: string,
+    requestId: string,
+    vaultId: string,
+    sessionId: string,
+  ): Promise<Result<null, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_open_note_window", {
+          connectionId,
+          requestId,
+          vaultId,
+          sessionId,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async remoteClaimNoteWindow(): Promise<
+    Result<RemoteNoteWindowInfo, ApplicationError>
+  > {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remote_claim_note_window"),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async remoteConnect(
     server: string,
   ): Promise<Result<RemoteConnectionInfo, ApplicationError>> {
@@ -4395,6 +4429,12 @@ export type RemoteEvent =
       error: ApplicationError | null;
     }
   | { kind: "change"; event: ChangeEvent };
+export type RemoteNoteWindowInfo = {
+  connection: RemoteConnectionInfo;
+  member_id: string;
+  vault: VaultInfo;
+  session_id: string;
+};
 export type RemoteOperation =
   | { kind: "transcript_editor"; vault_id: string; session_id: string }
   | {
