@@ -33,7 +33,11 @@ async fn run_inner(args: Args) -> Result<u8> {
     }
     if let Some(name) = &args.profile {
         match &args.command {
-            cli::Command::Sessions { .. } | cli::Command::Tags { .. } | cli::Command::Mcp => {}
+            cli::Command::Sessions { .. }
+            | cli::Command::Tags { .. }
+            | cli::Command::Mcp
+            | cli::Command::Import { .. }
+            | cli::Command::Transcribe { .. } => {}
             _ => {
                 return Err(Error::operation(
                     "run remote command",
@@ -41,13 +45,52 @@ async fn run_inner(args: Args) -> Result<u8> {
                 ));
             }
         }
-        let reader = agent_reader::AgentReader::Remote(profiles::RemoteTarget::select(name).await?);
+        let target = profiles::RemoteTarget::select(name).await?;
+        let reader = agent_reader::AgentReader::Remote(target.clone());
         match args.command {
             cli::Command::Sessions { command } => {
                 commands::meetings::run_with_reader(&reader, command, args.json).await?
             }
             cli::Command::Tags { command } => {
                 commands::tags::run_with_reader(&reader, command, args.json).await?
+            }
+            cli::Command::Import {
+                file,
+                title,
+                into,
+                transcribe,
+                created_at,
+                started_at,
+                ended_at,
+                author,
+                skill,
+            } => {
+                return target
+                    .begin_media()
+                    .await?
+                    .import_media(
+                        file,
+                        title,
+                        into,
+                        transcribe,
+                        commands::NewSessionOptions {
+                            created_at,
+                            started_at,
+                            ended_at,
+                            author,
+                            skill,
+                            tags: Vec::new(),
+                        },
+                        args.json,
+                    )
+                    .await;
+            }
+            cli::Command::Transcribe { id } => {
+                target
+                    .begin_media()
+                    .await?
+                    .transcribe_media(&id, args.json)
+                    .await?
             }
             cli::Command::Mcp => mcp::serve_with_reader(reader).await?,
             _ => unreachable!("remote commands were checked before selecting the profile"),

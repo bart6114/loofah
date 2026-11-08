@@ -11,20 +11,7 @@ pub async fn run(
     timestamps: super::NewSessionOptions,
     json: bool,
 ) -> Result<u8> {
-    let extension = file
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_lowercase)
-        .unwrap_or_default();
-    if !["wav", "mp3", "ogg", "mp4", "m4a", "flac", "webm", "aac"].contains(&extension.as_str()) {
-        return Err(Error::operation(
-            "import audio",
-            format!(
-                "unsupported audio format for {}; supported extensions: wav, mp3, ogg, mp4, m4a, flac, webm, aac",
-                file.display()
-            ),
-        ));
-    }
+    validate_format(&file)?;
     if !file.is_file() {
         return Err(Error::NotFound(format!("audio file {}", file.display())));
     }
@@ -92,4 +79,22 @@ pub async fn run(
         session_id
     });
     Ok(exit_code)
+}
+
+pub(crate) fn validate_format(file: &Path) -> Result<()> {
+    let extension = file
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default();
+    if !["wav", "mp3", "ogg", "mp4", "m4a", "flac", "webm", "aac"].contains(&extension.as_str()) {
+        return Err(Error::operation(
+            "import audio",
+            format!(
+                "unsupported audio format for {}; supported extensions: wav, mp3, ogg, mp4, m4a, flac, webm, aac",
+                file.display()
+            ),
+        ));
+    }
+    Ok(())
 }

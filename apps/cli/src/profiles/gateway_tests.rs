@@ -182,6 +182,7 @@ impl Fixture {
                 .unwrap();
         let generation = lease.generation().await.unwrap();
         let gateway = CommandGateway::Remote(RemoteSession {
+            media_receipts: root.path().join("media-submissions"),
             client,
             lease: lease.clone(),
             generation,

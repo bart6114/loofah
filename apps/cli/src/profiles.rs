@@ -25,6 +25,9 @@ pub(crate) struct RemoteTarget {
 }
 
 pub(crate) fn store() -> Result<Arc<ConnectionProfiles>> {
+    Ok(ConnectionProfiles::new(profile_root()?)?)
+}
+fn profile_root() -> Result<PathBuf> {
     let root = match std::env::var_os("LOOFAH_CLI_PROFILE_DIR") {
         Some(value) => PathBuf::from(value),
         None => {
@@ -47,7 +50,7 @@ pub(crate) fn store() -> Result<Arc<ConnectionProfiles>> {
                 .join("profiles")
         }
     };
-    Ok(ConnectionProfiles::new(root)?)
+    Ok(root)
 }
 fn channel(command: &str) -> &'static str {
     match command.to_ascii_lowercase().trim_end_matches(".exe") {
@@ -183,9 +186,16 @@ pub(crate) struct RemoteSession {
     member: String,
     pub(super) vault: String,
     pub(super) request_id: String,
+    media_receipts: PathBuf,
 }
 impl RemoteTarget {
     pub async fn begin(&self) -> Result<RemoteSession> {
+        self.begin_with_media(false).await
+    }
+    pub async fn begin_media(&self) -> Result<RemoteSession> {
+        self.begin_with_media(true).await
+    }
+    async fn begin_with_media(&self, media: bool) -> Result<RemoteSession> {
         let lease = self.store.open(&self.name).await?;
         let generation = lease.generation().await?;
         let profile = generation.profile();
@@ -197,6 +207,9 @@ impl RemoteTarget {
             .into());
         }
         let client = connect(&lease, profile).await?;
+        if media {
+            client.media_jobs_capability(&CancellationToken::new())?;
+        }
         if !profile
             .credential_accounts
             .iter()
@@ -215,6 +228,12 @@ impl RemoteTarget {
             member: self.binding.member.clone(),
             vault: self.binding.vault.clone(),
             request_id: uuid::Uuid::new_v4().to_string(),
+            media_receipts: profile_root()?
+                .parent()
+                .ok_or_else(|| {
+                    Error::operation("locate media receipts", "Profile storage has no parent")
+                })?
+                .join("media-submissions"),
         };
         drop(session.guard().await?);
         Ok(session)
@@ -512,3 +531,6 @@ mod tests {
 #[cfg(test)]
 #[path = "profiles/gateway_tests.rs"]
 mod gateway_tests;
+
+#[path = "profiles/media.rs"]
+pub(crate) mod media;

@@ -130,12 +130,13 @@ output. List/search and writes automatically initialize a missing or incompatibl
 | `sessions tag add` | Add tags to a session, registering new ones in the vault. |
 | `sessions tag remove` | Remove tags from a session. |
 | `sessions delete` | Soft-delete one exact ID to recoverable trash, without prompting. |
-| `sessions recover` | Inspect or finish an original retained import/transcription request without repeating inference; pass the error's request ID. |
+| `sessions recover` | Inspect or finish the original retained import/transcription request; pass the error's request ID. Server requests accept `--source FILE` only for the original matching source still awaiting upload. |
+| `sessions media` | With `--profile`, inspect shared server media requests and saved device declarations; optional request ID narrows the read. |
 | `sessions path` | Print the absolute path of a session directory. |
 | `sessions attach` | Store a file as a note attachment and print its id. |
 | `sessions export` | Export a session to Markdown or JSON. |
 | `import` | Import an audio file as a new session or into an existing one. |
-| `transcribe` | Transcribe a session's audio with the configured on-device model. |
+| `transcribe` | Transcribe a session's audio with its configured Local model or selected server public model alias. |
 | `mcp` | Run the read-only MCP server over stdio. |
 | `tags list` | List every tag registered in the vault. |
 

@@ -51,7 +51,9 @@ credentials and metadata; vault files stay intact. Set
 This directory contains no tokens and is separate from the vault.
 
 `--profile NAME` supports session listing, search, reads, creation, rename, note
-set/append, tags, soft deletion, attachment uploads, and exports. Initial creation
+set/append, tags, soft deletion, attachment uploads, exports, audio import, and
+transcription. Media commands require `media_jobs`; custom import titles and initial
+metadata require `media_initial_metadata`. Initial session creation
 flags require the server's `session_initial_metadata` capability and are committed
 together with the initial note. Writes check the original revision; a concurrent
 edit is reported without overwriting it. The command keeps its original profile,
@@ -146,6 +148,14 @@ With `--into MEETING_ID`, the audio is imported into that existing meeting inste
 
 With `--transcribe`, the imported audio is transcribed immediately (see the transcribe command below). When transcription fails after a successful import, the command still reports the meeting id and exits non-zero. Plain output prints the id, while `--json` adds a `transcript_error` object to `data`.
 
+With `--profile NAME`, the source is uploaded to that server using an immutable
+request ID, SHA-256, and byte length. Transcription uses the server's configured
+public model alias; no local model or vault is opened. The initial title and
+metadata are committed with the import, and `--into` binds the original empty
+recording and transcript revisions. JSON retains schema `2`; `audio` is `null`
+for a remote recording and `request_id` identifies its durable receipt. A saved
+import still reports its ID and `transcript_error` if optional transcription fails.
+
 ## Transcribe command
 
 ```bash
@@ -158,6 +168,12 @@ Supported models include **Soniqo Parakeet Streaming**, **Soniqo Parakeet Batch*
 
 The command fails with a clear message and a non-zero exit code when the meeting or its audio is missing, when no speech-to-text model is configured, when the configured provider or model is not supported by the CLI (on-device Soniqo models on macOS and Parakeet ONNX models on Windows), or when the model has not been downloaded yet. The CLI never downloads models, so open the desktop app once to download it. On-device transcription supports Apple Silicon macOS and Windows 11 with their platform-specific models.
 
+With `--profile NAME`, transcription uses the selected server's batch policy and
+checks the original recording SHA and raw transcript revision. Current speaker
+edits or replaced audio cause a conflict. Optional automatic summaries use the
+server's configured summary policy. No local credentials, models, or settings are
+used for the operation.
+
 ## Recover retained media publication
 
 ```bash
@@ -166,7 +182,25 @@ loof --json sessions recover REQUEST_ID
 
 Use the original `request_id` from an uncertain import or transcription error. Recovery checks the original private journal and retained publication against the current recording SHA and raw transcript revision. It never runs inference or reopens the imported source. Changed speaker edits and deleted sessions are preserved. A completed historical request reports its original result without recreating content.
 
-JSON uses `command: "sessions.recover"` with `data.request_id` and `data.result`, the original import or transcription reply. An unresolved optional transcription retains the import result and exits nonzero. If no result was durably retained, the error says so; recovery does not silently begin another transcription. This command is Local-only and requires no downloaded model or login.
+JSON uses `command: "sessions.recover"` with `data.request_id` and `data.result`, the original import or transcription reply. An unresolved optional transcription retains the import result and exits nonzero. If no result was durably retained, the error says so; recovery does not silently begin another transcription. Local recovery requires no downloaded model or login.
+
+For a server profile, inspect original requests and saved device declarations:
+
+```bash
+loof --profile company --json sessions media
+loof --profile company --json sessions media REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID --source recording.m4a
+```
+
+Remote recovery uses the original saved declaration, member, vault, revisions,
+and options. It may dispatch work explicitly when the verified source was retained
+before inference began; uncertain dispatched inference is never repeated. Supply
+`--source` only when the original request still awaits bytes. The selected file
+must match its saved SHA-256 and length, and cannot change the original filename
+or metadata. Ordinary retries never perform recovery automatically. `sessions
+media` is read-only and also shows device declarations whose server reply was lost.
+Remote `sessions.recover` returns the shared media status as `data.result`.
 
 ## JSON response contract
 

@@ -72,7 +72,7 @@ pub enum Command {
         into: Option<String>,
         #[arg(
             long,
-            help = "Transcribe the audio with the configured on-device model after importing"
+            help = "Transcribe after importing with the configured Local model or selected server model"
         )]
         transcribe: bool,
         #[arg(
@@ -115,7 +115,7 @@ pub enum Command {
         )]
         skill: Option<String>,
     },
-    /// Transcribe a meeting's audio with the configured on-device model
+    /// Transcribe a meeting's audio with its configured Local or server model
     Transcribe {
         /// Meeting id whose audio should be transcribed
         id: String,
@@ -287,8 +287,15 @@ pub enum MeetingCommand {
         long_about = "Move the complete session directory to recoverable vault trash. The exact ID is the confirmation: no prompt or confirmation flag, including with --json. Missing or already-deleted IDs fail with not_found (exit 2). No permanent purge."
     )]
     Delete { id: String },
-    /// Inspect or finish retained local media publication without repeating transcription
-    Recover { request_id: String },
+    /// Inspect or finish the original retained media publication without repeating transcription
+    Recover {
+        request_id: String,
+        /// Explicitly upload the original matching source to a server request still awaiting bytes
+        #[arg(long)]
+        source: Option<PathBuf>,
+    },
+    /// Inspect original media requests and device receipts for the selected server profile
+    Media { request_id: Option<String> },
     /// Store a file as a note attachment of a meeting and print its attachment id
     Attach {
         id: String,
@@ -1013,7 +1020,7 @@ mod tests {
         ])
         .unwrap();
         assert!(
-            matches!(args.command, Command::Sessions { command: MeetingCommand::Recover { request_id } } if request_id == "3ee6ab27-391d-47cb-ad40-5c61b57f4181")
+            matches!(args.command, Command::Sessions { command: MeetingCommand::Recover { request_id, source: None } } if request_id == "3ee6ab27-391d-47cb-ad40-5c61b57f4181")
         );
         assert!(Args::try_parse_from(["loof", "sessions", "recover"]).is_err());
         assert!(

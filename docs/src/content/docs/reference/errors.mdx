@@ -23,3 +23,9 @@ MCP reports missing meetings as invalid parameters. Vault and serialization fail
 Never recover by editing vault files directly; go through the CLI's write commands or the desktop app. When a write command fails after creating a meeting, the error names the new meeting id. Finish the job against that id instead of retrying from scratch (for example `loof sessions note ID --set` after a failed note write, or `loof transcribe ID` after a failed `import --transcribe`). The MCP server remains read-only.
 
 Checked Local failures may include `request_id`, `current_revision`, and `mutation_outcome`. For an import or transcription with `mutation_outcome: "unknown"`, use `loof --json sessions recover REQUEST_ID` before starting new work. Recovery never repeats inference and never overwrites a changed transcript or recreates a deleted session. A `conflict` requires inspecting the current content; do not blindly repeat the original mutation.
+
+For a server media request, inspect `loof --profile NAME --json sessions media REQUEST_ID`
+and explicitly recover the same ID with `sessions recover REQUEST_ID`. Do not rerun
+`import` or `transcribe` to recover an unknown outcome: those start a new request.
+A request still waiting for source accepts `sessions recover REQUEST_ID --source FILE`
+only when the selected bytes match the original saved SHA and length.

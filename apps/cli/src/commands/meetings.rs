@@ -208,7 +208,33 @@ pub(crate) async fn run_with_reader(
             TagCommand::Remove { id, tags } => edit_tags(reader, &id, tags, false, json).await,
         },
         MeetingCommand::Delete { id } => delete_session(reader, &id, json).await,
-        MeetingCommand::Recover { request_id } => {
+        MeetingCommand::Media { request_id } => {
+            let AgentReader::Remote(target) = reader else {
+                return Err(Error::operation(
+                    "inspect media requests",
+                    "Select a server profile for this command",
+                ));
+            };
+            target
+                .begin_media()
+                .await?
+                .inspect_media(request_id.as_deref(), json)
+                .await
+        }
+        MeetingCommand::Recover { request_id, source } => {
+            if let AgentReader::Remote(target) = reader {
+                return target
+                    .begin_media()
+                    .await?
+                    .recover_media(&request_id, source, json)
+                    .await;
+            }
+            if source.is_some() {
+                return Err(Error::operation(
+                    "recover media",
+                    "Local recovery uses retained bytes and does not accept --source",
+                ));
+            }
             let reply = local(reader.vault()?)?
                 .execute(Operation::RecoverMedia {
                     request_id: request_id.clone(),
