@@ -102,7 +102,18 @@ For an import or transcription error with `mutation_outcome: "unknown"`, use the
 loof --json sessions recover REQUEST_ID
 ```
 
-This Local-only command inspects or finishes the original retained publication without rerunning a model or reading the source file again. It preserves changed transcripts and deleted sessions. Confirmed historical requests return their original result without recreating content. If the result was never durably retained, report that outcome before starting any new transcription.
+In Local mode this command inspects or finishes the original retained publication without rerunning a model or reading the source file again. It preserves changed transcripts and deleted sessions. Confirmed historical requests return their original result without recreating content. If the result was never durably retained, report that outcome before starting any new transcription.
+
+For an explicitly selected server profile, inspect original media requests and saved device declarations without starting inference:
+
+```bash
+loof --profile company --json sessions media
+loof --profile company --json sessions media REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID
+loof --profile company --json sessions recover REQUEST_ID --source recording.m4a
+```
+
+Server recovery uses the original request, destination, options and source descriptor. Supply `--source` only when that request is still awaiting its original upload; the bytes must match the retained SHA and size. Never create a new request to retry an unknown model outcome, and never substitute a Local vault for an unavailable server.
 
 Export is intended for an explicit user request to save or transfer a complete meeting:
 

@@ -67,32 +67,39 @@ async fn run_inner(args: Args) -> Result<u8> {
                 author,
                 skill,
             } => {
-                return target
-                    .begin_media()
-                    .await?
-                    .import_media(
-                        file,
-                        title,
-                        into,
-                        transcribe,
-                        commands::NewSessionOptions {
-                            created_at,
-                            started_at,
-                            ended_at,
-                            author,
-                            skill,
-                            tags: Vec::new(),
-                        },
-                        args.json,
-                    )
-                    .await;
+                // Remote media recovery/upload state must not enlarge every Local command.
+                return Box::pin(async {
+                    target
+                        .begin_media()
+                        .await?
+                        .import_media(
+                            file,
+                            title,
+                            into,
+                            transcribe,
+                            commands::NewSessionOptions {
+                                created_at,
+                                started_at,
+                                ended_at,
+                                author,
+                                skill,
+                                tags: Vec::new(),
+                            },
+                            args.json,
+                        )
+                        .await
+                })
+                .await;
             }
             cli::Command::Transcribe { id } => {
-                target
-                    .begin_media()
-                    .await?
-                    .transcribe_media(&id, args.json)
-                    .await?
+                Box::pin(async {
+                    target
+                        .begin_media()
+                        .await?
+                        .transcribe_media(&id, args.json)
+                        .await
+                })
+                .await?
             }
             cli::Command::Mcp => mcp::serve_with_reader(reader).await?,
             _ => unreachable!("remote commands were checked before selecting the profile"),

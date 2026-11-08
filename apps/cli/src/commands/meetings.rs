@@ -215,19 +215,25 @@ pub(crate) async fn run_with_reader(
                     "Select a server profile for this command",
                 ));
             };
-            target
-                .begin_media()
-                .await?
-                .inspect_media(request_id.as_deref(), json)
-                .await
+            Box::pin(async {
+                target
+                    .begin_media()
+                    .await?
+                    .inspect_media(request_id.as_deref(), json)
+                    .await
+            })
+            .await
         }
         MeetingCommand::Recover { request_id, source } => {
             if let AgentReader::Remote(target) = reader {
-                return target
-                    .begin_media()
-                    .await?
-                    .recover_media(&request_id, source, json)
-                    .await;
+                return Box::pin(async {
+                    target
+                        .begin_media()
+                        .await?
+                        .recover_media(&request_id, source, json)
+                        .await
+                })
+                .await;
             }
             if source.is_some() {
                 return Err(Error::operation(
