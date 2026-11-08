@@ -25,27 +25,35 @@ export function remoteMedia(
       : null;
   };
   const settings = async (transcribe: boolean, options?: RequestOptions) => {
-    const preferences = await connection.request(
-      { kind: "processing_settings", vault_id: vaultId },
-      "processing_settings",
-      options,
-    );
-    const policy = transcribe
-      ? await connection.request(
-          { kind: "transcription_policy", vault_id: vaultId },
-          "transcription_policy",
-          options,
-        )
-      : null;
+    const features = connection.info.capabilities.features;
+    const preferences =
+      features.includes("processing_settings") &&
+      features.includes("conditional_summary_jobs")
+        ? await connection.request(
+            { kind: "processing_settings", vault_id: vaultId },
+            "processing_settings",
+            options,
+          )
+        : null;
+    const policy =
+      transcribe && features.includes("transcription_policy")
+        ? await connection.request(
+            { kind: "transcription_policy", vault_id: vaultId },
+            "transcription_policy",
+            options,
+          )
+        : null;
     return {
       transcription:
         policy?.batch_enabled && policy.availability === "ready" && policy.model
           ? { model: policy.model, languages: [] }
           : null,
-      summary: preferences.settings.summary_model
+      summary: preferences?.settings.summary_model
         ? {
             target: { kind: "summary" as const },
-            title_policy: "generate_if_empty" as const,
+            title_policy: features.includes("generated_titles")
+              ? ("generate_if_empty" as const)
+              : ("preserve" as const),
           }
         : null,
     };

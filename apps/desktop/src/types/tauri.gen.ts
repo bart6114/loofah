@@ -1684,6 +1684,27 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async applicationDeleteDocument(
+    sessionId: string,
+    target: DocumentTarget,
+    requestId: string,
+    input: DeleteDocumentRequest,
+  ): Promise<Result<DeleteDocumentOutcome, ApplicationError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("application_delete_document", {
+          sessionId,
+          target,
+          requestId,
+          input,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async applicationReadMetadata(
     sessionId: string,
   ): Promise<Result<MetadataSnapshot, ApplicationError>> {
@@ -3642,6 +3663,14 @@ export type CreatedAtFilter = {
   lt: number | null;
   eq: number | null;
 };
+export type DeleteDocumentOutcome =
+  | { kind: "deleted"; revision: string; trash_token: string }
+  | { kind: "conflict"; snapshot: DocumentEditorSnapshot }
+  | { kind: "not_found" };
+export type DeleteDocumentRequest = {
+  expected_revision: string;
+  expected_session_created_at: string;
+};
 export type DeleteEmptySessionOutcome =
   | { kind: "deleted" }
   | { kind: "not_empty" }
@@ -4489,6 +4518,13 @@ export type RemoteOperation =
       target: DocumentTarget;
     }
   | {
+      kind: "delete_document";
+      vault_id: string;
+      session_id: string;
+      target: DocumentTarget;
+      input: DeleteDocumentRequest;
+    }
+  | {
       kind: "save_document_editor";
       vault_id: string;
       session_id: string;
@@ -4630,6 +4666,7 @@ export type RemoteReply =
   | { kind: "document_save"; value: DocumentSaveOutcome }
   | { kind: "document_editor"; value: DocumentEditorSnapshot }
   | { kind: "document_editor_save"; value: DocumentEditorSaveOutcome }
+  | { kind: "document_delete"; value: DeleteDocumentOutcome }
   | { kind: "transcript_overview"; value: TranscriptOverview }
   | { kind: "transcripts"; value: TranscriptWithData[] }
   | { kind: "audio_metadata"; value: FileMetadata | null }

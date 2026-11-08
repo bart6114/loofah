@@ -925,3 +925,14 @@ Server CPU admission now has an explicit opt-in reserved live partition within t
 The coordinated Linux CPU graph through `d13d0fb06` passed 28 focused host/admission/configuration/policy tests, including deterministic normal-completion and rejected-preparation handoff windows. Real configured ONNX overlap then passed in 17.58 seconds with the existing verified models, two CPUs and a 6 GiB container limit: a nonempty live caption arrived in 3,968 ms while the checked 320-second stereo batch still held its actual mutable model lock. Concurrent health plus authenticated metadata reads completed in 6 ms. Explicit batch cancellation and full native/live drain took 8,072 ms; the recording, metadata, original note and unknown attachment remained unchanged, with no partial canonical transcript. The batch had 5,120,000 frames and SHA-256 `938170e91687b18f8f9c4c289fd579770163ca2df9485b591d2c15578ddd926d`. Evidence is in task-cache logs `cpu-admission-linux-retirement.log`, `cpu-admission-linux-reserved-policy.log` and `cpu-admission-linux-real-reserved-second.log`. The first real run reached overlap but failed only because its health fixture expected HTTP 200 instead of the existing 204 contract; its failure log remains retained. These are server CPU results, not Native microphone or Windows qualification.
 
 Strict CPU-feature server library Clippy (`--lib --no-deps -- -D warnings`) passed on this graph. The older-base all-target run stopped on two existing `capture_soak.rs` nested-if lints, and dependency linting additionally stopped on existing `fs-format` nested-if lints; those runs are retained separately as `cpu-admission-linux-clippy-server.log` and `cpu-admission-linux-clippy.log`. They are not represented as all-target passes. Current-root all-target qualification remains with the integration lane.
+
+
+Remote media imports now negotiate optional processing independently: notes-only
+and CPU-only services do not need summary settings, subtitle/raw imports do not
+request unavailable transcription policy, and summaries preserve titles when
+generated titles are absent. The focused adapter/deletion frontend cohort passed
+64 tests, desktop typecheck passed, and actual Native bindings were regenerated
+and formatted. The current 21-package Native graph passed 22 focused export,
+operational and Store deletion cases, followed by all three explicit checked
+deletion Native/SDK/real-HTTP cases. Local checked deletion remains default off;
+these focused passes do not replace the final platform matrix.

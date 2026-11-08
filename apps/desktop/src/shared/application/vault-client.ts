@@ -44,8 +44,6 @@ import type {
   RenderedTranscriptSegment,
   Change,
   CreateSessionRequest,
-  DeleteDocumentRequest,
-  DeleteDocumentOutcome,
   DeleteSessionRequest,
   DeleteSessionOutcome,
   RestoreSessionRequest,

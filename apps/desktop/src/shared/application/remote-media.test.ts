@@ -36,7 +36,18 @@ const prepared = {
 };
 beforeEach(() => {
   connection = {
-    info: { capabilities: { features: ["media_jobs", "media_source_export"] } },
+    info: {
+      capabilities: {
+        features: [
+          "media_jobs",
+          "media_source_export",
+          "processing_settings",
+          "conditional_summary_jobs",
+          "generated_titles",
+          "transcription_policy",
+        ],
+      },
+    },
     exportMediaSource: vi.fn(async () => ({
       path: "/downloads/Loofah/Original.wav",
     })),
@@ -80,6 +91,77 @@ it("saves the original source by its original request without declaring or recov
 it("keeps original source export unavailable without the advertised capability", () => {
   connection.info.capabilities.features = ["media_jobs"];
   expect(api().exportSource).toBeUndefined();
+});
+
+it("imports raw audio on a notes-only server without requesting optional processing", async () => {
+  connection.info.capabilities.features = ["media_jobs"];
+  await api().importAudio(
+    { sessionId: null, prepared },
+    { requestId: "original" },
+  );
+  expect(connection.request).not.toHaveBeenCalled();
+  expect(connection.submitMedia).toHaveBeenCalledWith(
+    "company",
+    expect.objectContaining({
+      transcription: null,
+      summary: null,
+      operation: expect.objectContaining({
+        kind: "import_audio",
+        transcribe: false,
+      }),
+    }),
+    prepared.source,
+    { requestId: "original" },
+  );
+});
+
+it("imports subtitles without requiring optional summary processing", async () => {
+  connection.info.capabilities.features = ["media_jobs"];
+  await api().importSubtitles("note", prepared, { requestId: "original" });
+  expect(connection.request).not.toHaveBeenCalled();
+  expect(connection.submitMedia).toHaveBeenCalledWith(
+    "company",
+    expect.objectContaining({
+      transcription: null,
+      summary: null,
+      operation: expect.objectContaining({ kind: "import_subtitles" }),
+    }),
+    prepared.source,
+    { requestId: "original" },
+  );
+});
+
+it("keeps CPU-only transcription independent of a summary provider", async () => {
+  connection.info.capabilities.features = [
+    "media_jobs",
+    "transcription_policy",
+  ];
+  await api().importAudio(
+    { sessionId: null, prepared },
+    { requestId: "original" },
+  );
+  expect(connection.request).toHaveBeenCalledExactlyOnceWith(
+    { kind: "transcription_policy", vault_id: "company" },
+    "transcription_policy",
+    { requestId: "original" },
+  );
+  expect(connection.submitMedia.mock.calls[0][1]).toMatchObject({
+    summary: null,
+    transcription: { model: "server-model" },
+    operation: { transcribe: true },
+  });
+});
+
+it("preserves the title when optional generated titles are unsupported", async () => {
+  connection.info.capabilities.features = [
+    "media_jobs",
+    "processing_settings",
+    "conditional_summary_jobs",
+  ];
+  await api().importSubtitles("note", prepared, { requestId: "original" });
+  expect(connection.submitMedia.mock.calls[0][1].summary.title_policy).toBe(
+    "preserve",
+  );
 });
 
 it("freezes the original server baseline, model and summary before submitting exact selected bytes", async () => {
